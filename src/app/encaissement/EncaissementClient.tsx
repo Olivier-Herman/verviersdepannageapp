@@ -55,7 +55,9 @@ export default function EncaissementClient({
   const [viesResult, setViesResult] = useState<{ name?: string; address?: string; valid?: boolean } | null>(null)
 
   const locationInputRef = useRef<HTMLInputElement>(null)
+  const clientAddressInputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<any>(null)
+  const autocompleteClientRef = useRef<any>(null)
 
   // Charger Google Maps Places
   useEffect(() => {
@@ -63,15 +65,21 @@ export default function EncaissementClient({
     if (!apiKey) return
 
     window.initGooglePlaces = () => {
-      if (!locationInputRef.current) return
-      autocompleteRef.current = new window.google.maps.places.Autocomplete(
-        locationInputRef.current,
-        { types: ['address'], componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] } }
-      )
-      autocompleteRef.current.addListener('place_changed', () => {
-        const place = autocompleteRef.current.getPlace()
-        if (place?.formatted_address) setLocation(place.formatted_address)
-      })
+      const options = { types: ['address'], componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] } }
+      if (locationInputRef.current) {
+        autocompleteRef.current = new window.google.maps.places.Autocomplete(locationInputRef.current, options)
+        autocompleteRef.current.addListener('place_changed', () => {
+          const place = autocompleteRef.current.getPlace()
+          if (place?.formatted_address) setLocation(place.formatted_address)
+        })
+      }
+      if (clientAddressInputRef.current) {
+        autocompleteClientRef.current = new window.google.maps.places.Autocomplete(clientAddressInputRef.current, options)
+        autocompleteClientRef.current.addListener('place_changed', () => {
+          const place = autocompleteClientRef.current.getPlace()
+          if (place?.formatted_address) setClientAddress(place.formatted_address)
+        })
+      }
     }
 
     if (!document.getElementById('google-maps-script')) {
@@ -392,7 +400,10 @@ export default function EncaissementClient({
             {/* Adresse */}
             <div className="mb-4">
               <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Adresse client</label>
-              <input value={clientAddress} onChange={e => setClientAddress(e.target.value)} placeholder="Rue, numéro, code postal, ville"
+              <input
+                ref={clientAddressInputRef}
+                value={clientAddress} onChange={e => setClientAddress(e.target.value)}
+                placeholder="Rue, numéro, code postal, ville"
                 className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
             </div>
 
