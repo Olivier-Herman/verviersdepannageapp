@@ -45,7 +45,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(results)
   }
 
-  // Solde d'un chauffeur spécifique
+  // Liste des responsables disponibles pour le transfert
+  const getVerifiers = req.nextUrl.searchParams.get('verifiers')
+  if (getVerifiers) {
+    const { data: verifiers } = await supabase
+      .from('users')
+      .select('id, name, verify_pin_hash')
+      .eq('can_verify', true)
+      .eq('active', true)
+      .order('name')
+
+    return NextResponse.json(
+      (verifiers || []).map(v => ({
+        id: v.id,
+        name: v.name,
+        hasPin: !!v.verify_pin_hash
+      }))
+    )
+  }
   const targetId = driverId || me?.id
   if (!targetId) return NextResponse.json({ error: 'Chauffeur introuvable' }, { status: 404 })
 
@@ -77,38 +94,50 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient()
 
   if (action === 'remise') {
-    // Vérifier le PIN du responsable
     if (!pin) return NextResponse.json({ error: 'PIN requis' }, { status: 400 })
+    if (!body.verifierId) return NextResponse.json({ error: 'Responsable requis' }, { status: 400 })
 
-    // Récupérer les responsables pouvant valider
-    const { data: verifiers } = await supabase
+    // Récupérer le chauffeur
+    const { data: driverUser } = await supabase
+      .from('users').select('id, name').eq('id', driverId).single()
+
+    // Récupérer le responsable sélectionné
+    const { data: verifier } = await supabase
       .from('users')
       .select('id, name, verify_pin_hash')
+      .eq('id', body.verifierId)
       .eq('can_verify', true)
       .eq('active', true)
+      .single()
 
-    let validatedBy = null
-    for (const verifier of verifiers || []) {
-      if (verifier.verify_pin_hash) {
-        const match = await bcrypt.compare(pin.toString(), verifier.verify_pin_hash)
-        if (match) { validatedBy = verifier; break }
-      }
+    if (!verifier) {
+      return NextResponse.json({ error: 'Responsable introuvable' }, { status: 404 })
     }
 
-    if (!validatedBy) {
-      return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
+    if (!verifier.verify_pin_hash) {
+      return NextResponse.json({ error: `${verifier.name} n'a pas encore défini son PIN` }, { status: 400 })
     }
 
-    // Enregistrer la remise
+    // Vérifier le PIN contre CE responsable spécifiquement
+    const match = await bcrypt.compare(pin.toString(), verifier.verify_pin_hash)
+    if (!match) {
+      return NextResponse.json({ error: 'PIN incorrect pour ce responsable' }, { status: 403 })
+    }
+
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const timeStr = now.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })
+    const transferNote = `${driverUser?.name || 'Chauffeur'} a transféré la somme de ${parseFloat(amount).toFixed(2)} € à ${verifier.name} le ${dateStr} à ${timeStr}`
+
     const { data: remise, error } = await supabase
       .from('cash_register')
       .insert({
         driver_id: driverId,
         amount: parseFloat(amount),
         type: 'remise',
-        verified_by: validatedBy.id,
-        verified_at: new Date().toISOString(),
-        notes: notes || `Remise validée par ${validatedBy.name}`,
+        verified_by: verifier.id,
+        verified_at: now.toISOString(),
+        notes: transferNote,
       })
       .select()
       .single()
@@ -118,7 +147,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       remise,
-      validatedBy: validatedBy.name,
+      validatedBy: verifier.name,
+      transferNote,
     })
   }
 

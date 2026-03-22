@@ -14,6 +14,23 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient()
+
+  // Vérifier que le PIN n'est pas déjà utilisé par un autre responsable
+  const { data: otherVerifiers } = await supabase
+    .from('users')
+    .select('id, name, verify_pin_hash')
+    .eq('can_verify', true)
+    .neq('email', session.user.email) // exclure l'utilisateur courant
+
+  for (const verifier of otherVerifiers || []) {
+    if (verifier.verify_pin_hash) {
+      const alreadyUsed = await bcrypt.compare(pin.toString(), verifier.verify_pin_hash)
+      if (alreadyUsed) {
+        return NextResponse.json({ error: 'Ce PIN est déjà utilisé par un autre responsable. Choisissez-en un différent.' }, { status: 409 })
+      }
+    }
+  }
+
   const hash = await bcrypt.hash(pin.toString(), 10)
   const { error } = await supabase.from('users')
     .update({ verify_pin_hash: hash }).eq('email', session.user.email)

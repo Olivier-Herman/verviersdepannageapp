@@ -13,7 +13,7 @@ interface CashEntry {
   intervention: { reference: string; plate: string; amount: number; created_at: string } | null
 }
 
-export default function CashClient({ userName }: { userName: string }) {
+export default function CashClient({ userName, driverId }: { userName: string; driverId: string }) {
   const [balance, setBalance] = useState(0)
   const [entries, setEntries] = useState<CashEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,6 +23,9 @@ export default function CashClient({ userName }: { userName: string }) {
   const [remiseLoading, setRemiseLoading] = useState(false)
   const [remiseError, setRemiseError] = useState('')
   const [remiseSuccess, setRemiseSuccess] = useState('')
+
+  const [verifiers, setVerifiers] = useState<{ id: string; name: string; hasPin: boolean }[]>([])
+  const [selectedVerifier, setSelectedVerifier] = useState('')
 
   const loadData = () => {
     setLoading(true)
@@ -37,8 +40,15 @@ export default function CashClient({ userName }: { userName: string }) {
 
   useEffect(() => { loadData() }, [])
 
+  useEffect(() => {
+    fetch('/api/cash?verifiers=true')
+      .then(r => r.json())
+      .then(setVerifiers)
+  }, [])
+
   const handleRemise = async () => {
     if (!remiseAmount || parseFloat(remiseAmount) <= 0) { setRemiseError('Montant invalide'); return }
+    if (!selectedVerifier) { setRemiseError('Sélectionne un responsable'); return }
     if (!pin || pin.length !== 4) { setRemiseError('PIN à 4 chiffres requis'); return }
     if (parseFloat(remiseAmount) > balance) { setRemiseError('Montant supérieur à la caisse'); return }
 
@@ -49,21 +59,22 @@ export default function CashClient({ userName }: { userName: string }) {
       body: JSON.stringify({
         action: 'remise',
         amount: parseFloat(remiseAmount),
+        driverId,
+        verifierId: selectedVerifier,
         pin,
-        notes: `Remise de ${remiseAmount}€ par ${userName}`,
       })
     })
     const data = await res.json()
     setRemiseLoading(false)
 
     if (!res.ok) {
-      setRemiseError(data.error === 'PIN incorrect' ? '❌ PIN incorrect' : data.error)
+      setRemiseError(data.error)
       return
     }
 
-    setRemiseSuccess(`✅ Remise de ${remiseAmount}€ validée par ${data.validatedBy}`)
+    setRemiseSuccess(data.transferNote)
     setShowRemise(false)
-    setRemiseAmount(''); setPin('')
+    setRemiseAmount(''); setPin(''); setSelectedVerifier('')
     loadData()
   }
 
@@ -102,18 +113,34 @@ export default function CashClient({ userName }: { userName: string }) {
         {balance > 0 && !showRemise && (
           <button onClick={() => setShowRemise(true)}
             className="w-full bg-brand text-white font-bold rounded-2xl py-4 mb-6 active:scale-95 transition-all">
-            💰 Remise de l'argent à un responsable
+            💸 Transférer l'argent à un responsable
           </button>
         )}
 
         {/* Formulaire remise */}
         {showRemise && (
           <div className="bg-[#1A1A1A] border border-brand/30 rounded-2xl p-5 mb-6">
-            <h3 className="text-white font-bold mb-4">Remise d'espèces</h3>
+            <h3 className="text-white font-bold mb-4">Transfert vers un responsable</h3>
             <p className="text-zinc-400 text-xs mb-3">Solde disponible : <span className="text-brand font-bold">{balance.toFixed(2)} €</span></p>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Montant à remettre</label>
+              <label className="text-zinc-400 text-xs mb-1.5 block">Responsable qui reçoit l'argent</label>
+              <select
+                value={selectedVerifier}
+                onChange={e => { setSelectedVerifier(e.target.value); setRemiseError('') }}
+                className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-sm outline-none appearance-none"
+              >
+                <option value="">Sélectionner un responsable…</option>
+                {verifiers.map(v => (
+                  <option key={v.id} value={v.id} disabled={!v.hasPin}>
+                    {v.name}{!v.hasPin ? ' (PIN non défini)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-zinc-400 text-xs mb-1.5 block">Montant à transférer</label>
               <div className="relative">
                 <input type="text" inputMode="decimal" value={remiseAmount}
                   onChange={e => setRemiseAmount(e.target.value.replace(/[^0-9.]/g, ''))}
@@ -124,7 +151,9 @@ export default function CashClient({ userName }: { userName: string }) {
             </div>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">PIN du responsable (4 chiffres)</label>
+              <label className="text-zinc-400 text-xs mb-1.5 block">
+                PIN de {verifiers.find(v => v.id === selectedVerifier)?.name || 'ce responsable'}
+              </label>
               <input type="password" inputMode="numeric" maxLength={4} value={pin}
                 onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="••••"
@@ -154,20 +183,22 @@ export default function CashClient({ userName }: { userName: string }) {
         <h3 className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-3">Historique</h3>
         {loading && <p className="text-zinc-600 text-sm text-center py-4">Chargement…</p>}
         {entries.map(e => (
-          <div key={e.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 mb-2 flex items-center justify-between">
-            <div>
-              <p className={`text-sm font-semibold ${e.type === 'encaissement' ? 'text-green-400' : 'text-red-400'}`}>
-                {e.type === 'encaissement' ? '+ Encaissement' : '− Remise'}
+          <div key={e.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 mb-2">
+            <div className="flex items-start justify-between mb-1">
+              <p className={`text-sm font-semibold ${e.type === 'encaissement' ? 'text-green-400' : 'text-brand'}`}>
+                {e.type === 'encaissement' ? '+ Encaissement espèces' : '💸 Transfert'}
               </p>
-              <p className="text-zinc-600 text-xs">{e.intervention?.reference || e.notes}</p>
-              <p className="text-zinc-700 text-xs">{new Date(e.created_at).toLocaleDateString('fr-BE')}</p>
-            </div>
-            <div className="text-right">
-              <p className={`font-bold ${e.type === 'encaissement' ? 'text-green-400' : 'text-red-400'}`}>
+              <p className={`font-bold ${e.type === 'encaissement' ? 'text-green-400' : 'text-brand'}`}>
                 {e.type === 'encaissement' ? '+' : '-'}{e.amount.toFixed(2)} €
               </p>
-              {e.verified_at && <p className="text-zinc-700 text-xs">✓ Remis</p>}
             </div>
+            {e.type === 'remise' && e.notes && (
+              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
+            )}
+            {e.type === 'encaissement' && e.intervention?.reference && (
+              <p className="text-zinc-600 text-xs">{e.intervention.reference}</p>
+            )}
+            <p className="text-zinc-700 text-xs mt-1">{new Date(e.created_at).toLocaleDateString('fr-BE')}</p>
           </div>
         ))}
       </div>
