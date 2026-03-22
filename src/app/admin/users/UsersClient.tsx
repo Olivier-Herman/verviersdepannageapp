@@ -18,6 +18,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [userModules, setUserModules] = useState<string[]>([])
   const [userRole, setUserRole] = useState('')
   const [userActive, setUserActive] = useState(true)
+  const [userCanVerify, setUserCanVerify] = useState(false)
   const [showNewUser, setShowNewUser] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [newName, setNewName] = useState('')
@@ -30,6 +31,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
     setUserRole(user.role)
     setUserActive(user.active)
+    setUserCanVerify(user.can_verify || false)
   }
 
   const toggleModule = (moduleId: string) => {
@@ -49,6 +51,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           userId: selectedUser.id,
           role: userRole,
           active: userActive,
+          can_verify: userCanVerify,
           modules: userModules
         })
       })
@@ -124,13 +127,27 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           </div>
 
           {/* Actif/Inactif */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <span className="text-zinc-500 text-xs font-medium">Compte actif</span>
             <button
               onClick={() => setUserActive(!userActive)}
               className={`relative w-11 h-6 rounded-full transition-colors ${userActive ? 'bg-green-600' : 'bg-zinc-700'}`}
             >
               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${userActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          {/* Peut valider les remises espèces */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-zinc-500 text-xs font-medium">Peut valider les remises espèces</span>
+              <p className="text-zinc-700 text-xs">Accès au PIN de validation caisse</p>
+            </div>
+            <button
+              onClick={() => setUserCanVerify(!userCanVerify)}
+              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${userCanVerify ? 'bg-brand' : 'bg-zinc-700'}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${userCanVerify ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </button>
           </div>
         </div>
