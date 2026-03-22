@@ -348,6 +348,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     setClientVat(''); setClientName(''); setClientAddress('')
     setClientStreet(''); setClientZip(''); setClientCity(''); setClientCountryCode('BE')
     setClientPhone(''); setClientEmail(''); setNotes(''); setViesResult(null)
+    setOdooNameMatches([])
     autocompleteRef.current = null; autocompleteClientRef.current = null
   }
 
@@ -775,6 +776,28 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     return false
   }
 
+  const [odooNameMatches, setOdooNameMatches] = useState<any[]>([])
+  const [nameSearchLoading, setNameSearchLoading] = useState(false)
+
+  const searchOdooByNameMultiple = async (): Promise<any[]> => {
+    try {
+      const inverted = clientName.trim().split(' ').length > 1
+        ? [...clientName.trim().split(' ').slice(1), clientName.trim().split(' ')[0]].join(' ')
+        : clientName.trim()
+
+      const results: any[] = []
+      for (const n of [clientName.trim(), inverted]) {
+        const res = await fetch(`/api/partners?name=${encodeURIComponent(n)}`)
+        const data = await res.json()
+        if (data.found && !results.find(r => r.id === data.partner.id)) {
+          results.push(data.partner)
+        }
+      }
+      return results
+    } catch {}
+    return []
+  }
+
   // ── Page 7 — Nom ─────────────────────────────────────────
   if (page === 7) return (
     <Shell title="Nom du client" page={7} totalPages={TOTAL} onBack={() => setPage(6)}>
@@ -787,12 +810,59 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           autoFocus
           className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-8"
         />
-        <BigBtn label="Continuer →" onClick={async () => {
-          if (!clientName.trim()) return
-          const found = await searchOdooByName()
-          // Si trouvé avec téléphone → montant, sinon coordonnées
-          setPage(found && clientPhone ? 4 : 8)
-        }} disabled={!clientName.trim()} />
+        <BigBtn
+          label={nameSearchLoading ? 'Recherche…' : 'Continuer →'}
+          disabled={!clientName.trim() || nameSearchLoading}
+          onClick={async () => {
+            if (!clientName.trim()) return
+            setNameSearchLoading(true)
+            const matches = await searchOdooByNameMultiple()
+            setNameSearchLoading(false)
+            if (matches.length > 0) {
+              setOdooNameMatches(matches)
+              setPage(14) // page de sélection des correspondances
+            } else {
+              setPage(8) // nouveau client direct
+            }
+          }}
+        />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 14 — Correspondances Odoo par nom ────────────────
+  if (page === 14) return (
+    <Shell title="Ce client est-il déjà connu ?" page={7} totalPages={TOTAL} onBack={() => setPage(7)}>
+      <div className="mt-2 flex flex-col gap-3">
+        <p className="text-zinc-500 text-xs mb-2">
+          {odooNameMatches.length} correspondance{odooNameMatches.length > 1 ? 's' : ''} trouvée{odooNameMatches.length > 1 ? 's' : ''} pour "{clientName}"
+        </p>
+        {odooNameMatches.map(client => (
+          <button
+            key={client.id}
+            onClick={() => {
+              fillFromOdooPartner(client)
+              setSelectedClient(client)
+              setIsNewClient(false)
+              setPage(4) // montant directement
+            }}
+            className="w-full text-left bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
+            <p className="text-white font-semibold">{client.name}</p>
+            {client.phone && <p className="text-zinc-500 text-sm mt-0.5">{client.phone}</p>}
+            {client.address && <p className="text-zinc-600 text-xs mt-0.5 truncate">{client.address}</p>}
+            {client.vat && <p className="text-zinc-700 text-xs mt-0.5">{client.vat}</p>}
+          </button>
+        ))}
+        <button
+          onClick={() => {
+            setSelectedClient(null)
+            setIsNewClient(true)
+            setOdooNameMatches([])
+            setPage(8) // coordonnées nouveau client
+          }}
+          className="w-full bg-[#1e1e1e] border border-dashed border-[#444] rounded-2xl p-4 text-zinc-400 font-medium text-center hover:border-zinc-300 transition-all active:scale-95">
+          Aucun de ces clients — créer un nouveau
+        </button>
       </div>
     </Shell>
   )
