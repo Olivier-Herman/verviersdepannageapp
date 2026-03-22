@@ -11,8 +11,9 @@ const ODOO_API_KEY = process.env.ODOO_API_KEY!
 
 // Champs custom sale.order
 const FIELD_PLAQUE     = 'x_studio_many2one_field_78n_1j6fmmeom'
-const FIELD_MENTION    = 'x_studio_related_field_8as_1j5u1lcp6'
 const SALE_TEMPLATE_ID = 7
+const PRODUCT_FORFAIT  = 5   // [FORFAIT] Forfait
+const TAX_21           = 5   // TVA 21% Belgique
 
 // ============================================================
 // JSON-RPC core
@@ -149,9 +150,11 @@ export async function findOrCreatePartner(data: {
     phone: data.phone || false,
     email: data.email || false,
     street: data.street || false,
-    ...(data.vat ? { vat: data.vat.toUpperCase(), company_type: 'company' } : { company_type: 'person' }),
+    ...(data.vat
+      ? { vat: data.vat.toUpperCase(), company_type: 'company' }
+      : { company_type: 'person' }),
     customer_rank: 1,
-    country_id: 21,
+    country_id: 21, // Belgique
   }])
   console.log(`[Odoo] Partner créé: ${data.name} (ID: ${id})`)
   return id
@@ -164,32 +167,56 @@ export async function createSaleOrder(data: {
   partnerId: number
   vehicleId: number
   reference: string
-  amount: number
+  amount: number        // Montant TVAC encodé par le chauffeur
   motifText: string
   paymentMode?: string
+  driverName?: string
 }): Promise<{ id: number; name: string }> {
 
   // Montant HT depuis TVAC 21%
   const amountHT = Math.round((data.amount / 1.21) * 100) / 100
+
+  // Note interne : chauffeur + mode paiement
+  const internalNote = [
+    data.driverName ? `Chauffeur : ${data.driverName}` : null,
+    data.paymentMode ? `Mode de paiement : ${data.paymentMode}` : null,
+  ].filter(Boolean).join('<br/>')
 
   const orderId = await rpc<number>('sale.order', 'create', [{
     partner_id: data.partnerId,
     sale_order_template_id: SALE_TEMPLATE_ID,
     client_order_ref: data.reference,
     [FIELD_PLAQUE]: data.vehicleId,
-    [FIELD_MENTION]: data.paymentMode ? `Payé par ${data.paymentMode}` : '',
-    payment_term_id: 1,
-    order_line: [[0, 0, {
-      name: data.motifText,
-      product_uom_qty: 1,
-      price_unit: amountHT,
-    }]]
+    payment_term_id: 1, // Paiement immédiat
+    internal_note: internalNote,
+    order_line: [
+      // Section template (repris du template 27)
+      [0, 0, {
+        display_type: 'line_section',
+        name: 'Suite à votre demande, intervention sur véhicule dont référence ci-dessus',
+        sequence: 10,
+      }],
+      // Ligne produit Forfait avec prix HT et TVA 21%
+      [0, 0, {
+        product_id: PRODUCT_FORFAIT,
+        product_uom_qty: 1,
+        price_unit: amountHT,
+        tax_ids: [[6, 0, [TAX_21]]], // Set taxes
+        sequence: 11,
+      }],
+      // Ligne note : motif de l'intervention
+      [0, 0, {
+        display_type: 'line_note',
+        name: `Motif de l'intervention : ${data.motifText}`,
+        sequence: 12,
+      }],
+    ]
   }])
 
   const orders = await rpc<any[]>('sale.order', 'read',
-    [[orderId]], { fields: ['id', 'name', 'amount_total'] })
+    [[orderId]], { fields: ['id', 'name', 'amount_total', 'amount_tax'] })
 
-  console.log(`[Odoo] Devis créé: ${orders[0].name} — ${orders[0].amount_total}€`)
+  console.log(`[Odoo] Devis créé: ${orders[0].name} — HT: ${amountHT}€ | Total: ${orders[0].amount_total}€ | TVA: ${orders[0].amount_tax}€`)
   return { id: orderId, name: orders[0].name }
 }
 
@@ -210,6 +237,7 @@ export async function syncInterventionToOdoo(intervention: {
   amount: number
   motifText: string
   paymentMode?: string
+  driverName?: string
 }): Promise<{ vehicleId: number; partnerId: number; orderId: number; orderName: string }> {
 
   console.log(`[Odoo] Sync intervention ${intervention.reference}`)
@@ -236,6 +264,7 @@ export async function syncInterventionToOdoo(intervention: {
     amount: intervention.amount,
     motifText: intervention.motifText,
     paymentMode: intervention.paymentMode,
+    driverName: intervention.driverName,
   })
 
   return { vehicleId, partnerId, orderId, orderName }

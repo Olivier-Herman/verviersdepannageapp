@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         amount: parseFloat(body.amount || '0'),
         motifText: body.motif_text || body.motif_id || 'Intervention',
         paymentMode: body.payment_mode,
+        driverName: session.user.name || session.user.email,
       })
 
       // Mettre à jour Supabase avec les IDs Odoo
