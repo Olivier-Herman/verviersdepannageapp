@@ -61,7 +61,7 @@ export default function DashboardClient({
       <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top">
         <div className="flex items-center justify-between mb-4">
           <div className="bg-white rounded-lg px-3 py-1.5">
-            <img src="/logo.png" alt="Verviers Dépannage" className="h-7 w-auto object-contain" />
+            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-9 w-auto object-contain" />
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}

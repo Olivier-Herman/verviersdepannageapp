@@ -18,7 +18,9 @@ export default function AdminNav() {
         <div className="flex items-center gap-3 mb-3">
           <Link href="/dashboard" className="text-zinc-500 hover:text-white text-sm">← Dashboard</Link>
         </div>
-        <h1 className="text-white font-bold text-xl tracking-wide">Administration</h1>
+        <Link href="/dashboard">
+          <img src="/logo.jpg" alt="Verviers Dépannage" className="h-8 w-auto object-contain" />
+        </Link>
       </div>
 
       {/* Tabs */}

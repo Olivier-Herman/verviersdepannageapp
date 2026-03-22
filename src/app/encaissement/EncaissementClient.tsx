@@ -35,8 +35,22 @@ function Shell({ children, title, page, totalPages, onBack }: {
             ? <button onClick={onBack} className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</button>
             : <Link href="/dashboard" className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</Link>
           }
-          <h1 className="text-white font-bold text-lg">Encaissement</h1>
+          <Link href="/dashboard" className="flex-1 flex justify-center">
+            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-8 w-auto object-contain" />
+          </Link>
+          <div className="w-10" />
         </div>
+        <div className="flex gap-1">
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
+          ))}
+        </div>
+        <p className="text-zinc-500 text-xs mt-2">{title}</p>
+      </div>
+      <div className="flex-1 px-5 py-6 overflow-y-auto">{children}</div>
+    </div>
+  )
+}
         <div className="flex gap-1">
           {Array.from({ length: totalPages }).map((_, i) => (
             <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
