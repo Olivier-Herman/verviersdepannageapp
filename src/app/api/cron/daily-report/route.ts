@@ -108,13 +108,25 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const prevWorkDay = getPreviousWorkingDay()
 
-  // Récupérer les interventions depuis le dernier jour ouvrable
+  // Récupérer la date du dernier envoi
+  const { data: setting } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'last_daily_report_sent_at')
+    .single()
+
+  const lastSentAt = setting?.value
+    ? new Date(setting.value)
+    : getPreviousWorkingDay() // fallback si jamais configuré
+
+  console.log(`[Cron] Récupération des interventions depuis ${lastSentAt.toISOString()}`)
+
+  // Récupérer les interventions depuis le dernier envoi
   const { data: interventions } = await supabase
     .from('interventions')
     .select(`*, driver:users(name, email)`)
-    .gte('created_at', prevWorkDay.toISOString().split('T')[0] + 'T00:00:00')
+    .gte('created_at', lastSentAt.toISOString())
     .order('created_at', { ascending: true })
 
   if (!interventions || interventions.length === 0) {
@@ -123,7 +135,7 @@ export async function GET(req: NextRequest) {
   }
 
   const today_str = today.toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-  const prevDay_str = prevWorkDay.toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  const since_str = lastSentAt.toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   const totalAmount = interventions.reduce((s, i) => s + (i.amount || 0), 0)
   const paidCount = interventions.filter(i => i.payment_mode !== 'unpaid').length
@@ -159,7 +171,7 @@ export async function GET(req: NextRequest) {
 
         <tr><td style="background:#CC2222;padding:20px 30px;">
           <h1 style="color:white;margin:0;font-size:20px;">VERVIERS DÉPANNAGE — Rapport Encaissements</h1>
-          <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">Généré le ${today_str} · Interventions du ${prevDay_str}</p>
+          <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">Généré le ${today_str} · Interventions depuis le ${since_str}</p>
         </td></tr>
 
         <tr><td style="padding:20px 30px;">
@@ -239,7 +251,7 @@ export async function GET(req: NextRequest) {
       },
       body: JSON.stringify({
         message: {
-          subject: `Rapport encaissements du ${prevDay_str} — ${interventions.length} intervention(s) — ${totalAmount.toFixed(2)} €`,
+          subject: `Rapport encaissements du ${today_str} — ${interventions.length} intervention(s) — ${totalAmount.toFixed(2)} €`,
           body: { contentType: 'HTML', content: html },
           toRecipients: [{ emailAddress: { address: TO_EMAIL } }],
         },
@@ -248,10 +260,19 @@ export async function GET(req: NextRequest) {
     })
 
     console.log(`[Cron] Rapport envoyé — ${interventions.length} interventions — ${totalAmount.toFixed(2)} €`)
+
+    // Mettre à jour la date du dernier envoi
+    await supabase.from('app_settings').upsert({
+      key: 'last_daily_report_sent_at',
+      value: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+
     return NextResponse.json({
       sent: true,
       count: interventions.length,
       total: totalAmount.toFixed(2),
+      since: lastSentAt.toISOString(),
     })
   } catch (err: any) {
     console.error('[Cron] Erreur envoi rapport:', err.message)
