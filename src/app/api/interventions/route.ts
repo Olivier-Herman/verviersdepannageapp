@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { syncInterventionToOdoo } from '@/lib/odoo'
+import { sendClientReceipt } from '@/lib/receipt'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -11,12 +12,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const supabase = createAdminClient()
 
-  // Récupérer l'ID du chauffeur
   const { data: driver } = await supabase
-    .from('users')
-    .select('id')
-    .eq('email', session.user.email)
-    .single()
+    .from('users').select('id').eq('email', session.user.email).single()
 
   // 1. Sauvegarder dans Supabase
   const { data: intervention, error } = await supabase
@@ -35,6 +32,7 @@ export async function POST(req: NextRequest) {
       location_address: body.location_address,
       amount: body.amount ? parseFloat(body.amount) : null,
       payment_mode: body.payment_mode,
+      payment_reference: body.payment_reference || null,
       client_vat: body.client_vat,
       client_name: body.client_name,
       client_address: body.client_address,
@@ -47,7 +45,44 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // 2. Sync Odoo — on attend la réponse (Vercel tue les tâches en arrière-plan)
+  // 2. Entrée caisse si espèces
+  if (intervention && body.payment_mode === 'cash' && driver?.id) {
+    try {
+      await supabase.from('cash_register').insert({
+        driver_id: driver.id,
+        amount: parseFloat(body.amount || '0'),
+        type: 'encaissement',
+        intervention_id: intervention.id,
+        notes: `Espèces — ${intervention.reference}`,
+      })
+    } catch (err: any) {
+      console.error('[Caisse] Erreur:', err.message)
+    }
+  }
+
+  // 3. Envoi reçu email au client
+  if (intervention && body.client_email) {
+    try {
+      await sendClientReceipt({
+        clientEmail: body.client_email,
+        clientName: body.client_name || 'Client',
+        reference: intervention.reference,
+        amount: parseFloat(body.amount || '0'),
+        paymentMode: body.payment_mode || 'unpaid',
+        plate: body.plate,
+        vehicleDisplay: `${body.brand_text || ''} ${body.model_text || ''}`.trim(),
+        motifText: body.motif_precision || body.motif_text || 'Intervention',
+        locationAddress: body.location_address,
+        driverName: session.user.name || undefined,
+        sumupTransactionRef: body.payment_reference || undefined,
+      })
+      console.log(`[Receipt] Reçu envoyé à ${body.client_email}`)
+    } catch (err: any) {
+      console.error('[Receipt] Erreur envoi reçu:', err.message)
+    }
+  }
+
+  // 4. Sync Odoo
   let odooResult: { orderName?: string; orderId?: number } = {}
   if (intervention && body.plate) {
     try {
@@ -75,22 +110,16 @@ export async function POST(req: NextRequest) {
         notes: body.notes,
       })
 
-      // Mettre à jour Supabase avec les IDs Odoo
-      await supabase
-        .from('interventions')
-        .update({
-          odoo_invoice_id: result.orderId,
-          odoo_partner_id: result.partnerId,
-          synced_to_odoo: true,
-          synced_at: new Date().toISOString(),
-        })
-        .eq('id', intervention.id)
+      await supabase.from('interventions').update({
+        odoo_invoice_id: result.orderId,
+        odoo_partner_id: result.partnerId,
+        synced_to_odoo: true,
+        synced_at: new Date().toISOString(),
+      }).eq('id', intervention.id)
 
       odooResult = { orderName: result.orderName, orderId: result.orderId }
       console.log(`[Odoo] Sync OK — Devis ${result.orderName}`)
-
     } catch (err: any) {
-      // Pas bloquant — l'intervention est quand même sauvegardée
       console.error('[Odoo] Sync échouée:', err.message)
     }
   }
@@ -109,7 +138,7 @@ export async function GET(req: NextRequest) {
     .from('interventions')
     .select(`*, driver:users(name, email)`)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(100)
 
   if (!isAdmin) {
     const { data: driver } = await supabase

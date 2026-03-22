@@ -642,12 +642,14 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         {!sumupStatus && (
           <div className="flex flex-col gap-2 mb-6">
             {[
-              { mode: 'cash',     icon: '💵', label: 'Espèces',              sumup: false },
-              { mode: 'terminal', icon: '💳', label: 'SumUp Terminal',        sumup: true  },
-              { mode: 'qr',       icon: '📱', label: 'QR Code',               sumup: true  },
-              { mode: 'tap',      icon: '📲', label: 'Tap to Pay',            sumup: true  },
-              { mode: 'email',    icon: '✉️',  label: 'Lien Email',            sumup: true, disabled: !clientEmail },
-              { mode: 'unpaid',   icon: '📋', label: 'Non payé — À facturer', sumup: false },
+              { mode: 'cash',          icon: '💵', label: 'Espèces',              sumup: false },
+              { mode: 'terminal',      icon: '💳', label: 'SumUp Terminal',        sumup: true  },
+              { mode: 'qr',            icon: '📱', label: 'QR Code',               sumup: true  },
+              { mode: 'tap',           icon: '📲', label: 'Tap to Pay',            sumup: true  },
+              { mode: 'email',         icon: '✉️',  label: 'Lien Email',            sumup: true, disabled: !clientEmail },
+              { mode: 'sumup_manual',  icon: '🔵', label: 'SumUp Manuel',          sumup: false },
+              { mode: 'bancontact',    icon: '🏦', label: 'Bancontact Bureau',     sumup: false },
+              { mode: 'unpaid',        icon: '📋', label: 'Non payé — À facturer', sumup: false },
             ].map(btn => (
               <button
                 key={btn.mode}
