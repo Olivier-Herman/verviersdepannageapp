@@ -117,8 +117,12 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   const [amount, setAmount] = useState('')
   const [paymentMode, setPaymentMode] = useState('')
 
-  // Page 5
-  const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
+  // Page 4 — état SumUp
+  const [sumupLoading, setSumupLoading] = useState(false)
+  const [sumupData, setSumupData] = useState<any>(null)
+  const [sumupMode, setSumupMode] = useState<string | null>(null)
+  const [sumupPolling, setSumupPolling] = useState(false)
+  const [sumupStatus, setSumupStatus] = useState<string | null>(null)
   const [selectedClient, setSelectedClient] = useState<OdooClient | null>(null)
   const [isNewClient, setIsNewClient] = useState(false)
 
@@ -506,33 +510,158 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     </Shell>
   )
 
+  // Lancer un paiement SumUp
+  const startSumup = async (mode: string) => {
+    if (!amount || parseFloat(amount) <= 0) { setError('Montant requis'); return }
+    setSumupLoading(true); setSumupMode(mode); setError('')
+    try {
+      const res = await fetch('/api/sumup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          reference: `VD-TEMP-${Date.now()}`,
+          description: `Intervention véhicule ${plate}`,
+          mode,
+          clientEmail: mode === 'email' ? clientEmail : undefined,
+          clientName,
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setSumupData(data)
+
+      if (mode === 'terminal') {
+        window.location.href = data.terminalDeepLink
+      } else if (mode === 'tap') {
+        window.open(data.tapToPayLink, '_blank')
+      }
+
+      // Polling statut
+      setSumupPolling(true)
+      const interval = setInterval(async () => {
+        const s = await fetch(`/api/sumup?checkoutId=${data.checkoutId}`)
+        const status = await s.json()
+        if (status.status === 'PAID') {
+          setSumupStatus('PAID')
+          setPaymentMode('sumup')
+          clearInterval(interval)
+          setSumupPolling(false)
+          setTimeout(() => setPage(5), 1500)
+        } else if (status.status === 'FAILED' || status.status === 'EXPIRED') {
+          setSumupStatus(status.status)
+          clearInterval(interval)
+          setSumupPolling(false)
+        }
+      }, 3000)
+      setTimeout(() => { clearInterval(interval); setSumupPolling(false) }, 5 * 60 * 1000)
+
+    } catch (err: any) {
+      setError(err.message)
+      setSumupMode(null)
+    } finally {
+      setSumupLoading(false)
+    }
+  }
+
   // ── Page 4 — Montant & paiement ──────────────────────────
   if (page === 4) return (
     <Shell title="Montant & paiement" page={5} totalPages={TOTAL} onBack={() => setPage(3)}>
       <div className="mt-4">
         <div className="relative mb-6">
           <input
-            type="number"
+            type="text"
             id="amount-field"
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={e => { setAmount(e.target.value.replace(/[^0-9.]/g, '')); setSumupData(null); setSumupStatus(null) }}
             placeholder="0.00"
-            min="0" step="0.01"
             autoFocus
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             inputMode="decimal"
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-3xl font-bold text-center outline-none"
           />
           <span className="absolute right-5 top-4 text-zinc-400 text-xl">€</span>
         </div>
-        <p className="text-zinc-400 text-xs font-medium mb-3">Mode de paiement</p>
-        <div className="flex flex-col gap-2 mb-8">
-          {paymentModes.map(p => (
-            <ChoiceBtn key={p.value} label={p.label} selected={paymentMode === p.value}
-              onClick={() => setPaymentMode(p.value)} />
-          ))}
-        </div>
-        <BigBtn label="Continuer →" onClick={() => setPage(5)} disabled={!amount || !paymentMode} />
+
+        {/* Statut SumUp */}
+        {sumupStatus === 'PAID' && (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 text-green-400 text-sm text-center mb-4">
+            ✅ Paiement SumUp confirmé !
+          </div>
+        )}
+        {sumupStatus === 'FAILED' && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm text-center mb-4">
+            ❌ Paiement refusé — réessaie
+          </div>
+        )}
+        {sumupPolling && !sumupStatus && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-amber-400 text-sm text-center mb-4">
+            ⏳ En attente du paiement…
+          </div>
+        )}
+
+        {/* QR Code SumUp */}
+        {sumupData?.qrUrl && sumupMode === 'qr' && !sumupStatus && (
+          <div className="bg-white rounded-2xl p-4 mb-4 text-center">
+            <p className="text-zinc-600 text-xs mb-2">Le client scanne ce QR et paye sur la page SumUp</p>
+            <img src={sumupData.qrUrl} alt="QR Code SumUp" className="mx-auto w-48 h-48" />
+            <p className="text-zinc-400 text-xs mt-2">Apple Pay / Google Pay / Carte acceptés</p>
+          </div>
+        )}
+
+        {/* Email envoyé */}
+        {sumupData && sumupMode === 'email' && !sumupStatus && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3 text-blue-400 text-sm text-center mb-4">
+            📧 Lien de paiement envoyé à {clientEmail}
+          </div>
+        )}
+
+        {/* 6 boutons de paiement */}
+        {!sumupStatus && (
+          <div className="flex flex-col gap-2 mb-6">
+            {[
+              { mode: 'cash',     icon: '💵', label: 'Espèces',       sumup: false },
+              { mode: 'terminal', icon: '💳', label: 'SumUp Terminal', sumup: true  },
+              { mode: 'qr',       icon: '📱', label: 'QR Code',        sumup: true  },
+              { mode: 'tap',      icon: '📲', label: 'Tap to Pay',     sumup: true  },
+              { mode: 'email',    icon: '✉️',  label: 'Lien Email',     sumup: true, disabled: !clientEmail },
+              { mode: 'unpaid',   icon: '📋', label: 'Non payé — À facturer', sumup: false },
+            ].map(btn => (
+              <button key={btn.mode}
+                onClick={() => {
+                  if (btn.sumup) {
+                    startSumup(btn.mode)
+                  } else {
+                    setPaymentMode(btn.mode)
+                    setSumupData(null); setSumupStatus(null)
+                  }
+                }}
+                disabled={sumupLoading || (sumupPolling && btn.sumup) || btn.disabled}
+                className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl border text-left font-medium transition-all active:scale-95 disabled:opacity-40 ${
+                  paymentMode === btn.mode && !btn.sumup
+                    ? 'bg-brand border-brand text-white'
+                    : sumupMode === btn.mode && sumupPolling
+                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                    : btn.mode === 'unpaid'
+                    ? 'bg-[#1e1e1e] border-dashed border-[#444] text-zinc-500'
+                    : 'bg-[#1e1e1e] border-[#2a2a2a] text-white hover:border-brand'
+                }`}>
+                <span className="text-xl">{btn.icon}</span>
+                <span className="flex-1">{btn.label}</span>
+                {btn.mode === 'email' && !clientEmail && <span className="text-zinc-600 text-xs">Email requis</span>}
+                {btn.sumup && <span className="text-zinc-600 text-xs">SumUp</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <BigBtn label="Continuer →" onClick={() => setPage(5)}
+          disabled={!amount || (!paymentMode && !sumupStatus)} />
       </div>
     </Shell>
   )

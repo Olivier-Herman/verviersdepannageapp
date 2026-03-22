@@ -9,7 +9,7 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
       tenantId: process.env.AZURE_AD_TENANT_ID!,
       authorization: {
-        params: { scope: 'openid profile email User.Read' }
+        params: { scope: 'openid profile email User.Read Mail.Send' }
       }
     })
   ],
@@ -51,6 +51,8 @@ export const authOptions: NextAuthOptions = {
 
     async jwt({ token, account, profile }) {
       if (account && profile) {
+        // Stocker le access token Azure pour Microsoft Graph
+        token.accessToken = account.access_token
         const supabase = createAdminClient()
         const { data: dbUser } = await supabase
           .from('users')
@@ -74,6 +76,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as string
         session.user.azureId = token.azureId as string
         session.user.modules = token.modules as string[]
+        ;(session as any).accessToken = token.accessToken
       }
       return session
     }
