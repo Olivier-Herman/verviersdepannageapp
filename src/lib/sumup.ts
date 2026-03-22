@@ -37,18 +37,21 @@ export async function createCheckout(data: {
       currency: 'EUR',
       merchant_code: SUMUP_MERCHANT_CODE,
       description: data.description,
-      return_url: data.returnUrl || `${APP_URL}/encaissement/payment-callback`,
+      redirect_url: data.returnUrl || `${APP_URL}/encaissement/payment-callback`,
+      hosted_checkout: { enabled: true },
     })
   })
 
   const checkout = await response.json()
   if (!response.ok) throw new Error(`SumUp checkout error: ${JSON.stringify(checkout)}`)
 
-  console.log('[SumUp] Checkout:', JSON.stringify(checkout))
+  console.log('[SumUp] Checkout response:', JSON.stringify(checkout))
 
-  // SumUp peut retourner l'URL directement ou on la construit
+  // hosted_checkout_url est au niveau racine de la réponse
   const checkoutUrl = checkout.hosted_checkout_url
-    || `https://pay.sumup.com/b2c/pay/${checkout.id}`
+    || `https://pay.sumup.com/b2c/checkout/${checkout.id}`
+
+  console.log('[SumUp] Checkout URL:', checkoutUrl)
 
   return { id: checkout.id, checkoutUrl }
 }

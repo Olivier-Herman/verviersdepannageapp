@@ -526,7 +526,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: parseFloat(amount),
-          reference: `VD-TEMP-${Date.now()}`,
+          reference: `VD${Date.now().toString(36).toUpperCase()}`,
           description: `Intervention véhicule ${plate}`,
           mode,
           clientEmail: mode === 'email' ? clientEmail : undefined,
