@@ -123,6 +123,9 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   const [sumupMode, setSumupMode] = useState<string | null>(null)
   const [sumupPolling, setSumupPolling] = useState(false)
   const [sumupStatus, setSumupStatus] = useState<string | null>(null)
+
+  // Page 5
+  const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
   const [selectedClient, setSelectedClient] = useState<OdooClient | null>(null)
   const [isNewClient, setIsNewClient] = useState(false)
 
