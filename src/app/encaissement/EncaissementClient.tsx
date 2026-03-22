@@ -241,9 +241,45 @@ export default function EncaissementClient({ motifs, paymentModes }: {
       const res = await fetch(`/api/vies?vat=${encodeURIComponent(clientVat)}`)
       const data = await res.json()
       setViesResult(data)
+
       if (data.valid) {
         if (data.name) setClientName(data.name)
-        if (data.address) setClientAddress(data.address)
+
+        // Parser l'adresse VIES : "RUE DU VINAVE 5/10\n4970 STAVELOT"
+        if (data.address) {
+          const lines = data.address.split('\n').map((l: string) => l.trim()).filter(Boolean)
+          if (lines.length >= 2) {
+            // Ligne 1 = rue + numéro, Ligne 2 = code postal + ville
+            const street = lines[0].charAt(0) + lines[0].slice(1).toLowerCase()
+            const zipCity = lines[1].match(/^(\d{4,5})\s+(.+)$/)
+            if (zipCity) {
+              setClientStreet(street)
+              setClientZip(zipCity[1])
+              setClientCity(zipCity[2].charAt(0) + zipCity[2].slice(1).toLowerCase())
+              setClientAddress(`${street}, ${zipCity[1]} ${zipCity[2].charAt(0) + zipCity[2].slice(1).toLowerCase()}`)
+            } else {
+              setClientAddress(lines.join(', '))
+            }
+          } else {
+            setClientAddress(data.address)
+          }
+        }
+
+        // Chercher si le client existe dans Odoo
+        const odooRes = await fetch(`/api/partners?vat=${encodeURIComponent(clientVat)}`)
+        const odooData = await odooRes.json()
+        if (odooData.found) {
+          const p = odooData.partner
+          setClientName(p.name)
+          setClientPhone(p.phone)
+          setClientEmail(p.email)
+          setClientStreet(p.street)
+          setClientZip(p.zip)
+          setClientCity(p.city)
+          setClientCountryCode(p.countryCode)
+          setClientAddress(p.address)
+          setViesResult({ ...data, odooFound: true, odooName: p.name })
+        }
       }
     } finally { setViesLoading(false) }
   }
@@ -545,7 +581,11 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         </div>
         {viesResult && (
           <div className={`rounded-xl px-4 py-3 text-sm border mb-4 ${viesResult.valid ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-            {viesResult.valid ? `✓ ${viesResult.name || 'TVA valide'}` : '✗ TVA invalide ou introuvable'}
+            {viesResult.valid
+              ? viesResult.odooFound
+                ? `✓ ${viesResult.odooName} — client existant`
+                : `✓ ${viesResult.name || 'TVA valide'}`
+              : '✗ TVA invalide ou introuvable'}
           </div>
         )}
         <p className="text-zinc-600 text-xs text-center mb-8">Pour un particulier, passe directement</p>
