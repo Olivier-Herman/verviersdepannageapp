@@ -33,10 +33,12 @@ export async function GET(req: NextRequest) {
         .from('cash_register')
         .select('amount, type')
         .eq('driver_id', driver.id)
-        .is('verified_at', null) // seulement les non-remis
 
       const balance = (entries || []).reduce((sum, e) => {
-        return e.type === 'encaissement' ? sum + e.amount : sum - e.amount
+        if (e.type === 'encaissement') return sum + e.amount
+        if (e.type === 'remise') return sum - e.amount
+        if (e.type === 'reception') return sum + e.amount
+        return sum
       }, 0)
 
       return { ...driver, balance: Math.round(balance * 100) / 100 }
@@ -73,9 +75,12 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
 
   const balance = (entries || [])
-    .filter(e => !e.verified_at)
+    .filter(e => !e.verified_at || e.type === 'encaissement' || e.type === 'reception')
     .reduce((sum, e) => {
-      return e.type === 'encaissement' ? sum + e.amount : sum - e.amount
+      if (e.type === 'encaissement') return sum + e.amount
+      if (e.type === 'reception') return sum + e.amount
+      if (e.type === 'remise') return sum - e.amount
+      return sum
     }, 0)
 
   return NextResponse.json({

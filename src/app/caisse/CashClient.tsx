@@ -6,7 +6,7 @@ import Link from 'next/link'
 interface CashEntry {
   id: string
   amount: number
-  type: 'encaissement' | 'remise'
+  type: 'encaissement' | 'remise' | 'reception'
   verified_at: string | null
   notes: string
   created_at: string
@@ -38,7 +38,12 @@ export default function CashClient({ userName, driverId }: { userName: string; d
       })
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    loadData()
+    // Rafraîchissement automatique toutes les 30 secondes
+    const interval = setInterval(loadData, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     fetch('/api/cash?verifiers=true')
@@ -90,6 +95,7 @@ export default function CashClient({ userName, driverId }: { userName: string; d
           <div className="w-10" />
         </div>
         <h1 className="text-white font-bold text-lg">Ma Caisse</h1>
+        <button onClick={loadData} className="text-zinc-500 text-sm hover:text-white">↻</button>
       </div>
 
       <div className="flex-1 px-5 py-6">
@@ -185,14 +191,18 @@ export default function CashClient({ userName, driverId }: { userName: string; d
         {entries.map(e => (
           <div key={e.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 mb-2">
             <div className="flex items-start justify-between mb-1">
-              <p className={`text-sm font-semibold ${e.type === 'encaissement' ? 'text-green-400' : 'text-brand'}`}>
-                {e.type === 'encaissement' ? '+ Encaissement espèces' : '💸 Transfert'}
+              <p className={`text-sm font-semibold ${
+                e.type === 'encaissement' ? 'text-green-400' :
+                e.type === 'reception' ? 'text-blue-400' : 'text-red-400'
+              }`}>
+                {e.type === 'encaissement' ? '+ Encaissement espèces' :
+                 e.type === 'reception' ? '↓ Réception transfert' : '↑ Transfert'}
               </p>
-              <p className={`font-bold ${e.type === 'encaissement' ? 'text-green-400' : 'text-brand'}`}>
-                {e.type === 'encaissement' ? '+' : '-'}{e.amount.toFixed(2)} €
+              <p className={`font-bold ${e.type === 'remise' ? 'text-red-400' : 'text-green-400'}`}>
+                {e.type === 'remise' ? '-' : '+'}{e.amount.toFixed(2)} €
               </p>
             </div>
-            {e.type === 'remise' && e.notes && (
+            {e.type !== 'encaissement' && e.notes && (
               <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
             )}
             {e.type === 'encaissement' && e.intervention?.reference && (
