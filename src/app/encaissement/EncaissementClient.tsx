@@ -611,9 +611,14 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         {/* QR Code SumUp */}
         {sumupData?.qrUrl && sumupMode === 'qr' && !sumupStatus && (
           <div className="bg-white rounded-2xl p-4 mb-4 text-center">
-            <p className="text-zinc-600 text-xs mb-2">Le client scanne ce QR et paye sur la page SumUp</p>
-            <img src={sumupData.qrUrl} alt="QR Code SumUp" className="mx-auto w-48 h-48" />
-            <p className="text-zinc-400 text-xs mt-2">Apple Pay / Google Pay / Carte acceptés</p>
+            <p className="text-zinc-600 text-xs mb-2">Montrez ce QR au client — il paye sur son téléphone</p>
+            <img
+              src={sumupData.qrUrl}
+              alt="QR Code SumUp"
+              className="mx-auto w-52 h-52 pointer-events-none"
+              draggable={false}
+            />
+            <p className="text-zinc-400 text-xs mt-2">Carte, Apple Pay, Google Pay acceptés</p>
           </div>
         )}
 
