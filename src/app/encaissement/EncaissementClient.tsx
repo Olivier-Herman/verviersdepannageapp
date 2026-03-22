@@ -168,15 +168,17 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   // Init autocomplete lieu quand on arrive page 3
   useEffect(() => {
     if (page !== 3) return
+    autocompleteRef.current = null // forcer la réinitialisation
     const t = setTimeout(() => {
       if (window.google?.maps?.places) initAC(locationInputRef, autocompleteRef, setLocation)
-    }, 150)
+    }, 200)
     return () => clearTimeout(t)
   }, [page])
 
   // Init autocomplete adresse client page 8
   useEffect(() => {
     if (page !== 8) return
+    autocompleteClientRef.current = null // forcer la réinitialisation
     const t = setTimeout(() => {
       initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress, (place) => {
         const c = place.address_components || []
