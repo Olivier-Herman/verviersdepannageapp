@@ -23,15 +23,63 @@ async function getAppToken(): Promise<string> {
   return data.access_token
 }
 
-function isWeekday(date: Date): boolean {
+// Jours fériés belges fixes (MM-DD)
+const BELGIAN_HOLIDAYS = [
+  '01-01', // Nouvel An
+  '05-01', // Fête du Travail
+  '07-21', // Fête Nationale
+  '08-15', // Assomption
+  '11-01', // Toussaint
+  '11-11', // Armistice
+  '12-25', // Noël
+]
+
+// Jours fériés mobiles (Pâques + dérivés) — calculés dynamiquement
+function getEasterSunday(year: number): Date {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4), k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month - 1, day)
+}
+
+function getMobileHolidays(year: number): string[] {
+  const easter = getEasterSunday(year)
+  const addDays = (d: Date, n: number) => {
+    const r = new Date(d); r.setDate(r.getDate() + n); return r
+  }
+  const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return [
+    fmt(addDays(easter, 1)),   // Lundi de Pâques
+    fmt(addDays(easter, 39)),  // Ascension
+    fmt(addDays(easter, 50)),  // Lundi de Pentecôte
+  ]
+}
+
+function isBelgianHoliday(date: Date): boolean {
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const key = `${mm}-${dd}`
+  if (BELGIAN_HOLIDAYS.includes(key)) return true
+  if (getMobileHolidays(date.getFullYear()).includes(key)) return true
+  return false
+}
+
+function isWorkingDay(date: Date): boolean {
   const day = date.getDay()
-  return day !== 0 && day !== 6
+  // Lundi(1) à Samedi(6) — pas dimanche(0)
+  if (day === 0) return false
+  return !isBelgianHoliday(date)
 }
 
 function getPreviousWorkingDay(): Date {
   const date = new Date()
   date.setDate(date.getDate() - 1)
-  while (!isWeekday(date)) date.setDate(date.getDate() - 1)
+  while (!isWorkingDay(date)) date.setDate(date.getDate() - 1)
   return date
 }
 
@@ -53,10 +101,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
-  // Ne pas envoyer le week-end
+  // Ne pas envoyer le dimanche ni les jours fériés
   const today = new Date()
-  if (!isWeekday(today)) {
-    return NextResponse.json({ skipped: 'weekend' })
+  if (!isWorkingDay(today)) {
+    return NextResponse.json({ skipped: 'non-working day' })
   }
 
   const supabase = createAdminClient()
