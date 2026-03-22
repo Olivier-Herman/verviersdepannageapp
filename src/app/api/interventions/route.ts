@@ -60,15 +60,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. Envoi reçu email au client
+  // 3. Envoi email au client
   if (intervention && body.client_email) {
     try {
+      const paymentMode = body.payment_mode || 'unpaid'
       await sendClientReceipt({
         clientEmail: body.client_email,
         clientName: body.client_name || 'Client',
         reference: intervention.reference,
         amount: parseFloat(body.amount || '0'),
-        paymentMode: body.payment_mode || 'unpaid',
+        paymentMode,
         plate: body.plate,
         vehicleDisplay: `${body.brand_text || ''} ${body.model_text || ''}`.trim(),
         motifText: body.motif_precision || body.motif_text || 'Intervention',
@@ -76,9 +77,9 @@ export async function POST(req: NextRequest) {
         driverName: session.user.name || undefined,
         sumupTransactionRef: body.payment_reference || undefined,
       })
-      console.log(`[Receipt] Reçu envoyé à ${body.client_email}`)
+      console.log(`[Receipt] Email envoyé à ${body.client_email} (mode: ${paymentMode})`)
     } catch (err: any) {
-      console.error('[Receipt] Erreur envoi reçu:', err.message)
+      console.error('[Receipt] Erreur:', err.message)
     }
   }
 

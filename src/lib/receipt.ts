@@ -64,6 +64,9 @@ export async function sendClientReceipt(data: {
   const amountTvac = data.amount.toFixed(2)
   const amountHt = (data.amount / 1.21).toFixed(2)
   const tva = (data.amount - data.amount / 1.21).toFixed(2)
+  const subject = isPaid
+    ? `Reçu intervention ${data.reference} — ${amountTvac} €`
+    : `Confirmation d'intervention ${data.reference} — NON PAYÉE`
 
   const html = `
 <!DOCTYPE html>
@@ -74,7 +77,6 @@ export async function sendClientReceipt(data: {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;">
         
-        <!-- Header -->
         <tr><td style="background:#CC2222;padding:25px 30px;">
           <table width="100%"><tr>
             <td><h1 style="color:white;margin:0;font-size:22px;font-weight:bold;">VERVIERS DÉPANNAGE</h1>
@@ -83,35 +85,36 @@ export async function sendClientReceipt(data: {
           </tr></table>
         </td></tr>
 
-        <!-- Titre -->
         <tr><td style="padding:25px 30px 15px;">
-          <h2 style="margin:0;font-size:18px;color:#333;">${isPaid ? '✅ Reçu de paiement' : '📋 Confirmation d\'intervention'}</h2>
+          <h2 style="margin:0;font-size:18px;color:#333;">
+            ${isPaid ? '✅ Reçu de paiement' : '📋 Confirmation d\'intervention'}
+          </h2>
           <p style="color:#666;font-size:13px;margin:5px 0 0;">Référence : <strong>${data.reference}</strong></p>
         </td></tr>
 
-        <!-- Infos intervention -->
+        ${!isPaid ? `
+        <tr><td style="padding:0 30px 15px;">
+          <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px 15px;">
+            <p style="margin:0;font-size:14px;color:#856404;font-weight:bold;">⚠️ INTERVENTION NON PAYÉE</p>
+            <p style="margin:6px 0 0;font-size:13px;color:#856404;">
+              Le paiement de cette intervention est en attente. Vous recevrez votre facture le prochain jour ouvrable.
+            </p>
+          </div>
+        </td></tr>` : ''}
+
         <tr><td style="padding:0 30px 20px;">
           <table width="100%" style="background:#f9f9f9;border-radius:6px;padding:15px;border:1px solid #eee;">
-            <tr>
-              <td style="font-size:13px;color:#666;padding:4px 0;">Véhicule</td>
-              <td style="font-size:13px;color:#333;text-align:right;font-weight:bold;">${data.vehicleDisplay} — ${data.plate}</td>
-            </tr>
-            <tr>
-              <td style="font-size:13px;color:#666;padding:4px 0;">Motif</td>
-              <td style="font-size:13px;color:#333;text-align:right;">${data.motifText}</td>
-            </tr>
-            ${data.locationAddress ? `<tr>
-              <td style="font-size:13px;color:#666;padding:4px 0;">Lieu</td>
-              <td style="font-size:13px;color:#333;text-align:right;">${data.locationAddress}</td>
-            </tr>` : ''}
-            ${data.driverName ? `<tr>
-              <td style="font-size:13px;color:#666;padding:4px 0;">Chauffeur</td>
-              <td style="font-size:13px;color:#333;text-align:right;">${data.driverName}</td>
-            </tr>` : ''}
+            <tr><td style="font-size:13px;color:#666;padding:4px 0;">Véhicule</td>
+                <td style="font-size:13px;color:#333;text-align:right;font-weight:bold;">${data.vehicleDisplay} — ${data.plate}</td></tr>
+            <tr><td style="font-size:13px;color:#666;padding:4px 0;">Motif</td>
+                <td style="font-size:13px;color:#333;text-align:right;">${data.motifText}</td></tr>
+            ${data.locationAddress ? `<tr><td style="font-size:13px;color:#666;padding:4px 0;">Lieu</td>
+                <td style="font-size:13px;color:#333;text-align:right;">${data.locationAddress}</td></tr>` : ''}
+            ${data.driverName ? `<tr><td style="font-size:13px;color:#666;padding:4px 0;">Chauffeur</td>
+                <td style="font-size:13px;color:#333;text-align:right;">${data.driverName}</td></tr>` : ''}
           </table>
         </td></tr>
 
-        <!-- Montant -->
         <tr><td style="padding:0 30px 20px;">
           <table width="100%" style="border-radius:6px;border:1px solid #eee;overflow:hidden;">
             <tr style="background:#f9f9f9;">
@@ -122,53 +125,43 @@ export async function sendClientReceipt(data: {
               <td style="font-size:13px;color:#666;padding:8px 15px;">TVA 21%</td>
               <td style="font-size:13px;color:#333;text-align:right;padding:8px 15px;">${tva} €</td>
             </tr>
-            <tr style="background:#CC2222;">
+            <tr style="background:${isPaid ? '#CC2222' : '#856404'};">
               <td style="font-size:15px;color:white;font-weight:bold;padding:12px 15px;">Total TVAC</td>
               <td style="font-size:18px;color:white;font-weight:bold;text-align:right;padding:12px 15px;">${amountTvac} €</td>
             </tr>
           </table>
         </td></tr>
 
-        <!-- Statut paiement -->
+        ${isPaid ? `
         <tr><td style="padding:0 30px 20px;">
-          <table width="100%" style="background:${isPaid ? '#e8f5e9' : '#fff8e1'};border-radius:6px;padding:15px;border:1px solid ${isPaid ? '#c8e6c9' : '#ffecb3'};">
-            <tr>
-              <td style="font-size:13px;color:${isPaid ? '#2e7d32' : '#f57f17'};font-weight:bold;">
-                ${isPaid ? '✅ Paiement reçu' : '⏳ Paiement en attente'}
-              </td>
-              <td style="font-size:13px;color:${isPaid ? '#2e7d32' : '#f57f17'};text-align:right;">
-                ${paymentLabel}
-              </td>
-            </tr>
-            ${data.sumupTransactionRef ? `<tr><td colspan="2" style="font-size:11px;color:#666;padding-top:4px;">Réf. transaction : ${data.sumupTransactionRef}</td></tr>` : ''}
+          <table width="100%" style="background:#e8f5e9;border-radius:6px;padding:15px;border:1px solid #c8e6c9;">
+            <tr><td style="font-size:13px;color:#2e7d32;font-weight:bold;">✅ Paiement reçu</td>
+                <td style="font-size:13px;color:#2e7d32;text-align:right;">${PAYMENT_MODE_LABELS[data.paymentMode] || data.paymentMode}</td></tr>
+            ${data.sumupTransactionRef ? `<tr><td colspan="2" style="font-size:11px;color:#666;padding-top:4px;">Réf. : ${data.sumupTransactionRef}</td></tr>` : ''}
           </table>
-        </td></tr>
+        </td></tr>` : ''}
 
-        <!-- Message facture -->
         <tr><td style="padding:0 30px 25px;">
           <div style="background:#e3f2fd;border-radius:6px;padding:15px;border:1px solid #bbdefb;">
             <p style="margin:0;font-size:13px;color:#1565c0;font-weight:bold;">📧 Votre facture arrive bientôt</p>
             <p style="margin:8px 0 0;font-size:13px;color:#1976d2;">
-              Votre facture acquittée vous sera envoyée par email le prochain jour ouvrable, 
+              Votre facture ${isPaid ? 'acquittée' : ''} vous sera envoyée le prochain jour ouvrable,
               soit le <strong>${nextWorkDay}</strong>.
             </p>
           </div>
         </td></tr>
 
-        <!-- Footer -->
         <tr><td style="background:#f5f5f5;padding:20px 30px;text-align:center;border-top:1px solid #eee;">
           <p style="margin:0;font-size:11px;color:#999;">
             Verviers Dépannage SA · Lefin 12, 4860 Pepinster · TVA BE0460.759.205<br>
             Tél: +32 87 60 06 15 · administration@verviersdepannage.com
           </p>
         </td></tr>
-
       </table>
     </td></tr>
   </table>
 </body>
-</html>
-  `
+</html>`
 
   const token = await getAppToken()
 
@@ -182,7 +175,7 @@ export async function sendClientReceipt(data: {
       },
       body: JSON.stringify({
         message: {
-          subject: `${isPaid ? 'Reçu' : 'Confirmation'} intervention ${data.reference} — ${amountTvac} €`,
+          subject,
           body: { contentType: 'HTML', content: html },
           toRecipients: [{ emailAddress: { address: data.clientEmail, name: data.clientName || 'Client' } }],
         },
