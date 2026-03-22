@@ -1,35 +1,45 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 interface ListItem { value: string; label: string }
 interface Brand { id: number; name: string }
 interface Model { id: number; name: string }
+interface OdooClient {
+  id: number; name: string; phone: string; email: string
+  address: string; street: string; zip: string; city: string
+  countryCode: string; vat: string
+}
+interface OdooVehicle {
+  id: number; licensePlate: string; brandName: string
+  modelName: string; displayName: string; vinSn: string
+}
 
 declare global {
-  interface Window {
-    google: any
-    initGooglePlaces: () => void
-  }
+  interface Window { google: any; initGooglePlaces: () => void }
 }
 
 export default function EncaissementClient({
-  motifs,
-  paymentModes,
+  motifs, paymentModes,
 }: {
   motifs: ListItem[]
   paymentModes: ListItem[]
 }) {
-  const router = useRouter()
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  // Étape 1
+  // Lookup immat
   const [plate, setPlate] = useState('')
+  const [plateChecking, setPlateChecking] = useState(false)
+  const [odooVehicle, setOdooVehicle] = useState<OdooVehicle | null>(null)
+  const [vehicleConfirmed, setVehicleConfirmed] = useState<boolean | null>(null)
+  const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+
+  // Véhicule
   const [brands, setBrands] = useState<Brand[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [selectedBrand, setSelectedBrand] = useState('')
@@ -37,6 +47,8 @@ export default function EncaissementClient({
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [modelOther, setModelOther] = useState('')
+
+  // Intervention
   const [location, setLocation] = useState('')
   const [locationLoading, setLocationLoading] = useState(false)
   const [motif, setMotif] = useState('')
@@ -45,7 +57,7 @@ export default function EncaissementClient({
   const [amount, setAmount] = useState('')
   const [paymentMode, setPaymentMode] = useState('')
 
-  // Étape 2
+  // Client
   const [clientVat, setClientVat] = useState('')
   const [clientName, setClientName] = useState('')
   const [clientAddress, setClientAddress] = useState('')
@@ -59,7 +71,59 @@ export default function EncaissementClient({
   const [viesLoading, setViesLoading] = useState(false)
   const [viesResult, setViesResult] = useState<{ name?: string; address?: string; valid?: boolean } | null>(null)
 
-  const locationInputRef = useRef<HTMLInputElement>(null)
+  // Normaliser l'immat : retirer -, ., espaces
+  const normalizePlate = (v: string) => v.replace(/[-.\s]/g, '').toUpperCase()
+
+  // Lookup immat dans Odoo
+  const checkPlate = async () => {
+    if (plate.length < 3) return
+    setPlateChecking(true)
+    setOdooVehicle(null)
+    setVehicleConfirmed(null)
+    setPreviousClients([])
+    setError('')
+    try {
+      const res = await fetch(`/api/plates?plate=${encodeURIComponent(plate)}`)
+      const data = await res.json()
+      if (data.found) {
+        setOdooVehicle(data.vehicle)
+        setPreviousClients(data.previousClients || [])
+        // Pré-remplir marque/modèle depuis Odoo
+        setSelectedBrand(data.vehicle.brandName)
+        setSelectedModel(data.vehicle.modelName)
+      } else {
+        // Véhicule inconnu → forcer la saisie manuelle
+        setVehicleConfirmed(false)
+      }
+    } catch {
+      setError('Impossible de vérifier l\'immatriculation')
+    } finally {
+      setPlateChecking(false)
+    }
+  }
+
+  // Pré-remplir les champs client depuis un client Odoo
+  const fillClientFromOdoo = (client: OdooClient) => {
+    setSelectedClientId(client.id)
+    setClientName(client.name)
+    setClientPhone(client.phone)
+    setClientEmail(client.email)
+    setClientAddress(client.address)
+    setClientStreet(client.street)
+    setClientZip(client.zip)
+    setClientCity(client.city)
+    setClientCountryCode(client.countryCode)
+    setClientVat(client.vat)
+    setViesResult(null)
+  }
+
+  const clearClient = () => {
+    setSelectedClientId(null)
+    setClientName(''); setClientPhone(''); setClientEmail('')
+    setClientAddress(''); setClientStreet(''); setClientZip('')
+    setClientCity(''); setClientCountryCode('BE'); setClientVat('')
+    setViesResult(null)
+  }
   const clientAddressInputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<any>(null)
   const autocompleteClientRef = useRef<any>(null)
@@ -257,7 +321,9 @@ export default function EncaissementClient({
 
   const resetForm = () => {
     setSaved(false); setStep(1)
-    setPlate(''); setSelectedBrand(''); setSelectedBrandId(null)
+    setPlate(''); setOdooVehicle(null); setVehicleConfirmed(null)
+    setPreviousClients([]); setSelectedClientId(null)
+    setSelectedBrand(''); setSelectedBrandId(null)
     setSelectedModel(''); setSelectedModelId(null); setModelOther('')
     setLocation(''); setMotif(''); setMotifLabel(''); setMotifPrecision(''); setAmount(''); setPaymentMode('')
     setClientVat(''); setClientName(''); setClientAddress('')
@@ -306,15 +372,76 @@ export default function EncaissementClient({
 
         {step === 1 && (
           <>
-            {/* Immat */}
+            {/* Immatriculation + lookup Odoo */}
             <div className="mb-4">
               <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Immat ou VIN <span className="text-brand">*</span></label>
-              <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())} placeholder="1-ABC-234"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand uppercase" />
+              <div className="flex gap-2">
+                <input
+                  value={plate}
+                  onChange={e => {
+                    const v = normalizePlate(e.target.value)
+                    setPlate(v)
+                    setOdooVehicle(null)
+                    setVehicleConfirmed(null)
+                    setPreviousClients([])
+                  }}
+                  onBlur={() => plate.length >= 3 && checkPlate()}
+                  placeholder="1ADK440"
+                  className="flex-1 bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand uppercase"
+                />
+                <button
+                  onClick={checkPlate}
+                  disabled={plateChecking || plate.length < 3}
+                  className="bg-[#1e1e1e] border border-[#333] hover:border-brand text-brand font-bold text-sm rounded-xl px-4 transition-colors disabled:opacity-40"
+                >
+                  {plateChecking ? '…' : '🔍'}
+                </button>
+              </div>
+
+              {/* Véhicule trouvé dans Odoo → confirmation */}
+              {odooVehicle && vehicleConfirmed === null && (
+                <div className="mt-3 bg-[#1e1e1e] border border-brand/40 rounded-xl p-4">
+                  <p className="text-zinc-400 text-xs mb-2">Véhicule trouvé dans Odoo :</p>
+                  <p className="text-white font-semibold text-sm mb-3">🚗 {odooVehicle.displayName}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setVehicleConfirmed(true)}
+                      className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-bold"
+                    >
+                      ✓ Oui, c'est ce véhicule
+                    </button>
+                    <button
+                      onClick={() => {
+                        setVehicleConfirmed(false)
+                        setSelectedBrand('')
+                        setSelectedBrandId(null)
+                        setSelectedModel('')
+                        setSelectedModelId(null)
+                      }}
+                      className="flex-1 bg-[#2a2a2a] text-zinc-300 rounded-xl py-2.5 text-sm font-medium"
+                    >
+                      ✗ Non, autre véhicule
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Véhicule confirmé */}
+              {vehicleConfirmed === true && odooVehicle && (
+                <div className="mt-2 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
+                  <span className="text-green-400 text-sm">✓ {odooVehicle.displayName}</span>
+                  <button onClick={() => setVehicleConfirmed(null)} className="ml-auto text-zinc-600 text-xs">Changer</button>
+                </div>
+              )}
+
+              {/* Véhicule non confirmé → saisie manuelle */}
+              {vehicleConfirmed === false && (
+                <p className="text-zinc-500 text-xs mt-2 pl-1">Sélectionne la marque et le modèle ci-dessous</p>
+              )}
             </div>
 
-            {/* Marque */}
-            <div className="mb-4">
+            {/* Marque — visible si véhicule non confirmé ou inconnu */}
+            {(vehicleConfirmed === false || (!odooVehicle && plate.length >= 3)) && (
               <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Marque <span className="text-brand">*</span></label>
               <select value={selectedBrandId || ''} onChange={handleBrandChange}
                 className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand appearance-none">
@@ -337,6 +464,7 @@ export default function EncaissementClient({
                   className="w-full bg-[#1e1e1e] border border-brand/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand mt-2" />
               )}
             </div>
+            )}
 
             {/* Lieu avec bouton Ici */}
             <div className="mb-4">
@@ -416,6 +544,40 @@ export default function EncaissementClient({
 
         {step === 2 && (
           <>
+            {/* Clients précédents depuis Odoo */}
+            {previousClients.length > 0 && !selectedClientId && (
+              <div className="mb-5">
+                <p className="text-zinc-400 text-xs font-medium mb-2">Clients précédents pour ce véhicule :</p>
+                <div className="flex flex-col gap-2">
+                  {previousClients.map(client => (
+                    <button
+                      key={client.id}
+                      onClick={() => fillClientFromOdoo(client)}
+                      className="bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-xl p-3 text-left transition-all active:opacity-80"
+                    >
+                      <p className="text-white font-semibold text-sm">{client.name}</p>
+                      {client.phone && <p className="text-zinc-500 text-xs mt-0.5">{client.phone}</p>}
+                      {client.address && <p className="text-zinc-600 text-xs">{client.address}</p>}
+                    </button>
+                  ))}
+                  <button
+                    onClick={clearClient}
+                    className="bg-[#1e1e1e] border border-dashed border-[#333] rounded-xl p-3 text-zinc-500 text-sm text-center hover:border-zinc-500"
+                  >
+                    + Nouveau client
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Client sélectionné depuis Odoo */}
+            {selectedClientId && (
+              <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
+                <span className="text-green-400 text-sm">✓ {clientName}</span>
+                <button onClick={clearClient} className="ml-auto text-zinc-500 text-xs hover:text-white">Changer</button>
+              </div>
+            )}
+
             {/* TVA */}
             <div className="mb-4">
               <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Numéro TVA</label>
