@@ -76,16 +76,18 @@ export default function EncaissementClient({ motifs, paymentModes }: {
 }) {
   const router = useRouter()
 
+  const [page, setPage] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+  const TOTAL = 9
+
   // Auto-redirect vers dashboard après 5 secondes si sauvegardé
   useEffect(() => {
     if (!saved) return
     const t = setTimeout(() => router.push('/dashboard'), 5000)
     return () => clearTimeout(t)
   }, [saved])
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState('')
-  const TOTAL = 9
 
   // Page 0
   const [plate, setPlate] = useState('')
