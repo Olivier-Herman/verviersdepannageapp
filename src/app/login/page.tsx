@@ -111,9 +111,21 @@ function LoginContent() {
         </button>
 
         {isPwa && (
-          <p className="text-zinc-600 text-xs text-center mt-4">
-            Après la connexion Microsoft, reviens sur cette app — tu seras connecté automatiquement.
-          </p>
+          <div className="mt-4 space-y-2">
+            <p className="text-zinc-600 text-xs text-center">
+              Après la connexion Microsoft, reviens ici et appuie sur :
+            </p>
+            <button
+              onClick={async () => {
+                setChecking(true)
+                await update()
+                setChecking(false)
+              }}
+              className="w-full bg-[#1e1e1e] border border-[#333] text-zinc-400 text-sm rounded-xl px-4 py-3 transition-colors hover:border-zinc-500"
+            >
+              {checking ? 'Vérification…' : '✓ J\'ai terminé la connexion Microsoft'}
+            </button>
+          </div>
         )}
 
         <p className="text-zinc-600 text-xs text-center mt-6">
