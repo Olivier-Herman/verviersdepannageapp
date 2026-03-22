@@ -134,6 +134,8 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   const [viesLoading, setViesLoading] = useState(false)
   const [viesResult, setViesResult] = useState<any>(null)
   const [clientName, setClientName] = useState('')
+  const [odooNameMatches, setOdooNameMatches] = useState<any[]>([])
+  const [nameSearchLoading, setNameSearchLoading] = useState(false)
   const [clientAddress, setClientAddress] = useState('')
   const [clientStreet, setClientStreet] = useState('')
   const [clientZip, setClientZip] = useState('')
@@ -775,9 +777,6 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     } catch {}
     return false
   }
-
-  const [odooNameMatches, setOdooNameMatches] = useState<any[]>([])
-  const [nameSearchLoading, setNameSearchLoading] = useState(false)
 
   const searchOdooByNameMultiple = async (): Promise<any[]> => {
     try {
