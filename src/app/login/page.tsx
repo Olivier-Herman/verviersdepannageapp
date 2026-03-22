@@ -1,38 +1,73 @@
 'use client'
 
-import { signIn } from 'next-auth/react'
-import { useSearchParams } from 'next/navigation'
+import { signIn, useSession } from 'next-auth/react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 import Image from 'next/image'
 
 function LoginContent() {
   const params = useSearchParams()
+  const router = useRouter()
+  const { data: session, status, update } = useSession()
   const error = params.get('error')
   const callbackUrl = params.get('callbackUrl') || '/dashboard'
   const [isPwa, setIsPwa] = useState(false)
+  const [checking, setChecking] = useState(false)
 
   useEffect(() => {
-    // Détecter si on est en mode PWA standalone
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || (window.navigator as any).standalone === true
     setIsPwa(isStandalone)
   }, [])
 
-  const handleSignIn = () => {
-    if (isPwa) {
-      // En mode PWA sur iOS — utiliser redirect pour rester dans le contexte
-      signIn('azure-ad', {
-        callbackUrl,
-        redirect: true,
-      })
-    } else {
-      signIn('azure-ad', { callbackUrl })
+  // Si session trouvée → rediriger vers dashboard
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      router.push(callbackUrl)
     }
+  }, [status, session])
+
+  // Quand la PWA reprend le focus (retour depuis Safari après auth)
+  // → vérifier si la session existe maintenant
+  useEffect(() => {
+    if (!isPwa) return
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        setChecking(true)
+        await update() // forcer la mise à jour de la session
+        setChecking(false)
+      }
+    }
+
+    const handleFocus = async () => {
+      setChecking(true)
+      await update()
+      setChecking(false)
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [isPwa, update])
+
+  const handleSignIn = () => {
+    signIn('azure-ad', { callbackUrl, redirect: true })
+  }
+
+  if (status === 'loading' || checking) {
+    return (
+      <div className="min-h-screen bg-[#0F0F0F] flex items-center justify-center">
+        <p className="text-zinc-500 text-sm">Vérification de la session…</p>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6">
-      {/* Logo */}
       <div className="mb-10 text-center">
         <div className="bg-white rounded-2xl px-8 py-5 inline-block mb-4">
           <Image
@@ -48,14 +83,12 @@ function LoginContent() {
         <p className="text-zinc-500 text-sm">Application interne — Chauffeurs & Gestion</p>
       </div>
 
-      {/* Card */}
       <div className="w-full max-w-sm bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-8">
         <h1 className="text-white text-xl font-semibold mb-2">Connexion</h1>
         <p className="text-zinc-500 text-sm mb-8">
           Utilise ton compte Microsoft professionnel pour accéder à l'application.
         </p>
 
-        {/* Erreur */}
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-6">
             {error === 'AccessDenied'
@@ -64,7 +97,6 @@ function LoginContent() {
           </div>
         )}
 
-        {/* Bouton Microsoft */}
         <button
           onClick={handleSignIn}
           className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-100 active:bg-zinc-200 text-zinc-900 font-semibold rounded-xl px-4 py-3.5 transition-colors"
@@ -80,7 +112,7 @@ function LoginContent() {
 
         {isPwa && (
           <p className="text-zinc-600 text-xs text-center mt-4">
-            La connexion va ouvrir une page Microsoft puis revenir automatiquement.
+            Après la connexion Microsoft, reviens sur cette app — tu seras connecté automatiquement.
           </p>
         )}
 
