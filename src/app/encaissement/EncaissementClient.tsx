@@ -334,6 +334,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           onChange={e => setPlate(normalizePlate(e.target.value))}
           onKeyDown={e => e.key === 'Enter' && checkPlate()}
           placeholder="1ABC123"
+          autoComplete="off"
           autoFocus
           className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-2xl font-bold text-center outline-none tracking-widest uppercase mb-2"
         />
@@ -480,11 +481,14 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         <div className="relative mb-6">
           <input
             type="number"
+            id="amount-field"
             value={amount}
             onChange={e => setAmount(e.target.value)}
             placeholder="0.00"
             min="0" step="0.01"
             autoFocus
+            autoComplete="off"
+            inputMode="decimal"
             className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-3xl font-bold text-center outline-none"
           />
           <span className="absolute right-5 top-4 text-zinc-400 text-xl">€</span>
@@ -531,6 +535,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
             value={clientVat}
             onChange={e => { setClientVat(e.target.value.toUpperCase()); setViesResult(null) }}
             placeholder="BE0460759205"
+            autoComplete="off"
             className="flex-1 bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none uppercase"
           />
           <button onClick={checkVies} disabled={viesLoading || clientVat.length < 5}
@@ -560,6 +565,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           value={clientName}
           onChange={e => setClientName(e.target.value)}
           placeholder="Nom et prénom ou société"
+          autoComplete="off"
           autoFocus
           className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-8"
         />
@@ -588,6 +594,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
             value={clientPhone}
             onChange={e => setClientPhone(e.target.value)}
             type="tel" placeholder="+32 4xx xxx xxx"
+            autoComplete="tel"
             className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-4 py-3 text-white text-sm outline-none"
           />
         </div>
@@ -597,6 +604,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
             value={clientEmail}
             onChange={e => setClientEmail(e.target.value)}
             type="email" placeholder="client@email.com"
+            autoComplete="email"
             className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-4 py-3 text-white text-sm outline-none"
           />
         </div>
