@@ -20,45 +20,53 @@ export const authOptions: NextAuthOptions = {
       const supabase = createAdminClient()
       const azureId = profile?.sub || account?.providerAccountId
 
-      console.log(`[Auth] signIn attempt: ${user.email}`)
+      console.log(`[Auth] signIn attempt: ${user.email} azureId: ${azureId}`)
 
-      const { data: existing } = await supabase
-        .from('users')
-        .select('id, role, active, azure_id')
-        .ilike('email', user.email) // insensible à la casse
-        .single()
+      try {
+        const { data: existing, error: findError } = await supabase
+          .from('users')
+          .select('id, role, active, azure_id')
+          .ilike('email', user.email)
+          .maybeSingle() // maybeSingle retourne null sans erreur si 0 résultats
 
-      if (existing) {
-        console.log(`[Auth] User found: ${user.email} active=${existing.active}`)
-        await supabase.from('users').update({
-          azure_id: existing.azure_id || azureId,
+        if (findError) console.error('[Auth] Find error:', findError)
+
+        if (existing) {
+          console.log(`[Auth] User found: ${existing.id} active=${existing.active}`)
+          await supabase.from('users').update({
+            azure_id: existing.azure_id || azureId,
+            name: user.name,
+            avatar_url: user.image,
+            last_login: new Date().toISOString()
+          }).eq('id', existing.id)
+          if (!existing.active) {
+            console.log(`[Auth] User inactive, access denied`)
+            return false
+          }
+          return true
+        }
+
+        // Nouveau user — créé avec active: true
+        console.log(`[Auth] New user, creating: ${user.email}`)
+        const { error: insertError } = await supabase.from('users').insert({
+          azure_id: azureId,
+          email: user.email?.toLowerCase(),
           name: user.name,
           avatar_url: user.image,
+          role: 'driver',
+          active: true,
           last_login: new Date().toISOString()
-        }).eq('id', existing.id)
-        if (!existing.active) {
-          console.log(`[Auth] User inactive, access denied`)
+        })
+        if (insertError) {
+          console.error('[Auth] Insert error:', insertError)
           return false
         }
         return true
-      }
 
-      // Nouveau user — créé avec active: true par défaut
-      console.log(`[Auth] New user, creating: ${user.email}`)
-      const { error } = await supabase.from('users').insert({
-        azure_id: azureId,
-        email: user.email?.toLowerCase(),
-        name: user.name,
-        avatar_url: user.image,
-        role: 'driver',
-        active: true,
-        last_login: new Date().toISOString()
-      })
-      if (error) {
-        console.error('[Auth] Supabase insert error:', error)
+      } catch (err: any) {
+        console.error('[Auth] signIn exception:', err.message || err)
         return false
       }
-      return true
     },
 
     async jwt({ token, account }) {
