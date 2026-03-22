@@ -46,22 +46,25 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // 2. Sync Odoo automatique (en arrière-plan — ne bloque pas la réponse)
+  // 2. Sync Odoo — on attend la réponse (Vercel tue les tâches en arrière-plan)
+  let odooResult: { orderName?: string; orderId?: number } = {}
   if (intervention && body.plate) {
-    syncInterventionToOdoo({
-      reference: intervention.reference,
-      plate: body.plate,
-      brandText: body.brand_text || 'Autre',
-      modelText: body.model_text || 'Autre',
-      clientName: body.client_name,
-      clientPhone: body.client_phone,
-      clientEmail: body.client_email,
-      clientVat: body.client_vat,
-      clientAddress: body.client_address,
-      amount: parseFloat(body.amount || '0'),
-      motifText: body.motif_text || body.motif_id || 'Intervention',
-      paymentMode: body.payment_mode,
-    }).then(async (result) => {
+    try {
+      const result = await syncInterventionToOdoo({
+        reference: intervention.reference,
+        plate: body.plate,
+        brandText: body.brand_text || 'Autre',
+        modelText: body.model_text || 'Autre',
+        clientName: body.client_name,
+        clientPhone: body.client_phone,
+        clientEmail: body.client_email,
+        clientVat: body.client_vat,
+        clientAddress: body.client_address,
+        amount: parseFloat(body.amount || '0'),
+        motifText: body.motif_text || body.motif_id || 'Intervention',
+        paymentMode: body.payment_mode,
+      })
+
       // Mettre à jour Supabase avec les IDs Odoo
       await supabase
         .from('interventions')
@@ -72,14 +75,17 @@ export async function POST(req: NextRequest) {
           synced_at: new Date().toISOString(),
         })
         .eq('id', intervention.id)
+
+      odooResult = { orderName: result.orderName, orderId: result.orderId }
       console.log(`[Odoo] Sync OK — Devis ${result.orderName}`)
-    }).catch(err => {
-      console.error('[Odoo] Sync échouée:', err.message)
+
+    } catch (err: any) {
       // Pas bloquant — l'intervention est quand même sauvegardée
-    })
+      console.error('[Odoo] Sync échouée:', err.message)
+    }
   }
 
-  return NextResponse.json(intervention)
+  return NextResponse.json({ ...intervention, odoo: odooResult })
 }
 
 export async function GET(req: NextRequest) {
