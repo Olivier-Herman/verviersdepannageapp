@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 interface ListItem { value: string; label: string }
@@ -31,8 +32,8 @@ function Shell({ children, title, page, totalPages, onBack }: {
       <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4">
         <div className="flex items-center gap-3 mb-3">
           {onBack
-            ? <button onClick={onBack} className="text-zinc-500 hover:text-white text-sm">←</button>
-            : <Link href="/dashboard" className="text-zinc-500 hover:text-white text-sm">←</Link>
+            ? <button onClick={onBack} className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</button>
+            : <Link href="/dashboard" className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</Link>
           }
           <h1 className="text-white font-bold text-lg">Encaissement</h1>
         </div>
@@ -73,7 +74,14 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   motifs: ListItem[]
   paymentModes: ListItem[]
 }) {
-  const [page, setPage] = useState(0)
+  const router = useRouter()
+
+  // Auto-redirect vers dashboard après 5 secondes si sauvegardé
+  useEffect(() => {
+    if (!saved) return
+    const t = setTimeout(() => router.push('/dashboard'), 5000)
+    return () => clearTimeout(t)
+  }, [saved])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -306,7 +314,8 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6 text-center">
       <div className="text-6xl mb-6">✅</div>
       <h2 className="text-white text-2xl font-bold mb-2">Enregistré !</h2>
-      <p className="text-zinc-500 text-sm mb-8">Intervention sauvegardée avec succès.</p>
+      <p className="text-zinc-500 text-sm mb-2">Intervention sauvegardée avec succès.</p>
+      <p className="text-zinc-600 text-xs mb-8">Retour au dashboard dans 5 secondes…</p>
       <button onClick={resetForm} className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3">
         + Nouvelle intervention
       </button>
