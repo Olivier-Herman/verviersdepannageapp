@@ -5,13 +5,15 @@ import Link from 'next/link'
 import type { Session } from 'next-auth'
 
 const NAV_MODULES = [
-  { id: 'encaissement', label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',  color: 'bg-brand',     size: 'large' },
-  { id: 'depose',       label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700', size: 'large' },
-  { id: 'avance_fonds', label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',   size: 'small' },
-  { id: 'documents',    label: 'Documents',              icon: '📁', href: '/documents',      color: 'bg-surface',   size: 'small' },
-  { id: 'check_vehicle',label: 'Check Véhicule',         icon: '🔍', href: '/check-vehicle',  color: 'bg-surface',   size: 'small' },
-  { id: 'tgr',          label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',   size: 'small' },
-  { id: 'admin',        label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900',size: 'small' },
+  { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',     size: 'large' },
+  { id: 'encaissements', label: 'Encaissements',           icon: '📊', href: '/encaissements',  color: 'bg-surface',   size: 'small' },
+  { id: 'caisse',        label: 'Ma Caisse',               icon: '💰', href: '/caisse',         color: 'bg-surface',   size: 'small' },
+  { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',         color: 'bg-green-700', size: 'large' },
+  { id: 'avance_fonds',  label: 'Avance de Fonds',         icon: '📄', href: '/avance-fonds',   color: 'bg-surface',   size: 'small' },
+  { id: 'documents',     label: 'Documents',               icon: '📁', href: '/documents',      color: 'bg-surface',   size: 'small' },
+  { id: 'check_vehicle', label: 'Check Véhicule',          icon: '🔍', href: '/check-vehicle',  color: 'bg-surface',   size: 'small' },
+  { id: 'tgr',           label: 'TGR Touring',             icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',   size: 'small' },
+  { id: 'admin',         label: 'Administration',          icon: '⚙️', href: '/admin',          color: 'bg-purple-900',size: 'small' },
 ]
 
 const CALL_MODULE_MAP: Record<string, string> = {
