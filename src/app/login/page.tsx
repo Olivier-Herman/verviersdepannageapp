@@ -2,13 +2,33 @@
 
 import { signIn } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Image from 'next/image'
 
 function LoginContent() {
   const params = useSearchParams()
   const error = params.get('error')
   const callbackUrl = params.get('callbackUrl') || '/dashboard'
+  const [isPwa, setIsPwa] = useState(false)
+
+  useEffect(() => {
+    // Détecter si on est en mode PWA standalone
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true
+    setIsPwa(isStandalone)
+  }, [])
+
+  const handleSignIn = () => {
+    if (isPwa) {
+      // En mode PWA sur iOS — utiliser redirect pour rester dans le contexte
+      signIn('azure-ad', {
+        callbackUrl,
+        redirect: true,
+      })
+    } else {
+      signIn('azure-ad', { callbackUrl })
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6">
@@ -39,17 +59,16 @@ function LoginContent() {
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-6">
             {error === 'AccessDenied'
-              ? 'Accès refusé. Ton compte n\'est pas autorisé.'
+              ? "Accès refusé. Ton compte n'est pas autorisé."
               : 'Une erreur est survenue. Réessaie.'}
           </div>
         )}
 
         {/* Bouton Microsoft */}
         <button
-          onClick={() => signIn('azure-ad', { callbackUrl })}
+          onClick={handleSignIn}
           className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-100 active:bg-zinc-200 text-zinc-900 font-semibold rounded-xl px-4 py-3.5 transition-colors"
         >
-          {/* Logo Microsoft SVG */}
           <svg width="20" height="20" viewBox="0 0 21 21" fill="none">
             <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
             <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
@@ -58,6 +77,12 @@ function LoginContent() {
           </svg>
           Se connecter avec Microsoft
         </button>
+
+        {isPwa && (
+          <p className="text-zinc-600 text-xs text-center mt-4">
+            La connexion va ouvrir une page Microsoft puis revenir automatiquement.
+          </p>
+        )}
 
         <p className="text-zinc-600 text-xs text-center mt-6">
           Accès réservé aux employés Verviers Dépannage SA
