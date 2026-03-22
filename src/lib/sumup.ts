@@ -20,12 +20,12 @@ interface SumUpCheckout {
 // ============================================================
 export async function createCheckout(data: {
   amount: number
-  reference: string       // ex: VD-2026-000005
-  description: string     // ex: "Intervention Peugeot 1ADK440"
+  reference: string
+  description: string
   returnUrl?: string
 }): Promise<{ id: string; checkoutUrl: string }> {
 
-  const res = await fetch('https://api.sumup.com/v0.1/checkouts', {
+  const response = await fetch('https://api.sumup.com/v0.1/checkouts', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${SUMUP_API_KEY}`,
@@ -41,17 +41,16 @@ export async function createCheckout(data: {
     })
   })
 
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(`SumUp checkout error: ${JSON.stringify(err)}`)
-  }
+  const checkout = await response.json()
+  if (!response.ok) throw new Error(`SumUp checkout error: ${JSON.stringify(checkout)}`)
 
-  const checkout: SumUpCheckout = await res.json()
+  console.log('[SumUp] Checkout:', JSON.stringify(checkout))
 
-  return {
-    id: checkout.id,
-    checkoutUrl: `https://pay.sumup.com/b2c/pay/${checkout.id}`,
-  }
+  // SumUp peut retourner l'URL directement ou on la construit
+  const checkoutUrl = checkout.hosted_checkout_url
+    || `https://pay.sumup.com/b2c/pay/${checkout.id}`
+
+  return { id: checkout.id, checkoutUrl }
 }
 
 // ============================================================
