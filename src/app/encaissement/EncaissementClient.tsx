@@ -228,7 +228,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         setPage(1)
       } else {
         setOdooVehicle(null)
-        setPage(2)
+        setPage(10) // → saisie marque/modèle
       }
     } catch { setError('Erreur de connexion') }
     finally { setPlateChecking(false) }
