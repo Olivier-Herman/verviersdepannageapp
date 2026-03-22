@@ -633,25 +633,32 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         {!sumupStatus && (
           <div className="flex flex-col gap-2 mb-6">
             {[
-              { mode: 'cash',     icon: '💵', label: 'Espèces',       sumup: false },
-              { mode: 'terminal', icon: '💳', label: 'SumUp Terminal', sumup: true  },
-              { mode: 'qr',       icon: '📱', label: 'QR Code',        sumup: true  },
-              { mode: 'tap',      icon: '📲', label: 'Tap to Pay',     sumup: true  },
-              { mode: 'email',    icon: '✉️',  label: 'Lien Email',     sumup: true, disabled: !clientEmail },
+              { mode: 'cash',     icon: '💵', label: 'Espèces',              sumup: false },
+              { mode: 'terminal', icon: '💳', label: 'SumUp Terminal',        sumup: true  },
+              { mode: 'qr',       icon: '📱', label: 'QR Code',               sumup: true  },
+              { mode: 'tap',      icon: '📲', label: 'Tap to Pay',            sumup: true  },
+              { mode: 'email',    icon: '✉️',  label: 'Lien Email',            sumup: true, disabled: !clientEmail },
               { mode: 'unpaid',   icon: '📋', label: 'Non payé — À facturer', sumup: false },
             ].map(btn => (
-              <button key={btn.mode}
+              <button
+                key={btn.mode}
+                type="button"
                 onClick={() => {
+                  if (btn.disabled) return
+                  // Réinitialiser SumUp si on change de mode
+                  setSumupData(null)
+                  setSumupStatus(null)
+                  setSumupMode(null)
+                  setSumupPolling(false)
                   if (btn.sumup) {
                     startSumup(btn.mode)
                   } else {
                     setPaymentMode(btn.mode)
-                    setSumupData(null); setSumupStatus(null)
                   }
                 }}
-                disabled={sumupLoading || (sumupPolling && btn.sumup) || btn.disabled}
+                disabled={!!btn.disabled}
                 className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl border text-left font-medium transition-all active:scale-95 disabled:opacity-40 ${
-                  paymentMode === btn.mode && !btn.sumup
+                  paymentMode === btn.mode
                     ? 'bg-brand border-brand text-white'
                     : sumupMode === btn.mode && sumupPolling
                     ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
@@ -662,7 +669,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
                 <span className="text-xl">{btn.icon}</span>
                 <span className="flex-1">{btn.label}</span>
                 {btn.mode === 'email' && !clientEmail && <span className="text-zinc-600 text-xs">Email requis</span>}
-                {btn.sumup && <span className="text-zinc-600 text-xs">SumUp</span>}
+                {btn.sumup && btn.mode !== 'email' && <span className="text-zinc-600 text-xs">SumUp</span>}
               </button>
             ))}
           </div>
