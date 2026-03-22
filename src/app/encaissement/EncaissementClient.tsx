@@ -508,7 +508,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           </button>
         </div>
         <p className="text-zinc-600 text-xs mb-8">Tape une adresse ou utilise ta position GPS</p>
-        <BigBtn label="Continuer →" onClick={() => setPage(4)} disabled={!location.trim()} />
+        <BigBtn label="Continuer →" onClick={() => setPage(5)} disabled={!location.trim()} />
       </div>
     </Shell>
   )
@@ -550,7 +550,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           setPaymentMode('sumup')
           clearInterval(interval)
           setSumupPolling(false)
-          setTimeout(() => setPage(5), 1500)
+          setTimeout(() => setPage(9), 1500)
         } else if (status.status === 'FAILED' || status.status === 'EXPIRED') {
           setSumupStatus(status.status)
           clearInterval(interval)
@@ -569,7 +569,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
 
   // ── Page 4 — Montant & paiement ──────────────────────────
   if (page === 4) return (
-    <Shell title="Montant & paiement" page={5} totalPages={TOTAL} onBack={() => setPage(3)}>
+    <Shell title="Montant & paiement" page={5} totalPages={TOTAL} onBack={() => isNewClient ? setPage(8) : setPage(5)}>
       <div className="mt-4">
         <div className="relative mb-6">
           <input
@@ -668,7 +668,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           </div>
         )}
 
-        <BigBtn label="Continuer →" onClick={() => setPage(5)}
+        <BigBtn label="Continuer →" onClick={() => setPage(9)}
           disabled={!amount || (!paymentMode && !sumupStatus)} />
       </div>
     </Shell>
@@ -676,11 +676,11 @@ export default function EncaissementClient({ motifs, paymentModes }: {
 
   // ── Page 5 — Sélection client ─────────────────────────────
   if (page === 5) return (
-    <Shell title="Qui est le client ?" page={6} totalPages={TOTAL} onBack={() => setPage(4)}>
+    <Shell title="Qui est le client ?" page={6} totalPages={TOTAL} onBack={() => setPage(3)}>
       <div className="mt-2 flex flex-col gap-3">
         {previousClients.map(client => (
           <button key={client.id}
-            onClick={() => { setSelectedClient(client); setIsNewClient(false); setPage(9) }}
+            onClick={() => { setSelectedClient(client); setIsNewClient(false); setPage(4) }}
             className="w-full text-left bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
             <p className="text-white font-semibold">{client.name}</p>
             {client.phone && <p className="text-zinc-500 text-sm mt-0.5">{client.phone}</p>}
@@ -725,7 +725,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
               if (clientVat.length >= 5) {
                 const result = await checkVies()
                 if (result?.valid && result?.odooFound && result?.hasPhone) {
-                  setPage(9); return
+                  setPage(4); return
                 }
               }
               setPage(7)
@@ -783,8 +783,8 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         <BigBtn label="Continuer →" onClick={async () => {
           if (!clientName.trim()) return
           const found = await searchOdooByName()
-          // Si trouvé avec téléphone → aller au récap, sinon coordonnées
-          setPage(found && clientPhone ? 9 : 8)
+          // Si trouvé avec téléphone → montant, sinon coordonnées
+          setPage(found && clientPhone ? 4 : 8)
         }} disabled={!clientName.trim()} />
       </div>
     </Shell>
@@ -830,7 +830,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           if (!clientStreet && !clientAddress) {
             await searchOdooByPhone()
           }
-          setPage(9)
+          setPage(4)
         }} disabled={!clientPhone.trim()} />
       </div>
     </Shell>
@@ -846,7 +846,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
       : `${selectedBrand} ${selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel}`
 
     return (
-      <Shell title="Récapitulatif" page={9} totalPages={TOTAL} onBack={() => isNewClient ? setPage(8) : setPage(5)}>
+      <Shell title="Récapitulatif" page={9} totalPages={TOTAL} onBack={() => setPage(4)}>
         <div className="mt-2">
           {[
             { label: 'Immat', value: plate },
