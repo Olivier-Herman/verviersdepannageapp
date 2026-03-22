@@ -47,9 +47,9 @@ export async function createCheckout(data: {
 
   console.log('[SumUp] Checkout response:', JSON.stringify(checkout))
 
-  // hosted_checkout_url est au niveau racine de la réponse
+  // URL au format SumUp standard : pay.sumup.com/b2c/REFERENCE
   const checkoutUrl = checkout.hosted_checkout_url
-    || `https://pay.sumup.com/b2c/checkout/${checkout.id}`
+    || `https://pay.sumup.com/b2c/${checkout.checkout_reference}`
 
   console.log('[SumUp] Checkout URL:', checkoutUrl)
 
