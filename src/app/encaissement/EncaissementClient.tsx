@@ -59,39 +59,40 @@ export default function EncaissementClient({
   const autocompleteRef = useRef<any>(null)
   const autocompleteClientRef = useRef<any>(null)
 
-  // Charger Google Maps Places
+  const PLACES_OPTIONS = { types: ['address'] as string[], componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] } }
+
+  const initAC = (inputRef: React.RefObject<HTMLInputElement>, acRef: React.MutableRefObject<any>, setter: (v: string) => void) => {
+    if (!inputRef.current || !window.google?.maps?.places || acRef.current) return
+    acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, PLACES_OPTIONS)
+    acRef.current.addListener('place_changed', () => {
+      const place = acRef.current.getPlace()
+      if (place?.formatted_address) setter(place.formatted_address)
+    })
+  }
+
+  // Charger Google Maps une seule fois
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
     if (!apiKey) return
-
-    window.initGooglePlaces = () => {
-      const options = { types: ['address'], componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] } }
-      if (locationInputRef.current) {
-        autocompleteRef.current = new window.google.maps.places.Autocomplete(locationInputRef.current, options)
-        autocompleteRef.current.addListener('place_changed', () => {
-          const place = autocompleteRef.current.getPlace()
-          if (place?.formatted_address) setLocation(place.formatted_address)
-        })
-      }
-      if (clientAddressInputRef.current) {
-        autocompleteClientRef.current = new window.google.maps.places.Autocomplete(clientAddressInputRef.current, options)
-        autocompleteClientRef.current.addListener('place_changed', () => {
-          const place = autocompleteClientRef.current.getPlace()
-          if (place?.formatted_address) setClientAddress(place.formatted_address)
-        })
-      }
-    }
-
+    window.initGooglePlaces = () => initAC(locationInputRef, autocompleteRef, setLocation)
     if (!document.getElementById('google-maps-script')) {
-      const script = document.createElement('script')
-      script.id = 'google-maps-script'
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initGooglePlaces`
-      script.async = true
-      document.head.appendChild(script)
-    } else if (window.google) {
-      window.initGooglePlaces()
+      const s = document.createElement('script')
+      s.id = 'google-maps-script'
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initGooglePlaces`
+      s.async = true
+      document.head.appendChild(s)
+    } else if (window.google?.maps?.places) {
+      initAC(locationInputRef, autocompleteRef, setLocation)
     }
+  }, [])
+
+  // Initialiser autocomplete adresse client à l'étape 2
+  useEffect(() => {
+    if (step !== 2) return
+    const timer = setTimeout(() => initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress), 150)
+    return () => clearTimeout(timer)
   }, [step])
+
 
   // Bouton "Ici" — géolocalisation
   const getMyLocation = () => {
