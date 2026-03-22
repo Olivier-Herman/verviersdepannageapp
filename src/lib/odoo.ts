@@ -96,23 +96,39 @@ export async function findOrCreateVehicle(data: {
 }
 
 // ============================================================
+// PAYS — Récupérer l'ID Odoo par code ISO
+// ============================================================
+const countryCache: Record<string, number> = {}
+async function getCountryId(code: string): Promise<number> {
+  if (!code) return 20 // Belgique par défaut
+  const upper = code.toUpperCase()
+  if (countryCache[upper]) return countryCache[upper]
+  const r = await rpc<any[]>('res.country', 'search_read',
+    [[['code', '=', upper]]], { fields: ['id', 'code'], limit: 1 })
+  const id = r.length > 0 ? r[0].id : 20
+  countryCache[upper] = id
+  return id
+}
+
+// ============================================================
 // PARTENAIRE — Mettre à jour les champs manquants
 // ============================================================
 async function updatePartnerIfMissing(id: number, existing: any, data: {
   name?: string; phone?: string; email?: string; vat?: string
   street?: string; zip?: string; city?: string; countryCode?: string
 }): Promise<void> {
-  const COUNTRY_MAP: Record<string, number> = { BE: 21, FR: 76, DE: 57, NL: 150, LU: 125 }
   const updates: any = {}
   if (!existing.street && data.street) updates.street = data.street
   if (!existing.zip && data.zip) updates.zip = data.zip
   if (!existing.city && data.city) updates.city = data.city
   if (!existing.phone && data.phone) updates.phone = data.phone
   if (!existing.email && data.email) updates.email = data.email
-  if (!existing.country_id && data.countryCode) updates.country_id = COUNTRY_MAP[data.countryCode] || 21
+  if (!existing.country_id && data.countryCode) {
+    updates.country_id = await getCountryId(data.countryCode)
+  }
   if (Object.keys(updates).length > 0) {
     await rpc('res.partner', 'write', [[id], updates])
-    console.log(`[Odoo] Partner mis à jour:`, updates)
+    console.log(`[Odoo] Partner mis à jour:`, Object.keys(updates))
   }
 }
 
@@ -135,8 +151,7 @@ export async function findOrCreatePartner(data: {
   city?: string
   countryCode?: string
 }): Promise<number> {
-  const COUNTRY_MAP: Record<string, number> = { BE: 21, FR: 76, DE: 57, NL: 150, LU: 125 }
-  const countryId = COUNTRY_MAP[data.countryCode || 'BE'] || 21
+  const countryId = await getCountryId(data.countryCode || 'BE')
 
   // 1. Par TVA
   if (data.vat) {
@@ -265,7 +280,7 @@ export async function createSaleOrder(data: {
   const orders = await rpc<any[]>('sale.order', 'read',
     [[orderId]], { fields: ['id', 'name', 'amount_total', 'amount_tax'] })
 
-  // Ajouter une note interne dans le chatter (HTML rendu correctement)
+  // Ajouter une note interne dans le chatter (subtype_id=2 = Note interne)
   const noteLines = [
     data.driverName ? `<b>Chauffeur :</b> ${data.driverName}` : null,
     data.paymentMode ? `<b>Mode de paiement :</b> ${data.paymentMode}` : null,
@@ -274,9 +289,9 @@ export async function createSaleOrder(data: {
 
   if (noteLines) {
     await rpc('sale.order', 'message_post', [[orderId]], {
-      body: `<div>${noteLines}</div>`,
+      body: noteLines,
       message_type: 'comment',
-      subtype_xmlid: 'mail.mt_note',
+      subtype_id: 2, // Note interne
     })
   }
 

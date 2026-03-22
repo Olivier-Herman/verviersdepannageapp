@@ -102,11 +102,17 @@ export default function EncaissementClient({
           const get = (type: string) => components.find((c: any) => c.types.includes(type))?.long_name || ''
           const getShort = (type: string) => components.find((c: any) => c.types.includes(type))?.short_name || ''
           const streetNum = get('street_number')
+          const subpremise = get('subpremise') // numéro de boîte
           const route = get('route')
           const zip = get('postal_code')
           const city = get('locality') || get('postal_town')
           const country = getShort('country')
-          setClientStreet(`${route}${streetNum ? ' ' + streetNum : ''}`.trim())
+          // Construire la rue : "Route 5/2" si boîte, "Route 5" sinon
+          const streetFull = [
+            route,
+            streetNum ? streetNum + (subpremise ? `/${subpremise}` : '') : ''
+          ].filter(Boolean).join(' ').trim()
+          setClientStreet(streetFull)
           setClientZip(zip)
           setClientCity(city)
           setClientCountryCode(country || 'BE')
