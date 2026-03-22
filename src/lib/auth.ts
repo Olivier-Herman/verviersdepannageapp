@@ -9,7 +9,7 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
       tenantId: process.env.AZURE_AD_TENANT_ID!,
       authorization: {
-        params: { scope: 'openid profile email User.Read Mail.Send' }
+        params: { scope: 'openid profile email offline_access User.Read Mail.Send' }
       }
     })
   ],
@@ -49,10 +49,15 @@ export const authOptions: NextAuthOptions = {
       return true
     },
 
-    async jwt({ token, account, profile }) {
-      if (account && profile) {
-        // Stocker le access token Azure pour Microsoft Graph
+    async jwt({ token, account }) {
+      // Première connexion — stocker les tokens
+      if (account) {
         token.accessToken = account.access_token
+        token.refreshToken = account.refresh_token
+        token.accessTokenExpires = account.expires_at
+          ? account.expires_at * 1000
+          : Date.now() + 3600 * 1000
+
         const supabase = createAdminClient()
         const { data: dbUser } = await supabase
           .from('users')
@@ -66,8 +71,49 @@ export const authOptions: NextAuthOptions = {
           token.modules = (dbUser.user_modules as any[])
             ?.filter(m => m.granted).map(m => m.module_id) || []
         }
+        return token
       }
-      return token
+
+      // Pas encore d'expiration connue → ok
+      if (!token.accessTokenExpires) return token
+
+      // Token encore valide → retourner tel quel
+      if (Date.now() < (token.accessTokenExpires as number)) {
+        return token
+      }
+
+      // Token expiré + pas de refresh token → retourner tel quel (session valide, juste pas de Graph)
+      if (!token.refreshToken) return token
+
+      // Token expiré → rafraîchir via Azure AD
+      try {
+        const res = await fetch(
+          `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.AZURE_AD_CLIENT_ID!,
+              client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
+              grant_type: 'refresh_token',
+              refresh_token: token.refreshToken as string,
+              scope: 'openid profile email offline_access User.Read Mail.Send',
+            })
+          }
+        )
+        const refreshed = await res.json()
+        if (!res.ok) throw refreshed
+        return {
+          ...token,
+          accessToken: refreshed.access_token,
+          refreshToken: refreshed.refresh_token ?? token.refreshToken,
+          accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+        }
+      } catch (err) {
+        console.error('[Token refresh error]', err)
+        // Ne pas invalider la session — juste retourner le token sans Graph
+        return { ...token, accessToken: undefined }
+      }
     },
 
     async session({ session, token }) {
