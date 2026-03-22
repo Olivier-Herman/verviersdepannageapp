@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { syncInterventionToOdoo } from '@/lib/odoo'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest) {
     .eq('email', session.user.email)
     .single()
 
-  const { data, error } = await supabase
+  // 1. Sauvegarder dans Supabase
+  const { data: intervention, error } = await supabase
     .from('interventions')
     .insert({
       service_type: body.service_type || 'encaissement',
@@ -43,7 +45,41 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  // 2. Sync Odoo automatique (en arrière-plan — ne bloque pas la réponse)
+  if (intervention && body.plate) {
+    syncInterventionToOdoo({
+      reference: intervention.reference,
+      plate: body.plate,
+      brandText: body.brand_text || 'Autre',
+      modelText: body.model_text || 'Autre',
+      clientName: body.client_name,
+      clientPhone: body.client_phone,
+      clientEmail: body.client_email,
+      clientVat: body.client_vat,
+      clientAddress: body.client_address,
+      amount: parseFloat(body.amount || '0'),
+      motifText: body.motif_text || body.motif_id || 'Intervention',
+      paymentMode: body.payment_mode,
+    }).then(async (result) => {
+      // Mettre à jour Supabase avec les IDs Odoo
+      await supabase
+        .from('interventions')
+        .update({
+          odoo_invoice_id: result.orderId,
+          odoo_partner_id: result.partnerId,
+          synced_to_odoo: true,
+          synced_at: new Date().toISOString(),
+        })
+        .eq('id', intervention.id)
+      console.log(`[Odoo] Sync OK — Devis ${result.orderName}`)
+    }).catch(err => {
+      console.error('[Odoo] Sync échouée:', err.message)
+      // Pas bloquant — l'intervention est quand même sauvegardée
+    })
+  }
+
+  return NextResponse.json(intervention)
 }
 
 export async function GET(req: NextRequest) {
