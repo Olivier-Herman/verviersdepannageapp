@@ -9,11 +9,27 @@ export default async function DashboardPage() {
   if (!session) redirect('/login')
 
   const supabase = createAdminClient()
+
+  // Charger les modules depuis Supabase en temps réel (pas depuis le JWT en cache)
+  const { data: userModulesDb } = await supabase
+    .from('user_modules')
+    .select('module_id, granted')
+    .eq('user_id', (session.user as any).id)
+    .eq('granted', true)
+
+  const liveModules = (userModulesDb || []).map(m => m.module_id)
+
   const { data: callShortcuts } = await supabase
     .from('call_shortcuts')
     .select('*')
     .eq('active', true)
     .order('sort_order')
 
-  return <DashboardClient session={session} callShortcuts={callShortcuts || []} />
+  // Injecter les modules live dans la session
+  const sessionWithLiveModules = {
+    ...session,
+    user: { ...session.user, modules: liveModules }
+  }
+
+  return <DashboardClient session={sessionWithLiveModules} callShortcuts={callShortcuts || []} />
 }
