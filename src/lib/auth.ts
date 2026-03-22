@@ -80,7 +80,11 @@ export const authOptions: NextAuthOptions = {
   },
 
   pages: { signIn: '/login', error: '/login' },
-  session: { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60 }, // 7 jours
+  session: {
+    strategy: 'jwt',
+    maxAge: 7 * 24 * 60 * 60,    // expire après 7 jours
+    updateAge: 24 * 60 * 60,      // renouvelle le token si utilisé dans les 24h
+  },
 
   cookies: {
     sessionToken: {
