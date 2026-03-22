@@ -51,17 +51,6 @@ function Shell({ children, title, page, totalPages, onBack }: {
     </div>
   )
 }
-        <div className="flex gap-1">
-          {Array.from({ length: totalPages }).map((_, i) => (
-            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
-          ))}
-        </div>
-        <p className="text-zinc-500 text-xs mt-2">{title}</p>
-      </div>
-      <div className="flex-1 px-5 py-6 overflow-y-auto">{children}</div>
-    </div>
-  )
-}
 
 function BigBtn({ label, onClick, disabled, secondary }: {
   label: string; onClick: () => void; disabled?: boolean; secondary?: boolean
