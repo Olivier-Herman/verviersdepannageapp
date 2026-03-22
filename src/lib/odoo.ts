@@ -79,6 +79,8 @@ export async function findOrCreateVehicle(data: {
   )
   if (existing.length > 0) {
     console.log(`[Odoo] Véhicule trouvé: ${plate} (ID: ${existing[0].id})`)
+    // Mettre à jour le statut
+    await rpc('fleet.vehicle', 'write', [[existing[0].id], { state_id: 23 }])
     return existing[0].id
   }
 
@@ -88,6 +90,7 @@ export async function findOrCreateVehicle(data: {
   const vehicleId = await rpc<number>('fleet.vehicle', 'create', [{
     license_plate: plate,
     model_id: modelId,
+    state_id: 23, // Encaissement Chauffeur
     ...(data.vinSn ? { vin_sn: data.vinSn } : {})
   }])
 
