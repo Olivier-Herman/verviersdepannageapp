@@ -8,6 +8,7 @@ const NAV_MODULES = [
   { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',     size: 'large' },
   { id: 'encaissements', label: 'Encaissements',           icon: '📊', href: '/encaissements',  color: 'bg-surface',   size: 'small' },
   { id: 'caisse',        label: 'Ma Caisse',               icon: '💰', href: '/caisse',         color: 'bg-surface',   size: 'small' },
+  { id: 'profil',        label: 'Mon Profil',              icon: '👤', href: '/profil',         color: 'bg-surface',   size: 'small' },
   { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',         color: 'bg-green-700', size: 'large' },
   { id: 'avance_fonds',  label: 'Avance de Fonds',         icon: '📄', href: '/avance-fonds',   color: 'bg-surface',   size: 'small' },
   { id: 'documents',     label: 'Documents',               icon: '📁', href: '/documents',      color: 'bg-surface',   size: 'small' },

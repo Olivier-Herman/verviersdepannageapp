@@ -56,7 +56,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         })
       })
       setSelectedUser(null)
-      router.refresh()
+      window.location.reload()
     } finally {
       setSaving(false)
     }
