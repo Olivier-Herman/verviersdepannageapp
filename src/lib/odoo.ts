@@ -234,6 +234,7 @@ export async function createSaleOrder(data: {
   motifPrecision?: string
   locationAddress?: string
   paymentMode?: string
+  paymentReference?: string  // référence SumUp
   driverName?: string
   notes?: string
 }): Promise<{ id: number; name: string }> {
@@ -287,6 +288,7 @@ export async function createSaleOrder(data: {
   const noteLines = [
     data.driverName ? `<b>Chauffeur :</b> ${data.driverName}` : null,
     data.paymentMode ? `<b>Mode de paiement :</b> ${data.paymentMode}` : null,
+    data.paymentReference ? `<b>Référence SumUp :</b> ${data.paymentReference}` : null,
     data.notes ? `<b>Remarques :</b> ${data.notes}` : null,
   ].filter(Boolean).join('<br/>')
 
@@ -325,6 +327,7 @@ export async function syncInterventionToOdoo(intervention: {
   motifPrecision?: string
   locationAddress?: string
   paymentMode?: string
+  paymentReference?: string
   driverName?: string
   notes?: string
 }): Promise<{ vehicleId: number; partnerId: number; orderId: number; orderName: string }> {
@@ -358,6 +361,7 @@ export async function syncInterventionToOdoo(intervention: {
     motifPrecision: intervention.motifPrecision,
     locationAddress: intervention.locationAddress,
     paymentMode: intervention.paymentMode,
+    paymentReference: intervention.paymentReference,
     driverName: intervention.driverName,
     notes: intervention.notes,
   })
