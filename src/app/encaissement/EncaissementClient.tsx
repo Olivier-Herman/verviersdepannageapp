@@ -234,22 +234,18 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     finally { setPlateChecking(false) }
   }
 
-  const checkVies = async () => {
-    if (!clientVat || clientVat.length < 5) return
+  const checkVies = async (): Promise<any> => {
+    if (!clientVat || clientVat.length < 5) return null
     setViesLoading(true); setViesResult(null)
     try {
       const res = await fetch(`/api/vies?vat=${encodeURIComponent(clientVat)}`)
       const data = await res.json()
-      setViesResult(data)
 
       if (data.valid) {
         if (data.name) setClientName(data.name)
-
-        // Parser l'adresse VIES : "RUE DU VINAVE 5/10\n4970 STAVELOT"
         if (data.address) {
           const lines = data.address.split('\n').map((l: string) => l.trim()).filter(Boolean)
           if (lines.length >= 2) {
-            // Ligne 1 = rue + numéro, Ligne 2 = code postal + ville
             const street = lines[0].charAt(0) + lines[0].slice(1).toLowerCase()
             const zipCity = lines[1].match(/^(\d{4,5})\s+(.+)$/)
             if (zipCity) {
@@ -265,22 +261,22 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           }
         }
 
-        // Chercher si le client existe dans Odoo
+        // Chercher dans Odoo par TVA
         const odooRes = await fetch(`/api/partners?vat=${encodeURIComponent(clientVat)}`)
         const odooData = await odooRes.json()
         if (odooData.found) {
           const p = odooData.partner
-          setClientName(p.name)
-          setClientPhone(p.phone)
-          setClientEmail(p.email)
-          setClientStreet(p.street)
-          setClientZip(p.zip)
-          setClientCity(p.city)
-          setClientCountryCode(p.countryCode)
-          setClientAddress(p.address)
-          setViesResult({ ...data, odooFound: true, odooName: p.name })
+          setClientName(p.name); setClientPhone(p.phone); setClientEmail(p.email)
+          setClientStreet(p.street); setClientZip(p.zip); setClientCity(p.city)
+          setClientCountryCode(p.countryCode); setClientAddress(p.address); setClientVat(p.vat)
+          const result = { ...data, odooFound: true, odooName: p.name, hasPhone: !!p.phone }
+          setViesResult(result)
+          return result
         }
       }
+
+      setViesResult(data)
+      return data
     } finally { setViesLoading(false) }
   }
 
@@ -566,19 +562,14 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   if (page === 6) return (
     <Shell title="Numéro de TVA ?" page={6} totalPages={TOTAL} onBack={() => setPage(5)}>
       <div className="mt-4">
-        <div className="flex gap-2 mb-2">
-          <input
-            value={clientVat}
-            onChange={e => { setClientVat(e.target.value.toUpperCase()); setViesResult(null) }}
-            placeholder="BE0460759205"
-            autoComplete="off"
-            className="flex-1 bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none uppercase"
-          />
-          <button onClick={checkVies} disabled={viesLoading || clientVat.length < 5}
-            className="bg-[#1e1e1e] border border-[#333] hover:border-brand text-brand font-bold rounded-2xl px-4 disabled:opacity-40">
-            {viesLoading ? '…' : 'VIES'}
-          </button>
-        </div>
+        <input
+          value={clientVat}
+          onChange={e => { setClientVat(e.target.value.toUpperCase()); setViesResult(null) }}
+          placeholder="BE0460759205"
+          autoComplete="off"
+          autoFocus
+          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none uppercase mb-2"
+        />
         {viesResult && (
           <div className={`rounded-xl px-4 py-3 text-sm border mb-4 ${viesResult.valid ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
             {viesResult.valid
@@ -590,8 +581,20 @@ export default function EncaissementClient({ motifs, paymentModes }: {
         )}
         <p className="text-zinc-600 text-xs text-center mb-8">Pour un particulier, passe directement</p>
         <div className="flex flex-col gap-3">
-          <BigBtn label="Continuer →" onClick={() => setPage(7)} />
-          <BigBtn label="Client particulier →" secondary onClick={() => { setClientVat(''); setPage(7) }} />
+          <BigBtn
+            label={viesLoading ? 'Vérification…' : 'Continuer →'}
+            disabled={viesLoading}
+            onClick={async () => {
+              if (clientVat.length >= 5) {
+                const result = await checkVies()
+                if (result?.valid && result?.odooFound && result?.hasPhone) {
+                  setPage(9); return
+                }
+              }
+              setPage(7)
+            }}
+          />
+          <BigBtn label="Client particulier →" secondary onClick={() => { setClientVat(''); setViesResult(null); setPage(7) }} />
         </div>
       </div>
     </Shell>
