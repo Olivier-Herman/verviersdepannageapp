@@ -102,10 +102,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Ne pas envoyer le dimanche ni les jours fériés
-  const today = new Date()
-  if (!isWorkingDay(today)) {
+  // Vérifier en heure belge (Europe/Brussels)
+  const todayBelgium = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
+  if (!isWorkingDay(todayBelgium)) {
     return NextResponse.json({ skipped: 'non-working day' })
   }
+  const today = todayBelgium
 
   const supabase = createAdminClient()
 
