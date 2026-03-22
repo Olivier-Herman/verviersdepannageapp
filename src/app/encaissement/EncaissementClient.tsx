@@ -41,6 +41,7 @@ export default function EncaissementClient({
   const [locationLoading, setLocationLoading] = useState(false)
   const [motif, setMotif] = useState('')
   const [motifLabel, setMotifLabel] = useState('')
+  const [motifPrecision, setMotifPrecision] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentMode, setPaymentMode] = useState('')
 
@@ -48,6 +49,10 @@ export default function EncaissementClient({
   const [clientVat, setClientVat] = useState('')
   const [clientName, setClientName] = useState('')
   const [clientAddress, setClientAddress] = useState('')
+  const [clientStreet, setClientStreet] = useState('')
+  const [clientZip, setClientZip] = useState('')
+  const [clientCity, setClientCity] = useState('')
+  const [clientCountryCode, setClientCountryCode] = useState('BE')
   const [clientPhone, setClientPhone] = useState('')
   const [clientEmail, setClientEmail] = useState('')
   const [notes, setNotes] = useState('')
@@ -61,12 +66,13 @@ export default function EncaissementClient({
 
   const PLACES_OPTIONS = { types: ['address'] as string[], componentRestrictions: { country: ['be', 'fr', 'de', 'nl', 'lu'] } }
 
-  const initAC = (inputRef: React.RefObject<HTMLInputElement>, acRef: React.MutableRefObject<any>, setter: (v: string) => void) => {
+  const initAC = (inputRef: React.RefObject<HTMLInputElement>, acRef: React.MutableRefObject<any>, setter: (v: string) => void, componentSetter?: (place: any) => void) => {
     if (!inputRef.current || !window.google?.maps?.places || acRef.current) return
     acRef.current = new window.google.maps.places.Autocomplete(inputRef.current, PLACES_OPTIONS)
     acRef.current.addListener('place_changed', () => {
       const place = acRef.current.getPlace()
       if (place?.formatted_address) setter(place.formatted_address)
+      if (componentSetter && place) componentSetter(place)
     })
   }
 
@@ -89,7 +95,24 @@ export default function EncaissementClient({
   // Initialiser autocomplete adresse client à l'étape 2
   useEffect(() => {
     if (step !== 2) return
-    const timer = setTimeout(() => initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress), 150)
+    const timer = setTimeout(() => {
+      if (window.google?.maps?.places) {
+        initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress, (place) => {
+          const components = place.address_components || []
+          const get = (type: string) => components.find((c: any) => c.types.includes(type))?.long_name || ''
+          const getShort = (type: string) => components.find((c: any) => c.types.includes(type))?.short_name || ''
+          const streetNum = get('street_number')
+          const route = get('route')
+          const zip = get('postal_code')
+          const city = get('locality') || get('postal_town')
+          const country = getShort('country')
+          setClientStreet(`${route}${streetNum ? ' ' + streetNum : ''}`.trim())
+          setClientZip(zip)
+          setClientCity(city)
+          setClientCountryCode(country || 'BE')
+        })
+      }
+    }, 150)
     return () => clearTimeout(timer)
   }, [step])
 
@@ -208,10 +231,16 @@ export default function EncaissementClient({
           brand_text: selectedBrand,
           model_text: selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel,
           motif_id: motif, motif_text: motifLabel,
+          motif_precision: motifPrecision || undefined,
           location_address: location, amount,
           payment_mode: paymentMode,
           client_vat: clientVat, client_name: clientName,
-          client_address: clientAddress, client_phone: clientPhone,
+          client_address: clientAddress,
+          client_street: clientStreet,
+          client_zip: clientZip,
+          client_city: clientCity,
+          client_country_code: clientCountryCode,
+          client_phone: clientPhone,
           client_email: clientEmail, notes,
         })
       })
@@ -224,8 +253,9 @@ export default function EncaissementClient({
     setSaved(false); setStep(1)
     setPlate(''); setSelectedBrand(''); setSelectedBrandId(null)
     setSelectedModel(''); setSelectedModelId(null); setModelOther('')
-    setLocation(''); setMotif(''); setMotifLabel(''); setAmount(''); setPaymentMode('')
+    setLocation(''); setMotif(''); setMotifLabel(''); setMotifPrecision(''); setAmount(''); setPaymentMode('')
     setClientVat(''); setClientName(''); setClientAddress('')
+    setClientStreet(''); setClientZip(''); setClientCity(''); setClientCountryCode('BE')
     setClientPhone(''); setClientEmail(''); setNotes(''); setViesResult(null)
   }
 
@@ -334,11 +364,19 @@ export default function EncaissementClient({
             {/* Motif */}
             <div className="mb-4">
               <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Motif <span className="text-brand">*</span></label>
-              <select value={motif} onChange={e => { setMotif(e.target.value); setMotifLabel(motifs.find(m => m.value === e.target.value)?.label || '') }}
+              <select value={motif} onChange={e => { setMotif(e.target.value); setMotifLabel(motifs.find(m => m.value === e.target.value)?.label || ''); setMotifPrecision('') }}
                 className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand appearance-none">
                 <option value="">Sélectionner un motif…</option>
                 {motifs.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
+              {motif === 'autre' && (
+                <input
+                  value={motifPrecision}
+                  onChange={e => setMotifPrecision(e.target.value)}
+                  placeholder="Préciser le motif (apparaîtra sur la facture)"
+                  className="w-full bg-[#1e1e1e] border border-brand/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand mt-2"
+                />
+              )}
             </div>
 
             {/* Montant */}

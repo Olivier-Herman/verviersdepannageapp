@@ -60,10 +60,17 @@ export async function POST(req: NextRequest) {
         clientEmail: body.client_email,
         clientVat: body.client_vat,
         clientAddress: body.client_address,
+        clientStreet: body.client_street,
+        clientZip: body.client_zip,
+        clientCity: body.client_city,
+        clientCountryCode: body.client_country_code,
         amount: parseFloat(body.amount || '0'),
         motifText: body.motif_text || body.motif_id || 'Intervention',
+        motifPrecision: body.motif_precision,
+        locationAddress: body.location_address,
         paymentMode: body.payment_mode,
         driverName: session.user.name || session.user.email,
+        notes: body.notes,
       })
 
       // Mettre à jour Supabase avec les IDs Odoo

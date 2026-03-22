@@ -99,15 +99,20 @@ export async function findOrCreateVehicle(data: {
 // PARTENAIRE — Mettre à jour les champs manquants
 // ============================================================
 async function updatePartnerIfMissing(id: number, existing: any, data: {
-  name?: string; phone?: string; email?: string; vat?: string; street?: string
+  name?: string; phone?: string; email?: string; vat?: string
+  street?: string; zip?: string; city?: string; countryCode?: string
 }): Promise<void> {
+  const COUNTRY_MAP: Record<string, number> = { BE: 21, FR: 76, DE: 57, NL: 150, LU: 125 }
   const updates: any = {}
   if (!existing.street && data.street) updates.street = data.street
+  if (!existing.zip && data.zip) updates.zip = data.zip
+  if (!existing.city && data.city) updates.city = data.city
   if (!existing.phone && data.phone) updates.phone = data.phone
   if (!existing.email && data.email) updates.email = data.email
+  if (!existing.country_id && data.countryCode) updates.country_id = COUNTRY_MAP[data.countryCode] || 21
   if (Object.keys(updates).length > 0) {
     await rpc('res.partner', 'write', [[id], updates])
-    console.log(`[Odoo] Partner mis à jour (champs manquants):`, updates)
+    console.log(`[Odoo] Partner mis à jour:`, updates)
   }
 }
 
@@ -126,7 +131,12 @@ export async function findOrCreatePartner(data: {
   email?: string
   vat?: string
   street?: string
+  zip?: string
+  city?: string
+  countryCode?: string
 }): Promise<number> {
+  const COUNTRY_MAP: Record<string, number> = { BE: 21, FR: 76, DE: 57, NL: 150, LU: 125 }
+  const countryId = COUNTRY_MAP[data.countryCode || 'BE'] || 21
 
   // 1. Par TVA
   if (data.vat) {
@@ -181,12 +191,14 @@ export async function findOrCreatePartner(data: {
     name: data.name || 'Client inconnu',
     phone: data.phone || false,
     email: data.email || false,
-    street: data.street || false,
+    street: data.street || data.city ? `${data.street || ''}`.trim() || false : false,
+    zip: data.zip || false,
+    city: data.city || false,
+    country_id: countryId,
     ...(data.vat
       ? { vat: data.vat.toUpperCase(), company_type: 'company' }
       : { company_type: 'person' }),
     customer_rank: 1,
-    country_id: 21, // Belgique
   }])
   console.log(`[Odoo] Partner créé: ${data.name} (ID: ${id})`)
   return id
@@ -199,10 +211,13 @@ export async function createSaleOrder(data: {
   partnerId: number
   vehicleId: number
   reference: string
-  amount: number        // Montant TVAC encodé par le chauffeur
+  amount: number
   motifText: string
+  motifPrecision?: string
+  locationAddress?: string
   paymentMode?: string
   driverName?: string
+  notes?: string
 }): Promise<{ id: number; name: string }> {
 
   // Montant HT depuis TVAC 21%
@@ -235,10 +250,13 @@ export async function createSaleOrder(data: {
         tax_ids: [[6, 0, [TAX_21]]], // Set taxes
         sequence: 11,
       }],
-      // Ligne note : motif de l'intervention
+      // Ligne note : motif + précision si "Autre" + adresse intervention
       [0, 0, {
         display_type: 'line_note',
-        name: `Motif de l'intervention : ${data.motifText}`,
+        name: [
+          `Motif de l'intervention : ${data.motifPrecision ? data.motifPrecision : data.motifText}`,
+          data.locationAddress ? `Lieu d'intervention : ${data.locationAddress}` : null,
+        ].filter(Boolean).join('\n'),
         sequence: 12,
       }],
     ]
@@ -247,17 +265,18 @@ export async function createSaleOrder(data: {
   const orders = await rpc<any[]>('sale.order', 'read',
     [[orderId]], { fields: ['id', 'name', 'amount_total', 'amount_tax'] })
 
-  // Ajouter une note interne dans le chatter
-  const noteContent = [
+  // Ajouter une note interne dans le chatter (HTML rendu correctement)
+  const noteLines = [
     data.driverName ? `<b>Chauffeur :</b> ${data.driverName}` : null,
     data.paymentMode ? `<b>Mode de paiement :</b> ${data.paymentMode}` : null,
+    data.notes ? `<b>Remarques :</b> ${data.notes}` : null,
   ].filter(Boolean).join('<br/>')
 
-  if (noteContent) {
+  if (noteLines) {
     await rpc('sale.order', 'message_post', [[orderId]], {
-      body: noteContent,
+      body: `<div>${noteLines}</div>`,
       message_type: 'comment',
-      subtype_xmlid: 'mail.mt_note', // Note interne (pas visible par le client)
+      subtype_xmlid: 'mail.mt_note',
     })
   }
 
@@ -279,10 +298,17 @@ export async function syncInterventionToOdoo(intervention: {
   clientEmail?: string
   clientVat?: string
   clientAddress?: string
+  clientStreet?: string
+  clientZip?: string
+  clientCity?: string
+  clientCountryCode?: string
   amount: number
   motifText: string
+  motifPrecision?: string
+  locationAddress?: string
   paymentMode?: string
   driverName?: string
+  notes?: string
 }): Promise<{ vehicleId: number; partnerId: number; orderId: number; orderName: string }> {
 
   console.log(`[Odoo] Sync intervention ${intervention.reference}`)
@@ -299,7 +325,10 @@ export async function syncInterventionToOdoo(intervention: {
     phone: intervention.clientPhone,
     email: intervention.clientEmail,
     vat: intervention.clientVat,
-    street: intervention.clientAddress,
+    street: intervention.clientStreet,
+    zip: intervention.clientZip,
+    city: intervention.clientCity,
+    countryCode: intervention.clientCountryCode,
   })
 
   const { id: orderId, name: orderName } = await createSaleOrder({
@@ -308,8 +337,11 @@ export async function syncInterventionToOdoo(intervention: {
     reference: `Reçu chauffeur n° ${intervention.reference}`,
     amount: intervention.amount,
     motifText: intervention.motifText,
+    motifPrecision: intervention.motifPrecision,
+    locationAddress: intervention.locationAddress,
     paymentMode: intervention.paymentMode,
     driverName: intervention.driverName,
+    notes: intervention.notes,
   })
 
   return { vehicleId, partnerId, orderId, orderName }
