@@ -23,7 +23,7 @@ export const authOptions: NextAuthOptions = {
       const { data: existing } = await supabase
         .from('users')
         .select('id, role, active, azure_id')
-        .eq('email', user.email)
+        .eq('email', user.email?.toLowerCase())
         .single()
 
       if (existing) {
@@ -62,7 +62,7 @@ export const authOptions: NextAuthOptions = {
         const { data: dbUser } = await supabase
           .from('users')
           .select(`id, role, active, user_modules!user_modules_user_id_fkey (module_id, granted)`)
-          .eq('email', token.email)
+          .eq('email', token.email?.toLowerCase())
           .single()
 
         if (dbUser) {
