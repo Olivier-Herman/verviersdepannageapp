@@ -326,7 +326,9 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           model_text: selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel,
           motif_id: motif, motif_text: motifLabel,
           motif_precision: motifPrecision || null,
-          location_address: location, amount, payment_mode: paymentMode,
+          location_address: location, amount,
+          payment_mode: paymentMode || (sumupStatus === 'PAID' ? 'sumup' : 'unpaid'),
+          payment_reference: sumupData?.sumupReference || undefined,
           client_vat: client.vat, client_name: client.name,
           client_address: client.address, client_street: client.street,
           client_zip: client.zip, client_city: client.city,
@@ -540,7 +542,8 @@ export default function EncaissementClient({ motifs, paymentModes }: {
       if (mode === 'terminal') {
         window.location.href = data.terminalDeepLink
       } else if (mode === 'tap') {
-        window.open(data.tapToPayLink, '_blank')
+        // Tap to Pay nécessite l'app SumUp — deep link vers l'app
+        window.location.href = data.tapToPayDeepLink || data.terminalDeepLink
       }
 
       // Polling statut

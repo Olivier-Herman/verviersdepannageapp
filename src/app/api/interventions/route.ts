@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       model_text: body.model_text,
       motif_id: body.motif_id,
       motif_text: body.motif_text,
+      motif_precision: body.motif_precision || null,
       location_address: body.location_address,
       amount: body.amount ? parseFloat(body.amount) : null,
       payment_mode: body.payment_mode,
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
         motifPrecision: body.motif_precision,
         locationAddress: body.location_address,
         paymentMode: body.payment_mode,
+        paymentReference: body.payment_reference,
         driverName: session.user.name || session.user.email,
         notes: body.notes,
       })

@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
       checkoutUrl,
       qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkoutUrl)}`,
       terminalDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}`,
+      tapToPayDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&tap-to-pay=true`,
+      sumupReference: reference,
     })
 
   } catch (err: any) {
