@@ -24,9 +24,6 @@ export async function POST(req: NextRequest) {
 
     if (mode === 'email') {
       if (!clientEmail) return NextResponse.json({ error: 'Email client requis' }, { status: 400 })
-      // Récupérer le token Azure depuis la session
-      const accessToken = (session as any).accessToken
-      if (!accessToken) return NextResponse.json({ error: 'Token Azure manquant' }, { status: 401 })
       await sendPaymentEmail({
         clientEmail,
         clientName: clientName || 'Client',
@@ -34,7 +31,6 @@ export async function POST(req: NextRequest) {
         amount: parseFloat(amount),
         reference,
         description: description || `Intervention ${reference}`,
-        accessToken,
       })
     }
 

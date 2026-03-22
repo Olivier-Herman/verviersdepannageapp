@@ -78,7 +78,29 @@ export async function getCheckoutStatus(checkoutId: string): Promise<{
 }
 
 // ============================================================
-// Envoyer le lien de paiement par email via Microsoft Graph
+// Obtenir un token applicatif Azure AD (client credentials)
+// ============================================================
+async function getAppToken(): Promise<string> {
+  const res = await fetch(
+    `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.AZURE_AD_CLIENT_ID!,
+        client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
+        grant_type: 'client_credentials',
+        scope: 'https://graph.microsoft.com/.default',
+      })
+    }
+  )
+  const data = await res.json()
+  if (!res.ok) throw new Error(`Token error: ${JSON.stringify(data)}`)
+  return data.access_token
+}
+
+// ============================================================
+// Envoyer le lien de paiement depuis administration@verviersdepannage.com
 // ============================================================
 export async function sendPaymentEmail(data: {
   clientEmail: string
@@ -87,8 +109,8 @@ export async function sendPaymentEmail(data: {
   amount: number
   reference: string
   description: string
-  accessToken: string  // token Azure AD de l'utilisateur connecté
 }): Promise<void> {
+  const FROM_EMAIL = 'administration@verviersdepannage.com'
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -120,24 +142,29 @@ export async function sendPaymentEmail(data: {
     </div>
   `
 
-  const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${data.accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      message: {
-        subject: `Paiement ${data.reference} — ${data.amount.toFixed(2)} €`,
-        body: { contentType: 'HTML', content: html },
-        toRecipients: [{ emailAddress: { address: data.clientEmail, name: data.clientName || 'Client' } }],
+  const token = await getAppToken()
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
-      saveToSentItems: true,
-    })
-  })
+      body: JSON.stringify({
+        message: {
+          subject: `Paiement ${data.reference} — ${data.amount.toFixed(2)} €`,
+          body: { contentType: 'HTML', content: html },
+          toRecipients: [{ emailAddress: { address: data.clientEmail, name: data.clientName || 'Client' } }],
+        },
+        saveToSentItems: true,
+      })
+    }
+  )
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Microsoft Graph email error: ${err}`)
+    throw new Error(`Graph sendMail error: ${err}`)
   }
 }
