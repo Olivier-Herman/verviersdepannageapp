@@ -597,6 +597,37 @@ export default function EncaissementClient({ motifs, paymentModes }: {
     </Shell>
   )
 
+  // Helper — remplir client depuis Odoo
+  const fillFromOdooPartner = (p: any) => {
+    setClientName(p.name)
+    setClientPhone(p.phone)
+    setClientEmail(p.email)
+    setClientStreet(p.street)
+    setClientZip(p.zip)
+    setClientCity(p.city)
+    setClientCountryCode(p.countryCode)
+    setClientAddress(p.address)
+    setClientVat(p.vat)
+  }
+
+  const searchOdooByName = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/partners?name=${encodeURIComponent(clientName.trim())}`)
+      const data = await res.json()
+      if (data.found) { fillFromOdooPartner(data.partner); return true }
+    } catch {}
+    return false
+  }
+
+  const searchOdooByPhone = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/partners?phone=${encodeURIComponent(clientPhone.trim())}`)
+      const data = await res.json()
+      if (data.found) { fillFromOdooPartner(data.partner); return true }
+    } catch {}
+    return false
+  }
+
   // ── Page 7 — Nom ─────────────────────────────────────────
   if (page === 7) return (
     <Shell title="Nom du client" page={7} totalPages={TOTAL} onBack={() => setPage(6)}>
@@ -609,7 +640,12 @@ export default function EncaissementClient({ motifs, paymentModes }: {
           autoFocus
           className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-8"
         />
-        <BigBtn label="Continuer →" onClick={() => setPage(8)} disabled={!clientName.trim()} />
+        <BigBtn label="Continuer →" onClick={async () => {
+          if (!clientName.trim()) return
+          const found = await searchOdooByName()
+          // Si trouvé avec téléphone → aller au récap, sinon coordonnées
+          setPage(found && clientPhone ? 9 : 8)
+        }} disabled={!clientName.trim()} />
       </div>
     </Shell>
   )
@@ -648,7 +684,14 @@ export default function EncaissementClient({ motifs, paymentModes }: {
             className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-4 py-3 text-white text-sm outline-none"
           />
         </div>
-        <BigBtn label="Continuer →" onClick={() => setPage(9)} disabled={!clientPhone.trim()} />
+        <BigBtn label="Continuer →" onClick={async () => {
+          if (!clientPhone.trim()) return
+          // Chercher par téléphone si pas encore trouvé par nom
+          if (!clientStreet && !clientAddress) {
+            await searchOdooByPhone()
+          }
+          setPage(9)
+        }} disabled={!clientPhone.trim()} />
       </div>
     </Shell>
   )
