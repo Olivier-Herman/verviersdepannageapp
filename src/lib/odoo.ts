@@ -96,6 +96,22 @@ export async function findOrCreateVehicle(data: {
 }
 
 // ============================================================
+// PARTENAIRE — Mettre à jour les champs manquants
+// ============================================================
+async function updatePartnerIfMissing(id: number, existing: any, data: {
+  name?: string; phone?: string; email?: string; vat?: string; street?: string
+}): Promise<void> {
+  const updates: any = {}
+  if (!existing.street && data.street) updates.street = data.street
+  if (!existing.phone && data.phone) updates.phone = data.phone
+  if (!existing.email && data.email) updates.email = data.email
+  if (Object.keys(updates).length > 0) {
+    await rpc('res.partner', 'write', [[id], updates])
+    console.log(`[Odoo] Partner mis à jour (champs manquants):`, updates)
+  }
+}
+
+// ============================================================
 // PARTENAIRE — Recherche intelligente
 // ============================================================
 function invertName(name: string): string {
@@ -115,23 +131,35 @@ export async function findOrCreatePartner(data: {
   // 1. Par TVA
   if (data.vat) {
     const r = await rpc<any[]>('res.partner', 'search_read',
-      [[['vat', '=', data.vat.toUpperCase()]]], { fields: ['id', 'name'], limit: 1 })
-    if (r.length > 0) { console.log(`[Odoo] Partner by TVA: ${r[0].name}`); return r[0].id }
+      [[['vat', '=', data.vat.toUpperCase()]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
+    if (r.length > 0) {
+      console.log(`[Odoo] Partner by TVA: ${r[0].name}`)
+      await updatePartnerIfMissing(r[0].id, r[0], data)
+      return r[0].id
+    }
   }
 
   // 2. Par email
   if (data.email) {
     const r = await rpc<any[]>('res.partner', 'search_read',
-      [[['email', '=', data.email.toLowerCase()]]], { fields: ['id', 'name'], limit: 1 })
-    if (r.length > 0) { console.log(`[Odoo] Partner by email: ${r[0].name}`); return r[0].id }
+      [[['email', '=', data.email.toLowerCase()]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
+    if (r.length > 0) {
+      console.log(`[Odoo] Partner by email: ${r[0].name}`)
+      await updatePartnerIfMissing(r[0].id, r[0], data)
+      return r[0].id
+    }
   }
 
   // 3. Par téléphone
   if (data.phone) {
     const clean = data.phone.replace(/\s/g, '')
     const r = await rpc<any[]>('res.partner', 'search_read',
-      [[['phone', 'like', clean]]], { fields: ['id', 'name'], limit: 1 })
-    if (r.length > 0) { console.log(`[Odoo] Partner by phone: ${r[0].name}`); return r[0].id }
+      [[['phone', 'like', clean]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
+    if (r.length > 0) {
+      console.log(`[Odoo] Partner by phone: ${r[0].name}`)
+      await updatePartnerIfMissing(r[0].id, r[0], data)
+      return r[0].id
+    }
   }
 
   // 4. Par nom + nom inversé
@@ -139,8 +167,12 @@ export async function findOrCreatePartner(data: {
     const inverted = invertName(data.name)
     for (const n of [data.name, inverted]) {
       const r = await rpc<any[]>('res.partner', 'search_read',
-        [[['name', 'ilike', n]]], { fields: ['id', 'name'], limit: 1 })
-      if (r.length > 0) { console.log(`[Odoo] Partner by name "${n}": ${r[0].name}`); return r[0].id }
+        [[['name', 'ilike', n]]], { fields: ['id', 'name', 'street', 'phone', 'email'], limit: 1 })
+      if (r.length > 0) {
+        console.log(`[Odoo] Partner by name "${n}": ${r[0].name}`)
+        await updatePartnerIfMissing(r[0].id, r[0], data)
+        return r[0].id
+      }
     }
   }
 
@@ -187,8 +219,7 @@ export async function createSaleOrder(data: {
     sale_order_template_id: SALE_TEMPLATE_ID,
     client_order_ref: data.reference,
     [FIELD_PLAQUE]: data.vehicleId,
-    payment_term_id: 1, // Paiement immédiat
-    internal_note: internalNote,
+    payment_term_id: 1,
     order_line: [
       // Section template (repris du template 27)
       [0, 0, {
@@ -215,6 +246,20 @@ export async function createSaleOrder(data: {
 
   const orders = await rpc<any[]>('sale.order', 'read',
     [[orderId]], { fields: ['id', 'name', 'amount_total', 'amount_tax'] })
+
+  // Ajouter une note interne dans le chatter
+  const noteContent = [
+    data.driverName ? `<b>Chauffeur :</b> ${data.driverName}` : null,
+    data.paymentMode ? `<b>Mode de paiement :</b> ${data.paymentMode}` : null,
+  ].filter(Boolean).join('<br/>')
+
+  if (noteContent) {
+    await rpc('sale.order', 'message_post', [[orderId]], {
+      body: noteContent,
+      message_type: 'comment',
+      subtype_xmlid: 'mail.mt_note', // Note interne (pas visible par le client)
+    })
+  }
 
   console.log(`[Odoo] Devis créé: ${orders[0].name} — HT: ${amountHT}€ | Total: ${orders[0].amount_total}€ | TVA: ${orders[0].amount_tax}€`)
   return { id: orderId, name: orders[0].name }
