@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-export default function PaymentCallback() {
+function PaymentCallbackContent() {
   const params = useSearchParams()
   const router = useRouter()
   const [status, setStatus] = useState<'loading' | 'paid' | 'failed'>('loading')
@@ -19,7 +19,6 @@ export default function PaymentCallback() {
     } else if (result === 'false' || result === '0') {
       setStatus('failed')
     } else if (checkoutId) {
-      // Vérifier le statut via notre API
       fetch(`/api/sumup?checkoutId=${checkoutId}`)
         .then(r => r.json())
         .then(data => {
@@ -66,5 +65,17 @@ export default function PaymentCallback() {
         </>
       )}
     </div>
+  )
+}
+
+export default function PaymentCallback() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0F0F0F] flex items-center justify-center">
+        <p className="text-zinc-500">Chargement…</p>
+      </div>
+    }>
+      <PaymentCallbackContent />
+    </Suspense>
   )
 }
