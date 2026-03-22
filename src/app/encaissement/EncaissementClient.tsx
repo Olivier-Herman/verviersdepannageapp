@@ -20,26 +20,27 @@ declare global {
   interface Window { google: any; initGooglePlaces: () => void }
 }
 
-export default function EncaissementClient({
-  motifs, paymentModes,
-}: {
+// Normaliser immat
+const normalizePlate = (v: string) => v.replace(/[-.\s]/g, '').toUpperCase()
+
+export default function EncaissementClient({ motifs, paymentModes }: {
   motifs: ListItem[]
   paymentModes: ListItem[]
 }) {
-  const [step, setStep] = useState(1)
+  const [page, setPage] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const totalPages = 9
 
-  // Lookup immat
+  // Page 0 — Immat
   const [plate, setPlate] = useState('')
   const [plateChecking, setPlateChecking] = useState(false)
   const [odooVehicle, setOdooVehicle] = useState<OdooVehicle | null>(null)
-  const [vehicleConfirmed, setVehicleConfirmed] = useState<boolean | null>(null)
-  const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+  const [plateChecked, setPlateChecked] = useState(false)
 
-  // Véhicule
+  // Page 1 — Confirmation véhicule / marque / modèle
+  const [vehicleConfirmed, setVehicleConfirmed] = useState<boolean | null>(null)
   const [brands, setBrands] = useState<Brand[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [selectedBrand, setSelectedBrand] = useState('')
@@ -48,17 +49,28 @@ export default function EncaissementClient({
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [modelOther, setModelOther] = useState('')
 
-  // Intervention
-  const [location, setLocation] = useState('')
-  const [locationLoading, setLocationLoading] = useState(false)
+  // Page 2 — Motif
   const [motif, setMotif] = useState('')
   const [motifLabel, setMotifLabel] = useState('')
   const [motifPrecision, setMotifPrecision] = useState('')
+
+  // Page 3 — Lieu
+  const [location, setLocation] = useState('')
+  const [locationLoading, setLocationLoading] = useState(false)
+
+  // Page 4 — Montant & paiement
   const [amount, setAmount] = useState('')
   const [paymentMode, setPaymentMode] = useState('')
 
-  // Client
+  // Page 5 — Sélection client
+  const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
+  const [selectedClient, setSelectedClient] = useState<OdooClient | null>(null)
+  const [isNewClient, setIsNewClient] = useState(false)
+
+  // Page 6+ — Infos nouveau client
   const [clientVat, setClientVat] = useState('')
+  const [viesLoading, setViesLoading] = useState(false)
+  const [viesResult, setViesResult] = useState<any>(null)
   const [clientName, setClientName] = useState('')
   const [clientAddress, setClientAddress] = useState('')
   const [clientStreet, setClientStreet] = useState('')
@@ -68,62 +80,8 @@ export default function EncaissementClient({
   const [clientPhone, setClientPhone] = useState('')
   const [clientEmail, setClientEmail] = useState('')
   const [notes, setNotes] = useState('')
-  const [viesLoading, setViesLoading] = useState(false)
-  const [viesResult, setViesResult] = useState<{ name?: string; address?: string; valid?: boolean } | null>(null)
 
-  // Normaliser l'immat : retirer -, ., espaces
-  const normalizePlate = (v: string) => v.replace(/[-.\s]/g, '').toUpperCase()
-
-  // Lookup immat dans Odoo
-  const checkPlate = async () => {
-    if (plate.length < 3) return
-    setPlateChecking(true)
-    setOdooVehicle(null)
-    setVehicleConfirmed(null)
-    setPreviousClients([])
-    setError('')
-    try {
-      const res = await fetch(`/api/plates?plate=${encodeURIComponent(plate)}`)
-      const data = await res.json()
-      if (data.found) {
-        setOdooVehicle(data.vehicle)
-        setPreviousClients(data.previousClients || [])
-        // Pré-remplir marque/modèle depuis Odoo
-        setSelectedBrand(data.vehicle.brandName)
-        setSelectedModel(data.vehicle.modelName)
-      } else {
-        // Véhicule inconnu → forcer la saisie manuelle
-        setVehicleConfirmed(false)
-      }
-    } catch {
-      setError('Impossible de vérifier l\'immatriculation')
-    } finally {
-      setPlateChecking(false)
-    }
-  }
-
-  // Pré-remplir les champs client depuis un client Odoo
-  const fillClientFromOdoo = (client: OdooClient) => {
-    setSelectedClientId(client.id)
-    setClientName(client.name)
-    setClientPhone(client.phone)
-    setClientEmail(client.email)
-    setClientAddress(client.address)
-    setClientStreet(client.street)
-    setClientZip(client.zip)
-    setClientCity(client.city)
-    setClientCountryCode(client.countryCode)
-    setClientVat(client.vat)
-    setViesResult(null)
-  }
-
-  const clearClient = () => {
-    setSelectedClientId(null)
-    setClientName(''); setClientPhone(''); setClientEmail('')
-    setClientAddress(''); setClientStreet(''); setClientZip('')
-    setClientCity(''); setClientCountryCode('BE'); setClientVat('')
-    setViesResult(null)
-  }
+  const locationInputRef = useRef<HTMLInputElement>(null)
   const clientAddressInputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<any>(null)
   const autocompleteClientRef = useRef<any>(null)
@@ -140,7 +98,6 @@ export default function EncaissementClient({
     })
   }
 
-  // Charger Google Maps une seule fois
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
     if (!apiKey) return
@@ -149,112 +106,59 @@ export default function EncaissementClient({
       const s = document.createElement('script')
       s.id = 'google-maps-script'
       s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initGooglePlaces`
-      s.async = true
-      document.head.appendChild(s)
+      s.async = true; document.head.appendChild(s)
     } else if (window.google?.maps?.places) {
       initAC(locationInputRef, autocompleteRef, setLocation)
     }
   }, [])
 
-  // Initialiser autocomplete adresse client à l'étape 2
   useEffect(() => {
-    if (step !== 2) return
-    const timer = setTimeout(() => {
-      if (window.google?.maps?.places) {
-        initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress, (place) => {
-          const components = place.address_components || []
-          const get = (type: string) => components.find((c: any) => c.types.includes(type))?.long_name || ''
-          const getShort = (type: string) => components.find((c: any) => c.types.includes(type))?.short_name || ''
-          const streetNum = get('street_number')
-          const subpremise = get('subpremise') // numéro de boîte
-          const route = get('route')
-          const zip = get('postal_code')
-          const city = get('locality') || get('postal_town')
-          const country = getShort('country')
-          // Construire la rue : "Route 5/2" si boîte, "Route 5" sinon
-          const streetFull = [
-            route,
-            streetNum ? streetNum + (subpremise ? `/${subpremise}` : '') : ''
-          ].filter(Boolean).join(' ').trim()
-          setClientStreet(streetFull)
-          setClientZip(zip)
-          setClientCity(city)
-          setClientCountryCode(country || 'BE')
-        })
-      }
+    if (page !== 8) return
+    const t = setTimeout(() => {
+      initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress, (place) => {
+        const c = place.address_components || []
+        const get = (t: string) => c.find((x: any) => x.types.includes(t))?.long_name || ''
+        const getS = (t: string) => c.find((x: any) => x.types.includes(t))?.short_name || ''
+        const num = get('street_number'); const box = get('subpremise')
+        const route = get('route'); const zip = get('postal_code')
+        const city = get('locality') || get('postal_town'); const country = getS('country')
+        setClientStreet([route, num + (box ? `/${box}` : '')].filter(Boolean).join(' ').trim())
+        setClientZip(zip); setClientCity(city); setClientCountryCode(country || 'BE')
+      })
     }, 150)
-    return () => clearTimeout(timer)
-  }, [step])
+    return () => clearTimeout(t)
+  }, [page])
 
-
-  // Bouton "Ici" — géolocalisation
-  const getMyLocation = () => {
-    if (!navigator.geolocation) {
-      setError('Géolocalisation non supportée par ce navigateur')
-      return
-    }
-    setLocationLoading(true)
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords
-        try {
-          // Reverse geocoding via OpenStreetMap Nominatim (gratuit, pas de clé)
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
-            { headers: { 'Accept-Language': 'fr' } }
-          )
-          const data = await res.json()
-          if (data.display_name) {
-            setLocation(data.display_name)
-          } else {
-            setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`)
-          }
-        } catch {
-          setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`)
-        } finally {
-          setLocationLoading(false)
-        }
-      },
-      (err) => {
-        setLocationLoading(false)
-        if (err.code === err.PERMISSION_DENIED) {
-          setError('Accès à la localisation refusé. Autorise la géolocalisation dans les paramètres.')
-        } else {
-          setError('Impossible de récupérer ta position.')
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
-  }
-
-  // Charger les marques
   useEffect(() => {
     fetch('/api/vehicles?type=brands').then(r => r.json()).then(setBrands)
   }, [])
 
-  // Charger les modèles
   useEffect(() => {
     if (!selectedBrandId) { setModels([]); return }
     fetch(`/api/vehicles?type=models&brandId=${selectedBrandId}`).then(r => r.json()).then(setModels)
   }, [selectedBrandId])
 
-  const handleBrandChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value
-    const brand = brands.find(b => b.id === parseInt(val))
-    setSelectedBrand(brand?.name || '')
-    setSelectedBrandId(val ? parseInt(val) : null)
-    setSelectedModel(''); setSelectedModelId(null); setModelOther('')
+  const checkPlate = async () => {
+    if (plate.length < 3) { setError('Immatriculation trop courte'); return }
+    setPlateChecking(true); setError('')
+    try {
+      const res = await fetch(`/api/plates?plate=${encodeURIComponent(plate)}`)
+      const data = await res.json()
+      setPlateChecked(true)
+      if (data.found) {
+        setOdooVehicle(data.vehicle)
+        setPreviousClients(data.previousClients || [])
+        setSelectedBrand(data.vehicle.brandName)
+        setSelectedModel(data.vehicle.modelName)
+        setPage(1) // → confirmation véhicule
+      } else {
+        setOdooVehicle(null)
+        setPage(2) // → motif directement (marque/modèle à saisir)
+      }
+    } catch { setError('Erreur de connexion') }
+    finally { setPlateChecking(false) }
   }
 
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value
-    const model = models.find(m => m.id === parseInt(val))
-    setSelectedModel(model?.name || '')
-    setSelectedModelId(val ? parseInt(val) : null)
-    if (model?.name !== 'Autre') setModelOther('')
-  }
-
-  // VIES
   const checkVies = async () => {
     if (!clientVat || clientVat.length < 5) return
     setViesLoading(true); setViesResult(null)
@@ -269,49 +173,51 @@ export default function EncaissementClient({
     } finally { setViesLoading(false) }
   }
 
-  const validateStep1 = () => {
-    if (!plate.trim()) return 'Immatriculation ou VIN requis'
-    if (!selectedBrandId) return 'Marque requise'
-    if (!selectedModelId) return 'Modèle requis'
-    if (!location.trim()) return "Lieu d'intervention requis"
-    if (!motif) return 'Motif requis'
-    if (!amount || isNaN(parseFloat(amount))) return 'Montant invalide'
-    if (!paymentMode) return 'Mode de paiement requis'
-    return ''
-  }
-
-  const goToStep2 = () => {
-    const err = validateStep1()
-    if (err) { setError(err); return }
-    setError(''); setStep(2); window.scrollTo(0, 0)
+  const getMyLocation = () => {
+    if (!navigator.geolocation) return
+    setLocationLoading(true)
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
+          { headers: { 'Accept-Language': 'fr' } }
+        )
+        const data = await res.json()
+        if (data.display_name) setLocation(data.display_name)
+        else setLocation(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
+      } catch { setLocation(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`) }
+      finally { setLocationLoading(false) }
+    }, () => setLocationLoading(false), { enableHighAccuracy: true, timeout: 10000 })
   }
 
   const handleSubmit = async () => {
-    if (!clientPhone.trim()) { setError('Téléphone requis'); return }
-    setError(''); setSaving(true)
+    setSaving(true); setError('')
+    const client = selectedClient || {
+      id: null, name: clientName, phone: clientPhone, email: clientEmail,
+      address: clientAddress, street: clientStreet, zip: clientZip,
+      city: clientCity, countryCode: clientCountryCode, vat: clientVat
+    }
     try {
       const res = await fetch('/api/interventions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_type: 'encaissement',
-          plate: plate.toUpperCase(),
-          brand_id: selectedBrandId,
+          plate,
+          brand_id: selectedBrandId || null,
           model_id: selectedModel === 'Autre' ? null : selectedModelId,
           brand_text: selectedBrand,
           model_text: selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel,
           motif_id: motif, motif_text: motifLabel,
-          motif_precision: motifPrecision || undefined,
-          location_address: location, amount,
-          payment_mode: paymentMode,
-          client_vat: clientVat, client_name: clientName,
-          client_address: clientAddress,
-          client_street: clientStreet,
-          client_zip: clientZip,
-          client_city: clientCity,
-          client_country_code: clientCountryCode,
-          client_phone: clientPhone,
-          client_email: clientEmail, notes,
+          motif_precision: motifPrecision || null,
+          location_address: location,
+          amount, payment_mode: paymentMode,
+          client_vat: client.vat, client_name: client.name,
+          client_address: client.address,
+          client_street: client.street, client_zip: client.zip,
+          client_city: client.city, client_country_code: client.countryCode,
+          client_phone: client.phone, client_email: client.email,
+          notes,
         })
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Erreur'); return }
@@ -320,361 +226,350 @@ export default function EncaissementClient({
   }
 
   const resetForm = () => {
-    setSaved(false); setStep(1)
-    setPlate(''); setOdooVehicle(null); setVehicleConfirmed(null)
-    setPreviousClients([]); setSelectedClientId(null)
-    setSelectedBrand(''); setSelectedBrandId(null)
-    setSelectedModel(''); setSelectedModelId(null); setModelOther('')
-    setLocation(''); setMotif(''); setMotifLabel(''); setMotifPrecision(''); setAmount(''); setPaymentMode('')
-    setClientVat(''); setClientName(''); setClientAddress('')
-    setClientStreet(''); setClientZip(''); setClientCity(''); setClientCountryCode('BE')
+    setPage(0); setSaved(false); setError('')
+    setPlate(''); setPlateChecked(false); setOdooVehicle(null); setVehicleConfirmed(null)
+    setPreviousClients([]); setSelectedClient(null); setIsNewClient(false)
+    setSelectedBrand(''); setSelectedBrandId(null); setSelectedModel(''); setSelectedModelId(null); setModelOther('')
+    setMotif(''); setMotifLabel(''); setMotifPrecision(''); setLocation('')
+    setAmount(''); setPaymentMode('')
+    setClientVat(''); setClientName(''); setClientAddress(''); setClientStreet('')
+    setClientZip(''); setClientCity(''); setClientCountryCode('BE')
     setClientPhone(''); setClientEmail(''); setNotes(''); setViesResult(null)
+    autocompleteRef.current = null; autocompleteClientRef.current = null
   }
 
-  if (saved) {
-    return (
-      <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6 text-center">
-        <div className="text-6xl mb-6">✅</div>
-        <h2 className="text-white text-2xl font-bold mb-2">Enregistré !</h2>
-        <p className="text-zinc-500 text-sm mb-8">L'intervention a été sauvegardée avec succès.</p>
-        <button onClick={resetForm} className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3">
-          + Nouvelle intervention
-        </button>
-        <Link href="/dashboard" className="text-zinc-500 text-sm">← Retour au dashboard</Link>
-      </div>
-    )
-  }
+  // ── Écran succès ─────────────────────────────────────────
+  if (saved) return (
+    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6 text-center">
+      <div className="text-6xl mb-6">✅</div>
+      <h2 className="text-white text-2xl font-bold mb-2">Enregistré !</h2>
+      <p className="text-zinc-500 text-sm mb-8">Intervention sauvegardée et envoyée dans Odoo.</p>
+      <button onClick={resetForm} className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3">+ Nouvelle intervention</button>
+      <Link href="/dashboard" className="text-zinc-500 text-sm">← Dashboard</Link>
+    </div>
+  )
 
-  return (
+  // ── Layout commun ─────────────────────────────────────────
+  const Shell = ({ children, title, onBack }: { children: React.ReactNode; title: string; onBack?: () => void }) => (
     <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      {/* Header */}
       <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top">
-        <div className="flex items-center gap-3 mb-1">
-          <Link href="/dashboard" className="text-zinc-500 hover:text-white text-sm">←</Link>
-          <h1 className="text-white font-bold text-lg">Encaissement Chauffeur</h1>
+        <div className="flex items-center gap-3 mb-3">
+          {onBack
+            ? <button onClick={onBack} className="text-zinc-500 hover:text-white text-sm">←</button>
+            : <Link href="/dashboard" className="text-zinc-500 hover:text-white text-sm">←</Link>
+          }
+          <h1 className="text-white font-bold text-lg">Encaissement</h1>
         </div>
-        <div className="flex gap-2 mt-3">
-          {[1, 2].map(s => (
-            <div key={s} className={`flex-1 h-1 rounded-full transition-colors ${step >= s ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
+        {/* Barre de progression */}
+        <div className="flex gap-1">
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
           ))}
         </div>
-        <p className="text-zinc-500 text-xs mt-2">
-          {step === 1 ? 'Étape 1 — Véhicule & intervention' : 'Étape 2 — Informations client'}
-        </p>
+        <p className="text-zinc-500 text-xs mt-2">{title}</p>
       </div>
-
-      <div className="flex-1 px-4 py-5 overflow-y-auto pb-10">
+      <div className="flex-1 px-5 py-6 overflow-y-auto">
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">
-            {error}
-          </div>
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-5">{error}</div>
         )}
-
-        {step === 1 && (
-          <>
-            {/* Immatriculation + lookup Odoo */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Immat ou VIN <span className="text-brand">*</span></label>
-              <div className="flex gap-2">
-                <input
-                  value={plate}
-                  onChange={e => {
-                    const v = normalizePlate(e.target.value)
-                    setPlate(v)
-                    setOdooVehicle(null)
-                    setVehicleConfirmed(null)
-                    setPreviousClients([])
-                  }}
-                  onBlur={() => plate.length >= 3 && checkPlate()}
-                  placeholder="1ADK440"
-                  className="flex-1 bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand uppercase"
-                />
-                <button
-                  onClick={checkPlate}
-                  disabled={plateChecking || plate.length < 3}
-                  className="bg-[#1e1e1e] border border-[#333] hover:border-brand text-brand font-bold text-sm rounded-xl px-4 transition-colors disabled:opacity-40"
-                >
-                  {plateChecking ? '…' : '🔍'}
-                </button>
-              </div>
-
-              {/* Véhicule trouvé dans Odoo → confirmation */}
-              {odooVehicle && vehicleConfirmed === null && (
-                <div className="mt-3 bg-[#1e1e1e] border border-brand/40 rounded-xl p-4">
-                  <p className="text-zinc-400 text-xs mb-2">Véhicule trouvé dans Odoo :</p>
-                  <p className="text-white font-semibold text-sm mb-3">🚗 {odooVehicle.displayName}</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setVehicleConfirmed(true)}
-                      className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-bold"
-                    >
-                      ✓ Oui, c'est ce véhicule
-                    </button>
-                    <button
-                      onClick={() => {
-                        setVehicleConfirmed(false)
-                        setSelectedBrand('')
-                        setSelectedBrandId(null)
-                        setSelectedModel('')
-                        setSelectedModelId(null)
-                      }}
-                      className="flex-1 bg-[#2a2a2a] text-zinc-300 rounded-xl py-2.5 text-sm font-medium"
-                    >
-                      ✗ Non, autre véhicule
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Véhicule confirmé */}
-              {vehicleConfirmed === true && odooVehicle && (
-                <div className="mt-2 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                  <span className="text-green-400 text-sm">✓ {odooVehicle.displayName}</span>
-                  <button onClick={() => setVehicleConfirmed(null)} className="ml-auto text-zinc-600 text-xs">Changer</button>
-                </div>
-              )}
-
-              {/* Véhicule non confirmé → saisie manuelle */}
-              {vehicleConfirmed === false && (
-                <p className="text-zinc-500 text-xs mt-2 pl-1">Sélectionne la marque et le modèle ci-dessous</p>
-              )}
-            </div>
-
-            {/* Marque — visible si véhicule non confirmé ou inconnu */}
-            {(vehicleConfirmed === false || (!odooVehicle && plate.length >= 3)) && (
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Marque <span className="text-brand">*</span></label>
-              <select value={selectedBrandId || ''} onChange={handleBrandChange}
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand appearance-none">
-                <option value="">Sélectionner une marque…</option>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
-
-            {/* Modèle */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Modèle <span className="text-brand">*</span></label>
-              <select value={selectedModelId || ''} onChange={handleModelChange} disabled={!selectedBrandId}
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand appearance-none disabled:opacity-40">
-                <option value="">{selectedBrandId ? 'Sélectionner un modèle…' : 'Choisir une marque d\'abord'}</option>
-                {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-              {selectedModel === 'Autre' && (
-                <input value={modelOther} onChange={e => setModelOther(e.target.value)}
-                  placeholder="Préciser le modèle (optionnel)"
-                  className="w-full bg-[#1e1e1e] border border-brand/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand mt-2" />
-              )}
-            </div>
-            )}
-
-            {/* Lieu avec bouton Ici */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Lieu d'intervention <span className="text-brand">*</span></label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    ref={locationInputRef}
-                    value={location}
-                    onChange={e => setLocation(e.target.value)}
-                    placeholder="Adresse ou description du lieu"
-                    className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 pr-9 text-white text-sm outline-none focus:border-brand"
-                  />
-                  <span className="absolute right-3 top-3 text-zinc-500 text-base">📍</span>
-                </div>
-                <button
-                  onClick={getMyLocation}
-                  disabled={locationLoading}
-                  className="bg-[#1e1e1e] border border-[#333] hover:border-brand text-white rounded-xl px-3 py-3 text-sm font-semibold transition-colors disabled:opacity-40 whitespace-nowrap flex items-center gap-1.5"
-                >
-                  {locationLoading ? (
-                    <span className="animate-spin text-base">⏳</span>
-                  ) : (
-                    <><span className="text-base">🎯</span> Ici</>
-                  )}
-                </button>
-              </div>
-              <p className="text-zinc-600 text-xs mt-1 pl-1">Tape une adresse ou appuie sur "Ici" pour ta position GPS</p>
-            </div>
-
-            {/* Motif */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Motif <span className="text-brand">*</span></label>
-              <select value={motif} onChange={e => { setMotif(e.target.value); setMotifLabel(motifs.find(m => m.value === e.target.value)?.label || ''); setMotifPrecision('') }}
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand appearance-none">
-                <option value="">Sélectionner un motif…</option>
-                {motifs.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
-              {motif === 'autre' && (
-                <input
-                  value={motifPrecision}
-                  onChange={e => setMotifPrecision(e.target.value)}
-                  placeholder="Préciser le motif (apparaîtra sur la facture)"
-                  className="w-full bg-[#1e1e1e] border border-brand/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand mt-2"
-                />
-              )}
-            </div>
-
-            {/* Montant */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Montant payé (€) <span className="text-brand">*</span></label>
-              <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                placeholder="0.00" min="0" step="0.01"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
-            </div>
-
-            {/* Mode paiement */}
-            <div className="mb-6">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Mode de paiement <span className="text-brand">*</span></label>
-              <div className="flex flex-wrap gap-2">
-                {paymentModes.map(p => (
-                  <button key={p.value} onClick={() => setPaymentMode(p.value)}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                      paymentMode === p.value ? 'bg-brand border-brand text-white' : 'bg-[#1e1e1e] border-[#333] text-zinc-400 hover:border-zinc-500'
-                    }`}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button onClick={goToStep2} className="w-full bg-brand text-white font-bold rounded-xl py-3.5">
-              Suivant →
-            </button>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            {/* Clients précédents depuis Odoo */}
-            {previousClients.length > 0 && !selectedClientId && (
-              <div className="mb-5">
-                <p className="text-zinc-400 text-xs font-medium mb-2">Clients précédents pour ce véhicule :</p>
-                <div className="flex flex-col gap-2">
-                  {previousClients.map(client => (
-                    <button
-                      key={client.id}
-                      onClick={() => fillClientFromOdoo(client)}
-                      className="bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-xl p-3 text-left transition-all active:opacity-80"
-                    >
-                      <p className="text-white font-semibold text-sm">{client.name}</p>
-                      {client.phone && <p className="text-zinc-500 text-xs mt-0.5">{client.phone}</p>}
-                      {client.address && <p className="text-zinc-600 text-xs">{client.address}</p>}
-                    </button>
-                  ))}
-                  <button
-                    onClick={clearClient}
-                    className="bg-[#1e1e1e] border border-dashed border-[#333] rounded-xl p-3 text-zinc-500 text-sm text-center hover:border-zinc-500"
-                  >
-                    + Nouveau client
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Client sélectionné depuis Odoo */}
-            {selectedClientId && (
-              <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                <span className="text-green-400 text-sm">✓ {clientName}</span>
-                <button onClick={clearClient} className="ml-auto text-zinc-500 text-xs hover:text-white">Changer</button>
-              </div>
-            )}
-
-            {/* TVA */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Numéro TVA</label>
-              <div className="flex gap-2">
-                <input value={clientVat} onChange={e => { setClientVat(e.target.value.toUpperCase()); setViesResult(null) }}
-                  placeholder="BE0460759205"
-                  className="flex-1 bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand uppercase" />
-                <button onClick={checkVies} disabled={viesLoading || clientVat.length < 5}
-                  className="bg-[#1e1e1e] border border-[#333] hover:border-brand text-brand font-bold text-sm rounded-xl px-4 transition-colors disabled:opacity-40">
-                  {viesLoading ? '…' : 'VIES'}
-                </button>
-              </div>
-              {viesResult && (
-                <div className={`mt-2 rounded-xl px-4 py-3 text-sm border ${viesResult.valid ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                  {viesResult.valid ? `✓ ${viesResult.name || 'TVA valide'}` : '✗ Numéro de TVA invalide ou introuvable'}
-                </div>
-              )}
-            </div>
-
-            {/* Nom */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Nom et prénom / Société</label>
-              <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Nom du client ou société"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
-            </div>
-
-            {/* Adresse */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Adresse client</label>
-              <input
-                ref={clientAddressInputRef}
-                value={clientAddress} onChange={e => setClientAddress(e.target.value)}
-                placeholder="Rue, numéro, code postal, ville"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
-            </div>
-
-            {/* Téléphone */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Téléphone <span className="text-brand">*</span></label>
-              <input value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="+32 4xx xxx xxx" type="tel"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
-            </div>
-
-            {/* Email */}
-            <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Email</label>
-              <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="client@email.com" type="email"
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
-            </div>
-
-            {/* Remarques */}
-            <div className="mb-5">
-              <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Remarques</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes internes, observations…" rows={3}
-                className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand resize-none" />
-            </div>
-
-            {/* Récap */}
-            <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-4 mb-5">
-              <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-3">Récapitulatif</p>
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between gap-2">
-                  <span className="text-zinc-500 flex-shrink-0">Véhicule</span>
-                  <span className="text-white font-medium text-right">{plate} — {selectedBrand} {selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Motif</span>
-                  <span className="text-white">{motifLabel}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Lieu</span>
-                  <span className="text-white text-right text-xs">{location.slice(0, 40)}{location.length > 40 ? '…' : ''}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Montant</span>
-                  <span className="text-brand font-bold">{parseFloat(amount || '0').toFixed(2)} €</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Paiement</span>
-                  <span className="text-white">{paymentModes.find(p => p.value === paymentMode)?.label}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button onClick={() => { setStep(1); setError('') }}
-                className="flex-1 bg-[#1e1e1e] border border-[#333] text-zinc-400 font-bold rounded-xl py-3.5">
-                ← Retour
-              </button>
-              <button onClick={handleSubmit} disabled={saving}
-                className="flex-1 bg-brand text-white font-bold rounded-xl py-3.5 disabled:opacity-50">
-                {saving ? 'Enregistrement…' : '✓ Enregistrer'}
-              </button>
-            </div>
-          </>
-        )}
+        {children}
       </div>
     </div>
   )
+
+  const BigBtn = ({ label, onClick, disabled, secondary }: { label: string; onClick: () => void; disabled?: boolean; secondary?: boolean }) => (
+    <button onClick={onClick} disabled={disabled}
+      className={`w-full rounded-2xl py-4 text-base font-bold transition-all active:scale-95 disabled:opacity-40 ${secondary ? 'bg-[#1e1e1e] border border-[#333] text-zinc-300' : 'bg-brand text-white'}`}>
+      {label}
+    </button>
+  )
+
+  // ── Page 0 — Immatriculation ──────────────────────────────
+  if (page === 0) return (
+    <Shell title="Quelle est l'immatriculation ?">
+      <div className="mt-4">
+        <input
+          value={plate}
+          onChange={e => setPlate(normalizePlate(e.target.value))}
+          onKeyDown={e => e.key === 'Enter' && checkPlate()}
+          placeholder="1ADK440"
+          autoFocus
+          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-2xl font-bold text-center outline-none tracking-widest uppercase mb-2"
+        />
+        <p className="text-zinc-600 text-xs text-center mb-8">Sans tirets ni espaces</p>
+        <BigBtn label={plateChecking ? 'Recherche…' : 'Rechercher →'} onClick={checkPlate} disabled={plateChecking || plate.length < 3} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 1 — Confirmation véhicule ───────────────────────
+  if (page === 1 && odooVehicle) return (
+    <Shell title="Ce véhicule est-il correct ?" onBack={() => setPage(0)}>
+      <div className="mt-4">
+        <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-2xl p-6 text-center mb-8">
+          <p className="text-zinc-400 text-sm mb-2">Véhicule trouvé dans Odoo</p>
+          <p className="text-white text-2xl font-bold">{odooVehicle.brandName}</p>
+          <p className="text-zinc-400 text-lg">{odooVehicle.modelName}</p>
+          <p className="text-zinc-600 text-sm mt-2">{plate}</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <BigBtn label="✓ Oui, c'est ce véhicule" onClick={() => { setVehicleConfirmed(true); setPage(2) }} />
+          <BigBtn label="✗ Non, autre véhicule" secondary onClick={() => {
+            setVehicleConfirmed(false)
+            setSelectedBrand(''); setSelectedBrandId(null)
+            setSelectedModel(''); setSelectedModelId(null)
+            setPage(10) // page saisie marque
+          }} />
+        </div>
+      </div>
+    </Shell>
+  )
+
+  // ── Page 10 — Saisie marque (véhicule non confirmé) ──────
+  if (page === 10) return (
+    <Shell title="Quelle est la marque ?" onBack={() => setPage(odooVehicle ? 1 : 0)}>
+      <div className="mt-2 flex flex-col gap-2 max-h-[70vh] overflow-y-auto">
+        {brands.map(b => (
+          <button key={b.id} onClick={() => { setSelectedBrand(b.name); setSelectedBrandId(b.id); setPage(11) }}
+            className={`w-full text-left px-5 py-4 rounded-2xl border text-white font-medium transition-all active:scale-95 ${selectedBrandId === b.id ? 'bg-brand/20 border-brand' : 'bg-[#1e1e1e] border-[#2a2a2a] hover:border-zinc-500'}`}>
+            {b.name}
+          </button>
+        ))}
+      </div>
+    </Shell>
+  )
+
+  // ── Page 11 — Saisie modèle ───────────────────────────────
+  if (page === 11) return (
+    <Shell title={`Quel modèle de ${selectedBrand} ?`} onBack={() => setPage(10)}>
+      <div className="mt-2 flex flex-col gap-2 max-h-[70vh] overflow-y-auto">
+        {models.map(m => (
+          <button key={m.id} onClick={() => {
+            setSelectedModel(m.name); setSelectedModelId(m.id)
+            if (m.name === 'Autre') setPage(12)
+            else setPage(2)
+          }}
+            className={`w-full text-left px-5 py-4 rounded-2xl border text-white font-medium transition-all active:scale-95 ${selectedModelId === m.id ? 'bg-brand/20 border-brand' : 'bg-[#1e1e1e] border-[#2a2a2a] hover:border-zinc-500'}`}>
+            {m.name}
+          </button>
+        ))}
+      </div>
+    </Shell>
+  )
+
+  // ── Page 12 — Modèle "Autre" précision ───────────────────
+  if (page === 12) return (
+    <Shell title="Préciser le modèle" onBack={() => setPage(11)}>
+      <div className="mt-4">
+        <input value={modelOther} onChange={e => setModelOther(e.target.value)}
+          placeholder="Ex: 308 SW, Clio V…"
+          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-2" />
+        <p className="text-zinc-600 text-xs text-center mb-8">Optionnel — laisse vide si inconnu</p>
+        <BigBtn label="Continuer →" onClick={() => setPage(2)} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 2 — Motif ────────────────────────────────────────
+  if (page === 2) return (
+    <Shell title="Quel est le motif ?" onBack={() => {
+      if (!odooVehicle || vehicleConfirmed === false) setPage(11)
+      else setPage(1)
+    }}>
+      <div className="mt-2 flex flex-col gap-3">
+        {motifs.map(m => (
+          <button key={m.value} onClick={() => {
+            setMotif(m.value); setMotifLabel(m.label)
+            if (m.value === 'autre') setPage(13)
+            else setPage(3)
+          }}
+            className={`w-full text-left px-5 py-4 rounded-2xl border text-white font-medium transition-all active:scale-95 ${motif === m.value ? 'bg-brand/20 border-brand' : 'bg-[#1e1e1e] border-[#2a2a2a] hover:border-zinc-500'}`}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+    </Shell>
+  )
+
+  // ── Page 13 — Motif "Autre" précision ────────────────────
+  if (page === 13) return (
+    <Shell title="Préciser le motif" onBack={() => setPage(2)}>
+      <div className="mt-4">
+        <input value={motifPrecision} onChange={e => setMotifPrecision(e.target.value)}
+          placeholder="Décris l'intervention…"
+          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-lg text-center outline-none mb-2" />
+        <p className="text-zinc-600 text-xs text-center mb-8">Apparaîtra sur le devis Odoo</p>
+        <BigBtn label="Continuer →" onClick={() => setPage(3)} disabled={!motifPrecision.trim()} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 3 — Lieu d'intervention ─────────────────────────
+  if (page === 3) return (
+    <Shell title="Lieu d'intervention" onBack={() => setPage(motif === 'autre' ? 13 : 2)}>
+      <div className="mt-4">
+        <div className="relative mb-2">
+          <input ref={locationInputRef} value={location} onChange={e => setLocation(e.target.value)}
+            placeholder="Adresse du lieu…"
+            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-base outline-none pr-12" />
+          <button onClick={getMyLocation} disabled={locationLoading}
+            className="absolute right-3 top-3 bg-[#2a2a2a] rounded-xl px-3 py-2 text-sm disabled:opacity-40">
+            {locationLoading ? '⏳' : '🎯'}
+          </button>
+        </div>
+        <p className="text-zinc-600 text-xs mb-8">Tape une adresse ou utilise ta position GPS</p>
+        <BigBtn label="Continuer →" onClick={() => setPage(4)} disabled={!location.trim()} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 4 — Montant & paiement ──────────────────────────
+  if (page === 4) return (
+    <Shell title="Montant & mode de paiement" onBack={() => setPage(3)}>
+      <div className="mt-4">
+        <div className="relative mb-6">
+          <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="0.00" min="0" step="0.01"
+            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-3xl font-bold text-center outline-none" />
+          <span className="absolute right-5 top-4 text-zinc-400 text-xl">€</span>
+        </div>
+        <p className="text-zinc-400 text-xs font-medium mb-3">Mode de paiement</p>
+        <div className="flex flex-col gap-2 mb-8">
+          {paymentModes.map(p => (
+            <button key={p.value} onClick={() => setPaymentMode(p.value)}
+              className={`w-full px-5 py-4 rounded-2xl border text-white font-medium transition-all active:scale-95 ${paymentMode === p.value ? 'bg-brand border-brand' : 'bg-[#1e1e1e] border-[#2a2a2a] hover:border-zinc-500'}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <BigBtn label="Continuer →" onClick={() => setPage(5)} disabled={!amount || !paymentMode} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 5 — Sélection client ─────────────────────────────
+  if (page === 5) return (
+    <Shell title="Qui est le client ?" onBack={() => setPage(4)}>
+      <div className="mt-2 flex flex-col gap-3">
+        {previousClients.map(client => (
+          <button key={client.id} onClick={() => { setSelectedClient(client); setIsNewClient(false); setPage(9) }}
+            className="w-full text-left bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
+            <p className="text-white font-semibold">{client.name}</p>
+            {client.phone && <p className="text-zinc-500 text-sm mt-0.5">{client.phone}</p>}
+            {client.address && <p className="text-zinc-600 text-xs mt-0.5">{client.address}</p>}
+          </button>
+        ))}
+        <button onClick={() => { setSelectedClient(null); setIsNewClient(true); setPage(6) }}
+          className="w-full bg-[#1e1e1e] border border-dashed border-[#444] rounded-2xl p-4 text-zinc-400 font-medium text-center hover:border-zinc-300 transition-all active:scale-95">
+          + Nouveau client
+        </button>
+      </div>
+    </Shell>
+  )
+
+  // ── Page 6 — TVA (nouveau client) ────────────────────────
+  if (page === 6) return (
+    <Shell title="Numéro de TVA ?" onBack={() => setPage(5)}>
+      <div className="mt-4">
+        <div className="flex gap-2 mb-2">
+          <input value={clientVat} onChange={e => { setClientVat(e.target.value.toUpperCase()); setViesResult(null) }}
+            placeholder="BE0460759205"
+            className="flex-1 bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none uppercase" />
+          <button onClick={checkVies} disabled={viesLoading || clientVat.length < 5}
+            className="bg-[#1e1e1e] border border-[#333] hover:border-brand text-brand font-bold rounded-2xl px-4 disabled:opacity-40">
+            {viesLoading ? '…' : 'VIES'}
+          </button>
+        </div>
+        {viesResult && (
+          <div className={`rounded-xl px-4 py-3 text-sm border mb-4 ${viesResult.valid ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+            {viesResult.valid ? `✓ ${viesResult.name || 'TVA valide'}` : '✗ TVA invalide ou introuvable'}
+          </div>
+        )}
+        <p className="text-zinc-600 text-xs text-center mb-8">Pour un client particulier, passe directement</p>
+        <div className="flex flex-col gap-3">
+          <BigBtn label="Continuer →" onClick={() => setPage(7)} />
+          <BigBtn label="Client particulier →" secondary onClick={() => { setClientVat(''); setPage(7) }} />
+        </div>
+      </div>
+    </Shell>
+  )
+
+  // ── Page 7 — Nom client ───────────────────────────────────
+  if (page === 7) return (
+    <Shell title="Nom du client" onBack={() => setPage(6)}>
+      <div className="mt-4">
+        <input value={clientName} onChange={e => setClientName(e.target.value)}
+          placeholder="Nom et prénom ou société"
+          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-8" />
+        <BigBtn label="Continuer →" onClick={() => setPage(8)} disabled={!clientName.trim()} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 8 — Adresse client ───────────────────────────────
+  if (page === 8) return (
+    <Shell title="Adresse du client" onBack={() => setPage(7)}>
+      <div className="mt-4">
+        <input ref={clientAddressInputRef} value={clientAddress} onChange={e => setClientAddress(e.target.value)}
+          placeholder="Rue, numéro, code postal, ville"
+          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-base outline-none mb-2" />
+        <p className="text-zinc-600 text-xs mb-4">Autocomplétion Google Maps</p>
+        <div className="mb-8">
+          <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Téléphone <span className="text-brand">*</span></label>
+          <input value={clientPhone} onChange={e => setClientPhone(e.target.value)} type="tel"
+            placeholder="+32 4xx xxx xxx"
+            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-3 text-white text-base outline-none mb-3" />
+          <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Email</label>
+          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} type="email"
+            placeholder="client@email.com"
+            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-3 text-white text-base outline-none" />
+        </div>
+        <BigBtn label="Continuer →" onClick={() => setPage(9)} disabled={!clientPhone.trim()} />
+      </div>
+    </Shell>
+  )
+
+  // ── Page 9 — Récapitulatif ────────────────────────────────
+  if (page === 9) {
+    const client = selectedClient || { name: clientName, phone: clientPhone, email: clientEmail, address: clientAddress, vat: clientVat }
+    const vehicleDisplay = vehicleConfirmed && odooVehicle
+      ? `${odooVehicle.brandName} ${odooVehicle.modelName}`
+      : `${selectedBrand} ${selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel}`
+
+    return (
+      <Shell title="Récapitulatif" onBack={() => isNewClient ? setPage(8) : setPage(5)}>
+        <div className="mt-2 space-y-3">
+          {[
+            { label: 'Immat', value: plate },
+            { label: 'Véhicule', value: vehicleDisplay },
+            { label: 'Motif', value: motifPrecision || motifLabel },
+            { label: 'Lieu', value: location },
+            { label: 'Montant', value: `${parseFloat(amount || '0').toFixed(2)} € TVAC` },
+            { label: 'Paiement', value: paymentModes.find(p => p.value === paymentMode)?.label },
+            { label: 'Client', value: client.name },
+            { label: 'Téléphone', value: client.phone },
+            { label: 'Adresse', value: client.address },
+          ].filter(r => r.value).map(row => (
+            <div key={row.label} className="flex justify-between items-start gap-3 py-2 border-b border-[#1e1e1e]">
+              <span className="text-zinc-500 text-sm flex-shrink-0">{row.label}</span>
+              <span className="text-white text-sm text-right">{row.value}</span>
+            </div>
+          ))}
+
+          <div className="mt-4">
+            <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Remarques (optionnel)</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Notes internes…" rows={2}
+              className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand resize-none" />
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <BigBtn label={saving ? 'Enregistrement…' : '✓ Enregistrer'} onClick={handleSubmit} disabled={saving} />
+        </div>
+      </Shell>
+    )
+  }
+
+  return null
 }
