@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const NAV = [
   { href: '/admin/users',    label: 'Utilisateurs', icon: '👥' },
   { href: '/admin/settings', label: 'Listes',       icon: '⚙️' },
+  { href: '/admin/cash',     label: 'Caisses',      icon: '💰' },
 ]
 
 export default function AdminNav() {

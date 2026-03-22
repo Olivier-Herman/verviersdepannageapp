@@ -144,6 +144,16 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Créer l'entrée de réception pour le responsable
+    await supabase.from('cash_register').insert({
+      driver_id: verifier.id,
+      amount: parseFloat(amount),
+      type: 'reception',
+      verified_by: verifier.id,
+      verified_at: now.toISOString(),
+      notes: transferNote,
+    })
+
     return NextResponse.json({
       success: true,
       remise,
