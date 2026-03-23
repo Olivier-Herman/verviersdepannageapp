@@ -44,39 +44,6 @@ function normalizePlate(p: string): string {
   return p.replace(/[-.\s]/g, '').toUpperCase().trim()
 }
 
-
-/**
- * Convertit n'importe quelle image (HEIC, WEBP, etc.) en JPEG via canvas.
- * Nécessaire sur iOS qui peut envoyer des HEIC même avec accept="image/*".
- */
-async function convertToJpeg(file: File): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image()
-    const url = URL.createObjectURL(file)
-
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width  = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { resolve(file); return }
-      ctx.drawImage(img, 0, 0)
-      URL.revokeObjectURL(url)
-      canvas.toBlob(blob => {
-        if (!blob) { resolve(file); return }
-        resolve(new File([blob], 'facture.jpg', { type: 'image/jpeg' }))
-      }, 'image/jpeg', 0.92)
-    }
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      resolve(file) // fallback : envoyer tel quel
-    }
-
-    img.src = url
-  })
-}
-
 export default function AvanceFondsClient({ user }: { user: any }) {
   const router      = useRouter()
   const fileRef     = useRef<HTMLInputElement>(null)
