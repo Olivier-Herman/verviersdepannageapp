@@ -174,14 +174,6 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         </div>
 
         <div className="mb-3">
-          <label className="text-zinc-500 text-xs font-medium block mb-1">Email personnel</label>
-          <p className="text-zinc-700 text-xs mb-1.5">Pour connexion Google (doit correspondre au compte Google)</p>
-          <input type="email" value={userPersonalEmail} onChange={e => setUserPersonalEmail(e.target.value)}
-            placeholder="prenom@gmail.com"
-            className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-3 py-2.5 text-white text-sm outline-none" />
-        </div>
-
-        <div className="mb-3">
           {resetSuccess && <p className="text-green-400 text-xs mb-2">{resetSuccess}</p>}
           <button onClick={resetPassword} disabled={resetLoading}
             className="w-full bg-[#2a2a2a] border border-[#333] text-zinc-400 text-xs rounded-xl py-2.5 hover:border-zinc-500 transition-all disabled:opacity-50">
@@ -330,7 +322,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-[#2a2a2a]">
-                {['Utilisateur', 'Email', 'Rôle', 'Statut', 'Modules', 'Email perso', ''].map(h => (
+                {['Utilisateur', 'Email', 'Rôle', 'Statut', 'Modules', 'Méthode', ''].map(h => (
                   <th key={h} className="text-left text-zinc-500 text-xs font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
                 ))}
               </tr>
@@ -359,7 +351,9 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
                       </span>
                     </td>
                     <td className="py-3 pr-4 text-zinc-500 text-sm">{moduleCount}</td>
-                    <td className="py-3 pr-4 text-zinc-500 text-sm">{user.personal_email || '—'}</td>
+                    <td className="py-3 pr-4 text-zinc-500 text-sm">
+                      {user.auth_provider === 'google' ? '🔵 Google' : user.auth_provider === 'microsoft' ? '🏢 Microsoft' : '✉️ Email/mdp'}
+                    </td>
                     <td className="py-3">
                       <span className="text-brand text-xs font-medium">Modifier →</span>
                     </td>
