@@ -380,3 +380,25 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     </div>
   )
 }
+                <p className="text-zinc-500 text-xs truncate">{user.email}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${ROLE_COLORS[user.role] || 'bg-zinc-700 text-zinc-300'}`}>
+                  {user.role}
+                </span>
+                <span className="text-zinc-600 text-xs">{moduleCount} modules</span>
+              </div>
+            </button>
+          )
+        })}
+
+        {filtered.length === 0 && (
+          <div className="text-center py-10 text-zinc-600">
+            <p className="text-3xl mb-2">👥</p>
+            <p>Aucun utilisateur trouvé</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
