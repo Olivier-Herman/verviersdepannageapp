@@ -435,3 +435,32 @@ export async function createAdvanceOrder(
 
   return { orderId, orderName, vehicleSet }
 }
+
+/**
+ * Attache un fichier dans le chatter d'un devis Odoo.
+ * Utilise ir.attachment + message_post avec l'attachment_ids.
+ */
+export async function attachFileToOrder(
+  orderId:     number,
+  base64Data:  string,
+  filename:    string,
+  mimeType:    string
+): Promise<void> {
+  // 1. Créer l'attachment
+  const attachmentId = await rpc<number>('ir.attachment', 'create', [{
+    name:      filename,
+    type:      'binary',
+    datas:     base64Data,
+    res_model: 'sale.order',
+    res_id:    orderId,
+    mimetype:  mimeType,
+  }])
+
+  // 2. Poster dans le chatter avec la pièce jointe
+  await rpc('sale.order', 'message_post', [[orderId]], {
+    body:           'Facture avance de fonds',
+    message_type:   'comment',
+    subtype_id:     2, // Note interne
+    attachment_ids: [[4, attachmentId]],
+  })
+}

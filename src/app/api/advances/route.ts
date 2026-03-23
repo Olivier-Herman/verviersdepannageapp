@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
-import { findOrCreateVehicle, createAdvanceOrder } from '@/lib/odoo'
+import { findOrCreateVehicle, createAdvanceOrder, attachFileToOrder } from '@/lib/odoo'
 import { sendAdvancePurchaseEmail }  from '@/lib/emails'
 
 export async function POST(req: NextRequest) {
@@ -50,6 +50,23 @@ export async function POST(req: NextRequest) {
       odooVehicleSet = result.vehicleSet
     } catch (odooErr) {
       console.error('[Odoo] createAdvanceOrder:', odooErr)
+    }
+
+    // ── Attacher la facture dans le chatter du devis ──────
+    if (odooOrderId) {
+      try {
+        // Télécharger le fichier depuis Supabase Storage
+        const fileRes = await fetch(invoiceUrl)
+        if (fileRes.ok) {
+          const fileBuffer  = await fileRes.arrayBuffer()
+          const base64Data  = Buffer.from(fileBuffer).toString('base64')
+          const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
+          const filename    = `facture-avance-${normalizedPlate}-${Date.now()}.jpg`
+          await attachFileToOrder(odooOrderId, base64Data, filename, contentType)
+        }
+      } catch (attachErr) {
+        console.error('[Odoo] attachFileToOrder:', attachErr)
+      }
     }
 
     // ── Email vers boîte achat ────────────────────────────
