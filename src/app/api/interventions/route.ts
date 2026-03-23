@@ -190,6 +190,7 @@ export async function GET(req: NextRequest) {
     amount:       parseFloat(a.amount_htva) || 0,
     payment_mode: a.payment_method,
     odoo_quote_id: a.odoo_quote_id,
+    invoice_url:  a.invoice_url,
     driver:       a.user,
     notes:        a.notes || `Avance de fonds — ${a.plate}`,
     status:       a.status,

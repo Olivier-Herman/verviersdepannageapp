@@ -35,6 +35,7 @@ interface Entry {
   odoo_quote_id?:  number
   driver:         { name: string; email: string }
   notes?:         string
+  invoice_url?:   string
 }
 
 export default function EncaissementsClient({
@@ -269,6 +270,17 @@ export default function EncaissementsClient({
               </div>
               <button onClick={() => setSelected(null)} className="text-zinc-500 text-2xl">×</button>
             </div>
+
+            {/* Photo facture pour les avances */}
+            {selected.type === 'advance' && selected.invoice_url && (
+              <div className="mb-4 rounded-xl overflow-hidden border border-[#2a2a2a]">
+                <img
+                  src={selected.invoice_url}
+                  alt="Facture"
+                  className="w-full max-h-64 object-contain bg-[#0F0F0F]"
+                />
+              </div>
+            )}
 
             {[
               ['Type',      selected.type === 'advance' ? '📄 Avance de fonds' : '💳 Encaissement'],
