@@ -1,29 +1,19 @@
 // src/app/avance-fonds/AvanceFondsClient.tsx
 'use client'
 
-import { useState, useRef } from 'react'
-import { useRouter }        from 'next/navigation'
-import Link                 from 'next/link'
-import Image                from 'next/image'
-import AppShell             from '@/components/layout/AppShell'
+import { useState, useRef }  from 'react'
+import { useRouter }          from 'next/navigation'
+import Link                   from 'next/link'
+import Image                  from 'next/image'
+import AppShell               from '@/components/layout/AppShell'
 
+// ── Types ──────────────────────────────────────────────────
 interface Brand { id: number; name: string }
 interface Model { id: number; name: string }
 
-const PAYMENT_METHODS = [
-  { value: 'cash',       label: '💵 Cash'      },
-  { value: 'bancontact', label: '💳 Bancontact' },
-  { value: 'card',       label: '💳 Carte'      },
-  { value: 'virement',   label: '🏦 Virement'   },
-]
-
 type Step = 'photo' | 'plate' | 'vehicle_confirm' | 'vehicle_create' | 'details' | 'confirm' | 'success'
 
-interface VehicleMatch {
-  id:    number
-  plate: string
-  model: string | null
-}
+interface VehicleMatch { id: number; plate: string; model: string | null }
 
 interface FormState {
   plate:         string
@@ -43,55 +33,67 @@ const EMPTY_FORM: FormState = {
   photoFile: null, photoPreview: null, vehicleMatch: null,
 }
 
-// Normalise la plaque : supprime - . espaces, majuscules
+const PAYMENT_METHODS = [
+  { value: 'cash',       label: '💵 Cash'      },
+  { value: 'bancontact', label: '💳 Bancontact' },
+  { value: 'card',       label: '💳 Carte'      },
+  { value: 'virement',   label: '🏦 Virement'   },
+]
+
 function normalizePlate(p: string): string {
   return p.replace(/[-.\s]/g, '').toUpperCase().trim()
 }
 
-export default function AvanceFondsClient({ user }: { user: any }) {
-  const userRole = user?.role ?? 'driver'
-  const router      = useRouter()
-  const fileRef     = useRef<HTMLInputElement>(null)
-  const cameraRef   = useRef<HTMLInputElement>(null)
+// ── Composants utilitaires ──────────────────────────────────
+function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between items-start gap-3">
+      <span className="text-zinc-500 text-sm flex-shrink-0">{label}</span>
+      <span className={`text-white text-sm text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  )
+}
 
-  const [step,      setStep]      = useState<Step>('photo')
-  const [loading,   setLoading]   = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
-  const [form,      setForm]      = useState<FormState>(EMPTY_FORM)
-  const [brands,    setBrands]    = useState<Brand[]>([])
-  const [models,    setModels]    = useState<Model[]>([])
+function ErrorBox({ message }: { message: string }) {
+  return (
+    <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl p-3 text-sm">
+      {message}
+    </div>
+  )
+}
+
+// ── Bouton retour mobile ────────────────────────────────────
+function BackBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="lg:hidden px-4 pt-3 pb-1">
+      <button onClick={onClick} className="text-zinc-400 hover:text-white text-sm transition-colors">
+        ← Retour
+      </button>
+    </div>
+  )
+}
+
+// ── Composant principal ─────────────────────────────────────
+export default function AvanceFondsClient({ user }: { user: any }) {
+  const router    = useRouter()
+  const fileRef   = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+
+  const userRole = user?.role ?? 'driver'
+  const userName = user?.name ?? ''
+
+  const [step,          setStep]          = useState<Step>('photo')
+  const [loading,       setLoading]       = useState(false)
+  const [searching,     setSearching]     = useState(false)
+  const [error,         setError]         = useState<string | null>(null)
+  const [form,          setForm]          = useState<FormState>(EMPTY_FORM)
+  const [brands,        setBrands]        = useState<Brand[]>([])
+  const [models,        setModels]        = useState<Model[]>([])
   const [loadingBrands, setLoadingBrands] = useState(false)
 
+  // ── Helpers ───────────────────────────────────────────────
+  const goBack = (s: Step) => { setError(null); setStep(s) }
 
-
-  // ── Charger les marques ───────────────────────────────────
-  const loadBrands = async () => {
-    if (brands.length > 0) return
-    setLoadingBrands(true)
-    try {
-      const res  = await fetch('/api/vehicles?type=brands')
-      const data = await res.json()
-      setBrands(data || [])
-    } catch (e) {
-      console.error('loadBrands:', e)
-    } finally {
-      setLoadingBrands(false)
-    }
-  }
-
-  const loadModels = async (brandId: number) => {
-    setModels([])
-    try {
-      const res  = await fetch(`/api/vehicles?type=models&brandId=${brandId}`)
-      const data = await res.json()
-      setModels(data || [])
-    } catch (e) {
-      console.error('loadModels:', e)
-    }
-  }
-
-  // ── Photo ──────────────────────────────────────────────────
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -99,20 +101,31 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     setStep('plate')
   }
 
-  // ── Recherche véhicule ─────────────────────────────────────
+  const loadBrands = async () => {
+    if (brands.length > 0) return
+    setLoadingBrands(true)
+    try {
+      const res  = await fetch('/api/vehicles?type=brands')
+      setBrands(await res.json() || [])
+    } finally {
+      setLoadingBrands(false)
+    }
+  }
+
+  const loadModels = async (brandId: number) => {
+    setModels([])
+    const res = await fetch(`/api/vehicles?type=models&brandId=${brandId}`)
+    setModels(await res.json() || [])
+  }
+
   const handlePlateLookup = async () => {
     const normalized = normalizePlate(form.plate)
     if (!normalized) { setError('Veuillez saisir une immatriculation'); return }
-
-    setSearching(true)
-    setError(null)
-
+    setSearching(true); setError(null)
     try {
       const res  = await fetch(`/api/advances/lookup?plate=${encodeURIComponent(normalized)}`)
       const data = await res.json()
-
       if (!res.ok) throw new Error(data.error ?? 'Erreur recherche')
-
       if (data.found) {
         setForm(f => ({ ...f, vehicleMatch: data }))
         setStep('vehicle_confirm')
@@ -126,59 +139,42 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     }
   }
 
-  // ── Upload photo ───────────────────────────────────────────
-  // 1. Convertit via canvas → vrai JPEG (gère HEIC iOS)
-  // 2. Envoie en base64 JSON (évite le rejet FormData iOS)
   const uploadPhoto = async (file: File): Promise<string> => {
-    // Convertir en vrai JPEG via canvas (résout HEIC + ratio correct)
     const jpegBase64 = await new Promise<string>((resolve, reject) => {
       const img = new window.Image()
       const url = URL.createObjectURL(file)
-
       img.onload = () => {
         URL.revokeObjectURL(url)
         const canvas = document.createElement('canvas')
-        // Conserver les dimensions originales exactes
         canvas.width  = img.naturalWidth
         canvas.height = img.naturalHeight
         const ctx = canvas.getContext('2d')!
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        // Extraire base64 sans le préfixe data:image/jpeg;base64,
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
-        resolve(dataUrl.split(',')[1])
+        resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1])
       }
-
       img.onerror = () => {
         URL.revokeObjectURL(url)
-        // Fallback : lire via FileReader sans conversion
         const reader = new FileReader()
         reader.onload  = () => resolve((reader.result as string).split(',')[1])
         reader.onerror = reject
         reader.readAsDataURL(file)
       }
-
       img.src = url
     })
 
-    const res = await fetch('/api/advances/upload', {
-      method:  'POST',
+    const res  = await fetch('/api/advances/upload', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        base64:   jpegBase64,
-        mimeType: 'image/jpeg',
-        filename: 'photo.jpg',
-      }),
+      body: JSON.stringify({ base64: jpegBase64, mimeType: 'image/jpeg', filename: 'photo.jpg' }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Upload échoué')
     return data.url as string
   }
 
-  // ── Soumission ─────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!form.photoFile) return
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
       const invoiceUrl = await uploadPhoto(form.photoFile)
       const res = await fetch('/api/advances', {
@@ -211,13 +207,10 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     return null
   }
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : PHOTO
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : PHOTO ───────────────────────────────────────────
   if (step === 'photo') return (
-    <AppShell title="Avance de fonds" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
+    <AppShell title="Avance de fonds" userRole={userRole} userName={userName}>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 gap-8 max-w-md mx-auto">
         <div className="text-center">
           <div className="text-6xl mb-3">📄</div>
           <p className="text-white font-semibold text-lg">Photographiez la facture</p>
@@ -230,7 +223,6 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           </button>
           <input ref={cameraRef} type="file" accept="image/*" capture="environment"
             className="hidden" onChange={handlePhoto} />
-
           <button onClick={() => fileRef.current?.click()}
             className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-2xl font-medium flex items-center justify-center gap-3">
             <span className="text-xl">🗂️</span> Galerie / PDF
@@ -239,139 +231,93 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             className="hidden" onChange={handlePhoto} />
         </div>
       </div>
-    </div>
+    </AppShell>
   )
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : SAISIE PLAQUE
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : PLAQUE ───────────────────────────────────────────
   if (step === 'plate') return (
-    <AppShell title="Immatriculation" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('photo') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-      <div className="flex-1 px-4 py-6 flex flex-col gap-5">
-
+    <AppShell title="Immatriculation" userRole={userRole} userName={userName}>
+      <BackBtn onClick={() => goBack('photo')} />
+      <div className="px-4 py-6 flex flex-col gap-5 max-w-md mx-auto">
         {form.photoPreview && (
           <div className="rounded-2xl overflow-hidden border border-[#2a2a2a]">
             <img src={form.photoPreview} alt="Facture" className="w-full max-h-40 object-cover" />
           </div>
         )}
-
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-2">
-            Immatriculation du véhicule *
-          </label>
-          <input
-            type="text"
-            inputMode="text"
-            autoCapitalize="characters"
-            placeholder="1ABC234 ou 1-ABC-234"
-            value={form.plate}
+          <label className="block text-sm font-medium text-zinc-400 mb-2">Immatriculation *</label>
+          <input type="text" inputMode="text" autoCapitalize="characters"
+            placeholder="1ABC234 ou 1-ABC-234" value={form.plate}
             onChange={e => setForm(f => ({ ...f, plate: e.target.value.toUpperCase() }))}
             className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-4
                        text-white text-2xl font-mono tracking-widest placeholder-zinc-700
-                       focus:outline-none focus:border-brand"
-          />
-          <p className="text-zinc-600 text-xs mt-1.5">
-            Les tirets et points sont ignorés automatiquement
-          </p>
+                       focus:outline-none focus:border-brand" />
+          <p className="text-zinc-600 text-xs mt-1.5">Les tirets et points sont ignorés automatiquement</p>
         </div>
-
         {error && <ErrorBox message={error} />}
-
-        <button
-          onClick={handlePlateLookup}
-          disabled={searching || !form.plate.trim()}
+        <button onClick={handlePlateLookup} disabled={searching || !form.plate.trim()}
           className="w-full py-4 bg-brand hover:bg-brand/90 disabled:bg-zinc-800 disabled:text-zinc-600
-                     text-white rounded-2xl font-bold text-lg transition-colors mt-auto"
-        >
+                     text-white rounded-2xl font-bold text-lg transition-colors">
           {searching
             ? <span className="flex items-center justify-center gap-2"><span className="animate-spin">⏳</span> Recherche…</span>
-            : 'Rechercher →'
-          }
+            : 'Rechercher →'}
         </button>
       </div>
-    </div>
+    </AppShell>
   )
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : VÉHICULE TROUVÉ — CONFIRMATION
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : VÉHICULE CONFIRMÉ ────────────────────────────────
   if (step === 'vehicle_confirm') return (
-    <AppShell title="Véhicule trouvé" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('plate') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-      <div className="flex-1 px-4 py-6 flex flex-col gap-4">
-
+    <AppShell title="Véhicule trouvé" userRole={userRole} userName={userName}>
+      <BackBtn onClick={() => goBack('plate')} />
+      <div className="px-4 py-6 flex flex-col gap-4 max-w-md mx-auto">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-          <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">
-            Véhicule identifié
-          </p>
+          <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">Véhicule identifié</p>
           <div className="flex items-center gap-4">
             <div className="text-4xl">🚗</div>
             <div>
-              <p className="text-white text-xl font-mono font-bold">
-                {form.vehicleMatch?.plate}
-              </p>
+              <p className="text-white text-xl font-mono font-bold">{form.vehicleMatch?.plate}</p>
               {form.vehicleMatch?.model && (
                 <p className="text-zinc-400 text-sm mt-0.5">{form.vehicleMatch.model}</p>
               )}
             </div>
           </div>
         </div>
-
-        <p className="text-zinc-300 text-sm text-center mt-2">
-          S'agit-il bien de ce véhicule ?
-        </p>
-
+        <p className="text-zinc-300 text-sm text-center mt-2">S'agit-il bien de ce véhicule ?</p>
         <div className="flex flex-col gap-3 mt-2">
-          <button
-            onClick={() => setStep('details')}
-            className="w-full py-4 bg-green-700 hover:bg-green-600 text-white rounded-2xl font-bold text-lg"
-          >
+          <button onClick={() => setStep('details')}
+            className="w-full py-4 bg-green-700 hover:bg-green-600 text-white rounded-2xl font-bold text-lg">
             ✅ Oui, c'est ce véhicule
           </button>
-          <button
-            onClick={() => {
-              setForm(f => ({ ...f, vehicleMatch: null }))
-              setStep('vehicle_create')
-            }}
-            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-2xl font-medium"
-          >
+          <button onClick={() => { setForm(f => ({ ...f, vehicleMatch: null })); setStep('vehicle_create') }}
+            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-2xl font-medium">
             Non, saisir manuellement
           </button>
         </div>
       </div>
-    </div>
+    </AppShell>
   )
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : VÉHICULE INCONNU — CHOISIR MARQUE
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : NOUVEAU VÉHICULE — MARQUE ───────────────────────
   if (step === 'vehicle_create' && !form.brandName) {
     if (brands.length === 0 && !loadingBrands) loadBrands()
     return (
-      <AppShell title="Quelle est la marque ?" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('plate') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-        <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
+      <AppShell title="Quelle est la marque ?" userRole={userRole} userName={userName}>
+        <BackBtn onClick={() => goBack('plate')} />
+        <div className="px-4 py-6 flex flex-col gap-3 max-w-md mx-auto overflow-y-auto pb-10">
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2">
             <p className="text-zinc-400 text-xs mb-1">Immatriculation</p>
             <p className="text-white font-mono text-xl font-bold">{normalizePlate(form.plate)}</p>
           </div>
-
           {loadingBrands ? (
             <p className="text-zinc-500 text-sm text-center py-8">Chargement…</p>
           ) : (
             <div className="flex flex-col gap-2">
               {brands.map(b => (
                 <button key={b.id}
-                  onClick={() => {
-                    setForm(f => ({ ...f, brandName: b.name, modelName: '' }))
-                    loadModels(b.id)
-                  }}
-                  className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A] text-white font-medium hover:border-brand transition-all active:scale-95"
-                >
+                  onClick={() => { setForm(f => ({ ...f, brandName: b.name, modelName: '' })); loadModels(b.id) }}
+                  className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A]
+                             text-white font-medium hover:border-brand transition-all active:scale-95">
                   {b.name}
                 </button>
               ))}
@@ -379,83 +325,60 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           )}
           {error && <ErrorBox message={error} />}
         </div>
-      </div>
+      </AppShell>
     )
   }
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : VÉHICULE INCONNU — CHOISIR MODÈLE
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : NOUVEAU VÉHICULE — MODÈLE ───────────────────────
   if (step === 'vehicle_create' && form.brandName) return (
-    <AppShell title="Quel est le modèle ?" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-      <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
+    <AppShell title="Quel est le modèle ?" userRole={userRole} userName={userName}>
+      <div className="px-4 py-6 flex flex-col gap-3 max-w-md mx-auto pb-10">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
           <div>
             <p className="text-zinc-400 text-xs mb-0.5">Marque sélectionnée</p>
             <p className="text-white font-bold">{form.brandName}</p>
           </div>
           <button onClick={() => setForm(f => ({ ...f, brandName: '', modelName: '' }))}
-            className="text-zinc-500 hover:text-white text-sm">
-            Changer
-          </button>
+            className="text-zinc-500 hover:text-white text-sm">Changer</button>
         </div>
-
         <div className="flex flex-col gap-2">
           {models.map(m => (
             <button key={m.id}
-              onClick={() => {
-                setForm(f => ({ ...f, modelName: m.name }))
-                setError(null)
-                setStep('details')
-              }}
-              className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A] text-white font-medium hover:border-brand transition-all active:scale-95"
-            >
+              onClick={() => { setForm(f => ({ ...f, modelName: m.name })); setError(null); setStep('details') }}
+              className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A]
+                         text-white font-medium hover:border-brand transition-all active:scale-95">
               {m.name}
             </button>
           ))}
-          {/* Modèle "Autre" avec saisie libre */}
           <div className="mt-2">
-            <input
-              type="text"
-              placeholder="Autre modèle…"
+            <input type="text" placeholder="Autre modèle…"
               value={form.modelName.startsWith('_custom:') ? form.modelName.replace('_custom:', '') : ''}
               onChange={e => setForm(f => ({ ...f, modelName: `_custom:${e.target.value}` }))}
               className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl px-5 py-4
-                         text-white placeholder-zinc-600 focus:outline-none focus:border-brand text-xl font-bold text-center"
-            />
+                         text-white placeholder-zinc-600 focus:outline-none focus:border-brand text-xl font-bold text-center" />
           </div>
         </div>
-
         {error && <ErrorBox message={error} />}
-
         <button
           onClick={() => {
             const modelVal = form.modelName.startsWith('_custom:')
               ? form.modelName.replace('_custom:', '').trim()
               : form.modelName.trim()
             if (!modelVal) { setError('Veuillez choisir ou saisir un modèle'); return }
-            setForm(f => ({ ...f, modelName: modelVal }))
-            setError(null)
-            setStep('details')
+            setForm(f => ({ ...f, modelName: modelVal })); setError(null); setStep('details')
           }}
-          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg mt-2"
-        >
+          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg mt-2">
           Continuer →
         </button>
       </div>
-    </div>
+    </AppShell>
   )
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : DETAILS
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : DÉTAILS ─────────────────────────────────────────
   if (step === 'details') return (
-    <AppShell title="Détails de la facture" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep(form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-      <div className="flex-1 px-4 py-6 flex flex-col gap-5 overflow-y-auto pb-10">
-
+    <AppShell title="Détails de la facture" userRole={userRole} userName={userName}>
+      <BackBtn onClick={() => goBack(form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create')} />
+      <div className="px-4 py-6 flex flex-col gap-5 max-w-md mx-auto pb-10">
         {/* Recap véhicule */}
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 flex items-center gap-3">
           <span className="text-xl">🚗</span>
@@ -473,14 +396,12 @@ export default function AvanceFondsClient({ user }: { user: any }) {
         <div>
           <label className="block text-sm font-medium text-zinc-400 mb-1.5">Montant HTVA *</label>
           <div className="relative">
-            <input
-              type="number" inputMode="decimal" step="0.01" min="0"
+            <input type="number" inputMode="decimal" step="0.01" min="0"
               placeholder="0.00" value={form.amountHtva}
               onChange={e => setForm(f => ({ ...f, amountHtva: e.target.value }))}
               className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
                          text-white text-2xl font-semibold pr-14 placeholder-zinc-700
-                         focus:outline-none focus:border-brand"
-            />
+                         focus:outline-none focus:border-brand" />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 text-lg font-medium">€</span>
           </div>
         </div>
@@ -496,8 +417,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
                   form.paymentMethod === pm.value
                     ? 'bg-brand text-white ring-2 ring-brand/50'
                     : 'bg-[#1A1A1A] text-zinc-300 border border-[#2a2a2a] hover:border-zinc-500'
-                }`}
-              >
+                }`}>
                 {pm.label}
               </button>
             ))}
@@ -509,12 +429,10 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           <label className="block text-sm font-medium text-zinc-400 mb-1.5">
             Notes <span className="text-zinc-600">(optionnel)</span>
           </label>
-          <textarea rows={2} placeholder="Nom du garage, remarques…"
-            value={form.notes}
+          <textarea rows={2} placeholder="Nom du garage, remarques…" value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
             className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                       text-white placeholder-zinc-700 focus:outline-none focus:border-brand resize-none"
-          />
+                       text-white placeholder-zinc-700 focus:outline-none focus:border-brand resize-none" />
         </div>
 
         {error && <ErrorBox message={error} />}
@@ -523,26 +441,20 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           onClick={() => {
             const err = validateDetails()
             if (err) { setError(err); return }
-            setError(null)
-            setStep('confirm')
+            setError(null); setStep('confirm')
           }}
-          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg"
-        >
+          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg">
           Vérifier →
         </button>
       </div>
-    </div>
+    </AppShell>
   )
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : CONFIRM
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : CONFIRMATION ────────────────────────────────────
   if (step === 'confirm') return (
-    <AppShell title="Confirmation" userRole={userRole} userName={user?.name ?? ''}>
-      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('details') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
-      <div className="max-w-md mx-auto lg:max-w-xl">
-      <div className="flex-1 px-4 py-6 flex flex-col gap-4 overflow-y-auto pb-10">
-
+    <AppShell title="Confirmation" userRole={userRole} userName={userName}>
+      <BackBtn onClick={() => goBack('details')} />
+      <div className="px-4 py-6 flex flex-col gap-4 max-w-md mx-auto pb-10">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
           {form.photoPreview && (
             <img src={form.photoPreview} alt="Facture"
@@ -551,10 +463,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           <div className="p-4 space-y-3">
             <Row label="Immatriculation" value={normalizePlate(form.plate)} mono />
             {(form.vehicleMatch?.model || form.modelName) && (
-              <Row label="Véhicule"
-                value={form.vehicleMatch?.model ?? `${form.brandName} ${form.modelName}`} />
+              <Row label="Véhicule" value={form.vehicleMatch?.model ?? `${form.brandName} ${form.modelName}`} />
             )}
-            <Row label="Montant HTVA" value={`${parseFloat(form.amountHtva).toFixed(2)} €`} />
+            <Row label="Montant HTVA"    value={`${parseFloat(form.amountHtva).toFixed(2)} €`} />
             <Row label="Mode de paiement"
               value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
             {form.notes && <Row label="Notes" value={form.notes} />}
@@ -565,6 +476,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           <p className="font-semibold text-blue-200 text-sm mb-2">Actions automatiques</p>
           <p className="text-blue-300 text-sm">✉️ Facture transmise au service comptable</p>
           <p className="text-blue-300 text-sm">📋 Ajout au dossier client du véhicule</p>
+          <p className="text-blue-300 text-sm">🚗 Véhicule renseigné sur le devis</p>
           <p className="text-blue-300 text-sm">💾 Enregistré dans l'application</p>
         </div>
 
@@ -575,61 +487,39 @@ export default function AvanceFondsClient({ user }: { user: any }) {
                      disabled:text-zinc-600 text-white rounded-2xl font-bold text-lg transition-colors">
           {loading
             ? <span className="flex items-center justify-center gap-2"><span className="animate-spin">⏳</span> Envoi…</span>
-            : '✅ Confirmer et envoyer'
-          }
+            : '✅ Confirmer et envoyer'}
         </button>
       </div>
-    </div>
+    </AppShell>
   )
 
-  // ────────────────────────────────────────────────────────────
-  // STEP : SUCCESS
-  // ────────────────────────────────────────────────────────────
+  // ── STEP : SUCCÈS ──────────────────────────────────────────
   return (
-    <AppShell title="Avance enregistrée" userRole={userRole} userName={user?.name ?? ''}>
-    <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center gap-7 max-w-md mx-auto">
-      <div className="text-8xl">✅</div>
-      <div>
-        <h2 className="text-2xl font-bold text-white">Avance enregistrée</h2>
-        <p className="text-zinc-500 mt-2 text-sm max-w-xs mx-auto">
-          La facture a été transmise au service comptable et le dossier véhicule mis à jour.
-        </p>
+    <AppShell title="Avance enregistrée" userRole={userRole} userName={userName}>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center gap-7 max-w-md mx-auto">
+        <div className="text-8xl">✅</div>
+        <div>
+          <h2 className="text-2xl font-bold text-white">Avance enregistrée</h2>
+          <p className="text-zinc-500 mt-2 text-sm max-w-xs mx-auto">
+            La facture a été transmise au service comptable et le dossier véhicule mis à jour.
+          </p>
+        </div>
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 w-full max-w-xs text-left space-y-3">
+          <Row label="Plaque"   value={normalizePlate(form.plate)} mono />
+          <Row label="Montant"  value={`${parseFloat(form.amountHtva).toFixed(2)} € HTVA`} />
+          <Row label="Paiement" value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
+        </div>
+        <div className="flex flex-col w-full max-w-xs gap-3">
+          <button onClick={() => router.push('/dashboard')}
+            className="w-full py-3 bg-brand hover:bg-brand/90 text-white rounded-xl font-semibold">
+            Tableau de bord
+          </button>
+          <button onClick={() => { setForm(EMPTY_FORM); setError(null); setStep('photo') }}
+            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-xl font-medium">
+            Nouvelle avance
+          </button>
+        </div>
       </div>
-
-      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 w-full max-w-xs text-left space-y-3">
-        <Row label="Plaque"   value={normalizePlate(form.plate)} mono />
-        <Row label="Montant"  value={`${parseFloat(form.amountHtva).toFixed(2)} € HTVA`} />
-        <Row label="Paiement" value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
-      </div>
-
-      <div className="flex flex-col w-full max-w-xs gap-3">
-        <button onClick={() => router.push('/dashboard')}
-          className="w-full py-3 bg-brand hover:bg-brand/90 text-white rounded-xl font-semibold">
-          Tableau de bord
-        </button>
-        <button onClick={() => { setForm(EMPTY_FORM); setError(null); setStep('photo') }}
-          className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-xl font-medium">
-          Nouvelle avance
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Utilitaires ───────────────────────────────────────────────
-function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex justify-between items-start gap-3">
-      <span className="text-zinc-500 text-sm flex-shrink-0">{label}</span>
-      <span className={`text-white text-sm text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
-    </div>
-  )
-}
-
-function ErrorBox({ message }: { message: string }) {
-  return (
-    <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl p-3 text-sm">
-      {message}
-    </div>
+    </AppShell>
   )
 }
