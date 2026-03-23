@@ -15,6 +15,16 @@ export async function POST(req: NextRequest) {
 
   if (!user) return NextResponse.json({ success: true })
 
+  // Compte Google → pas de reset possible
+  if (user.auth_provider === 'google') {
+    return NextResponse.json({ error: 'GOOGLE_PROVIDER' }, { status: 400 })
+  }
+
+  // Compte Microsoft → pas de reset possible
+  if (user.auth_provider === 'microsoft') {
+    return NextResponse.json({ error: 'MICROSOFT_PROVIDER' }, { status: 400 })
+  }
+
   const token = crypto.randomBytes(32).toString('hex')
   const expires = new Date(Date.now() + 3600 * 1000)
 

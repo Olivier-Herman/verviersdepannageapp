@@ -19,8 +19,19 @@ export default function ForgotPasswordPage() {
       body: JSON.stringify({ email })
     })
     setLoading(false)
-    if (res.ok) { setSent(true) }
-    else { const d = await res.json(); setError(d.error || 'Erreur') }
+
+    if (!res.ok) {
+      const d = await res.json()
+      if (d.error === 'GOOGLE_PROVIDER') {
+        setError('Ce compte utilise Google pour se connecter. Utilisez le bouton Google sur la page de connexion — aucun mot de passe n\'est associé à ce compte.')
+      } else if (d.error === 'MICROSOFT_PROVIDER') {
+        setError('Ce compte utilise Microsoft professionnel pour se connecter. Utilisez le bouton Microsoft sur la page de connexion.')
+      } else {
+        setError(d.error || 'Erreur')
+      }
+      return
+    }
+    setSent(true)
   }
 
   return (
