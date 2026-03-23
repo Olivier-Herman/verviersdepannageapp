@@ -239,8 +239,11 @@ export async function createSaleOrder(data: {
   notes?: string
 }): Promise<{ id: number; name: string }> {
 
-  // Montant HT depuis TVAC 21%
-  const amountHT = Math.round((data.amount / 1.21) * 100) / 100
+  // Montant TVAC exact — on calcule la TVA et le HT manuellement
+  // pour éviter les erreurs d'arrondi d'Odoo (ex: 100€ TVAC → 99.99 dans Odoo)
+  const tvac = data.amount
+  const tva = Math.round(tvac * 21 / 121 * 10000) / 10000
+  const finalHT = parseFloat((tvac - tva).toFixed(4))
 
   // Note interne : chauffeur + mode paiement
   const internalNote = [
@@ -265,7 +268,7 @@ export async function createSaleOrder(data: {
       [0, 0, {
         product_id: PRODUCT_FORFAIT,
         product_uom_qty: 1,
-        price_unit: amountHT,
+        price_unit: finalHT,
         tax_ids: [[6, 0, [TAX_21]]], // Set taxes
         sequence: 11,
       }],
@@ -300,7 +303,7 @@ export async function createSaleOrder(data: {
     })
   }
 
-  console.log(`[Odoo] Devis créé: ${orders[0].name} — HT: ${amountHT}€ | Total: ${orders[0].amount_total}€ | TVA: ${orders[0].amount_tax}€`)
+  console.log(`[Odoo] Devis créé: ${orders[0].name} — HT: ${finalHT}€ | Total: ${orders[0].amount_total}€ | TVA: ${orders[0].amount_tax}€`)
   return { id: orderId, name: orders[0].name }
 }
 
