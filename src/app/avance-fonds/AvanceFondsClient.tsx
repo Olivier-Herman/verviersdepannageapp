@@ -113,15 +113,25 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   }
 
   // ── Upload photo ───────────────────────────────────────────
+  // On lit via FileReader (base64) pour contourner le rejet HEIC
+  // d'iOS Safari dans FormData/fetch, puis on envoie en JSON
   const uploadPhoto = async (file: File): Promise<string> => {
-    const fd = new FormData()
-    // iOS Safari rejette fetch() avec image/heic dans FormData
-    // On force le type MIME sans conversion du contenu
-    const safeFile = file.type === 'application/pdf'
-      ? file
-      : new File([await file.arrayBuffer()], 'photo.jpg', { type: 'image/jpeg' })
-    fd.append('file', safeFile)
-    const res  = await fetch('/api/advances/upload', { method: 'POST', body: fd })
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload  = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    const res = await fetch('/api/advances/upload', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        base64,
+        mimeType: 'image/jpeg',
+        filename: 'photo.jpg',
+      }),
+    })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Upload échoué')
     return data.url as string
