@@ -36,16 +36,15 @@ export async function PATCH(req: NextRequest) {
   const session = await checkAdmin()
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { userId, role, active, can_verify, personal_email, modules } = await req.json()
+  const { userId, email, role, active, can_verify, personal_email, modules } = await req.json()
   if (!userId) return NextResponse.json({ error: 'userId requis' }, { status: 400 })
 
   const supabase = createAdminClient()
 
-  // Mettre à jour rôle et statut
-  const { error: userError } = await supabase
-    .from('users')
-    .update({ role, active, can_verify: can_verify || false, personal_email: personal_email || null, updated_at: new Date().toISOString() })
-    .eq('id', userId)
+  const updateData: any = { role, active, can_verify: can_verify || false, personal_email: personal_email || null, updated_at: new Date().toISOString() }
+  if (email) updateData.email = email.toLowerCase()
+
+  const { error: userError } = await supabase.from('users').update(updateData).eq('id', userId)
 
   if (userError) return NextResponse.json({ error: userError.message }, { status: 500 })
 

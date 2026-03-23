@@ -19,6 +19,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [userRole, setUserRole] = useState('')
   const [userActive, setUserActive] = useState(true)
   const [userCanVerify, setUserCanVerify] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
   const [userPersonalEmail, setUserPersonalEmail] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccess, setResetSuccess] = useState('')
@@ -35,6 +36,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setUserRole(user.role)
     setUserActive(user.active)
     setUserCanVerify(user.can_verify || false)
+    setUserEmail(user.email || '')
     setUserPersonalEmail(user.personal_email || '')
     setResetSuccess('')
   }
@@ -54,6 +56,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: selectedUser.id,
+          email: userEmail,
           role: userRole,
           active: userActive,
           can_verify: userCanVerify,
@@ -62,7 +65,8 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         })
       })
       setSelectedUser(null)
-      window.location.reload()
+      router.refresh()
+      setTimeout(() => window.location.href = '/admin/users', 100)
     } finally {
       setSaving(false)
     }
@@ -122,6 +126,14 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
               <p className="text-white font-semibold">{selectedUser.name || 'Sans nom'}</p>
               <p className="text-zinc-500 text-xs">{selectedUser.email}</p>
             </div>
+          </div>
+
+          {/* Email professionnel */}
+          <div className="mb-3">
+            <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Email professionnel</label>
+            <input type="email" value={userEmail}
+              onChange={e => setUserEmail(e.target.value)}
+              className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-3 py-2.5 text-white text-sm outline-none" />
           </div>
 
           {/* Rôle */}
