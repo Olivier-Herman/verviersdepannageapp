@@ -19,6 +19,9 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [userRole, setUserRole] = useState('')
   const [userActive, setUserActive] = useState(true)
   const [userCanVerify, setUserCanVerify] = useState(false)
+  const [userPersonalEmail, setUserPersonalEmail] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetSuccess, setResetSuccess] = useState('')
   const [showNewUser, setShowNewUser] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [newName, setNewName] = useState('')
@@ -32,6 +35,8 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setUserRole(user.role)
     setUserActive(user.active)
     setUserCanVerify(user.can_verify || false)
+    setUserPersonalEmail(user.personal_email || '')
+    setResetSuccess('')
   }
 
   const toggleModule = (moduleId: string) => {
@@ -52,6 +57,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           role: userRole,
           active: userActive,
           can_verify: userCanVerify,
+          personal_email: userPersonalEmail || null,
           modules: userModules
         })
       })
@@ -60,6 +66,18 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     } finally {
       setSaving(false)
     }
+  }
+
+  const resetPassword = async () => {
+    if (!selectedUser) return
+    setResetLoading(true); setResetSuccess('')
+    const res = await fetch('/api/admin/users/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: selectedUser.id })
+    })
+    setResetLoading(false)
+    if (res.ok) setResetSuccess('✅ Mot de passe réinitialisé à !Verviers4800')
   }
 
   const createUser = async () => {
@@ -137,7 +155,26 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
             </button>
           </div>
 
-          {/* Peut valider les remises espèces */}
+          {/* Email personnel (pour connexion Google/Microsoft perso) */}
+          <div className="mt-3">
+            <label className="text-zinc-500 text-xs font-medium block mb-1">Email personnel</label>
+            <p className="text-zinc-700 text-xs mb-1.5">Pour connexion Google ou Microsoft personnel</p>
+            <input type="email" value={userPersonalEmail}
+              onChange={e => setUserPersonalEmail(e.target.value)}
+              placeholder="prenom@gmail.com"
+              className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-3 py-2.5 text-white text-sm outline-none" />
+          </div>
+
+          {/* Reset mot de passe */}
+          <div className="mt-3">
+            {resetSuccess && (
+              <p className="text-green-400 text-xs mb-2">{resetSuccess}</p>
+            )}
+            <button onClick={resetPassword} disabled={resetLoading}
+              className="w-full bg-[#2a2a2a] border border-[#333] text-zinc-400 text-xs rounded-xl py-2.5 hover:border-zinc-500 transition-all disabled:opacity-50">
+              {resetLoading ? 'Réinitialisation…' : '🔑 Réinitialiser le mot de passe'}
+            </button>
+          </div>
           <div className="flex items-center justify-between">
             <div>
               <span className="text-zinc-500 text-xs font-medium">Peut valider les remises espèces</span>

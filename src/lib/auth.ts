@@ -1,154 +1,180 @@
+import CredentialsProvider from 'next-auth/providers/credentials'
 import AzureADProvider from 'next-auth/providers/azure-ad'
+import GoogleProvider from 'next-auth/providers/google'
 import { createAdminClient } from '@/lib/supabase'
 import type { NextAuthOptions } from 'next-auth'
+import bcrypt from 'bcryptjs'
+
+async function findOrCreateUser(email: string, name: string, provider: string, providerId: string, avatar?: string) {
+  const supabase = createAdminClient()
+
+  // 1. Chercher par email professionnel (M365/tenant)
+  if (provider === 'azure-ad') {
+    const { data: user } = await supabase.from('users')
+      .select('id, role, active, must_change_password')
+      .ilike('email', email)
+      .maybeSingle()
+
+    if (user) {
+      if (!user.active) return null
+      await supabase.from('users').update({
+        azure_id: providerId, name, avatar_url: avatar, last_login: new Date().toISOString()
+      }).eq('id', user.id)
+      return user
+    }
+
+    // Nouveau user M365 → créer automatiquement
+    const { data: newUser } = await supabase.from('users').insert({
+      email: email.toLowerCase(), name, azure_id: providerId,
+      avatar_url: avatar, role: 'driver', active: true,
+      must_change_password: false, last_login: new Date().toISOString()
+    }).select('id, role, active, must_change_password').single()
+    return newUser
+  }
+
+  // 2. Google ou Microsoft personnel → chercher par personal_email
+  const { data: user } = await supabase.from('users')
+    .select('id, role, active, must_change_password')
+    .ilike('personal_email', email)
+    .maybeSingle()
+
+  if (!user) {
+    console.log(`[Auth] Personal email not registered: ${email}`)
+    return null // Email personnel non enregistré par l'admin
+  }
+  if (!user.active) return null
+
+  await supabase.from('users').update({
+    last_login: new Date().toISOString()
+  }).eq('id', user.id)
+
+  return user
+}
+
+async function loadModules(userId: string) {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('user_modules')
+    .select('module_id, granted')
+    .eq('user_id', userId)
+    .eq('granted', true)
+  return (data || []).map(m => m.module_id)
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Provider 1 — Email + mot de passe
+    CredentialsProvider({
+      id: 'credentials',
+      name: 'Email & mot de passe',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Mot de passe', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null
+        const supabase = createAdminClient()
+
+        const { data: user } = await supabase.from('users')
+          .select('id, email, name, role, active, password_hash, must_change_password, avatar_url')
+          .ilike('email', credentials.email)
+          .maybeSingle()
+
+        if (!user || !user.active || !user.password_hash) return null
+
+        const valid = await bcrypt.compare(credentials.password, user.password_hash)
+        if (!valid) return null
+
+        await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id)
+
+        return {
+          id: user.id, email: user.email, name: user.name,
+          role: user.role, mustChangePassword: user.must_change_password, image: user.avatar_url,
+        }
+      }
+    }),
+
+    // Provider 2 — Microsoft M365 (tenant VD — pour responsables)
     AzureADProvider({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
       tenantId: process.env.AZURE_AD_TENANT_ID!,
-      authorization: {
-        params: { scope: 'openid profile email offline_access User.Read' }
-      }
-    })
+      authorization: { params: { scope: 'openid profile email offline_access User.Read' } }
+    }),
+
+    // Provider 3 — Microsoft personnel (Hotmail/Outlook)
+    AzureADProvider({
+      id: 'azure-personal',
+      name: 'Microsoft personnel',
+      clientId: process.env.AZURE_AD_CLIENT_ID!,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+      tenantId: 'common',
+      authorization: { params: { scope: 'openid profile email' } }
+    }),
+
+    // Provider 4 — Google
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
   ],
 
   callbacks: {
     async signIn({ user, account, profile }) {
-      if (!user.email) return false
-      const supabase = createAdminClient()
-      const azureId = profile?.sub || account?.providerAccountId
+      if (account?.provider === 'credentials') return true // Géré dans authorize()
 
-      console.log(`[Auth] signIn attempt: ${user.email} azureId: ${azureId}`)
+      const email = user.email
+      if (!email) return false
 
       try {
-        const { data: existing, error: findError } = await supabase
-          .from('users')
-          .select('id, role, active, azure_id')
-          .ilike('email', user.email)
-          .maybeSingle() // maybeSingle retourne null sans erreur si 0 résultats
-
-        if (findError) console.error('[Auth] Find error:', findError)
-
-        if (existing) {
-          console.log(`[Auth] User found: ${existing.id} active=${existing.active}`)
-          await supabase.from('users').update({
-            azure_id: existing.azure_id || azureId,
-            name: user.name,
-            avatar_url: user.image,
-            last_login: new Date().toISOString()
-          }).eq('id', existing.id)
-          if (!existing.active) {
-            console.log(`[Auth] User inactive, access denied`)
-            return false
-          }
-          return true
-        }
-
-        // Nouveau user — créé avec active: true
-        console.log(`[Auth] New user, creating: ${user.email}`)
-        const { error: insertError } = await supabase.from('users').insert({
-          azure_id: azureId,
-          email: user.email?.toLowerCase(),
-          name: user.name,
-          avatar_url: user.image,
-          role: 'driver',
-          active: true,
-          last_login: new Date().toISOString()
-        })
-        if (insertError) {
-          console.error('[Auth] Insert error:', insertError)
-          return false
-        }
+        const dbUser = await findOrCreateUser(
+          email,
+          user.name || email,
+          account?.provider || '',
+          account?.providerAccountId || '',
+          user.image || undefined
+        )
+        if (!dbUser) return false
+        ;(user as any).dbId = dbUser.id
+        ;(user as any).role = dbUser.role
+        ;(user as any).mustChangePassword = dbUser.must_change_password
         return true
-
       } catch (err: any) {
-        console.error('[Auth] signIn exception:', err.message || err)
+        console.error('[Auth] signIn error:', err.message)
         return false
       }
     },
 
-    async jwt({ token, account }) {
-      // Première connexion — stocker les tokens
-      if (account) {
-        token.accessToken = account.access_token
-        token.refreshToken = account.refresh_token
-        token.accessTokenExpires = account.expires_at
-          ? account.expires_at * 1000
-          : Date.now() + 3600 * 1000
-
-        const supabase = createAdminClient()
-        const { data: dbUser } = await supabase
-          .from('users')
-          .select(`id, role, active, user_modules!user_modules_user_id_fkey (module_id, granted)`)
-          .eq('email', token.email?.toLowerCase())
-          .single()
-
-        if (dbUser) {
-          token.userId = dbUser.id
-          token.role = dbUser.role
-          token.modules = (dbUser.user_modules as any[])
-            ?.filter(m => m.granted).map(m => m.module_id) || []
+    async jwt({ token, user, account }) {
+      if (user) {
+        // Première connexion
+        if (account?.provider === 'credentials') {
+          token.id = user.id
+          token.role = (user as any).role
+          token.mustChangePassword = (user as any).mustChangePassword
+        } else {
+          token.id = (user as any).dbId
+          token.role = (user as any).role
+          token.mustChangePassword = (user as any).mustChangePassword || false
         }
-        return token
+        token.modules = await loadModules(token.id as string)
       }
-
-      // Pas encore d'expiration connue → ok
-      if (!token.accessTokenExpires) return token
-
-      // Token encore valide → retourner tel quel
-      if (Date.now() < (token.accessTokenExpires as number)) {
-        return token
-      }
-
-      // Token expiré + pas de refresh token → retourner tel quel (session valide, juste pas de Graph)
-      if (!token.refreshToken) return token
-
-      // Token expiré → rafraîchir via Azure AD
-      try {
-        const res = await fetch(
-          `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              client_id: process.env.AZURE_AD_CLIENT_ID!,
-              client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
-              grant_type: 'refresh_token',
-              refresh_token: token.refreshToken as string,
-              scope: 'openid profile email offline_access User.Read Mail.Send',
-            })
-          }
-        )
-        const refreshed = await res.json()
-        if (!res.ok) throw refreshed
-        return {
-          ...token,
-          accessToken: refreshed.access_token,
-          refreshToken: refreshed.refresh_token ?? token.refreshToken,
-          accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
-        }
-      } catch (err) {
-        console.error('[Token refresh error]', err)
-        // Ne pas invalider la session — juste retourner le token sans Graph
-        return { ...token, accessToken: undefined }
-      }
+      return token
     },
 
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.userId as string
-        session.user.role = token.role as string
-        session.user.azureId = token.azureId as string
-        session.user.modules = token.modules as string[]
-        ;(session as any).accessToken = token.accessToken
+        ;(session.user as any).id = token.id
+        ;(session.user as any).role = token.role
+        ;(session.user as any).modules = token.modules
+        ;(session.user as any).mustChangePassword = token.mustChangePassword
       }
       return session
-    }
+    },
   },
 
   pages: { signIn: '/login', error: '/login' },
+
   session: {
     strategy: 'jwt',
     maxAge: 7 * 24 * 60 * 60,
