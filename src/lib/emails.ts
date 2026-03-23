@@ -320,20 +320,22 @@ export async function sendPasswordReset(data: {
 
 // ─── Email : Avance de fonds → boîte achat (PDF) ──────────
 async function imageToPdfBase64(imageBuffer: ArrayBuffer, contentType: string): Promise<string> {
-  // Dynamically import pdf-lib (pure JS, no native deps)
   const { PDFDocument } = await import('pdf-lib')
-
   const pdfDoc = await PDFDocument.create()
 
   let image
-  if (contentType.includes('png')) {
-    image = await pdfDoc.embedPng(imageBuffer)
-  } else {
-    // jpeg / webp / autres → on tente jpeg
-    image = await pdfDoc.embedJpg(imageBuffer)
+  try {
+    if (contentType.includes('png')) {
+      image = await pdfDoc.embedPng(imageBuffer)
+    } else {
+      // jpeg, jpg — HEIC bloqué côté UI (accept="image/jpeg,image/png")
+      image = await pdfDoc.embedJpg(imageBuffer)
+    }
+  } catch (embedErr) {
+    // Format non supporté par pdf-lib — on envoie l'image telle quelle
+    throw new Error(`Format image non supporté pour la conversion PDF : ${contentType}`)
   }
 
-  // Page à la taille de l'image (A4 max)
   const A4_W = 595, A4_H = 842
   const ratio  = Math.min(A4_W / image.width, A4_H / image.height, 1)
   const width  = image.width  * ratio
