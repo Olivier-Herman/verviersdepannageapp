@@ -18,5 +18,25 @@ export default async function SettingsPage() {
     .select('*')
     .order('sort_order')
 
-  return <SettingsClient listItems={listItems || []} callShortcuts={callShortcuts || []} />
+  const { data: settingsRows } = await supabase
+    .from('app_settings')
+    .select('key, value')
+
+  // Convertir en Record<string, string> — les valeurs sont stockées en JSON
+  const appSettings: Record<string, string> = {}
+  for (const row of settingsRows ?? []) {
+    try {
+      appSettings[row.key] = JSON.parse(row.value)
+    } catch {
+      appSettings[row.key] = row.value
+    }
+  }
+
+  return (
+    <SettingsClient
+      listItems={listItems || []}
+      callShortcuts={callShortcuts || []}
+      appSettings={appSettings}
+    />
+  )
 }
