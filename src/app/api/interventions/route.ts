@@ -132,21 +132,72 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const supabase = createAdminClient()
-  const isAdmin = ['admin', 'superadmin', 'dispatcher'].includes(session.user.role)
+  const supabase    = createAdminClient()
+  const isAdmin     = ['admin', 'superadmin', 'dispatcher'].includes(session.user.role)
+  const includeAdv  = req.nextUrl.searchParams.get('includeAdvances') === 'true'
 
-  let query = supabase
+  // Résoudre l'utilisateur courant
+  const { data: me } = await supabase
+    .from('users').select('id, name, email').eq('email', session.user.email).single()
+
+  // ── Interventions ──────────────────────────────────────────
+  let intQuery = supabase
     .from('interventions')
-    .select(`*, driver:users(name, email)`)
+    .select('*, driver:users(name, email)')
     .order('created_at', { ascending: false })
-    .limit(100)
+    .limit(200)
 
-  if (!isAdmin) {
-    const { data: driver } = await supabase
-      .from('users').select('id').eq('email', session.user.email).single()
-    if (driver) query = query.eq('driver_id', driver.id)
-  }
+  if (!isAdmin && me) intQuery = intQuery.eq('driver_id', me.id)
 
-  const { data } = await query
-  return NextResponse.json(data || [])
+  const { data: interventions } = await intQuery
+
+  const intEntries = (interventions || []).map((i: any) => ({
+    id:            i.id,
+    type:          'intervention',
+    reference:     i.reference,
+    created_at:    i.created_at,
+    plate:         i.plate,
+    brand_text:    i.brand_text,
+    model_text:    i.model_text,
+    motif_text:    i.motif_text,
+    amount:        i.amount || 0,
+    payment_mode:  i.payment_mode,
+    client_name:   i.client_name,
+    client_email:  i.client_email,
+    synced_to_odoo: i.synced_to_odoo,
+    driver:        i.driver,
+    notes:         i.notes,
+  }))
+
+  if (!includeAdv) return NextResponse.json(intEntries)
+
+  // ── Avances de fonds ───────────────────────────────────────
+  let advQuery = supabase
+    .from('fund_advances')
+    .select('*, user:users(name, email)')
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (!isAdmin && me) advQuery = advQuery.eq('user_id', me.id)
+
+  const { data: advances } = await advQuery
+
+  const advEntries = (advances || []).map((a: any) => ({
+    id:           a.id,
+    type:         'advance',
+    created_at:   a.created_at,
+    plate:        a.plate,
+    amount:       parseFloat(a.amount_htva) || 0,
+    payment_mode: a.payment_method,
+    odoo_quote_id: a.odoo_quote_id,
+    driver:       a.user,
+    notes:        a.notes || `Avance de fonds — ${a.plate}`,
+    status:       a.status,
+  }))
+
+  // ── Fusion + tri par date ──────────────────────────────────
+  const all = [...intEntries, ...advEntries]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  return NextResponse.json(all)
 }
