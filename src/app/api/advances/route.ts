@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession }          from 'next-auth';
 import { authOptions }               from '@/lib/auth';
-import { supabaseAdmin }             from '@/lib/supabase';
+import { createAdminClient }         from '@/lib/supabase';
 import { addAdvanceToQuote }         from '@/lib/odoo';
 import { sendAdvancePurchaseEmail }  from '@/lib/emails';
 
@@ -24,22 +24,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const supabase        = createAdminClient();
     const normalizedPlate = (plate as string).toUpperCase().trim();
     const htva            = parseFloat(amountHtva);
 
     // ── Retrouver le devis Odoo via la plaque ──────────────
-    let odooQuoteId:   number | null  = null;
-    let odooLineId:    number | null  = null;
-    let odooVehicleSet = false;
+    let odooQuoteId:    number | null = null;
+    let odooLineId:     number | null = null;
+    let odooVehicleSet                = false;
 
-    const { data: vehicle } = await supabaseAdmin
+    const { data: vehicle } = await supabase
       .from('vehicles')
       .select('id')
       .eq('plate', normalizedPlate)
       .single();
 
     if (vehicle) {
-      const { data: intervention } = await supabaseAdmin
+      const { data: intervention } = await supabase
         .from('interventions')
         .select('odoo_quote_id')
         .eq('vehicle_id', vehicle.id)
@@ -50,20 +51,18 @@ export async function POST(req: NextRequest) {
 
       if (intervention?.odoo_quote_id) {
         odooQuoteId = intervention.odoo_quote_id;
-
         try {
           const result   = await addAdvanceToQuote(odooQuoteId, normalizedPlate, htva);
           odooLineId     = result.lineId;
           odooVehicleSet = result.vehicleSet;
         } catch (odooErr) {
           console.error('[Odoo] addAdvanceToQuote:', odooErr);
-          // Non bloquant — on enregistre quand même localement
         }
       }
     }
 
     // ── Email vers boîte achat Odoo ────────────────────────
-    const { data: setting } = await supabaseAdmin
+    const { data: setting } = await supabase
       .from('app_settings')
       .select('value')
       .eq('key', 'odoo_purchase_email')
@@ -89,7 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Sauvegarde Supabase ────────────────────────────────
-    const { data: advance, error: insertError } = await supabaseAdmin
+    const { data: advance, error: insertError } = await supabase
       .from('fund_advances')
       .insert({
         user_id:             session.user.id,
@@ -128,7 +127,9 @@ export async function GET(req: NextRequest) {
   const limit  = Math.min(parseInt(searchParams.get('limit')  ?? '20'), 100);
   const offset = Math.max(parseInt(searchParams.get('offset') ?? '0'),  0);
 
-  let query = supabaseAdmin
+  const supabase = createAdminClient();
+
+  let query = supabase
     .from('fund_advances')
     .select('*, users(name, email)', { count: 'exact' })
     .order('created_at', { ascending: false })

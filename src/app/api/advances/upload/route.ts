@@ -2,10 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession }          from 'next-auth';
 import { authOptions }               from '@/lib/auth';
-import { supabaseAdmin }             from '@/lib/supabase';
+import { createAdminClient }         from '@/lib/supabase';
 
-// 1 an — nécessaire pour que Odoo OCR puisse accéder à la PJ via l'URL signée
-const SIGNED_URL_EXPIRES_SECONDS = 60 * 60 * 24 * 365;
+const SIGNED_URL_EXPIRES_SECONDS = 60 * 60 * 24 * 365; // 1 an
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -20,25 +19,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 });
   }
 
-  const ext    = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const path   = `${session.user.id}/${Date.now()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const supabase = createAdminClient();
+  const ext      = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const path     = `${session.user.id}/${Date.now()}.${ext}`;
+  const buffer   = Buffer.from(await file.arrayBuffer());
 
-  const { error: uploadError } = await supabaseAdmin
+  const { error: uploadError } = await supabase
     .storage
     .from('advances')
-    .upload(path, buffer, {
-      contentType: file.type,
-      upsert:      false,
-    });
+    .upload(path, buffer, { contentType: file.type, upsert: false });
 
   if (uploadError) {
     console.error('[Storage upload]', uploadError);
     return NextResponse.json({ error: 'Upload échoué' }, { status: 500 });
   }
 
-  // Signed URL longue durée — bucket privé
-  const { data: signedData, error: signedError } = await supabaseAdmin
+  const { data: signedData, error: signedError } = await supabase
     .storage
     .from('advances')
     .createSignedUrl(path, SIGNED_URL_EXPIRES_SECONDS);
