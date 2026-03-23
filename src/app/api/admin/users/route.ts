@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendAccountActivated } from '@/lib/emails'
 
-// Vérifier que l'appelant est admin
 async function checkAdmin() {
   const session = await getServerSession(authOptions)
   if (!session) return null
-  if (!['admin', 'superadmin'].includes(session.user.role)) return null
+  if (!['admin', 'superadmin'].includes((session.user as any).role)) return null
   return session
 }
 
-// POST — Créer un utilisateur
 export async function POST(req: NextRequest) {
   const session = await checkAdmin()
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -20,18 +19,16 @@ export async function POST(req: NextRequest) {
   if (!email) return NextResponse.json({ error: 'Email requis' }, { status: 400 })
 
   const supabase = createAdminClient()
-
   const { data, error } = await supabase
     .from('users')
-    .insert({ email, name, role: role || 'driver', active: true })
-    .select()
-    .single()
+    .insert({ email: email.toLowerCase(), name, role: role || 'driver', active: true, auth_provider: 'email_password', must_change_password: true,
+      password_hash: '$2a$10$oiOH/C5U8.kzGjIeK7U4I.AccsreHbuOn4mShqv42TQIt7AzlY9eu' })
+    .select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
-// PATCH — Modifier rôle, actif, et modules d'un utilisateur
 export async function PATCH(req: NextRequest) {
   const session = await checkAdmin()
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -40,6 +37,10 @@ export async function PATCH(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'userId requis' }, { status: 400 })
 
   const supabase = createAdminClient()
+
+  // Vérifier si le compte était inactif avant
+  const { data: prevUser } = await supabase.from('users')
+    .select('active, name, email, auth_provider').eq('id', userId).single()
 
   const updateData: any = {
     role, active,
@@ -51,28 +52,31 @@ export async function PATCH(req: NextRequest) {
   if (email) updateData.email = email.toLowerCase()
 
   const { error: userError } = await supabase.from('users').update(updateData).eq('id', userId)
-
   if (userError) return NextResponse.json({ error: userError.message }, { status: 500 })
 
-  // Récupérer tous les modules disponibles
-  const { data: allModules } = await supabase
-    .from('modules')
-    .select('id')
+  // Envoyer email d'activation si le compte vient d'être activé
+  if (active && prevUser && !prevUser.active) {
+    try {
+      await sendAccountActivated({
+        toEmail: email || prevUser.email,
+        name: prevUser.name,
+        authProvider: auth_provider || prevUser.auth_provider || 'email_password',
+      })
+    } catch (err: any) {
+      console.error('[Admin] Activation email error:', err.message)
+    }
+  }
 
-  // Upsert tous les modules (granted = true/false)
+  const { data: allModules } = await supabase.from('modules').select('id')
   if (allModules) {
     const upserts = allModules.map(mod => ({
-      user_id: userId,
-      module_id: mod.id,
+      user_id: userId, module_id: mod.id,
       granted: modules.includes(mod.id),
-      granted_by: session.user.id,
+      granted_by: (session.user as any).id,
       granted_at: new Date().toISOString()
     }))
-
-    const { error: modError } = await supabase
-      .from('user_modules')
+    const { error: modError } = await supabase.from('user_modules')
       .upsert(upserts, { onConflict: 'user_id,module_id' })
-
     if (modError) return NextResponse.json({ error: modError.message }, { status: 500 })
   }
 

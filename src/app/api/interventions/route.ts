@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { syncInterventionToOdoo } from '@/lib/odoo'
-import { sendClientReceipt } from '@/lib/receipt'
+import { sendClientReceipt } from '@/lib/emails'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)

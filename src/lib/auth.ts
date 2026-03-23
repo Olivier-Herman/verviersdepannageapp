@@ -2,6 +2,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import AzureADProvider from 'next-auth/providers/azure-ad'
 import GoogleProvider from 'next-auth/providers/google'
 import { createAdminClient } from '@/lib/supabase'
+import { sendAccessRequestNotification } from '@/lib/emails'
 import type { NextAuthOptions } from 'next-auth'
 import bcrypt from 'bcryptjs'
 
@@ -112,23 +113,7 @@ export const authOptions: NextAuthOptions = {
 
         // Notifier l'admin
         try {
-          const appToken = await getAppToken()
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL
-          await fetch(`https://graph.microsoft.com/v1.0/users/administration@verviersdepannage.com/sendMail`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${appToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: {
-                subject: `Nouvelle demande d'accès — ${user.name || email}`,
-                body: {
-                  contentType: 'HTML',
-                  content: `<p>Nouvelle demande d'accès :<br><b>${user.name || email}</b> (${email})<br>Méthode : ${provider}</p><p><a href="${appUrl}/admin/users">Gérer →</a></p>`
-                },
-                toRecipients: [{ emailAddress: { address: 'administration@verviersdepannage.com' } }],
-              },
-              saveToSentItems: true,
-            })
-          })
+          await sendAccessRequestNotification({ name: user.name || email, email, provider })
         } catch (e) { console.error('[Auth] Notify error:', e) }
 
         // Permettre la connexion mais rediriger vers pending
