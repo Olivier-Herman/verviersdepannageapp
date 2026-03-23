@@ -111,18 +111,6 @@ function LoginContent() {
               <span className="text-sm font-medium">Microsoft professionnel</span>
             </button>
 
-            {/* Microsoft personnel */}
-            <button onClick={() => handleOAuth('azure-personal')} disabled={loading}
-              className="w-full flex items-center gap-3 bg-[#0F0F0F] border border-[#333] hover:border-zinc-500 text-white rounded-xl px-4 py-3.5 transition-all active:scale-95 disabled:opacity-40">
-              <svg width="20" height="20" viewBox="0 0 21 21" fill="none" className="flex-shrink-0">
-                <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
-                <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
-                <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
-                <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
-              </svg>
-              <span className="text-sm font-medium">Microsoft personnel (Hotmail/Outlook)</span>
-            </button>
-
             {/* Google */}
             <button onClick={() => handleOAuth('google')} disabled={loading}
               className="w-full flex items-center gap-3 bg-[#0F0F0F] border border-[#333] hover:border-zinc-500 text-white rounded-xl px-4 py-3.5 transition-all active:scale-95 disabled:opacity-40">

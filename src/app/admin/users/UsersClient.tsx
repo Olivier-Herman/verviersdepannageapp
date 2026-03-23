@@ -65,8 +65,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         })
       })
       setSelectedUser(null)
-      router.refresh()
-      setTimeout(() => window.location.href = '/admin/users', 100)
+      window.location.href = window.location.href + '?t=' + Date.now()
     } finally {
       setSaving(false)
     }

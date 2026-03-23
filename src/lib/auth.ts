@@ -102,17 +102,7 @@ export const authOptions: NextAuthOptions = {
       authorization: { params: { scope: 'openid profile email offline_access User.Read' } }
     }),
 
-    // Provider 3 — Microsoft personnel (Hotmail/Outlook)
-    AzureADProvider({
-      id: 'azure-personal',
-      name: 'Microsoft personnel',
-      clientId: process.env.AZURE_AD_CLIENT_ID!,
-      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      tenantId: 'common',
-      authorization: { params: { scope: 'openid profile email' } }
-    }),
-
-    // Provider 4 — Google
+    // Provider 3 — Google
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
