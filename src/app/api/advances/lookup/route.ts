@@ -12,7 +12,9 @@ function normalizePlate(plate: string): string {
   return plate.replace(/[-.\s]/g, '').toUpperCase().trim()
 }
 
-async function odooCall<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
+async function odooCall<T = any>(
+  model: string, method: string, args: any[] = [], kwargs: object = {}
+): Promise<T> {
   const res = await fetch(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -31,14 +33,10 @@ async function odooCall<T = any>(model: string, method: string, args: any[] = []
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-  }
+  if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const plate = req.nextUrl.searchParams.get('plate')
-  if (!plate) {
-    return NextResponse.json({ error: 'Plaque manquante' }, { status: 400 })
-  }
+  if (!plate) return NextResponse.json({ error: 'Plaque manquante' }, { status: 400 })
 
   const normalized = normalizePlate(plate)
 
@@ -48,17 +46,14 @@ export async function GET(req: NextRequest) {
       { fields: ['id', 'license_plate', 'model_id'], limit: 10 }
     )
 
-    // Trouver la correspondance exacte après normalisation
-    const match = results.find(v =>
-      normalizePlate(v.license_plate) === normalized
-    )
+    const match = results.find(v => normalizePlate(v.license_plate) === normalized)
 
     if (match) {
       return NextResponse.json({
-        found:    true,
-        id:       match.id,
-        plate:    match.license_plate,
-        model:    match.model_id ? match.model_id[1] : null, // [id, display_name]
+        found: true,
+        id:    match.id,
+        plate: match.license_plate,
+        model: match.model_id ? match.model_id[1] : null,
       })
     }
 

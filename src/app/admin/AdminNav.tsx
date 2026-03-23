@@ -6,8 +6,8 @@ import { signOut } from 'next-auth/react'
 
 const NAV = [
   { href: '/admin/users',    label: 'Utilisateurs', icon: '👥' },
-  { href: '/admin/settings', label: 'Listes',       icon: '⚙️' },
   { href: '/admin/cash',     label: 'Caisses',      icon: '💰' },
+  { href: '/admin/settings', label: 'Paramètres',   icon: '⚙️' },
 ]
 
 export default function AdminNav() {
@@ -25,10 +25,10 @@ export default function AdminNav() {
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-8 w-auto object-contain" />
           </Link>
         </div>
-        <div className="flex bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 gap-1">
+        <div className="flex bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 gap-1 overflow-x-auto">
           {NAV.map(item => (
             <Link key={item.href} href={item.href}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 path.startsWith(item.href)
                   ? 'border-brand text-white'
                   : 'border-transparent text-zinc-500 hover:text-white'
@@ -42,7 +42,6 @@ export default function AdminNav() {
 
       {/* ─── DESKTOP : sidebar fixe ─── */}
       <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] flex-shrink-0">
-        {/* Logo */}
         <div className="px-6 py-6 border-b border-[#2a2a2a]">
           <Link href="/dashboard">
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
@@ -50,7 +49,6 @@ export default function AdminNav() {
           <p className="text-zinc-600 text-xs mt-2">Administration</p>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
           <p className="text-zinc-600 text-xs font-medium uppercase tracking-wider px-3 mb-2">Gestion</p>
           {NAV.map(item => (
@@ -80,7 +78,6 @@ export default function AdminNav() {
           </div>
         </nav>
 
-        {/* Footer */}
         <div className="px-3 py-4 border-t border-[#2a2a2a]">
           <button onClick={() => signOut({ callbackUrl: '/login' })}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full">
