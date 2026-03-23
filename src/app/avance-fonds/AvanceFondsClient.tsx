@@ -145,21 +145,44 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   }
 
   // ── Upload photo ───────────────────────────────────────────
-  // On lit via FileReader (base64) pour contourner le rejet HEIC
-  // d'iOS Safari dans FormData/fetch, puis on envoie en JSON
+  // 1. Convertit via canvas → vrai JPEG (gère HEIC iOS)
+  // 2. Envoie en base64 JSON (évite le rejet FormData iOS)
   const uploadPhoto = async (file: File): Promise<string> => {
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload  = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
+    // Convertir en vrai JPEG via canvas (résout HEIC + ratio correct)
+    const jpegBase64 = await new Promise<string>((resolve, reject) => {
+      const img = new window.Image()
+      const url = URL.createObjectURL(file)
+
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const canvas = document.createElement('canvas')
+        // Conserver les dimensions originales exactes
+        canvas.width  = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        // Extraire base64 sans le préfixe data:image/jpeg;base64,
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
+        resolve(dataUrl.split(',')[1])
+      }
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        // Fallback : lire via FileReader sans conversion
+        const reader = new FileReader()
+        reader.onload  = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      }
+
+      img.src = url
     })
 
     const res = await fetch('/api/advances/upload', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        base64,
+        base64:   jpegBase64,
         mimeType: 'image/jpeg',
         filename: 'photo.jpg',
       }),
