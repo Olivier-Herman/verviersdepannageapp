@@ -1,6 +1,9 @@
 import { createAdminClient } from '@/lib/supabase'
 import UsersClient from './UsersClient'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function UsersPage() {
   const supabase = createAdminClient()
 

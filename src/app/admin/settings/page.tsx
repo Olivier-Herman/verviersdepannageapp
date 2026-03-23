@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { createAdminClient } from '@/lib/supabase'
 import SettingsClient from './SettingsClient'
 
