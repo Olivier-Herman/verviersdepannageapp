@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import AppShell from '@/components/layout/AppShell'
 
 interface CashEntry {
   id: string
@@ -13,19 +13,26 @@ interface CashEntry {
   intervention: { reference: string; plate: string; amount: number; created_at: string } | null
 }
 
-export default function CashClient({ userName, driverId }: { userName: string; driverId: string }) {
-  const [balance, setBalance] = useState(0)
-  const [entries, setEntries] = useState<CashEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showRemise, setShowRemise] = useState(false)
-  const [remiseAmount, setRemiseAmount] = useState('')
-  const [pin, setPin] = useState('')
-  const [remiseLoading, setRemiseLoading] = useState(false)
-  const [remiseError, setRemiseError] = useState('')
-  const [remiseSuccess, setRemiseSuccess] = useState('')
-
-  const [verifiers, setVerifiers] = useState<{ id: string; name: string; hasPin: boolean }[]>([])
-  const [selectedVerifier, setSelectedVerifier] = useState('')
+export default function CashClient({
+  userName,
+  driverId,
+  userRole = 'driver',
+}: {
+  userName:  string
+  driverId:  string
+  userRole?: string
+}) {
+  const [balance,         setBalance]         = useState(0)
+  const [entries,         setEntries]         = useState<CashEntry[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [showRemise,      setShowRemise]      = useState(false)
+  const [remiseAmount,    setRemiseAmount]    = useState('')
+  const [pin,             setPin]             = useState('')
+  const [remiseLoading,   setRemiseLoading]   = useState(false)
+  const [remiseError,     setRemiseError]     = useState('')
+  const [remiseSuccess,   setRemiseSuccess]   = useState('')
+  const [verifiers,       setVerifiers]       = useState<{ id: string; name: string; hasPin: boolean }[]>([])
+  const [selectedVerifier,setSelectedVerifier]= useState('')
 
   const loadData = () => {
     setLoading(true)
@@ -40,82 +47,57 @@ export default function CashClient({ userName, driverId }: { userName: string; d
 
   useEffect(() => {
     loadData()
-    // Rafraîchissement automatique toutes les 30 secondes
     const interval = setInterval(loadData, 30000)
     return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
-    fetch('/api/cash?verifiers=true')
-      .then(r => r.json())
-      .then(setVerifiers)
+    fetch('/api/cash?verifiers=true').then(r => r.json()).then(setVerifiers)
   }, [])
 
   const handleRemise = async () => {
     if (!remiseAmount || parseFloat(remiseAmount) <= 0) { setRemiseError('Montant invalide'); return }
-    if (!selectedVerifier) { setRemiseError('Sélectionne un responsable'); return }
-    if (!pin || pin.length !== 4) { setRemiseError('PIN à 4 chiffres requis'); return }
-    if (parseFloat(remiseAmount) > balance) { setRemiseError('Montant supérieur à la caisse'); return }
+    if (!selectedVerifier)                               { setRemiseError('Sélectionne un responsable'); return }
+    if (!pin || pin.length !== 4)                        { setRemiseError('PIN à 4 chiffres requis'); return }
+    if (parseFloat(remiseAmount) > balance)              { setRemiseError('Montant supérieur à la caisse'); return }
 
     setRemiseLoading(true); setRemiseError('')
-    const res = await fetch('/api/cash', {
+    const res  = await fetch('/api/cash', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'remise',
-        amount: parseFloat(remiseAmount),
-        driverId,
-        verifierId: selectedVerifier,
-        pin,
-      })
+      body: JSON.stringify({ action: 'remise', amount: parseFloat(remiseAmount), driverId, verifierId: selectedVerifier, pin }),
     })
     const data = await res.json()
     setRemiseLoading(false)
-
-    if (!res.ok) {
-      setRemiseError(data.error)
-      return
-    }
-
+    if (!res.ok) { setRemiseError(data.error); return }
     setRemiseSuccess(data.transferNote)
-    setShowRemise(false)
-    setRemiseAmount(''); setPin(''); setSelectedVerifier('')
+    setShowRemise(false); setRemiseAmount(''); setPin(''); setSelectedVerifier('')
     loadData()
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] max-w-md mx-auto flex flex-col">
-      {/* Header */}
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4">
-        <div className="flex items-center gap-3 mb-3">
-          <Link href="/dashboard" className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg">←</Link>
-          <Link href="/dashboard" className="flex-1 flex justify-center">
-            <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
-          </Link>
-          <div className="w-10" />
-        </div>
-        <h1 className="text-white font-bold text-lg">Ma Caisse</h1>
-        <button onClick={loadData} className="text-zinc-500 text-sm hover:text-white">↻</button>
-      </div>
+    <AppShell title="Ma Caisse" userRole={userRole} userName={userName}>
 
-      <div className="flex-1 px-5 py-6">
+      <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto lg:mx-0">
+
         {/* Solde */}
-        <div className={`rounded-2xl p-6 text-center mb-6 ${balance > 0 ? 'bg-brand/10 border border-brand/30' : 'bg-[#1A1A1A] border border-[#2a2a2a]'}`}>
+        <div className={`rounded-2xl p-6 text-center mb-6 ${balance > 0
+          ? 'bg-brand/10 border border-brand/30'
+          : 'bg-[#1A1A1A] border border-[#2a2a2a]'}`}>
           <p className="text-zinc-400 text-sm mb-1">Solde en caisse</p>
-          <p className={`text-4xl font-bold ${balance > 0 ? 'text-brand' : 'text-white'}`}>
+          <p className={`text-5xl font-bold ${balance > 0 ? 'text-brand' : 'text-white'}`}>
             {balance.toFixed(2)} €
           </p>
-          <p className="text-zinc-600 text-xs mt-1">{userName}</p>
+          <p className="text-zinc-600 text-xs mt-2">{userName}</p>
+          <button onClick={loadData} className="text-zinc-600 text-xs mt-2 hover:text-zinc-400">↻ Rafraîchir</button>
         </div>
 
-        {/* Succès remise */}
         {remiseSuccess && (
           <div className="bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl px-4 py-3 mb-4">
             {remiseSuccess}
           </div>
         )}
 
-        {/* Bouton remise */}
         {balance > 0 && !showRemise && (
           <button onClick={() => setShowRemise(true)}
             className="w-full bg-brand text-white font-bold rounded-2xl py-4 mb-6 active:scale-95 transition-all">
@@ -123,20 +105,19 @@ export default function CashClient({ userName, driverId }: { userName: string; d
           </button>
         )}
 
-        {/* Formulaire remise */}
         {showRemise && (
           <div className="bg-[#1A1A1A] border border-brand/30 rounded-2xl p-5 mb-6">
-            <h3 className="text-white font-bold mb-4">Transfert vers un responsable</h3>
-            <p className="text-zinc-400 text-xs mb-3">Solde disponible : <span className="text-brand font-bold">{balance.toFixed(2)} €</span></p>
+            <h3 className="text-white font-bold mb-1">Transfert vers un responsable</h3>
+            <p className="text-zinc-400 text-xs mb-4">
+              Solde disponible : <span className="text-brand font-bold">{balance.toFixed(2)} €</span>
+            </p>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Responsable qui reçoit l'argent</label>
-              <select
-                value={selectedVerifier}
-                onChange={e => { setSelectedVerifier(e.target.value); setRemiseError('') }}
-                className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-sm outline-none appearance-none"
-              >
-                <option value="">Sélectionner un responsable…</option>
+              <label className="text-zinc-400 text-xs mb-1.5 block">Responsable</label>
+              <select value={selectedVerifier} onChange={e => { setSelectedVerifier(e.target.value); setRemiseError('') }}
+                className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3
+                           text-white text-sm outline-none appearance-none">
+                <option value="">Sélectionner…</option>
                 {verifiers.map(v => (
                   <option key={v.id} value={v.id} disabled={!v.hasPin}>
                     {v.name}{!v.hasPin ? ' (PIN non défini)' : ''}
@@ -151,7 +132,8 @@ export default function CashClient({ userName, driverId }: { userName: string; d
                 <input type="text" inputMode="decimal" value={remiseAmount}
                   onChange={e => setRemiseAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                   placeholder="0.00"
-                  className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3 text-white text-2xl font-bold text-center outline-none focus:border-brand" />
+                  className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
+                             text-white text-2xl font-bold text-center outline-none focus:border-brand" />
                 <span className="absolute right-4 top-3 text-zinc-400">€</span>
               </div>
             </div>
@@ -163,7 +145,8 @@ export default function CashClient({ userName, driverId }: { userName: string; d
               <input type="password" inputMode="numeric" maxLength={4} value={pin}
                 onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="••••"
-                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3 text-white text-2xl font-bold text-center outline-none focus:border-brand tracking-widest" />
+                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
+                           text-white text-2xl font-bold text-center outline-none focus:border-brand tracking-widest" />
             </div>
 
             {remiseError && (
@@ -193,10 +176,10 @@ export default function CashClient({ userName, driverId }: { userName: string; d
             <div className="flex items-start justify-between mb-1">
               <p className={`text-sm font-semibold ${
                 e.type === 'encaissement' ? 'text-green-400' :
-                e.type === 'reception' ? 'text-blue-400' : 'text-red-400'
+                e.type === 'reception'    ? 'text-blue-400'  : 'text-red-400'
               }`}>
                 {e.type === 'encaissement' ? '+ Encaissement espèces' :
-                 e.type === 'reception' ? '↓ Réception transfert' : '↑ Transfert'}
+                 e.type === 'reception'    ? '↓ Réception transfert'  : '↑ Transfert'}
               </p>
               <p className={`font-bold ${e.type === 'remise' ? 'text-red-400' : 'text-green-400'}`}>
                 {e.type === 'remise' ? '-' : '+'}{e.amount.toFixed(2)} €
@@ -212,6 +195,6 @@ export default function CashClient({ userName, driverId }: { userName: string; d
           </div>
         ))}
       </div>
-    </div>
+    </AppShell>
   )
 }

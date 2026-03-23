@@ -3,24 +3,25 @@
 import { signOut } from 'next-auth/react'
 import Link from 'next/link'
 import type { Session } from 'next-auth'
+import AppShell from '@/components/layout/AppShell'
 
 const NAV_MODULES = [
-  { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',     size: 'large' },
-  { id: 'encaissements', label: 'Encaissements',           icon: '📊', href: '/encaissements',  color: 'bg-surface',   size: 'small' },
-  { id: 'caisse',        label: 'Ma Caisse',               icon: '💰', href: '/caisse',         color: 'bg-surface',   size: 'small' },
-  { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',         color: 'bg-green-700', size: 'large' },
-  { id: 'avance_fonds',  label: 'Avance de Fonds',         icon: '📄', href: '/avance-fonds',   color: 'bg-surface',   size: 'small' },
-  { id: 'documents',     label: 'Documents',               icon: '📁', href: '/documents',      color: 'bg-surface',   size: 'small' },
-  { id: 'check_vehicle', label: 'Check Véhicule',          icon: '🔍', href: '/check-vehicle',  color: 'bg-surface',   size: 'small' },
-  { id: 'tgr',           label: 'TGR Touring',             icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',   size: 'small' },
-  { id: 'admin',         label: 'Administration',          icon: '⚙️', href: '/admin',          color: 'bg-purple-900',size: 'small' },
-  { id: 'profil',        label: 'Mon Profil',              icon: '👤', href: '/profil',         color: 'bg-surface',   size: 'small' },
+  { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',  color: 'bg-brand',      size: 'large' },
+  { id: 'encaissements', label: 'Mouvements',              icon: '📊', href: '/encaissements', color: 'bg-surface',    size: 'small' },
+  { id: 'caisse',        label: 'Ma Caisse',               icon: '💰', href: '/caisse',        color: 'bg-surface',    size: 'small' },
+  { id: 'avance_fonds',  label: 'Avance de Fonds',         icon: '📄', href: '/avance-fonds',  color: 'bg-surface',    size: 'small' },
+  { id: 'documents',     label: 'Documents',               icon: '📁', href: '/documents',     color: 'bg-surface',    size: 'small' },
+  { id: 'check_vehicle', label: 'Check Véhicule',          icon: '🔍', href: '/check-vehicle', color: 'bg-surface',    size: 'small' },
+  { id: 'tgr',           label: 'TGR Touring',             icon: '🛡️', href: '/services/tgr',  color: 'bg-surface',    size: 'small' },
+  { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',        color: 'bg-green-700',  size: 'large' },
+  { id: 'admin',         label: 'Administration',          icon: '⚙️', href: '/admin',         color: 'bg-purple-900', size: 'small' },
+  { id: 'profil',        label: 'Mon Profil',              icon: '👤', href: '/profil',        color: 'bg-surface',    size: 'small' },
 ]
 
 const CALL_MODULE_MAP: Record<string, string> = {
-  'depannage': 'Service Dépannage',
-  'fourriere': 'Service Fourrière',
-  'rentacar':  'Service Rent A Car',
+  depannage: 'Service Dépannage',
+  fourriere: 'Service Fourrière',
+  rentacar:  'Service Rent A Car',
 }
 
 const CALL_MODULES = [
@@ -31,123 +32,194 @@ const CALL_MODULES = [
 
 export default function DashboardClient({
   session,
-  callShortcuts
+  callShortcuts,
 }: {
   session: Session
   callShortcuts: any[]
 }) {
-  const userModules = session.user.modules || []
-  const isAdmin = ['admin', 'superadmin'].includes(session.user.role)
-
-  const initials = session.user.name
-    ?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??'
+  const userModules  = (session.user as any).modules || []
+  const isAdmin      = ['admin', 'superadmin'].includes((session.user as any).role)
+  const initials     = session.user.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??'
 
   const getPhone = (moduleId: string) => {
     const label = CALL_MODULE_MAP[moduleId]
     return callShortcuts.find(s => s.label === label)?.phone
   }
 
-  const visibleNavModules = NAV_MODULES.filter(m => {
+  const visibleNav = NAV_MODULES.filter(m => {
     if (m.id === 'admin') return isAdmin
     if (isAdmin) return true
     return userModules.includes(m.id)
   })
 
-  const visibleCallModules = CALL_MODULES.filter(m => {
-    if (isAdmin) return true
-    return userModules.includes(m.id)
-  })
+  const visibleCalls = CALL_MODULES.filter(m => isAdmin || userModules.includes(m.id))
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      {/* Header */}
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top">
-        <div className="flex items-center justify-between mb-4">
-          <div className="bg-white rounded-lg px-3 py-1.5">
-            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-9 w-auto object-contain" />
-          </div>
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="text-zinc-500 hover:text-white transition-colors text-sm"
-          >
-            Déconnexion
-          </button>
-        </div>
-        <div className="flex items-center gap-3 bg-[#222] rounded-xl px-3 py-2.5">
+    <AppShell
+      title="Dashboard"
+      backHref="/dashboard"
+      userRole={(session.user as any).role}
+      userName={session.user.name ?? ''}
+      userModules={userModules}
+    >
+      {/* ── MOBILE : tuiles ──────────────────────────────── */}
+      <div className="lg:hidden px-4 py-5">
+        {/* User card */}
+        <div className="flex items-center gap-3 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2.5 mb-5">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
             {initials}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white text-sm font-medium truncate">{session.user.name}</p>
-            <p className="text-zinc-500 text-xs capitalize">{session.user.role}</p>
+            <p className="text-zinc-500 text-xs capitalize">{(session.user as any).role}</p>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
             <span className="text-green-500 text-xs">En service</span>
           </div>
         </div>
+
+        <ModuleGrid visibleNav={visibleNav} visibleCalls={visibleCalls} getPhone={getPhone} />
       </div>
 
-      {/* Modules */}
-      <div className="flex-1 px-4 py-5 overflow-y-auto">
-        {visibleNavModules.length === 0 && visibleCallModules.length === 0 ? (
-          <div className="text-center py-16 text-zinc-600">
-            <p className="text-4xl mb-4">🔒</p>
-            <p className="font-medium text-white mb-1">Aucun module activé</p>
-            <p className="text-sm">Contacte un administrateur pour obtenir l'accès.</p>
+      {/* ── DESKTOP : grille large ───────────────────────── */}
+      <div className="hidden lg:block px-8 py-6">
+        {/* User card */}
+        <div className="flex items-center gap-4 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-5 py-4 mb-6 max-w-2xl">
+          <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            {initials}
           </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              {visibleNavModules.map((mod) => (
-                <Link
-                  key={mod.id}
-                  href={mod.href}
-                  className={`
-                    ${mod.size === 'large' ? 'col-span-2' : ''}
-                    ${mod.color}
-                    border border-[#2a2a2a] rounded-2xl p-4
-                    flex ${mod.size === 'large' ? 'items-center justify-between' : 'flex-col'}
-                    gap-3 active:opacity-80 transition-opacity
-                  `}
-                >
-                  <div>
-                    <p className="text-white font-semibold text-sm leading-tight">{mod.label}</p>
-                    {mod.size === 'large' && (
-                      <p className="text-white/60 text-xs mt-1">Appuyer pour ouvrir</p>
-                    )}
-                  </div>
-                  <span className="text-2xl">{mod.icon}</span>
-                </Link>
-              ))}
-            </div>
+          <div className="flex-1">
+            <p className="text-white font-semibold">{session.user.name}</p>
+            <p className="text-zinc-500 text-sm capitalize">{(session.user as any).role}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-green-500 text-sm">En service</span>
+          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="text-zinc-500 hover:text-red-400 text-sm transition-colors ml-4"
+          >
+            Déconnexion
+          </button>
+        </div>
 
-            {visibleCallModules.length > 0 && (
-              <>
-                <p className="text-zinc-600 text-xs font-semibold uppercase tracking-widest mt-5 mb-3">
-                  Appels directs
-                </p>
-                <div className="grid grid-cols-3 gap-3">
-                  {visibleCallModules.map((mod) => {
-                    const phone = getPhone(mod.id)
-                    return (
-                      <a
-                        key={mod.id}
-                        href={phone ? `tel:${phone}` : '#'}
-                        className={`bg-[#1A1A1A] border rounded-2xl p-3 flex flex-col items-center gap-2 active:opacity-80 transition-all text-center ${phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'}`}
-                      >
-                        <span className="text-2xl">{mod.icon}</span>
-                        <p className="text-white font-semibold text-xs leading-tight">{mod.label}</p>
-                      </a>
-                    )
-                  })}
-                </div>
-              </>
-            )}
+        {/* Grille 3 colonnes sur desktop */}
+        <div className="grid grid-cols-3 gap-4 max-w-5xl">
+          {visibleNav.map(mod => (
+            <Link
+              key={mod.id}
+              href={mod.href}
+              className={`${mod.color} border border-[#2a2a2a] rounded-2xl p-5
+                          flex items-center justify-between gap-3
+                          hover:border-brand/50 transition-all active:opacity-80`}
+            >
+              <div>
+                <p className="text-white font-semibold text-base leading-tight">{mod.label}</p>
+                <p className="text-white/50 text-xs mt-1">Ouvrir →</p>
+              </div>
+              <span className="text-3xl">{mod.icon}</span>
+            </Link>
+          ))}
+        </div>
+
+        {visibleCalls.length > 0 && (
+          <>
+            <p className="text-zinc-600 text-xs font-semibold uppercase tracking-widest mt-8 mb-3 max-w-5xl">
+              Appels directs
+            </p>
+            <div className="flex gap-3 max-w-5xl">
+              {visibleCalls.map(mod => {
+                const phone = getPhone(mod.id)
+                return (
+                  <a
+                    key={mod.id}
+                    href={phone ? `tel:${phone}` : '#'}
+                    className={`bg-[#1A1A1A] border rounded-2xl px-6 py-4 flex items-center gap-3
+                                transition-all ${phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'}`}
+                  >
+                    <span className="text-2xl">{mod.icon}</span>
+                    <p className="text-white font-semibold text-sm">{mod.label}</p>
+                  </a>
+                )
+              })}
+            </div>
           </>
         )}
       </div>
-      <div className="safe-bottom h-4" />
-    </div>
+    </AppShell>
+  )
+}
+
+// Composant tuiles partagé mobile
+function ModuleGrid({
+  visibleNav,
+  visibleCalls,
+  getPhone,
+}: {
+  visibleNav:   typeof NAV_MODULES
+  visibleCalls: typeof CALL_MODULES
+  getPhone:     (id: string) => string | undefined
+}) {
+  if (visibleNav.length === 0 && visibleCalls.length === 0) {
+    return (
+      <div className="text-center py-16 text-zinc-600">
+        <p className="text-4xl mb-4">🔒</p>
+        <p className="font-medium text-white mb-1">Aucun module activé</p>
+        <p className="text-sm">Contacte un administrateur.</p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        {visibleNav.map(mod => (
+          <Link
+            key={mod.id}
+            href={mod.href}
+            className={`
+              ${mod.size === 'large' ? 'col-span-2' : ''}
+              ${mod.color}
+              border border-[#2a2a2a] rounded-2xl p-4
+              flex ${mod.size === 'large' ? 'items-center justify-between' : 'flex-col'}
+              gap-3 active:opacity-80 transition-opacity
+            `}
+          >
+            <div>
+              <p className="text-white font-semibold text-sm leading-tight">{mod.label}</p>
+              {mod.size === 'large' && <p className="text-white/60 text-xs mt-1">Appuyer pour ouvrir</p>}
+            </div>
+            <span className="text-2xl">{mod.icon}</span>
+          </Link>
+        ))}
+      </div>
+
+      {visibleCalls.length > 0 && (
+        <>
+          <p className="text-zinc-600 text-xs font-semibold uppercase tracking-widest mt-5 mb-3">
+            Appels directs
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            {visibleCalls.map(mod => {
+              const phone = getPhone(mod.id)
+              return (
+                <a
+                  key={mod.id}
+                  href={phone ? `tel:${phone}` : '#'}
+                  className={`bg-[#1A1A1A] border rounded-2xl p-3 flex flex-col items-center
+                              gap-2 active:opacity-80 transition-all text-center
+                              ${phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'}`}
+                >
+                  <span className="text-2xl">{mod.icon}</span>
+                  <p className="text-white font-semibold text-xs leading-tight">{mod.label}</p>
+                </a>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </>
   )
 }

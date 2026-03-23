@@ -5,6 +5,7 @@ import { useState, useRef } from 'react'
 import { useRouter }        from 'next/navigation'
 import Link                 from 'next/link'
 import Image                from 'next/image'
+import AppShell             from '@/components/layout/AppShell'
 
 interface Brand { id: number; name: string }
 interface Model { id: number; name: string }
@@ -48,6 +49,7 @@ function normalizePlate(p: string): string {
 }
 
 export default function AvanceFondsClient({ user }: { user: any }) {
+  const userRole = user?.role ?? 'driver'
   const router      = useRouter()
   const fileRef     = useRef<HTMLInputElement>(null)
   const cameraRef   = useRef<HTMLInputElement>(null)
@@ -61,26 +63,23 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const [models,    setModels]    = useState<Model[]>([])
   const [loadingBrands, setLoadingBrands] = useState(false)
 
-  // ── Header commun ──────────────────────────────────────────
-  const Header = ({ title, backStep }: { title: string; backStep?: Step }) => (
-    <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-3 safe-top">
-      <div className="flex items-center justify-between mb-3">
-        <Link href="/dashboard" className="bg-white rounded-lg px-2.5 py-1">
-          <Image src="/logo.jpg" alt="Verviers Dépannage" width={80} height={36} className="h-9 w-auto object-contain" />
-        </Link>
-        {backStep ? (
+  // ── Header commun via AppShell ────────────────────────────
+  const WithShell = ({ title, backStep, children: c }: {
+    title: string; backStep?: Step; children: React.ReactNode
+  }) => (
+    <AppShell title={title} userRole={userRole} userName={user?.name ?? ''}
+      backHref={backStep ? undefined : '/dashboard'}
+    >
+      {backStep && (
+        <div className="lg:hidden px-4 pt-3">
           <button onClick={() => { setError(null); setStep(backStep) }}
-            className="text-zinc-400 hover:text-white text-sm transition-colors">
+            className="text-zinc-400 hover:text-white text-sm">
             ← Retour
           </button>
-        ) : (
-          <Link href="/dashboard" className="text-zinc-400 hover:text-white text-sm transition-colors">
-            ← Dashboard
-          </Link>
-        )}
-      </div>
-      <p className="text-white font-bold text-lg">{title}</p>
-    </div>
+        </div>
+      )}
+      <div className="max-w-md mx-auto lg:max-w-xl px-0 lg:px-4">{c}</div>
+    </AppShell>
   )
 
   // ── Charger les marques ───────────────────────────────────
@@ -233,8 +232,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : PHOTO
   // ────────────────────────────────────────────────────────────
   if (step === 'photo') return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Avance de fonds" />
+    <WithShell title="Avance de fonds">
       <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
         <div className="text-center">
           <div className="text-6xl mb-3">📄</div>
@@ -264,8 +262,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : SAISIE PLAQUE
   // ────────────────────────────────────────────────────────────
   if (step === 'plate') return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Immatriculation" backStep="photo" />
+    <WithShell title="Immatriculation" backStep="photo">
       <div className="flex-1 px-4 py-6 flex flex-col gap-5">
 
         {form.photoPreview && (
@@ -315,8 +312,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : VÉHICULE TROUVÉ — CONFIRMATION
   // ────────────────────────────────────────────────────────────
   if (step === 'vehicle_confirm') return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Véhicule trouvé" backStep="plate" />
+    <WithShell title="Véhicule trouvé" backStep="plate">
       <div className="flex-1 px-4 py-6 flex flex-col gap-4">
 
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
@@ -367,8 +363,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   if (step === 'vehicle_create' && !form.brandName) {
     if (brands.length === 0 && !loadingBrands) loadBrands()
     return (
-      <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-        <Header title="Quelle est la marque ?" backStep="plate" />
+      <WithShell title="Quelle est la marque ?" backStep="plate">
         <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2">
             <p className="text-zinc-400 text-xs mb-1">Immatriculation</p>
@@ -402,9 +397,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : VÉHICULE INCONNU — CHOISIR MODÈLE
   // ────────────────────────────────────────────────────────────
   if (step === 'vehicle_create' && form.brandName) return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Quel est le modèle ?"
-        backStep={undefined} />
+    <WithShell title="Quel est le modèle ?">
       <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
           <div>
@@ -467,9 +460,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : DETAILS
   // ────────────────────────────────────────────────────────────
   if (step === 'details') return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Détails de la facture"
-        backStep={form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create'} />
+    <WithShell title="Détails de la facture" backStep={form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create'}>
       <div className="flex-1 px-4 py-6 flex flex-col gap-5 overflow-y-auto pb-10">
 
         {/* Recap véhicule */}
@@ -554,8 +545,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : CONFIRM
   // ────────────────────────────────────────────────────────────
   if (step === 'confirm') return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Confirmation" backStep="details" />
+    <WithShell title="Confirmation" backStep="details">
       <div className="flex-1 px-4 py-6 flex flex-col gap-4 overflow-y-auto pb-10">
 
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
@@ -601,7 +591,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : SUCCESS
   // ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center max-w-md mx-auto p-6 text-center gap-7">
+    <AppShell title="Avance enregistrée" userRole={userRole} userName={user?.name ?? ''}>
+    <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center gap-7 max-w-md mx-auto">
       <div className="text-8xl">✅</div>
       <div>
         <h2 className="text-2xl font-bold text-white">Avance enregistrée</h2>
