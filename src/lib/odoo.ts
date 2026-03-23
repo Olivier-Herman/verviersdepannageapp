@@ -371,3 +371,59 @@ export async function syncInterventionToOdoo(intervention: {
 
   return { vehicleId, partnerId, orderId, orderName }
 }
+
+// ============================================================
+// AVANCE DE FONDS
+// ============================================================
+
+const ADVANCE_TEMPLATE_ID = 30
+const ODOO_FIELD_SALE_VEHICLE = 'x_studio_many2one_field_78n_1j6fmmeom'
+
+async function resolveFleetVehicleId(plate: string): Promise<number | null> {
+  const result = await rpc<any[]>('fleet.vehicle', 'search_read',
+    [[['license_plate', '=', plate]]],
+    { fields: ['id', 'license_plate'], limit: 1 }
+  )
+  return result?.length ? result[0].id : null
+}
+
+export async function addAdvanceToQuote(
+  quoteId: number,
+  plate: string,
+  amountHtva: number
+): Promise<{ lineId: number; vehicleSet: boolean }> {
+
+  // Récupérer le product_id depuis le modèle de devis id 30
+  const templateLines = await rpc<any[]>('sale.order.template.line', 'search_read',
+    [[['sale_order_template_id', '=', ADVANCE_TEMPLATE_ID]]],
+    { fields: ['product_id', 'name'], limit: 1 }
+  )
+
+  if (!templateLines?.length) {
+    throw new Error(`Modèle de devis "Avance de fonds" (id ${ADVANCE_TEMPLATE_ID}) introuvable ou sans lignes`)
+  }
+
+  const productId: number = templateLines[0].product_id[0] // many2one → [id, name]
+
+  // Créer la ligne sur le devis
+  const lineId: number = await rpc<number>('sale.order.line', 'create', [{
+    order_id:        quoteId,
+    product_id:      productId,
+    price_unit:      amountHtva,
+    product_uom_qty: 1,
+    name:            `Avance de fonds — ${plate}`,
+  }])
+
+  // Renseigner le champ véhicule Studio sur sale.order
+  let vehicleSet = false
+  const fleetId  = await resolveFleetVehicleId(plate)
+
+  if (fleetId) {
+    await rpc('sale.order', 'write', [[quoteId], { [ODOO_FIELD_SALE_VEHICLE]: fleetId }])
+    vehicleSet = true
+  } else {
+    console.warn(`[Odoo] fleet.vehicle introuvable pour "${plate}" — champ véhicule non renseigné`)
+  }
+
+  return { lineId, vehicleSet }
+}
