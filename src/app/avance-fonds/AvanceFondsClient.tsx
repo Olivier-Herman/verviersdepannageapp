@@ -6,6 +6,9 @@ import { useRouter }        from 'next/navigation'
 import Link                 from 'next/link'
 import Image                from 'next/image'
 
+interface Brand { id: number; name: string }
+interface Model { id: number; name: string }
+
 const PAYMENT_METHODS = [
   { value: 'cash',       label: '💵 Cash'      },
   { value: 'bancontact', label: '💳 Bancontact' },
@@ -54,6 +57,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const [searching, setSearching] = useState(false)
   const [error,     setError]     = useState<string | null>(null)
   const [form,      setForm]      = useState<FormState>(EMPTY_FORM)
+  const [brands,    setBrands]    = useState<Brand[]>([])
+  const [models,    setModels]    = useState<Model[]>([])
+  const [loadingBrands, setLoadingBrands] = useState(false)
 
   // ── Header commun ──────────────────────────────────────────
   const Header = ({ title, backStep }: { title: string; backStep?: Step }) => (
@@ -76,6 +82,32 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       <p className="text-white font-bold text-lg">{title}</p>
     </div>
   )
+
+  // ── Charger les marques ───────────────────────────────────
+  const loadBrands = async () => {
+    if (brands.length > 0) return
+    setLoadingBrands(true)
+    try {
+      const res  = await fetch('/api/vehicles?type=brands')
+      const data = await res.json()
+      setBrands(data || [])
+    } catch (e) {
+      console.error('loadBrands:', e)
+    } finally {
+      setLoadingBrands(false)
+    }
+  }
+
+  const loadModels = async (brandId: number) => {
+    setModels([])
+    try {
+      const res  = await fetch(`/api/vehicles?type=models&brandId=${brandId}`)
+      const data = await res.json()
+      setModels(data || [])
+    } catch (e) {
+      console.error('loadModels:', e)
+    }
+  }
 
   // ── Photo ──────────────────────────────────────────────────
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -307,55 +339,100 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   )
 
   // ────────────────────────────────────────────────────────────
-  // STEP : VÉHICULE INCONNU — CRÉER
+  // STEP : VÉHICULE INCONNU — CHOISIR MARQUE
   // ────────────────────────────────────────────────────────────
-  if (step === 'vehicle_create') return (
+  if (step === 'vehicle_create' && !form.brandName) {
+    if (brands.length === 0 && !loadingBrands) loadBrands()
+    return (
+      <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
+        <Header title="Quelle est la marque ?" backStep="plate" />
+        <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2">
+            <p className="text-zinc-400 text-xs mb-1">Immatriculation</p>
+            <p className="text-white font-mono text-xl font-bold">{normalizePlate(form.plate)}</p>
+          </div>
+
+          {loadingBrands ? (
+            <p className="text-zinc-500 text-sm text-center py-8">Chargement…</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {brands.map(b => (
+                <button key={b.id}
+                  onClick={() => {
+                    setForm(f => ({ ...f, brandName: b.name, modelName: '' }))
+                    loadModels(b.id)
+                  }}
+                  className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A] text-white font-medium hover:border-brand transition-all active:scale-95"
+                >
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {error && <ErrorBox message={error} />}
+        </div>
+      </div>
+    )
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // STEP : VÉHICULE INCONNU — CHOISIR MODÈLE
+  // ────────────────────────────────────────────────────────────
+  if (step === 'vehicle_create' && form.brandName) return (
     <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <Header title="Nouveau véhicule" backStep="plate" />
-      <div className="flex-1 px-4 py-6 flex flex-col gap-5">
-
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-4">
-          <p className="text-zinc-400 text-xs mb-1">Immatriculation</p>
-          <p className="text-white font-mono text-xl font-bold">{normalizePlate(form.plate)}</p>
-          <p className="text-zinc-600 text-xs mt-1">Véhicule non trouvé — complétez les informations</p>
+      <Header title="Quel est le modèle ?"
+        backStep={undefined} />
+      <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
+          <div>
+            <p className="text-zinc-400 text-xs mb-0.5">Marque sélectionnée</p>
+            <p className="text-white font-bold">{form.brandName}</p>
+          </div>
+          <button onClick={() => setForm(f => ({ ...f, brandName: '', modelName: '' }))}
+            className="text-zinc-500 hover:text-white text-sm">
+            Changer
+          </button>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-1.5">Marque *</label>
-          <input
-            type="text"
-            placeholder="Ex: Volkswagen"
-            value={form.brandName}
-            onChange={e => setForm(f => ({ ...f, brandName: e.target.value }))}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                       text-white placeholder-zinc-700 focus:outline-none focus:border-brand"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-1.5">Modèle *</label>
-          <input
-            type="text"
-            placeholder="Ex: Golf"
-            value={form.modelName}
-            onChange={e => setForm(f => ({ ...f, modelName: e.target.value }))}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                       text-white placeholder-zinc-700 focus:outline-none focus:border-brand"
-          />
+        <div className="flex flex-col gap-2">
+          {models.map(m => (
+            <button key={m.id}
+              onClick={() => {
+                setForm(f => ({ ...f, modelName: m.name }))
+                setError(null)
+                setStep('details')
+              }}
+              className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A] text-white font-medium hover:border-brand transition-all active:scale-95"
+            >
+              {m.name}
+            </button>
+          ))}
+          {/* Modèle "Autre" avec saisie libre */}
+          <div className="mt-2">
+            <input
+              type="text"
+              placeholder="Autre modèle…"
+              value={form.modelName.startsWith('_custom:') ? form.modelName.replace('_custom:', '') : ''}
+              onChange={e => setForm(f => ({ ...f, modelName: `_custom:${e.target.value}` }))}
+              className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl px-5 py-4
+                         text-white placeholder-zinc-600 focus:outline-none focus:border-brand text-xl font-bold text-center"
+            />
+          </div>
         </div>
 
         {error && <ErrorBox message={error} />}
 
         <button
           onClick={() => {
-            if (!form.brandName.trim() || !form.modelName.trim()) {
-              setError('Veuillez saisir la marque et le modèle')
-              return
-            }
+            const modelVal = form.modelName.startsWith('_custom:')
+              ? form.modelName.replace('_custom:', '').trim()
+              : form.modelName.trim()
+            if (!modelVal) { setError('Veuillez choisir ou saisir un modèle'); return }
+            setForm(f => ({ ...f, modelName: modelVal }))
             setError(null)
             setStep('details')
           }}
-          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg mt-auto"
+          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg mt-2"
         >
           Continuer →
         </button>

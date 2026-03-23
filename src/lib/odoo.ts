@@ -379,38 +379,22 @@ export async function syncInterventionToOdoo(intervention: {
 const ADVANCE_TEMPLATE_ID     = 30
 const ODOO_FIELD_SALE_VEHICLE = 'x_studio_many2one_field_78n_1j6fmmeom'
 
-/**
- * Récupère le partner_id du contact "Client divers" (ref: Divers).
- * Ce partenaire est utilisé comme client pour tous les devis d'avance de fonds.
- */
 async function getDiversPartnerId(): Promise<number> {
   const results = await rpc<any[]>('res.partner', 'search_read',
     [[['ref', '=', 'Divers']]],
     { fields: ['id', 'name'], limit: 1 }
   )
-  if (!results?.length) {
-    throw new Error('Partenaire "Client divers" (ref: Divers) introuvable dans Odoo')
-  }
+  if (!results?.length) throw new Error('Partenaire "Client divers" (ref: Divers) introuvable')
   return results[0].id
 }
 
-/**
- * Crée un devis brouillon "Avance de fonds" dans Odoo.
- *
- * - Partner : "Client divers" (ref: Divers)
- * - Template : id 30 (Avance de fonds)
- * - Véhicule : fleet.vehicle résolu depuis la plaque
- * - Ligne produit : product_id lu depuis le template + montant HTVA
- */
 export async function createAdvanceOrder(
   plate:      string,
   amountHtva: number
 ): Promise<{ orderId: number; orderName: string; vehicleSet: boolean }> {
 
-  // 1. Partner "Client divers"
   const partnerId = await getDiversPartnerId()
 
-  // 2. Product depuis le modèle de devis id 30
   const templateLines = await rpc<any[]>('sale.order.template.line', 'search_read',
     [[['sale_order_template_id', '=', ADVANCE_TEMPLATE_ID]]],
     { fields: ['product_id', 'name'], limit: 1 }
@@ -420,10 +404,9 @@ export async function createAdvanceOrder(
   }
   const productId: number = templateLines[0].product_id[0]
 
-  // 3. Créer le devis brouillon
   const orderId = await rpc<number>('sale.order', 'create', [{
-    partner_id:               partnerId,
-    sale_order_template_id:   ADVANCE_TEMPLATE_ID,
+    partner_id:             partnerId,
+    sale_order_template_id: ADVANCE_TEMPLATE_ID,
     order_line: [[0, 0, {
       product_id:      productId,
       price_unit:      amountHtva,
@@ -432,31 +415,23 @@ export async function createAdvanceOrder(
     }]],
   }])
 
-  // 4. Récupérer le nom du devis
   const orders = await rpc<any[]>('sale.order', 'read',
     [[orderId]], { fields: ['id', 'name'] }
   )
   const orderName: string = orders[0]?.name ?? `SO${orderId}`
 
-  // 5. Renseigner le champ véhicule Studio sur le devis
   let vehicleSet = false
   const vehicles = await rpc<any[]>('fleet.vehicle', 'search_read',
     [[['license_plate', 'ilike', plate]]],
     { fields: ['id', 'license_plate'], limit: 10 }
   )
   const match = vehicles.find(v =>
-    v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === plate.replace(/[-.\s]/g, '').toUpperCase()
+    v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === plate.toUpperCase()
   )
   if (match) {
-    await rpc('sale.order', 'write', [
-      [orderId],
-      { [ODOO_FIELD_SALE_VEHICLE]: match.id }
-    ])
+    await rpc('sale.order', 'write', [[orderId], { [ODOO_FIELD_SALE_VEHICLE]: match.id }])
     vehicleSet = true
-  } else {
-    console.warn(`[Odoo] fleet.vehicle introuvable pour "${plate}" — champ véhicule non renseigné`)
   }
 
-  console.log(`[Odoo] Devis avance créé : ${orderName} — ${amountHtva}€ HTVA`)
   return { orderId, orderName, vehicleSet }
 }

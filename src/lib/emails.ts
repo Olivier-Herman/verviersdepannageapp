@@ -331,24 +331,55 @@ export async function sendAdvancePurchaseEmail(params: {
   const { to, plate, amountHtva, paymentMethod, invoiceUrl, employeeName, orderName } = params
 
   const paymentLabels: Record<string, string> = {
-    cash:       'Cash',
+    cash:       'Espèces',
     bancontact: 'Bancontact',
     card:       'Carte',
     virement:   'Virement',
   }
 
-  // Télécharger la pièce jointe depuis Supabase Storage
+  // Télécharger la pièce jointe
   const imageResponse = await fetch(invoiceUrl)
   if (!imageResponse.ok) throw new Error(`Impossible de récupérer la facture : ${invoiceUrl}`)
 
   const imageBuffer = await imageResponse.arrayBuffer()
   const contentType = imageResponse.headers.get('content-type') ?? 'image/jpeg'
-  const ext         = contentType.includes('pdf') ? 'pdf'
-                    : contentType.includes('png') ? 'png' : 'jpg'
-  const filename    = `facture-avance-${plate}-${Date.now()}.${ext}`
+
+  // Convertir en PDF via pdf-lib
+  let attachmentBase64: string
+  let attachmentContentType: string
+  let attachmentFilename: string
+
+  if (contentType.includes('pdf')) {
+    attachmentBase64      = Buffer.from(imageBuffer).toString('base64')
+    attachmentContentType = 'application/pdf'
+    attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
+  } else {
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const pdfDoc = await PDFDocument.create()
+      const image  = contentType.includes('png')
+        ? await pdfDoc.embedPng(imageBuffer)
+        : await pdfDoc.embedJpg(imageBuffer)
+
+      const A4_W = 595, A4_H = 842
+      const ratio  = Math.min(A4_W / image.width, A4_H / image.height, 1)
+      const width  = image.width  * ratio
+      const height = image.height * ratio
+      const page   = pdfDoc.addPage([width, height])
+      page.drawImage(image, { x: 0, y: 0, width, height })
+
+      attachmentBase64      = Buffer.from(await pdfDoc.save()).toString('base64')
+      attachmentContentType = 'application/pdf'
+      attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
+    } catch {
+      // Fallback image directe si conversion échoue
+      attachmentBase64      = Buffer.from(imageBuffer).toString('base64')
+      attachmentContentType = contentType
+      attachmentFilename    = `facture-avance-${plate}-${Date.now()}.jpg`
+    }
+  }
 
   const subject = `Avance de fonds — ${plate} — ${amountHtva.toFixed(2)} € HTVA`
-
   const html = emailLayout(`
     <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111;">Avance de fonds</p>
     <p style="margin:0 0 24px;font-size:14px;color:#888;">
@@ -375,9 +406,9 @@ export async function sendAdvancePurchaseEmail(params: {
         toRecipients: [{ emailAddress: { address: to } }],
         attachments: [{
           '@odata.type': '#microsoft.graph.fileAttachment',
-          name:          filename,
-          contentType,
-          contentBytes:  Buffer.from(imageBuffer).toString('base64'),
+          name:          attachmentFilename,
+          contentType:   attachmentContentType,
+          contentBytes:  attachmentBase64,
         }],
       },
       saveToSentItems: true,

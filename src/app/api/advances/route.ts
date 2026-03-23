@@ -22,13 +22,12 @@ export async function POST(req: NextRequest) {
     const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase().trim()
     const htva            = parseFloat(amountHtva)
 
-    // Résoudre l'id utilisateur depuis l'email de session
+    // Résoudre l'utilisateur
     const { data: me } = await supabase
-      .from('users').select('id').eq('email', session.user.email).single()
+      .from('users').select('id, name').eq('email', session.user.email).single()
     if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
-    // ── S'assurer que le véhicule existe dans Odoo ────────
-    // (si connu depuis le lookup, déjà présent — sinon créé avec marque/modèle)
+    // ── Créer véhicule dans Odoo si nécessaire ────────────
     try {
       await findOrCreateVehicle({
         licensePlate: normalizedPlate,
@@ -37,10 +36,9 @@ export async function POST(req: NextRequest) {
       })
     } catch (vErr) {
       console.error('[Odoo] findOrCreateVehicle:', vErr)
-      // Non bloquant
     }
 
-    // ── Créer le devis brouillon Odoo ─────────────────────
+    // ── Créer devis brouillon Odoo ────────────────────────
     let odooOrderId:   number | null = null
     let odooOrderName: string | null = null
     let odooVehicleSet               = false
@@ -52,7 +50,6 @@ export async function POST(req: NextRequest) {
       odooVehicleSet = result.vehicleSet
     } catch (odooErr) {
       console.error('[Odoo] createAdvanceOrder:', odooErr)
-      // Non bloquant — on enregistre quand même
     }
 
     // ── Email vers boîte achat ────────────────────────────
@@ -67,14 +64,28 @@ export async function POST(req: NextRequest) {
           to:            purchaseEmail,
           plate:         normalizedPlate,
           amountHtva:    htva,
-          paymentMethod: paymentMethod as string,
-          invoiceUrl:    invoiceUrl as string,
-          employeeName:  session.user.name ?? session.user.email ?? 'Employé',
+          paymentMethod,
+          invoiceUrl,
+          employeeName:  session.user.name ?? me.name ?? 'Employé',
           orderName:     odooOrderName ?? undefined,
         })
         purchaseEmailSent = true
       } catch (mailErr) {
         console.error('[Email] sendAdvancePurchaseEmail:', mailErr)
+      }
+    }
+
+    // ── Mouvement caisse si espèces ───────────────────────
+    if (paymentMethod === 'cash') {
+      try {
+        await supabase.from('cash_register').insert({
+          driver_id: me.id,
+          amount:    htva,
+          type:      'encaissement',
+          notes:     `Avance de fonds — ${normalizedPlate}${odooOrderName ? ` — ${odooOrderName}` : ''}`,
+        })
+      } catch (cashErr) {
+        console.error('[Caisse] cash_register insert:', cashErr)
       }
     }
 
