@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         await supabase.from('cash_register').insert({
           driver_id: me.id,
           amount:    htva,
-          type:      'encaissement',
+          type:      'remise',
           notes:     `Avance de fonds — ${normalizedPlate}${odooOrderName ? ` — ${odooOrderName}` : ''}`,
         })
       } catch (cashErr) {
