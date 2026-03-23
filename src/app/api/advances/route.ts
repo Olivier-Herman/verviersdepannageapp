@@ -1,43 +1,39 @@
 // src/app/api/advances/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession }          from 'next-auth';
-import { authOptions }               from '@/lib/auth';
-import { createAdminClient }         from '@/lib/supabase';
-import { addAdvanceToQuote }         from '@/lib/odoo';
-import { sendAdvancePurchaseEmail }  from '@/lib/emails';
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession }          from 'next-auth'
+import { authOptions }               from '@/lib/auth'
+import { createAdminClient }         from '@/lib/supabase'
+import { addAdvanceToQuote }         from '@/lib/odoo'
+import { sendAdvancePurchaseEmail }  from '@/lib/emails'
 
-// ─── POST : créer une avance de fonds ────────────────────────
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
-  }
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   try {
-    const body = await req.json();
-    const { plate, amountHtva, paymentMethod, invoiceUrl, notes } = body;
+    const body = await req.json()
+    const { plate, amountHtva, paymentMethod, invoiceUrl, notes, brandName, modelName } = body
 
     if (!plate || !amountHtva || !paymentMethod || !invoiceUrl) {
-      return NextResponse.json(
-        { error: 'Champs obligatoires manquants (plate, amountHtva, paymentMethod, invoiceUrl)' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
     }
 
-    const supabase        = createAdminClient();
-    const normalizedPlate = (plate as string).toUpperCase().trim();
-    const htva            = parseFloat(amountHtva);
+    const supabase        = createAdminClient()
+    const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase().trim()
+    const htva            = parseFloat(amountHtva)
 
-    // ── Retrouver le devis Odoo via la plaque ──────────────
-    let odooQuoteId:    number | null = null;
-    let odooLineId:     number | null = null;
-    let odooVehicleSet                = false;
+    // Résoudre l'id utilisateur depuis l'email de session
+    const { data: me } = await supabase
+      .from('users').select('id').eq('email', session.user.email).single()
+    if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
+
+    // ── Retrouver le devis via la plaque ──────────────────
+    let odooQuoteId:   number | null = null
+    let odooLineId:    number | null = null
+    let odooVehicleSet               = false
 
     const { data: vehicle } = await supabase
-      .from('vehicles')
-      .select('id')
-      .eq('plate', normalizedPlate)
-      .single();
+      .from('vehicles').select('id').eq('plate', normalizedPlate).single()
 
     if (vehicle) {
       const { data: intervention } = await supabase
@@ -47,31 +43,27 @@ export async function POST(req: NextRequest) {
         .not('odoo_quote_id', 'is', null)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .single()
 
       if (intervention?.odoo_quote_id) {
-        odooQuoteId = intervention.odoo_quote_id;
+        odooQuoteId = intervention.odoo_quote_id
         try {
-          const result   = await addAdvanceToQuote(odooQuoteId!, normalizedPlate, htva);
-          odooLineId     = result.lineId;
-          odooVehicleSet = result.vehicleSet;
+          const result   = await addAdvanceToQuote(odooQuoteId!, normalizedPlate, htva)
+          odooLineId     = result.lineId
+          odooVehicleSet = result.vehicleSet
         } catch (odooErr) {
-          console.error('[Odoo] addAdvanceToQuote:', odooErr);
+          console.error('[Odoo] addAdvanceToQuote:', odooErr)
         }
       }
     }
 
-    // ── Email vers boîte achat Odoo ────────────────────────
+    // ── Email vers boîte achat ────────────────────────────
     const { data: setting } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'odoo_purchase_email')
-      .single();
+      .from('app_settings').select('value').eq('key', 'odoo_purchase_email').single()
 
-    let purchaseEmailSent = false;
-
+    let purchaseEmailSent = false
     if (setting?.value) {
-      const purchaseEmail = JSON.parse(setting.value) as string;
+      const purchaseEmail = JSON.parse(setting.value) as string
       try {
         await sendAdvancePurchaseEmail({
           to:            purchaseEmail,
@@ -80,18 +72,18 @@ export async function POST(req: NextRequest) {
           paymentMethod: paymentMethod as string,
           invoiceUrl:    invoiceUrl as string,
           employeeName:  session.user.name ?? session.user.email ?? 'Employé',
-        });
-        purchaseEmailSent = true;
+        })
+        purchaseEmailSent = true
       } catch (mailErr) {
-        console.error('[Email] sendAdvancePurchaseEmail:', mailErr);
+        console.error('[Email] sendAdvancePurchaseEmail:', mailErr)
       }
     }
 
-    // ── Sauvegarde Supabase ────────────────────────────────
+    // ── Sauvegarde ────────────────────────────────────────
     const { data: advance, error: insertError } = await supabase
       .from('fund_advances')
       .insert({
-        user_id:             session.user.id,
+        user_id:             me.id,
         plate:               normalizedPlate,
         amount_htva:         htva,
         payment_method:      paymentMethod,
@@ -103,48 +95,41 @@ export async function POST(req: NextRequest) {
         notes:               notes ?? null,
         status:              odooLineId ? 'synced' : 'pending',
       })
-      .select()
-      .single();
+      .select().single()
 
-    if (insertError) throw insertError;
-
-    return NextResponse.json({ success: true, advance });
+    if (insertError) throw insertError
+    return NextResponse.json({ success: true, advance })
 
   } catch (err: unknown) {
-    console.error('[POST /api/advances]', err);
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
+    console.error('[POST /api/advances]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
 
-// ─── GET : liste des avances ──────────────────────────────────
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
-  }
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { searchParams } = new URL(req.url);
-  const limit  = Math.min(parseInt(searchParams.get('limit')  ?? '20'), 100);
-  const offset = Math.max(parseInt(searchParams.get('offset') ?? '0'),  0);
+  const supabase = createAdminClient()
+  const { searchParams } = new URL(req.url)
+  const limit  = Math.min(parseInt(searchParams.get('limit')  ?? '20'), 100)
+  const offset = Math.max(parseInt(searchParams.get('offset') ?? '0'),  0)
 
-  const supabase = createAdminClient();
+  const { data: me } = await supabase
+    .from('users').select('id, role').eq('email', session.user.email).single()
+  if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
   let query = supabase
     .from('fund_advances')
     .select('*, users(name, email)', { count: 'exact' })
     .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+    .range(offset, offset + limit - 1)
 
-  if (session.user.role !== 'admin') {
-    query = query.eq('user_id', session.user.id);
+  if (!['admin', 'superadmin'].includes(me.role)) {
+    query = query.eq('user_id', me.id)
   }
 
-  const { data, error, count } = await query;
-
-  if (error) {
-    console.error('[GET /api/advances]', error);
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
-  }
-
-  return NextResponse.json({ advances: data, total: count });
+  const { data, error, count } = await query
+  if (error) return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  return NextResponse.json({ advances: data, total: count })
 }
