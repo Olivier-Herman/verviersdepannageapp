@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
-import { addAdvanceToQuote }         from '@/lib/odoo'
+import { findOrCreateVehicle, createAdvanceOrder } from '@/lib/odoo'
 import { sendAdvancePurchaseEmail }  from '@/lib/emails'
 
 export async function POST(req: NextRequest) {
@@ -27,34 +27,32 @@ export async function POST(req: NextRequest) {
       .from('users').select('id').eq('email', session.user.email).single()
     if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
-    // ── Retrouver le devis via la plaque ──────────────────
-    let odooQuoteId:   number | null = null
-    let odooLineId:    number | null = null
+    // ── S'assurer que le véhicule existe dans Odoo ────────
+    // (si connu depuis le lookup, déjà présent — sinon créé avec marque/modèle)
+    try {
+      await findOrCreateVehicle({
+        licensePlate: normalizedPlate,
+        brandName:    brandName || 'Inconnu',
+        modelName:    modelName || 'Inconnu',
+      })
+    } catch (vErr) {
+      console.error('[Odoo] findOrCreateVehicle:', vErr)
+      // Non bloquant
+    }
+
+    // ── Créer le devis brouillon Odoo ─────────────────────
+    let odooOrderId:   number | null = null
+    let odooOrderName: string | null = null
     let odooVehicleSet               = false
 
-    const { data: vehicle } = await supabase
-      .from('vehicles').select('id').eq('plate', normalizedPlate).single()
-
-    if (vehicle) {
-      const { data: intervention } = await supabase
-        .from('interventions')
-        .select('odoo_quote_id')
-        .eq('vehicle_id', vehicle.id)
-        .not('odoo_quote_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (intervention?.odoo_quote_id) {
-        odooQuoteId = intervention.odoo_quote_id
-        try {
-          const result   = await addAdvanceToQuote(odooQuoteId!, normalizedPlate, htva)
-          odooLineId     = result.lineId
-          odooVehicleSet = result.vehicleSet
-        } catch (odooErr) {
-          console.error('[Odoo] addAdvanceToQuote:', odooErr)
-        }
-      }
+    try {
+      const result   = await createAdvanceOrder(normalizedPlate, htva)
+      odooOrderId    = result.orderId
+      odooOrderName  = result.orderName
+      odooVehicleSet = result.vehicleSet
+    } catch (odooErr) {
+      console.error('[Odoo] createAdvanceOrder:', odooErr)
+      // Non bloquant — on enregistre quand même
     }
 
     // ── Email vers boîte achat ────────────────────────────
@@ -72,6 +70,7 @@ export async function POST(req: NextRequest) {
           paymentMethod: paymentMethod as string,
           invoiceUrl:    invoiceUrl as string,
           employeeName:  session.user.name ?? session.user.email ?? 'Employé',
+          orderName:     odooOrderName ?? undefined,
         })
         purchaseEmailSent = true
       } catch (mailErr) {
@@ -79,7 +78,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Sauvegarde ────────────────────────────────────────
+    // ── Sauvegarde Supabase ───────────────────────────────
     const { data: advance, error: insertError } = await supabase
       .from('fund_advances')
       .insert({
@@ -88,17 +87,18 @@ export async function POST(req: NextRequest) {
         amount_htva:         htva,
         payment_method:      paymentMethod,
         invoice_url:         invoiceUrl,
-        odoo_quote_id:       odooQuoteId,
-        odoo_line_id:        odooLineId,
+        odoo_quote_id:       odooOrderId,
+        odoo_line_id:        null,
         odoo_vehicle_set:    odooVehicleSet,
         purchase_email_sent: purchaseEmailSent,
         notes:               notes ?? null,
-        status:              odooLineId ? 'synced' : 'pending',
+        status:              odooOrderId ? 'synced' : 'pending',
       })
       .select().single()
 
     if (insertError) throw insertError
-    return NextResponse.json({ success: true, advance })
+
+    return NextResponse.json({ success: true, advance, orderName: odooOrderName })
 
   } catch (err: unknown) {
     console.error('[POST /api/advances]', err)

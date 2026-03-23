@@ -318,7 +318,34 @@ export async function sendPasswordReset(data: {
   await sendEmail(data.toEmail, 'Réinitialisation de votre mot de passe', emailLayout(content, 'Réinitialisation mot de passe'), data.name)
 }
 
-// ─── Email : Avance de fonds → boîte achat Odoo ───────────
+// ─── Email : Avance de fonds → boîte achat (PDF) ──────────
+async function imageToPdfBase64(imageBuffer: ArrayBuffer, contentType: string): Promise<string> {
+  // Dynamically import pdf-lib (pure JS, no native deps)
+  const { PDFDocument } = await import('pdf-lib')
+
+  const pdfDoc = await PDFDocument.create()
+
+  let image
+  if (contentType.includes('png')) {
+    image = await pdfDoc.embedPng(imageBuffer)
+  } else {
+    // jpeg / webp / autres → on tente jpeg
+    image = await pdfDoc.embedJpg(imageBuffer)
+  }
+
+  // Page à la taille de l'image (A4 max)
+  const A4_W = 595, A4_H = 842
+  const ratio  = Math.min(A4_W / image.width, A4_H / image.height, 1)
+  const width  = image.width  * ratio
+  const height = image.height * ratio
+
+  const page = pdfDoc.addPage([width, height])
+  page.drawImage(image, { x: 0, y: 0, width, height })
+
+  const pdfBytes = await pdfDoc.save()
+  return Buffer.from(pdfBytes).toString('base64')
+}
+
 export async function sendAdvancePurchaseEmail(params: {
   to:            string
   plate:         string
@@ -326,8 +353,9 @@ export async function sendAdvancePurchaseEmail(params: {
   paymentMethod: string
   invoiceUrl:    string
   employeeName:  string
+  orderName?:    string
 }): Promise<void> {
-  const { to, plate, amountHtva, paymentMethod, invoiceUrl, employeeName } = params
+  const { to, plate, amountHtva, paymentMethod, invoiceUrl, employeeName, orderName } = params
 
   const paymentLabels: Record<string, string> = {
     cash:       'Cash',
@@ -336,33 +364,45 @@ export async function sendAdvancePurchaseEmail(params: {
     virement:   'Virement',
   }
 
-  // Télécharger la pièce jointe depuis Supabase Storage (signed URL)
+  // Télécharger la pièce jointe
   const imageResponse = await fetch(invoiceUrl)
   if (!imageResponse.ok) throw new Error(`Impossible de récupérer la facture : ${invoiceUrl}`)
 
   const imageBuffer = await imageResponse.arrayBuffer()
-  const base64Image = Buffer.from(imageBuffer).toString('base64')
   const contentType = imageResponse.headers.get('content-type') ?? 'image/jpeg'
-  const extension   = contentType.includes('pdf') ? 'pdf' : 'jpg'
-  const filename    = `facture-avance-${plate}-${Date.now()}.${extension}`
+
+  // Convertir en PDF si c'est une image
+  let attachmentBase64: string
+  let attachmentContentType: string
+  let attachmentFilename: string
+
+  if (contentType.includes('pdf')) {
+    attachmentBase64      = Buffer.from(imageBuffer).toString('base64')
+    attachmentContentType = 'application/pdf'
+    attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
+  } else {
+    attachmentBase64      = await imageToPdfBase64(imageBuffer, contentType)
+    attachmentContentType = 'application/pdf'
+    attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
+  }
 
   const subject = `Avance de fonds — ${plate} — ${amountHtva.toFixed(2)} € HTVA`
 
   const html = emailLayout(`
     <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111;">Avance de fonds</p>
     <p style="margin:0 0 24px;font-size:14px;color:#888;">
-      Effectuée par <strong>${employeeName}</strong> — veuillez encoder et acquitter la facture jointe dans Odoo Achats.
+      Effectuée par <strong>${employeeName}</strong> — veuillez encoder et acquitter la facture jointe.
     </p>
     <div style="background:#f8f8f8;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
       <table width="100%" cellpadding="0" cellspacing="0">
-        ${infoRow('Immatriculation', `<strong>${plate}</strong>`)}
-        ${infoRow('Montant HTVA',    `<strong>${amountHtva.toFixed(4)} €</strong>`)}
+        ${infoRow('Immatriculation',  `<strong>${plate}</strong>`)}
+        ${infoRow('Montant HTVA',     `<strong>${amountHtva.toFixed(4)} €</strong>`)}
         ${infoRow('Mode de paiement', paymentLabels[paymentMethod] ?? paymentMethod)}
+        ${orderName ? infoRow('Référence devis', `<strong>${orderName}</strong>`) : ''}
       </table>
     </div>
   `, subject)
 
-  // Appel Graph API direct pour supporter la pièce jointe
   const token = await getAppToken()
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
     method: 'POST',
@@ -373,10 +413,10 @@ export async function sendAdvancePurchaseEmail(params: {
         body: { contentType: 'HTML', content: html },
         toRecipients: [{ emailAddress: { address: to } }],
         attachments: [{
-          '@odata.type':  '#microsoft.graph.fileAttachment',
-          name:           filename,
-          contentType,
-          contentBytes:   base64Image,
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name:          attachmentFilename,
+          contentType:   attachmentContentType,
+          contentBytes:  attachmentBase64,
         }],
       },
       saveToSentItems: true,

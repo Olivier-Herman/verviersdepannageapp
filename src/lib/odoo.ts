@@ -376,54 +376,87 @@ export async function syncInterventionToOdoo(intervention: {
 // AVANCE DE FONDS
 // ============================================================
 
-const ADVANCE_TEMPLATE_ID = 30
+const ADVANCE_TEMPLATE_ID     = 30
 const ODOO_FIELD_SALE_VEHICLE = 'x_studio_many2one_field_78n_1j6fmmeom'
 
-async function resolveFleetVehicleId(plate: string): Promise<number | null> {
-  const result = await rpc<any[]>('fleet.vehicle', 'search_read',
-    [[['license_plate', '=', plate]]],
-    { fields: ['id', 'license_plate'], limit: 1 }
+/**
+ * Récupère le partner_id du contact "Client divers" (ref: Divers).
+ * Ce partenaire est utilisé comme client pour tous les devis d'avance de fonds.
+ */
+async function getDiversPartnerId(): Promise<number> {
+  const results = await rpc<any[]>('res.partner', 'search_read',
+    [[['ref', '=', 'Divers']]],
+    { fields: ['id', 'name'], limit: 1 }
   )
-  return result?.length ? result[0].id : null
+  if (!results?.length) {
+    throw new Error('Partenaire "Client divers" (ref: Divers) introuvable dans Odoo')
+  }
+  return results[0].id
 }
 
-export async function addAdvanceToQuote(
-  quoteId: number,
-  plate: string,
+/**
+ * Crée un devis brouillon "Avance de fonds" dans Odoo.
+ *
+ * - Partner : "Client divers" (ref: Divers)
+ * - Template : id 30 (Avance de fonds)
+ * - Véhicule : fleet.vehicle résolu depuis la plaque
+ * - Ligne produit : product_id lu depuis le template + montant HTVA
+ */
+export async function createAdvanceOrder(
+  plate:      string,
   amountHtva: number
-): Promise<{ lineId: number; vehicleSet: boolean }> {
+): Promise<{ orderId: number; orderName: string; vehicleSet: boolean }> {
 
-  // Récupérer le product_id depuis le modèle de devis id 30
+  // 1. Partner "Client divers"
+  const partnerId = await getDiversPartnerId()
+
+  // 2. Product depuis le modèle de devis id 30
   const templateLines = await rpc<any[]>('sale.order.template.line', 'search_read',
     [[['sale_order_template_id', '=', ADVANCE_TEMPLATE_ID]]],
     { fields: ['product_id', 'name'], limit: 1 }
   )
-
   if (!templateLines?.length) {
-    throw new Error(`Modèle de devis "Avance de fonds" (id ${ADVANCE_TEMPLATE_ID}) introuvable ou sans lignes`)
+    throw new Error(`Modèle de devis id ${ADVANCE_TEMPLATE_ID} introuvable ou sans lignes`)
   }
+  const productId: number = templateLines[0].product_id[0]
 
-  const productId: number = templateLines[0].product_id[0] // many2one → [id, name]
-
-  // Créer la ligne sur le devis
-  const lineId: number = await rpc<number>('sale.order.line', 'create', [{
-    order_id:        quoteId,
-    product_id:      productId,
-    price_unit:      amountHtva,
-    product_uom_qty: 1,
-    name:            `Avance de fonds — ${plate}`,
+  // 3. Créer le devis brouillon
+  const orderId = await rpc<number>('sale.order', 'create', [{
+    partner_id:               partnerId,
+    sale_order_template_id:   ADVANCE_TEMPLATE_ID,
+    order_line: [[0, 0, {
+      product_id:      productId,
+      price_unit:      amountHtva,
+      product_uom_qty: 1,
+      name:            `Avance de fonds — ${plate}`,
+    }]],
   }])
 
-  // Renseigner le champ véhicule Studio sur sale.order
-  let vehicleSet = false
-  const fleetId  = await resolveFleetVehicleId(plate)
+  // 4. Récupérer le nom du devis
+  const orders = await rpc<any[]>('sale.order', 'read',
+    [[orderId]], { fields: ['id', 'name'] }
+  )
+  const orderName: string = orders[0]?.name ?? `SO${orderId}`
 
-  if (fleetId) {
-    await rpc('sale.order', 'write', [[quoteId], { [ODOO_FIELD_SALE_VEHICLE]: fleetId }])
+  // 5. Renseigner le champ véhicule Studio sur le devis
+  let vehicleSet = false
+  const vehicles = await rpc<any[]>('fleet.vehicle', 'search_read',
+    [[['license_plate', 'ilike', plate]]],
+    { fields: ['id', 'license_plate'], limit: 10 }
+  )
+  const match = vehicles.find(v =>
+    v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === plate.replace(/[-.\s]/g, '').toUpperCase()
+  )
+  if (match) {
+    await rpc('sale.order', 'write', [
+      [orderId],
+      { [ODOO_FIELD_SALE_VEHICLE]: match.id }
+    ])
     vehicleSet = true
   } else {
     console.warn(`[Odoo] fleet.vehicle introuvable pour "${plate}" — champ véhicule non renseigné`)
   }
 
-  return { lineId, vehicleSet }
+  console.log(`[Odoo] Devis avance créé : ${orderName} — ${amountHtva}€ HTVA`)
+  return { orderId, orderName, vehicleSet }
 }
