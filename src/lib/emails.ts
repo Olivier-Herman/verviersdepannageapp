@@ -319,22 +319,32 @@ export async function sendPasswordReset(data: {
 }
 
 // ─── Email : Avance de fonds → boîte achat (PDF) ──────────
-async function imageToPdfBase64(imageBuffer: ArrayBuffer, contentType: string): Promise<string> {
+/**
+ * Détecte le type réel d'une image via ses magic bytes.
+ * Retourne 'jpeg', 'png' ou null si format non supporté (HEIC, WEBP, etc.)
+ */
+function detectImageType(buffer: ArrayBuffer): 'jpeg' | 'png' | null {
+  const bytes = new Uint8Array(buffer.slice(0, 12))
+  // JPEG : FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'jpeg'
+  // PNG : 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'png'
+  return null
+}
+
+async function imageToPdfBase64(imageBuffer: ArrayBuffer): Promise<string | null> {
+  const imageType = detectImageType(imageBuffer)
+  if (!imageType) {
+    // Format non supporté (HEIC, WEBP…) — on ne convertit pas
+    return null
+  }
+
   const { PDFDocument } = await import('pdf-lib')
   const pdfDoc = await PDFDocument.create()
 
-  let image
-  try {
-    if (contentType.includes('png')) {
-      image = await pdfDoc.embedPng(imageBuffer)
-    } else {
-      // jpeg, jpg — HEIC bloqué côté UI (accept="image/jpeg,image/png")
-      image = await pdfDoc.embedJpg(imageBuffer)
-    }
-  } catch (embedErr) {
-    // Format non supporté par pdf-lib — on envoie l'image telle quelle
-    throw new Error(`Format image non supporté pour la conversion PDF : ${contentType}`)
-  }
+  const image = imageType === 'png'
+    ? await pdfDoc.embedPng(imageBuffer)
+    : await pdfDoc.embedJpg(imageBuffer)
 
   const A4_W = 595, A4_H = 842
   const ratio  = Math.min(A4_W / image.width, A4_H / image.height, 1)
@@ -373,7 +383,7 @@ export async function sendAdvancePurchaseEmail(params: {
   const imageBuffer = await imageResponse.arrayBuffer()
   const contentType = imageResponse.headers.get('content-type') ?? 'image/jpeg'
 
-  // Convertir en PDF si c'est une image
+  // Convertir en PDF si possible, sinon envoyer tel quel
   let attachmentBase64: string
   let attachmentContentType: string
   let attachmentFilename: string
@@ -383,9 +393,19 @@ export async function sendAdvancePurchaseEmail(params: {
     attachmentContentType = 'application/pdf'
     attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
   } else {
-    attachmentBase64      = await imageToPdfBase64(imageBuffer, contentType)
-    attachmentContentType = 'application/pdf'
-    attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
+    const pdfBase64 = await imageToPdfBase64(imageBuffer)
+    if (pdfBase64) {
+      // Conversion réussie → PDF
+      attachmentBase64      = pdfBase64
+      attachmentContentType = 'application/pdf'
+      attachmentFilename    = `facture-avance-${plate}-${Date.now()}.pdf`
+    } else {
+      // Format non convertible (HEIC…) → envoyer l'image originale
+      const ext = contentType.includes('png') ? 'png' : contentType.split('/')[1] ?? 'img'
+      attachmentBase64      = Buffer.from(imageBuffer).toString('base64')
+      attachmentContentType = contentType
+      attachmentFilename    = `facture-avance-${plate}-${Date.now()}.${ext}`
+    }
   }
 
   const subject = `Avance de fonds — ${plate} — ${amountHtva.toFixed(2)} € HTVA`
