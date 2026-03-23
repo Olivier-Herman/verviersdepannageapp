@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin']
 const ROLE_COLORS: Record<string, string> = {
@@ -12,7 +11,6 @@ const ROLE_COLORS: Record<string, string> = {
 }
 
 export default function UsersClient({ users, modules }: { users: any[], modules: any[] }) {
-  const router = useRouter()
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   const [userModules, setUserModules] = useState<string[]>([])
@@ -65,7 +63,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         })
       })
       setSelectedUser(null)
-      window.location.href = window.location.href + '?t=' + Date.now()
+      window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now()
     } finally {
       setSaving(false)
     }
@@ -86,35 +84,29 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const createUser = async () => {
     if (!newEmail) return
     setCreating(true)
-    try {
-      await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: newEmail, name: newName, role: newRole })
-      })
-      setShowNewUser(false)
-      setNewEmail('')
-      setNewName('')
-      setNewRole('driver')
-      router.refresh()
-    } finally {
-      setCreating(false)
-    }
+    const hash = '$2a$10$oiOH/C5U8.kzGjIeK7U4I.AccsreHbuOn4mShqv42TQIt7AzlY9eu'
+    await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: newEmail, name: newName, role: newRole, password_hash: hash })
+    })
+    setCreating(false)
+    setShowNewUser(false)
+    setNewEmail(''); setNewName(''); setNewRole('driver')
+    window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now()
   }
 
-  const filtered = users.filter(u =>
-    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.name?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = users.filter(u => {
+    const q = search.toLowerCase()
+    return !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role?.includes(q)
+  })
 
   const renderEditPanel = () => (
     <div className="px-4 py-5 lg:px-0">
-      <button onClick={() => setSelectedUser(null)} className="text-zinc-500 hover:text-white text-sm mb-5 flex items-center gap-1 lg:hidden">
-        ← Retour
-      </button>
+      <button onClick={() => setSelectedUser(null)} className="text-zinc-500 hover:text-white text-sm mb-5 flex items-center gap-1 lg:hidden">← Retour</button>
       <div className="hidden lg:flex items-center justify-between mb-5">
         <h2 className="text-white font-bold text-lg">{selectedUser?.name}</h2>
-        <button onClick={() => setSelectedUser(null)} className="text-zinc-500 hover:text-white text-xl">×</button>
+        <button onClick={() => setSelectedUser(null)} className="text-zinc-500 hover:text-white text-2xl leading-none">×</button>
       </div>
 
       <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
@@ -206,168 +198,152 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     </div>
   )
 
-  // Liste des utilisateurs
   return (
-    <div className="lg:flex lg:gap-6 lg:h-full">
+    <div className="lg:flex lg:gap-6">
       {/* ─── Liste ─── */}
-      <div className={`${selectedUser ? 'hidden lg:block' : ''} lg:flex-1`}>
-        <div className="px-4 py-5 lg:px-0 lg:pt-0">
+      <div className={`${selectedUser ? 'hidden lg:block' : ''} lg:flex-1 px-4 py-5 lg:px-0 lg:pt-0`}>
 
-          {/* Header desktop */}
-          <div className="hidden lg:flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-white text-2xl font-bold">Utilisateurs</h1>
-              <p className="text-zinc-500 text-sm mt-1">{users.length} utilisateurs · {users.filter(u => u.active).length} actifs</p>
-            </div>
-            <button onClick={() => setShowNewUser(true)}
-              className="bg-brand text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-red-700 transition-all">
-              + Ajouter un utilisateur
-            </button>
+        {/* Header desktop */}
+        <div className="hidden lg:flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-white text-2xl font-bold">Utilisateurs</h1>
+            <p className="text-zinc-500 text-sm mt-1">{users.length} utilisateurs · {users.filter(u => u.active).length} actifs</p>
           </div>
+          <button onClick={() => setShowNewUser(!showNewUser)}
+            className="bg-brand text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-red-700 transition-all">
+            + Ajouter un utilisateur
+          </button>
+        </div>
 
-          {/* Search + Add mobile */}
-          <div className="flex gap-2 mb-4 lg:hidden">
-            <input type="text" placeholder="Rechercher..." value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="flex-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand" />
-            <button onClick={() => setShowNewUser(true)}
-              className="bg-brand text-white rounded-xl px-4 py-2.5 text-sm font-bold">
-              + Ajouter
-            </button>
+        {/* Search + Add mobile */}
+        <div className="flex gap-2 mb-4 lg:hidden">
+          <input type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
+            className="flex-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand" />
+          <button onClick={() => setShowNewUser(!showNewUser)} className="bg-brand text-white rounded-xl px-4 py-2.5 text-sm font-bold">+ Ajouter</button>
+        </div>
+
+        {/* Search desktop */}
+        <div className="hidden lg:block mb-4">
+          <input type="text" placeholder="Rechercher par nom, email, rôle…" value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
+        </div>
+
+        {/* Stats mobile */}
+        <div className="flex gap-2 mb-4 lg:hidden">
+          <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
+            <p className="text-white font-bold text-xl">{users.length}</p>
+            <p className="text-zinc-500 text-xs">Total</p>
           </div>
-
-          {/* Search desktop */}
-          <div className="hidden lg:block mb-4">
-            <input type="text" placeholder="Rechercher par nom, email, rôle…" value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
+          <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
+            <p className="text-white font-bold text-xl">{users.filter(u => u.active).length}</p>
+            <p className="text-zinc-500 text-xs">Actifs</p>
           </div>
-
-          {/* Stats */}
-          <div className="flex gap-2 mb-4 lg:hidden">
-            <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
-              <p className="text-white font-bold text-xl">{users.length}</p>
-              <p className="text-zinc-500 text-xs">Total</p>
-            </div>
-            <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
-              <p className="text-white font-bold text-xl">{users.filter(u => u.active).length}</p>
-              <p className="text-zinc-500 text-xs">Actifs</p>
-            </div>
-            <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
-              <p className="text-white font-bold text-xl">{users.filter(u => u.role === 'driver').length}</p>
-              <p className="text-zinc-500 text-xs">Chauffeurs</p>
-            </div>
+          <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
+            <p className="text-white font-bold text-xl">{users.filter(u => u.role === 'driver').length}</p>
+            <p className="text-zinc-500 text-xs">Chauffeurs</p>
           </div>
+        </div>
 
-          {/* Nouveau user */}
-          {showNewUser && (
-            <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
-              <p className="text-white font-semibold mb-3">Nouvel utilisateur</p>
-              <div className="flex flex-col gap-2">
-                <input type="email" placeholder="Email professionnel" value={newEmail}
-                  onChange={e => setNewEmail(e.target.value)}
-                  className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-brand" />
-                <input type="text" placeholder="Nom complet" value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-brand" />
-                <select value={newRole} onChange={e => setNewRole(e.target.value)}
-                  className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none appearance-none">
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <div className="flex gap-2 mt-1">
-                  <button onClick={() => setShowNewUser(false)}
-                    className="flex-1 bg-[#2a2a2a] text-zinc-400 rounded-xl py-2.5 text-sm">Annuler</button>
-                  <button onClick={createUser} disabled={creating || !newEmail}
-                    className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
-                    {creating ? '…' : 'Créer'}
-                  </button>
-                </div>
+        {/* Nouveau user */}
+        {showNewUser && (
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
+            <p className="text-white font-semibold mb-3">Nouvel utilisateur</p>
+            <div className="flex flex-col gap-2">
+              <input type="email" placeholder="Email professionnel *" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-brand" />
+              <input type="text" placeholder="Nom complet" value={newName} onChange={e => setNewName(e.target.value)}
+                className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-brand" />
+              <select value={newRole} onChange={e => setNewRole(e.target.value)}
+                className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none appearance-none">
+                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <div className="flex gap-2 mt-1">
+                <button onClick={() => setShowNewUser(false)} className="flex-1 bg-[#2a2a2a] text-zinc-400 rounded-xl py-2.5 text-sm">Annuler</button>
+                <button onClick={createUser} disabled={creating || !newEmail}
+                  className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
+                  {creating ? '…' : 'Créer'}
+                </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Liste mobile — cards */}
+        <div className="flex flex-col gap-2 lg:hidden">
+          {filtered.map(user => {
+            const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
+            const initials = user.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'
+            return (
+              <button key={user.id} onClick={() => openUser(user)}
+                className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 flex items-center gap-3 text-left hover:border-zinc-600 transition-all">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${user.active ? 'bg-brand text-white' : 'bg-zinc-700 text-zinc-400'}`}>
+                  {initials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium text-sm truncate">{user.name || 'Sans nom'}</p>
+                  <p className="text-zinc-500 text-xs truncate">{user.email}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${ROLE_COLORS[user.role] || 'bg-zinc-700 text-zinc-300'}`}>{user.role}</span>
+                  <span className="text-zinc-600 text-xs">{moduleCount} modules</span>
+                </div>
+              </button>
+            )
+          })}
+          {filtered.length === 0 && (
+            <div className="text-center py-10 text-zinc-600">
+              <p className="text-3xl mb-2">👥</p>
+              <p>Aucun utilisateur trouvé</p>
             </div>
           )}
+        </div>
 
-          {/* Liste mobile — cards */}
-          <div className="flex flex-col gap-2 lg:hidden">
-            {filtered.map(user => {
-              const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
-              const initials = user.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'
-              return (
-                <button key={user.id} onClick={() => openUser(user)}
-                  className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 flex items-center gap-3 text-left hover:border-zinc-600 transition-all">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${user.active ? 'bg-brand text-white' : 'bg-zinc-700 text-zinc-400'}`}>
-                    {initials}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">{user.name || 'Sans nom'}</p>
-                    <p className="text-zinc-500 text-xs truncate">{user.email}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${ROLE_COLORS[user.role] || 'bg-zinc-700 text-zinc-300'}`}>{user.role}</span>
-                    <span className="text-zinc-600 text-xs">{moduleCount} modules</span>
-                  </div>
-                </button>
-              )
-            })}
-            {filtered.length === 0 && (
-              <div className="text-center py-10 text-zinc-600">
-                <p className="text-3xl mb-2">👥</p>
-                <p>Aucun utilisateur trouvé</p>
-              </div>
-            )}
-          </div>
-
-          {/* Liste desktop — tableau */}
-          <div className="hidden lg:block">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-[#2a2a2a]">
-                  {['Utilisateur', 'Email', 'Rôle', 'Statut', 'Modules', 'Email perso', ''].map(h => (
-                    <th key={h} className="text-left text-zinc-500 text-xs font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(user => {
-                  const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
-                  const initials = user.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'
-                  return (
-                    <tr key={user.id} className="border-b border-[#1e1e1e] hover:bg-[#1A1A1A] transition-colors">
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${user.active ? 'bg-brand text-white' : 'bg-zinc-700 text-zinc-400'}`}>
-                            {initials}
-                          </div>
-                          <span className="text-white text-sm font-medium">{user.name || 'Sans nom'}</span>
+        {/* Liste desktop — tableau */}
+        <div className="hidden lg:block">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-[#2a2a2a]">
+                {['Utilisateur', 'Email', 'Rôle', 'Statut', 'Modules', 'Email perso', ''].map(h => (
+                  <th key={h} className="text-left text-zinc-500 text-xs font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(user => {
+                const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
+                const initials = user.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'
+                return (
+                  <tr key={user.id} className="border-b border-[#1e1e1e] hover:bg-[#1A1A1A] transition-colors cursor-pointer" onClick={() => openUser(user)}>
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${user.active ? 'bg-brand text-white' : 'bg-zinc-700 text-zinc-400'}`}>
+                          {initials}
                         </div>
-                      </td>
-                      <td className="py-3 pr-4 text-zinc-400 text-sm">{user.email}</td>
-                      <td className="py-3 pr-4">
-                        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${ROLE_COLORS[user.role] || 'bg-zinc-700 text-zinc-300'}`}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span className={`text-xs px-2 py-1 rounded-lg ${user.active ? 'bg-green-900/40 text-green-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                          {user.active ? 'Actif' : 'Inactif'}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 text-zinc-500 text-sm">{moduleCount}</td>
-                      <td className="py-3 pr-4 text-zinc-500 text-sm">{user.personal_email || '—'}</td>
-                      <td className="py-3">
-                        <button onClick={() => openUser(user)}
-                          className="text-brand text-xs hover:underline font-medium">
-                          Modifier →
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="py-12 text-center text-zinc-600">Aucun utilisateur trouvé</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                        <span className="text-white text-sm font-medium">{user.name || 'Sans nom'}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4 text-zinc-400 text-sm">{user.email}</td>
+                    <td className="py-3 pr-4">
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${ROLE_COLORS[user.role] || 'bg-zinc-700 text-zinc-300'}`}>{user.role}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`text-xs px-2 py-1 rounded-lg ${user.active ? 'bg-green-900/40 text-green-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                        {user.active ? 'Actif' : 'Inactif'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-zinc-500 text-sm">{moduleCount}</td>
+                    <td className="py-3 pr-4 text-zinc-500 text-sm">{user.personal_email || '—'}</td>
+                    <td className="py-3">
+                      <span className="text-brand text-xs font-medium">Modifier →</span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} className="py-12 text-center text-zinc-600">Aucun utilisateur trouvé</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -377,28 +353,6 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           {renderEditPanel()}
         </div>
       )}
-    </div>
-  )
-}
-                <p className="text-zinc-500 text-xs truncate">{user.email}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${ROLE_COLORS[user.role] || 'bg-zinc-700 text-zinc-300'}`}>
-                  {user.role}
-                </span>
-                <span className="text-zinc-600 text-xs">{moduleCount} modules</span>
-              </div>
-            </button>
-          )
-        })}
-
-        {filtered.length === 0 && (
-          <div className="text-center py-10 text-zinc-600">
-            <p className="text-3xl mb-2">👥</p>
-            <p>Aucun utilisateur trouvé</p>
-          </div>
-        )}
-      </div>
     </div>
   )
 }
