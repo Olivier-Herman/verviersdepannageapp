@@ -19,6 +19,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [userCanVerify, setUserCanVerify] = useState(false)
   const [userEmail, setUserEmail] = useState('')
   const [userPersonalEmail, setUserPersonalEmail] = useState('')
+  const [userAuthProvider, setUserAuthProvider] = useState('email_password')
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccess, setResetSuccess] = useState('')
   const [showNewUser, setShowNewUser] = useState(false)
@@ -36,6 +37,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setUserCanVerify(user.can_verify || false)
     setUserEmail(user.email || '')
     setUserPersonalEmail(user.personal_email || '')
+    setUserAuthProvider(user.auth_provider || 'email_password')
     setResetSuccess('')
   }
 
@@ -59,6 +61,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           active: userActive,
           can_verify: userCanVerify,
           personal_email: userPersonalEmail || null,
+          auth_provider: userAuthProvider,
           modules: userModules
         })
       })
@@ -147,8 +150,32 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         </div>
 
         <div className="mb-3">
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Méthode de connexion</label>
+          <div className="flex flex-col gap-1.5">
+            {[
+              { value: 'email_password', label: '✉️ Email & mot de passe', sub: 'Connexion avec email + mdp' },
+              { value: 'microsoft', label: '🏢 Microsoft professionnel', sub: 'Compte M365 du tenant VD' },
+              { value: 'google', label: '🔵 Google', sub: 'Compte Gmail personnel' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setUserAuthProvider(opt.value)}
+                className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                  userAuthProvider === opt.value
+                    ? 'border-brand bg-brand/10'
+                    : 'border-[#2a2a2a] hover:border-zinc-500'
+                }`}>
+                <div className="flex-1">
+                  <p className={`text-xs font-semibold ${userAuthProvider === opt.value ? 'text-white' : 'text-zinc-400'}`}>{opt.label}</p>
+                  <p className="text-zinc-600 text-xs">{opt.sub}</p>
+                </div>
+                {userAuthProvider === opt.value && <span className="text-brand text-xs mt-0.5">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3">
           <label className="text-zinc-500 text-xs font-medium block mb-1">Email personnel</label>
-          <p className="text-zinc-700 text-xs mb-1.5">Pour connexion Google</p>
+          <p className="text-zinc-700 text-xs mb-1.5">Pour connexion Google (doit correspondre au compte Google)</p>
           <input type="email" value={userPersonalEmail} onChange={e => setUserPersonalEmail(e.target.value)}
             placeholder="prenom@gmail.com"
             className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-3 py-2.5 text-white text-sm outline-none" />

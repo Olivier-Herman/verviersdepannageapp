@@ -5,65 +5,15 @@ import { createAdminClient } from '@/lib/supabase'
 import type { NextAuthOptions } from 'next-auth'
 import bcrypt from 'bcryptjs'
 
-async function findOrCreateUser(email: string, name: string, provider: string, providerId: string, avatar?: string) {
-  const supabase = createAdminClient()
-
-  // 1. Chercher par email professionnel (M365/tenant)
-  if (provider === 'azure-ad') {
-    const { data: user } = await supabase.from('users')
-      .select('id, role, active, must_change_password')
-      .ilike('email', email)
-      .maybeSingle()
-
-    if (user) {
-      if (!user.active) return null
-      await supabase.from('users').update({
-        azure_id: providerId, name, avatar_url: avatar, last_login: new Date().toISOString()
-      }).eq('id', user.id)
-      return user
-    }
-
-    // Nouveau user M365 → créer automatiquement
-    const { data: newUser } = await supabase.from('users').insert({
-      email: email.toLowerCase(), name, azure_id: providerId,
-      avatar_url: avatar, role: 'driver', active: true,
-      must_change_password: false, last_login: new Date().toISOString()
-    }).select('id, role, active, must_change_password').single()
-    return newUser
-  }
-
-  // 2. Google ou Microsoft personnel → chercher par personal_email
-  const { data: user } = await supabase.from('users')
-    .select('id, role, active, must_change_password')
-    .ilike('personal_email', email)
-    .maybeSingle()
-
-  if (!user) {
-    console.log(`[Auth] Personal email not registered: ${email}`)
-    return null // Email personnel non enregistré par l'admin
-  }
-  if (!user.active) return null
-
-  await supabase.from('users').update({
-    last_login: new Date().toISOString()
-  }).eq('id', user.id)
-
-  return user
-}
-
 async function loadModules(userId: string) {
   const supabase = createAdminClient()
   const { data } = await supabase
-    .from('user_modules')
-    .select('module_id, granted')
-    .eq('user_id', userId)
-    .eq('granted', true)
+    .from('user_modules').select('module_id').eq('user_id', userId).eq('granted', true)
   return (data || []).map(m => m.module_id)
 }
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Provider 1 — Email + mot de passe
     CredentialsProvider({
       id: 'credentials',
       name: 'Email & mot de passe',
@@ -76,12 +26,20 @@ export const authOptions: NextAuthOptions = {
         const supabase = createAdminClient()
 
         const { data: user } = await supabase.from('users')
-          .select('id, email, name, role, active, password_hash, must_change_password, avatar_url')
+          .select('id, email, name, role, active, password_hash, must_change_password, avatar_url, auth_provider')
           .ilike('email', credentials.email)
           .maybeSingle()
 
-        if (!user || !user.active || !user.password_hash) return null
+        if (!user || !user.active) return null
 
+        // Vérifier que la méthode de connexion est correcte
+        if (user.auth_provider !== 'email_password') {
+          const labels: Record<string, string> = { google: 'Google', microsoft: 'Microsoft professionnel' }
+          console.log(`[Auth] Wrong provider for ${user.email}: expected ${user.auth_provider}`)
+          throw new Error(`WRONG_PROVIDER:${user.auth_provider}`)
+        }
+
+        if (!user.password_hash) return null
         const valid = await bcrypt.compare(credentials.password, user.password_hash)
         if (!valid) return null
 
@@ -94,7 +52,6 @@ export const authOptions: NextAuthOptions = {
       }
     }),
 
-    // Provider 2 — Microsoft M365 (tenant VD — pour responsables)
     AzureADProvider({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
@@ -102,7 +59,6 @@ export const authOptions: NextAuthOptions = {
       authorization: { params: { scope: 'openid profile email offline_access User.Read' } }
     }),
 
-    // Provider 3 — Google
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -110,34 +66,42 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    async signIn({ user, account, profile }) {
-      if (account?.provider === 'credentials') return true // Géré dans authorize()
+    async signIn({ user, account }) {
+      if (account?.provider === 'credentials') return true
 
       const email = user.email
       if (!email) return false
 
-      try {
-        const dbUser = await findOrCreateUser(
-          email,
-          user.name || email,
-          account?.provider || '',
-          account?.providerAccountId || '',
-          user.image || undefined
-        )
-        if (!dbUser) return false
-        ;(user as any).dbId = dbUser.id
-        ;(user as any).role = dbUser.role
-        ;(user as any).mustChangePassword = dbUser.must_change_password
-        return true
-      } catch (err: any) {
-        console.error('[Auth] signIn error:', err.message)
+      const supabase = createAdminClient()
+      const { data: dbUser } = await supabase.from('users')
+        .select('id, role, active, must_change_password, auth_provider')
+        .ilike('email', email)
+        .maybeSingle()
+
+      if (!dbUser) {
+        console.log(`[Auth] User not found for OAuth: ${email}`)
         return false
       }
+      if (!dbUser.active) return false
+
+      // Vérifier que le provider correspond à la méthode configurée
+      const expectedProvider = dbUser.auth_provider
+      const actualProvider = account?.provider // 'google' ou 'azure-ad'
+
+      if (expectedProvider === 'google' && actualProvider !== 'google') return '/login?error=WRONG_PROVIDER_MICROSOFT'
+      if (expectedProvider === 'microsoft' && actualProvider !== 'azure-ad') return '/login?error=WRONG_PROVIDER_GOOGLE'
+      if (expectedProvider === 'email_password') return '/login?error=WRONG_PROVIDER_EMAIL'
+
+      await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', dbUser.id)
+
+      ;(user as any).dbId = dbUser.id
+      ;(user as any).role = dbUser.role
+      ;(user as any).mustChangePassword = dbUser.must_change_password || false
+      return true
     },
 
     async jwt({ token, user, account }) {
       if (user) {
-        // Première connexion
         if (account?.provider === 'credentials') {
           token.id = user.id
           token.role = (user as any).role
@@ -164,10 +128,5 @@ export const authOptions: NextAuthOptions = {
   },
 
   pages: { signIn: '/login', error: '/login' },
-
-  session: {
-    strategy: 'jwt',
-    maxAge: 7 * 24 * 60 * 60,
-    updateAge: 24 * 60 * 60,
-  },
+  session: { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60, updateAge: 24 * 60 * 60 },
 }

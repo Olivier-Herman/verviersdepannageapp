@@ -28,10 +28,12 @@ export async function POST(req: NextRequest) {
   if (!email) return NextResponse.json({ error: 'Email requis' }, { status: 400 })
 
   const supabase = createAdminClient()
-  const { data: user } = await supabase.from('users').select('id, name, personal_email').ilike('email', email).maybeSingle()
+  const { data: user } = await supabase.from('users').select('id, name, personal_email, email, auth_provider').ilike('email', email).maybeSingle()
 
   // Ne pas révéler si l'email existe ou non
-  if (!user?.personal_email) return NextResponse.json({ success: true })
+  if (!user) return NextResponse.json({ success: true })
+  const resetEmail = user.auth_provider === 'google' && user.personal_email ? user.personal_email : user.email
+  if (!resetEmail) return NextResponse.json({ success: true })
 
   const token = crypto.randomBytes(32).toString('hex')
   const expires = new Date(Date.now() + 3600 * 1000) // 1 heure
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
               <p>Verviers Dépannage SA</p>
             `
           },
-          toRecipients: [{ emailAddress: { address: user.personal_email, name: user.name } }],
+          toRecipients: [{ emailAddress: { address: resetEmail, name: user.name } }],
         },
         saveToSentItems: true,
       })
