@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       if (intervention?.odoo_quote_id) {
         odooQuoteId = intervention.odoo_quote_id;
         try {
-          const result   = await addAdvanceToQuote(odooQuoteId, normalizedPlate, htva);
+          const result   = await addAdvanceToQuote(odooQuoteId!, normalizedPlate, htva);
           odooLineId     = result.lineId;
           odooVehicleSet = result.vehicleSet;
         } catch (odooErr) {
