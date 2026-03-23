@@ -63,24 +63,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const [models,    setModels]    = useState<Model[]>([])
   const [loadingBrands, setLoadingBrands] = useState(false)
 
-  // ── Header commun via AppShell ────────────────────────────
-  const WithShell = ({ title, backStep, children: c }: {
-    title: string; backStep?: Step; children: React.ReactNode
-  }) => (
-    <AppShell title={title} userRole={userRole} userName={user?.name ?? ''}
-      backHref={backStep ? undefined : '/dashboard'}
-    >
-      {backStep && (
-        <div className="lg:hidden px-4 pt-3">
-          <button onClick={() => { setError(null); setStep(backStep) }}
-            className="text-zinc-400 hover:text-white text-sm">
-            ← Retour
-          </button>
-        </div>
-      )}
-      <div className="max-w-md mx-auto lg:max-w-xl px-0 lg:px-4">{c}</div>
-    </AppShell>
-  )
+
 
   // ── Charger les marques ───────────────────────────────────
   const loadBrands = async () => {
@@ -232,7 +215,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : PHOTO
   // ────────────────────────────────────────────────────────────
   if (step === 'photo') return (
-    <WithShell title="Avance de fonds">
+    <AppShell title="Avance de fonds" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="max-w-md mx-auto lg:max-w-xl">
       <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
         <div className="text-center">
           <div className="text-6xl mb-3">📄</div>
@@ -262,7 +246,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : SAISIE PLAQUE
   // ────────────────────────────────────────────────────────────
   if (step === 'plate') return (
-    <WithShell title="Immatriculation" backStep="photo">
+    <AppShell title="Immatriculation" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('photo') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
+      <div className="max-w-md mx-auto lg:max-w-xl">
       <div className="flex-1 px-4 py-6 flex flex-col gap-5">
 
         {form.photoPreview && (
@@ -312,7 +298,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : VÉHICULE TROUVÉ — CONFIRMATION
   // ────────────────────────────────────────────────────────────
   if (step === 'vehicle_confirm') return (
-    <WithShell title="Véhicule trouvé" backStep="plate">
+    <AppShell title="Véhicule trouvé" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('plate') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
+      <div className="max-w-md mx-auto lg:max-w-xl">
       <div className="flex-1 px-4 py-6 flex flex-col gap-4">
 
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
@@ -363,7 +351,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   if (step === 'vehicle_create' && !form.brandName) {
     if (brands.length === 0 && !loadingBrands) loadBrands()
     return (
-      <WithShell title="Quelle est la marque ?" backStep="plate">
+      <AppShell title="Quelle est la marque ?" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('plate') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
+      <div className="max-w-md mx-auto lg:max-w-xl">
         <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2">
             <p className="text-zinc-400 text-xs mb-1">Immatriculation</p>
@@ -397,7 +387,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : VÉHICULE INCONNU — CHOISIR MODÈLE
   // ────────────────────────────────────────────────────────────
   if (step === 'vehicle_create' && form.brandName) return (
-    <WithShell title="Quel est le modèle ?">
+    <AppShell title="Quel est le modèle ?" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="max-w-md mx-auto lg:max-w-xl">
       <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto pb-10">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
           <div>
@@ -460,7 +451,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : DETAILS
   // ────────────────────────────────────────────────────────────
   if (step === 'details') return (
-    <WithShell title="Détails de la facture" backStep={form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create'}>
+    <AppShell title="Détails de la facture" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep(form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
+      <div className="max-w-md mx-auto lg:max-w-xl">
       <div className="flex-1 px-4 py-6 flex flex-col gap-5 overflow-y-auto pb-10">
 
         {/* Recap véhicule */}
@@ -545,7 +538,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // STEP : CONFIRM
   // ────────────────────────────────────────────────────────────
   if (step === 'confirm') return (
-    <WithShell title="Confirmation" backStep="details">
+    <AppShell title="Confirmation" userRole={userRole} userName={user?.name ?? ''}>
+      <div className="lg:hidden px-4 pt-3"><button onClick={() => { setError(null); setStep('details') }} className="text-zinc-400 hover:text-white text-sm">← Retour</button></div>
+      <div className="max-w-md mx-auto lg:max-w-xl">
       <div className="flex-1 px-4 py-6 flex flex-col gap-4 overflow-y-auto pb-10">
 
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
