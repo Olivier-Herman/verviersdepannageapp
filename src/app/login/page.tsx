@@ -130,6 +130,11 @@ function LoginContent() {
         <p className="text-zinc-600 text-xs text-center mt-4">
           Accès réservé aux employés Verviers Dépannage SA
         </p>
+        <div className="text-center mt-2">
+          <a href="/request-access" className="text-zinc-600 text-xs hover:text-brand transition-colors">
+            Pas encore de compte ? Demander un accès →
+          </a>
+        </div>
       </div>
       <p className="text-zinc-700 text-xs mt-6">v1.0.0 · app.verviersdepannage.com</p>
     </div>

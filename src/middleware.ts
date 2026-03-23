@@ -23,6 +23,11 @@ export default withAuth(
     const token = req.nextauth.token
     const path = req.nextUrl.pathname
 
+    // Compte en attente d'activation → rediriger vers pending
+    if ((token as any)?.pending) {
+      return NextResponse.redirect(new URL('/request-access/pending', req.url))
+    }
+
     // Vérifier l'accès au module correspondant à la route
     const requiredModule = Object.entries(ROUTE_MODULE_MAP).find(([route]) =>
       path.startsWith(route)

@@ -5,6 +5,25 @@ import { createAdminClient } from '@/lib/supabase'
 import type { NextAuthOptions } from 'next-auth'
 import bcrypt from 'bcryptjs'
 
+async function getAppToken(): Promise<string> {
+  const res = await fetch(
+    `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.AZURE_AD_CLIENT_ID!,
+        client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
+        grant_type: 'client_credentials',
+        scope: 'https://graph.microsoft.com/.default',
+      })
+    }
+  )
+  const data = await res.json()
+  if (!res.ok) throw new Error(`Token error`)
+  return data.access_token
+}
+
 async function loadModules(userId: string) {
   const supabase = createAdminClient()
   const { data } = await supabase
@@ -78,16 +97,59 @@ export const authOptions: NextAuthOptions = {
         .ilike('email', email)
         .maybeSingle()
 
+      // User inconnu → créer compte inactif et rediriger vers pending
       if (!dbUser) {
-        console.log(`[Auth] User not found for OAuth: ${email}`)
-        return false
+        const provider = account?.provider === 'google' ? 'google' : 'microsoft'
+        await supabase.from('users').insert({
+          email: email.toLowerCase(),
+          name: user.name || email,
+          avatar_url: user.image,
+          role: 'driver',
+          active: false,
+          auth_provider: provider,
+          must_change_password: false,
+        })
+
+        // Notifier l'admin
+        try {
+          const appToken = await getAppToken()
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL
+          await fetch(`https://graph.microsoft.com/v1.0/users/administration@verviersdepannage.com/sendMail`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${appToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: {
+                subject: `Nouvelle demande d'accès — ${user.name || email}`,
+                body: {
+                  contentType: 'HTML',
+                  content: `<p>Nouvelle demande d'accès :<br><b>${user.name || email}</b> (${email})<br>Méthode : ${provider}</p><p><a href="${appUrl}/admin/users">Gérer →</a></p>`
+                },
+                toRecipients: [{ emailAddress: { address: 'administration@verviersdepannage.com' } }],
+              },
+              saveToSentItems: true,
+            })
+          })
+        } catch (e) { console.error('[Auth] Notify error:', e) }
+
+        // Permettre la connexion mais rediriger vers pending
+        ;(user as any).dbId = null
+        ;(user as any).role = 'driver'
+        ;(user as any).mustChangePassword = false
+        ;(user as any).pending = true
+        return true
       }
-      if (!dbUser.active) return false
 
-      // Vérifier que le provider correspond à la méthode configurée
+      // User connu mais inactif → rediriger vers pending
+      if (!dbUser.active) {
+        ;(user as any).dbId = dbUser.id
+        ;(user as any).role = dbUser.role
+        ;(user as any).pending = true
+        return true
+      }
+
+      // Vérifier que le provider correspond
       const expectedProvider = dbUser.auth_provider
-      const actualProvider = account?.provider // 'google' ou 'azure-ad'
-
+      const actualProvider = account?.provider
       if (expectedProvider === 'google' && actualProvider !== 'google') return '/login?error=WRONG_PROVIDER_MICROSOFT'
       if (expectedProvider === 'microsoft' && actualProvider !== 'azure-ad') return '/login?error=WRONG_PROVIDER_GOOGLE'
       if (expectedProvider === 'email_password') return '/login?error=WRONG_PROVIDER_EMAIL'
@@ -106,12 +168,14 @@ export const authOptions: NextAuthOptions = {
           token.id = user.id
           token.role = (user as any).role
           token.mustChangePassword = (user as any).mustChangePassword
+          token.pending = false
         } else {
           token.id = (user as any).dbId
           token.role = (user as any).role
           token.mustChangePassword = (user as any).mustChangePassword || false
+          token.pending = (user as any).pending || false
         }
-        token.modules = await loadModules(token.id as string)
+        if (token.id) token.modules = await loadModules(token.id as string)
       }
       return token
     },
@@ -120,8 +184,9 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         ;(session.user as any).id = token.id
         ;(session.user as any).role = token.role
-        ;(session.user as any).modules = token.modules
+        ;(session.user as any).modules = token.modules || []
         ;(session.user as any).mustChangePassword = token.mustChangePassword
+        ;(session.user as any).pending = token.pending
       }
       return session
     },
