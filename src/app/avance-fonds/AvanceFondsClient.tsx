@@ -44,37 +44,6 @@ function normalizePlate(p: string): string {
   return p.replace(/[-.\s]/g, '').toUpperCase().trim()
 }
 
-
-/**
- * Convertit un fichier image en JPEG via createImageBitmap + canvas.
- * Fonctionne avec HEIC sur iOS Safari.
- */
-async function toJpegFile(file: File): Promise<File> {
-  if (file.type === 'application/pdf') return file
-
-  try {
-    // createImageBitmap supporte HEIC sur iOS nativement
-    const bitmap = await createImageBitmap(file)
-    const canvas = document.createElement('canvas')
-    canvas.width  = bitmap.width
-    canvas.height = bitmap.height
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(bitmap, 0, 0)
-    bitmap.close()
-
-    return await new Promise<File>((resolve) => {
-      canvas.toBlob(
-        blob => resolve(new File([blob!], 'photo.jpg', { type: 'image/jpeg' })),
-        'image/jpeg',
-        0.92
-      )
-    })
-  } catch {
-    // Fallback : envoyer tel quel
-    return file
-  }
-}
-
 export default function AvanceFondsClient({ user }: { user: any }) {
   const router      = useRouter()
   const fileRef     = useRef<HTMLInputElement>(null)
@@ -146,7 +115,12 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // ── Upload photo ───────────────────────────────────────────
   const uploadPhoto = async (file: File): Promise<string> => {
     const fd = new FormData()
-    fd.append('file', file)
+    // iOS Safari rejette fetch() avec image/heic dans FormData
+    // On force le type MIME sans conversion du contenu
+    const safeFile = file.type === 'application/pdf'
+      ? file
+      : new File([await file.arrayBuffer()], 'photo.jpg', { type: 'image/jpeg' })
+    fd.append('file', safeFile)
     const res  = await fetch('/api/advances/upload', { method: 'POST', body: fd })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Upload échoué')
