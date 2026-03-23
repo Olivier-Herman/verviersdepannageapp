@@ -176,7 +176,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             className="w-full py-5 bg-brand hover:bg-brand/90 text-white rounded-2xl font-semibold text-lg flex items-center justify-center gap-3">
             <span className="text-2xl">📷</span> Prendre une photo
           </button>
-          <input ref={cameraRef} type="file" accept="image/jpeg,image/jpg,image/png" capture="environment"
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment"
             className="hidden" onChange={handlePhoto} />
 
           <button onClick={() => fileRef.current?.click()}
