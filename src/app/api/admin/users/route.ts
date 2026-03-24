@@ -73,7 +73,8 @@ export async function PATCH(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'userId requis' }, { status: 400 })
 
   const supabase = createAdminClient()
-
+  
+  try {
   const { data: prevUser } = await supabase
     .from('users')
     .select('active, name, email, auth_provider')
@@ -99,7 +100,11 @@ export async function PATCH(req: NextRequest) {
 
   const { error: userError } = await supabase
     .from('users').update(updateData).eq('id', userId)
-  if (userError) return NextResponse.json({ error: userError.message }, { status: 500 })
+  if (userError) {
+    console.error('[PATCH users] Supabase error:', JSON.stringify(userError))
+    console.error('[PATCH users] updateData:', JSON.stringify(updateData))
+    return NextResponse.json({ error: userError.message, details: userError }, { status: 500 })
+  }
 
   // Email d'activation
   if (active && prevUser && !prevUser.active) {
@@ -133,4 +138,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json({ success: true })
+  } catch (err: any) {
+    console.error('[PATCH users] Unexpected error:', err.message, err.stack)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
