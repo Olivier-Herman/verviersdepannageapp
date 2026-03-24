@@ -285,7 +285,7 @@ export async function sendAccountActivated(data: {
 
     <p style="margin:0;font-size:12px;color:#aaa;line-height:1.6;">
       En cas de problème de connexion, contactez l'administration.<br>
-      <a href="mailto:administration@verviersdepannage.com" style="color:#aaa;">administration@verviersdepannage.com</a>
+      <a href="mailto:mobi@verviersdepannage.be" style="color:#aaa;">mobi@verviersdepannage.be</a>
     </p>
   `
 
@@ -420,7 +420,6 @@ export async function sendAdvancePurchaseEmail(params: {
     throw new Error(`Graph sendMail (advance) error: ${err}`)
   }
 }
-
 // ─── Email : Rapport check véhicule non-conforme ──────────
 export async function sendCheckVehiculeNonConformeReport(data: {
   vehicleName:   string
