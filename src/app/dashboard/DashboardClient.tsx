@@ -13,7 +13,7 @@ const NAV_MODULES = [
   { id: 'tgr',           label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
   { id: 'depose',        label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
   { id: 'profil',        label: 'Mon Profil',             icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
-  { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'small' },
+  { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'large' },
 ]
 
 const CALL_MODULE_MAP: Record<string, string> = {
