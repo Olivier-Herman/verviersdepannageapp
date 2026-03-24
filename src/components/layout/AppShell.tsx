@@ -19,13 +19,13 @@ const NAV_ITEMS = [
 ]
 
 interface AppShellProps {
-  children:     React.ReactNode
-  title:        string
-  backHref?:    string
-  headerExtra?: React.ReactNode
-  userRole?:    string
-  userName?:    string
-  userModules?: string[]
+  children:      React.ReactNode
+  title:         string
+  backHref?:     string
+  headerExtra?:  React.ReactNode
+  userRole?:     string
+  userName?:     string
+  userModules?:  string[]
 }
 
 export default function AppShell({
@@ -37,15 +37,15 @@ export default function AppShell({
   userName = '',
   userModules = [],
 }: AppShellProps) {
-  const pathname = usePathname()
-  const isAdmin  = ['admin', 'superadmin'].includes(userRole)
-  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+  const pathname  = usePathname()
+  const isAdmin   = ['admin', 'superadmin'].includes(userRole)
+  const initials  = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
   const visibleNav = NAV_ITEMS.filter(item => {
     if (item.href === '/admin') return isAdmin
     if (isAdmin) return true
-    if (item.href === '/dashboard' || item.href === '/profil') return true
     const moduleId = item.href.replace('/', '').replace(/-/g, '_').replace('/', '_')
+    if (item.href === '/dashboard' || item.href === '/profil') return true
     return userModules.includes(moduleId)
   })
 
@@ -53,14 +53,16 @@ export default function AppShell({
     <div className="min-h-screen bg-[#0F0F0F] flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r border-border flex-shrink-0 fixed top-0 left-0 h-full z-30">
+      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] flex-shrink-0 fixed top-0 left-0 h-full z-30">
 
-        <div className="px-6 py-5 border-b border-border">
+        {/* Logo */}
+        <div className="px-6 py-5 border-b border-[#2a2a2a]">
           <Link href="/dashboard">
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
           </Link>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -79,9 +81,11 @@ export default function AppShell({
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-border">
+        {/* User + déconnexion */}
+        <div className="px-3 py-4 border-t border-[#2a2a2a]">
           <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
-            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center
+                            text-white font-bold text-xs flex-shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
@@ -91,7 +95,8 @@ export default function AppShell({
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm
+                       text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
           >
             <span className="text-base">🚪</span>
             Déconnexion
@@ -103,7 +108,7 @@ export default function AppShell({
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
 
         {/* Header mobile */}
-        <div className="lg:hidden bg-surface border-b border-border px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
+        <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
           <div className="flex items-center gap-3 mb-3">
             <Link href={backHref}
               className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg flex-shrink-0">
@@ -119,17 +124,21 @@ export default function AppShell({
         </div>
 
         {/* Header desktop */}
-        <div className="hidden lg:block bg-surface border-b border-border px-8 py-5 sticky top-0 z-20">
+        <div className="hidden lg:block bg-[#1A1A1A] border-b border-[#2a2a2a] px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between">
-            <h1 className="text-white font-bold text-2xl">{title}</h1>
-            {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
+            <div>
+              <h1 className="text-white font-bold text-2xl">{title}</h1>
+            </div>
+            {headerExtra && (
+              <div className="flex-1 ml-8">{headerExtra}</div>
+            )}
           </div>
         </div>
 
         {/* Bannière check véhicule — driver uniquement si contrôle en cours */}
         <VehicleCheckBanner />
 
-        {/* Contenu */}
+        {/* Page content */}
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>
