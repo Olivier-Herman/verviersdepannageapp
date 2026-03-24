@@ -28,6 +28,8 @@ export default function SettingsClient({
 
   // Paramètres app
   const [purchaseEmail,  setPurchaseEmail]  = useState(appSettings['odoo_purchase_email'] ?? '')
+  const [tgrInfoEmail,   setTgrInfoEmail]   = useState(appSettings['tgr_info_email']        ?? 'info@verviersdepannage.com')
+  const [tgrProductRef,  setTgrProductRef]  = useState(appSettings['tgr_product_ref']       ?? 'TGRTouring')
   const [savingParams,   setSavingParams]   = useState(false)
   const [paramsSaved,    setParamsSaved]    = useState(false)
 
@@ -108,6 +110,8 @@ export default function SettingsClient({
         body: JSON.stringify({
           settings: {
             odoo_purchase_email: purchaseEmail,
+            tgr_info_email:      tgrInfoEmail,
+            tgr_product_ref:     tgrProductRef,
           }
         })
       })
@@ -171,6 +175,34 @@ export default function SettingsClient({
             />
             <p className="text-zinc-600 text-xs mt-1.5">
               Les factures fournisseurs (avances de fonds) seront envoyées à cette adresse pour traitement OCR Odoo.
+            </p>
+          </div>
+
+          {/* TGR Touring */}
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">
+              TGR Touring
+            </p>
+            <label className="block text-sm text-zinc-300 mb-1.5">Email info (réception missions)</label>
+            <input
+              type="email"
+              placeholder="info@verviersdepannage.com"
+              value={tgrInfoEmail}
+              onChange={e => setTgrInfoEmail(e.target.value)}
+              className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5
+                         text-white text-sm outline-none focus:border-brand mb-3"
+            />
+            <label className="block text-sm text-zinc-300 mb-1.5">Référence produit Odoo</label>
+            <input
+              type="text"
+              placeholder="TGRTouring"
+              value={tgrProductRef}
+              onChange={e => setTgrProductRef(e.target.value)}
+              className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5
+                         text-white text-sm outline-none focus:border-brand"
+            />
+            <p className="text-zinc-600 text-xs mt-1.5">
+              Référence du produit Odoo utilisé pour les devis TGR (default_code).
             </p>
           </div>
 

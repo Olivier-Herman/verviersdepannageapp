@@ -7,6 +7,7 @@ import { signOut } from 'next-auth/react'
 const NAV = [
   { href: '/admin/users',     label: 'Utilisateurs', icon: '👥' },
   { href: '/admin/documents', label: 'Documents',    icon: '📁' },
+  { href: '/admin/tgr',       label: 'TGR',          icon: '🛡️' },
   { href: '/admin/cash',      label: 'Caisses',      icon: '💰' },
   { href: '/admin/settings',  label: 'Paramètres',   icon: '⚙️' },
 ]
@@ -16,7 +17,7 @@ export default function AdminNav() {
 
   return (
     <>
-      {/* ─── MOBILE : header + tabs ─── */}
+      {/* ─── MOBILE ─── */}
       <div className="lg:hidden">
         <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-3">
           <div className="flex items-center gap-3 mb-3">
@@ -42,7 +43,7 @@ export default function AdminNav() {
         </div>
       </div>
 
-      {/* ─── DESKTOP : sidebar fixe ─── */}
+      {/* ─── DESKTOP ─── */}
       <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A]
                         border-r border-[#2a2a2a] flex-shrink-0">
         <div className="px-6 py-6 border-b border-[#2a2a2a]">

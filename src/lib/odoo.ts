@@ -373,7 +373,64 @@ export async function syncInterventionToOdoo(intervention: {
 }
 
 // ============================================================
-// AVANCE DE FONDS
+// TGR TOURING — Devis
+// ============================================================
+
+/**
+ * Crée un devis TGR dans Odoo.
+ * Produit : référence TGRTouring — prix unitaire déjà sur le produit Odoo
+ * Quantité : km calculés par Google Maps
+ */
+export async function createTGRQuote(params: {
+  partnerId:       number
+  reference:       string
+  distanceKm:      number
+  pickupAddress:   string
+  deliveryAddress: string
+  plate:           string
+  brand:           string
+  model:           string
+}): Promise<{ orderId: number; orderName: string }> {
+
+  const {
+    partnerId, reference, distanceKm,
+    pickupAddress, deliveryAddress, plate, brand, model
+  } = params
+
+  // 1. Trouver le produit TGRTouring par référence
+  const products = await rpc<any[]>('product.product', 'search_read',
+    [[['default_code', '=', 'TGRTouring']]],
+    { fields: ['id', 'name', 'list_price'], limit: 1 }
+  )
+
+  if (!products?.length) {
+    throw new Error('Produit "TGRTouring" introuvable dans Odoo (default_code: TGRTouring)')
+  }
+
+  const productId = products[0].id
+
+  // 2. Créer le devis
+  const orderId = await rpc<number>('sale.order', 'create', [{
+    partner_id:       partnerId,
+    client_order_ref: reference,
+    note:             `Transport TGR — ${plate} ${brand} ${model}\nDe : ${pickupAddress}\nVers : ${deliveryAddress}`,
+    order_line: [[0, 0, {
+      product_id:      productId,
+      product_uom_qty: distanceKm,
+      name:            `Transport TGR — ${plate} — ${pickupAddress} → ${deliveryAddress}`,
+    }]],
+  }])
+
+  const orders = await rpc<any[]>('sale.order', 'read',
+    [[orderId]], { fields: ['id', 'name'] }
+  )
+
+  console.log(`[Odoo TGR] Devis créé: ${orders[0].name} — ${distanceKm} km`)
+  return { orderId, orderName: orders[0].name }
+}
+
+// ============================================================
+// AVANCE DE FONDS (ajout depuis session précédente)
 // ============================================================
 
 const ADVANCE_TEMPLATE_ID     = 30
@@ -436,17 +493,12 @@ export async function createAdvanceOrder(
   return { orderId, orderName, vehicleSet }
 }
 
-/**
- * Attache un fichier dans le chatter d'un devis Odoo.
- * Utilise ir.attachment + message_post avec l'attachment_ids.
- */
 export async function attachFileToOrder(
-  orderId:     number,
-  base64Data:  string,
-  filename:    string,
-  mimeType:    string
+  orderId:    number,
+  base64Data: string,
+  filename:   string,
+  mimeType:   string
 ): Promise<void> {
-  // 1. Créer l'attachment
   const attachmentId = await rpc<number>('ir.attachment', 'create', [{
     name:      filename,
     type:      'binary',
@@ -455,12 +507,10 @@ export async function attachFileToOrder(
     res_id:    orderId,
     mimetype:  mimeType,
   }])
-
-  // 2. Poster dans le chatter avec la pièce jointe
   await rpc('sale.order', 'message_post', [[orderId]], {
     body:           'Facture avance de fonds',
     message_type:   'comment',
-    subtype_id:     2, // Note interne
+    subtype_id:     2,
     attachment_ids: [[4, attachmentId]],
   })
 }

@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 
-const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin']
+const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin', 'partner']
 const ROLE_COLORS: Record<string, string> = {
   driver:     'bg-zinc-700 text-zinc-200',
   dispatcher: 'bg-blue-900 text-blue-200',
   admin:      'bg-purple-900 text-purple-200',
   superadmin: 'bg-red-900 text-red-200',
+  partner:    'bg-teal-900 text-teal-200',
 }
 
 export default function UsersClient({ users, modules }: { users: any[], modules: any[] }) {
@@ -27,7 +28,9 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState('driver')
   const [creating, setCreating] = useState(false)
-  const [search, setSearch] = useState('')
+  const [search,            setSearch]          = useState('')
+  const [userTgrPushNotify, setUserTgrPushNotify] = useState(false)
+  const [userOdooPartnerId, setUserOdooPartnerId] = useState('')
 
   const openUser = (user: any) => {
     setSelectedUser(user)
@@ -38,6 +41,8 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setUserEmail(user.email || '')
     setUserPersonalEmail(user.personal_email || '')
     setUserAuthProvider(user.auth_provider || 'email_password')
+    setUserTgrPushNotify(user.tgr_push_notify || false)
+    setUserOdooPartnerId(String(user.odoo_partner_id || ''))
     setResetSuccess('')
   }
 
@@ -62,7 +67,9 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           can_verify: userCanVerify,
           personal_email: userPersonalEmail || null,
           auth_provider: userAuthProvider,
-          modules: userModules
+          modules:          userModules,
+          tgr_push_notify:  userTgrPushNotify,
+          odoo_partner_id:  userOdooPartnerId ? parseInt(userOdooPartnerId) : null,
         })
       })
       setSelectedUser(null)
@@ -190,6 +197,26 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
             className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${userCanVerify ? 'bg-brand' : 'bg-zinc-700'}`}>
             <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${userCanVerify ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </button>
+        </div>
+
+        {/* TGR Touring */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#2a2a2a]">
+          <div>
+            <span className="text-zinc-500 text-xs font-medium">Notifications TGR push</span>
+            <p className="text-zinc-700 text-xs">Reçoit les alertes nouvelles missions TGR</p>
+          </div>
+          <button onClick={() => setUserTgrPushNotify(!userTgrPushNotify)}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${userTgrPushNotify ? 'bg-brand' : 'bg-zinc-700'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${userTgrPushNotify ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        <div className="mt-3">
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">ID Partenaire Odoo (TGR)</label>
+          <input type="number" placeholder="Ex: 42" value={userOdooPartnerId}
+            onChange={e => setUserOdooPartnerId(e.target.value)}
+            className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
+                       text-white text-sm outline-none focus:border-brand" />
+          <p className="text-zinc-700 text-xs mt-1">ID du partenaire dans Odoo pour la création des devis TGR</p>
         </div>
       </div>
 
