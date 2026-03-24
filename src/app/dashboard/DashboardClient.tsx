@@ -7,13 +7,13 @@ import AppShell from '@/components/layout/AppShell'
 
 const NAV_MODULES = [
   { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',      size: 'large' },
+  { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'large' },
   { id: 'finance',       label: 'Finance',                icon: '💰', href: '/finance',         color: 'bg-surface',    size: 'small' },
-  { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'small' },
   { id: 'check_vehicle', label: 'Check Véhicule',         icon: '🔍', href: '/check-vehicule', color: 'bg-surface',    size: 'small' },
   { id: 'tgr',           label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
   { id: 'depose',        label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
-  { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'small' },
   { id: 'profil',        label: 'Mon Profil',             icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
+  { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'small' },
 ]
 
 const CALL_MODULE_MAP: Record<string, string> = {
@@ -44,16 +44,15 @@ export default function DashboardClient({
     return callShortcuts.find(s => s.label === label)?.phone
   }
 
-  const visibleNav = NAV_MODULES.filter(m => {
-    if (m.id === 'admin') return isAdmin
-    if (isAdmin) return true
-    if (m.id === 'profil') return true
-    // Finance visible si encaissements OU caisse
-    if (m.id === 'finance') return userModules.includes('encaissements') || userModules.includes('caisse')
-    return userModules.includes(m.id)
-  })
+  const isModuleVisible = (id: string): boolean => {
+    if (id === 'profil') return true
+    if (id === 'admin')  return isAdmin && userModules.includes('admin')
+    if (id === 'finance') return userModules.includes('encaissements') || userModules.includes('caisse')
+    return userModules.includes(id)
+  }
 
-  const visibleCalls = CALL_MODULES.filter(m => isAdmin || userModules.includes(m.id))
+  const visibleNav    = NAV_MODULES.filter(m => isModuleVisible(m.id))
+  const visibleCalls  = CALL_MODULES.filter(m => userModules.includes(m.id))
 
   return (
     <AppShell
@@ -95,10 +94,8 @@ export default function DashboardClient({
             <div className="w-2 h-2 rounded-full bg-green-500" />
             <span className="text-green-500 text-sm">En service</span>
           </div>
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="text-zinc-500 hover:text-red-400 text-sm transition-colors ml-4"
-          >
+          <button onClick={() => signOut({ callbackUrl: '/login' })}
+            className="text-zinc-500 hover:text-red-400 text-sm transition-colors ml-4">
             Déconnexion
           </button>
         </div>
@@ -106,7 +103,7 @@ export default function DashboardClient({
         <div className="grid grid-cols-3 gap-4 max-w-5xl">
           {visibleNav.map(mod => (
             <Link key={mod.id} href={mod.href}
-              className={`${mod.color} border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80`}
+              className={`${mod.color} ${mod.size === 'large' ? 'col-span-3' : ''} border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80`}
             >
               <div>
                 <p className="text-white font-semibold text-base leading-tight">{mod.label}</p>
