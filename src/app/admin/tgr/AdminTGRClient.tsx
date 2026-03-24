@@ -24,6 +24,9 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
   const [selected,      setSelected]      = useState<any | null>(null)
   const [acting,        setActing]        = useState(false)
   const [error,         setError]         = useState<string | null>(null)
+  const [plannedDate,   setPlannedDate]   = useState('')
+  const [plannedSlot,   setPlannedSlot]   = useState<'before_noon'|'during_day'|'asap'>('during_day')
+  const [odooResult,    setOdooResult]    = useState<{name?: string; error?: string} | null>(null)
 
   // Filtrage par période
   const now = new Date()
@@ -56,17 +59,27 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
 
   const doAction = async (action: 'accept' | 'refuse') => {
     if (!selected) return
-    setActing(true); setError(null)
+    setActing(true); setError(null); setOdooResult(null)
     try {
       const res  = await fetch(`/api/tgr/${selected.id}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ action }),
+        body:    JSON.stringify({
+          action,
+          plannedDate: action === 'accept' ? plannedDate || undefined : undefined,
+          plannedSlot: action === 'accept' ? plannedSlot : undefined,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setSelected(null)
-      window.location.reload()
+      if (action === 'accept') {
+        setOdooResult({ name: data.odooQuoteName, error: data.odooError })
+        // Rafraîchir après 2s pour laisser voir le résultat Odoo
+        setTimeout(() => { setSelected(null); window.location.reload() }, 2500)
+      } else {
+        setSelected(null)
+        window.location.reload()
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur')
     } finally {
@@ -247,15 +260,53 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
             )}
 
             {selected.status === 'pending' && (
-              <div className="flex gap-2">
-                <button onClick={() => doAction('refuse')} disabled={acting}
-                  className="flex-1 py-3 bg-red-900/40 border border-red-800 text-red-300 rounded-xl font-medium text-sm disabled:opacity-50">
-                  {acting ? '…' : '❌ Refuser'}
-                </button>
-                <button onClick={() => doAction('accept')} disabled={acting}
-                  className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-                  {acting ? '…' : '✅ Accepter'}
-                </button>
+              <div className="flex flex-col gap-3">
+                {/* Sélecteur date prise en charge */}
+                <div className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl p-3">
+                  <p className="text-zinc-400 text-xs font-semibold mb-2">📅 Date de prise en charge prévue</p>
+                  <div className="flex gap-2">
+                    <input type="date" value={plannedDate}
+                      onChange={e => setPlannedDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="flex-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2
+                                 text-white text-sm outline-none focus:border-brand" />
+                    <select value={plannedSlot} onChange={e => setPlannedSlot(e.target.value as any)}
+                      className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2
+                                 text-zinc-300 text-xs outline-none appearance-none">
+                      <option value="before_noon">Avant midi</option>
+                      <option value="during_day">Dans la journée</option>
+                      <option value="asap">Dès que possible</option>
+                    </select>
+                  </div>
+                  <p className="text-zinc-700 text-xs mt-1">
+                    Si vide, la deadline automatique ({selected.deadline_date
+                      ? new Date(selected.deadline_date).toLocaleDateString('fr-BE')
+                      : 'ASAP'}) sera utilisée
+                  </p>
+                </div>
+
+                {/* Résultat Odoo */}
+                {odooResult && (
+                  <div className={`rounded-xl px-3 py-2 text-xs ${
+                    odooResult.error
+                      ? 'bg-orange-950/50 border border-orange-800 text-orange-300'
+                      : 'bg-green-950/50 border border-green-800 text-green-300'
+                  }`}>
+                    {odooResult.name && <p>✅ Devis Odoo créé : <strong>{odooResult.name}</strong></p>}
+                    {odooResult.error && <p>⚠️ Devis non créé : {odooResult.error}</p>}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button onClick={() => doAction('refuse')} disabled={acting}
+                    className="flex-1 py-3 bg-red-900/40 border border-red-800 text-red-300 rounded-xl font-medium text-sm disabled:opacity-50">
+                    {acting ? '…' : '❌ Refuser'}
+                  </button>
+                  <button onClick={() => doAction('accept')} disabled={acting}
+                    className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                    {acting ? '⏳ Traitement…' : '✅ Accepter'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

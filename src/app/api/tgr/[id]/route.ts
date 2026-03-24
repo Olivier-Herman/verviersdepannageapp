@@ -4,8 +4,9 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
+import { createTGRQuote }            from '@/lib/odoo'
 
-const APP_URL    = process.env.NEXT_PUBLIC_APP_URL!
+const APP_URL    = process.env.NEXT_PUBLIC_APP_URL    || 'https://app.verviersdepannage.com'
 const FROM_EMAIL = 'administration@verviersdepannage.com'
 
 async function getAppToken(): Promise<string> {
@@ -23,22 +24,70 @@ async function getAppToken(): Promise<string> {
     }
   )
   const data = await res.json()
+  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`)
   return data.access_token
 }
 
-async function sendEmail(to: string, subject: string, html: string, replyTo?: string) {
-  const token = await getAppToken()
+async function sendMail(params: {
+  to:       string
+  subject:  string
+  html:     string
+  replyTo?: string
+}) {
+  const token   = await getAppToken()
   const message: any = {
-    subject,
-    body: { contentType: 'HTML', content: html },
-    toRecipients: [{ emailAddress: { address: to } }],
+    subject: params.subject,
+    body:    { contentType: 'HTML', content: params.html },
+    toRecipients: [{ emailAddress: { address: params.to } }],
   }
-  if (replyTo) message.replyTo = [{ emailAddress: { address: replyTo } }]
+  if (params.replyTo) message.replyTo = [{ emailAddress: { address: params.replyTo } }]
   await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${(await getAppToken())}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, saveToSentItems: true })
+    method:  'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ message, saveToSentItems: true }),
   })
+}
+
+function emailWrapper(title: string, color: string, rows: [string, string][], extra?: string): string {
+  const rowsHtml = rows.map(([label, value]) => `
+    <tr>
+      <td style="padding:8px 0;color:#888;font-size:13px;width:130px;vertical-align:top;">${label}</td>
+      <td style="padding:8px 0;color:white;font-size:13px;">${value}</td>
+    </tr>`).join('')
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:20px;background:#0F0F0F;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;">
+    <!-- Header -->
+    <tr><td style="background:${color};padding:20px 30px;border-radius:8px 8px 0 0;">
+      <table cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding-right:16px;">
+            <img src="${APP_URL}/logo.jpg" alt="Verviers Dépannage" height="40" style="display:block;" />
+          </td>
+          <td style="border-left:1px solid rgba(255,255,255,0.3);padding-left:16px;">
+            <img src="${APP_URL}/logo-touring.png" alt="Touring" height="28" style="display:block;" />
+          </td>
+        </tr>
+      </table>
+      <h1 style="color:white;margin:12px 0 0;font-size:18px;font-weight:bold;">${title}</h1>
+    </td></tr>
+    <!-- Body -->
+    <tr><td style="background:#1A1A1A;padding:24px 30px;border-radius:0 0 8px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        ${rowsHtml}
+      </table>
+      ${extra || ''}
+    </td></tr>
+    <!-- Footer -->
+    <tr><td style="padding:16px 0;text-align:center;">
+      <p style="color:#555;font-size:11px;margin:0;">
+        Verviers Dépannage SA · Application chauffeurs · TGR Touring
+      </p>
+    </td></tr>
+  </table>
+</body></html>`
 }
 
 export async function POST(
@@ -49,12 +98,13 @@ export async function POST(
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const isAdmin = ['admin', 'superadmin', 'dispatcher'].includes((session.user as any).role)
-  const supabase = createAdminClient()
-  const body     = await req.json()
-  const { action } = body
-  const missionId   = params.id
+  if (!isAdmin) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
-  // Récupérer la mission
+  const supabase   = createAdminClient()
+  const body       = await req.json()
+  const { action, plannedDate, plannedSlot } = body
+  const missionId  = params.id
+
   const { data: mission } = await supabase
     .from('tgr_missions')
     .select('*, partner:users!partner_id(id, name, email, odoo_partner_id)')
@@ -62,84 +112,114 @@ export async function POST(
     .single()
 
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  if (mission.status !== 'pending') {
+    return NextResponse.json({ error: 'Mission déjà traitée' }, { status: 409 })
+  }
+
+  const { data: me } = await supabase
+    .from('users').select('id, name').eq('email', session.user.email!).single()
 
   // ── ACCEPTER ──────────────────────────────────────────────
-  if (action === 'accept' && isAdmin) {
-    const { data: me } = await supabase
-      .from('users').select('id, name').eq('email', session.user.email!).single()
-
-    // Créer le devis Odoo
-    let odooQuoteId: number | null   = null
+  if (action === 'accept') {
+    let odooQuoteId:   number | null = null
     let odooQuoteName: string | null = null
+    let odooError:     string | null = null
 
-    try {
-      const { createTGRQuote } = await import('@/lib/odoo')
-      const result = await createTGRQuote({
-        partnerId:    mission.partner.odoo_partner_id,
-        reference:    mission.reference,
-        distanceKm:   mission.distance_km ?? 0,
-        pickupAddress: mission.pickup_address,
-        deliveryAddress: mission.delivery_address,
-        plate:        mission.plate,
-        brand:        mission.brand,
-        model:        mission.model,
-      })
-      odooQuoteId   = result.orderId
-      odooQuoteName = result.orderName
-    } catch (err) {
-      console.error('[TGR] Odoo quote error:', err)
+    const partnerId = mission.partner?.odoo_partner_id
+    if (!partnerId) {
+      odooError = `Partenaire Odoo non configuré pour ${mission.partner?.name} — configurez l'ID Odoo dans Admin → Utilisateurs`
+      console.error('[TGR Accept]', odooError)
+    } else {
+      try {
+        const result = await createTGRQuote({
+          partnerId,
+          reference:       mission.reference,
+          distanceKm:      mission.distance_km ?? 1,
+          pickupAddress:   mission.pickup_address,
+          deliveryAddress: mission.delivery_address,
+          plate:           mission.plate,
+          brand:           mission.brand,
+          model:           mission.model,
+        })
+        odooQuoteId   = result.orderId
+        odooQuoteName = result.orderName
+      } catch (err: any) {
+        odooError = err.message
+        console.error('[TGR Accept Odoo]', err.message)
+      }
     }
 
-    await supabase.from('tgr_missions').update({
-      status:        'accepted',
-      accepted_by:   me?.id,
-      accepted_at:   new Date().toISOString(),
-      odoo_quote_id: odooQuoteId,
-      odoo_quote_name: odooQuoteName,
-      updated_at:    new Date().toISOString(),
-    }).eq('id', missionId)
+    // Date de prise en charge prévue
+    const plannedDateStr = plannedDate || mission.deadline_date
+    const plannedSlotStr = plannedSlot || mission.deadline_slot
 
-    // Push + email au partenaire demandeur
-    const deadlineStr = mission.deadline_date
-      ? `${new Date(mission.deadline_date).toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long' })} ${mission.deadline_slot === 'before_noon' ? 'avant midi' : 'dans la journée'}`
+    const slotLabel = plannedSlotStr === 'before_noon' ? 'avant midi' :
+                      plannedSlotStr === 'during_day'  ? 'dans la journée' : ''
+
+    const plannedLabel = plannedDateStr
+      ? `${new Date(plannedDateStr).toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} ${slotLabel}`
       : 'Dès que possible'
 
+    await supabase.from('tgr_missions').update({
+      status:           'accepted',
+      accepted_by:      me?.id,
+      accepted_at:      new Date().toISOString(),
+      deadline_date:    plannedDateStr || mission.deadline_date,
+      deadline_slot:    plannedSlotStr || mission.deadline_slot,
+      odoo_quote_id:    odooQuoteId,
+      odoo_quote_name:  odooQuoteName,
+      updated_at:       new Date().toISOString(),
+    }).eq('id', missionId)
+
+    // Push au partenaire
     await sendPushToUser(mission.partner.id, {
       title: `✅ Mission TGR acceptée — ${mission.plate}`,
-      body:  `Votre mission ${mission.reference} a été acceptée`,
+      body:  `${mission.reference} · Prise en charge : ${plannedLabel}`,
       url:   '/services/tgr',
       tag:   `tgr-accepted-${missionId}`,
     }).catch(() => {})
 
-    const htmlAccept = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#2e7d32;padding:20px 30px;border-radius:8px 8px 0 0;">
-          <h1 style="color:white;margin:0;font-size:18px;">✅ Mission TGR acceptée</h1>
-        </div>
-        <div style="background:#1a1a1a;padding:24px 30px;border-radius:0 0 8px 8px;">
-          <table cellpadding="8" width="100%">
-            <tr><td style="color:#888;font-size:13px;">Référence</td><td style="color:white;font-size:13px;font-weight:bold;">${mission.reference}</td></tr>
-            <tr><td style="color:#888;font-size:13px;">Véhicule</td><td style="color:white;font-size:13px;">${mission.plate} — ${mission.brand} ${mission.model}</td></tr>
-            <tr><td style="color:#888;font-size:13px;">Pick-up</td><td style="color:white;font-size:13px;">${mission.pickup_address}</td></tr>
-            <tr><td style="color:#888;font-size:13px;">Livraison</td><td style="color:white;font-size:13px;">${mission.delivery_address}</td></tr>
-            <tr><td style="color:#888;font-size:13px;">Distance</td><td style="color:white;font-size:13px;">${mission.distance_km ?? '—'} km</td></tr>
-            <tr><td style="color:#888;font-size:13px;">Deadline</td><td style="color:#CC2222;font-size:13px;font-weight:bold;">${deadlineStr}</td></tr>
-            ${odooQuoteName ? `<tr><td style="color:#888;font-size:13px;">Devis</td><td style="color:white;font-size:13px;">${odooQuoteName}</td></tr>` : ''}
-          </table>
-        </div>
+    // Email au partenaire
+    const rows: [string, string][] = [
+      ['Référence',     mission.reference],
+      ['Véhicule',      `${mission.plate} — ${mission.brand} ${mission.model}`],
+      ['État',          mission.is_rolling ? '🟢 Roulant' : '🔴 Non roulant'],
+      ['Pick-up',       mission.pickup_address],
+      ['Livraison',     mission.delivery_address],
+    ]
+    if (mission.distance_km) rows.push(['Distance', `${mission.distance_km} km`])
+    rows.push(['Prise en charge', `<strong style="color:#4ade80;">${plannedLabel}</strong>`])
+    if (odooQuoteName) rows.push(['Devis Odoo', `<strong style="color:white;">${odooQuoteName}</strong>`])
+    if (odooError) rows.push(['⚠️ Devis', `<span style="color:#f87171;">Non créé — ${odooError}</span>`])
+
+    const html = emailWrapper(
+      '✅ Mission TGR acceptée',
+      '#166534',
+      rows,
+      `<div style="margin-top:20px;padding:16px;background:#0F2415;border-radius:8px;border:1px solid #166534;">
+        <p style="color:#86efac;font-size:13px;margin:0;">
+          Votre mission a été acceptée par Verviers Dépannage. Nous prendrons en charge le véhicule le 
+          <strong>${plannedLabel}</strong>.
+        </p>
       </div>`
+    )
 
-    await sendEmail(
-      mission.partner.email,
-      `✅ Mission TGR acceptée — ${mission.reference}`,
-      htmlAccept
-    ).catch(() => {})
+    await sendMail({
+      to:      mission.partner.email,
+      subject: `✅ Mission TGR acceptée — ${mission.reference} — ${plannedLabel}`,
+      html,
+    }).catch(err => console.error('[TGR accept email]', err))
 
-    return NextResponse.json({ success: true, odooQuoteName })
+    return NextResponse.json({
+      success:       true,
+      odooQuoteName,
+      odooError,
+      plannedLabel,
+    })
   }
 
   // ── REFUSER ───────────────────────────────────────────────
-  if (action === 'refuse' && isAdmin) {
+  if (action === 'refuse') {
     await supabase.from('tgr_missions').update({
       status:     'refused',
       refused_at: new Date().toISOString(),
@@ -163,50 +243,44 @@ export async function POST(
       .neq('id', mission.partner_id)
 
     if (partners?.length) {
-      const takeUrl = `${APP_URL}/api/tgr/${missionId}/take?token=${mission.take_token}`
-
+      const takeUrl      = `${APP_URL}/services/tgr/take?missionId=${missionId}&token=${mission.take_token}`
       const priorityLabel = mission.priority === 1
-        ? 'Priorité 1 — Avant midi J+1 ouvrable'
+        ? '🔴 Priorité 1 — Avant midi J+1 ouvrable'
         : mission.priority === 2
-          ? 'Priorité 2 — Dans la journée J+1 ouvrable'
-          : 'Priorité 3 — Dès que possible'
+          ? '🟠 Priorité 2 — Dans la journée J+1 ouvrable'
+          : '🟢 Priorité 3 — Dès que possible'
 
-      const htmlRefuse = `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:#CC2222;padding:20px 30px;border-radius:8px 8px 0 0;">
-            <h1 style="color:white;margin:0;font-size:18px;">🚗 Mission TGR disponible</h1>
-            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">Verviers Dépannage vous propose cette mission</p>
-          </div>
-          <div style="background:#1a1a1a;padding:24px 30px;border-radius:0 0 8px 8px;">
-            <table cellpadding="8" width="100%">
-              <tr><td style="color:#888;font-size:13px;">Immatriculation</td><td style="color:white;font-size:13px;font-weight:bold;">${mission.plate}</td></tr>
-              <tr><td style="color:#888;font-size:13px;">Véhicule</td><td style="color:white;font-size:13px;">${mission.brand} ${mission.model}</td></tr>
-              <tr><td style="color:#888;font-size:13px;">Roulant</td><td style="color:white;font-size:13px;">${mission.is_rolling ? 'Oui' : 'Non'}</td></tr>
-              <tr><td style="color:#888;font-size:13px;">Pick-up</td><td style="color:white;font-size:13px;">${mission.pickup_address}</td></tr>
-              <tr><td style="color:#888;font-size:13px;">Livraison</td><td style="color:white;font-size:13px;">${mission.delivery_address}</td></tr>
-              <tr><td style="color:#888;font-size:13px;">Priorité</td><td style="color:#CC2222;font-size:13px;font-weight:bold;">${priorityLabel}</td></tr>
-              ${mission.remarks ? `<tr><td style="color:#888;font-size:13px;">Remarques</td><td style="color:white;font-size:13px;">${mission.remarks}</td></tr>` : ''}
-            </table>
-            <div style="margin-top:24px;text-align:center;">
-              <a href="${takeUrl}"
-                 style="background:#CC2222;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;display:inline-block;">
-                ✅ Je prends la mission
-              </a>
-            </div>
-            <p style="color:#888;font-size:11px;margin-top:16px;text-align:center;">
-              Le premier partenaire à cliquer obtient la mission.
-            </p>
-          </div>
+      const rows: [string, string][] = [
+        ['Immatriculation', `<strong style="color:white;font-family:monospace;">${mission.plate}</strong>`],
+        ['Véhicule',        `${mission.brand} ${mission.model}`],
+        ['État',            mission.is_rolling ? '🟢 Roulant' : '🔴 Non roulant'],
+        ['Pick-up',         mission.pickup_address],
+        ['Livraison',       mission.delivery_address],
+        ['Priorité',        priorityLabel],
+      ]
+      if (mission.remarks) rows.push(['Remarques', mission.remarks])
+
+      const btnHtml = `
+        <div style="margin-top:24px;text-align:center;">
+          <a href="${takeUrl}"
+             style="background:#CC2222;color:white;padding:14px 32px;border-radius:8px;
+                    text-decoration:none;font-weight:bold;font-size:16px;display:inline-block;">
+            ✅ Je prends la mission
+          </a>
+          <p style="color:#555;font-size:11px;margin-top:12px;">
+            Premier arrivé, premier servi. En répondant à ce mail vous contacterez directement le demandeur.
+          </p>
         </div>`
 
-      // Envoi à chaque partenaire avec reply-to = email du demandeur
+      const html = emailWrapper('🚗 Mission TGR disponible', '#CC2222', rows, btnHtml)
+
       for (const partner of partners) {
-        await sendEmail(
-          partner.email,
-          `🚗 Mission TGR disponible — ${mission.plate}`,
-          htmlRefuse,
-          mission.partner.email  // reply-to = demandeur
-        ).catch(err => console.error(`[TGR refuse email ${partner.email}]`, err))
+        await sendMail({
+          to:       partner.email,
+          subject:  `🚗 Mission TGR disponible — ${mission.plate} — ${mission.brand} ${mission.model}`,
+          html,
+          replyTo:  mission.partner.email,
+        }).catch(err => console.error(`[TGR refuse email ${partner.email}]`, err))
       }
     }
 
@@ -216,19 +290,18 @@ export async function POST(
   return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
 }
 
-// ── GET : prise de mission via lien email ──────────────────
+// ── GET : redirect vers page prise de mission ──────────────
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const token    = req.nextUrl.searchParams.get('token')
-  const supabase = createAdminClient()
-
+  const token = req.nextUrl.searchParams.get('token')
   if (!token) return NextResponse.redirect(`${APP_URL}?error=token_missing`)
 
+  const supabase = createAdminClient()
   const { data: mission } = await supabase
     .from('tgr_missions')
-    .select('*, partner:users!partner_id(name, email)')
+    .select('status, take_token')
     .eq('id', params.id)
     .eq('take_token', token)
     .single()
@@ -238,8 +311,6 @@ export async function GET(
     return NextResponse.redirect(`${APP_URL}/services/tgr?info=already_taken`)
   }
 
-  // Identifier le partenaire via sa session ou son email dans l'URL
-  // Ici on redirige vers une page de confirmation dans l'app
   return NextResponse.redirect(
     `${APP_URL}/services/tgr/take?missionId=${params.id}&token=${token}`
   )
