@@ -43,6 +43,8 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [userModules,      setUserModules]      = useState<string[]>([])
   const [resetLoading,     setResetLoading]     = useState(false)
   const [resetSuccess,     setResetSuccess]     = useState('')
+  const [welcomeLoading,   setWelcomeLoading]   = useState(false)
+  const [welcomeSuccess,   setWelcomeSuccess]   = useState('')
   const [showRoleModal,    setShowRoleModal]    = useState(false)
   const [roleModalRoles,   setRoleModalRoles]   = useState<string[]>([])
   const [roleSaving,       setRoleSaving]       = useState(false)
@@ -152,6 +154,21 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     })
     setResetLoading(false)
     if (res.ok) setResetSuccess('✅ Mot de passe réinitialisé à !Verviers4800')
+  }
+
+
+  // ── Envoyer mail de bienvenue ──────────────────────────
+  const sendWelcome = async () => {
+    if (!selectedUser) return
+    setWelcomeLoading(true); setWelcomeSuccess("")
+    const res = await fetch("/api/admin/users/welcome", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: selectedUser.id }),
+    })
+    setWelcomeLoading(false)
+    if (res.ok) setWelcomeSuccess("✅ Mail de bienvenue envoyé")
+    else { const d = await res.json(); setWelcomeSuccess("❌ " + (d.error || "Erreur")) }
   }
 
   // ── Créer utilisateur ──────────────────────────────────
@@ -268,6 +285,15 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           <button onClick={resetPassword} disabled={resetLoading}
             className="w-full bg-[#2a2a2a] border border-[#333] text-zinc-400 text-xs rounded-xl py-2.5 hover:border-zinc-500 transition-all disabled:opacity-50">
             {resetLoading ? 'Réinitialisation…' : '🔑 Réinitialiser le mot de passe'}
+          </button>
+        </div>
+
+        {/* Mail de bienvenue */}
+        <div className="mb-3">
+          {welcomeSuccess && <p className="text-green-400 text-xs mb-2">{welcomeSuccess}</p>}
+          <button onClick={sendWelcome} disabled={welcomeLoading}
+            className="w-full bg-[#2a2a2a] border border-[#333] text-zinc-400 text-xs rounded-xl py-2.5 hover:border-zinc-500 transition-all disabled:opacity-50">
+            {welcomeLoading ? 'Envoi en cours…' : '✉️ Envoyer le mail de bienvenue'}
           </button>
         </div>
 
