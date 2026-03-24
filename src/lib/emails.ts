@@ -420,3 +420,99 @@ export async function sendAdvancePurchaseEmail(params: {
     throw new Error(`Graph sendMail (advance) error: ${err}`)
   }
 }
+
+// ─── Email : Rapport check véhicule non-conforme ──────────
+export async function sendCheckVehiculeNonConformeReport(data: {
+  vehicleName:   string
+  vehiclePlate:  string
+  checkedBy:     string
+  checkedAt:     string
+  results:       Array<{ label: string; category: string; ok: boolean | null; comment?: string; photo_url?: string }>
+  notes?:        string
+  checkId:       string
+}) {
+  const TO = 'info@verviersdepannage.com'
+
+  const nonConformes = data.results.filter(r => r.ok === false)
+  const okCount      = data.results.filter(r => r.ok === true).length
+  const naCount      = data.results.filter(r => r.ok === null).length
+
+  // Grouper les non-conformes par catégorie
+  const byCategory: Record<string, typeof nonConformes> = {}
+  for (const item of nonConformes) {
+    if (!byCategory[item.category]) byCategory[item.category] = []
+    byCategory[item.category].push(item)
+  }
+
+  const ncRows = Object.entries(byCategory).map(([cat, items]) => `
+    <tr>
+      <td colspan="2" style="padding:10px 16px 4px;font-size:11px;font-weight:700;color:#CC2222;text-transform:uppercase;letter-spacing:1px;background:#fff5f5;border-top:2px solid #CC2222;">
+        ${cat}
+      </td>
+    </tr>
+    ${items.map(item => `
+    <tr style="border-top:1px solid #f0f0f0;">
+      <td style="padding:10px 16px;font-size:13px;color:#222;font-weight:600;vertical-align:top;width:40%;">
+        ❌ ${item.label}
+      </td>
+      <td style="padding:10px 16px;font-size:13px;color:#555;vertical-align:top;">
+        ${item.comment ? `<span style="font-style:italic;">${item.comment}</span>` : '<span style="color:#aaa;">Aucun commentaire</span>'}
+        ${item.photo_url ? `<br><a href="${item.photo_url}" style="color:${BRAND_RED};font-size:12px;font-weight:600;">📷 Voir la photo →</a>` : ''}
+      </td>
+    </tr>`).join('')}
+  `).join('')
+
+  const content = `
+    <p style="margin:0 0 4px;font-size:22px;font-weight:700;color:#111;">⚠️ Rapport de contrôle — Non-conformités</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#888;">
+      Contrôle effectué le <strong>${data.checkedAt}</strong> par <strong>${data.checkedBy}</strong>
+    </p>
+
+    <!-- Véhicule -->
+    <div style="background:#f8f8f8;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0 0 12px;font-size:11px;font-weight:600;color:#aaa;letter-spacing:1px;text-transform:uppercase;">Véhicule contrôlé</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        ${infoRow('Véhicule',        `<strong>${data.vehicleName}</strong>`)}
+        ${infoRow('Immatriculation', `<strong>${data.vehiclePlate}</strong>`)}
+      </table>
+    </div>
+
+    <!-- Résumé -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td style="text-align:center;padding:16px;background:#fff5f5;border:1px solid #ffcccc;border-radius:8px;">
+          <p style="margin:0;font-size:28px;font-weight:800;color:#CC2222;">${nonConformes.length}</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Non-conforme(s)</p>
+        </td>
+        <td style="width:12px;"></td>
+        <td style="text-align:center;padding:16px;background:#f0faf0;border:1px solid #c8e6c9;border-radius:8px;">
+          <p style="margin:0;font-size:28px;font-weight:800;color:#2e7d32;">${okCount}</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Conforme(s)</p>
+        </td>
+        <td style="width:12px;"></td>
+        <td style="text-align:center;padding:16px;background:#f8f8f8;border:1px solid #e0e0e0;border-radius:8px;">
+          <p style="margin:0;font-size:28px;font-weight:800;color:#888;">${naCount}</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">N/A</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Détail non-conformités -->
+    <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#111;">Détail des non-conformités</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #f0f0f0;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+      ${ncRows}
+    </table>
+
+    ${data.notes ? `
+    ${divider()}
+    <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111;">Notes générales</p>
+    <p style="margin:0;font-size:13px;color:#555;line-height:1.6;background:#f8f8f8;border-radius:8px;padding:14px 16px;">${data.notes}</p>
+    ` : ''}
+
+    ${divider()}
+    ${button(`${APP_URL}/check-vehicule/${data.checkId}`, 'Voir le rapport complet →')}
+  `
+
+  const subject = `⚠️ Check Véhicule — Non-conformités — ${data.vehicleName} (${data.vehiclePlate})`
+  await sendEmail(TO, subject, emailLayout(content, subject), 'Verviers Dépannage')
+}
