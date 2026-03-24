@@ -79,7 +79,7 @@ export default function AdminLayoutClient({
       </aside>
 
       {/* ── CONTENU PRINCIPAL ────────────────────────────── */}
-      <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
+      <div className="flex-1 flex flex-col lg:ml-64 min-h-screen w-full overflow-x-hidden">
 
         {/* Header mobile */}
         <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
@@ -101,9 +101,9 @@ export default function AdminLayoutClient({
           <h1 className="text-white font-bold text-2xl">Administration</h1>
         </div>
 
-        {/* AdminNav + contenu */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-          <div className="w-full px-4 lg:px-8 py-4 lg:py-6 pb-24">{children}</div>
+        {/* AdminNav + contenu — chaque client gère son propre padding */}
+        <main className="flex-1 min-w-0 overflow-x-hidden">
+          {children}
         </main>
       </div>
     </div>
