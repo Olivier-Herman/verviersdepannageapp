@@ -36,7 +36,7 @@ export interface User {
   active: boolean
   last_login: string | null
   created_at: string
-  modules?: ModuleId[]   // chargé via join user_modules
+  modules?: ModuleId[]
 }
 
 export interface UserModule {
@@ -93,36 +93,26 @@ export interface Intervention {
   reference: string
   service_type: ServiceType
   driver_id: string | null
-
-  // Véhicule
   plate: string | null
   vin: string | null
   brand_id: number | null
   model_id: number | null
   brand_text: string | null
   model_text: string | null
-
-  // Intervention
   motif_id: string | null
   motif_text: string | null
   location_address: string | null
   location_lat: number | null
   location_lng: number | null
   intervention_date: string
-
-  // Paiement
   amount: number | null
   payment_mode: string | null
   payment_status: PaymentStatus
-
-  // Client
   client_vat: string | null
   client_name: string | null
   client_address: string | null
   client_phone: string | null
   client_email: string | null
-
-  // Misc
   notes: string | null
   odoo_invoice_id: number | null
   odoo_partner_id: number | null
@@ -130,8 +120,6 @@ export interface Intervention {
   synced_at: string | null
   created_at: string
   updated_at: string
-
-  // Joins optionnels
   driver?: User
   brand?: VehicleBrand
   model?: VehicleModel
@@ -165,7 +153,6 @@ export interface FundAdvance {
   created_at: string
 }
 
-// VIES API response
 export interface ViesResult {
   valid: boolean
   name?: string
@@ -175,7 +162,6 @@ export interface ViesResult {
   requestDate?: string
 }
 
-// Odoo types
 export interface OdooPartner {
   id: number
   name: string
@@ -184,4 +170,56 @@ export interface OdooPartner {
   city: string | null
   phone: string | null
   email: string | null
+}
+
+// ── Check Véhicule ────────────────────────────────────────
+
+export type CheckStatus = 'scheduled' | 'pending_claim' | 'in_progress' | 'completed'
+
+export interface CheckVehicle {
+  id: string
+  name: string
+  plate: string
+  usual_driver_id: string | null
+  active: boolean
+  created_at: string
+  driver?: { name: string } | null
+}
+
+export interface CheckTemplateItem {
+  id: string
+  label: string
+  category: 'Documents' | 'Matériel' | 'Carrosserie' | 'Mécanique'
+  order_index: number
+  active: boolean
+  created_at: string
+}
+
+export interface CheckItemResult {
+  item_id: string
+  label: string
+  category: string
+  ok: boolean | null
+  comment: string
+  photo_url: string
+}
+
+export interface VehicleCheck {
+  id: string
+  created_at: string
+  updated_at: string
+  triggered_by: string | null
+  vehicle_id: string | null
+  scheduled_date: string
+  status: CheckStatus
+  claimed_by: string | null
+  claimed_at: string | null
+  driver_notified_at: string | null
+  completed_at: string | null
+  results: CheckItemResult[] | null
+  photos: string[] | null
+  notes: string | null
+  vehicle?: CheckVehicle | null
+  triggered_by_user?: { id: string; name: string; email: string } | null
+  claimed_by_user?: { id: string; name: string; email: string } | null
 }

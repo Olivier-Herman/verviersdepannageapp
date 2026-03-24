@@ -3,32 +3,29 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
+import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 
 const NAV_ITEMS = [
-  { href: '/dashboard',    label: 'Dashboard',          icon: '🏠' },
-  { href: '/encaissement', label: 'Encaissement',        icon: '💳' },
-  { href: '/encaissements',label: 'Mouvements',          icon: '📊' },
-  { href: '/caisse',       label: 'Ma Caisse',           icon: '💰' },
-  { href: '/avance-fonds', label: 'Avance de fonds',     icon: '📄' },
-  { href: '/documents',    label: 'Documents',           icon: '📁' },
-  { href: '/check-vehicle',label: 'Check Véhicule',      icon: '🔍' },
-  { href: '/services/tgr', label: 'TGR Touring',         icon: '🛡️' },
-  { href: '/admin',        label: 'Administration',      icon: '⚙️' },
-  { href: '/profil',       label: 'Mon Profil',          icon: '👤' },
+  { href: '/dashboard',     label: 'Dashboard',        icon: '🏠' },
+  { href: '/encaissement',  label: 'Encaissement',      icon: '💳' },
+  { href: '/encaissements', label: 'Mouvements',        icon: '📊' },
+  { href: '/caisse',        label: 'Ma Caisse',         icon: '💰' },
+  { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄' },
+  { href: '/documents',     label: 'Documents',         icon: '📁' },
+  { href: '/check-vehicule',label: 'Check Véhicule',    icon: '🔍' },
+  { href: '/services/tgr',  label: 'TGR Touring',       icon: '🛡️' },
+  { href: '/admin',         label: 'Administration',    icon: '⚙️' },
+  { href: '/profil',        label: 'Mon Profil',        icon: '👤' },
 ]
 
 interface AppShellProps {
-  children:      React.ReactNode
-  /** Titre affiché dans le header mobile et la sidebar desktop */
-  title:         string
-  /** Lien de retour mobile (défaut: /dashboard) */
-  backHref?:     string
-  /** Éléments additionnels sous le titre (filtres, stats…) */
-  headerExtra?:  React.ReactNode
-  /** Rôle utilisateur pour filtrer les liens sidebar */
-  userRole?:     string
-  userName?:     string
-  userModules?:  string[]
+  children:     React.ReactNode
+  title:        string
+  backHref?:    string
+  headerExtra?: React.ReactNode
+  userRole?:    string
+  userName?:    string
+  userModules?: string[]
 }
 
 export default function AppShell({
@@ -40,15 +37,15 @@ export default function AppShell({
   userName = '',
   userModules = [],
 }: AppShellProps) {
-  const pathname  = usePathname()
-  const isAdmin   = ['admin', 'superadmin'].includes(userRole)
-  const initials  = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+  const pathname = usePathname()
+  const isAdmin  = ['admin', 'superadmin'].includes(userRole)
+  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
   const visibleNav = NAV_ITEMS.filter(item => {
     if (item.href === '/admin') return isAdmin
     if (isAdmin) return true
-    const moduleId = item.href.replace('/', '').replace('-', '_').replace('/', '_')
     if (item.href === '/dashboard' || item.href === '/profil') return true
+    const moduleId = item.href.replace('/', '').replace(/-/g, '_').replace('/', '_')
     return userModules.includes(moduleId)
   })
 
@@ -56,16 +53,14 @@ export default function AppShell({
     <div className="min-h-screen bg-[#0F0F0F] flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] flex-shrink-0 fixed top-0 left-0 h-full z-30">
+      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r border-border flex-shrink-0 fixed top-0 left-0 h-full z-30">
 
-        {/* Logo */}
-        <div className="px-6 py-5 border-b border-[#2a2a2a]">
+        <div className="px-6 py-5 border-b border-border">
           <Link href="/dashboard">
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
           </Link>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -84,11 +79,9 @@ export default function AppShell({
           })}
         </nav>
 
-        {/* User + déconnexion */}
-        <div className="px-3 py-4 border-t border-[#2a2a2a]">
+        <div className="px-3 py-4 border-t border-border">
           <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
-            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center
-                            text-white font-bold text-xs flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
@@ -98,8 +91,7 @@ export default function AppShell({
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm
-                       text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
           >
             <span className="text-base">🚪</span>
             Déconnexion
@@ -111,7 +103,7 @@ export default function AppShell({
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
 
         {/* Header mobile */}
-        <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
+        <div className="lg:hidden bg-surface border-b border-border px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
           <div className="flex items-center gap-3 mb-3">
             <Link href={backHref}
               className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg flex-shrink-0">
@@ -127,18 +119,17 @@ export default function AppShell({
         </div>
 
         {/* Header desktop */}
-        <div className="hidden lg:block bg-[#1A1A1A] border-b border-[#2a2a2a] px-8 py-5 sticky top-0 z-20">
+        <div className="hidden lg:block bg-surface border-b border-border px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-white font-bold text-2xl">{title}</h1>
-            </div>
-            {headerExtra && (
-              <div className="flex-1 ml-8">{headerExtra}</div>
-            )}
+            <h1 className="text-white font-bold text-2xl">{title}</h1>
+            {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
           </div>
         </div>
 
-        {/* Page content */}
+        {/* Bannière check véhicule — driver uniquement si contrôle en cours */}
+        <VehicleCheckBanner />
+
+        {/* Contenu */}
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>
