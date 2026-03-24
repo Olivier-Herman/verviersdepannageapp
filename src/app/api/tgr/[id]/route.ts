@@ -151,10 +151,6 @@ export async function POST(
         odooQuoteName = result.orderName
         // Confirmer le devis automatiquement
         try {
-          await import('@/lib/odoo').then(({ default: _, ...m }) => {
-            const rpcFn = (m as any).rpc || null
-            // On utilise l'API Odoo directement
-          })
           const confirmRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
