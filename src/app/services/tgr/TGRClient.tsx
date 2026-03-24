@@ -83,6 +83,7 @@ export default function TGRClient({ user }: { user: any }) {
   const [plate,           setPlate]           = useState('')
   const [plateSearching,  setPlateSearching]  = useState(false)
   const [vehicleMatch,    setVehicleMatch]    = useState<VehicleMatch | null>(null)
+  const [vehicleConfirmed,setVehicleConfirmed]= useState(false)
   const [brand,           setBrand]           = useState('')
   const [model,           setModel]           = useState('')
   const [brands,          setBrands]          = useState<Brand[]>([])
@@ -120,13 +121,13 @@ export default function TGRClient({ user }: { user: any }) {
       const data = await res.json()
       if (data.found) {
         setVehicleMatch(data)
-        // Pré-remplir marque/modèle si disponible
-        if (data.brand_text) setBrand(data.brand_text)
-        if (data.model_text) setModel(data.model_text)
+        setVehicleConfirmed(false)
+        // Ne pas pré-remplir — attendre confirmation utilisateur
       } else {
         setVehicleMatch(null)
+        setVehicleConfirmed(false)
       }
-    } catch { setVehicleMatch(null) }
+    } catch { setVehicleMatch(null); setVehicleConfirmed(false) }
     finally  { setPlateSearching(false) }
   }
 
@@ -321,7 +322,7 @@ export default function TGRClient({ user }: { user: any }) {
             <label className="block text-xs text-zinc-500 mb-1">Immatriculation *</label>
             <div className="flex gap-2">
               <input type="text" autoCapitalize="characters" placeholder="1ABC234"
-                value={plate} onChange={e => { setPlate(e.target.value.toUpperCase()); setVehicleMatch(null) }}
+                value={plate} onChange={e => { setPlate(e.target.value.toUpperCase()); setVehicleMatch(null); setVehicleConfirmed(false); setBrand(''); setModel('') }}
                 onBlur={handlePlateLookup}
                 className="flex-1 bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
                            text-white font-mono tracking-widest placeholder-zinc-700
@@ -333,63 +334,96 @@ export default function TGRClient({ user }: { user: any }) {
             </div>
           </div>
 
-          {/* Véhicule trouvé */}
-          {vehicleMatch && (
-            <div className="bg-green-900/20 border border-green-800 rounded-xl px-3 py-2 flex items-center gap-2">
-              <span className="text-green-400 text-sm">✅</span>
-              <p className="text-green-300 text-xs">
-                Véhicule trouvé : <strong>{vehicleMatch.brand_text} {vehicleMatch.model_text}</strong>
-              </p>
+          {/* Véhicule trouvé — confirmation */}
+          {vehicleMatch && !vehicleConfirmed && (
+            <div className="bg-[#0F0F0F] border border-brand/30 rounded-xl p-3">
+              <p className="text-brand text-xs font-semibold mb-2">🚗 Véhicule identifié dans notre base</p>
+              <p className="text-white font-mono font-bold">{vehicleMatch.plate}</p>
+              {(vehicleMatch.brand_text || vehicleMatch.model_text) && (
+                <p className="text-zinc-300 text-sm mt-0.5">{vehicleMatch.brand_text} {vehicleMatch.model_text}</p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => {
+                  setVehicleConfirmed(true)
+                  if (vehicleMatch.brand_text) setBrand(vehicleMatch.brand_text)
+                  if (vehicleMatch.model_text) setModel(vehicleMatch.model_text)
+                }}
+                  className="flex-1 py-2 bg-green-700 text-white rounded-xl text-xs font-bold">
+                  ✅ Oui, c'est ce véhicule
+                </button>
+                <button onClick={() => { setVehicleMatch(null); setVehicleConfirmed(false) }}
+                  className="flex-1 py-2 bg-[#2a2a2a] text-zinc-400 rounded-xl text-xs font-medium">
+                  Non, saisir manuellement
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Marque */}
-          <div>
-            <label className="block text-xs text-zinc-500 mb-1">Marque *</label>
-            {loadingBrands ? (
-              <p className="text-zinc-600 text-xs">Chargement…</p>
-            ) : (
-              <div className="flex gap-2">
-                <select value={brand}
-                  onChange={e => {
-                    setBrand(e.target.value)
-                    setModel('')
-                    const b = brands.find(b => b.name === e.target.value)
-                    if (b) loadModels(b.id)
-                  }}
-                  onFocus={loadBrands}
-                  className="flex-1 bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                             text-white text-sm outline-none appearance-none focus:border-brand">
-                  <option value="">Sélectionner une marque…</option>
-                  {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                </select>
-                {!brands.length && (
-                  <button onClick={loadBrands}
-                    className="px-3 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-xs hover:bg-[#333]">
-                    Charger
-                  </button>
+          {/* Véhicule confirmé */}
+          {vehicleMatch && vehicleConfirmed && (
+            <div className="bg-green-900/20 border border-green-800 rounded-xl px-3 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-green-400 text-sm">✅</span>
+                <div>
+                  <p className="text-green-300 text-xs font-semibold">{vehicleMatch.plate}</p>
+                  <p className="text-green-400/70 text-xs">{brand} {model}</p>
+                </div>
+              </div>
+              <button onClick={() => { setVehicleMatch(null); setVehicleConfirmed(false); setBrand(''); setModel('') }}
+                className="text-zinc-600 hover:text-zinc-400 text-xs">Changer</button>
+            </div>
+          )}
+
+          {/* Marque + Modèle — seulement si pas de véhicule confirmé */}
+          {(!vehicleMatch || !vehicleConfirmed) && (
+            <>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Marque *</label>
+                {loadingBrands ? (
+                  <p className="text-zinc-600 text-xs">Chargement…</p>
+                ) : (
+                  <div className="flex gap-2">
+                    <select value={brand}
+                      onChange={e => {
+                        setBrand(e.target.value)
+                        setModel('')
+                        const b = brands.find(b => b.name === e.target.value)
+                        if (b) loadModels(b.id)
+                      }}
+                      onFocus={loadBrands}
+                      className="flex-1 bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
+                                 text-white text-sm outline-none appearance-none focus:border-brand">
+                      <option value="">Sélectionner une marque…</option>
+                      {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                    </select>
+                    {!brands.length && (
+                      <button onClick={loadBrands}
+                        className="px-3 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-xs hover:bg-[#333]">
+                        Charger
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Modèle */}
-          <div>
-            <label className="block text-xs text-zinc-500 mb-1">Modèle *</label>
-            {models.length > 0 ? (
-              <select value={model} onChange={e => setModel(e.target.value)}
-                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                           text-white text-sm outline-none appearance-none focus:border-brand">
-                <option value="">Sélectionner un modèle…</option>
-                {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-              </select>
-            ) : (
-              <input type="text" placeholder="Ex: Série 5 / Classe C"
-                value={model} onChange={e => setModel(e.target.value)}
-                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                           text-white placeholder-zinc-700 focus:outline-none focus:border-brand" />
-            )}
-          </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Modèle *</label>
+                {models.length > 0 ? (
+                  <select value={model} onChange={e => setModel(e.target.value)}
+                    className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
+                               text-white text-sm outline-none appearance-none focus:border-brand">
+                    <option value="">Sélectionner un modèle…</option>
+                    {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" placeholder="Ex: Série 5 / Classe C"
+                    value={model} onChange={e => setModel(e.target.value)}
+                    className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
+                               text-white placeholder-zinc-700 focus:outline-none focus:border-brand" />
+                )}
+              </div>
+            </>
+          )}
 
           {/* Roulant */}
           <div>
