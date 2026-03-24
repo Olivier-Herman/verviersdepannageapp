@@ -7,15 +7,13 @@ import AppShell from '@/components/layout/AppShell'
 
 const NAV_MODULES = [
   { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',      size: 'large' },
-  { id: 'encaissements', label: 'Mouvements',              icon: '📊', href: '/encaissements',  color: 'bg-surface',    size: 'small' },
-  { id: 'caisse',        label: 'Ma Caisse',               icon: '💰', href: '/caisse',         color: 'bg-surface',    size: 'small' },
-  { id: 'avance_fonds',  label: 'Avance de Fonds',         icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'small' },
-  { id: 'documents',     label: 'Documents',               icon: '📁', href: '/documents',      color: 'bg-surface',    size: 'small' },
-  { id: 'check_vehicle', label: 'Check Véhicule',          icon: '🔍', href: '/check-vehicule', color: 'bg-surface',    size: 'small' },
-  { id: 'tgr',           label: 'TGR Touring',             icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
-  { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
-  { id: 'admin',         label: 'Administration',          icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'small' },
-  { id: 'profil',        label: 'Mon Profil',              icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
+  { id: 'finance',       label: 'Finance',                icon: '💰', href: '/finance',         color: 'bg-surface',    size: 'small' },
+  { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'small' },
+  { id: 'check_vehicle', label: 'Check Véhicule',         icon: '🔍', href: '/check-vehicule', color: 'bg-surface',    size: 'small' },
+  { id: 'tgr',           label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
+  { id: 'depose',        label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
+  { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'small' },
+  { id: 'profil',        label: 'Mon Profil',             icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
 ]
 
 const CALL_MODULE_MAP: Record<string, string> = {
@@ -49,6 +47,9 @@ export default function DashboardClient({
   const visibleNav = NAV_MODULES.filter(m => {
     if (m.id === 'admin') return isAdmin
     if (isAdmin) return true
+    if (m.id === 'profil') return true
+    // Finance visible si encaissements OU caisse
+    if (m.id === 'finance') return userModules.includes('encaissements') || userModules.includes('caisse')
     return userModules.includes(m.id)
   })
 
@@ -64,7 +65,7 @@ export default function DashboardClient({
     >
       {/* ── MOBILE ───────────────────────────────────────── */}
       <div className="lg:hidden px-4 py-5">
-        <div className="flex items-center gap-3 bg-surface border border-border rounded-xl px-3 py-2.5 mb-5">
+        <div className="flex items-center gap-3 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2.5 mb-5">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
             {initials}
           </div>
@@ -82,7 +83,7 @@ export default function DashboardClient({
 
       {/* ── DESKTOP ──────────────────────────────────────── */}
       <div className="hidden lg:block px-8 py-6">
-        <div className="flex items-center gap-4 bg-surface border border-border rounded-xl px-5 py-4 mb-6 max-w-2xl">
+        <div className="flex items-center gap-4 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-5 py-4 mb-6 max-w-2xl">
           <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
             {initials}
           </div>
@@ -105,7 +106,7 @@ export default function DashboardClient({
         <div className="grid grid-cols-3 gap-4 max-w-5xl">
           {visibleNav.map(mod => (
             <Link key={mod.id} href={mod.href}
-              className={`${mod.color} border border-border rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80`}
+              className={`${mod.color} border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80`}
             >
               <div>
                 <p className="text-white font-semibold text-base leading-tight">{mod.label}</p>
@@ -126,8 +127,8 @@ export default function DashboardClient({
                 const phone = getPhone(mod.id)
                 return (
                   <a key={mod.id} href={phone ? `tel:${phone}` : '#'}
-                    className={`bg-surface border rounded-2xl px-6 py-4 flex items-center gap-3 transition-all ${
-                      phone ? 'border-border hover:border-brand' : 'border-border opacity-40'
+                    className={`bg-[#1A1A1A] border rounded-2xl px-6 py-4 flex items-center gap-3 transition-all ${
+                      phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'
                     }`}
                   >
                     <span className="text-2xl">{mod.icon}</span>
@@ -168,7 +169,7 @@ function ModuleGrid({
             className={`
               ${mod.size === 'large' ? 'col-span-2' : ''}
               ${mod.color}
-              border border-border rounded-2xl p-4
+              border border-[#2a2a2a] rounded-2xl p-4
               flex ${mod.size === 'large' ? 'items-center justify-between' : 'flex-col'}
               gap-3 active:opacity-80 transition-opacity
             `}
@@ -192,8 +193,8 @@ function ModuleGrid({
               const phone = getPhone(mod.id)
               return (
                 <a key={mod.id} href={phone ? `tel:${phone}` : '#'}
-                  className={`bg-surface border rounded-2xl p-3 flex flex-col items-center gap-2 active:opacity-80 transition-all text-center ${
-                    phone ? 'border-border hover:border-brand' : 'border-border opacity-40'
+                  className={`bg-[#1A1A1A] border rounded-2xl p-3 flex flex-col items-center gap-2 active:opacity-80 transition-all text-center ${
+                    phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'
                   }`}
                 >
                   <span className="text-2xl">{mod.icon}</span>

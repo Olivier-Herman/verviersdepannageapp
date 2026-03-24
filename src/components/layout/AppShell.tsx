@@ -8,10 +8,8 @@ import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 const NAV_ITEMS = [
   { href: '/dashboard',     label: 'Dashboard',        icon: '🏠' },
   { href: '/encaissement',  label: 'Encaissement',      icon: '💳' },
-  { href: '/encaissements', label: 'Mouvements',        icon: '📊' },
-  { href: '/caisse',        label: 'Ma Caisse',         icon: '💰' },
+  { href: '/finance',       label: 'Finance',           icon: '💰' },
   { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄' },
-  { href: '/documents',     label: 'Documents',         icon: '📁' },
   { href: '/check-vehicule',label: 'Check Véhicule',    icon: '🔍' },
   { href: '/services/tgr',  label: 'TGR Touring',       icon: '🛡️' },
   { href: '/admin',         label: 'Administration',    icon: '⚙️' },
@@ -19,13 +17,13 @@ const NAV_ITEMS = [
 ]
 
 interface AppShellProps {
-  children:      React.ReactNode
-  title:         string
-  backHref?:     string
-  headerExtra?:  React.ReactNode
-  userRole?:     string
-  userName?:     string
-  userModules?:  string[]
+  children:     React.ReactNode
+  title:        string
+  backHref?:    string
+  headerExtra?: React.ReactNode
+  userRole?:    string
+  userName?:    string
+  userModules?: string[]
 }
 
 export default function AppShell({
@@ -37,15 +35,16 @@ export default function AppShell({
   userName = '',
   userModules = [],
 }: AppShellProps) {
-  const pathname  = usePathname()
-  const isAdmin   = ['admin', 'superadmin'].includes(userRole)
-  const initials  = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+  const pathname = usePathname()
+  const isAdmin  = ['admin', 'superadmin'].includes(userRole)
+  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
   const visibleNav = NAV_ITEMS.filter(item => {
     if (item.href === '/admin') return isAdmin
     if (isAdmin) return true
-    const moduleId = item.href.replace('/', '').replace(/-/g, '_').replace('/', '_')
     if (item.href === '/dashboard' || item.href === '/profil') return true
+    if (item.href === '/finance') return userModules.includes('encaissements') || userModules.includes('caisse')
+    const moduleId = item.href.replace('/', '').replace(/-/g, '_').replace('/', '_')
     return userModules.includes(moduleId)
   })
 
@@ -54,15 +53,12 @@ export default function AppShell({
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
       <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] flex-shrink-0 fixed top-0 left-0 h-full z-30">
-
-        {/* Logo */}
         <div className="px-6 py-5 border-b border-[#2a2a2a]">
           <Link href="/dashboard">
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
           </Link>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -81,11 +77,9 @@ export default function AppShell({
           })}
         </nav>
 
-        {/* User + déconnexion */}
         <div className="px-3 py-4 border-t border-[#2a2a2a]">
           <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
-            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center
-                            text-white font-bold text-xs flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
@@ -95,8 +89,7 @@ export default function AppShell({
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm
-                       text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
           >
             <span className="text-base">🚪</span>
             Déconnexion
@@ -126,19 +119,15 @@ export default function AppShell({
         {/* Header desktop */}
         <div className="hidden lg:block bg-[#1A1A1A] border-b border-[#2a2a2a] px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-white font-bold text-2xl">{title}</h1>
-            </div>
-            {headerExtra && (
-              <div className="flex-1 ml-8">{headerExtra}</div>
-            )}
+            <h1 className="text-white font-bold text-2xl">{title}</h1>
+            {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
           </div>
         </div>
 
-        {/* Bannière check véhicule — driver uniquement si contrôle en cours */}
+        {/* Bannière check véhicule */}
         <VehicleCheckBanner />
 
-        {/* Page content */}
+        {/* Contenu */}
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>

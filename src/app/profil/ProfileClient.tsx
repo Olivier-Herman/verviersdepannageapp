@@ -1,12 +1,45 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { signOut }             from 'next-auth/react'
-import AppShell                from '@/components/layout/AppShell'
+import { useState, useEffect, useRef } from 'react'
+import { signOut }   from 'next-auth/react'
+import AppShell      from '@/components/layout/AppShell'
+
+// ── Types documents ────────────────────────────────────────
+const DOC_TYPES = [
+  { value: 'id_card',         label: "Carte d'identité",   icon: '🪪' },
+  { value: 'driving_license', label: 'Permis de conduire', icon: '🚗' },
+  { value: 'driver_card',     label: 'Carte chauffeur',    icon: '💳' },
+  { value: 'medical',         label: 'Sélection médicale', icon: '🏥' },
+]
+
+interface DriverDocument {
+  id:         string
+  doc_type:   string
+  expires_at: string
+  file_url:   string
+  notes?:     string
+  updated_at: string
+}
+
+function daysUntilExpiry(expiresAt: string): number {
+  const exp = new Date(expiresAt); const now = new Date()
+  exp.setHours(0,0,0,0); now.setHours(0,0,0,0)
+  return Math.ceil((exp.getTime() - now.getTime()) / 86400000)
+}
+
+function expiryStatus(days: number) {
+  if (days < 0)    return { color: 'text-red-500',    bg: 'bg-red-500/10 border-red-500/30',       label: 'Expiré'   }
+  if (days <= 30)  return { color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/30',       label: '< 1 mois' }
+  if (days <= 90)  return { color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30', label: '< 3 mois' }
+  if (days <= 180) return { color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/30', label: '< 6 mois' }
+  return              { color: 'text-green-400',   bg: 'bg-green-500/10 border-green-500/30',   label: 'Valide'   }
+}
 
 export default function ProfileClient({ user }: { user: any }) {
   const userRole = user?.role ?? 'driver'
   const userName = user?.name ?? ''
+
+  // ── PIN ──────────────────────────────────────────────────
   const [pin1,       setPin1]       = useState('')
   const [pin2,       setPin2]       = useState('')
   const [pinLoading, setPinLoading] = useState(false)
@@ -14,17 +47,31 @@ export default function ProfileClient({ user }: { user: any }) {
   const [pinError,   setPinError]   = useState('')
   const hasPin = !!user?.verify_pin_hash
 
-  // Push
+  // ── Push ─────────────────────────────────────────────────
   const [pushSupported,  setPushSupported]  = useState(false)
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushLoading,    setPushLoading]    = useState(false)
   const [pushStatus,     setPushStatus]     = useState('')
 
+  // ── Documents ────────────────────────────────────────────
+  const [documents,   setDocuments]   = useState<DriverDocument[]>([])
+  const [docsLoading, setDocsLoading] = useState(true)
+  const [editDoc,     setEditDoc]     = useState<string | null>(null)
+  const [viewDoc,     setViewDoc]     = useState<DriverDocument | null>(null)
+  const [uploading,   setUploading]   = useState(false)
+  const [docError,    setDocError]    = useState<string | null>(null)
+  const [docSuccess,  setDocSuccess]  = useState<string | null>(null)
+  const [formExpiry,  setFormExpiry]  = useState('')
+  const [formNotes,   setFormNotes]   = useState('')
+  const [formFile,    setFormFile]    = useState<File | null>(null)
+  const [formPreview, setFormPreview] = useState<string | null>(null)
+  const fileRef   = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+
+  // ── Init push ────────────────────────────────────────────
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     setPushSupported(true)
-
-    // Vérifier via pushManager directement (source de vérité côté client)
     navigator.serviceWorker.getRegistrations().then(regs => {
       const reg = regs.find((r: any) => r.active?.scriptURL?.includes('sw-custom'))
       if (!reg) return Promise.resolve(null)
@@ -36,10 +83,90 @@ export default function ProfileClient({ user }: { user: any }) {
     })
   }, [])
 
+  // ── Init documents ───────────────────────────────────────
+  const loadDocuments = () => {
+    setDocsLoading(true)
+    fetch('/api/documents')
+      .then(r => r.json())
+      .then(data => { setDocuments(data || []); setDocsLoading(false) })
+  }
+  useEffect(() => { loadDocuments() }, [])
+
+  const getDoc = (type: string) => documents.find(d => d.doc_type === type)
+
+  const openEdit = (type: string) => {
+    const existing = getDoc(type)
+    setFormExpiry(existing?.expires_at?.split('T')[0] ?? '')
+    setFormNotes(existing?.notes ?? '')
+    setFormFile(null); setFormPreview(null); setDocError(null)
+    setEditDoc(type)
+  }
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFormFile(file)
+    setFormPreview(URL.createObjectURL(file))
+  }
+
+  const uploadFile = async (file: File, docType: string): Promise<string> => {
+    const jpegBase64 = await new Promise<string>((resolve, reject) => {
+      const img = new window.Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight
+        canvas.getContext('2d')!.drawImage(img, 0, 0)
+        resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1])
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        const reader = new FileReader()
+        reader.onload  = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      }
+      img.src = url
+    })
+    const res  = await fetch(`/api/documents/upload?docType=${docType}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64: jpegBase64, mimeType: 'image/jpeg', filename: 'doc.jpg' }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'Upload échoué')
+    return data.url
+  }
+
+  const handleSave = async () => {
+    if (!editDoc)    return
+    if (!formExpiry) { setDocError("Veuillez saisir la date d'expiration"); return }
+    if (!formFile && !getDoc(editDoc)?.file_url) { setDocError('Veuillez fournir une photo du document'); return }
+    setUploading(true); setDocError(null)
+    try {
+      let fileUrl = getDoc(editDoc)?.file_url ?? ''
+      if (formFile) fileUrl = await uploadFile(formFile, editDoc)
+      const res = await fetch('/api/documents', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docType: editDoc, expiresAt: formExpiry, fileUrl, notes: formNotes || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setDocSuccess('Document enregistré ✅')
+      setEditDoc(null); setFormFile(null); setFormPreview(null); setFormExpiry(''); setFormNotes('')
+      loadDocuments()
+      setTimeout(() => setDocSuccess(null), 3000)
+    } catch (err: unknown) {
+      setDocError(err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // ── Push helpers ─────────────────────────────────────────
   const getSWReg = async (): Promise<ServiceWorkerRegistration> => {
     const regs = await navigator.serviceWorker.getRegistrations()
     let reg = regs.find((r: any) => r.active?.scriptURL?.includes('sw-custom')) as ServiceWorkerRegistration | undefined
-
     if (!reg) {
       reg = await navigator.serviceWorker.register('/sw-custom.js', { scope: '/' })
       await new Promise<void>((resolve, reject) => {
@@ -68,57 +195,34 @@ export default function ProfileClient({ user }: { user: any }) {
           if (sub) {
             await sub.unsubscribe()
             await fetch('/api/push', {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
+              method: 'DELETE', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ endpoint: sub.endpoint }),
             })
           }
         }
-        setPushSubscribed(false)
-        setPushStatus('Notifications désactivées')
+        setPushSubscribed(false); setPushStatus('Notifications désactivées')
       } else {
         const permission = await Notification.requestPermission()
-        if (permission !== 'granted') {
-          setPushStatus('Permission refusée — activez les notifications dans les réglages')
-          return
-        }
-
+        if (permission !== 'granted') { setPushStatus('Permission refusée — activez les notifications dans les réglages'); return }
         setPushStatus('Connexion au service worker…')
         const reg = await getSWReg()
-
         setPushStatus('Abonnement push en cours…')
         const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
         const padding  = '='.repeat((4 - vapidKey.length % 4) % 4)
-        const rawKey   = Uint8Array.from(
-          atob((vapidKey + padding).replace(/-/g, '+').replace(/_/g, '/')),
-          c => c.charCodeAt(0)
-        )
-
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly:      true,
-          applicationServerKey: rawKey,
-        })
-
+        const rawKey   = Uint8Array.from(atob((vapidKey + padding).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: rawKey })
         setPushStatus('Enregistrement…')
         const toBase64 = (buf: ArrayBuffer) => {
-          const bytes = new Uint8Array(buf)
-          let str = ''
+          const bytes = new Uint8Array(buf); let str = ''
           bytes.forEach(b => { str += String.fromCharCode(b) })
           return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
         }
-
         const res = await fetch('/api/push', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            endpoint:  sub.endpoint,
-            keys: { p256dh: toBase64(sub.getKey('p256dh')!), auth: toBase64(sub.getKey('auth')!) },
-            userAgent: navigator.userAgent,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: toBase64(sub.getKey('p256dh')!), auth: toBase64(sub.getKey('auth')!) }, userAgent: navigator.userAgent }),
         })
         if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? 'Erreur serveur') }
-        setPushSubscribed(true)
-        setPushStatus('Notifications activées ✅')
+        setPushSubscribed(true); setPushStatus('Notifications activées ✅')
       }
     } catch (err: unknown) {
       setPushStatus(err instanceof Error ? err.message : 'Erreur inconnue')
@@ -127,15 +231,13 @@ export default function ProfileClient({ user }: { user: any }) {
     }
   }
 
-
   const handleSetPin = async () => {
     if (!pin1 || !/^\d{4}$/.test(pin1)) { setPinError('Le PIN doit être 4 chiffres'); return }
     if (pin1 !== pin2) { setPinError('Les deux PIN ne correspondent pas'); return }
     setPinLoading(true); setPinError(''); setPinSuccess('')
     try {
       const res  = await fetch('/api/admin/pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: pin1 }),
       })
       const data = await res.json()
@@ -153,8 +255,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* Infos */}
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-          <div className="w-16 h-16 rounded-full bg-brand flex items-center justify-center
-                          text-white text-2xl font-bold mb-4 mx-auto lg:mx-0">
+          <div className="w-16 h-16 rounded-full bg-brand flex items-center justify-center text-white text-2xl font-bold mb-4 mx-auto lg:mx-0">
             {user?.name?.[0]?.toUpperCase() || '?'}
           </div>
           <p className="text-white font-bold text-lg text-center lg:text-left">{user?.name}</p>
@@ -209,15 +310,75 @@ export default function ProfileClient({ user }: { user: any }) {
             {pushStatus && <p className="text-zinc-400 text-xs mb-3">{pushStatus}</p>}
             <button onClick={handlePushToggle} disabled={pushLoading}
               className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
-                pushSubscribed
-                  ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                  : 'bg-brand text-white hover:bg-brand/90'
+                pushSubscribed ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600' : 'bg-brand text-white hover:bg-brand/90'
               }`}>
               {pushLoading ? '⏳ En cours…' : pushSubscribed ? '🔕 Désactiver les notifications' : '🔔 Activer les notifications'}
             </button>
-
           </div>
         )}
+
+        {/* Documents */}
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+          <h2 className="text-white font-bold mb-1">Mes Documents</h2>
+          <p className="text-zinc-500 text-xs mb-4">Carte d'identité, permis, carte chauffeur, sélection médicale.</p>
+
+          {docSuccess && (
+            <div className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-xl px-4 py-3 mb-4 text-sm">
+              {docSuccess}
+            </div>
+          )}
+
+          {docsLoading ? (
+            <p className="text-zinc-500 text-sm text-center py-4">Chargement…</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {DOC_TYPES.map(dt => {
+                const doc  = getDoc(dt.value)
+                const days = doc ? daysUntilExpiry(doc.expires_at) : null
+                const cfg  = days !== null ? expiryStatus(days) : null
+
+                return (
+                  <div key={dt.value}
+                    className={`rounded-xl border p-3 flex flex-col gap-2 ${
+                      cfg ? cfg.bg : 'bg-[#0F0F0F] border-[#2a2a2a]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{dt.icon}</span>
+                      <p className="text-white text-xs font-semibold leading-tight">{dt.label}</p>
+                    </div>
+
+                    {doc ? (
+                      <>
+                        <p className={`text-xs font-medium ${cfg?.color}`}>
+                          {cfg?.label} · {new Date(doc.expires_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                        </p>
+                        <div className="flex gap-1.5 mt-auto">
+                          <button onClick={() => setViewDoc(doc)}
+                            className="flex-1 py-1.5 bg-[#2a2a2a] text-zinc-300 rounded-lg text-xs font-medium hover:bg-[#333] transition-colors">
+                            👁 Voir
+                          </button>
+                          <button onClick={() => openEdit(dt.value)}
+                            className="flex-1 py-1.5 bg-brand/20 text-brand rounded-lg text-xs font-medium hover:bg-brand/30 transition-colors">
+                            ✏️ Modifier
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-zinc-600 text-xs">Non enregistré</p>
+                        <button onClick={() => openEdit(dt.value)}
+                          className="w-full py-1.5 bg-brand text-white rounded-lg text-xs font-semibold hover:bg-brand/90 transition-colors mt-auto">
+                          + Ajouter
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Déconnexion */}
         <button onClick={() => signOut({ callbackUrl: '/login' })}
@@ -226,6 +387,90 @@ export default function ProfileClient({ user }: { user: any }) {
         </button>
 
       </div>
+
+      {/* Modal voir document */}
+      {viewDoc && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setViewDoc(null)}>
+          <div className="bg-[#1A1A1A] rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white font-bold">{DOC_TYPES.find(d => d.value === viewDoc.doc_type)?.label}</h2>
+              <button onClick={() => setViewDoc(null)} className="text-zinc-500 text-2xl">×</button>
+            </div>
+            <img src={viewDoc.file_url} alt="Document" className="w-full rounded-xl border border-[#2a2a2a] mb-4 object-contain max-h-96 bg-[#0F0F0F]" />
+            <div className="space-y-2">
+              <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
+                <span className="text-zinc-500 text-sm">Expiration</span>
+                <span className="text-white text-sm">{new Date(viewDoc.expires_at).toLocaleDateString('fr-BE', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+              </div>
+              {viewDoc.notes && (
+                <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
+                  <span className="text-zinc-500 text-sm">Notes</span>
+                  <span className="text-white text-sm text-right max-w-[60%]">{viewDoc.notes}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-2">
+                <span className="text-zinc-500 text-sm">Mis à jour</span>
+                <span className="text-zinc-400 text-sm">{new Date(viewDoc.updated_at).toLocaleDateString('fr-BE')}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal éditer document */}
+      {editDoc && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center" onClick={() => setEditDoc(null)}>
+          <div className="bg-[#1A1A1A] w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-white font-bold text-lg">
+                {getDoc(editDoc) ? 'Modifier' : 'Ajouter'} — {DOC_TYPES.find(d => d.value === editDoc)?.label}
+              </h2>
+              <button onClick={() => setEditDoc(null)} className="text-zinc-500 text-2xl">×</button>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Photo du document {!getDoc(editDoc) && '*'}</label>
+              {formPreview ? (
+                <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
+                  <img src={formPreview} alt="Aperçu" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                </div>
+              ) : getDoc(editDoc)?.file_url ? (
+                <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
+                  <img src={getDoc(editDoc)!.file_url} alt="Document actuel" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                  <p className="text-zinc-600 text-xs text-center py-1">Document actuel</p>
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button onClick={() => cameraRef.current?.click()} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">📷 Photo</button>
+                <button onClick={() => fileRef.current?.click()}   className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">🗂️ Galerie</button>
+              </div>
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+              <input ref={fileRef}   type="file" accept="image/*,application/pdf"       className="hidden" onChange={handleFile} />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-zinc-400 mb-1.5">Date d'expiration *</label>
+              <input type="date" value={formExpiry} onChange={e => setFormExpiry(e.target.value)}
+                className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand" />
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-zinc-400 mb-1.5">Notes <span className="text-zinc-600">(optionnel)</span></label>
+              <input type="text" placeholder="Numéro de document, remarques…" value={formNotes} onChange={e => setFormNotes(e.target.value)}
+                className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-brand" />
+            </div>
+
+            {docError && <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl p-3 text-sm mb-4">{docError}</div>}
+
+            <div className="flex gap-2">
+              <button onClick={() => setEditDoc(null)} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl font-medium">Annuler</button>
+              <button onClick={handleSave} disabled={uploading} className="flex-1 py-3 bg-brand text-white rounded-xl font-bold disabled:opacity-50">
+                {uploading ? '⏳ Enregistrement…' : '✅ Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }
