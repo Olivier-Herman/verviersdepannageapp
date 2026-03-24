@@ -270,6 +270,9 @@ export async function GET(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
 
+    // ── Alertes expiration documents ──────────────────────
+    await checkDocumentExpiry(token)
+
     return NextResponse.json({
       sent: true,
       count: interventions.length,
@@ -279,5 +282,123 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error('[Cron] Erreur envoi rapport:', err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// ============================================================
+// ALERTES EXPIRATION DOCUMENTS CHAUFFEURS
+// ============================================================
+
+const DOC_LABELS: Record<string, string> = {
+  id_card:         "Carte d'identité",
+  driving_license: 'Permis de conduire',
+  driver_card:     'Carte chauffeur',
+  medical:         'Sélection médicale',
+}
+
+async function checkDocumentExpiry(graphToken: string): Promise<void> {
+  const { createAdminClient } = await import('@/lib/supabase')
+  const supabase = createAdminClient()
+  const FROM_EMAIL = 'administration@verviersdepannage.com'
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  // Récupérer tous les documents avec les infos chauffeur
+  const { data: docs } = await supabase
+    .from('driver_documents')
+    .select('*, user:users(name, email, personal_email)')
+
+  if (!docs?.length) return
+
+  for (const doc of docs) {
+    const exp  = new Date(doc.expires_at)
+    exp.setHours(0, 0, 0, 0)
+    const days = Math.ceil((exp.getTime() - now.getTime()) / 86400000)
+
+    // Déterminer quel niveau d'alerte envoyer
+    let alertLevel: '6m' | '3m' | '1m' | null = null
+    let alertField: string | null = null
+
+    if (days <= 30 && days >= 0 && !doc.alert_1m_sent) {
+      alertLevel = '1m'; alertField = 'alert_1m_sent'
+    } else if (days <= 90 && days > 30 && !doc.alert_3m_sent) {
+      alertLevel = '3m'; alertField = 'alert_3m_sent'
+    } else if (days <= 180 && days > 90 && !doc.alert_6m_sent) {
+      alertLevel = '6m'; alertField = 'alert_6m_sent'
+    }
+
+    if (!alertLevel || !alertField) continue
+
+    const driverEmail   = doc.user?.personal_email || doc.user?.email
+    const driverName    = doc.user?.name || 'Chauffeur'
+    const docLabel      = DOC_LABELS[doc.doc_type] || doc.doc_type
+    const expiryStr     = exp.toLocaleDateString('fr-BE', { day: '2-digit', month: 'long', year: 'numeric' })
+    const alertLabelMap = { '6m': '6 mois', '3m': '3 mois', '1m': '1 mois' }
+    const urgencyColor  = alertLevel === '1m' ? '#CC2222' : alertLevel === '3m' ? '#e65100' : '#f57f17'
+
+    const subject = `⚠️ Document expirant dans ${alertLabelMap[alertLevel]} — ${driverName} — ${docLabel}`
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <div style="background:${urgencyColor};padding:20px 30px;border-radius:8px 8px 0 0;">
+          <h1 style="color:white;margin:0;font-size:18px;">⚠️ Document expirant bientôt</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">
+            Action requise dans ${alertLabelMap[alertLevel]}
+          </p>
+        </div>
+        <div style="background:#1a1a1a;padding:24px 30px;border-radius:0 0 8px 8px;">
+          <table cellpadding="8" width="100%" style="font-family:Arial,sans-serif;">
+            <tr>
+              <td style="color:#888;font-size:13px;">Chauffeur</td>
+              <td style="color:white;font-size:13px;font-weight:bold;">${driverName}</td>
+            </tr>
+            <tr>
+              <td style="color:#888;font-size:13px;">Document</td>
+              <td style="color:white;font-size:13px;">${docLabel}</td>
+            </tr>
+            <tr>
+              <td style="color:#888;font-size:13px;">Expire le</td>
+              <td style="color:${urgencyColor};font-size:13px;font-weight:bold;">${expiryStr}</td>
+            </tr>
+            <tr>
+              <td style="color:#888;font-size:13px;">Jours restants</td>
+              <td style="color:${urgencyColor};font-size:13px;font-weight:bold;">${days} jour${days > 1 ? 's' : ''}</td>
+            </tr>
+          </table>
+          <p style="color:#888;font-size:12px;margin-top:16px;">
+            Merci de renouveler ce document et de mettre à jour l'application.
+          </p>
+        </div>
+      </div>`
+
+    // Envoyer à l'admin + au chauffeur
+    const recipients = ['mobi@verviersdepannage.be']
+    if (driverEmail) recipients.push(driverEmail)
+
+    try {
+      await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${graphToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: {
+            subject,
+            body: { contentType: 'HTML', content: html },
+            toRecipients: recipients.map(addr => ({ emailAddress: { address: addr } })),
+          },
+          saveToSentItems: true,
+        }),
+      })
+
+      // Marquer l'alerte comme envoyée
+      await supabase
+        .from('driver_documents')
+        .update({ [alertField]: true })
+        .eq('id', doc.id)
+
+      console.log(`[Cron] Alerte ${alertLevel} envoyée — ${driverName} — ${docLabel}`)
+    } catch (err: any) {
+      console.error(`[Cron] Erreur alerte document ${doc.id}:`, err.message)
+    }
   }
 }
