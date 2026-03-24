@@ -56,17 +56,35 @@ export default function ProfileClient({ user }: { user: any }) {
           return
         }
         // S'abonner
+        // Convertir la clé publique VAPID en Uint8Array
+        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+        const padding   = '='.repeat((4 - vapidKey.length % 4) % 4)
+        const base64    = (vapidKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+        const rawKey    = Uint8Array.from(atob(base64), c => c.charCodeAt(0))
+
         const reg = await navigator.serviceWorker.ready
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly:      true,
-          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+          applicationServerKey: rawKey,
         })
+
+        // Convertir les clés ArrayBuffer en base64 url-safe
+        const toBase64 = (buf: ArrayBuffer) => {
+          const bytes = new Uint8Array(buf)
+          let str = ''
+          bytes.forEach(b => { str += String.fromCharCode(b) })
+          return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+        }
+
         await fetch('/api/push', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             endpoint:  sub.endpoint,
-            keys:      { p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')!))), auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')!))) },
+            keys: {
+              p256dh: toBase64(sub.getKey('p256dh')!),
+              auth:   toBase64(sub.getKey('auth')!),
+            },
             userAgent: navigator.userAgent,
           }),
         })
