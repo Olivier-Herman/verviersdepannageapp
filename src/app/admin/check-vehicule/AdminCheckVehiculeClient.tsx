@@ -7,7 +7,6 @@ import {
   Loader2, ChevronRight, Settings
 } from 'lucide-react'
 import type { VehicleCheck } from '@/types'
-import AdminNav from '../AdminNav'
 
 const STATUS_CONFIG = {
   scheduled:     { label: 'Planifié',    color: 'text-zinc-400',   icon: Clock         },
@@ -62,7 +61,6 @@ export default function AdminCheckVehiculeClient() {
 
   return (
     <div>
-      <AdminNav />
       <div className="max-w-3xl mx-auto p-4 space-y-6">
 
         <div className="flex items-center justify-between mt-2">
