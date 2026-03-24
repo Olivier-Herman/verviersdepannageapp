@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, isAdminOrDispatcher } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendPushToUser } from '@/lib/push'
 
 function getRandomScheduledDate(): string {
   const today = new Date()
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data: userData } = await supabase
-    .from('users').select('id').eq('email', session.user.email).single()
+    .from('users').select('id, name').eq('email', session.user.email).single()
   if (!userData) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
   const { data: vehicles } = await supabase
@@ -59,15 +60,34 @@ export async function POST(req: NextRequest) {
   }
 
   const vehicle       = candidates[Math.floor(Math.random() * candidates.length)]
-  const scheduledDate = getRandomScheduledDate()
+  const today         = new Date().toISOString().split('T')[0]
 
+  // Tirage manuel → déclenchement immédiat (pending_claim + push maintenant)
   const { data: newCheck, error } = await supabase
     .from('vehicle_checks')
-    .insert({ triggered_by: userData.id, vehicle_id: vehicle.id, scheduled_date: scheduledDate, status: 'scheduled' })
-    .select('*, vehicle:check_vehicles(id, name, plate)')
+    .insert({
+      triggered_by:   userData.id,
+      vehicle_id:     vehicle.id,
+      scheduled_date: today,
+      status:         'pending_claim',
+    })
+    .select('*, vehicle:check_vehicles(id, name, plate, usual_driver_id)')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ check: newCheck, vehicle, scheduledDate })
+  // Push immédiat à tous les responsables
+  const { data: setting } = await supabase
+    .from('app_settings').select('value').eq('key', 'check_responsible_ids').maybeSingle()
+  const responsibleIds: string[] = setting ? JSON.parse(setting.value) : []
+
+  for (const rid of responsibleIds) {
+    await sendPushToUser(rid, {
+      title: '🔍 Contrôle véhicule à prendre en charge',
+      body:  `Contrôle déclenché maintenant : ${vehicle.name} (${vehicle.plate}). Ouvrez l'app pour le prendre en charge.`,
+      url:   `${process.env.NEXT_PUBLIC_APP_URL}/check-vehicule/${newCheck.id}`,
+    })
+  }
+
+  return NextResponse.json({ check: newCheck, vehicle, scheduledDate: today, immediate: true })
 }
