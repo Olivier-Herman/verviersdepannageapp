@@ -1,6 +1,8 @@
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
+import { createAdminClient } from '@/lib/supabase'
+import AppShell from '@/components/layout/AppShell'
 import AdminNav from './AdminNav'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -10,12 +12,24 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isAdmin = ['admin', 'superadmin'].includes((session.user as any).role)
   if (!isAdmin) redirect('/dashboard')
 
+  const supabase = createAdminClient()
+  const { data: userModulesDb } = await supabase
+    .from('user_modules')
+    .select('module_id')
+    .eq('user_id', (session.user as any).id)
+    .eq('granted', true)
+
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col">
+    <AppShell
+      title="Administration"
+      userRole={(session.user as any).role}
+      userName={session.user.name ?? ''}
+      userModules={(userModulesDb || []).map(m => m.module_id)}
+    >
       <AdminNav />
-      <main className="flex-1 overflow-y-auto pb-24 lg:pb-6 lg:px-8 lg:py-8">
+      <main className="flex-1 overflow-y-auto pb-24 lg:pb-6">
         {children}
       </main>
-    </div>
+    </AppShell>
   )
 }
