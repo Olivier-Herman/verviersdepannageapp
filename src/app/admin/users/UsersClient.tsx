@@ -9,7 +9,6 @@ const ROLE_COLORS: Record<string, string> = {
   admin:      'bg-purple-900 text-purple-200',
   superadmin: 'bg-red-900 text-red-200',
   partner:    'bg-teal-900 text-teal-200',
-  partner:    'bg-teal-900 text-teal-200',
 }
 
 export default function UsersClient({ users, modules }: { users: any[], modules: any[] }) {
