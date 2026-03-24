@@ -27,9 +27,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       userModules={(userModulesDb || []).map(m => m.module_id)}
     >
       <AdminNav />
-      <main className="flex-1 overflow-y-auto pb-24 lg:pb-6">
+      <div className="px-4 lg:px-8 py-6 pb-24 lg:pb-10">
         {children}
-      </main>
+      </div>
     </AppShell>
   )
 }
