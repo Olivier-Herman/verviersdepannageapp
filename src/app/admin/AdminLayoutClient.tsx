@@ -102,7 +102,7 @@ export default function AdminLayoutClient({
         </div>
 
         {/* AdminNav + contenu — chaque client gère son propre padding */}
-        <main className="flex-1 min-w-0 overflow-x-hidden">
+        <main className="flex-1 min-w-0 overflow-x-hidden lg:px-8 lg:py-6">
           {children}
         </main>
       </div>
