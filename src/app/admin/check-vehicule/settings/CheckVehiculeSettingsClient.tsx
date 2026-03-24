@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2, Save, ChevronLeft, Truck, ClipboardList, Users } from 'lucide-react'
-import AdminNav from '../AdminNav'
+import AdminNav from '../../AdminNav'
 import type { CheckVehicle, CheckTemplateItem } from '@/types'
 
 type TabKey = 'vehicles' | 'checklist' | 'responsables'
