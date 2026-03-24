@@ -110,21 +110,41 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const supabase  = createAdminClient()
-  const isAdmin   = ['admin', 'superadmin', 'dispatcher'].includes((session.user as any).role)
+  const supabase = createAdminClient()
+  const isAdmin  = ['admin', 'superadmin', 'dispatcher'].includes((session.user as any).role)
 
   const { data: me } = await supabase
-    .from('users').select('id, role').eq('email', session.user.email!).single()
+    .from('users')
+    .select('id, role, odoo_partner_id')
+    .eq('email', session.user.email!)
+    .single()
   if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
   let query = supabase
     .from('tgr_missions')
-    .select('*, partner:users!partner_id(name, email), acceptedBy:users!accepted_by(name)')
+    .select('*, partner:users!partner_id(name, email, odoo_partner_id), acceptedBy:users!accepted_by(name)')
     .order('created_at', { ascending: false })
-    .limit(100)
+    .limit(200)
 
   if (!isAdmin) {
-    query = query.eq('partner_id', me.id)
+    if (me.odoo_partner_id) {
+      // Voir toutes les missions de sa société (même odoo_partner_id)
+      const { data: colleagues } = await supabase
+        .from('users')
+        .select('id')
+        .eq('odoo_partner_id', me.odoo_partner_id)
+        .eq('active', true)
+
+      const ids = (colleagues || []).map(u => u.id)
+      if (ids.length > 0) {
+        query = query.in('partner_id', ids)
+      } else {
+        query = query.eq('partner_id', me.id)
+      }
+    } else {
+      // Pas d'odoo_partner_id — voir uniquement ses propres missions
+      query = query.eq('partner_id', me.id)
+    }
   }
 
   const { data, error } = await query
