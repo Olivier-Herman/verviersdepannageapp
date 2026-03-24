@@ -48,13 +48,18 @@ function initPlacesAutocomplete(
   onSelect: (address: string) => void
 ) {
   const ac = new (window as any).google.maps.places.Autocomplete(input, {
-    types: ['address'],
+    // Pas de restriction de type — permet adresses ET établissements (garages, concessionnaires…)
     componentRestrictions: { country: ['be', 'nl', 'fr', 'de', 'lu'] },
-    fields: ['formatted_address'],
+    fields: ['formatted_address', 'name', 'geometry'],
   })
   ac.addListener('place_changed', () => {
     const place = ac.getPlace()
-    if (place?.formatted_address) onSelect(place.formatted_address)
+    // Pour un établissement : "Nom, Adresse" ; pour une adresse : juste l'adresse
+    if (place?.name && place?.formatted_address && !place.formatted_address.includes(place.name)) {
+      onSelect(`${place.name}, ${place.formatted_address}`)
+    } else if (place?.formatted_address) {
+      onSelect(place.formatted_address)
+    }
   })
   return ac
 }
@@ -163,8 +168,16 @@ export default function TGRClient({ user }: { user: any }) {
   }
 
   const handleSubmit = async () => {
-    if (!plate || !brand || !model || !pickupAddress || !deliveryAddress) {
-      setError('Veuillez remplir tous les champs obligatoires')
+    // Marque/modèle optionnels si véhicule identifié en base
+    const requireVehicleDetails = !vehicleConfirmed
+    if (!plate || (requireVehicleDetails && (!brand || !model)) || !pickupAddress || !deliveryAddress) {
+      const missing = []
+      if (!plate) missing.push('immatriculation')
+      if (requireVehicleDetails && !brand) missing.push('marque')
+      if (requireVehicleDetails && !model) missing.push('modèle')
+      if (!pickupAddress) missing.push('adresse de pick-up')
+      if (!deliveryAddress) missing.push('adresse de livraison')
+      setError(`Champs obligatoires manquants : ${missing.join(', ')}`)
       return
     }
     setSubmitting(true); setError(null)
