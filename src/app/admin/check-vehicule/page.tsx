@@ -1,7 +1,6 @@
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions, isAdminOrDispatcher } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { isAdminOrDispatcher } from '@/lib/auth'
 import AdminCheckVehiculeClient from './AdminCheckVehiculeClient'
 
 export default async function AdminCheckVehiculePage() {

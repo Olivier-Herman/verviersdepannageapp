@@ -1,9 +1,11 @@
+export const dynamic = 'force-dynamic'
+
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import CheckVehiculeClient from './CheckVehiculeClient'
-import AppShell from '@/components/layout/AppShell'
 import { createAdminClient } from '@/lib/supabase'
+import AppShell from '@/components/layout/AppShell'
+import CheckVehiculeClient from './CheckVehiculeClient'
 
 export default async function CheckVehiculePage() {
   const session = await getServerSession(authOptions)

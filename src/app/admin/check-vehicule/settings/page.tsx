@@ -1,7 +1,6 @@
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions, isAdmin } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { isAdmin } from '@/lib/auth'
 import CheckVehiculeSettingsClient from './CheckVehiculeSettingsClient'
 
 export default async function CheckVehiculeSettingsPage() {

@@ -1,9 +1,11 @@
+export const dynamic = 'force-dynamic'
+
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import CheckDetailClient from './CheckDetailClient'
-import AppShell from '@/components/layout/AppShell'
 import { createAdminClient } from '@/lib/supabase'
+import AppShell from '@/components/layout/AppShell'
+import CheckDetailClient from './CheckDetailClient'
 
 export default async function CheckDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -19,6 +21,7 @@ export default async function CheckDetailPage({ params }: { params: { id: string
   return (
     <AppShell
       title="Contrôle véhicule"
+      backHref="/check-vehicule"
       userRole={(session.user as any).role}
       userName={session.user.name ?? ''}
       userModules={(userModulesDb || []).map(m => m.module_id)}
