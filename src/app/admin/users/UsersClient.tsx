@@ -43,6 +43,10 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [userModules,      setUserModules]      = useState<string[]>([])
   const [resetLoading,     setResetLoading]     = useState(false)
   const [resetSuccess,     setResetSuccess]     = useState('')
+  const [showRoleModal,    setShowRoleModal]    = useState(false)
+  const [roleModalRoles,   setRoleModalRoles]   = useState<string[]>([])
+  const [roleSaving,       setRoleSaving]       = useState(false)
+  const [roleError,        setRoleError]        = useState('')
 
   // ── Ouvrir un utilisateur ──────────────────────────────
   const openUser = (user: any) => {
@@ -70,6 +74,40 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
       if (has && prev.length === 1) return prev // garder au moins 1
       return has ? prev.filter(x => x !== r) : [...prev, r]
     })
+  }
+
+  // ── Modal rôles ────────────────────────────────────────
+  const openRoleModal = () => {
+    setRoleModalRoles([...userRoles])
+    setRoleError('')
+    setShowRoleModal(true)
+  }
+
+  const toggleRoleModal = (r: string) => {
+    setRoleModalRoles(prev => {
+      const has = prev.includes(r)
+      if (has && prev.length === 1) return prev
+      return has ? prev.filter(x => x !== r) : [...prev, r]
+    })
+  }
+
+  const saveRoles = async () => {
+    if (!selectedUser) return
+    setRoleSaving(true); setRoleError('')
+    try {
+      const res = await fetch('/api/admin/users/roles', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ userId: selectedUser.id, roles: roleModalRoles }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setRoleError(data.error || 'Erreur'); return }
+      // Mettre à jour localement
+      setUserRoles(roleModalRoles)
+      setShowRoleModal(false)
+    } finally {
+      setRoleSaving(false)
+    }
   }
 
   // ── Sauvegarder ────────────────────────────────────────
@@ -177,29 +215,22 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
             className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-3 py-2.5 text-white text-sm outline-none" />
         </div>
 
-        {/* Rôle(s) — multi-select */}
+        {/* Rôle(s) — lecture seule + bouton modal */}
         <div className="mb-3">
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">
-            Rôle(s) <span className="text-zinc-700 font-normal">(plusieurs possibles)</span>
-          </label>
-          <div className="flex gap-2 flex-wrap">
-            {ROLES.map(r => {
-              const active = userRoles.includes(r)
-              return (
-                <button key={r} onClick={() => toggleRole(r)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all capitalize ${
-                    active
-                      ? (ROLE_COLORS[r] || 'bg-brand/20 text-brand border-brand')
-                      : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-500'
-                  }`}>
-                  {active ? '✓ ' : ''}{r}
-                </button>
-              )
-            })}
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Rôle(s)</label>
+          <div className="flex items-center justify-between bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5">
+            <div className="flex gap-1.5 flex-wrap">
+              {userRoles.map(r => (
+                <span key={r} className={`text-xs font-semibold px-2 py-0.5 rounded-lg capitalize ${ROLE_COLORS[r] || 'bg-zinc-700 text-zinc-300'}`}>
+                  {r}
+                </span>
+              ))}
+            </div>
+            <button onClick={openRoleModal}
+              className="text-brand text-xs font-medium ml-3 hover:text-white transition-colors flex-shrink-0">
+              Modifier
+            </button>
           </div>
-          <p className="text-zinc-600 text-xs mt-1.5">
-            Rôle primaire : <span className="text-white capitalize">{userRoles[0] || '—'}</span>
-          </p>
         </div>
 
         {/* Compte actif */}
@@ -461,6 +492,73 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
       {selectedUser && (
         <div className="lg:w-96 lg:flex-shrink-0 lg:border-l lg:border-[#2a2a2a] lg:pl-6">
           {renderEditPanel()}
+        </div>
+      )}
+
+      {/* ─── Modal rôles ─── */}
+      {showRoleModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowRoleModal(false)}>
+          <div className="bg-[#1A1A1A] rounded-2xl p-6 w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-white font-bold">Modifier les rôles</h2>
+                <p className="text-zinc-500 text-xs mt-0.5">{selectedUser.name}</p>
+              </div>
+              <button onClick={() => setShowRoleModal(false)} className="text-zinc-500 text-2xl">×</button>
+            </div>
+
+            <div className="flex flex-col gap-2 mb-5">
+              {ROLES.map(r => {
+                const active = roleModalRoles.includes(r)
+                return (
+                  <button key={r} onClick={() => toggleRoleModal(r)}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                      active
+                        ? 'border-brand bg-brand/10 text-white'
+                        : 'border-[#2a2a2a] text-zinc-400 hover:border-zinc-500'
+                    }`}>
+                    <div className="flex items-center gap-3">
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs ${
+                        active ? 'bg-brand border-brand' : 'border-zinc-600'
+                      }`}>
+                        {active && '✓'}
+                      </span>
+                      <span className={`text-sm font-medium capitalize ${
+                        active ? (ROLE_COLORS[r]?.split(' ')[1] || 'text-white') : ''
+                      }`}>{r}</span>
+                    </div>
+                    {roleModalRoles[0] === r && (
+                      <span className="text-zinc-500 text-xs">primaire</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <p className="text-zinc-600 text-xs mb-4">
+              Rôle primaire : <span className="text-white capitalize">{roleModalRoles[0] || '—'}</span>
+              {' '}· {roleModalRoles.length} rôle{roleModalRoles.length > 1 ? 's' : ''} sélectionné{roleModalRoles.length > 1 ? 's' : ''}
+            </p>
+
+            {roleError && (
+              <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl px-3 py-2 text-xs mb-3">
+                {roleError}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => setShowRoleModal(false)}
+                className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm font-medium">
+                Annuler
+              </button>
+              <button onClick={saveRoles} disabled={roleSaving}
+                className="flex-1 py-3 bg-brand text-white rounded-xl text-sm font-bold disabled:opacity-50">
+                {roleSaving ? '⏳ Sauvegarde…' : '✅ Confirmer'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
