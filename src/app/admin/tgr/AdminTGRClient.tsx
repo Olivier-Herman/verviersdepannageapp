@@ -27,6 +27,7 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
   const [plannedDate,   setPlannedDate]   = useState('')
   const [plannedSlot,   setPlannedSlot]   = useState<'before_noon'|'during_day'|'asap'>('during_day')
   const [odooResult,    setOdooResult]    = useState<{name?: string; error?: string} | null>(null)
+  const [showAcceptModal, setShowAcceptModal] = useState(false)
 
   // Filtrage par période
   const now = new Date()
@@ -74,8 +75,12 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
       if (!res.ok) throw new Error(data.error)
       if (action === 'accept') {
         setOdooResult({ name: data.odooQuoteName, error: data.odooError })
-        // Rafraîchir après 2s pour laisser voir le résultat Odoo
-        setTimeout(() => { setSelected(null); window.location.reload() }, 2500)
+        // Rafraîchir après 2s pour laisser voir le résultat
+        setTimeout(() => {
+          setShowAcceptModal(false)
+          setSelected(null)
+          window.location.reload()
+        }, 2500)
       } else {
         setSelected(null)
         window.location.reload()
@@ -261,54 +266,107 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
 
             {selected.status === 'pending' && (
               <div className="flex flex-col gap-3">
-                {/* Sélecteur date prise en charge */}
-                <div className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl p-3">
-                  <p className="text-zinc-400 text-xs font-semibold mb-2">📅 Date de prise en charge prévue</p>
-                  <div className="flex gap-2">
-                    <input type="date" value={plannedDate}
-                      onChange={e => setPlannedDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="flex-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2
-                                 text-white text-sm outline-none focus:border-brand" />
-                    <select value={plannedSlot} onChange={e => setPlannedSlot(e.target.value as any)}
-                      className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2
-                                 text-zinc-300 text-xs outline-none appearance-none">
-                      <option value="before_noon">Avant midi</option>
-                      <option value="during_day">Dans la journée</option>
-                      <option value="asap">Dès que possible</option>
-                    </select>
-                  </div>
-                  <p className="text-zinc-700 text-xs mt-1">
-                    Si vide, la deadline automatique ({selected.deadline_date
-                      ? new Date(selected.deadline_date).toLocaleDateString('fr-BE')
-                      : 'ASAP'}) sera utilisée
-                  </p>
-                </div>
-
-                {/* Résultat Odoo */}
-                {odooResult && (
-                  <div className={`rounded-xl px-3 py-2 text-xs ${
-                    odooResult.error
-                      ? 'bg-orange-950/50 border border-orange-800 text-orange-300'
-                      : 'bg-green-950/50 border border-green-800 text-green-300'
-                  }`}>
-                    {odooResult.name && <p>✅ Devis Odoo créé : <strong>{odooResult.name}</strong></p>}
-                    {odooResult.error && <p>⚠️ Devis non créé : {odooResult.error}</p>}
-                  </div>
-                )}
-
                 <div className="flex gap-2">
                   <button onClick={() => doAction('refuse')} disabled={acting}
                     className="flex-1 py-3 bg-red-900/40 border border-red-800 text-red-300 rounded-xl font-medium text-sm disabled:opacity-50">
                     {acting ? '…' : '❌ Refuser'}
                   </button>
-                  <button onClick={() => doAction('accept')} disabled={acting}
+                  <button onClick={() => {
+                    // Pré-remplir avec la deadline de la mission
+                    setPlannedDate(selected.deadline_date || '')
+                    setPlannedSlot(selected.deadline_slot || 'during_day')
+                    setOdooResult(null)
+                    setError(null)
+                    setShowAcceptModal(true)
+                  }} disabled={acting}
                     className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-                    {acting ? '⏳ Traitement…' : '✅ Accepter'}
+                    ✅ Accepter
                   </button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* ─── Modal acceptation avec date ─── */}
+      {showAcceptModal && selected && (
+        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowAcceptModal(false)}>
+          <div className="bg-[#1A1A1A] rounded-2xl p-6 w-full max-w-md"
+            onClick={e => e.stopPropagation()}>
+
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-white font-bold text-lg">Accepter la mission</h2>
+                <p className="text-zinc-500 text-sm mt-0.5 font-mono">{selected.reference}</p>
+              </div>
+              <button onClick={() => setShowAcceptModal(false)} className="text-zinc-500 text-2xl">×</button>
+            </div>
+
+            {/* Récap mission */}
+            <div className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-white font-mono font-bold">{selected.plate}</span>
+                <span className="text-zinc-400 text-sm">— {selected.brand} {selected.model}</span>
+              </div>
+              <p className="text-zinc-500 text-xs">{selected.pickup_address?.split(',')[0]} → {selected.delivery_address?.split(',')[0]}</p>
+              {selected.distance_km && <p className="text-zinc-600 text-xs mt-1">{selected.distance_km} km</p>}
+            </div>
+
+            {/* Sélecteur date */}
+            <div className="mb-4">
+              <label className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2 block">
+                📅 Date de prise en charge prévue
+              </label>
+              <div className="flex gap-2">
+                <input type="date" value={plannedDate}
+                  onChange={e => setPlannedDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="flex-1 bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-3
+                             text-white text-sm outline-none focus:border-brand" />
+                <select value={plannedSlot} onChange={e => setPlannedSlot(e.target.value as any)}
+                  className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-3
+                             text-zinc-300 text-sm outline-none appearance-none">
+                  <option value="before_noon">Avant midi</option>
+                  <option value="during_day">Dans la journée</option>
+                  <option value="asap">Dès que possible</option>
+                </select>
+              </div>
+              <p className="text-zinc-600 text-xs mt-1.5">
+                Deadline automatique : {selected.deadline_date
+                  ? new Date(selected.deadline_date).toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long' })
+                  : 'ASAP'}{selected.deadline_slot === 'before_noon' ? ' avant midi' : selected.deadline_slot === 'during_day' ? ' dans la journée' : ''}
+              </p>
+            </div>
+
+            {/* Résultat Odoo après confirmation */}
+            {odooResult && (
+              <div className={`rounded-xl px-3 py-2 text-xs mb-4 ${
+                odooResult.error
+                  ? 'bg-orange-950/50 border border-orange-800 text-orange-300'
+                  : 'bg-green-950/50 border border-green-800 text-green-300'
+              }`}>
+                {odooResult.name && <p>✅ Référence créée : <strong>{odooResult.name}</strong></p>}
+                {odooResult.error && <p>⚠️ Référence non créée : {odooResult.error}</p>}
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl px-3 py-2 text-sm mb-4">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => setShowAcceptModal(false)} disabled={acting}
+                className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl font-medium text-sm disabled:opacity-50">
+                Annuler
+              </button>
+              <button onClick={() => doAction('accept')} disabled={acting}
+                className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                {acting ? '⏳ Confirmation…' : '✅ Confirmer et envoyer'}
+              </button>
+            </div>
           </div>
         </div>
       )}

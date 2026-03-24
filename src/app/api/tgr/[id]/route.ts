@@ -4,7 +4,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
-import { createTGRQuote }            from '@/lib/odoo'
+import { createTGRQuote, setTGRVehicleTermine } from '@/lib/odoo'
 
 const APP_URL    = process.env.NEXT_PUBLIC_APP_URL    || 'https://app.verviersdepannage.com'
 const FROM_EMAIL = 'administration@verviersdepannage.com'
@@ -127,9 +127,10 @@ export async function POST(
 
   // ── ACCEPTER ──────────────────────────────────────────────
   if (action === 'accept') {
-    let odooQuoteId:   number | null = null
-    let odooQuoteName: string | null = null
-    let odooError:     string | null = null
+    let odooQuoteId:        number | null = null
+    let odooQuoteName:      string | null = null
+    let odooError:          string | null = null
+    let odooEstimatedAmount:number | null = null
 
     const partnerId = mission.partner?.odoo_partner_id
     if (!partnerId) {
@@ -149,6 +150,9 @@ export async function POST(
         })
         odooQuoteId   = result.orderId
         odooQuoteName = result.orderName
+        if (result.priceUnit && mission.distance_km) {
+          odooEstimatedAmount = result.priceUnit * mission.distance_km
+        }
         // Confirmer le devis automatiquement
         try {
           const confirmRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
@@ -174,9 +178,9 @@ export async function POST(
       }
     }
 
-    // Montant estimé HTVA
-    let odooEstimatedAmount: number | null = null
-    if (mission.distance_km) {
+    // Montant estimé HTVA (calculé depuis le prix produit lors de la création du devis)
+    // Si le devis n'a pas pu être créé, on tente quand même de récupérer le prix
+    if (!odooEstimatedAmount && mission.distance_km) {
       try {
         const priceRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
           method: 'POST',
@@ -280,6 +284,11 @@ export async function POST(
       refused_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq('id', missionId)
+
+    // Passer le véhicule en statut "Terminé" dans fleet Odoo
+    await setTGRVehicleTermine(mission.plate).catch(err =>
+      console.error('[TGR refuse] Erreur statut véhicule Odoo:', err.message)
+    )
 
     // Push au partenaire demandeur
     await sendPushToUser(mission.partner.id, {

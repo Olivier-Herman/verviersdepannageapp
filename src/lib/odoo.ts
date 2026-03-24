@@ -381,6 +381,10 @@ export async function syncInterventionToOdoo(intervention: {
  * Produit : référence TGRTouring — prix unitaire déjà sur le produit Odoo
  * Quantité : km calculés par Google Maps
  */
+const FLEET_STATE_NEW_REQUEST = 1   // "New Request"
+const FLEET_STATE_TERMINE    = 18  // "Terminé"
+const ODOO_FIELD_SALE_VEHICLE_TGR = 'x_studio_many2one_field_78n_1j6fmmeom'
+
 export async function createTGRQuote(params: {
   partnerId:       number
   reference:       string
@@ -390,43 +394,123 @@ export async function createTGRQuote(params: {
   plate:           string
   brand:           string
   model:           string
-}): Promise<{ orderId: number; orderName: string }> {
+}): Promise<{ orderId: number; orderName: string; vehicleId: number | null; priceUnit: number }> {
 
   const {
     partnerId, reference, distanceKm,
     pickupAddress, deliveryAddress, plate, brand, model
   } = params
 
-  // 1. Trouver le produit TGRTouring par référence
+  // 1. Trouver le produit TGRTouring
   const products = await rpc<any[]>('product.product', 'search_read',
     [[['default_code', '=', 'TGRTouring']]],
     { fields: ['id', 'name', 'list_price'], limit: 1 }
   )
-
   if (!products?.length) {
     throw new Error('Produit "TGRTouring" introuvable dans Odoo (default_code: TGRTouring)')
   }
+  const productId  = products[0].id
+  const priceUnit  = products[0].list_price as number
 
-  const productId = products[0].id
+  // 2. Chercher ou créer le véhicule fleet
+  const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase()
+  let vehicleId: number | null = null
 
-  // 2. Créer le devis
-  const orderId = await rpc<number>('sale.order', 'create', [{
+  const existingVehicles = await rpc<any[]>('fleet.vehicle', 'search_read',
+    [[['license_plate', 'ilike', normalizedPlate]]],
+    { fields: ['id', 'license_plate', 'model_id', 'state_id'], limit: 10 }
+  )
+  const matchVehicle = existingVehicles.find(v =>
+    v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === normalizedPlate
+  )
+
+  if (matchVehicle) {
+    vehicleId = matchVehicle.id
+    // Mettre le véhicule en "New Request"
+    await rpc('fleet.vehicle', 'write', [[vehicleId], { state_id: FLEET_STATE_NEW_REQUEST }])
+    console.log(`[Odoo TGR] Véhicule existant ${plate} → New Request`)
+  } else {
+    // Créer le véhicule — trouver ou créer la marque et le modèle
+    let modelOdooId: number | null = null
+    try {
+      // Chercher la marque
+      let brandId: number | null = null
+      const brands = await rpc<any[]>('fleet.vehicle.model.brand', 'search_read',
+        [[['name', 'ilike', brand]]],
+        { fields: ['id', 'name'], limit: 1 }
+      )
+      if (brands.length > 0) {
+        brandId = brands[0].id
+      } else {
+        brandId = await rpc<number>('fleet.vehicle.model.brand', 'create', [{ name: brand }])
+      }
+
+      // Chercher le modèle
+      const models = await rpc<any[]>('fleet.vehicle.model', 'search_read',
+        [[['name', 'ilike', model], ['brand_id', '=', brandId]]],
+        { fields: ['id', 'name'], limit: 1 }
+      )
+      if (models.length > 0) {
+        modelOdooId = models[0].id
+      } else {
+        modelOdooId = await rpc<number>('fleet.vehicle.model', 'create', [{
+          name: model, brand_id: brandId
+        }])
+      }
+    } catch(e) {
+      console.error('[Odoo TGR] Erreur création modèle:', e)
+    }
+
+    if (modelOdooId) {
+      vehicleId = await rpc<number>('fleet.vehicle', 'create', [{
+        license_plate: plate,
+        model_id:      modelOdooId,
+        state_id:      FLEET_STATE_NEW_REQUEST,
+      }])
+      console.log(`[Odoo TGR] Nouveau véhicule créé: ${plate} → New Request (id: ${vehicleId})`)
+    }
+  }
+
+  // 3. Créer le devis
+  const orderData: any = {
     partner_id:       partnerId,
     client_order_ref: reference,
     note:             `Transport TGR — ${plate} ${brand} ${model}\nDe : ${pickupAddress}\nVers : ${deliveryAddress}`,
     order_line: [[0, 0, {
       product_id:      productId,
       product_uom_qty: distanceKm,
+      price_unit:      priceUnit,
       name:            `Transport TGR — ${plate} — ${pickupAddress} → ${deliveryAddress}`,
     }]],
-  }])
+  }
+  if (vehicleId) orderData[ODOO_FIELD_SALE_VEHICLE_TGR] = vehicleId
+
+  const orderId = await rpc<number>('sale.order', 'create', [orderData])
 
   const orders = await rpc<any[]>('sale.order', 'read',
     [[orderId]], { fields: ['id', 'name'] }
   )
 
   console.log(`[Odoo TGR] Devis créé: ${orders[0].name} — ${distanceKm} km`)
-  return { orderId, orderName: orders[0].name }
+  return { orderId, orderName: orders[0].name, vehicleId, priceUnit }
+}
+
+/**
+ * Met le véhicule TGR en statut "Terminé" lors d'un refus
+ */
+export async function setTGRVehicleTermine(plate: string): Promise<void> {
+  const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase()
+  const vehicles = await rpc<any[]>('fleet.vehicle', 'search_read',
+    [[['license_plate', 'ilike', normalizedPlate]]],
+    { fields: ['id', 'license_plate'], limit: 10 }
+  )
+  const match = vehicles.find(v =>
+    v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === normalizedPlate
+  )
+  if (match) {
+    await rpc('fleet.vehicle', 'write', [[match.id], { state_id: FLEET_STATE_TERMINE }])
+    console.log(`[Odoo TGR] Véhicule ${plate} → Terminé`)
+  }
 }
 
 // ============================================================
