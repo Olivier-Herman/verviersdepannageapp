@@ -143,7 +143,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
             {ROLES.map(r => (
               <button key={r} onClick={() => setUserRoles([r])}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  userRole === r ? 'border-brand bg-brand/20 text-brand' : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-500'
+                  userRoles.includes(r) ? 'border-brand bg-brand/20 text-brand' : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-500'
                 }`}>{r}</button>
             ))}
           </div>
