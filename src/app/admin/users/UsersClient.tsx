@@ -35,7 +35,6 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const openUser = (user: any) => {
     setSelectedUser(user)
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
-    setUserRole(user.role)
     setUserRoles(user.roles?.length ? user.roles : [user.role])
     setUserActive(user.active)
     setUserCanVerify(user.can_verify || false)
@@ -63,7 +62,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         body: JSON.stringify({
           userId:          selectedUser.id,
           email:           userEmail,
-          role:            userRoles[0] || userRole,
+          role:            userRoles[0] || 'driver',
           roles:           userRoles,
           active:          userActive,
           can_verify:      userCanVerify,
@@ -142,7 +141,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Rôle</label>
           <div className="flex gap-2 flex-wrap">
             {ROLES.map(r => (
-              <button key={r} onClick={() => setUserRole(r)}
+              <button key={r} onClick={() => setUserRoles([r])}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   userRole === r ? 'border-brand bg-brand/20 text-brand' : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-500'
                 }`}>{r}</button>
