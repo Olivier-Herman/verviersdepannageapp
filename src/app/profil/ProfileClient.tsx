@@ -127,12 +127,6 @@ export default function ProfileClient({ user }: { user: any }) {
     }
   }
 
-  const handleTestPush = async () => {
-    setPushStatus('Envoi du test…')
-    const res  = await fetch('/api/push/test', { method: 'POST' })
-    const data = await res.json()
-    setPushStatus(res.ok ? `Notification test envoyée ✅ (${data.sent} envoi)` : `Erreur: ${data.error}`)
-  }
 
   const handleSetPin = async () => {
     if (!pin1 || !/^\d{4}$/.test(pin1)) { setPinError('Le PIN doit être 4 chiffres'); return }
@@ -221,12 +215,7 @@ export default function ProfileClient({ user }: { user: any }) {
               }`}>
               {pushLoading ? '⏳ En cours…' : pushSubscribed ? '🔕 Désactiver les notifications' : '🔔 Activer les notifications'}
             </button>
-            {pushSubscribed && (
-              <button onClick={handleTestPush}
-                className="w-full py-2 rounded-xl text-xs bg-[#2a2a2a] text-zinc-400 mt-2 hover:bg-[#333] transition-colors">
-                🔔 Envoyer une notification test
-              </button>
-            )}
+
           </div>
         )}
 
