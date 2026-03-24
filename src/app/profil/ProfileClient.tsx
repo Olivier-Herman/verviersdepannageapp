@@ -216,33 +216,7 @@ export default function ProfileClient({ user }: { user: any }) {
                   ? '🔕 Désactiver les notifications'
                   : '🔔 Activer les notifications'}
             </button>
-            <button onClick={async () => {
-              try {
-                const regs = await navigator.serviceWorker.getRegistrations()
-                const states = regs.map((r: any) => {
-                  const sw = r.active || r.waiting || r.installing
-                  return `scope:${r.scope.split('/').pop()||'/'} state:${sw?.state||'none'}`
-                }).join(' | ')
-                setPushStatus(`SW registrations (${regs.length}): ${states || 'aucune'}`)
-              } catch(e: any) {
-                setPushStatus('Erreur: ' + e.message)
-              }
-            }}
-              className="w-full py-2 rounded-xl text-xs bg-[#2a2a2a] text-zinc-400 mt-2">
-              🔍 Diagnostiquer SW
-            </button>
-            <button onClick={async () => {
-              try {
-                const regs = await navigator.serviceWorker.getRegistrations()
-                for (const r of regs) { await r.unregister() }
-                setPushStatus(`${regs.length} SW supprimé(s) — rechargez la page`)
-              } catch(e: any) {
-                setPushStatus('Erreur: ' + e.message)
-              }
-            }}
-              className="w-full py-2 rounded-xl text-xs bg-red-900/30 text-red-400 mt-1">
-              🗑️ Réinitialiser SW
-            </button>
+
           </div>
         )}
 
