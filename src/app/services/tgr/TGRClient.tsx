@@ -352,21 +352,28 @@ export default function TGRClient({ user }: { user: any }) {
           {vehicleMatch && !vehicleConfirmed && (
             <div className="bg-[#0F0F0F] border border-brand/30 rounded-xl p-3">
               <p className="text-brand text-xs font-semibold mb-2">🚗 Véhicule identifié dans notre base</p>
-              <p className="text-white font-mono font-bold">{vehicleMatch.plate}</p>
-              {(vehicleMatch.brand_text || vehicleMatch.model_text) && (
-                <p className="text-zinc-300 text-sm mt-0.5">{vehicleMatch.brand_text} {vehicleMatch.model_text}</p>
+              <p className="text-white font-mono font-bold text-lg">{vehicleMatch.plate}</p>
+              {(vehicleMatch.brand_text || vehicleMatch.model_text) ? (
+                <p className="text-zinc-300 text-sm mt-0.5">
+                  {vehicleMatch.brand_text} {vehicleMatch.model_text}
+                </p>
+              ) : (
+                <p className="text-zinc-600 text-xs mt-1 italic">
+                  Marque et modèle non renseignés — vous pourrez les saisir après confirmation
+                </p>
               )}
-              <div className="flex gap-2 mt-3">
+              <p className="text-zinc-500 text-xs mt-2">S'agit-il bien de ce véhicule ?</p>
+              <div className="flex gap-2 mt-2">
                 <button onClick={() => {
                   setVehicleConfirmed(true)
                   if (vehicleMatch.brand_text) setBrand(vehicleMatch.brand_text)
                   if (vehicleMatch.model_text) setModel(vehicleMatch.model_text)
                 }}
-                  className="flex-1 py-2 bg-green-700 text-white rounded-xl text-xs font-bold">
+                  className="flex-1 py-2.5 bg-green-700 text-white rounded-xl text-sm font-bold">
                   ✅ Oui, c'est ce véhicule
                 </button>
                 <button onClick={() => { setVehicleMatch(null); setVehicleConfirmed(false) }}
-                  className="flex-1 py-2 bg-[#2a2a2a] text-zinc-400 rounded-xl text-xs font-medium">
+                  className="flex-1 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm font-medium">
                   Non, saisir manuellement
                 </button>
               </div>
@@ -375,12 +382,14 @@ export default function TGRClient({ user }: { user: any }) {
 
           {/* Véhicule confirmé */}
           {vehicleMatch && vehicleConfirmed && (
-            <div className="bg-green-900/20 border border-green-800 rounded-xl px-3 py-2 flex items-center justify-between">
+            <div className="bg-green-900/20 border border-green-800 rounded-xl px-3 py-2.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-green-400 text-sm">✅</span>
+                <span className="text-green-400">✅</span>
                 <div>
-                  <p className="text-green-300 text-xs font-semibold">{vehicleMatch.plate}</p>
-                  <p className="text-green-400/70 text-xs">{brand} {model}</p>
+                  <p className="text-green-300 text-sm font-mono font-bold">{vehicleMatch.plate}</p>
+                  {(brand || model) && (
+                    <p className="text-green-400/70 text-xs">{brand} {model}</p>
+                  )}
                 </div>
               </div>
               <button onClick={() => { setVehicleMatch(null); setVehicleConfirmed(false); setBrand(''); setModel('') }}
@@ -388,8 +397,8 @@ export default function TGRClient({ user }: { user: any }) {
             </div>
           )}
 
-          {/* Marque + Modèle — seulement si pas de véhicule confirmé */}
-          {(!vehicleMatch || !vehicleConfirmed) && (
+          {/* Marque + Modèle — si pas de véhicule confirmé OU si véhicule sans marque/modèle */}
+          {(!vehicleMatch || !vehicleConfirmed || (!vehicleMatch.brand_text && !vehicleMatch.model_text)) && (
             <>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">Marque *</label>
