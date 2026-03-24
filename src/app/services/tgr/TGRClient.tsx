@@ -168,14 +168,12 @@ export default function TGRClient({ user }: { user: any }) {
   }
 
   const handleSubmit = async () => {
-    // Marque/modèle optionnels si véhicule identifié en base
-    const requireVehicleDetails = !vehicleConfirmed
-    if (!plate || (requireVehicleDetails && (!brand || !model)) || !pickupAddress || !deliveryAddress) {
+    if (!plate || !brand || !model || !pickupAddress || !deliveryAddress) {
       const missing = []
-      if (!plate) missing.push('immatriculation')
-      if (requireVehicleDetails && !brand) missing.push('marque')
-      if (requireVehicleDetails && !model) missing.push('modèle')
-      if (!pickupAddress) missing.push('adresse de pick-up')
+      if (!plate)           missing.push('immatriculation')
+      if (!brand)           missing.push('marque')
+      if (!model)           missing.push('modèle')
+      if (!pickupAddress)   missing.push('adresse de pick-up')
       if (!deliveryAddress) missing.push('adresse de livraison')
       setError(`Champs obligatoires manquants : ${missing.join(', ')}`)
       return
@@ -410,8 +408,8 @@ export default function TGRClient({ user }: { user: any }) {
             </div>
           )}
 
-          {/* Marque + Modèle — si pas de véhicule confirmé OU si véhicule sans marque/modèle */}
-          {(!vehicleMatch || !vehicleConfirmed || (!vehicleMatch.brand_text && !vehicleMatch.model_text)) && (
+          {/* Marque + Modèle — toujours affichés, pré-remplis si véhicule trouvé */}
+          {(!vehicleMatch || !vehicleConfirmed || true) && (
             <>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">Marque *</label>

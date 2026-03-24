@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
   const normalized = normalizePlate(plate)
 
   try {
+    // Récupérer le véhicule avec model_id
     const results = await odooCall<any[]>('fleet.vehicle', 'search_read',
       [[['license_plate', 'ilike', normalized]]],
       { fields: ['id', 'license_plate', 'model_id'], limit: 10 }
@@ -48,16 +49,46 @@ export async function GET(req: NextRequest) {
 
     const match = results.find(v => normalizePlate(v.license_plate) === normalized)
 
-    if (match) {
-      return NextResponse.json({
-        found: true,
-        id:    match.id,
-        plate: match.license_plate,
-        model: match.model_id ? match.model_id[1] : null,
-      })
+    if (!match) return NextResponse.json({ found: false })
+
+    // model_id[1] = "Peugeot/Série 5" — séparer marque et modèle
+    let brand_text = ''
+    let model_text = ''
+
+    if (match.model_id && match.model_id[1]) {
+      const fullModel = match.model_id[1] as string
+      const slashIdx  = fullModel.indexOf('/')
+      if (slashIdx > -1) {
+        brand_text = fullModel.substring(0, slashIdx).trim()
+        model_text = fullModel.substring(slashIdx + 1).trim()
+      } else {
+        // Pas de slash — tout dans model_text
+        model_text = fullModel.trim()
+      }
     }
 
-    return NextResponse.json({ found: false })
+    // Si modèle "Autre", récupérer la marque directement depuis fleet.vehicle.model
+    if (model_text === 'Autre' && match.model_id) {
+      try {
+        const modelDetails = await odooCall<any[]>('fleet.vehicle.model', 'search_read',
+          [[['id', '=', match.model_id[0]]]],
+          { fields: ['id', 'name', 'brand_id'], limit: 1 }
+        )
+        if (modelDetails[0]?.brand_id?.[1]) {
+          brand_text = modelDetails[0].brand_id[1]
+          model_text = modelDetails[0].name !== 'Autre' ? modelDetails[0].name : 'Autre'
+        }
+      } catch { /* fallback déjà défini */ }
+    }
+
+    return NextResponse.json({
+      found:      true,
+      id:         match.id,
+      plate:      match.license_plate,
+      model:      match.model_id ? match.model_id[1] : null,
+      brand_text: brand_text || null,
+      model_text: model_text || null,
+    })
 
   } catch (err) {
     console.error('[GET /api/advances/lookup]', err)
