@@ -24,9 +24,24 @@ export default function ProfileClient({ user }: { user: any }) {
   useEffect(() => {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setPushSupported(true)
-      // Vérifier si déjà abonné côté serveur
-      fetch('/api/push').then(r => r.json()).then(data => {
-        setPushSubscribed(data.subscribed ?? false)
+      // Vérifier si déjà abonné via l'endpoint actif du navigateur
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        const reg = regs.find((r: any) => r.active?.scriptURL?.includes('sw-custom'))
+        if (!reg) return
+        return (reg as ServiceWorkerRegistration).pushManager.getSubscription()
+      }).then(sub => {
+        if (sub) {
+          setPushSubscribed(true)
+        } else {
+          // Vérifier côté serveur aussi
+          fetch('/api/push').then(r => r.json()).then(data => {
+            setPushSubscribed(data.subscribed ?? false)
+          })
+        }
+      }).catch(() => {
+        fetch('/api/push').then(r => r.json()).then(data => {
+          setPushSubscribed(data.subscribed ?? false)
+        })
       })
     }
   }, [])
