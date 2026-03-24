@@ -81,9 +81,15 @@ function emailWrapper(title: string, color: string, rows: [string, string][], ex
       ${extra || ''}
     </td></tr>
     <!-- Footer -->
-    <tr><td style="padding:16px 0;text-align:center;">
-      <p style="color:#555;font-size:11px;margin:0;">
-        Verviers Dépannage SA · Application chauffeurs · TGR Touring
+    <tr><td style="padding:20px 30px;text-align:center;border-top:1px solid #2a2a2a;">
+      <p style="color:#888;font-size:12px;margin:0 0 6px;line-height:1.8;">
+        <strong style="color:white;">Verviers Dépannage SA</strong><br>
+        Lefin 12, 4860 Pepinster (Belgique) · TVA : BE0460.759.205<br>
+        <a href="tel:+3287351820" style="color:#888;text-decoration:none;">+32(0)87/35.18.20</a> ·
+        <a href="mailto:info@verviersdepannage.com" style="color:#888;text-decoration:none;">info@verviersdepannage.com</a>
+      </p>
+      <p style="color:#444;font-size:11px;margin:8px 0 0;">
+        Powered by <a href="https://hoos.cloud" style="color:#666;text-decoration:none;font-weight:bold;">HOOS</a>
       </p>
     </td></tr>
   </table>
@@ -143,10 +149,59 @@ export async function POST(
         })
         odooQuoteId   = result.orderId
         odooQuoteName = result.orderName
+        // Confirmer le devis automatiquement
+        try {
+          await import('@/lib/odoo').then(({ default: _, ...m }) => {
+            const rpcFn = (m as any).rpc || null
+            // On utilise l'API Odoo directement
+          })
+          const confirmRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0', method: 'call', id: Date.now(),
+              params: {
+                service: 'object', method: 'execute_kw',
+                args: [process.env.ODOO_DB, parseInt(process.env.ODOO_UID||'8'), process.env.ODOO_API_KEY,
+                  'sale.order', 'action_confirm', [[odooQuoteId]]
+                ]
+              }
+            })
+          })
+          console.log('[TGR] Devis confirmé:', odooQuoteId)
+        } catch(e: any) {
+          console.error('[TGR] Erreur confirmation devis:', e.message)
+        }
       } catch (err: any) {
         odooError = err.message
         console.error('[TGR Accept Odoo]', err.message)
       }
+    }
+
+    // Montant estimé HTVA
+    let odooEstimatedAmount: number | null = null
+    if (mission.distance_km) {
+      try {
+        const priceRes = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', method: 'call', id: Date.now(),
+            params: {
+              service: 'object', method: 'execute_kw',
+              args: [process.env.ODOO_DB, parseInt(process.env.ODOO_UID||'8'), process.env.ODOO_API_KEY,
+                'product.product', 'search_read',
+                [[['default_code', '=', 'TGRTouring']]],
+                { fields: ['list_price'], limit: 1 }
+              ]
+            }
+          })
+        })
+        const priceData = await priceRes.json()
+        if (priceData.result?.[0]?.list_price) {
+          odooEstimatedAmount = priceData.result[0].list_price * mission.distance_km
+        }
+      } catch(e) { /* pas critique */ }
     }
 
     // Date de prise en charge prévue
@@ -189,8 +244,12 @@ export async function POST(
     ]
     if (mission.distance_km) rows.push(['Distance', `${mission.distance_km} km`])
     rows.push(['Prise en charge', `<strong style="color:#4ade80;">${plannedLabel}</strong>`])
-    if (odooQuoteName) rows.push(['Devis Odoo', `<strong style="color:white;">${odooQuoteName}</strong>`])
-    if (odooError) rows.push(['⚠️ Devis', `<span style="color:#f87171;">Non créé — ${odooError}</span>`])
+    if (odooQuoteName) rows.push(['Notre référence', `<strong style="color:white;">${odooQuoteName}</strong>`])
+    if (odooError) rows.push(['⚠️ Référence', `<span style="color:#f87171;">Non générée — ${odooError}</span>`])
+    // Montant estimé HTVA = distance × prix produit (récupéré depuis Odoo)
+    if (mission.distance_km && odooEstimatedAmount) {
+      rows.push(['Montant estimé HTVA', `<strong style="color:#4ade80;">${odooEstimatedAmount.toFixed(2)} €</strong>`])
+    }
 
     const html = emailWrapper(
       '✅ Mission TGR acceptée',
@@ -283,6 +342,41 @@ export async function POST(
         }).catch(err => console.error(`[TGR refuse email ${partner.email}]`, err))
       }
     }
+
+    // Mail 3b — informer le demandeur
+    const priorityLabelDemandeur = mission.priority === 1
+      ? '🔴 Priorité 1 — Avant midi J+1 ouvrable'
+      : mission.priority === 2
+        ? '🟠 Priorité 2 — Dans la journée J+1 ouvrable'
+        : '🟢 Priorité 3 — Dès que possible'
+
+    const rowsDemandeur: [string, string][] = [
+      ['Référence',  `<span style="font-family:monospace;font-weight:bold;">${mission.reference}</span>`],
+      ['Véhicule',   `${mission.plate} — ${mission.brand} ${mission.model}`],
+      ['Pick-up',    mission.pickup_address],
+      ['Livraison',  mission.delivery_address],
+      ['Priorité',   priorityLabelDemandeur],
+    ]
+
+    const htmlDemandeur = emailWrapper(
+      '❌ Mission TGR — Réponse à votre demande',
+      '#7f1d1d',
+      rowsDemandeur,
+      `<div style="margin-top:20px;padding:16px;background:#1c0a0a;border-radius:8px;border:1px solid #7f1d1d;">
+        <p style="color:#fca5a5;font-size:14px;margin:0 0 10px;font-weight:bold;">
+          Nous sommes désolés, nous ne pouvons pas assurer une livraison dans les délais indiqués.
+        </p>
+        <p style="color:#fca5a5;font-size:14px;margin:0;">
+          Votre demande a été transmise aux autres partenaires TGR, vous serez contacté dès qu'un partenaire l'accepte.
+        </p>
+      </div>`
+    )
+
+    await sendMail({
+      to:      mission.partner.email,
+      subject: `❌ Mission TGR — Réponse à votre demande — ${mission.reference}`,
+      html:    htmlDemandeur,
+    }).catch(err => console.error('[TGR refuse demandeur email]', err))
 
     return NextResponse.json({ success: true })
   }
