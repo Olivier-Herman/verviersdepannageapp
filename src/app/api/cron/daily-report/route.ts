@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { sendPushToUser } from '@/lib/push'
 
 // Cron déclenché tous les jours ouvrables à 8h (lun-ven)
 // Configuré dans vercel.json
@@ -395,6 +396,14 @@ async function checkDocumentExpiry(graphToken: string): Promise<void> {
         .from('driver_documents')
         .update({ [alertField]: true })
         .eq('id', doc.id)
+
+      // Notification push au chauffeur
+      await sendPushToUser(doc.user_id, {
+        title: `⚠️ Document expirant — ${docLabel}`,
+        body:  `Expire le ${expiryStr} (${days} jour${days > 1 ? 's' : ''})`,
+        url:   '/documents',
+        tag:   `doc-${doc.user_id}-${doc.doc_type}`,
+      }).catch(err => console.error('[Push] Alerte document:', err))
 
       console.log(`[Cron] Alerte ${alertLevel} envoyée — ${driverName} — ${docLabel}`)
     } catch (err: any) {
