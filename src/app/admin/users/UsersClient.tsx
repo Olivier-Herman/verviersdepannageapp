@@ -9,13 +9,14 @@ const ROLE_COLORS: Record<string, string> = {
   admin:      'bg-purple-900 text-purple-200',
   superadmin: 'bg-red-900 text-red-200',
   partner:    'bg-teal-900 text-teal-200',
+  partner:    'bg-teal-900 text-teal-200',
 }
 
 export default function UsersClient({ users, modules }: { users: any[], modules: any[] }) {
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   const [userModules, setUserModules] = useState<string[]>([])
-  const [userRole, setUserRole] = useState('')
+  const [userRoles, setUserRoles] = useState<string[]>([])
   const [userActive, setUserActive] = useState(true)
   const [userCanVerify, setUserCanVerify] = useState(false)
   const [userEmail, setUserEmail] = useState('')
@@ -36,6 +37,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setSelectedUser(user)
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
     setUserRole(user.role)
+    setUserRoles(user.roles?.length ? user.roles : [user.role])
     setUserActive(user.active)
     setUserCanVerify(user.can_verify || false)
     setUserEmail(user.email || '')
@@ -60,16 +62,17 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: selectedUser.id,
-          email: userEmail,
-          role: userRole,
-          active: userActive,
-          can_verify: userCanVerify,
-          personal_email: userPersonalEmail || null,
-          auth_provider: userAuthProvider,
-          modules:          userModules,
-          tgr_push_notify:  userTgrPushNotify,
-          odoo_partner_id:  userOdooPartnerId ? parseInt(userOdooPartnerId) : null,
+          userId:          selectedUser.id,
+          email:           userEmail,
+          role:            userRoles[0] || userRole,
+          roles:           userRoles,
+          active:          userActive,
+          can_verify:      userCanVerify,
+          personal_email:  userPersonalEmail || null,
+          auth_provider:   userAuthProvider,
+          modules:         userModules,
+          tgr_push_notify: userTgrPushNotify,
+          odoo_partner_id: userOdooPartnerId ? parseInt(userOdooPartnerId) : null,
         })
       })
       setSelectedUser(null)
@@ -146,6 +149,9 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
                 }`}>{r}</button>
             ))}
           </div>
+          {userRoles.length > 1 && (
+            <p className="text-zinc-600 text-xs mt-1.5">Rôle primaire : <span className="text-white">{userRoles[0]}</span></p>
+          )}
         </div>
 
         <div className="flex items-center justify-between mb-3">
@@ -217,6 +223,28 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
             className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
                        text-white text-sm outline-none focus:border-brand" />
           <p className="text-zinc-700 text-xs mt-1">ID du partenaire dans Odoo pour la création des devis TGR</p>
+        </div>
+      </div>
+
+      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
+        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">TGR Touring</p>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="text-zinc-500 text-xs font-medium">Notifications TGR push</span>
+            <p className="text-zinc-700 text-xs">Reçoit les alertes nouvelles missions</p>
+          </div>
+          <button onClick={() => setUserTgrPushNotify(!userTgrPushNotify)}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${userTgrPushNotify ? 'bg-brand' : 'bg-zinc-700'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${userTgrPushNotify ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        <div>
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">ID Partenaire Odoo</label>
+          <input type="number" placeholder="Ex: 42" value={userOdooPartnerId}
+            onChange={e => setUserOdooPartnerId(e.target.value)}
+            className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
+                       text-white text-sm outline-none focus:border-brand" />
+          <p className="text-zinc-700 text-xs mt-1">ID partenaire Odoo pour les devis TGR</p>
         </div>
       </div>
 

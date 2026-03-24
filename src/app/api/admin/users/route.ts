@@ -7,21 +7,27 @@ import { sendAccountActivated }     from '@/lib/emails'
 async function checkAdmin() {
   const session = await getServerSession(authOptions)
   if (!session) return null
-  if (!['admin', 'superadmin'].includes((session.user as any).role)) return null
+  const roles: string[] = (session.user as any).roles || [(session.user as any).role]
+  if (!roles.some(r => ['admin', 'superadmin'].includes(r))) return null
   return session
 }
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-
-  const isAdmin = ['admin', 'superadmin', 'dispatcher'].includes((session.user as any).role)
-  if (!isAdmin) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  const roles: string[] = (session.user as any).roles || [(session.user as any).role]
+  if (!roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))) {
+    return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  }
 
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, email, role, active, can_verify, personal_email, auth_provider, tgr_push_notify, odoo_partner_id, user_modules(module_id, granted)')
+    .select(`
+      id, email, name, role, roles, active, can_verify, personal_email, auth_provider,
+      last_login, created_at, tgr_push_notify, odoo_partner_id,
+      user_modules!user_modules_user_id_fkey (module_id, granted)
+    `)
     .order('name')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -42,6 +48,7 @@ export async function POST(req: NextRequest) {
       email:                email.toLowerCase(),
       name,
       role:                 role || 'driver',
+      roles:                [role || 'driver'],
       active:               true,
       auth_provider:        'email_password',
       must_change_password: true,
@@ -58,7 +65,7 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const {
-    userId, email, role, active, can_verify,
+    userId, email, role, roles, active, can_verify,
     personal_email, auth_provider, modules,
     tgr_push_notify, odoo_partner_id,
   } = await req.json()
@@ -67,22 +74,26 @@ export async function PATCH(req: NextRequest) {
 
   const supabase = createAdminClient()
 
-  // Récupérer l'état précédent pour détecter activation
   const { data: prevUser } = await supabase
     .from('users')
     .select('active, name, email, auth_provider')
     .eq('id', userId)
     .single()
 
+  // Rôle primaire = premier rôle du tableau, ou rôle envoyé seul
+  const primaryRole  = role || (roles?.[0]) || 'driver'
+  const rolesArray   = roles?.length ? roles : [primaryRole]
+
   const updateData: any = {
-    role,
-    active,
-    can_verify:         can_verify      ?? false,
-    personal_email:     personal_email  || null,
-    auth_provider:      auth_provider   || 'email_password',
-    tgr_push_notify:    tgr_push_notify ?? false,
-    odoo_partner_id:    odoo_partner_id ? parseInt(odoo_partner_id) : null,
-    updated_at:         new Date().toISOString(),
+    role:            primaryRole,
+    roles:           rolesArray,
+    active:          active,
+    can_verify:      can_verify      ?? false,
+    personal_email:  personal_email  || null,
+    auth_provider:   auth_provider   || 'email_password',
+    tgr_push_notify: tgr_push_notify ?? false,
+    odoo_partner_id: odoo_partner_id ? parseInt(String(odoo_partner_id)) : null,
+    updated_at:      new Date().toISOString(),
   }
   if (email) updateData.email = email.toLowerCase()
 
@@ -90,7 +101,7 @@ export async function PATCH(req: NextRequest) {
     .from('users').update(updateData).eq('id', userId)
   if (userError) return NextResponse.json({ error: userError.message }, { status: 500 })
 
-  // Email d'activation si compte vient d'être activé
+  // Email d'activation
   if (active && prevUser && !prevUser.active) {
     try {
       await sendAccountActivated({
