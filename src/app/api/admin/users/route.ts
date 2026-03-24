@@ -5,18 +5,27 @@ import { createAdminClient }        from '@/lib/supabase'
 import { sendAccountActivated }     from '@/lib/emails'
 
 async function checkAdmin() {
-  const session = await getServerSession(authOptions)
-  if (!session) return null
-  const roles: string[] = (session.user as any).roles || [(session.user as any).role]
-  if (!roles.some(r => ['admin', 'superadmin'].includes(r))) return null
-  return session
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) return null
+    const userRole  = (session.user as any).role  || ''
+    const userRoles = (session.user as any).roles || [userRole]
+    const roles: string[] = Array.isArray(userRoles) ? userRoles : [userRole]
+    if (!roles.some((r: string) => ['admin', 'superadmin'].includes(r))) return null
+    return session
+  } catch (err: any) {
+    console.error('[checkAdmin] Error:', err.message)
+    return null
+  }
 }
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-  const roles: string[] = (session.user as any).roles || [(session.user as any).role]
-  if (!roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))) {
+  const userRole2  = (session.user as any).role  || ''
+  const userRoles2 = (session.user as any).roles || [userRole2]
+  const roles: string[] = Array.isArray(userRoles2) ? userRoles2 : [userRole2]
+  if (!roles.some((r: string) => ['admin', 'superadmin', 'dispatcher'].includes(r))) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
