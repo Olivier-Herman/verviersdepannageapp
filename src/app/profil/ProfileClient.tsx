@@ -216,6 +216,27 @@ export default function ProfileClient({ user }: { user: any }) {
                   ? '🔕 Désactiver les notifications'
                   : '🔔 Activer les notifications'}
             </button>
+            <button onClick={async () => {
+              setPushStatus('1. SW supporté: ' + ('serviceWorker' in navigator))
+              try {
+                const reg = await Promise.race([
+                  navigator.serviceWorker.ready,
+                  new Promise<never>((_, r) => setTimeout(() => r(new Error('SW timeout 5s')), 5000))
+                ])
+                setPushStatus('2. SW ready ✅ — scope: ' + (reg as any).scope)
+                try {
+                  const existing = await (reg as any).pushManager.getSubscription()
+                  setPushStatus('3. Subscription existante: ' + (existing ? existing.endpoint.slice(0, 50) + '…' : 'aucune'))
+                } catch(e: any) {
+                  setPushStatus('3. pushManager.getSubscription error: ' + e.message)
+                }
+              } catch(e: any) {
+                setPushStatus('2. SW error: ' + e.message)
+              }
+            }}
+              className="w-full py-2 rounded-xl text-xs bg-[#2a2a2a] text-zinc-400 mt-2">
+              🔍 Diagnostiquer
+            </button>
           </div>
         )}
 
