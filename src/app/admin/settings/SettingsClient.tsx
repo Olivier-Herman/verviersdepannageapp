@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState }  from 'react'
+import { useRouter }  from 'next/navigation'
+import { signOut, signIn } from 'next-auth/react'
 
 const LIST_TYPES = [
   { key: 'motif',        label: 'Motifs d\'intervention' },
@@ -28,8 +29,6 @@ export default function SettingsClient({
 
   // Paramètres app
   const [purchaseEmail,  setPurchaseEmail]  = useState(appSettings['odoo_purchase_email'] ?? '')
-  const [tgrInfoEmail,   setTgrInfoEmail]   = useState(appSettings['tgr_info_email']        ?? 'info@verviersdepannage.com')
-  const [tgrProductRef,  setTgrProductRef]  = useState(appSettings['tgr_product_ref']       ?? 'TGRTouring')
   const [savingParams,   setSavingParams]   = useState(false)
   const [paramsSaved,    setParamsSaved]    = useState(false)
 
@@ -110,8 +109,6 @@ export default function SettingsClient({
         body: JSON.stringify({
           settings: {
             odoo_purchase_email: purchaseEmail,
-            tgr_info_email:      tgrInfoEmail,
-            tgr_product_ref:     tgrProductRef,
           }
         })
       })
@@ -178,34 +175,6 @@ export default function SettingsClient({
             </p>
           </div>
 
-          {/* TGR Touring */}
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">
-              TGR Touring
-            </p>
-            <label className="block text-sm text-zinc-300 mb-1.5">Email info (réception missions)</label>
-            <input
-              type="email"
-              placeholder="info@verviersdepannage.com"
-              value={tgrInfoEmail}
-              onChange={e => setTgrInfoEmail(e.target.value)}
-              className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5
-                         text-white text-sm outline-none focus:border-brand mb-3"
-            />
-            <label className="block text-sm text-zinc-300 mb-1.5">Référence produit Odoo</label>
-            <input
-              type="text"
-              placeholder="TGRTouring"
-              value={tgrProductRef}
-              onChange={e => setTgrProductRef(e.target.value)}
-              className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5
-                         text-white text-sm outline-none focus:border-brand"
-            />
-            <p className="text-zinc-600 text-xs mt-1.5">
-              Référence du produit Odoo utilisé pour les devis TGR (default_code).
-            </p>
-          </div>
-
           <button
             onClick={saveParams}
             disabled={savingParams}
@@ -214,6 +183,26 @@ export default function SettingsClient({
           >
             {paramsSaved ? '✅ Enregistré' : savingParams ? 'Enregistrement...' : 'Enregistrer les paramètres'}
           </button>
+
+          {/* Vider le cache session */}
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mt-2">
+            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-2">
+              Cache session
+            </p>
+            <p className="text-zinc-600 text-xs mb-3">
+              Si les rôles ou modules d'un utilisateur ne se reflètent pas après modification,
+              utilisez ce bouton pour forcer le renouvellement du token de session.
+            </p>
+            <button
+              onClick={async () => {
+                await signOut({ redirect: false })
+                await signIn(undefined, { callbackUrl: '/admin/settings' })
+              }}
+              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl
+                         font-medium text-sm transition-all border border-zinc-700">
+              🔄 Vider le cache et reconnecter
+            </button>
+          </div>
         </div>
       )}
 

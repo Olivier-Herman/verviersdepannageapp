@@ -35,7 +35,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const openUser = (user: any) => {
     setSelectedUser(user)
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
-    setUserRoles(user.roles?.length ? user.roles : [user.role])
+    setUserRoles((user.roles && Array.isArray(user.roles) && user.roles.length > 0) ? user.roles : (user.role ? [user.role] : ['driver']))
     setUserActive(user.active)
     setUserCanVerify(user.can_verify || false)
     setUserEmail(user.email || '')
@@ -138,32 +138,18 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
         </div>
 
         <div className="mb-3">
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">
-            Rôle(s) <span className="text-zinc-700 font-normal">(cliquer pour activer/désactiver)</span>
-          </label>
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Rôle</label>
           <div className="flex gap-2 flex-wrap">
-            {ROLES.map(r => {
-              const active = userRoles.includes(r)
-              return (
-                <button key={r} onClick={() => {
-                  setUserRoles(prev => {
-                    if (active && prev.length === 1) return prev // garder au moins 1
-                    return active ? prev.filter(x => x !== r) : [...prev, r]
-                  })
-                }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all capitalize ${
-                    active
-                      ? (ROLE_COLORS[r] || 'bg-brand text-white border-brand')
-                      : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-500'
-                  }`}>
-                  {active ? '✓ ' : ''}{r}
-                </button>
-              )
-            })}
+            {ROLES.map(r => (
+              <button key={r} onClick={() => setUserRoles([r])}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  userRoles.includes(r) ? 'border-brand bg-brand/20 text-brand' : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-500'
+                }`}>{r}</button>
+            ))}
           </div>
-          <p className="text-zinc-600 text-xs mt-1.5">
-            Rôle primaire : <span className="text-white capitalize">{userRoles[0] || '—'}</span>
-          </p>
+          {userRoles.length > 1 && (
+            <p className="text-zinc-600 text-xs mt-1.5">Rôle primaire : <span className="text-white">{userRoles[0]}</span></p>
+          )}
         </div>
 
         <div className="flex items-center justify-between mb-3">
@@ -217,6 +203,25 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           </button>
         </div>
 
+        {/* TGR Touring */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#2a2a2a]">
+          <div>
+            <span className="text-zinc-500 text-xs font-medium">Notifications TGR push</span>
+            <p className="text-zinc-700 text-xs">Reçoit les alertes nouvelles missions TGR</p>
+          </div>
+          <button onClick={() => setUserTgrPushNotify(!userTgrPushNotify)}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${userTgrPushNotify ? 'bg-brand' : 'bg-zinc-700'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${userTgrPushNotify ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        <div className="mt-3">
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">ID Partenaire Odoo (TGR)</label>
+          <input type="number" placeholder="Ex: 42" value={userOdooPartnerId}
+            onChange={e => setUserOdooPartnerId(e.target.value)}
+            className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
+                       text-white text-sm outline-none focus:border-brand" />
+          <p className="text-zinc-700 text-xs mt-1">ID du partenaire dans Odoo pour la création des devis TGR</p>
+        </div>
       </div>
 
       <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
