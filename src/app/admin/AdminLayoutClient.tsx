@@ -102,8 +102,8 @@ export default function AdminLayoutClient({
         </div>
 
         {/* AdminNav + contenu */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {children}
+        <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+          <div className="w-full px-4 lg:px-8 py-4 lg:py-6 pb-24">{children}</div>
         </main>
       </div>
     </div>
