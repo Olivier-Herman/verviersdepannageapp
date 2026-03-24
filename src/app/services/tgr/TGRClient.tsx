@@ -1,7 +1,7 @@
 // src/app/services/tgr/TGRClient.tsx
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter }  from 'next/navigation'
 import AppShell       from '@/components/layout/AppShell'
 import Image          from 'next/image'
@@ -26,41 +26,37 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 
 type TGRView = 'list' | 'new'
 
-// ── Hook Google Places Autocomplete ───────────────────────
-function useGooglePlaces(inputRef: React.RefObject<HTMLInputElement>, onSelect: (address: string) => void) {
-  useEffect(() => {
-    if (!inputRef.current) return
-    const input = inputRef.current
+// ── Chargeur Google Maps (singleton) ──────────────────────
+let gmapsPromise: Promise<void> | null = null
 
-    const initAutocomplete = () => {
-      if (!(window as any).google?.maps?.places) return
-      const ac = new (window as any).google.maps.places.Autocomplete(input, {
-        types: ['address'],
-        componentRestrictions: { country: ['be', 'nl', 'fr', 'de', 'lu'] },
-      })
-      ac.addListener('place_changed', () => {
-        const place = ac.getPlace()
-        if (place?.formatted_address) onSelect(place.formatted_address)
-      })
-    }
+function loadGoogleMaps(): Promise<void> {
+  if (gmapsPromise) return gmapsPromise
+  if ((window as any).google?.maps?.places) return Promise.resolve()
+  gmapsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src   = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`
+    script.async = true
+    script.onload  = () => resolve()
+    script.onerror = () => reject(new Error('Google Maps failed to load'))
+    document.head.appendChild(script)
+  })
+  return gmapsPromise
+}
 
-    if ((window as any).google?.maps?.places) {
-      initAutocomplete()
-    } else {
-      // Charger le script si pas encore chargé
-      const existingScript = document.getElementById('google-places-script')
-      if (!existingScript) {
-        const script = document.createElement('script')
-        script.id  = 'google-places-script'
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`
-        script.async = true
-        script.onload = initAutocomplete
-        document.head.appendChild(script)
-      } else {
-        existingScript.addEventListener('load', initAutocomplete)
-      }
-    }
-  }, [inputRef, onSelect])
+function initPlacesAutocomplete(
+  input:    HTMLInputElement,
+  onSelect: (address: string) => void
+) {
+  const ac = new (window as any).google.maps.places.Autocomplete(input, {
+    types: ['address'],
+    componentRestrictions: { country: ['be', 'nl', 'fr', 'de', 'lu'] },
+    fields: ['formatted_address'],
+  })
+  ac.addListener('place_changed', () => {
+    const place = ac.getPlace()
+    if (place?.formatted_address) onSelect(place.formatted_address)
+  })
+  return ac
 }
 
 // ── Composant principal ────────────────────────────────────
@@ -98,9 +94,27 @@ export default function TGRClient({ user }: { user: any }) {
   const pickupRef   = useRef<HTMLInputElement>(null)
   const deliveryRef = useRef<HTMLInputElement>(null)
 
-  // Google Places hooks
-  useGooglePlaces(pickupRef,   useCallback((addr) => setPickupAddress(addr),   []))
-  useGooglePlaces(deliveryRef, useCallback((addr) => setDeliveryAddress(addr), []))
+  // Google Places — initialiser quand le formulaire est affiché
+  useEffect(() => {
+    if (view !== 'new') return
+    let acPickup:   any = null
+    let acDelivery: any = null
+
+    loadGoogleMaps().then(() => {
+      if (pickupRef.current) {
+        acPickup = initPlacesAutocomplete(pickupRef.current, setPickupAddress)
+      }
+      if (deliveryRef.current) {
+        acDelivery = initPlacesAutocomplete(deliveryRef.current, setDeliveryAddress)
+      }
+    }).catch(err => console.error('[Google Places]', err))
+
+    return () => {
+      // Cleanup: supprimer les dropdowns Places si présents
+      if (acPickup)   (window as any).google?.maps?.event?.clearInstanceListeners?.(acPickup)
+      if (acDelivery) (window as any).google?.maps?.event?.clearInstanceListeners?.(acDelivery)
+    }
+  }, [view])
 
   const loadMissions = () => {
     setLoading(true)
