@@ -13,7 +13,7 @@ const NAV_MODULES = [
   { id: 'documents',     label: 'Documents',               icon: '📁', href: '/documents',     color: 'bg-surface',    size: 'small' },
   { id: 'check_vehicle', label: 'Check Véhicule',          icon: '🔍', href: '/check-vehicle', color: 'bg-surface',    size: 'small' },
   { id: 'tgr',           label: 'TGR Touring',             icon: '🛡️', href: '/services/tgr',  color: 'bg-surface',    size: 'small' },
-  { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',        color: 'bg-green-700',  size: 'large' },
+  { id: 'depose',        label: 'Dépose Véhicule',         icon: '🗺️', href: '/depose',        color: 'bg-green-700',  size: 'small' },
   { id: 'admin',         label: 'Administration',          icon: '⚙️', href: '/admin',         color: 'bg-purple-900', size: 'small' },
   { id: 'profil',        label: 'Mon Profil',              icon: '👤', href: '/profil',        color: 'bg-surface',    size: 'small' },
 ]
