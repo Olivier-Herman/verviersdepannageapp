@@ -141,9 +141,17 @@ export default function ProfileClient({ user }: { user: any }) {
   // Normalise n'importe quel format de date vers YYYY-MM-DD
   const normalizeDate = (raw: string): string => {
     if (!raw) return ''
-    const d = new Date(raw)
-    if (isNaN(d.getTime())) return raw
-    return d.toISOString().split('T')[0]
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+    try {
+      const d = new Date(raw)
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+      }
+    } catch {}
+    return raw
   }
 
   const handleSave = async () => {
@@ -458,7 +466,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-zinc-400 mb-1.5">Date d'expiration *</label>
-              <input type="date" value={formExpiry} onChange={e => setFormExpiry(e.target.value)}
+              <input type="date" value={formExpiry} onChange={e => setFormExpiry(normalizeDate(e.target.value))}
                 className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand" />
             </div>
 
