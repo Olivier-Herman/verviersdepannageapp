@@ -51,10 +51,12 @@ async function markAsRead(token: string, messageId: string): Promise<void> {
 }
 
 /**
- * Récupère les pièces jointes via l'API /attachments.
- * Si 404 → retourne [] et le caller utilisera getRawMimeAttachments en fallback.
+ * Récupère les pièces jointes avec contentBytes.
+ * Retourne [] si /attachments 404 OU si aucun contentBytes n'est présent
+ * (le caller utilisera alors le fallback MIME $value).
  */
 async function getAttachmentsWithContent(token: string, messageId: string): Promise<any[]> {
+  // 1. Lister les pièces jointes
   let meta: any[] = []
   try {
     const listing = await graphGet(
@@ -63,27 +65,49 @@ async function getAttachmentsWithContent(token: string, messageId: string): Prom
     )
     meta = listing.value || []
   } catch {
-    return [] // 404 → fallback MIME
+    console.warn('[Processor] /attachments 404 → MIME fallback')
+    return []
   }
+
+  if (!meta.length) return []
 
   console.log(`[Processor] ${meta.length} pièce(s) jointe(s):`,
     meta.map((a: any) => `${a.name} (${a.size}b)`).join(', ')
   )
 
-  return Promise.all(
+  // 2. Fetcher chaque pièce jointe individuellement pour avoir contentBytes
+  const attachments = await Promise.all(
     meta.map(async (att: any) => {
       try {
-        return await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments/${att.id}`)
-      } catch {
+        const full = await graphGet(
+          token,
+          `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments/${att.id}`
+        )
+        if (full.contentBytes) {
+          console.log(`[Processor] contentBytes OK: ${att.name} (${full.contentBytes.length} chars base64)`)
+        } else {
+          console.warn(`[Processor] contentBytes ABSENT pour ${att.name} — sera ignoré`)
+        }
+        return full
+      } catch (e: any) {
+        console.warn(`[Processor] Erreur fetch pièce jointe ${att.name}:`, e.message)
         return att
       }
     })
   )
+
+  // 3. Vérifier qu'au moins une pièce jointe a contentBytes
+  const hasContent = attachments.some(a => a.contentBytes && a.contentBytes.length > 0)
+  if (!hasContent) {
+    console.warn('[Processor] Aucun contentBytes dans les pièces jointes → MIME fallback')
+    return []
+  }
+
+  return attachments
 }
 
 /**
- * Fallback : récupère le MIME brut de l'email via /$value et extrait les pièces jointes.
- * Utilisé quand /attachments retourne 404 (emails Mao.Sender@touring.be).
+ * Fallback MIME : récupère le message brut via /$value et extrait les pièces jointes.
  */
 async function getAttachmentsFromMime(token: string, messageId: string): Promise<any[]> {
   try {
@@ -91,15 +115,12 @@ async function getAttachmentsFromMime(token: string, messageId: string): Promise
       `https://graph.microsoft.com/v1.0/users/${MISSIONS_EMAIL}/messages/${messageId}/$value`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-
     if (!res.ok) {
       console.warn(`[Processor] MIME $value ${res.status}`)
       return []
     }
-
     const mimeRaw = await res.text()
-    console.log(`[Processor] MIME brut récupéré: ${mimeRaw.length} chars`)
-
+    console.log(`[Processor] MIME brut: ${mimeRaw.length} chars`)
     return parseMimeAttachments(mimeRaw)
   } catch (e: any) {
     console.error('[Processor] Erreur MIME $value:', e.message)
@@ -108,16 +129,14 @@ async function getAttachmentsFromMime(token: string, messageId: string): Promise
 }
 
 /**
- * Parse les pièces jointes depuis un MIME brut multipart.
- * Retourne un tableau compatible avec le format Graph (name, contentType, contentBytes).
+ * Parse les pièces jointes depuis un MIME multipart brut.
  */
 function parseMimeAttachments(mime: string): any[] {
   const attachments: any[] = []
 
-  // Trouver le boundary multipart
   const boundaryMatch = mime.match(/boundary="?([^"\r\n;]+)"?/i)
   if (!boundaryMatch) {
-    console.warn('[Processor] Pas de boundary MIME trouvé')
+    console.warn('[Processor] Pas de boundary MIME')
     return []
   }
 
@@ -127,41 +146,32 @@ function parseMimeAttachments(mime: string): any[] {
   for (const part of parts) {
     if (part.trim() === '' || part.trim() === '--') continue
 
-    // Extraire les headers de la part
     const headerEnd = part.indexOf('\r\n\r\n')
     if (headerEnd === -1) continue
 
-    const headers  = part.substring(0, headerEnd).toLowerCase()
-    const body     = part.substring(headerEnd + 4)
+    const headers = part.substring(0, headerEnd).toLowerCase()
+    const body    = part.substring(headerEnd + 4)
 
-    // Chercher les pièces jointes (Content-Disposition: attachment)
     if (!headers.includes('content-disposition') || !headers.includes('attachment')) continue
 
-    // Extraire le nom de fichier
-    const nameMatch = part.match(/filename=["']?([^"'\r\n;]+)["']?/i)
-    const name      = nameMatch?.[1]?.trim() || 'attachment'
-
-    // Extraire le content-type
-    const ctMatch   = part.match(/content-type:\s*([^\r\n;]+)/i)
+    const nameMatch   = part.match(/filename=["']?([^"'\r\n;]+)["']?/i)
+    const name        = nameMatch?.[1]?.trim() || 'attachment'
+    const ctMatch     = part.match(/content-type:\s*([^\r\n;]+)/i)
     const contentType = ctMatch?.[1]?.trim() || 'application/octet-stream'
+    const encMatch    = part.match(/content-transfer-encoding:\s*([^\r\n]+)/i)
+    const encoding    = encMatch?.[1]?.trim().toLowerCase() || 'base64'
 
-    // Extraire l'encoding
-    const encMatch  = part.match(/content-transfer-encoding:\s*([^\r\n]+)/i)
-    const encoding  = encMatch?.[1]?.trim().toLowerCase() || 'base64'
-
-    // Contenu — nettoyer les retours à la ligne
-    const rawContent = body.replace(/[\r\n]--[\s\S]*$/, '').trim()
+    // Nettoyer le contenu (supprimer le boundary de fin)
+    const rawContent  = body.replace(/[\r\n]--[\s\S]*$/, '').trim()
 
     let contentBytes: string
     if (encoding === 'base64') {
-      // Déjà en base64 — nettoyer les espaces/newlines
       contentBytes = rawContent.replace(/\s/g, '')
     } else {
-      // Encoder en base64
       contentBytes = Buffer.from(rawContent, encoding as BufferEncoding).toString('base64')
     }
 
-    console.log(`[Processor] Pièce jointe MIME trouvée: ${name} (${contentType}) ${contentBytes.length} chars base64`)
+    console.log(`[Processor] Pièce jointe MIME: ${name} (${contentType}) ${contentBytes.length} chars`)
     attachments.push({ name, contentType, contentBytes })
   }
 
@@ -225,12 +235,12 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     const source = await detectSource(fromEmail, subject)
 
-    // Récupérer les pièces jointes
+    // Récupérer les pièces jointes avec contentBytes
     let attachments: any[] = []
     if (message.hasAttachments) {
       attachments = await getAttachmentsWithContent(token, messageId)
 
-      // Si /attachments a retourné 404 ([] vide) → essayer le MIME brut
+      // Fallback MIME si aucun contentBytes disponible
       if (attachments.length === 0) {
         console.log('[Processor] Fallback MIME $value...')
         attachments = await getAttachmentsFromMime(token, messageId)
