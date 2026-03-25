@@ -11,6 +11,7 @@ const NAV_MODULES = [
   { id: 'finance',       label: 'Finance',                icon: '💰', href: '/finance',         color: 'bg-surface',    size: 'small' },
   { id: 'check_vehicle', label: 'Check Véhicule',         icon: '🔍', href: '/check-vehicule', color: 'bg-surface',    size: 'small' },
   { id: 'tgr',           label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
+  { id: 'missions',      label: 'Dispatch Missions',      icon: '📡', href: '/dispatch',        color: 'bg-blue-900',   size: 'large' },
   { id: 'depose',        label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
   { id: 'profil',        label: 'Mon Profil',             icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
   { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'large' },
@@ -51,8 +52,8 @@ export default function DashboardClient({
     return userModules.includes(id)
   }
 
-  const visibleNav    = NAV_MODULES.filter(m => isModuleVisible(m.id))
-  const visibleCalls  = CALL_MODULES.filter(m => userModules.includes(m.id))
+  const visibleNav   = NAV_MODULES.filter(m => isModuleVisible(m.id))
+  const visibleCalls = CALL_MODULES.filter(m => userModules.includes(m.id))
 
   return (
     <AppShell
