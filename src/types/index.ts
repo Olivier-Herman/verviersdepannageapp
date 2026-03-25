@@ -14,6 +14,7 @@ export type ModuleId =
   | 'avance_fonds'
   | 'documents'
   | 'check_vehicle'
+  | 'missions'
   | 'admin'
 
 export interface Module {
@@ -222,4 +223,120 @@ export interface VehicleCheck {
   vehicle?: CheckVehicle | null
   triggered_by_user?: { id: string; name: string; email: string } | null
   claimed_by_user?: { id: string; name: string; email: string } | null
+}
+
+// ── Missions entrantes (Phase 2) ──────────────────────────
+
+export type MissionSource =
+  | 'touring'
+  | 'ethias'
+  | 'vivium'
+  | 'axa'
+  | 'ardenne'
+  | 'mondial'
+  | 'vab'
+  | 'unknown'
+
+export type MissionStatus =
+  | 'new'
+  | 'dispatching'
+  | 'assigned'
+  | 'accepted'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'ignored'
+  | 'parse_error'
+
+export type MissionType =
+  | 'remorquage'
+  | 'depannage'
+  | 'transport'
+  | 'trajet_vide'
+  | 'reparation_place'
+  | 'autre'
+
+export type DispatchMode = 'manual' | 'auto'
+
+export type MissionSourceFormat = 'rtf' | 'email_plain' | 'docx' | 'pdf' | 'unknown'
+
+export interface IncomingMission {
+  id: string
+  external_id: string
+  dossier_number: string | null
+  source: MissionSource
+  source_format: MissionSourceFormat
+  source_email_id: string | null
+
+  mission_type: MissionType | null
+  incident_type: string | null
+  incident_description: string | null
+
+  client_name: string | null
+  client_phone: string | null
+  client_address: string | null
+
+  vehicle_plate: string | null
+  vehicle_brand: string | null
+  vehicle_model: string | null
+  vehicle_vin: string | null
+  vehicle_fuel: string | null
+  vehicle_gearbox: string | null
+
+  incident_address: string | null
+  incident_city: string | null
+  incident_country: string
+  incident_lat: number | null
+  incident_lng: number | null
+
+  destination_name: string | null
+  destination_address: string | null
+
+  amount_guaranteed: number | null
+  amount_currency: string
+
+  incident_at: string | null
+  received_at: string
+
+  status: MissionStatus
+  dispatch_mode: DispatchMode
+
+  assigned_to: string | null
+  assigned_at: string | null
+  accepted_at: string | null
+  completed_at: string | null
+
+  odoo_order_id: number | null
+  odoo_synced_at: string | null
+
+  raw_content: string | null
+  parsed_data: Record<string, unknown> | null
+  parse_confidence: number | null
+
+  created_at: string
+  updated_at: string
+
+  assigned_user?: { id: string; name: string; avatar_url: string | null } | null
+}
+
+export type MissionLogAction =
+  | 'received'
+  | 'parsed'
+  | 'dispatched'
+  | 'accepted'
+  | 'refused'
+  | 'reassigned'
+  | 'completed'
+  | 'cancelled'
+  | 'odoo_synced'
+  | 'error'
+
+export interface MissionLog {
+  id: string
+  mission_id: string
+  actor_id: string | null
+  action: MissionLogAction
+  notes: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
 }

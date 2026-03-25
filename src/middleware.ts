@@ -1,4 +1,4 @@
-import { withAuth } from 'next-auth/middleware'
+import { withAuth }     from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 
 const ROUTE_MODULE_MAP: Record<string, string> = {
@@ -11,6 +11,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/services/fourriere': 'fourriere',
   '/services/rentacar':  'rentacar',
   '/services/tgr':       'tgr',
+  '/missions':           'missions',
   '/admin':              'admin',
 }
 
@@ -33,6 +34,15 @@ export default withAuth(
       return NextResponse.next()
     }
 
+    // Dispatch : admin + superadmin + dispatcher
+    if (path.startsWith('/dispatch')) {
+      const roles = (token?.roles as string[]) || [token?.role as string]
+      if (!roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))) {
+        return NextResponse.redirect(new URL('/dashboard?error=access_denied', req.url))
+      }
+      return NextResponse.next()
+    }
+
     const requiredModule = Object.entries(ROUTE_MODULE_MAP).find(([route]) =>
       path.startsWith(route)
     )?.[1]
@@ -48,11 +58,7 @@ export default withAuth(
 
     return NextResponse.next()
   },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token
-    }
-  }
+  { callbacks: { authorized: ({ token }) => !!token } }
 )
 
 export const config = {
@@ -69,5 +75,7 @@ export const config = {
     '/services/:path*',
     '/admin/:path*',
     '/profil/:path*',
+    '/missions/:path*',
+    '/dispatch/:path*',
   ]
 }
