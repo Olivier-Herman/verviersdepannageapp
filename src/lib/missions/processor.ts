@@ -150,7 +150,7 @@ function parseMimeAttachments(mime: string): any[] {
     const encoding  = encMatch?.[1]?.trim().toLowerCase() || 'base64'
 
     // Contenu — nettoyer les retours à la ligne
-    const rawContent = body.replace(/\r?\n--.*$/s, '').trim()
+    const rawContent = body.replace(/[\r\n]--[\s\S]*$/, '').trim()
 
     let contentBytes: string
     if (encoding === 'base64') {
