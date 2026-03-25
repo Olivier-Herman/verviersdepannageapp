@@ -6,14 +6,15 @@ import { signOut } from 'next-auth/react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 
 const NAV_ITEMS = [
-  { href: '/dashboard',     label: 'Dashboard',        icon: '🏠' },
-  { href: '/encaissement',  label: 'Encaissement',      icon: '💳' },
-  { href: '/finance',       label: 'Finance',           icon: '💰' },
-  { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄' },
-  { href: '/check-vehicule',label: 'Check Véhicule',    icon: '🔍' },
-  { href: '/services/tgr',  label: 'TGR Touring',       icon: '🛡️' },
-  { href: '/admin',         label: 'Administration',    icon: '⚙️' },
-  { href: '/profil',        label: 'Mon Profil',        icon: '👤' },
+  { href: '/dashboard',     label: 'Dashboard',        icon: '🏠', moduleId: null },
+  { href: '/encaissement',  label: 'Encaissement',      icon: '💳', moduleId: 'encaissement' },
+  { href: '/finance',       label: 'Finance',           icon: '💰', moduleId: 'finance' },
+  { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄', moduleId: 'avance_fonds' },
+  { href: '/dispatch',      label: 'Dispatch',          icon: '📡', moduleId: 'missions' },
+  { href: '/check-vehicule',label: 'Check Véhicule',    icon: '🔍', moduleId: 'check_vehicle' },
+  { href: '/services/tgr',  label: 'TGR Touring',       icon: '🛡️', moduleId: 'tgr' },
+  { href: '/admin',         label: 'Administration',    icon: '⚙️', moduleId: 'admin' },
+  { href: '/profil',        label: 'Mon Profil',        icon: '👤', moduleId: null },
 ]
 
 interface AppShellProps {
@@ -40,12 +41,13 @@ export default function AppShell({
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
   const visibleNav = NAV_ITEMS.filter(item => {
-    if (item.href === '/admin') return isAdmin
+    if (item.moduleId === null) return true       // dashboard + profil toujours visibles
+    if (item.moduleId === 'admin') return isAdmin
     if (isAdmin) return true
-    if (item.href === '/dashboard' || item.href === '/profil') return true
-    if (item.href === '/finance') return userModules.includes('encaissements') || userModules.includes('caisse')
-    const moduleId = item.href.replace('/', '').replace(/-/g, '_').replace('/', '_')
-    return userModules.includes(moduleId)
+    if (item.moduleId === 'finance') {
+      return userModules.includes('encaissements') || userModules.includes('caisse')
+    }
+    return userModules.includes(item.moduleId)
   })
 
   return (
