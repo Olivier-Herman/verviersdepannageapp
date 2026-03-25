@@ -1,6 +1,4 @@
 // src/lib/missions/processor.ts
-// Logique centrale : reçoit un messageId Graph, récupère l'email,
-// extrait, parse et insère dans Supabase.
 
 import { createAdminClient }            from '@/lib/supabase'
 import { detectSource, extractContent } from './extractor'
@@ -52,6 +50,44 @@ async function markAsRead(token: string, messageId: string): Promise<void> {
   )
 }
 
+/**
+ * Récupère les pièces jointes avec leur contenu complet.
+ * Graph ne retourne PAS contentBytes dans le listing /attachments —
+ * il faut fetcher chaque pièce jointe individuellement via /attachments/{id}
+ */
+async function getAttachmentsWithContent(token: string, messageId: string): Promise<any[]> {
+  // D'abord, lister les pièces jointes (sans contentBytes)
+  const listing = await graphGet(
+    token,
+    `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments` +
+    `?$select=id,name,contentType,size`
+  )
+
+  const attachmentMeta: any[] = listing.value || []
+  console.log(`[Processor] ${attachmentMeta.length} pièce(s) jointe(s) trouvée(s):`,
+    attachmentMeta.map(a => `${a.name} (${a.contentType}, ${a.size} bytes)`).join(', ')
+  )
+
+  // Fetcher chaque pièce jointe individuellement pour avoir contentBytes
+  const attachments = await Promise.all(
+    attachmentMeta.map(async (att) => {
+      try {
+        const full = await graphGet(
+          token,
+          `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments/${att.id}`
+        )
+        console.log(`[Processor] Pièce jointe fetchée: ${full.name}, contentBytes: ${full.contentBytes ? full.contentBytes.length + ' chars' : 'VIDE'}`)
+        return full
+      } catch (e: any) {
+        console.error(`[Processor] Erreur fetch pièce jointe ${att.name}:`, e.message)
+        return att
+      }
+    })
+  )
+
+  return attachments
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ProcessResult =
@@ -65,8 +101,7 @@ export type ProcessResult =
 export async function processEmailMessage(messageId: string): Promise<ProcessResult> {
   const supabase = createAdminClient()
 
-  // 0. Anti-doublon sur source_email_id — upsert atomique pour éviter les concurrences
-  //    On insère d'abord un placeholder, si conflit → déjà traité
+  // 0. Anti-doublon atomique via source_email_id UNIQUE
   const { error: lockError } = await supabase
     .from('incoming_missions')
     .insert({
@@ -79,16 +114,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     })
 
   if (lockError) {
-    // Code 23505 = unique violation sur source_email_id → déjà en cours ou traité
     if (lockError.code === '23505') {
-      console.log(`[Processor] Doublon source_email_id ignoré: ${messageId.slice(-8)}`)
+      console.log(`[Processor] Doublon ignoré: ${messageId.slice(-8)}`)
       return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
     }
-    // Autre erreur — on continue quand même (le placeholder n'a pas été créé)
-    console.warn('[Processor] Lock insert warning:', lockError.message)
+    console.warn('[Processor] Lock warning:', lockError.message)
   }
 
-  // Récupérer l'ID du placeholder créé pour le mettre à jour ensuite
   const { data: placeholder } = await supabase
     .from('incoming_missions')
     .select('id')
@@ -110,29 +142,31 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const subject    = (message.subject as string)                      || ''
     const receivedAt = (message.receivedDateTime as string)             || new Date().toISOString()
 
+    console.log(`[Processor] Email: from="${fromEmail}" subject="${subject}" hasAttachments=${message.hasAttachments}`)
+
     // 2. Détecter la source
     const source = await detectSource(fromEmail, subject)
 
     if (source === 'unknown') {
       console.warn(`[Processor] Source inconnue — from: ${fromEmail}`)
-      // Supprimer le placeholder
       if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
       await markAsRead(token, messageId)
       return { status: 'skipped', reason: `Source inconnue: ${fromEmail}` }
     }
 
-    // 3. Pièces jointes
+    // 3. Pièces jointes — fetch individuel pour avoir contentBytes
     let attachments: any[] = []
     if (message.hasAttachments) {
-      const attData = await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments`)
-      attachments   = attData.value || []
+      attachments = await getAttachmentsWithContent(token, messageId)
     }
 
     // 4. Extraire le contenu
     const content = await extractContent(message, attachments, source)
 
+    console.log(`[Processor] Contenu extrait: format=${content.sourceFormat} longueur=${content.textContent.length} chars`)
+
     if (!content.textContent && !content.pdfBase64) {
-      console.warn(`[Processor] Contenu vide pour ${source} — messageId: ${messageId.slice(-8)}`)
+      console.warn(`[Processor] Contenu vide pour ${source}`)
       if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
       await markAsRead(token, messageId)
       return { status: 'skipped', reason: `Contenu vide (source: ${source})` }
@@ -143,9 +177,8 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     try {
       parsed = await parseMissionContent(source, content, subject)
     } catch (parseErr: any) {
-      console.error(`[Processor] Erreur parsing "${subject}":`, parseErr.message)
+      console.error(`[Processor] Erreur parsing:`, parseErr.message)
 
-      // Mettre à jour le placeholder avec l'erreur
       if (placeholderId) {
         await supabase.from('incoming_missions').update({
           external_id:   `ERR_${Date.now()}_${messageId.slice(-8)}`,
@@ -168,7 +201,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'error', error: parseErr.message, missionId: placeholderId }
     }
 
-    // 6. Mettre à jour le placeholder avec les données parsées
+    // 6. Mettre à jour le placeholder
     const { error: updateError } = await supabase
       .from('incoming_missions')
       .update({
@@ -210,7 +243,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'error', error: updateError.message }
     }
 
-    // 7. Log de réception
+    // 7. Log
     await supabase.from('mission_logs').insert({
       mission_id: placeholderId!,
       action:     'received',
@@ -218,7 +251,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       metadata:   { source_email_id: messageId, confidence: parsed.confidence, from: fromEmail }
     })
 
-    // 8. Push dispatchers
+    // 8. Push
     const typeLabel = parsed.mission_type === 'remorquage' ? '🚛 Remorquage'
                     : parsed.mission_type === 'depannage'  ? '🔧 Dépannage'
                     : parsed.mission_type === 'transport'  ? '🚐 Transport'
@@ -239,11 +272,10 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     return { status: 'inserted', missionId: placeholderId!, externalId: parsed.external_id, source }
 
   } catch (err: any) {
-    // Erreur inattendue — nettoyer le placeholder
     console.error('[Processor] Erreur inattendue:', err.message)
     if (placeholderId) {
       await supabase.from('incoming_missions').update({
-        status:     'parse_error',
+        status:      'parse_error',
         raw_content: `Erreur: ${err.message}`.slice(0, 10000),
       }).eq('id', placeholderId)
     }
