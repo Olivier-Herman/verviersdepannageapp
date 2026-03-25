@@ -294,7 +294,7 @@ export default function DispatchClient({
                     
                     return (
                       <tr key={m.id}
-                        className="transition hover:bg-[#222] cursor-pointer"
+                        className={`transition hover:bg-[#222] cursor-pointer ${delai.color === 'text-red-400' ? 'animate-pulse bg-red-500/5' : ''}`}
                         onClick={() => router.push(`/dispatch/${m.id}`)}
                       >
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
