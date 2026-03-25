@@ -235,6 +235,9 @@ export type MissionSource =
   | 'ardenne'
   | 'mondial'
   | 'vab'
+  | 'police'
+  | 'prive'
+  | 'garage'
   | 'unknown'
 
 export type MissionStatus =

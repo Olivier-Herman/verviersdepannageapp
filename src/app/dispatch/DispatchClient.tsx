@@ -56,6 +56,9 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   ardenne:  { label: 'ARDENNE',  color: 'bg-orange-600' },
   mondial:  { label: 'MONDIAL',  color: 'bg-teal-600' },
   vab:      { label: 'VAB',      color: 'bg-yellow-600' },
+  police:   { label: 'POLICE',   color: 'bg-blue-900' },
+  prive:    { label: 'PRIVÉ',    color: 'bg-zinc-700' },
+  garage:   { label: 'GARAGE',   color: 'bg-amber-700' },
   unknown:  { label: '?',        color: 'bg-zinc-600' },
 }
 
@@ -89,7 +92,7 @@ const TABS = [
   { key: 'all',         label: 'Toutes',      countKey: null },
 ]
 
-const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'vab']
+const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'vab', 'police', 'prive', 'garage']
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
@@ -161,6 +164,20 @@ export default function DispatchClient({
   const [counters,     setCounters]     = useState<Counters>({ new: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState('')
+  const [dispatchMode, setDispatchMode] = useState<'manual'|'auto'>('manual')
+  const [modeLoading,  setModeLoading]  = useState(false)
+
+  const toggleMode = async () => {
+    const newMode = dispatchMode === 'manual' ? 'auto' : 'manual'
+    setModeLoading(true)
+    await fetch('/api/missions/dispatch-mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: newMode })
+    })
+    setDispatchMode(newMode)
+    setModeLoading(false)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -179,6 +196,12 @@ export default function DispatchClient({
   }, [activeTab, sourceFilter])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch('/api/missions/dispatch-mode')
+      .then(r => r.json())
+      .then(d => setDispatchMode(d.mode || 'manual'))
+  }, [])
   useEffect(() => {
     const interval = setInterval(load, 30000)
     return () => clearInterval(interval)
@@ -234,6 +257,25 @@ export default function DispatchClient({
                 title="Actualiser">
                 ↻
               </button>
+
+              {/* Switch Manuel / Auto */}
+              <div className="flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2">
+                <span className="text-zinc-500 text-xs">Dispatch</span>
+                <button
+                  onClick={toggleMode}
+                  disabled={modeLoading}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                    dispatchMode === 'auto' ? 'bg-brand' : 'bg-zinc-700'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    dispatchMode === 'auto' ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+                <span className={`text-xs font-medium ${dispatchMode === 'auto' ? 'text-brand' : 'text-zinc-400'}`}>
+                  {dispatchMode === 'auto' ? 'Auto' : 'Manuel'}
+                </span>
+              </div>
             </div>
           </div>
 

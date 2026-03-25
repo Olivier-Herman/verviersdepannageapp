@@ -22,7 +22,7 @@ interface ErrorMission {
   raw_content: string | null
 }
 
-const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'vab', 'unknown']
+const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'vab', 'police', 'prive', 'garage', 'unknown']
 
 export default function AdminMissionsPage() {
   const [senders,       setSenders]       = useState<Sender[]>([])
@@ -90,7 +90,8 @@ export default function AdminMissionsPage() {
   const SOURCE_COLORS: Record<string, string> = {
     touring: 'bg-blue-600',  ethias: 'bg-green-600', vivium: 'bg-purple-600',
     axa: 'bg-red-600', ardenne: 'bg-orange-600', mondial: 'bg-teal-600',
-    vab: 'bg-yellow-600', unknown: 'bg-zinc-600',
+    vab: 'bg-yellow-600', police: 'bg-blue-900', prive: 'bg-zinc-700',
+    garage: 'bg-amber-700', unknown: 'bg-zinc-600',
   }
 
   return (

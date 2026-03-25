@@ -67,6 +67,9 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   ardenne:  { label: 'ARDENNE',  color: 'bg-orange-600' },
   mondial:  { label: 'MONDIAL',  color: 'bg-teal-600' },
   vab:      { label: 'VAB',      color: 'bg-yellow-600' },
+  police:   { label: 'POLICE',   color: 'bg-blue-900' },
+  prive:    { label: 'PRIVÉ',    color: 'bg-zinc-700' },
+  garage:   { label: 'GARAGE',   color: 'bg-amber-700' },
   unknown:  { label: '?',        color: 'bg-zinc-600' },
 }
 
