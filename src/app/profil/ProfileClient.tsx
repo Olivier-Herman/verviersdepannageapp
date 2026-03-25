@@ -143,14 +143,14 @@ export default function ProfileClient({ user }: { user: any }) {
     if (!raw) return ''
     // Déjà YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
-    // Format ISO avec T (ex: 2027-05-03T00:00:00)
+    // ISO avec T (ex: 2027-05-03T00:00:00)
     if (raw.includes('T')) return raw.split('T')[0]
-    // Autres formats — reconstruction manuelle
+    // Reconstruction manuelle pour formats iOS localisés
     try {
       const d = new Date(raw)
       if (!isNaN(d.getTime())) {
-        const y = d.getFullYear()
-        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const y   = d.getFullYear()
+        const m   = String(d.getMonth() + 1).padStart(2, '0')
         const day = String(d.getDate()).padStart(2, '0')
         return `${y}-${m}-${day}`
       }
