@@ -1,21 +1,18 @@
 // src/app/api/missions/subscribe/route.ts
 // Crée ou renouvelle la subscription Microsoft Graph sur la boîte assistance@verviersdepannage.be
-//
-// GET  /api/missions/subscribe?secret=CRON_SECRET → créer/renouveler la subscription
-// La subscription expire après 4320 minutes (3 jours) — renouvelée quotidiennement par le cron
 
-import { NextResponse }    from 'next/server'
-import { getGraphToken }   from '@/lib/missions/processor'
+import { NextResponse }      from 'next/server'
+import { getGraphToken }     from '@/lib/missions/processor'
 import { createAdminClient } from '@/lib/supabase'
 
-const MISSIONS_EMAIL   = process.env.MISSIONS_EMAIL!   // assistance@verviersdepannage.be
-const APP_URL          = process.env.NEXT_PUBLIC_APP_URL! // https://app.verviersdepannage.com
+const MISSIONS_EMAIL   = process.env.MISSIONS_EMAIL!
+const APP_URL          = process.env.NEXT_PUBLIC_APP_URL!
 const WEBHOOK_SECRET   = process.env.GRAPH_WEBHOOK_SECRET!
 const WEBHOOK_ENDPOINT = `${APP_URL}/api/missions/webhook`
 
-// Durée max autorisée par Graph pour les mails : 4320 minutes = 3 jours
+// Graph autorise max 4230 minutes (~3 jours) pour les messages mail
 // On prend 2 jours pour renouveler avec marge
-const EXPIRY_MINUTES = 2 * 24 * 60  // 2880 minutes
+const EXPIRY_MINUTES = 2 * 24 * 60
 
 function getExpiryDateTime(): string {
   const d = new Date()
@@ -32,7 +29,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const token   = await getGraphToken()
+    const token    = await getGraphToken()
     const supabase = createAdminClient()
 
     // Récupérer l'ID de subscription stocké en base
@@ -48,7 +45,7 @@ export async function GET(req: Request) {
     let action: 'created' | 'renewed'
 
     if (existingSubId) {
-      // ── Tenter de renouveler la subscription existante ─────────────
+      // Tenter de renouveler la subscription existante
       const renewRes = await fetch(
         `https://graph.microsoft.com/v1.0/subscriptions/${existingSubId}`,
         {
@@ -62,12 +59,12 @@ export async function GET(req: Request) {
       )
 
       if (renewRes.ok) {
-        const renewed = await renewRes.json()
+        const renewed  = await renewRes.json()
         subscriptionId = renewed.id
         action         = 'renewed'
-        console.log(`[Subscribe] Subscription renouvelée: ${subscriptionId} jusqu'au ${renewed.expirationDateTime}`)
+        console.log(`[Subscribe] Renouvelée: ${subscriptionId}`)
       } else {
-        // La subscription n'existe plus côté Graph — en créer une nouvelle
+        // Subscription expirée côté Graph — recréer
         console.warn('[Subscribe] Renouvellement échoué, recréation...')
         subscriptionId = await createSubscription(token)
         action         = 'created'
@@ -81,7 +78,10 @@ export async function GET(req: Request) {
     await supabase
       .from('app_settings')
       .upsert(
-        { key: 'graph_subscription_id', value: { id: subscriptionId, updated_at: new Date().toISOString() } },
+        {
+          key:   'graph_subscription_id',
+          value: { id: subscriptionId, updated_at: new Date().toISOString() }
+        },
         { onConflict: 'key' }
       )
 
@@ -95,14 +95,11 @@ export async function GET(req: Request) {
 
 async function createSubscription(token: string): Promise<string> {
   const body = {
-    changeType:            'created',
-    notificationUrl:       WEBHOOK_ENDPOINT,
-    resource:              `users/${MISSIONS_EMAIL}/mailFolders/inbox/messages`,
-    expirationDateTime:    getExpiryDateTime(),
-    clientState:           WEBHOOK_SECRET,
-    // Inclure le resourceData dans la notification pour avoir le messageId directement
-    includeResourceData:   false,  // false = on reçoit juste l'ID, pas le contenu complet (plus sécurisé)
-    latencyMinutes:        0,      // Notification immédiate
+    changeType:         'created',
+    notificationUrl:    WEBHOOK_ENDPOINT,
+    resource:           `users/${MISSIONS_EMAIL}/mailFolders/inbox/messages`,
+    expirationDateTime: getExpiryDateTime(),
+    clientState:        WEBHOOK_SECRET,
   }
 
   const res = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
@@ -116,10 +113,10 @@ async function createSubscription(token: string): Promise<string> {
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Création subscription Graph échouée (${res.status}): ${err.slice(0, 300)}`)
+    throw new Error(`Création subscription échouée (${res.status}): ${err.slice(0, 300)}`)
   }
 
   const sub = await res.json()
-  console.log(`[Subscribe] Subscription créée: ${sub.id} jusqu'au ${sub.expirationDateTime}`)
+  console.log(`[Subscribe] Créée: ${sub.id} jusqu'au ${sub.expirationDateTime}`)
   return sub.id
 }
