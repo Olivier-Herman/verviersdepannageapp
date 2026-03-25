@@ -51,36 +51,41 @@ async function markAsRead(token: string, messageId: string): Promise<void> {
 }
 
 /**
- * Récupère les pièces jointes avec leur contenu complet.
- * Graph ne retourne PAS contentBytes dans le listing /attachments —
- * il faut fetcher chaque pièce jointe individuellement via /attachments/{id}
+ * Récupère les pièces jointes avec contenu complet.
+ * Retourne [] si l'endpoint retourne 404 (certains emails Graph) — le caller utilisera le fallback body.
  */
 async function getAttachmentsWithContent(token: string, messageId: string): Promise<any[]> {
-  // D'abord, lister les pièces jointes (sans contentBytes)
-  const listing = await graphGet(
-    token,
-    `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments` +
-    `?$select=id,name,contentType,size`
-  )
+  let attachmentMeta: any[] = []
 
-  const attachmentMeta: any[] = listing.value || []
-  console.log(`[Processor] ${attachmentMeta.length} pièce(s) jointe(s) trouvée(s):`,
-    attachmentMeta.map(a => `${a.name} (${a.contentType}, ${a.size} bytes)`).join(', ')
+  try {
+    const listing = await graphGet(
+      token,
+      `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments?$select=id,name,contentType,size`
+    )
+    attachmentMeta = listing.value || []
+  } catch (e: any) {
+    // 404 = Graph ne trouve pas les pièces jointes pour ce message
+    // On retourne [] — le caller tombera sur le fallback body
+    console.warn(`[Processor] Attachments non disponibles (404 probablement) — fallback body`)
+    return []
+  }
+
+  console.log(`[Processor] ${attachmentMeta.length} pièce(s) jointe(s):`,
+    attachmentMeta.map((a: any) => `${a.name} (${a.size}b)`).join(', ')
   )
 
   // Fetcher chaque pièce jointe individuellement pour avoir contentBytes
   const attachments = await Promise.all(
-    attachmentMeta.map(async (att) => {
+    attachmentMeta.map(async (att: any) => {
       try {
         const full = await graphGet(
           token,
           `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments/${att.id}`
         )
-        console.log(`[Processor] Pièce jointe fetchée: ${full.name}, contentBytes: ${full.contentBytes ? full.contentBytes.length + ' chars' : 'VIDE'}`)
         return full
       } catch (e: any) {
-        console.error(`[Processor] Erreur fetch pièce jointe ${att.name}:`, e.message)
-        return att
+        console.warn(`[Processor] Erreur fetch pièce jointe ${att.name}:`, e.message)
+        return att // Retourner sans contentBytes — sera ignoré par l'extractor
       }
     })
   )
@@ -142,19 +147,12 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const subject    = (message.subject as string)                      || ''
     const receivedAt = (message.receivedDateTime as string)             || new Date().toISOString()
 
-    console.log(`[Processor] Email: from="${fromEmail}" subject="${subject}" hasAttachments=${message.hasAttachments}`)
+    console.log(`[Processor] Email: from="${fromEmail}" subject="${subject}"`)
 
     // 2. Détecter la source
     const source = await detectSource(fromEmail, subject)
 
-    if (source === 'unknown') {
-      console.warn(`[Processor] Source inconnue — from: ${fromEmail}`)
-      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
-      await markAsRead(token, messageId)
-      return { status: 'skipped', reason: `Source inconnue: ${fromEmail}` }
-    }
-
-    // 3. Pièces jointes — fetch individuel pour avoir contentBytes
+    // 3. Pièces jointes — 404 géré gracieusement
     let attachments: any[] = []
     if (message.hasAttachments) {
       attachments = await getAttachmentsWithContent(token, messageId)
@@ -162,9 +160,37 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     // 4. Extraire le contenu
     const content = await extractContent(message, attachments, source)
+    console.log(`[Processor] Contenu: format=${content.sourceFormat} longueur=${content.textContent.length}`)
 
-    console.log(`[Processor] Contenu extrait: format=${content.sourceFormat} longueur=${content.textContent.length} chars`)
+    // 5. Source inconnue → stocker + notifier admin (au lieu de skipper)
+    if (source === 'unknown') {
+      console.warn(`[Processor] Source inconnue: ${fromEmail}`)
 
+      if (placeholderId) {
+        await supabase.from('incoming_missions').update({
+          external_id:   `UNKNOWN_SENDER_${Date.now()}`,
+          source:        'unknown',
+          source_format: content.sourceFormat,
+          status:        'new',
+          raw_content:   content.rawContent.slice(0, 10000),
+          received_at:   receivedAt,
+        }).eq('id', placeholderId)
+      }
+
+      // Notifier les admins pour qu'ils ajoutent ce sender à mission_senders
+      await sendPushToRole(['admin', 'superadmin'], {
+        title: '⚠️ Expéditeur inconnu',
+        body:  `Email de ${fromEmail} — à identifier et ajouter dans les paramètres`,
+        url:   '/admin/settings',
+        tag:   `unknown-sender-${fromEmail}`,
+        icon:  '/icons/apple-touch-icon.png'
+      })
+
+      await markAsRead(token, messageId)
+      return { status: 'skipped', reason: `Source inconnue stockée: ${fromEmail}` }
+    }
+
+    // 6. Contenu vide — skipper proprement
     if (!content.textContent && !content.pdfBase64) {
       console.warn(`[Processor] Contenu vide pour ${source}`)
       if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
@@ -172,7 +198,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'skipped', reason: `Contenu vide (source: ${source})` }
     }
 
-    // 5. Parser avec Claude API
+    // 7. Parser avec Claude API
     let parsed
     try {
       parsed = await parseMissionContent(source, content, subject)
@@ -201,7 +227,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'error', error: parseErr.message, missionId: placeholderId }
     }
 
-    // 6. Mettre à jour le placeholder
+    // 8. Mettre à jour le placeholder avec les données parsées
     const { error: updateError } = await supabase
       .from('incoming_missions')
       .update({
@@ -239,11 +265,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     await markAsRead(token, messageId)
 
-    if (updateError) {
-      return { status: 'error', error: updateError.message }
-    }
+    if (updateError) return { status: 'error', error: updateError.message }
 
-    // 7. Log
+    // 9. Log
     await supabase.from('mission_logs').insert({
       mission_id: placeholderId!,
       action:     'received',
@@ -251,11 +275,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       metadata:   { source_email_id: messageId, confidence: parsed.confidence, from: fromEmail }
     })
 
-    // 8. Push
-    const typeLabel = parsed.mission_type === 'remorquage' ? '🚛 Remorquage'
-                    : parsed.mission_type === 'depannage'  ? '🔧 Dépannage'
-                    : parsed.mission_type === 'transport'  ? '🚐 Transport'
-                    : '📋 Mission'
+    // 10. Push dispatchers
+    const typeLabel    = parsed.mission_type === 'remorquage' ? '🚛 Remorquage'
+                       : parsed.mission_type === 'depannage'  ? '🔧 Dépannage'
+                       : parsed.mission_type === 'transport'  ? '🚐 Transport'
+                       : '📋 Mission'
 
     const vehicleLabel = [parsed.vehicle_brand, parsed.vehicle_model, parsed.vehicle_plate]
       .filter(Boolean).join(' ')

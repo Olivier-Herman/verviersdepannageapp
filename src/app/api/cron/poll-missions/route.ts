@@ -1,15 +1,12 @@
 // src/app/api/cron/poll-missions/route.ts
-// Polling de secours — lit les emails non lus de la boîte assistance@
-// Utile si le webhook a raté une notification (redémarrage, timeout, etc.)
-// Tournait toutes les 30 min en fallback, maintenant désactivé au profit du webhook
-// mais gardé comme filet de sécurité
+// Polling de secours — lit les emails non lus comme fallback au webhook
 
-import { NextResponse }             from 'next/server'
-import { createAdminClient }        from '@/lib/supabase'
+import { NextResponse }                 from 'next/server'
+import { createAdminClient }            from '@/lib/supabase'
 import { detectSource, extractContent } from '@/lib/missions/extractor'
-import { parseMissionContent }      from '@/lib/missions/parser'
-import { sendPushToRole }           from '@/lib/push'
-import { getGraphToken }            from '@/lib/missions/processor'
+import { parseMissionContent }          from '@/lib/missions/parser'
+import { sendPushToRole }               from '@/lib/push'
+import { getGraphToken }                from '@/lib/missions/processor'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 const MAX_MESSAGES   = 25
@@ -36,16 +33,44 @@ async function markAsRead(token: string, messageId: string): Promise<void> {
   )
 }
 
+/**
+ * Récupère les pièces jointes avec contenu — retourne [] si 404
+ */
+async function getAttachmentsWithContent(token: string, messageId: string): Promise<any[]> {
+  let meta: any[] = []
+  try {
+    const listing = await graphGet(
+      token,
+      `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments?$select=id,name,contentType,size`
+    )
+    meta = listing.value || []
+  } catch {
+    console.warn(`[PollMissions] Attachments 404 — fallback body`)
+    return []
+  }
+
+  return Promise.all(
+    meta.map(async (att: any) => {
+      try {
+        return await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments/${att.id}`)
+      } catch {
+        return att
+      }
+    })
+  )
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase    = createAdminClient()
-  const processed:  string[] = []
-  const skipped:    string[] = []
-  const errors:     string[] = []
+  const supabase   = createAdminClient()
+  const processed: string[] = []
+  const skipped:   string[] = []
+  const errors:    string[] = []
+  const unknown:   string[] = []
   let   newMissions = 0
 
   try {
@@ -83,32 +108,58 @@ export async function GET(req: Request) {
           continue
         }
 
-        // Détecter la source (async — consulte la DB)
+        // Détecter la source
         const source = await detectSource(fromEmail, subject)
 
+        // Pièces jointes — 404 géré
+        let attachments: any[] = []
+        if (message.hasAttachments) {
+          attachments = await getAttachmentsWithContent(token, messageId)
+        }
+
+        // Extraire le contenu
+        const content = await extractContent(message, attachments, source)
+
+        // Source inconnue → stocker + notifier admin
         if (source === 'unknown') {
           console.warn(`[PollMissions] Source inconnue: from="${fromEmail}"`)
+
+          await supabase.from('incoming_missions').insert({
+            external_id:     `UNKNOWN_SENDER_${Date.now()}`,
+            source:          'unknown',
+            source_format:   content.sourceFormat,
+            source_email_id: messageId,
+            status:          'new',
+            raw_content:     content.rawContent.slice(0, 10000),
+            received_at:     receivedAt,
+          })
+
+          await sendPushToRole(['admin', 'superadmin'], {
+            title: '⚠️ Expéditeur inconnu',
+            body:  `Email de ${fromEmail} — à identifier dans les paramètres`,
+            url:   '/admin/settings',
+            tag:   `unknown-sender-${fromEmail}`,
+            icon:  '/icons/apple-touch-icon.png'
+          })
+
+          await markAsRead(token, messageId)
+          unknown.push(fromEmail)
+          continue
+        }
+
+        // Contenu vide → skip silencieux
+        if (!content.textContent && !content.pdfBase64) {
           await markAsRead(token, messageId)
           skipped.push(subject)
           continue
         }
 
-        // Pièces jointes
-        let attachments: any[] = []
-        if (message.hasAttachments) {
-          const attData  = await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments`)
-          attachments = attData.value || []
-        }
-
-        // Extraire + parser
-        const content = await extractContent(message, attachments, source)
-
+        // Parser avec Claude
         let parsed
         try {
           parsed = await parseMissionContent(source, content, subject)
         } catch (parseErr: any) {
           console.error(`[PollMissions] Erreur parsing "${subject}":`, parseErr.message)
-
           await supabase.from('incoming_missions').insert({
             external_id:     `ERR_${Date.now()}_${messageId.slice(-8)}`,
             source,
@@ -118,7 +169,6 @@ export async function GET(req: Request) {
             raw_content:     content.rawContent.slice(0, 10000),
             received_at:     receivedAt,
           })
-
           await markAsRead(token, messageId)
           errors.push(subject)
           continue
@@ -198,7 +248,15 @@ export async function GET(req: Request) {
       })
     }
 
-    return NextResponse.json({ ok: true, new: newMissions, skipped: skipped.length, errors: errors.length, processed })
+    return NextResponse.json({
+      ok:        true,
+      new:       newMissions,
+      skipped:   skipped.length,
+      errors:    errors.length,
+      unknown:   unknown.length,
+      processed,
+      ...(unknown.length > 0 && { unknown_senders: unknown })
+    })
 
   } catch (err: any) {
     console.error('[PollMissions] Erreur fatale:', err)
