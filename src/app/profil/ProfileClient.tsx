@@ -96,7 +96,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
   const openEdit = (type: string) => {
     const existing = getDoc(type)
-    setFormExpiry(existing?.expires_at?.split('T')[0] ?? '')
+    setFormExpiry(normalizeDate(existing?.expires_at ?? ''))
     setFormNotes(existing?.notes ?? '')
     setFormFile(null); setFormPreview(null); setDocError(null)
     setEditDoc(type)
@@ -141,7 +141,11 @@ export default function ProfileClient({ user }: { user: any }) {
   // Normalise n'importe quel format de date vers YYYY-MM-DD
   const normalizeDate = (raw: string): string => {
     if (!raw) return ''
+    // Déjà YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+    // Format ISO avec T (ex: 2027-05-03T00:00:00)
+    if (raw.includes('T')) return raw.split('T')[0]
+    // Autres formats — reconstruction manuelle
     try {
       const d = new Date(raw)
       if (!isNaN(d.getTime())) {
