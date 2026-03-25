@@ -25,9 +25,9 @@ export async function detectSource(
       .eq('active', true)
 
     if (error) {
-      console.error('[Extractor] Supabase mission_senders error:', error.message, error.code)
+      console.error('[Extractor] mission_senders error:', error.message, error.code)
     } else {
-      console.log(`[Extractor] mission_senders: ${senders?.length ?? 0} entrées chargées`)
+      console.log(`[Extractor] mission_senders: ${senders?.length ?? 0} entrées`)
     }
 
     if (senders?.length) {
@@ -128,6 +128,14 @@ function htmlToText(html: string): string {
     .trim()
 }
 
+// ── Corps email → texte ───────────────────────────────────────────────────────
+
+function extractEmailBody(body: { content: string; contentType: string }): string {
+  if (!body?.content) return ''
+  if (body.contentType?.toLowerCase() === 'text') return body.content
+  return htmlToText(body.content)
+}
+
 // ── Extraction principale ─────────────────────────────────────────────────────
 
 export async function extractContent(
@@ -144,6 +152,7 @@ export async function extractContent(
   source: MissionSource
 ): Promise<ExtractedContent> {
 
+  // === TOURING → RTF joint en priorité, fallback corps email ===
   if (source === 'touring') {
     const rtfAtt = attachments.find(a =>
       a.name?.toLowerCase().endsWith('.rtf') ||
@@ -152,10 +161,14 @@ export async function extractContent(
     if (rtfAtt) {
       const rtfRaw = Buffer.from(rtfAtt.contentBytes, 'base64').toString('latin1')
       const text   = extractRtfText(rtfRaw)
-      return { textContent: text, sourceFormat: 'rtf', rawContent: text }
+      if (text) return { textContent: text, sourceFormat: 'rtf', rawContent: text }
     }
+    // Fallback corps email (email de test sans RTF, ou email de transfert)
+    const bodyText = extractEmailBody(graphMessage.body)
+    return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
+  // === VAB → DOCX joint ===
   if (source === 'vab') {
     const docxAtt = attachments.find(a =>
       a.name?.toLowerCase().endsWith('.docx') ||
@@ -168,13 +181,16 @@ export async function extractContent(
         const buffer  = Buffer.from(docxAtt.contentBytes, 'base64')
         const result  = await mammoth.extractRawText({ buffer })
         const text    = result.value.trim()
-        return { textContent: text, sourceFormat: 'docx', rawContent: text }
+        if (text) return { textContent: text, sourceFormat: 'docx', rawContent: text }
       } catch (e) {
-        console.error('[Extractor] Mammoth DOCX error:', e)
+        console.error('[Extractor] Mammoth error:', e)
       }
     }
+    const bodyText = extractEmailBody(graphMessage.body)
+    return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
+  // === MONDIAL / ALLIANZ → PDF joint ===
   if (source === 'mondial') {
     const pdfAtt = attachments.find(a =>
       a.name?.toLowerCase().endsWith('.pdf') ||
@@ -188,16 +204,11 @@ export async function extractContent(
         rawContent:   `[PDF: ${pdfAtt.name}]`
       }
     }
+    const bodyText = extractEmailBody(graphMessage.body)
+    return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
-  const body = graphMessage.body
-  let text   = ''
-
-  if (body.contentType?.toLowerCase() === 'text') {
-    text = body.content || ''
-  } else {
-    text = htmlToText(body.content || '')
-  }
-
-  return { textContent: text, sourceFormat: 'email_plain', rawContent: text }
+  // === IMA, AXA, ARDENNE → corps email ===
+  const bodyText = extractEmailBody(graphMessage.body)
+  return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
 }

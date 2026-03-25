@@ -65,98 +65,117 @@ export type ProcessResult =
 export async function processEmailMessage(messageId: string): Promise<ProcessResult> {
   const supabase = createAdminClient()
 
-  // 0. Anti-doublon rapide sur source_email_id
-  const { data: already } = await supabase
+  // 0. Anti-doublon sur source_email_id — upsert atomique pour éviter les concurrences
+  //    On insère d'abord un placeholder, si conflit → déjà traité
+  const { error: lockError } = await supabase
+    .from('incoming_missions')
+    .insert({
+      external_id:     `PROCESSING_${messageId.slice(-16)}`,
+      source:          'unknown',
+      source_format:   'unknown',
+      source_email_id: messageId,
+      status:          'new',
+      received_at:     new Date().toISOString(),
+    })
+
+  if (lockError) {
+    // Code 23505 = unique violation sur source_email_id → déjà en cours ou traité
+    if (lockError.code === '23505') {
+      console.log(`[Processor] Doublon source_email_id ignoré: ${messageId.slice(-8)}`)
+      return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
+    }
+    // Autre erreur — on continue quand même (le placeholder n'a pas été créé)
+    console.warn('[Processor] Lock insert warning:', lockError.message)
+  }
+
+  // Récupérer l'ID du placeholder créé pour le mettre à jour ensuite
+  const { data: placeholder } = await supabase
     .from('incoming_missions')
     .select('id')
     .eq('source_email_id', messageId)
     .maybeSingle()
 
-  if (already) {
-    return { status: 'duplicate', externalId: 'already_processed', source: 'unknown' }
-  }
+  const placeholderId = placeholder?.id
 
-  // 1. Récupérer l'email depuis Graph
-  let token: string
   try {
-    token = await getGraphToken()
-  } catch (e: any) {
-    throw new Error(`Token Graph: ${e.message}`)
-  }
+    // 1. Récupérer l'email depuis Graph
+    const token   = await getGraphToken()
+    const message = await graphGet(
+      token,
+      `/users/${MISSIONS_EMAIL}/messages/${messageId}` +
+      `?$select=id,subject,from,receivedDateTime,hasAttachments,body`
+    )
 
-  const message = await graphGet(
-    token,
-    `/users/${MISSIONS_EMAIL}/messages/${messageId}` +
-    `?$select=id,subject,from,receivedDateTime,hasAttachments,body`
-  )
+    const fromEmail  = (message.from?.emailAddress?.address as string) || ''
+    const subject    = (message.subject as string)                      || ''
+    const receivedAt = (message.receivedDateTime as string)             || new Date().toISOString()
 
-  const fromEmail  = (message.from?.emailAddress?.address as string) || ''
-  const subject    = (message.subject as string)                      || ''
-  const receivedAt = (message.receivedDateTime as string)             || new Date().toISOString()
+    // 2. Détecter la source
+    const source = await detectSource(fromEmail, subject)
 
-  // 2. Détecter la source (DB d'abord, fallback hardcodé)
-  const source = await detectSource(fromEmail, subject)
-
-  if (source === 'unknown') {
-    console.warn(`[Processor] Source inconnue — from: ${fromEmail} | subject: ${subject}`)
-    await markAsRead(token, messageId)
-    return { status: 'skipped', reason: `Source inconnue: ${fromEmail}` }
-  }
-
-  // 3. Récupérer les pièces jointes si nécessaire
-  let attachments: any[] = []
-  if (message.hasAttachments) {
-    const attData = await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments`)
-    attachments   = attData.value || []
-  }
-
-  // 4. Extraire le contenu
-  const content = await extractContent(message, attachments, source)
-
-  // 5. Parser avec Claude API
-  let parsed
-  try {
-    parsed = await parseMissionContent(source, content, subject)
-  } catch (parseErr: any) {
-    console.error(`[Processor] Erreur parsing "${subject}":`, parseErr.message)
-
-    const { data: errRow } = await supabase
-      .from('incoming_missions')
-      .insert({
-        external_id:     `ERR_${Date.now()}_${messageId.slice(-8)}`,
-        source,
-        source_format:   content.sourceFormat,
-        source_email_id: messageId,
-        status:          'parse_error',
-        raw_content:     content.rawContent.slice(0, 10000),
-        received_at:     receivedAt,
-      })
-      .select('id')
-      .single()
-
-    if (errRow) {
-      await supabase.from('mission_logs').insert({
-        mission_id: errRow.id,
-        action:     'error',
-        notes:      parseErr.message,
-        metadata:   { from: fromEmail, subject }
-      })
+    if (source === 'unknown') {
+      console.warn(`[Processor] Source inconnue — from: ${fromEmail}`)
+      // Supprimer le placeholder
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      await markAsRead(token, messageId)
+      return { status: 'skipped', reason: `Source inconnue: ${fromEmail}` }
     }
 
-    await markAsRead(token, messageId)
-    return { status: 'error', error: parseErr.message, missionId: errRow?.id }
-  }
+    // 3. Pièces jointes
+    let attachments: any[] = []
+    if (message.hasAttachments) {
+      const attData = await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments`)
+      attachments   = attData.value || []
+    }
 
-  // 6. Upsert en base
-  const { data: inserted, error: insertError } = await supabase
-    .from('incoming_missions')
-    .upsert(
-      {
+    // 4. Extraire le contenu
+    const content = await extractContent(message, attachments, source)
+
+    if (!content.textContent && !content.pdfBase64) {
+      console.warn(`[Processor] Contenu vide pour ${source} — messageId: ${messageId.slice(-8)}`)
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      await markAsRead(token, messageId)
+      return { status: 'skipped', reason: `Contenu vide (source: ${source})` }
+    }
+
+    // 5. Parser avec Claude API
+    let parsed
+    try {
+      parsed = await parseMissionContent(source, content, subject)
+    } catch (parseErr: any) {
+      console.error(`[Processor] Erreur parsing "${subject}":`, parseErr.message)
+
+      // Mettre à jour le placeholder avec l'erreur
+      if (placeholderId) {
+        await supabase.from('incoming_missions').update({
+          external_id:   `ERR_${Date.now()}_${messageId.slice(-8)}`,
+          source,
+          source_format: content.sourceFormat,
+          status:        'parse_error',
+          raw_content:   content.rawContent.slice(0, 10000),
+          received_at:   receivedAt,
+        }).eq('id', placeholderId)
+
+        await supabase.from('mission_logs').insert({
+          mission_id: placeholderId,
+          action:     'error',
+          notes:      parseErr.message,
+          metadata:   { from: fromEmail, subject }
+        })
+      }
+
+      await markAsRead(token, messageId)
+      return { status: 'error', error: parseErr.message, missionId: placeholderId }
+    }
+
+    // 6. Mettre à jour le placeholder avec les données parsées
+    const { error: updateError } = await supabase
+      .from('incoming_missions')
+      .update({
         external_id:          parsed.external_id,
         dossier_number:       parsed.dossier_number,
         source,
         source_format:        content.sourceFormat,
-        source_email_id:      messageId,
         mission_type:         parsed.mission_type,
         incident_type:        parsed.incident_type,
         incident_description: parsed.incident_description,
@@ -182,50 +201,52 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         raw_content:          content.rawContent.slice(0, 10000),
         parsed_data:          parsed,
         parse_confidence:     parsed.confidence,
-      },
-      { onConflict: 'source,external_id', ignoreDuplicates: true }
-    )
-    .select('id')
-    .single()
+      })
+      .eq('id', placeholderId!)
 
-  await markAsRead(token, messageId)
+    await markAsRead(token, messageId)
 
-  if (insertError) {
-    if (insertError.code === '23505') {
-      return { status: 'duplicate', externalId: parsed.external_id, source }
+    if (updateError) {
+      return { status: 'error', error: updateError.message }
     }
-    return { status: 'error', error: insertError.message }
+
+    // 7. Log de réception
+    await supabase.from('mission_logs').insert({
+      mission_id: placeholderId!,
+      action:     'received',
+      notes:      `Reçu de ${source.toUpperCase()} — ${subject}`,
+      metadata:   { source_email_id: messageId, confidence: parsed.confidence, from: fromEmail }
+    })
+
+    // 8. Push dispatchers
+    const typeLabel = parsed.mission_type === 'remorquage' ? '🚛 Remorquage'
+                    : parsed.mission_type === 'depannage'  ? '🔧 Dépannage'
+                    : parsed.mission_type === 'transport'  ? '🚐 Transport'
+                    : '📋 Mission'
+
+    const vehicleLabel = [parsed.vehicle_brand, parsed.vehicle_model, parsed.vehicle_plate]
+      .filter(Boolean).join(' ')
+
+    await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+      title: `${typeLabel} — ${source.toUpperCase()}`,
+      body:  vehicleLabel || parsed.client_name || 'Nouvelle mission reçue',
+      url:   '/dispatch',
+      tag:   `mission-${placeholderId}`,
+      icon:  '/icons/apple-touch-icon.png'
+    })
+
+    console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence})`)
+    return { status: 'inserted', missionId: placeholderId!, externalId: parsed.external_id, source }
+
+  } catch (err: any) {
+    // Erreur inattendue — nettoyer le placeholder
+    console.error('[Processor] Erreur inattendue:', err.message)
+    if (placeholderId) {
+      await supabase.from('incoming_missions').update({
+        status:     'parse_error',
+        raw_content: `Erreur: ${err.message}`.slice(0, 10000),
+      }).eq('id', placeholderId)
+    }
+    return { status: 'error', error: err.message, missionId: placeholderId }
   }
-
-  if (!inserted) {
-    return { status: 'duplicate', externalId: parsed.external_id, source }
-  }
-
-  // 7. Log de réception
-  await supabase.from('mission_logs').insert({
-    mission_id: inserted.id,
-    action:     'received',
-    notes:      `Reçu de ${source.toUpperCase()} — ${subject}`,
-    metadata:   { source_email_id: messageId, confidence: parsed.confidence, from: fromEmail }
-  })
-
-  // 8. Push dispatchers
-  const typeLabel = parsed.mission_type === 'remorquage' ? '🚛 Remorquage'
-                  : parsed.mission_type === 'depannage'  ? '🔧 Dépannage'
-                  : parsed.mission_type === 'transport'  ? '🚐 Transport'
-                  : '📋 Mission'
-
-  const vehicleLabel = [parsed.vehicle_brand, parsed.vehicle_model, parsed.vehicle_plate]
-    .filter(Boolean).join(' ')
-
-  await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
-    title: `${typeLabel} — ${source.toUpperCase()}`,
-    body:  vehicleLabel || parsed.client_name || 'Nouvelle mission reçue',
-    url:   '/dispatch',
-    tag:   `mission-${inserted.id}`,
-    icon:  '/icons/apple-touch-icon.png'
-  })
-
-  console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence})`)
-  return { status: 'inserted', missionId: inserted.id, externalId: parsed.external_id, source }
 }
