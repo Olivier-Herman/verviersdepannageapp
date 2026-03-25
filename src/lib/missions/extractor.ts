@@ -1,19 +1,60 @@
 // src/lib/missions/extractor.ts
 // Détecte la source d'un email et extrait le contenu textuel
 // selon le format (RTF Touring, DOCX VAB, PDF Mondial, plain text IMA/AXA)
+//
+// Ordre de détection :
+// 1. Table mission_senders en DB (configurable via admin)
+// 2. Règles hardcodées par défaut (fallback)
 
 import type { MissionSource, MissionSourceFormat } from '@/types'
+import { createAdminClient } from '@/lib/supabase'
 
 export interface ExtractedContent {
-  textContent: string
-  pdfBase64?: string        // PDF Mondial → envoyé comme document natif à Claude
+  textContent:  string
+  pdfBase64?:   string
   sourceFormat: MissionSourceFormat
-  rawContent: string        // Stocké en DB pour debug
+  rawContent:   string
 }
 
-// ── Détection source par expéditeur ──────────────────────────────────────────
+// ── Détection source ──────────────────────────────────────────────────────────
 
-export function detectSource(fromEmail: string, subject: string): MissionSource {
+/**
+ * Cherche d'abord dans la table mission_senders (DB),
+ * puis applique les règles hardcodées en fallback.
+ */
+export async function detectSource(
+  fromEmail: string,
+  subject:   string
+): Promise<MissionSource> {
+  const supabase = createAdminClient()
+
+  // 1. Recherche dans la table mission_senders
+  const { data: senders } = await supabase
+    .from('mission_senders')
+    .select('email_pattern, source')
+    .eq('active', true)
+
+  if (senders?.length) {
+    const from = fromEmail.toLowerCase()
+    for (const sender of senders) {
+      const pattern = sender.email_pattern.toLowerCase()
+      // Support pattern exact (ex: olivier@hoos.cloud)
+      // ou domaine partiel (ex: @touring.be)
+      if (from === pattern || from.includes(pattern)) {
+        return sender.source as MissionSource
+      }
+    }
+  }
+
+  // 2. Règles hardcodées en fallback
+  return detectSourceFallback(fromEmail, subject)
+}
+
+/**
+ * Règles hardcodées — fallback si l'adresse n'est pas dans la DB.
+ * Toujours garder ces règles à jour même si la DB est la source principale.
+ */
+function detectSourceFallback(fromEmail: string, subject: string): MissionSource {
   const from = fromEmail.toLowerCase()
   const subj = subject.toLowerCase()
 
@@ -21,11 +62,11 @@ export function detectSource(fromEmail: string, subject: string): MissionSource 
 
   if (from.includes('@imabenelux.com')) {
     if (subj.startsWith('vivium_') || subj.includes('vivium')) return 'vivium'
-    return 'ethias'   // ETHIAS, P&V et autres IMA = même format
+    return 'ethias'
   }
 
   if (from.includes('@axa-assistance.com') || from.includes('donotreply@axa')) {
-    if (subj.includes('ardenne'))             return 'ardenne'
+    if (subj.includes('ardenne')) return 'ardenne'
     return 'axa'
   }
 
@@ -36,36 +77,32 @@ export function detectSource(fromEmail: string, subject: string): MissionSource 
     from.includes('awp')
   ) return 'mondial'
 
-  if (from.includes('@vab.be'))              return 'vab'
+  if (from.includes('@vab.be')) return 'vab'
 
   return 'unknown'
 }
 
-// ── Extraction RTF (JS natif, pas de dépendance système) ─────────────────────
+// ── Extraction RTF ────────────────────────────────────────────────────────────
 
 function extractRtfText(rtfRaw: string): string {
   let t = rtfRaw
 
-  // Décoder les caractères Windows-1252 \'xx
   t = t.replace(/\\\'([0-9a-fA-F]{2})/g, (_, hex) => {
     try { return Buffer.from([parseInt(hex, 16)]).toString('latin1') } catch { return '' }
   })
 
-  // Séparateurs de cellules / lignes / paragraphes
   t = t.replace(/\\cell\b/g, ' | ')
   t = t.replace(/\\row\b/g,  '\n')
   t = t.replace(/\\par\b/g,  '\n')
   t = t.replace(/\\line\b/g, '\n')
   t = t.replace(/\\tab\b/g,  '\t')
 
-  // Supprimer groupes imbriqués (plusieurs passes)
   for (let i = 0; i < 10; i++) {
     const prev = t
     t = t.replace(/\{[^{}]*\}/g, ' ')
     if (prev === t) break
   }
 
-  // Mots de contrôle + accolades résiduelles
   t = t.replace(/\\[*]?[a-zA-Z]+[-]?\d* ?/g, ' ')
   t = t.replace(/[{}\\]/g, ' ')
   t = t.replace(/[ \t]+/g, ' ')
@@ -102,14 +139,14 @@ function htmlToText(html: string): string {
 
 export async function extractContent(
   graphMessage: {
-    subject:             string
-    body:                { content: string; contentType: string }
-    hasAttachments?:     boolean
+    subject:         string
+    body:            { content: string; contentType: string }
+    hasAttachments?: boolean
   },
   attachments: Array<{
     name:         string
     contentType:  string
-    contentBytes: string  // base64 depuis Graph
+    contentBytes: string
   }>,
   source: MissionSource
 ): Promise<ExtractedContent> {
@@ -143,7 +180,6 @@ export async function extractContent(
         return { textContent: text, sourceFormat: 'docx', rawContent: text }
       } catch (e) {
         console.error('[Extractor] Mammoth DOCX error:', e)
-        // Fallback sur le corps de l'email
       }
     }
   }
@@ -156,15 +192,15 @@ export async function extractContent(
     )
     if (pdfAtt) {
       return {
-        textContent: `[Document PDF: ${pdfAtt.name}]`,
-        pdfBase64:   pdfAtt.contentBytes,
+        textContent:  `[Document PDF: ${pdfAtt.name}]`,
+        pdfBase64:    pdfAtt.contentBytes,
         sourceFormat: 'pdf',
-        rawContent:  `[PDF: ${pdfAtt.name}]`
+        rawContent:   `[PDF: ${pdfAtt.name}]`
       }
     }
   }
 
-  // === IMA (ETHIAS/VIVIUM), AXA, ARDENNE → corps email ===
+  // === IMA, AXA, ARDENNE → corps email ===
   const body = graphMessage.body
   let text   = ''
 

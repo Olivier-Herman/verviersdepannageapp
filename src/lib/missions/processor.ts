@@ -1,13 +1,13 @@
 // src/lib/missions/processor.ts
 // Logique centrale : reçoit un messageId Graph, récupère l'email,
-// extrait, parse et insère dans Supabase. Appelé par le webhook uniquement.
+// extrait, parse et insère dans Supabase.
 
-import { createAdminClient }             from '@/lib/supabase'
-import { detectSource, extractContent }  from './extractor'
-import { parseMissionContent }           from './parser'
-import { sendPushToRole }                from '@/lib/push'
+import { createAdminClient }            from '@/lib/supabase'
+import { detectSource, extractContent } from './extractor'
+import { parseMissionContent }          from './parser'
+import { sendPushToRole }               from '@/lib/push'
 
-const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL! // assistance@verviersdepannage.be
+const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 
 // ── Graph helpers ─────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ export async function getGraphToken(): Promise<string> {
     }
   )
   const data = await res.json()
-  if (!res.ok) throw new Error(`Graph token error: ${data.error_description || data.error}`)
+  if (!res.ok) throw new Error(`Graph token: ${data.error_description || data.error}`)
   return data.access_token
 }
 
@@ -52,29 +52,31 @@ async function markAsRead(token: string, messageId: string): Promise<void> {
   )
 }
 
-// ── Traitement d'un email ─────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ProcessResult =
-  | { status: 'inserted';   missionId: string; externalId: string; source: string }
-  | { status: 'duplicate';  externalId: string; source: string }
-  | { status: 'skipped';    reason: string }
-  | { status: 'error';      error: string; missionId?: string }
+  | { status: 'inserted';  missionId: string; externalId: string; source: string }
+  | { status: 'duplicate'; externalId: string; source: string }
+  | { status: 'skipped';   reason: string }
+  | { status: 'error';     error: string; missionId?: string }
+
+// ── Traitement d'un email ─────────────────────────────────────────────────────
 
 export async function processEmailMessage(messageId: string): Promise<ProcessResult> {
   const supabase = createAdminClient()
 
-  // ── 0. Anti-doublon rapide sur source_email_id ──────────────────────────
-  const { data: alreadyProcessed } = await supabase
+  // 0. Anti-doublon rapide sur source_email_id
+  const { data: already } = await supabase
     .from('incoming_missions')
     .select('id')
     .eq('source_email_id', messageId)
     .maybeSingle()
 
-  if (alreadyProcessed) {
+  if (already) {
     return { status: 'duplicate', externalId: 'already_processed', source: 'unknown' }
   }
 
-  // ── 1. Récupérer l'email complet depuis Graph ───────────────────────────
+  // 1. Récupérer l'email depuis Graph
   let token: string
   try {
     token = await getGraphToken()
@@ -92,8 +94,8 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
   const subject    = (message.subject as string)                      || ''
   const receivedAt = (message.receivedDateTime as string)             || new Date().toISOString()
 
-  // ── 2. Détecter la source ───────────────────────────────────────────────
-  const source = detectSource(fromEmail, subject)
+  // 2. Détecter la source (DB d'abord, fallback hardcodé)
+  const source = await detectSource(fromEmail, subject)
 
   if (source === 'unknown') {
     console.warn(`[Processor] Source inconnue — from: ${fromEmail} | subject: ${subject}`)
@@ -101,24 +103,23 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     return { status: 'skipped', reason: `Source inconnue: ${fromEmail}` }
   }
 
-  // ── 3. Récupérer pièces jointes si nécessaire ───────────────────────────
+  // 3. Récupérer les pièces jointes si nécessaire
   let attachments: any[] = []
   if (message.hasAttachments) {
-    const attData  = await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments`)
-    attachments = attData.value || []
+    const attData = await graphGet(token, `/users/${MISSIONS_EMAIL}/messages/${messageId}/attachments`)
+    attachments   = attData.value || []
   }
 
-  // ── 4. Extraire le contenu ──────────────────────────────────────────────
+  // 4. Extraire le contenu
   const content = await extractContent(message, attachments, source)
 
-  // ── 5. Parser avec Claude API ───────────────────────────────────────────
+  // 5. Parser avec Claude API
   let parsed
   try {
     parsed = await parseMissionContent(source, content, subject)
   } catch (parseErr: any) {
     console.error(`[Processor] Erreur parsing "${subject}":`, parseErr.message)
 
-    // Stocker avec statut parse_error pour investigation manuelle
     const { data: errRow } = await supabase
       .from('incoming_missions')
       .insert({
@@ -146,7 +147,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     return { status: 'error', error: parseErr.message, missionId: errRow?.id }
   }
 
-  // ── 6. Upsert en base (idempotent sur source + external_id) ────────────
+  // 6. Upsert en base
   const { data: inserted, error: insertError } = await supabase
     .from('incoming_missions')
     .upsert(
@@ -191,7 +192,6 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
   if (insertError) {
     if (insertError.code === '23505') {
-      // Doublon sur (source, external_id) — mission déjà reçue via autre email
       return { status: 'duplicate', externalId: parsed.external_id, source }
     }
     return { status: 'error', error: insertError.message }
@@ -201,7 +201,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     return { status: 'duplicate', externalId: parsed.external_id, source }
   }
 
-  // ── 7. Log de réception ─────────────────────────────────────────────────
+  // 7. Log de réception
   await supabase.from('mission_logs').insert({
     mission_id: inserted.id,
     action:     'received',
@@ -209,7 +209,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     metadata:   { source_email_id: messageId, confidence: parsed.confidence, from: fromEmail }
   })
 
-  // ── 8. Push notification dispatchers ────────────────────────────────────
+  // 8. Push dispatchers
   const typeLabel = parsed.mission_type === 'remorquage' ? '🚛 Remorquage'
                   : parsed.mission_type === 'depannage'  ? '🔧 Dépannage'
                   : parsed.mission_type === 'transport'  ? '🚐 Transport'
@@ -226,6 +226,6 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     icon:  '/icons/apple-touch-icon.png'
   })
 
-  console.log(`[Processor] ✓ Mission insérée: ${source}/${parsed.external_id} (conf: ${parsed.confidence})`)
+  console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence})`)
   return { status: 'inserted', missionId: inserted.id, externalId: parsed.external_id, source }
 }
