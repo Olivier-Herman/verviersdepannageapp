@@ -109,6 +109,9 @@ RÈGLES D'EXTRACTION:
 - vehicle_brand + vehicle_model = "Marque & type" (format MARQUE MODELE)
 - incident_at = "Heure de la commande: JJ/MM/AAAA HH:MM:SS" → ISO 8601`,
 
+  police:  `SOURCE: Mission créée manuellement via appel Police. Extraire toutes les informations disponibles.`,
+  prive:   `SOURCE: Mission créée manuellement via appel privé. Extraire toutes les informations disponibles.`,
+  garage:  `SOURCE: Mission créée manuellement par un garage partenaire. Extraire toutes les informations disponibles.`,
   unknown: `SOURCE inconnue. Extraire le maximum d'informations disponibles.`
 }
 
