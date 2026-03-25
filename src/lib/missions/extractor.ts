@@ -1,10 +1,4 @@
 // src/lib/missions/extractor.ts
-// Détecte la source d'un email et extrait le contenu textuel
-// selon le format (RTF Touring, DOCX VAB, PDF Mondial, plain text IMA/AXA)
-//
-// Ordre de détection :
-// 1. Table mission_senders en DB (configurable via admin)
-// 2. Règles hardcodées par défaut (fallback)
 
 import type { MissionSource, MissionSourceFormat } from '@/types'
 import { createAdminClient } from '@/lib/supabase'
@@ -18,42 +12,41 @@ export interface ExtractedContent {
 
 // ── Détection source ──────────────────────────────────────────────────────────
 
-/**
- * Cherche d'abord dans la table mission_senders (DB),
- * puis applique les règles hardcodées en fallback.
- */
 export async function detectSource(
   fromEmail: string,
   subject:   string
 ): Promise<MissionSource> {
-  const supabase = createAdminClient()
+  try {
+    const supabase = createAdminClient()
 
-  // 1. Recherche dans la table mission_senders
-  const { data: senders } = await supabase
-    .from('mission_senders')
-    .select('email_pattern, source')
-    .eq('active', true)
+    const { data: senders, error } = await supabase
+      .from('mission_senders')
+      .select('email_pattern, source')
+      .eq('active', true)
 
-  if (senders?.length) {
-    const from = fromEmail.toLowerCase()
-    for (const sender of senders) {
-      const pattern = sender.email_pattern.toLowerCase()
-      // Support pattern exact (ex: olivier@hoos.cloud)
-      // ou domaine partiel (ex: @touring.be)
-      if (from === pattern || from.includes(pattern)) {
-        return sender.source as MissionSource
+    if (error) {
+      console.error('[Extractor] Supabase mission_senders error:', error.message, error.code)
+    } else {
+      console.log(`[Extractor] mission_senders: ${senders?.length ?? 0} entrées chargées`)
+    }
+
+    if (senders?.length) {
+      const from = fromEmail.toLowerCase()
+      for (const sender of senders) {
+        const pattern = sender.email_pattern.toLowerCase()
+        if (from === pattern || from.includes(pattern)) {
+          console.log(`[Extractor] Match DB: "${from}" → ${sender.source}`)
+          return sender.source as MissionSource
+        }
       }
     }
+  } catch (e: any) {
+    console.error('[Extractor] Exception detectSource:', e.message)
   }
 
-  // 2. Règles hardcodées en fallback
   return detectSourceFallback(fromEmail, subject)
 }
 
-/**
- * Règles hardcodées — fallback si l'adresse n'est pas dans la DB.
- * Toujours garder ces règles à jour même si la DB est la source principale.
- */
 function detectSourceFallback(fromEmail: string, subject: string): MissionSource {
   const from = fromEmail.toLowerCase()
   const subj = subject.toLowerCase()
@@ -151,7 +144,6 @@ export async function extractContent(
   source: MissionSource
 ): Promise<ExtractedContent> {
 
-  // === TOURING → RTF joint ===
   if (source === 'touring') {
     const rtfAtt = attachments.find(a =>
       a.name?.toLowerCase().endsWith('.rtf') ||
@@ -164,7 +156,6 @@ export async function extractContent(
     }
   }
 
-  // === VAB → DOCX joint ===
   if (source === 'vab') {
     const docxAtt = attachments.find(a =>
       a.name?.toLowerCase().endsWith('.docx') ||
@@ -184,7 +175,6 @@ export async function extractContent(
     }
   }
 
-  // === MONDIAL / ALLIANZ → PDF joint ===
   if (source === 'mondial') {
     const pdfAtt = attachments.find(a =>
       a.name?.toLowerCase().endsWith('.pdf') ||
@@ -200,7 +190,6 @@ export async function extractContent(
     }
   }
 
-  // === IMA, AXA, ARDENNE → corps email ===
   const body = graphMessage.body
   let text   = ''
 
