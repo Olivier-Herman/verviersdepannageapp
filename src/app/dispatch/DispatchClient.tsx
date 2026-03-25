@@ -68,12 +68,17 @@ const TYPE_LABELS: Record<string, string> = {
   autre:            '📋 Autre',
 }
 
-function getDelai(received_at: string): { label: string; urgent: boolean } {
-  const mins = Math.floor((Date.now() - new Date(received_at).getTime()) / 60000)
-  if (mins < 60) return { label: `${mins}min`, urgent: mins > 20 }
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return { label: `${h}h${m.toString().padStart(2, '0')}`, urgent: h > 1 }
+function getDelai(received_at: string): { label: string; color: string } {
+  const mins  = Math.floor((Date.now() - new Date(received_at).getTime()) / 60000)
+  const label = mins < 60
+    ? `${mins}min`
+    : `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`
+  // Vert < 15min · Jaune 15-30min · Orange 30-60min · Rouge > 1h
+  const color = mins < 15 ? 'text-green-400'
+              : mins < 30 ? 'text-yellow-400'
+              : mins < 60 ? 'text-orange-400'
+              : 'text-red-400'
+  return { label, color }
 }
 
 const TABS = [
@@ -286,11 +291,10 @@ export default function DispatchClient({
                   {filtered.map(m => {
                     const delai   = getDelai(m.received_at)
                     const srcInfo = SOURCE_LABELS[m.source] || { label: '?', color: 'bg-zinc-600' }
-                    const urgent  = delai.urgent && m.status === 'new'
-
+                    
                     return (
                       <tr key={m.id}
-                        className={`transition hover:bg-[#222] cursor-pointer ${urgent ? 'bg-yellow-500/5' : ''}`}
+                        className="transition hover:bg-[#222] cursor-pointer"
                         onClick={() => router.push(`/dispatch/${m.id}`)}
                       >
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
@@ -317,7 +321,7 @@ export default function DispatchClient({
                           {new Date(m.received_at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs font-bold ${delai.urgent ? 'text-red-400' : 'text-green-400'}`}>
+                          <span className={`text-xs font-bold ${delai.color}`}>
                             {delai.label}
                           </span>
                         </td>
