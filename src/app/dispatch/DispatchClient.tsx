@@ -52,8 +52,8 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   touring:  { label: 'TOURING',  color: 'bg-blue-600' },
   ethias:   { label: 'ETHIAS',   color: 'bg-green-600' },
   vivium:   { label: 'VIVIUM',   color: 'bg-purple-600' },
-  axa:      { label: 'AXA',      color: 'bg-red-600' },
-  ardenne:  { label: 'ARDENNE',  color: 'bg-orange-600' },
+  axa:      { label: 'IPA',      color: 'bg-red-600' },
+  ardenne:  { label: 'ARDENNE (IPA)', color: 'bg-orange-600' },
   mondial:  { label: 'MONDIAL',  color: 'bg-teal-600' },
   vab:      { label: 'VAB',      color: 'bg-yellow-600' },
   police:   { label: 'POLICE',   color: 'bg-blue-900' },
@@ -257,6 +257,11 @@ export default function DispatchClient({
                 title="Actualiser">
                 ↻
               </button>
+
+              <Link href="/dispatch/new"
+                className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-medium transition">
+                <span>+</span> Nouvelle mission
+              </Link>
 
               {/* Switch Manuel / Auto */}
               <div className="flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2">
