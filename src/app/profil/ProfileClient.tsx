@@ -138,6 +138,14 @@ export default function ProfileClient({ user }: { user: any }) {
     return data.url
   }
 
+  // Normalise n'importe quel format de date vers YYYY-MM-DD
+  const normalizeDate = (raw: string): string => {
+    if (!raw) return ''
+    const d = new Date(raw)
+    if (isNaN(d.getTime())) return raw
+    return d.toISOString().split('T')[0]
+  }
+
   const handleSave = async () => {
     if (!editDoc)    return
     if (!formExpiry) { setDocError("Veuillez saisir la date d'expiration"); return }
@@ -148,7 +156,7 @@ export default function ProfileClient({ user }: { user: any }) {
       if (formFile) fileUrl = await uploadFile(formFile, editDoc)
       const res = await fetch('/api/documents', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docType: editDoc, expiresAt: formExpiry, fileUrl, notes: formNotes || undefined }),
+        body: JSON.stringify({ docType: editDoc, expiresAt: normalizeDate(formExpiry), fileUrl, notes: formNotes || undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
