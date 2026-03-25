@@ -23,9 +23,10 @@ export async function GET(req: Request) {
 
   if (validationToken) {
     // Graph vérifie que notre endpoint est valide — répondre en plain text
-    return new Response(decodeURIComponent(validationToken), {
+    // Next.js décode déjà le query param, on retourne tel quel
+    return new Response(validationToken, {
       status:  200,
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     })
   }
 
