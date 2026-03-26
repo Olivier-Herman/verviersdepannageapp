@@ -7,6 +7,7 @@ import AppShell from '@/components/layout/AppShell'
 
 const NAV_MODULES = [
   { id: 'missions',      label: 'Dispatch Missions',      icon: '📡', href: '/dispatch',        color: 'bg-blue-900',   size: 'large' },
+  { id: 'driver_missions', label: 'Mes Missions',           icon: '🚗', href: '/mission',          color: 'bg-orange-800', size: 'large' },
   { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',      size: 'large' },
   { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'large' },
   { id: 'finance',       label: 'Finance',                icon: '💰', href: '/finance',         color: 'bg-surface',    size: 'small' },

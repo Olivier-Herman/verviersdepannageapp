@@ -8,6 +8,7 @@ import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 const NAV_ITEMS = [
   { href: '/dashboard',     label: 'Dashboard',        icon: '🏠', moduleId: null },
   { href: '/dispatch',      label: 'Dispatch',          icon: '📡', moduleId: 'missions' },
+  { href: '/mission',       label: 'Mes Missions',      icon: '🚗', moduleId: 'driver_missions' },
   { href: '/encaissement',  label: 'Encaissement',      icon: '💳', moduleId: 'encaissement' },
   { href: '/finance',       label: 'Finance',           icon: '💰', moduleId: 'finance' },
   { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄', moduleId: 'avance_fonds' },
