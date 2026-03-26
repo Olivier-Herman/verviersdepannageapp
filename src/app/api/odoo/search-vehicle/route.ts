@@ -46,9 +46,8 @@ export async function GET(req: Request) {
     const vehicles = await odooCall('fleet.vehicle', 'search_read', [domain], {
       fields: [
         'id', 'name', 'license_plate', 'vin_sn',
-        'partner_id', 'model_id', 'brand_id',
+        'model_id', 'brand_id',
         'fuel_type', 'transmission', 'color',
-        'x_studio_many2one_field_78n_1j6fmmeom', // champ véhicule sur sale.order
       ],
       limit: 10,
       order: 'license_plate asc',
@@ -62,8 +61,8 @@ export async function GET(req: Request) {
       vin:          v.vin_sn,
       brand:        v.brand_id?.[1] || '',
       model:        v.model_id?.[1] || '',
-      partner_id:   v.partner_id?.[0] || null,
-      partner_name: v.partner_id?.[1] || null,
+      partner_id:   null,
+      partner_name: null,
       fuel:         v.fuel_type || '',
       gearbox:      v.transmission || '',
       color:        v.color || '',
