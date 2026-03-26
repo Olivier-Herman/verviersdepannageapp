@@ -5,6 +5,7 @@ import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
+import { DriverTimeline } from '@/components/missions/DriverTimeline'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,12 @@ interface Mission {
   status: string
   dispatch_mode: string
   assigned_to: string | null
-  assigned_user: { id: string; name: string } | null
+  assigned_at: string | null
+  assigned_user: { id: string; name: string; phone?: string } | null
+  accepted_at: string | null
+  on_way_at: string | null
+  on_site_at: string | null
+  completed_at: string | null
   parse_confidence: number | null
   raw_content: string | null
   billed_to_name: string | null
@@ -264,7 +270,6 @@ export default function MissionDetailClient({
       const data = await res.json()
       if (data.ok) {
         setImaSuccess(true)
-        // Recharger la page pour voir les nouvelles données
         setTimeout(() => window.location.reload(), 1500)
       }
     } finally {
@@ -289,7 +294,6 @@ export default function MissionDetailClient({
     setModels(data || [])
   }
 
-  // Charger les modèles si une marque est déjà sélectionnée au chargement
   useEffect(() => {
     if (form.vehicle_brand && brands.length === 0) {
       loadBrands().then(() => {})
@@ -310,13 +314,11 @@ export default function MissionDetailClient({
   // Confirmer la mission
   const handleConfirm = async () => {
     setLoadingConfirm(true)
-    // Sauvegarder d'abord les modifications
     await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(form)
     })
-    // Assigner si un chauffeur est sélectionné
     if (selectedDriver) {
       await fetch('/api/missions/assign', {
         method:  'POST',
@@ -324,7 +326,6 @@ export default function MissionDetailClient({
         body:    JSON.stringify({ mission_id: initialMission.id, driver_id: selectedDriver })
       })
     }
-    // Confirmer
     await fetch('/api/missions/confirm', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -356,13 +357,11 @@ export default function MissionDetailClient({
       return
     }
     setLoadingSave(true)
-    // Sauvegarder les modifications du formulaire
     await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(form)
     })
-    // Assigner le chauffeur
     await fetch('/api/missions/assign', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -674,6 +673,24 @@ export default function MissionDetailClient({
                   )}
                 </div>
               </div>
+
+              {/* ── Suivi chauffeur (P6) ─────────────────────────────── */}
+              {['assigned', 'accepted', 'in_progress', 'completed'].includes(status) && (
+                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                  <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-4">
+                    🚗 Suivi chauffeur
+                  </h3>
+                  <DriverTimeline mission={{
+                    status,
+                    assigned_at:  initialMission.assigned_at,
+                    accepted_at:  initialMission.accepted_at,
+                    on_way_at:    initialMission.on_way_at,
+                    on_site_at:   initialMission.on_site_at,
+                    completed_at: initialMission.completed_at,
+                    assigned_user: initialMission.assigned_user,
+                  }} />
+                </div>
+              )}
 
               {/* Récap numéros */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
