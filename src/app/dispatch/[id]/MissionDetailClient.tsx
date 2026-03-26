@@ -352,7 +352,7 @@ export default function MissionDetailClient({
   // Assigner la mission (dispatching → assigned)
   const handleAssign = async () => {
     if (!selectedDriver) {
-      alert('Veuillez sélectionner un chauffeur avant d'assigner la mission.')
+      alert("Veuillez sélectionner un chauffeur avant d'assigner la mission.")
       return
     }
     setLoadingSave(true)
