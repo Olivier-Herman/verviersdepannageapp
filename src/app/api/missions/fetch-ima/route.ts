@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       mission.source as any,
       {
         textContent:  htmlToText(html),
-        sourceFormat: 'ima_portal',
+        sourceFormat: 'email_plain',
         rawContent:   html.slice(0, 15000),
       },
       `IMA Portal — ${mission.external_id}`
