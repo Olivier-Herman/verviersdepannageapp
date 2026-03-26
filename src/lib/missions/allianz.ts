@@ -53,7 +53,15 @@ export async function allianzFetchMissionData(
   accessToken: string,
   assignmentId: string
 ): Promise<{ jobData: any; caseData: any } | null> {
-  const headers = { ...HEADERS_BASE, 'Authorization': `Bearer ${accessToken}` }
+  const headers = {
+    ...HEADERS_BASE,
+    'guac-authorization':  `Bearer ${accessToken}`,
+    'subscriptioncountry': 'BEL',
+    'origin':              'https://www.allianzpartners-providerplatform.com',
+    'referer':             'https://www.allianzpartners-providerplatform.com/',
+    'accept':              'application/json, text/plain, */*',
+    'accept-language':     'fr-FR,fr;q=0.9',
+  }
 
   try {
     // 1. Job monitoring — véhicule, adresse, description
