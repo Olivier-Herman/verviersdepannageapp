@@ -178,6 +178,90 @@ function parseMimeAttachments(mime: string): any[] {
   return attachments
 }
 
+// ── Enrichissement IMA ───────────────────────────────────────────────────────
+
+/**
+ * Si la mission vient d'ETHIAS/Vivium (IMA), fetch le portail IMA pour enrichir les données.
+ * Appelé automatiquement après le parsing initial, avant la sauvegarde en DB.
+ */
+async function enrichFromIMAPortal(
+  rawContent: string,
+  source: string,
+  parsedData: any
+): Promise<Partial<typeof parsedData>> {
+  if (!['ethias', 'vivium'].includes(source)) return {}
+
+  const imaLinkMatch = rawContent.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)
+  if (!imaLinkMatch) return {}
+
+  const imaUrl = imaLinkMatch[0]
+  console.log(`[Processor] Enrichissement IMA: ${imaUrl}`)
+
+  try {
+    const res = await fetch(imaUrl, {
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (compatible; VerviersDépannage/1.0)',
+        'Accept':          'text/html,application/xhtml+xml',
+        'Accept-Language': 'fr-BE,fr;q=0.9',
+      },
+      signal: AbortSignal.timeout(15000),
+    })
+
+    if (!res.ok) {
+      console.warn(`[Processor] IMA portal ${res.status}`)
+      return {}
+    }
+
+    const html = await res.text()
+    if (html.length < 100) return {}
+
+    // Convertir HTML en texte
+    const text = html
+      .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n').replace(/<\/tr>/gi, '\n')
+      .replace(/<\/td>/gi, ' | ').replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&').replace(/&eacute;/g, 'é').replace(/&egrave;/g, 'è')
+      .replace(/&agrave;/g, 'à').replace(/&ecirc;/g, 'ê')
+      .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+
+    console.log(`[Processor] IMA portal HTML: ${text.length} chars`)
+
+    // Parser avec Claude
+    const { parseMissionContent } = await import('./parser')
+    const enriched = await parseMissionContent(
+      source as any,
+      { textContent: text, sourceFormat: 'email_plain', rawContent: html.slice(0, 15000) },
+      `IMA Portal enrichment`
+    )
+
+    // Retourner seulement les champs qui manquaient dans le parsing initial
+    const updates: Record<string, any> = {}
+    const fields = [
+      'client_name', 'client_phone', 'client_address',
+      'incident_address', 'incident_city',
+      'destination_name', 'destination_address',
+      'amount_guaranteed', 'vehicle_vin', 'vehicle_fuel',
+      'vehicle_gearbox', 'incident_type', 'incident_description',
+      'incident_at', 'dossier_number',
+    ] as const
+
+    for (const field of fields) {
+      if (enriched[field] && !parsedData[field]) {
+        updates[field] = enriched[field]
+      }
+    }
+
+    const count = Object.keys(updates).length
+    console.log(`[Processor] IMA enrichi: ${count} champ(s) ajouté(s)`)
+    return updates
+
+  } catch (err: any) {
+    console.warn(`[Processor] IMA portal erreur: ${err.message}`)
+    return {}
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ProcessResult =
@@ -306,6 +390,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       }
       await markAsRead(token, messageId)
       return { status: 'error', error: parseErr.message, missionId: placeholderId }
+    }
+
+    // Enrichissement automatique depuis le portail IMA (ETHIAS/Vivium)
+    const imaEnrichment = await enrichFromIMAPortal(content.rawContent, source, parsed)
+    if (Object.keys(imaEnrichment).length > 0) {
+      Object.assign(parsed, imaEnrichment)
+      console.log('[Processor] Parsed enrichi avec données IMA')
     }
 
     // Mettre à jour le placeholder
