@@ -246,6 +246,7 @@ export default function MissionDetailClient({
     destination_name:     initialMission.destination_name     || '',
     destination_address:  initialMission.destination_address  || '',
     amount_guaranteed:    initialMission.amount_guaranteed != null ? String(initialMission.amount_guaranteed) : '',
+    amount_to_collect:    initialMission.amount_to_collect != null  ? String(initialMission.amount_to_collect)  : '',
   })
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
