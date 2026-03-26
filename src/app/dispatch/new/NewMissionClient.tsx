@@ -9,57 +9,35 @@ import { usePathname } from 'next/navigation'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface OdooClient {
-  id:     number
-  name:   string
-  phone:  string | false
-  mobile: string | false
-  street: string | false
-  city:   string | false
-  zip:    string | false
-  email:  string | false
+  id: number; name: string; phone: string|false; mobile: string|false
+  street: string|false; city: string|false; zip: string|false; email: string|false
 }
-
 interface OdooVehicle {
-  id:           number
-  plate:        string
-  vin:          string | false
-  brand:        string
-  model:        string
-  partner_id:   number | null
-  partner_name: string | null
-  fuel:         string
-  gearbox:      string
+  id: number; plate: string; vin: string|false; brand: string; model: string
+  partner_id: number|null; partner_name: string|null; fuel: string; gearbox: string
 }
-
-interface Driver { id: string; name: string }
+interface Warning { id: string; label: string; icon: string; color: string }
+interface Driver  { id: string; name: string }
+interface Destination { id: string; label: string; address: string; lat: number|null; lng: number|null; city: string }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ALL_SOURCES = [
-  { value: 'touring',  label: 'TOURING' },
-  { value: 'ethias',   label: 'ETHIAS' },
-  { value: 'vivium',   label: 'VIVIUM' },
-  { value: 'ipa',      label: 'IPA (AXA)' },
-  { value: 'ardenne',  label: 'ARDENNE (IPA)' },
-  { value: 'mondial',  label: 'MONDIAL' },
-  { value: 'vab',      label: 'VAB' },
-  { value: 'police',   label: 'POLICE' },
-  { value: 'prive',    label: 'PRIVÉ' },
-  { value: 'garage',   label: 'GARAGE' },
+  { value: 'touring', label: 'TOURING' }, { value: 'ethias', label: 'ETHIAS' },
+  { value: 'vivium',  label: 'VIVIUM'  }, { value: 'ipa',    label: 'IPA (AXA)' },
+  { value: 'ardenne', label: 'ARDENNE (IPA)' }, { value: 'mondial', label: 'MONDIAL' },
+  { value: 'vab',     label: 'VAB'     }, { value: 'police', label: 'POLICE' },
+  { value: 'prive',   label: 'PRIVÉ'   }, { value: 'garage', label: 'GARAGE' },
 ]
-
 const MISSION_TYPES = [
-  { value: 'remorquage',       label: '🚛 Remorquage' },
-  { value: 'depannage',        label: '🔧 Dépannage' },
-  { value: 'transport',        label: '🚐 Transport' },
-  { value: 'trajet_vide',      label: '📍 Trajet vide' },
-  { value: 'reparation_place', label: '🔩 Réparation sur place' },
-  { value: 'autre',            label: '📋 Autre' },
+  { value: 'DSP',       label: '🔧 DSP — Dépannage sur place' },
+  { value: 'REM',       label: '🚛 REM — Remorquage' },
+  { value: 'Transport', label: '🚐 Transport / Rapatriement' },
+  { value: 'DPR',       label: '📍 DPR — Déplacement pour rien' },
+  { value: 'VR',        label: '🚗 VR — Véhicule de remplacement' },
 ]
-
 const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
 const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
-
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
   { href: '/dispatch',  label: 'Dispatch',  icon: '📡' },
@@ -70,13 +48,11 @@ const NAV_ITEMS = [
 
 function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
   const pathname = usePathname()
-  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) || '?'
   return (
     <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] fixed top-0 left-0 h-full z-30">
       <div className="px-6 py-5 border-b border-[#2a2a2a]">
-        <Link href="/dashboard">
-          <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
-        </Link>
+        <Link href="/dashboard"><img src="/logo.jpg" alt="VD" className="h-10 w-auto object-contain" /></Link>
       </div>
       <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
         {NAV_ITEMS.map(item => {
@@ -108,132 +84,145 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
   )
 }
 
-// ── Hook autocomplete client Odoo ─────────────────────────────────────────────
+// ── Hooks ─────────────────────────────────────────────────────────────────────
 
 function useClientSearch() {
-  const [query,   setQuery]   = useState('')
+  const [query, setQuery]     = useState('')
   const [results, setResults] = useState<OdooClient[]>([])
   const [loading, setLoading] = useState(false)
   const timer = useRef<NodeJS.Timeout>()
-
   useEffect(() => {
     if (query.length < 3) { setResults([]); return }
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res  = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(query)}`)
-        const data = await res.json()
+        const data = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(query)}`).then(r => r.json())
         setResults(data.clients || [])
-      } finally {
-        setLoading(false)
-      }
+      } finally { setLoading(false) }
     }, 300)
   }, [query])
-
-  return { query, setQuery, results, loading, setResults }
+  return { query, setQuery, results, setResults, loading }
 }
 
-// ── Hook autocomplete véhicule Odoo ───────────────────────────────────────────
-
 function useVehicleSearch() {
-  const [query,   setQuery]   = useState('')
+  const [query, setQuery]     = useState('')
   const [results, setResults] = useState<OdooVehicle[]>([])
   const [loading, setLoading] = useState(false)
   const timer = useRef<NodeJS.Timeout>()
-
   useEffect(() => {
     if (query.length < 3) { setResults([]); return }
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res  = await fetch(`/api/odoo/search-vehicle?q=${encodeURIComponent(query)}`)
-        const data = await res.json()
+        const data = await fetch(`/api/odoo/search-vehicle?q=${encodeURIComponent(query)}`).then(r => r.json())
         setResults(data.vehicles || [])
-      } finally {
-        setLoading(false)
-      }
+      } finally { setLoading(false) }
     }, 300)
   }, [query])
-
-  return { query, setQuery, results, loading, setResults }
+  return { query, setQuery, results, setResults, loading }
 }
 
-// ── Hook Google Maps Autocomplete ─────────────────────────────────────────────
+// ── Autocomplete Google Maps ──────────────────────────────────────────────────
 
-function usePlacesAutocomplete(
-  inputRef: React.RefObject<HTMLInputElement>,
-  onSelect: (address: string, lat: number, lng: number) => void,
-  googleMapsKey: string
-) {
-  useEffect(() => {
-    if (!inputRef.current || !googleMapsKey || typeof window === 'undefined') return
-
-    const loadScript = () => {
-      if ((window as any).google?.maps?.places) {
-        initAutocomplete()
-        return
-      }
-      if (document.getElementById('gmaps-script')) return
-      const script = document.createElement('script')
-      script.id  = 'gmaps-script'
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsKey}&libraries=places&language=fr`
-      script.onload = initAutocomplete
-      document.head.appendChild(script)
-    }
-
-    const initAutocomplete = () => {
-      if (!inputRef.current) return
-      const autocomplete = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
-        componentRestrictions: { country: ['be', 'lu', 'fr', 'nl', 'de'] },
-        fields: ['formatted_address', 'geometry'],
-      })
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace()
-        if (place.geometry) {
-          onSelect(
-            place.formatted_address || '',
-            place.geometry.location.lat(),
-            place.geometry.location.lng()
-          )
-        }
-      })
-    }
-
-    loadScript()
-  }, [inputRef, googleMapsKey, onSelect])
-}
-
-// ── Composant champ adresse Google Maps ──────────────────────────────────────
-
-function AddressInput({
-  label, value, onChange, onSelect, googleMapsKey, placeholder
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  onSelect: (address: string, lat: number, lng: number) => void
-  googleMapsKey: string
-  placeholder?: string
+function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void
+  onSelect: (addr: string, lat: number, lng: number) => void
+  gmKey: string; placeholder?: string
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const handleSelect = useCallback(onSelect, [])
-  usePlacesAutocomplete(inputRef, handleSelect, googleMapsKey)
+  const ref = useRef<HTMLInputElement>(null)
+  const cb  = useCallback(onSelect, [])
+
+  useEffect(() => {
+    if (!ref.current || !gmKey) return
+    const init = () => {
+      if (!(window as any).google?.maps?.places) return
+      const ac = new (window as any).google.maps.places.Autocomplete(ref.current!, {
+        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
+        fields: ['formatted_address','geometry'],
+      })
+      ac.addListener('place_changed', () => {
+        const p = ac.getPlace()
+        if (p.geometry) cb(p.formatted_address || '', p.geometry.location.lat(), p.geometry.location.lng())
+      })
+    }
+    if ((window as any).google?.maps?.places) { init(); return }
+    if (!document.getElementById('gm-script')) {
+      const s = document.createElement('script')
+      s.id = 'gm-script'
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
+      s.onload = init
+      document.head.appendChild(s)
+    }
+  }, [gmKey, cb])
 
   return (
     <div>
       <label className="block text-zinc-500 text-xs mb-1.5">{label}</label>
       <div className="relative">
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={e => onChange(e.target.value)}
+        <input ref={ref} value={value} onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600 pr-8"
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 text-sm">📍</span>
+          className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600 pr-8" />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 text-xs">📍</span>
       </div>
+    </div>
+  )
+}
+
+// ── Composant destinations multiples ──────────────────────────────────────────
+
+function DestinationsBlock({ destinations, onChange, gmKey }: {
+  destinations: Destination[]; onChange: (d: Destination[]) => void; gmKey: string
+}) {
+  const addDest = () => {
+    onChange([...destinations, { id: crypto.randomUUID(), label: '', address: '', lat: null, lng: null, city: '' }])
+  }
+  const removeDest = (id: string) => onChange(destinations.filter(d => d.id !== id))
+  const updateDest = (id: string, key: keyof Destination, val: any) =>
+    onChange(destinations.map(d => d.id === id ? { ...d, [key]: val } : d))
+
+  return (
+    <div className="space-y-4">
+      {destinations.map((dest, i) => (
+        <div key={dest.id} className="bg-[#111] border border-[#2a2a2a] rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400 text-xs font-medium uppercase tracking-wide">
+              {i === 0 ? '📍 Lieu d\'incident' : `🏁 Destination ${i}`}
+            </span>
+            {i > 0 && (
+              <button onClick={() => removeDest(dest.id)}
+                className="text-zinc-600 hover:text-red-400 text-xs transition">✕ Supprimer</button>
+            )}
+          </div>
+          {i > 0 && (
+            <div>
+              <label className="block text-zinc-500 text-xs mb-1.5">Libellé (ex: Garage Dupont)</label>
+              <input value={dest.label} onChange={e => updateDest(dest.id, 'label', e.target.value)}
+                placeholder="Nom du lieu..."
+                className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+            </div>
+          )}
+          <AddressField
+            label="Adresse"
+            value={dest.address}
+            onChange={v => updateDest(dest.id, 'address', v)}
+            onSelect={(addr, lat, lng) => {
+              updateDest(dest.id, 'address', addr)
+              updateDest(dest.id, 'lat', lat)
+              updateDest(dest.id, 'lng', lng)
+              const parts = addr.split(',')
+              if (parts.length > 1) updateDest(dest.id, 'city', parts[parts.length - 2]?.trim() || '')
+            }}
+            gmKey={gmKey}
+            placeholder="Rue, numéro, ville..."
+          />
+        </div>
+      ))}
+      <button onClick={addDest}
+        className="w-full py-2.5 border border-dashed border-[#2a2a2a] rounded-xl text-zinc-500 hover:text-white hover:border-zinc-500 text-sm transition">
+        + Ajouter une destination
+      </button>
     </div>
   )
 }
@@ -241,103 +230,124 @@ function AddressInput({
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function NewMissionClient({
-  drivers, userName, userRole, googleMapsKey
+  drivers, warnings, userName, userRole, googleMapsKey
 }: {
-  drivers: Driver[]
-  userName: string
-  userRole: string
-  googleMapsKey: string
+  drivers: Driver[]; warnings: Warning[]; userName: string; userRole: string; googleMapsKey: string
 }) {
   const router = useRouter()
 
-  // Sources
-  const [source, setSource] = useState('prive')
+  // ── RDV ───────────────────────────────────────────────────────────────────
+  const now    = new Date()
+  const pad    = (n: number) => String(n).padStart(2, '0')
+  const today  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+  const curTime= `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  const [rdvDate, setRdvDate] = useState(today)
+  const [rdvTime, setRdvTime] = useState(curTime)
 
-  // Client
+  // ── Source ────────────────────────────────────────────────────────────────
+  const [source,        setSource]        = useState('prive')
+  const [sourceFromOdoo, setSourceFromOdoo] = useState(false)
+  const [savingSource,  setSavingSource]  = useState(false)
+  const [showSaveSource, setShowSaveSource] = useState(false)
+
+  // ── Client facturé ────────────────────────────────────────────────────────
   const clientSearch = useClientSearch()
-  const [selectedClient,   setSelectedClient]   = useState<OdooClient | null>(null)
-  const [showClientDropdown, setShowClientDropdown] = useState(false)
-  const [clientName,   setClientName]   = useState('')
-  const [clientPhone,  setClientPhone]  = useState('')
-  const [clientAddress, setClientAddress] = useState('')
-  const [clientLat,    setClientLat]    = useState<number|null>(null)
-  const [clientLng,    setClientLng]    = useState<number|null>(null)
-  const [odooPartnerId, setOdooPartnerId] = useState<number|null>(null)
-  const clientAddressRef = useRef<HTMLInputElement>(null)
+  const [showClientDrop,  setShowClientDrop]  = useState(false)
+  const [selectedClient,  setSelectedClient]  = useState<OdooClient|null>(null)
+  const [billedName,      setBilledName]      = useState('')
+  const [odooPartnerId,   setOdooPartnerId]   = useState<number|null>(null)
 
-  // Véhicule
+  // ── Client assisté ────────────────────────────────────────────────────────
+  const [assistedName,  setAssistedName]  = useState('')
+  const [assistedPhone, setAssistedPhone] = useState('')
+  const [assistedAddr,  setAssistedAddr]  = useState('')
+
+  // ── Type + mission ────────────────────────────────────────────────────────
+  const [missionType,  setMissionType]  = useState('DSP')
+  const [description,  setDescription]  = useState('')
+
+  // ── Véhicule ──────────────────────────────────────────────────────────────
   const vehicleSearch = useVehicleSearch()
-  const [selectedVehicle, setSelectedVehicle]  = useState<OdooVehicle | null>(null)
-  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false)
-  const [plate,    setPlate]    = useState('')
-  const [brand,    setBrand]    = useState('')
-  const [model,    setModel]    = useState('')
-  const [vin,      setVin]      = useState('')
-  const [fuel,     setFuel]     = useState('')
-  const [gearbox,  setGearbox]  = useState('')
+  const [showVehicleDrop,  setShowVehicleDrop]  = useState(false)
+  const [selectedVehicle,  setSelectedVehicle]  = useState<OdooVehicle|null>(null)
+  const [plate,   setPlate]   = useState('')
+  const [brand,   setBrand]   = useState('')
+  const [model,   setModel]   = useState('')
+  const [vin,     setVin]     = useState('')
+  const [fuel,    setFuel]    = useState('')
+  const [gearbox, setGearbox] = useState('')
   const [odooVehicleId, setOdooVehicleId] = useState<number|null>(null)
 
-  // Mission
-  const [missionType,   setMissionType]   = useState('depannage')
-  const [incidentType,  setIncidentType]  = useState('')
-  const [description,   setDescription]   = useState('')
+  // ── Destinations ──────────────────────────────────────────────────────────
+  const [destinations, setDestinations] = useState<Destination[]>([
+    { id: 'incident', label: 'Incident', address: '', lat: null, lng: null, city: '' }
+  ])
 
-  // Lieux
-  const [incidentAddress, setIncidentAddress] = useState('')
-  const [incidentCity,    setIncidentCity]    = useState('')
-  const [incidentLat,     setIncidentLat]     = useState<number|null>(null)
-  const [incidentLng,     setIncidentLng]     = useState<number|null>(null)
-  const [destName,        setDestName]        = useState('')
-  const [destAddress,     setDestAddress]     = useState('')
-  const [destLat,         setDestLat]         = useState<number|null>(null)
-  const [destLng,         setDestLng]         = useState<number|null>(null)
+  // ── Distance ──────────────────────────────────────────────────────────────
+  const [distanceKm,  setDistanceKm]  = useState<number|null>(null)
+  const [durationMin, setDurationMin] = useState<number|null>(null)
 
-  // Distance
-  const [distanceKm,   setDistanceKm]   = useState<number|null>(null)
-  const [durationMin,  setDurationMin]  = useState<number|null>(null)
-  const [calcLoading,  setCalcLoading]  = useState(false)
+  // ── Avertissements ────────────────────────────────────────────────────────
+  const [selectedWarnings, setSelectedWarnings] = useState<string[]>([])
 
-  // Soumission
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState('')
+  // ── Remarques ─────────────────────────────────────────────────────────────
+  const [remarksGeneral, setRemarksGeneral] = useState('')
+  const [remarksBilling, setRemarksBilling] = useState('')
 
-  // Calculer distance quand incident + destination sont définis
+  // ── Soumission ────────────────────────────────────────────────────────────
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState('')
+
+  // Calcul distance dès que incident + destination 2 sont remplies
   useEffect(() => {
-    if (!incidentLat || !incidentLng || !destLat || !destLng) return
-    if (!googleMapsKey) return
-    setCalcLoading(true)
-
-    const service = new (window as any).google.maps.DistanceMatrixService()
-    service.getDistanceMatrix({
-      origins:      [{ lat: incidentLat, lng: incidentLng }],
-      destinations: [{ lat: destLat,     lng: destLng }],
+    const inc  = destinations[0]
+    const dest = destinations[1]
+    if (!inc?.lat || !inc?.lng || !dest?.lat || !dest?.lng) return
+    if (!(window as any).google?.maps) return
+    const svc = new (window as any).google.maps.DistanceMatrixService()
+    svc.getDistanceMatrix({
+      origins:      [{ lat: inc.lat,  lng: inc.lng }],
+      destinations: [{ lat: dest.lat, lng: dest.lng }],
       travelMode:   'DRIVING',
-      unitSystem:   0, // METRIC
-    }, (response: any, status: string) => {
-      setCalcLoading(false)
+    }, (res: any, status: string) => {
       if (status === 'OK') {
-        const element = response.rows[0].elements[0]
-        if (element.status === 'OK') {
-          setDistanceKm(Math.round(element.distance.value / 1000))
-          setDurationMin(Math.round(element.duration.value / 60))
+        const el = res.rows[0].elements[0]
+        if (el.status === 'OK') {
+          setDistanceKm(Math.round(el.distance.value / 1000))
+          setDurationMin(Math.round(el.duration.value / 60))
         }
       }
     })
-  }, [incidentLat, incidentLng, destLat, destLng])
+  }, [destinations])
 
-  // Sélection client Odoo
-  const selectClient = (c: OdooClient) => {
+  // Sélection client facturé → lookup source
+  const selectClient = async (c: OdooClient) => {
     setSelectedClient(c)
-    setClientName(c.name)
-    setClientPhone(String(c.phone || c.mobile || ''))
-    if (c.street && c.city) setClientAddress(`${c.street}, ${c.zip || ''} ${c.city}`.trim())
+    setBilledName(c.name)
     setOdooPartnerId(c.id)
-    setShowClientDropdown(false)
+    setShowClientDrop(false)
     clientSearch.setQuery(c.name)
     clientSearch.setResults([])
+
+    // Lookup source depuis notre DB
+    const res  = await fetch(`/api/missions/source-lookup?partner_id=${c.id}`)
+    const data = await res.json()
+    setSource(data.source)
+    setSourceFromOdoo(data.found)
+    setShowSaveSource(!data.found && data.source === 'prive')
   }
 
-  // Sélection véhicule Odoo
+  // Copier client facturé → assisté
+  const copyBilledToAssisted = () => {
+    if (!selectedClient) return
+    setAssistedName(selectedClient.name)
+    setAssistedPhone(String(selectedClient.phone || selectedClient.mobile || ''))
+    if (selectedClient.street && selectedClient.city) {
+      setAssistedAddr(`${selectedClient.street}, ${selectedClient.zip || ''} ${selectedClient.city}`.trim())
+    }
+  }
+
+  // Sélection véhicule
   const selectVehicle = (v: OdooVehicle) => {
     setSelectedVehicle(v)
     setPlate(v.plate)
@@ -347,35 +357,41 @@ export default function NewMissionClient({
     setFuel(v.fuel)
     setGearbox(v.gearbox)
     setOdooVehicleId(v.id)
-    // Si le véhicule a un propriétaire et pas encore de client sélectionné
-    if (v.partner_name && !selectedClient) {
-      setClientName(v.partner_name)
-      setOdooPartnerId(v.partner_id)
-    }
-    setShowVehicleDropdown(false)
+    if (v.partner_name && !selectedClient) setBilledName(v.partner_name)
+    setShowVehicleDrop(false)
     vehicleSearch.setQuery(v.plate)
     vehicleSearch.setResults([])
   }
 
-  const handleSubmit = async () => {
-    if (!missionType)     return setError('Type de mission requis')
-    if (!plate && !clientName) return setError('Client ou véhicule requis')
+  // Sauvegarder source pour ce client
+  const saveSource = async () => {
+    if (!odooPartnerId) return
+    setSavingSource(true)
+    await fetch('/api/missions/source-lookup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ odoo_partner_id: odooPartnerId, source, label: billedName })
+    })
+    setShowSaveSource(false)
+    setSourceFromOdoo(true)
+    setSavingSource(false)
+  }
 
-    setSaving(true)
-    setError('')
+  const toggleWarning = (id: string) =>
+    setSelectedWarnings(prev => prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id])
+
+  const handleSubmit = async () => {
+    if (!missionType)               return setError('Type de mission requis')
+    if (!destinations[0]?.address)  return setError('Lieu d\'incident requis')
+
+    setSaving(true); setError('')
 
     try {
       // Créer client Odoo si pas lié
       let finalPartnerId = odooPartnerId
-      if (!finalPartnerId && clientName.trim()) {
-        const res = await fetch('/api/odoo/create-client', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            name:   clientName,
-            phone:  clientPhone,
-            street: clientAddress,
-          })
+      if (!finalPartnerId && billedName.trim()) {
+        const res  = await fetch('/api/odoo/create-client', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: billedName })
         })
         const data = await res.json()
         if (data.partner) finalPartnerId = data.partner.id
@@ -384,62 +400,61 @@ export default function NewMissionClient({
       // Créer véhicule Odoo si pas lié
       let finalVehicleId = odooVehicleId
       if (!finalVehicleId && plate.trim()) {
-        const res = await fetch('/api/odoo/create-vehicle', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            plate, vin, brand, model, fuel, gearbox,
-            partner_id: finalPartnerId,
-          })
+        const res  = await fetch('/api/odoo/create-vehicle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plate, vin, brand, model, fuel, gearbox, partner_id: finalPartnerId })
         })
         const data = await res.json()
         if (data.vehicle_id) finalVehicleId = data.vehicle_id
       }
 
-      // Créer la mission
+      // Libellés des warnings sélectionnés
+      const warningLabels = warnings
+        .filter(w => selectedWarnings.includes(w.id))
+        .map(w => `${w.icon} ${w.label}`)
+
+      const rdvAt = rdvDate && rdvTime ? `${rdvDate}T${rdvTime}:00` : null
+
       const res = await fetch('/api/missions/create', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           source,
-          mission_type:         missionType,
-          incident_type:        incidentType,
-          incident_description: description,
-          client_name:          clientName,
-          client_phone:         clientPhone,
-          client_address:       clientAddress,
-          client_lat:           clientLat,
-          client_lng:           clientLng,
-          vehicle_plate:        plate,
-          vehicle_brand:        brand,
-          vehicle_model:        model,
-          vehicle_vin:          vin,
-          vehicle_fuel:         fuel,
-          vehicle_gearbox:      gearbox,
-          incident_address:     incidentAddress,
-          incident_city:        incidentCity,
-          incident_lat:         incidentLat,
-          incident_lng:         incidentLng,
-          destination_name:     destName,
-          destination_address:  destAddress,
-          destination_lat:      destLat,
-          destination_lng:      destLng,
-          distance_km:          distanceKm,
-          duration_min:         durationMin,
-          odoo_partner_id:      finalPartnerId,
-          odoo_vehicle_id:      finalVehicleId,
-          incident_at:          new Date().toISOString(),
+          mission_type:    missionType,
+          billed_to_name:  billedName,
+          billed_to_id:    finalPartnerId,
+          assisted_name:   assistedName || billedName,
+          assisted_phone:  assistedPhone,
+          vehicle_plate:   plate,
+          vehicle_brand:   brand,
+          vehicle_model:   model,
+          vehicle_vin:     vin,
+          vehicle_fuel:    fuel,
+          vehicle_gearbox: gearbox,
+          destinations,
+          warnings:        warningLabels,
+          remarks_general: remarksGeneral,
+          remarks_billing: remarksBilling,
+          rdv_at:          rdvAt,
+          odoo_partner_id: finalPartnerId,
+          odoo_vehicle_id: finalVehicleId,
+          distance_km:     distanceKm,
+          duration_min:    durationMin,
         })
       })
 
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'Erreur création')
       router.push(`/dispatch/${data.mission_id}`)
-
     } catch (err: any) {
-      setError(err.message)
-      setSaving(false)
+      setError(err.message); setSaving(false)
     }
+  }
+
+  const warningColorMap: Record<string, string> = {
+    red: 'border-red-500/50 bg-red-500/10 text-red-400',
+    orange: 'border-orange-500/50 bg-orange-500/10 text-orange-400',
+    yellow: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400',
+    blue: 'border-blue-500/50 bg-blue-500/10 text-blue-400',
   }
 
   return (
@@ -451,75 +466,54 @@ export default function NewMissionClient({
         <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 lg:px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <Link href="/dispatch" className="text-zinc-400 hover:text-white text-lg">←</Link>
-            <h1 className="text-white font-bold text-xl">Nouvelle mission manuelle</h1>
+            <h1 className="text-white font-bold text-xl flex-1">Nouvelle mission</h1>
+            <button onClick={handleSubmit} disabled={saving}
+              className="hidden lg:block px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-medium text-sm transition disabled:opacity-50">
+              {saving ? 'Création...' : '✅ Créer la mission'}
+            </button>
           </div>
         </div>
 
         <div className="flex-1 px-4 lg:px-8 py-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl">
 
-            {/* ── Colonne principale ───────────────────────────── */}
+            {/* ── Colonne principale ───────────────────────────────────────── */}
             <div className="lg:col-span-2 space-y-5">
 
-              {/* Source + Type mission */}
+              {/* 1. Date / Heure RDV */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">📋 Intervention</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <h2 className="text-white font-semibold text-sm mb-4">🕐 Date / Heure de rendez-vous</h2>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Source</label>
-                    <select value={source} onChange={e => setSource(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
-                      {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
+                    <label className="block text-zinc-500 text-xs mb-1.5">Date</label>
+                    <input type="date" value={rdvDate} onChange={e => setRdvDate(e.target.value)}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
                   </div>
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Type de mission</label>
-                    <select value={missionType} onChange={e => setMissionType(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
-                      {MISSION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Type d'incident</label>
-                    <input value={incidentType} onChange={e => setIncidentType(e.target.value)}
-                      placeholder="Ex: pneu crevé, batterie..."
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-zinc-500 text-xs mb-1.5">Description</label>
-                    <textarea value={description} onChange={e => setDescription(e.target.value)}
-                      rows={2} placeholder="Détails de l'incident..."
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none placeholder:text-zinc-600" />
+                    <label className="block text-zinc-500 text-xs mb-1.5">Heure</label>
+                    <input type="time" value={rdvTime} onChange={e => setRdvTime(e.target.value)}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
                   </div>
                 </div>
               </div>
 
-              {/* Client */}
+              {/* 2. Client facturé */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">👤 Client / Assuré</h2>
-
-                {/* Recherche Odoo */}
-                <div className="relative mb-4">
-                  <label className="block text-zinc-500 text-xs mb-1.5">Rechercher dans Odoo (nom ou téléphone)</label>
-                  <input
-                    value={clientSearch.query}
-                    onChange={e => { clientSearch.setQuery(e.target.value); setShowClientDropdown(true) }}
-                    onFocus={() => setShowClientDropdown(true)}
-                    placeholder="Min. 3 caractères..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600"
-                  />
-                  {clientSearch.loading && (
-                    <div className="absolute right-3 top-8 text-zinc-500 text-xs">...</div>
-                  )}
-                  {showClientDropdown && clientSearch.results.length > 0 && (
+                <h2 className="text-white font-semibold text-sm mb-4">🧾 Client facturé</h2>
+                <div className="relative mb-3">
+                  <label className="block text-zinc-500 text-xs mb-1.5">Rechercher dans Odoo</label>
+                  <input value={clientSearch.query}
+                    onChange={e => { clientSearch.setQuery(e.target.value); setShowClientDrop(true) }}
+                    onFocus={() => setShowClientDrop(true)}
+                    placeholder="Min. 3 caractères — nom ou téléphone..."
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                  {showClientDrop && clientSearch.results.length > 0 && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
                       {clientSearch.results.map(c => (
                         <button key={c.id} onClick={() => selectClient(c)}
                           className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] transition border-b border-[#222] last:border-0">
                           <p className="text-white text-sm font-medium">{c.name}</p>
-                          <p className="text-zinc-500 text-xs">
-                            {[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}
-                          </p>
+                          <p className="text-zinc-500 text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
                         </button>
                       ))}
                     </div>
@@ -527,58 +521,122 @@ export default function NewMissionClient({
                 </div>
 
                 {selectedClient && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
-                    <span className="text-green-400 text-xs">✓ Client Odoo lié</span>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-3">
+                    <span className="text-green-400 text-xs">✓ Lié Odoo #{selectedClient.id}</span>
                     <span className="text-green-300 text-xs font-medium">{selectedClient.name}</span>
-                    <button onClick={() => { setSelectedClient(null); setOdooPartnerId(null); clientSearch.setQuery('') }}
+                    <button onClick={() => { setSelectedClient(null); setOdooPartnerId(null); clientSearch.setQuery(''); setBilledName('') }}
                       className="ml-auto text-zinc-500 hover:text-red-400 text-xs">✕</button>
                   </div>
                 )}
 
+                <div>
+                  <label className="block text-zinc-500 text-xs mb-1.5">Nom / Raison sociale</label>
+                  <input value={billedName} onChange={e => setBilledName(e.target.value)}
+                    placeholder="Ex: Touring SA, Police Zone Vesdre..."
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                </div>
+
+                {/* Source déduite */}
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="block text-zinc-500 text-xs mb-1.5">
+                      Source {sourceFromOdoo ? '(depuis fiche client)' : ''}
+                    </label>
+                    <select value={source} onChange={e => { setSource(e.target.value); setShowSaveSource(true) }}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                      {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  {showSaveSource && odooPartnerId && (
+                    <div className="flex-shrink-0 mt-5">
+                      <button onClick={saveSource} disabled={savingSource}
+                        className="px-3 py-2.5 bg-[#111] border border-brand/50 rounded-xl text-brand text-xs hover:bg-brand/10 transition disabled:opacity-50">
+                        {savingSource ? '...' : '💾 Mémoriser'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Client assisté */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-white font-semibold text-sm">👤 Client assisté (personne en panne)</h2>
+                  <button onClick={copyBilledToAssisted}
+                    className="text-xs text-brand hover:underline">
+                    = Copier client facturé
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-zinc-500 text-xs mb-1.5">Nom complet</label>
-                    <input value={clientName} onChange={e => setClientName(e.target.value)}
+                    <input value={assistedName} onChange={e => setAssistedName(e.target.value)}
                       placeholder="Prénom Nom"
                       className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
                   </div>
                   <div>
                     <label className="block text-zinc-500 text-xs mb-1.5">Téléphone</label>
-                    <input value={clientPhone} onChange={e => setClientPhone(e.target.value)}
+                    <input value={assistedPhone} onChange={e => setAssistedPhone(e.target.value)}
                       placeholder="+32..."
                       className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <AddressInput
-                      label="Adresse domicile"
-                      value={clientAddress}
-                      onChange={setClientAddress}
-                      onSelect={(addr, lat, lng) => { setClientAddress(addr); setClientLat(lat); setClientLng(lng) }}
-                      googleMapsKey={googleMapsKey}
-                      placeholder="Rue, numéro, ville"
-                    />
                   </div>
                 </div>
               </div>
 
-              {/* Véhicule */}
+              {/* 4. Type d'intervention */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h2 className="text-white font-semibold text-sm mb-4">📋 Type d'intervention</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {MISSION_TYPES.map(t => (
+                    <button key={t.value} onClick={() => setMissionType(t.value)}
+                      className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
+                        missionType === t.value
+                          ? 'bg-brand border-brand text-white'
+                          : 'bg-[#111] border-[#2a2a2a] text-zinc-400 hover:text-white hover:border-zinc-500'
+                      }`}>
+                      <div>{t.label.split(' ')[0]}</div>
+                      <div className="text-xs font-bold mt-0.5">{t.value}</div>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4">
+                  <label className="block text-zinc-500 text-xs mb-1.5">Description / Détails</label>
+                  <textarea value={description} onChange={e => setDescription(e.target.value)}
+                    rows={2} placeholder="Détails de l'intervention..."
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none placeholder:text-zinc-600" />
+                </div>
+              </div>
+
+              {/* 5. Adresses multiples */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h2 className="text-white font-semibold text-sm mb-4">📍 Adresses</h2>
+                <DestinationsBlock
+                  destinations={destinations}
+                  onChange={setDestinations}
+                  gmKey={googleMapsKey}
+                />
+                {distanceKm !== null && (
+                  <div className="mt-4 flex items-center gap-3 px-4 py-3 bg-[#111] border border-[#2a2a2a] rounded-xl">
+                    <span className="text-zinc-400 text-sm">🛣️</span>
+                    <span className="text-white font-semibold">{distanceKm} km</span>
+                    <span className="text-zinc-500">·</span>
+                    <span className="text-white font-semibold">~{durationMin} min</span>
+                    <span className="text-zinc-500 text-xs">(voiture — camion +15-20%)</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Véhicule */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
                 <h2 className="text-white font-semibold text-sm mb-4">🚗 Véhicule</h2>
-
-                {/* Recherche véhicule Odoo */}
                 <div className="relative mb-4">
                   <label className="block text-zinc-500 text-xs mb-1.5">Rechercher dans le parc (plaque ou VIN)</label>
-                  <input
-                    value={vehicleSearch.query}
-                    onChange={e => { vehicleSearch.setQuery(e.target.value); setShowVehicleDropdown(true) }}
-                    onFocus={() => setShowVehicleDropdown(true)}
+                  <input value={vehicleSearch.query}
+                    onChange={e => { vehicleSearch.setQuery(e.target.value.toUpperCase()); setShowVehicleDrop(true) }}
+                    onFocus={() => setShowVehicleDrop(true)}
                     placeholder="Min. 3 caractères..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600 uppercase"
-                  />
-                  {vehicleSearch.loading && (
-                    <div className="absolute right-3 top-8 text-zinc-500 text-xs">...</div>
-                  )}
-                  {showVehicleDropdown && vehicleSearch.results.length > 0 && (
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand placeholder:normal-case placeholder:text-zinc-600" />
+                  {showVehicleDrop && vehicleSearch.results.length > 0 && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
                       {vehicleSearch.results.map(v => (
                         <button key={v.id} onClick={() => selectVehicle(v)}
@@ -590,35 +648,27 @@ export default function NewMissionClient({
                     </div>
                   )}
                 </div>
-
                 {selectedVehicle && (
                   <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
                     <span className="text-green-400 text-xs">✓ Véhicule Odoo lié</span>
-                    <span className="text-green-300 text-xs font-medium font-mono">{selectedVehicle.plate}</span>
+                    <span className="text-green-300 text-xs font-mono font-medium">{selectedVehicle.plate}</span>
                     <button onClick={() => { setSelectedVehicle(null); setOdooVehicleId(null); vehicleSearch.setQuery('') }}
                       className="ml-auto text-zinc-500 hover:text-red-400 text-xs">✕</button>
                   </div>
                 )}
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Plaque</label>
-                    <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
-                      placeholder="1ABC234"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Marque</label>
-                    <input value={brand} onChange={e => setBrand(e.target.value)}
-                      placeholder="BMW"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Modèle</label>
-                    <input value={model} onChange={e => setModel(e.target.value)}
-                      placeholder="Série 3"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                  </div>
+                  {[
+                    { label: 'Plaque', value: plate, set: (v: string) => setPlate(v.toUpperCase()), mono: true },
+                    { label: 'Marque', value: brand, set: setBrand },
+                    { label: 'Modèle', value: model, set: setModel },
+                    { label: 'VIN / Châssis', value: vin, set: (v: string) => setVin(v.toUpperCase()), mono: true },
+                  ].map(f => (
+                    <div key={f.label}>
+                      <label className="block text-zinc-500 text-xs mb-1.5">{f.label}</label>
+                      <input value={f.value} onChange={e => f.set(e.target.value)}
+                        className={`w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand ${f.mono ? 'font-mono uppercase' : ''}`} />
+                    </div>
+                  ))}
                   <div>
                     <label className="block text-zinc-500 text-xs mb-1.5">Carburant</label>
                     <select value={fuel} onChange={e => setFuel(e.target.value)}
@@ -635,84 +685,53 @@ export default function NewMissionClient({
                       {GEARBOX_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">VIN / Châssis</label>
-                    <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
-                      placeholder="VIN..."
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                  </div>
                 </div>
               </div>
 
-              {/* Lieux */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">📍 Lieu d'intervention / Destination</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>
-                    <AddressInput
-                      label="Adresse"
-                      value={incidentAddress}
-                      onChange={v => { setIncidentAddress(v); setIncidentLat(null); setIncidentLng(null) }}
-                      onSelect={(addr, lat, lng) => {
-                        setIncidentAddress(addr)
-                        setIncidentLat(lat)
-                        setIncidentLng(lng)
-                        // Extraire la ville
-                        const parts = addr.split(',')
-                        if (parts.length > 1) setIncidentCity(parts[parts.length - 2]?.trim() || '')
-                      }}
-                      googleMapsKey={googleMapsKey}
-                      placeholder="Rue, autoroute..."
-                    />
-                    <div>
-                      <label className="block text-zinc-500 text-xs mb-1.5">Ville</label>
-                      <input value={incidentCity} onChange={e => setIncidentCity(e.target.value)}
-                        placeholder="4800 Verviers"
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Destination</p>
-                    <div>
-                      <label className="block text-zinc-500 text-xs mb-1.5">Nom du lieu</label>
-                      <input value={destName} onChange={e => setDestName(e.target.value)}
-                        placeholder="Garage, domicile..."
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
-                    </div>
-                    <AddressInput
-                      label="Adresse"
-                      value={destAddress}
-                      onChange={v => { setDestAddress(v); setDestLat(null); setDestLng(null) }}
-                      onSelect={(addr, lat, lng) => { setDestAddress(addr); setDestLat(lat); setDestLng(lng) }}
-                      googleMapsKey={googleMapsKey}
-                      placeholder="Rue, numéro, ville"
-                    />
+              {/* 7. Avertissements */}
+              {warnings.length > 0 && (
+                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                  <h2 className="text-white font-semibold text-sm mb-4">⚠️ Avertissements</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {warnings.map(w => {
+                      const selected = selectedWarnings.includes(w.id)
+                      const colors   = warningColorMap[w.color] || warningColorMap.orange
+                      return (
+                        <button key={w.id} onClick={() => toggleWarning(w.id)}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition ${
+                            selected ? colors : 'border-[#2a2a2a] bg-[#111] text-zinc-500 hover:text-white'
+                          }`}>
+                          <span>{w.icon}</span>
+                          <span className="text-xs text-left leading-tight">{w.label}</span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
+              )}
 
-                {/* Distance calculée */}
-                {(distanceKm !== null || calcLoading) && (
-                  <div className="mt-4 flex items-center gap-3 px-4 py-3 bg-[#111] border border-[#2a2a2a] rounded-xl">
-                    {calcLoading ? (
-                      <span className="text-zinc-500 text-sm">Calcul de la distance...</span>
-                    ) : (
-                      <>
-                        <span className="text-zinc-400 text-sm">🛣️ Distance estimée :</span>
-                        <span className="text-white font-semibold">{distanceKm} km</span>
-                        <span className="text-zinc-500">·</span>
-                        <span className="text-white font-semibold">~{durationMin} min</span>
-                        <span className="text-zinc-500 text-xs">(voiture — camion +15-20%)</span>
-                      </>
-                    )}
+              {/* 8. Remarques */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h2 className="text-white font-semibold text-sm mb-4">📝 Remarques</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-zinc-500 text-xs mb-1.5">Remarques générales (visible bureau + chauffeur)</label>
+                    <textarea value={remarksGeneral} onChange={e => setRemarksGeneral(e.target.value)}
+                      rows={3} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none" />
                   </div>
-                )}
+                  <div>
+                    <label className="block text-zinc-500 text-xs mb-1.5">Remarques de facturation (visible bureau + facture)</label>
+                    <textarea value={remarksBilling} onChange={e => setRemarksBilling(e.target.value)}
+                      rows={2} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none" />
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* ── Colonne droite : actions ──────────────────────── */}
+            {/* ── Colonne droite : résumé + action ────────────────────────── */}
             <div className="space-y-4">
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 sticky top-[89px] space-y-3">
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 sticky top-[89px] space-y-4">
+
                 {error && (
                   <div className="px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
                     {error}
@@ -731,41 +750,43 @@ export default function NewMissionClient({
 
                 {/* Résumé */}
                 <div className="border-t border-[#2a2a2a] pt-4 space-y-2">
-                  <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Résumé</p>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Source</span>
-                      <span className="text-white uppercase">{source}</span>
+                  <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-3">Résumé</p>
+                  {[
+                    { label: 'RDV',      value: rdvDate && rdvTime ? `${rdvDate} ${rdvTime}` : '—' },
+                    { label: 'Source',   value: ALL_SOURCES.find(s => s.value === source)?.label || source },
+                    { label: 'Type',     value: MISSION_TYPES.find(t => t.value === missionType)?.label || '—' },
+                    { label: 'Facturé', value: billedName || '—' },
+                    { label: 'Assisté', value: assistedName || billedName || '—' },
+                    { label: 'Véhicule', value: plate || '—' },
+                  ].map(r => (
+                    <div key={r.label} className="flex justify-between gap-2">
+                      <span className="text-zinc-500 text-xs flex-shrink-0">{r.label}</span>
+                      <span className="text-white text-xs text-right truncate">{r.value}</span>
                     </div>
+                  ))}
+
+                  {odooPartnerId && (
+                    <div className="flex items-center gap-1.5 text-green-400 text-xs">✓ Client Odoo lié</div>
+                  )}
+                  {odooVehicleId && (
+                    <div className="flex items-center gap-1.5 text-green-400 text-xs">✓ Véhicule Odoo lié</div>
+                  )}
+                  {distanceKm !== null && (
                     <div className="flex justify-between">
-                      <span className="text-zinc-500">Type</span>
-                      <span className="text-white">{MISSION_TYPES.find(t => t.value === missionType)?.label || '—'}</span>
+                      <span className="text-zinc-500 text-xs">Distance</span>
+                      <span className="text-white text-xs">{distanceKm} km · ~{durationMin} min</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Client</span>
-                      <span className="text-white truncate max-w-[140px]">{clientName || '—'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Véhicule</span>
-                      <span className="text-white font-mono">{plate || '—'}</span>
-                    </div>
-                    {odooPartnerId && (
-                      <div className="flex items-center gap-1.5 text-green-400">
-                        <span>✓</span><span>Client Odoo lié</span>
+                  )}
+                  {selectedWarnings.length > 0 && (
+                    <div>
+                      <span className="text-zinc-500 text-xs">Avertissements</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {warnings.filter(w => selectedWarnings.includes(w.id)).map(w => (
+                          <span key={w.id} className="text-xs">{w.icon} {w.label}</span>
+                        ))}
                       </div>
-                    )}
-                    {odooVehicleId && (
-                      <div className="flex items-center gap-1.5 text-green-400">
-                        <span>✓</span><span>Véhicule Odoo lié</span>
-                      </div>
-                    )}
-                    {distanceKm !== null && (
-                      <div className="flex justify-between">
-                        <span className="text-zinc-500">Distance</span>
-                        <span className="text-white">{distanceKm} km · ~{durationMin} min</span>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
