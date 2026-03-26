@@ -349,6 +349,30 @@ export default function MissionDetailClient({
     router.push('/dispatch')
   }
 
+  // Assigner la mission (dispatching → assigned)
+  const handleAssign = async () => {
+    if (!selectedDriver) {
+      alert('Veuillez sélectionner un chauffeur avant d'assigner la mission.')
+      return
+    }
+    setLoadingSave(true)
+    // Sauvegarder les modifications du formulaire
+    await fetch(`/api/missions/${initialMission.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(form)
+    })
+    // Assigner le chauffeur
+    await fetch('/api/missions/assign', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ mission_id: initialMission.id, driver_id: selectedDriver })
+    })
+    setStatus('assigned')
+    setLoadingSave(false)
+    router.push('/dispatch')
+  }
+
   const srcInfo    = SOURCE_LABELS[initialMission.source] || { label: '?', color: 'bg-zinc-600' }
   const statusInfo = STATUS_LABELS[status] || { label: status, color: 'text-zinc-400' }
   const canEdit    = ['new', 'dispatching'].includes(status)
@@ -607,11 +631,11 @@ export default function MissionDetailClient({
                       <span className="text-blue-400 font-semibold text-sm">📡 En attente d'assignation</span>
                     </div>
                     <button
-                      onClick={handleSave}
+                      onClick={handleAssign}
                       disabled={loadingSave}
                       className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                     >
-                      {loadingSave ? 'Sauvegarde...' : '👷 Assigner la mission'}
+                      {loadingSave ? 'Assignation...' : '👷 Assigner la mission'}
                     </button>
                     <button
                       onClick={handleRefuse}
