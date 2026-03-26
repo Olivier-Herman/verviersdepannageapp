@@ -367,27 +367,48 @@ async function handleAllianzOTP(message: any, token: string): Promise<void> {
 
     console.log(`[Allianz] Mission extraite: ${extracted.external_id}`)
 
-    // Mettre à jour la mission en DB
+    // Mettre à jour la mission en DB avec mapping explicite
     if (pending.mission_id) {
-      await supabase.from('incoming_missions').update({
-        ...extracted,
-        source:          'mondial',
-        source_format:   'email_plain',
-        status:          'new',
-        parse_confidence: extracted.confidence,
-        parsed_data:     { ...extracted, allianz_session: true },
-        updated_at:      new Date().toISOString(),
+      const { error: updateError } = await supabase.from('incoming_missions').update({
+        source:               'mondial',
+        source_format:        'email_plain',
+        status:               'new',
+        external_id:          extracted.external_id          || null,
+        dossier_number:       extracted.dossier_number       || null,
+        mission_type:         extracted.mission_type         || null,
+        incident_type:        extracted.incident_type        || null,
+        incident_description: extracted.incident_description || null,
+        client_name:          extracted.client_name          || null,
+        client_phone:         extracted.client_phone         || null,
+        client_address:       extracted.client_address       || null,
+        vehicle_plate:        extracted.vehicle_plate        || null,
+        vehicle_brand:        extracted.vehicle_brand        || null,
+        vehicle_model:        extracted.vehicle_model        || null,
+        vehicle_vin:          extracted.vehicle_vin          || null,
+        vehicle_fuel:         extracted.vehicle_fuel         || null,
+        vehicle_gearbox:      extracted.vehicle_gearbox      || null,
+        incident_address:     extracted.incident_address     || null,
+        incident_city:        extracted.incident_city        || null,
+        incident_country:     extracted.incident_country     || 'BE',
+        incident_lat:         extracted.incident_lat         || null,
+        incident_lng:         extracted.incident_lng         || null,
+        incident_at:          extracted.incident_at          || null,
+        parse_confidence:     extracted.confidence           || 0.98,
+        parsed_data:          { ...extracted, allianz_session: true },
+        updated_at:           new Date().toISOString(),
       }).eq('id', pending.mission_id)
 
-      await supabase.from('mission_logs').insert({
-        mission_id: pending.mission_id,
-        action:     'enriched',
-        notes:      'Mission enrichie automatiquement via API Allianz/Hexalite',
-      })
-
-      // Nettoyer
-      await supabase.from('allianz_otp_pending').update({ status: 'done' }).eq('id', pending.id)
-      console.log(`[Allianz] Mission ${pending.mission_id} enrichie avec succès`)
+      if (updateError) {
+        console.error('[Allianz] ERREUR UPDATE:', JSON.stringify(updateError))
+      } else {
+        await supabase.from('mission_logs').insert({
+          mission_id: pending.mission_id,
+          action:     'enriched',
+          notes:      'Mission enrichie automatiquement via API Allianz/Hexalite',
+        })
+        await supabase.from('allianz_otp_pending').update({ status: 'done' }).eq('id', pending.id)
+        console.log(`[Allianz] Mission ${pending.mission_id} enrichie avec succès`)
+      }
     }
 
   } catch (err: any) {
