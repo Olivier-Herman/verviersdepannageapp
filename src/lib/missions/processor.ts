@@ -189,8 +189,6 @@ async function enrichFromIMAPortal(
   source: string,
   parsedData: any
 ): Promise<Partial<typeof parsedData>> {
-  if (!['ethias', 'vivium'].includes(source)) return {}
-
   const imaLinkMatch = rawContent.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)
   if (!imaLinkMatch) return {}
 
