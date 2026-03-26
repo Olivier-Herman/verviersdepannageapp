@@ -260,6 +260,120 @@ async function enrichFromIMAPortal(
   }
 }
 
+// ── Déclenchement flow Allianz ───────────────────────────────────────────────
+
+async function triggerAllianzFlow(rawContent: string, missionId: string | undefined): Promise<void> {
+  const supabase = createAdminClient()
+  try {
+    // Extraire l'ID de la mission depuis le lien ou le texte
+    const assignmentMatch = rawContent.match(/no\.\s*(\d+)/i)
+      || rawContent.match(/toewijzing.*?(\d{10,})/i)
+    const assignmentId = assignmentMatch?.[1] || `unknown_${Date.now()}`
+
+    // Extraire le lien dispatch
+    const linkMatch = rawContent.match(/https:\/\/www\.allianzpartners-providerplatform\.com\/dispatch\/[^\s"<>]+/)
+    const dispatchLink = linkMatch?.[0] || null
+
+    console.log(`[Allianz] Demande OTP pour mission ${assignmentId}`)
+
+    // Demander l'OTP
+    const { allianzRequestOTP } = await import('./allianz')
+    const { refNo } = await allianzRequestOTP()
+
+    // Stocker le refNo en attente dans la DB
+    await supabase.from('allianz_otp_pending').insert({
+      ref_no:        refNo,
+      assignment_id: assignmentId,
+      dispatch_link: dispatchLink,
+      mission_id:    missionId || null,
+      status:        'waiting',
+    })
+
+    console.log(`[Allianz] refNo ${refNo} stocké — en attente de l'OTP`)
+  } catch (err: any) {
+    console.error('[Allianz] Erreur triggerAllianzFlow:', err.message)
+  }
+}
+
+// ── Handler OTP Allianz ──────────────────────────────────────────────────────
+
+async function handleAllianzOTP(message: any, token: string): Promise<void> {
+  const supabase = createAdminClient()
+  try {
+    // Extraire l'OTP depuis le body HTML du mail
+    const body = message.body?.content || ''
+    const otpMatch = body.match(/Your One Time Password.*?<b>(\d{4,8})<\/b>/i)
+      || body.match(/OTP.*?:\s*<b>(\d{4,8})<\/b>/i)
+      || body.match(/<b>(\d{6})<\/b>/)
+
+    if (!otpMatch) {
+      console.warn('[Allianz] OTP non trouvé dans le mail')
+      return
+    }
+
+    const otp = otpMatch[1]
+    console.log(`[Allianz] OTP extrait: ${otp}`)
+
+    // Récupérer le refNo en attente depuis la DB
+    const { data: pending } = await supabase
+      .from('allianz_otp_pending')
+      .select('*')
+      .eq('status', 'waiting')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!pending) {
+      console.warn('[Allianz] Aucun refNo en attente pour cet OTP')
+      return
+    }
+
+    // Vérifier l'OTP avec Allianz API
+    const { allianzVerifyOTP, allianzFetchAssignment, allianzFetchAssignmentDetail, allianzExtractMissionData } = await import('./allianz')
+    const session = await allianzVerifyOTP(pending.ref_no, otp)
+
+    // Mettre à jour le statut
+    await supabase.from('allianz_otp_pending')
+      .update({ status: 'verified', access_token: session.access_token })
+      .eq('id', pending.id)
+
+    // Récupérer les détails de la mission
+    const assignment = await allianzFetchAssignment(session.access_token, pending.assignment_id)
+    if (!assignment) return
+
+    const detail = await allianzFetchAssignmentDetail(session.access_token, assignment.id || pending.assignment_id)
+    const extracted = allianzExtractMissionData(detail || assignment)
+
+    console.log(`[Allianz] Mission extraite: ${extracted.external_id}`)
+
+    // Mettre à jour la mission en DB
+    if (pending.mission_id) {
+      await supabase.from('incoming_missions').update({
+        ...extracted,
+        source:          'mondial',
+        source_format:   'email_plain',
+        status:          'new',
+        parse_confidence: extracted.confidence,
+        parsed_data:     { ...extracted, allianz_session: true },
+        updated_at:      new Date().toISOString(),
+      }).eq('id', pending.mission_id)
+
+      await supabase.from('mission_logs').insert({
+        mission_id: pending.mission_id,
+        action:     'enriched',
+        notes:      'Mission enrichie automatiquement via API Allianz/Hexalite',
+      })
+
+      // Nettoyer
+      await supabase.from('allianz_otp_pending').update({ status: 'done' }).eq('id', pending.id)
+      console.log(`[Allianz] Mission ${pending.mission_id} enrichie avec succès`)
+    }
+
+  } catch (err: any) {
+    console.error('[Allianz] Erreur handleAllianzOTP:', err.message)
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ProcessResult =
@@ -316,6 +430,17 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     console.log(`[Processor] Email: from="${fromEmail}" subject="${subject}" hasAttachments=${message.hasAttachments}`)
 
     const source = await detectSource(fromEmail, subject)
+
+    // ── Détection OTP Allianz (intercepté depuis la boîte assistance@) ──────
+    // Le sujet contient "One Time Password" — c'est un OTP pour le login Hexalite
+    if (subject.toLowerCase().includes('one time password') && fromEmail.toLowerCase().includes('allianz')) {
+      console.log('[Processor] OTP Allianz intercepté — traitement asynchrone')
+      // L'OTP sera traité par le AllianzOTPHandler via la table allianz_otp_pending
+      await handleAllianzOTP(message, token)
+      await markAsRead(token, messageId)
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      return { status: 'skipped', reason: 'OTP Allianz intercepté et traité' }
+    }
 
     // Récupérer les pièces jointes avec contentBytes
     let attachments: any[] = []
@@ -390,11 +515,17 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'error', error: parseErr.message, missionId: placeholderId }
     }
 
-    // Enrichissement automatique depuis le portail IMA (ETHIAS/Vivium)
+    // Enrichissement automatique depuis le portail IMA
     const imaEnrichment = await enrichFromIMAPortal(content.rawContent, source, parsed)
     if (Object.keys(imaEnrichment).length > 0) {
       Object.assign(parsed, imaEnrichment)
       console.log('[Processor] Parsed enrichi avec données IMA')
+    }
+
+    // Déclenchement flow Allianz si email de mission Allianz (pas OTP)
+    if (source === 'mondial' && content.rawContent.includes('allianzpartners-providerplatform.com')) {
+      console.log('[Processor] Mission Allianz détectée — démarrage flow OTP')
+      await triggerAllianzFlow(content.rawContent, placeholderId)
     }
 
     // Mettre à jour le placeholder
