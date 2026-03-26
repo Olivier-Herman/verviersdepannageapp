@@ -172,6 +172,90 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 
+// ── Champ adresse avec vérification Google ───────────────────────────────────
+function VerifiedAddressField({ label, value, rawValue, onAccept, onChange }: {
+  label:     string
+  value:     string       // adresse actuelle dans le form
+  rawValue?: string       // adresse brute reçue de l'assistance (pour comparaison)
+  onAccept:  (addr: string, lat: number, lng: number) => void
+  onChange:  (v: string) => void
+}) {
+  const [suggestion, setSuggestion]   = useState<{ formatted: string; lat: number; lng: number } | null>(null)
+  const [loading,    setLoading]      = useState(false)
+  const [checked,    setChecked]      = useState(false)
+  const [different,  setDifferent]    = useState(false)
+
+  const verify = async () => {
+    if (!value) return
+    setLoading(true)
+    try {
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(value)}`)
+      const data = await res.json()
+      if (data.found) {
+        setSuggestion({ formatted: data.formatted, lat: data.lat, lng: data.lng })
+        setDifferent(!data.same)
+      }
+    } catch {}
+    setChecked(true)
+    setLoading(false)
+  }
+
+  const accept = () => {
+    if (!suggestion) return
+    onAccept(suggestion.formatted, suggestion.lat, suggestion.lng)
+    setSuggestion(null)
+    setChecked(false)
+    setDifferent(false)
+  }
+
+  return (
+    <div>
+      <label className="block text-zinc-500 text-xs mb-1.5">{label}</label>
+      <div className="flex gap-2 items-start">
+        <div className="flex-1">
+          <input
+            value={value}
+            onChange={e => { onChange(e.target.value); setChecked(false); setSuggestion(null) }}
+            placeholder="Rue, autoroute..."
+            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+          />
+          {rawValue && rawValue !== value && (
+            <p className="text-zinc-600 text-xs mt-1">📥 Reçu : <span className="text-zinc-500">{rawValue}</span></p>
+          )}
+          {checked && suggestion && (
+            <div className={`mt-2 p-2.5 rounded-xl border text-xs ${
+              different
+                ? 'bg-yellow-500/10 border-yellow-500/30'
+                : 'bg-green-500/10 border-green-500/30'
+            }`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  {different
+                    ? <p className="text-yellow-400 font-semibold mb-0.5">⚠️ Adresse différente suggérée</p>
+                    : <p className="text-green-400 font-semibold mb-0.5">✅ Adresse confirmée</p>
+                  }
+                  <p className={different ? 'text-yellow-300' : 'text-green-300'}>{suggestion.formatted}</p>
+                </div>
+                <button onClick={accept}
+                  className="flex-shrink-0 px-2.5 py-1 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold transition">
+                  Utiliser
+                </button>
+              </div>
+            </div>
+          )}
+          {checked && !suggestion && (
+            <p className="text-red-400 text-xs mt-1">❌ Adresse introuvable sur Google Maps</p>
+          )}
+        </div>
+        <button onClick={verify} disabled={loading || !value}
+          className="flex-shrink-0 mt-0.5 px-3 py-2.5 bg-[#2a2a2a] hover:bg-[#333] disabled:opacity-40 text-zinc-400 hover:text-white rounded-xl text-xs transition whitespace-nowrap">
+          {loading ? '⏳' : '🔍 Vérifier'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -242,9 +326,13 @@ export default function MissionDetailClient({
     vehicle_fuel:         initialMission.vehicle_fuel         || '',
     vehicle_gearbox:      initialMission.vehicle_gearbox      || '',
     incident_address:     initialMission.incident_address     || '',
+    incident_lat:         initialMission.incident_lat         != null ? String(initialMission.incident_lat)  : '',
+    incident_lng:         initialMission.incident_lng         != null ? String(initialMission.incident_lng)  : '',
     incident_city:        initialMission.incident_city        || '',
     destination_name:     initialMission.destination_name     || '',
     destination_address:  initialMission.destination_address  || '',
+    destination_lat:      '',
+    destination_lng:      '',
     amount_guaranteed:    initialMission.amount_guaranteed != null ? String(initialMission.amount_guaranteed) : '',
     amount_to_collect:    initialMission.amount_to_collect != null  ? String(initialMission.amount_to_collect)  : '',
   })
@@ -544,9 +632,18 @@ export default function MissionDetailClient({
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>
-                    <Field label="Adresse">
-                      <Input value={form.incident_address} onChange={f('incident_address')} placeholder="Rue, autoroute..." />
-                    </Field>
+                    <VerifiedAddressField
+                      label="Adresse"
+                      value={form.incident_address}
+                      rawValue={initialMission.incident_address || undefined}
+                      onChange={f('incident_address')}
+                      onAccept={(addr, lat, lng) => setForm(prev => ({
+                        ...prev,
+                        incident_address: addr,
+                        incident_lat:     String(lat),
+                        incident_lng:     String(lng),
+                      }))}
+                    />
                     <Field label="Ville / Code postal">
                       <Input value={form.incident_city} onChange={f('incident_city')} placeholder="4800 Verviers" />
                     </Field>
@@ -556,9 +653,17 @@ export default function MissionDetailClient({
                     <Field label="Nom du lieu">
                       <Input value={form.destination_name} onChange={f('destination_name')} placeholder="Garage, domicile..." />
                     </Field>
-                    <Field label="Adresse">
-                      <Input value={form.destination_address} onChange={f('destination_address')} placeholder="Rue, numéro, ville" />
-                    </Field>
+                    <VerifiedAddressField
+                      label="Adresse"
+                      value={form.destination_address}
+                      onChange={f('destination_address')}
+                      onAccept={(addr, lat, lng) => setForm(prev => ({
+                        ...prev,
+                        destination_address: addr,
+                        destination_lat:     String(lat),
+                        destination_lng:     String(lng),
+                      }))}
+                    />
                   </div>
                 </div>
               </div>

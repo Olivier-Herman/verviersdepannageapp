@@ -133,37 +133,54 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
   onSelect: (addr: string, lat: number, lng: number) => void
   gmKey: string; placeholder?: string
 }) {
-  const ref = useRef<HTMLInputElement>(null)
-  const cb  = useCallback(onSelect, [])
+  const ref       = useRef<HTMLInputElement>(null)
+  const acRef     = useRef<any>(null)
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect // toujours à jour sans re-init l'autocomplete
 
   useEffect(() => {
     if (!ref.current || !gmKey) return
+
     const init = () => {
-      if (!(window as any).google?.maps?.places) return
-      const ac = new (window as any).google.maps.places.Autocomplete(ref.current!, {
+      if (!(window as any).google?.maps?.places || acRef.current) return
+      acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current!, {
         componentRestrictions: { country: ['be','lu','fr','nl','de'] },
         fields: ['formatted_address','geometry'],
       })
-      ac.addListener('place_changed', () => {
-        const p = ac.getPlace()
-        if (p.geometry) cb(p.formatted_address || '', p.geometry.location.lat(), p.geometry.location.lng())
+      acRef.current.addListener('place_changed', () => {
+        const p = acRef.current.getPlace()
+        if (p?.geometry) {
+          const addr = p.formatted_address || ''
+          const lat  = p.geometry.location.lat()
+          const lng  = p.geometry.location.lng()
+          // Mettre à jour le champ immédiatement avant que onBlur ne le vide
+          onChange(addr)
+          onSelectRef.current(addr, lat, lng)
+        }
       })
     }
+
     if ((window as any).google?.maps?.places) { init(); return }
     if (!document.getElementById('gm-script')) {
       const s = document.createElement('script')
-      s.id = 'gm-script'
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
+      s.id    = 'gm-script'
+      s.src   = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
       s.onload = init
       document.head.appendChild(s)
+    } else {
+      const t = setInterval(() => {
+        if ((window as any).google?.maps?.places) { init(); clearInterval(t) }
+      }, 200)
+      return () => clearInterval(t)
     }
-  }, [gmKey, cb])
+  }, [gmKey])
 
   return (
     <div>
       <label className="block text-zinc-500 text-xs mb-1.5">{label}</label>
       <div className="relative">
-        <input ref={ref} value={value} onChange={e => onChange(e.target.value)}
+        <input ref={ref} value={value}
+          onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600 pr-8" />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 text-xs">📍</span>
