@@ -30,6 +30,8 @@ interface Mission {
   incident_address: string | null
   incident_city: string | null
   incident_country: string
+  incident_lat: number | null
+  incident_lng: number | null
   destination_name: string | null
   destination_address: string | null
   amount_guaranteed: number | null
