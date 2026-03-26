@@ -281,7 +281,7 @@ async function triggerAllianzFlow(rawContent: string, missionId: string | undefi
     const { refNo } = await allianzRequestOTP()
 
     // Stocker le refNo en attente dans la DB
-    await supabase.from('allianz_otp_pending').insert({
+    const { error: insertError } = await supabase.from('allianz_otp_pending').insert({
       ref_no:        refNo,
       assignment_id: assignmentId,
       dispatch_link: dispatchLink,
@@ -289,7 +289,14 @@ async function triggerAllianzFlow(rawContent: string, missionId: string | undefi
       status:        'waiting',
     })
 
-    console.log(`[Allianz] refNo ${refNo} stocké — en attente de l'OTP`)
+    if (insertError) {
+      console.error('[Allianz] ERREUR INSERT allianz_otp_pending:', JSON.stringify(insertError))
+      throw new Error(`INSERT failed: ${insertError.message}`)
+    }
+
+    // Vérifier que l'INSERT est bien visible
+    const { data: verify } = await supabase.from('allianz_otp_pending').select('id,ref_no').eq('ref_no', refNo).maybeSingle()
+    console.log(`[Allianz] refNo ${refNo} stocké — vérification: ${verify ? 'OK id=' + verify.id : 'INTROUVABLE!'}`)
   } catch (err: any) {
     console.error('[Allianz] Erreur triggerAllianzFlow:', err.message)
   }
