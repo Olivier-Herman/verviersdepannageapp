@@ -234,9 +234,35 @@ export default function MissionDetailClient({
   const [loadingConfirm, setLoadingConfirm]   = useState(false)
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
   const [loadingSave,    setLoadingSave]      = useState(false)
+  const [loadingIMA,     setLoadingIMA]       = useState(false)
+  const [imaSuccess,     setImaSuccess]       = useState(false)
   const [status,         setStatus]           = useState(initialMission.status)
 
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
+
+  // Détecter lien IMA dans raw_content
+  const imaLink = initialMission.raw_content?.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)?.[0] || null
+
+  // Enrichir depuis le portail IMA
+  const handleFetchIMA = async () => {
+    setLoadingIMA(true)
+    setImaSuccess(false)
+    try {
+      const res  = await fetch('/api/missions/fetch-ima', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_id: initialMission.id })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setImaSuccess(true)
+        // Recharger la page pour voir les nouvelles données
+        setTimeout(() => window.location.reload(), 1500)
+      }
+    } finally {
+      setLoadingIMA(false)
+    }
+  }
 
   // Sauvegarder les modifications du formulaire
   const handleSave = async () => {
@@ -563,6 +589,30 @@ export default function MissionDetailClient({
                   )}
                 </div>
               </div>
+
+              {/* Bouton enrichissement IMA */}
+              {imaLink && (
+                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                  <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-3">Portail IMA</h3>
+                  {imaSuccess ? (
+                    <div className="text-green-400 text-sm text-center py-2">✅ Données enrichies !</div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleFetchIMA}
+                        disabled={loadingIMA}
+                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition disabled:opacity-50 mb-2"
+                      >
+                        {loadingIMA ? 'Récupération...' : '🔗 Enrichir depuis IMA'}
+                      </button>
+                      <a href={imaLink} target="_blank" rel="noopener noreferrer"
+                        className="block w-full py-2 bg-[#111] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-xs text-center transition">
+                        Ouvrir le portail IMA ↗
+                      </a>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Historique */}
               {logs.length > 0 && (
