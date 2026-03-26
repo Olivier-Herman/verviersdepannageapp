@@ -337,12 +337,55 @@ async function handleAllianzOTP(message: any, token: string): Promise<void> {
       .update({ status: 'verified', access_token: session.access_token })
       .eq('id', pending.id)
 
-    // Récupérer les détails de la mission
-    const assignment = await allianzFetchAssignment(session.access_token, pending.assignment_id)
-    if (!assignment) return
+    // Récupérer les détails via le lien dispatch-drawer du mail
+    // C'est ce lien qui, une fois le token obtenu, donne accès direct à la mission
+    let extracted: Record<string, any> = {}
 
-    const detail = await allianzFetchAssignmentDetail(session.access_token, assignment.id || pending.assignment_id)
-    const extracted = allianzExtractMissionData(detail || assignment)
+    if (pending.dispatch_link) {
+      console.log('[Allianz] Fetch dispatch-drawer link:', pending.dispatch_link.slice(0, 80))
+      try {
+        const pageRes = await fetch(pending.dispatch_link, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'User-Agent':    'Mozilla/5.0 (compatible; VerviersDépannage/1.0)',
+            'Accept':        'application/json, text/html, */*',
+          },
+          signal: AbortSignal.timeout(15000),
+        })
+        if (pageRes.ok) {
+          const contentType = pageRes.headers.get('content-type') || ''
+          if (contentType.includes('application/json')) {
+            const json = await pageRes.json()
+            extracted = allianzExtractMissionData(json)
+          } else {
+            // HTML — parser avec Claude
+            const html = await pageRes.text()
+            console.log('[Allianz] Page HTML reçue:', html.length, 'chars')
+            const { parseMissionContent } = await import('./parser')
+            const htmlText = html
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+            const parsed = await parseMissionContent('mondial' as any,
+              { textContent: htmlText, sourceFormat: 'email_plain', rawContent: html.slice(0, 15000) },
+              `Allianz dispatch-drawer ${pending.assignment_id}`
+            )
+            extracted = parsed
+          }
+        } else {
+          console.warn('[Allianz] dispatch-drawer retourné', pageRes.status)
+        }
+      } catch (e: any) {
+        console.warn('[Allianz] Erreur dispatch-drawer:', e.message)
+      }
+    }
+
+    // Fallback API si dispatch-drawer a échoué
+    if (!extracted.external_id) {
+      const assignment = await allianzFetchAssignment(session.access_token, pending.assignment_id)
+      const detail     = await allianzFetchAssignmentDetail(session.access_token, assignment?.id || pending.assignment_id)
+      extracted = allianzExtractMissionData(detail || assignment || {})
+    }
 
     console.log(`[Allianz] Mission extraite: ${extracted.external_id}`)
 
