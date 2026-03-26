@@ -807,11 +807,22 @@ export default function MissionDetailClient({
                   </>
                 )}
 
-                {/* Autres statuts — lecture seule */}
+                {/* Autres statuts — statut + sauvegarder */}
                 {!['new', 'dispatching'].includes(status) && (
-                  <div className={`text-center py-3 font-semibold text-sm ${statusInfo.color}`}>
-                    {statusInfo.label}
-                  </div>
+                  <>
+                    <div className={`text-center py-2 font-semibold text-sm ${statusInfo.color}`}>
+                      {statusInfo.label}
+                    </div>
+                    {!['completed', 'ignored'].includes(status) && (
+                      <button
+                        onClick={handleSave}
+                        disabled={loadingSave}
+                        className="w-full py-2.5 bg-[#111] hover:bg-[#2a2a2a] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-sm transition disabled:opacity-50"
+                      >
+                        {loadingSave ? 'Sauvegarde...' : '💾 Sauvegarder'}
+                      </button>
+                    )}
+                  </>
                 )}
 
                 {/* Assignation chauffeur */}

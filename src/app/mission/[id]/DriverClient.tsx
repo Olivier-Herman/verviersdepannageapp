@@ -333,6 +333,18 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
         {/* Formulaire */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
 
+          {/* Dépôt en parc */}
+          <button onClick={() => { setShowClose(false); loadStages(); setShowPark(true) }}
+            className="w-full py-3 bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/30 text-yellow-400 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
+            🅿️ Mettre le véhicule en dépôt plutôt
+          </button>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[#2a2a2a]"></div>
+            <span className="text-zinc-600 text-xs">ou clôturer maintenant</span>
+            <div className="flex-1 h-px bg-[#2a2a2a]"></div>
+          </div>
+
           {/* Type */}
           <div>
             <Label icon="🔧" text="Type de mission" />
@@ -713,12 +725,6 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           </Card>
         )}
 
-        {/* Timeline */}
-        <Card>
-          <Label icon="🕐" text="Progression" />
-          <Timeline mission={mission} />
-        </Card>
-
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">⚠️ {error}</div>
         )}
@@ -750,16 +756,10 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           )}
 
           {mission.status === 'in_progress' && mission.on_site_at && (
-            <div className="flex gap-2">
-              <button onClick={() => { loadStages(); setShowPark(true) }}
-                className="flex-1 py-3.5 bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/30 text-yellow-400 font-bold rounded-2xl text-sm">
-                🅿️ Dépôt
-              </button>
-              <button onClick={() => setShowClose(true)}
-                className="flex-1 py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm">
-                🏁 Clôturer
-              </button>
-            </div>
+            <button onClick={() => { loadStages(); setShowClose(true) }}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-base shadow-lg">
+              🏁 Clôturer la mission
+            </button>
           )}
 
           {mission.status === 'parked' && (
