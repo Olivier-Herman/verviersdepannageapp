@@ -505,12 +505,13 @@ export default function NewMissionClient({
                   <input value={clientSearch.query}
                     onChange={e => { clientSearch.setQuery(e.target.value); setShowClientDrop(true) }}
                     onFocus={() => setShowClientDrop(true)}
+                    onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
                     placeholder="Min. 3 caractères — nom ou téléphone..."
                     className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
                   {showClientDrop && clientSearch.results.length > 0 && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
                       {clientSearch.results.map(c => (
-                        <button key={c.id} onClick={() => selectClient(c)}
+                        <button key={c.id} onMouseDown={() => selectClient(c)}
                           className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] transition border-b border-[#222] last:border-0">
                           <p className="text-white text-sm font-medium">{c.name}</p>
                           <p className="text-zinc-500 text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
@@ -634,12 +635,13 @@ export default function NewMissionClient({
                   <input value={vehicleSearch.query}
                     onChange={e => { vehicleSearch.setQuery(e.target.value.toUpperCase()); setShowVehicleDrop(true) }}
                     onFocus={() => setShowVehicleDrop(true)}
+                    onBlur={() => setTimeout(() => setShowVehicleDrop(false), 150)}
                     placeholder="Min. 3 caractères..."
                     className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand placeholder:normal-case placeholder:text-zinc-600" />
                   {showVehicleDrop && vehicleSearch.results.length > 0 && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
                       {vehicleSearch.results.map(v => (
-                        <button key={v.id} onClick={() => selectVehicle(v)}
+                        <button key={v.id} onMouseDown={() => selectVehicle(v)}
                           className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] transition border-b border-[#222] last:border-0">
                           <p className="text-white text-sm font-bold font-mono">{v.plate}</p>
                           <p className="text-zinc-400 text-xs">{[v.brand, v.model].filter(Boolean).join(' ')} {v.partner_name ? `· ${v.partner_name}` : ''}</p>

@@ -41,6 +41,10 @@ interface Mission {
   assigned_user: { id: string; name: string } | null
   parse_confidence: number | null
   raw_content: string | null
+  billed_to_name: string | null
+  billed_to_id: number | null
+  assisted_name: string | null
+  assisted_phone: string | null
 }
 
 interface MissionLog {
@@ -213,6 +217,7 @@ export default function MissionDetailClient({
     mission_type:         initialMission.mission_type         || '',
     incident_type:        initialMission.incident_type        || '',
     incident_description: initialMission.incident_description || '',
+    billed_to_name:       initialMission.billed_to_name       || '',
     client_name:          initialMission.client_name          || '',
     client_phone:         initialMission.client_phone         || '',
     client_address:       initialMission.client_address       || '',
@@ -389,10 +394,23 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Client */}
+              {/* Client facturé */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
                 <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>👤</span> Client / Assuré
+                  <span>🧾</span> Client facturé
+                </h2>
+                <Field label="Nom / Raison sociale">
+                  <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
+                </Field>
+                {initialMission.billed_to_id && (
+                  <p className="text-zinc-500 text-xs mt-1.5">Odoo ID #{initialMission.billed_to_id}</p>
+                )}
+              </div>
+
+              {/* Client assisté */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+                  <span>👤</span> Client assisté (personne en panne)
                 </h2>
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Nom complet">
