@@ -1,6 +1,6 @@
 'use client'
 
-import { useState }    from 'react'
+import { useState, useEffect }    from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { signOut }     from 'next-auth/react'
@@ -239,6 +239,9 @@ export default function MissionDetailClient({
   const [loadingConfirm, setLoadingConfirm]   = useState(false)
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
   const [loadingSave,    setLoadingSave]      = useState(false)
+  const [brands,         setBrands]           = useState<{id:number;name:string}[]>([])
+  const [models,         setModels]           = useState<{id:number;name:string}[]>([])
+  const [loadingBrands,  setLoadingBrands]    = useState(false)
   const [loadingIMA,     setLoadingIMA]       = useState(false)
   const [imaSuccess,     setImaSuccess]       = useState(false)
   const [status,         setStatus]           = useState(initialMission.status)
@@ -268,6 +271,30 @@ export default function MissionDetailClient({
       setLoadingIMA(false)
     }
   }
+
+  // Charger les marques depuis l'API véhicules
+  const loadBrands = async () => {
+    if (brands.length > 0) return
+    setLoadingBrands(true)
+    try {
+      const res  = await fetch('/api/vehicles?type=brands')
+      const data = await res.json()
+      setBrands(data || [])
+    } finally { setLoadingBrands(false) }
+  }
+
+  const loadModels = async (brandId: number) => {
+    const res  = await fetch(`/api/vehicles?type=models&brandId=${brandId}`)
+    const data = await res.json()
+    setModels(data || [])
+  }
+
+  // Charger les modèles si une marque est déjà sélectionnée au chargement
+  useEffect(() => {
+    if (form.vehicle_brand && brands.length === 0) {
+      loadBrands().then(() => {})
+    }
+  }, [])
 
   // Sauvegarder les modifications du formulaire
   const handleSave = async () => {
@@ -437,10 +464,33 @@ export default function MissionDetailClient({
                     <Input value={form.vehicle_plate} onChange={f('vehicle_plate')} placeholder="1ABC234" />
                   </Field>
                   <Field label="Marque">
-                    <Input value={form.vehicle_brand} onChange={f('vehicle_brand')} placeholder="BMW" />
+                    <select
+                      value={form.vehicle_brand}
+                      onFocus={loadBrands}
+                      onChange={e => {
+                        const b = brands.find(b => b.name === e.target.value)
+                        f('vehicle_brand')(e.target.value)
+                        f('vehicle_model')('')
+                        setModels([])
+                        if (b) loadModels(b.id)
+                      }}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+                    >
+                      <option value="">{loadingBrands ? 'Chargement...' : '— Sélectionner —'}</option>
+                      {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                    </select>
                   </Field>
                   <Field label="Modèle">
-                    <Input value={form.vehicle_model} onChange={f('vehicle_model')} placeholder="Série 3" />
+                    {models.length > 0 ? (
+                      <select value={form.vehicle_model} onChange={e => f('vehicle_model')(e.target.value)}
+                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                        <option value="">— Sélectionner —</option>
+                        {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                        <option value="_custom">Autre (saisie libre)</option>
+                      </select>
+                    ) : (
+                      <Input value={form.vehicle_model} onChange={f('vehicle_model')} placeholder={form.vehicle_brand ? 'Saisie libre...' : "Choisir une marque d'abord"} />
+                    )}
                   </Field>
                   <Field label="Carburant">
                     <Select value={form.vehicle_fuel} onChange={f('vehicle_fuel')} options={FUEL_TYPES} />

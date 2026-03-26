@@ -6,12 +6,12 @@ import type { Session } from 'next-auth'
 import AppShell from '@/components/layout/AppShell'
 
 const NAV_MODULES = [
+  { id: 'missions',      label: 'Dispatch Missions',      icon: '📡', href: '/dispatch',        color: 'bg-blue-900',   size: 'large' },
   { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',      size: 'large' },
   { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'large' },
   { id: 'finance',       label: 'Finance',                icon: '💰', href: '/finance',         color: 'bg-surface',    size: 'small' },
   { id: 'check_vehicle', label: 'Check Véhicule',         icon: '🔍', href: '/check-vehicule', color: 'bg-surface',    size: 'small' },
   { id: 'tgr',           label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
-  { id: 'missions',      label: 'Dispatch Missions',      icon: '📡', href: '/dispatch',        color: 'bg-blue-900',   size: 'large' },
   { id: 'depose',        label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
   { id: 'profil',        label: 'Mon Profil',             icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
   { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'large' },
