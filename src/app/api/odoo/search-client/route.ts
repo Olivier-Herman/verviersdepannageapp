@@ -39,15 +39,14 @@ export async function GET(req: Request) {
   try {
     // Recherche par nom OU téléphone OU mobile
     const domain = [
-      '|', '|', '|',
-      ['name',   'ilike', q],
-      ['phone',  'ilike', q],
-      ['mobile', 'ilike', q],
-      ['ref',    'ilike', q],
+      '|', '|',
+      ['name',  'ilike', q],
+      ['phone', 'ilike', q],
+      ['ref',   'ilike', q],
     ]
 
     const clients = await odooCall('res.partner', 'search_read', [domain], {
-      fields:  ['id', 'name', 'phone', 'mobile', 'street', 'city', 'zip', 'email', 'vat', 'ref'],
+      fields:  ['id', 'name', 'phone', 'street', 'city', 'zip', 'email', 'vat', 'ref'],
       limit:   10,
       order:   'name asc',
     })
