@@ -75,7 +75,20 @@ export async function POST(req: Request) {
 // ── Traitement en arrière-plan ─────────────────────────────────────────────────
 
 async function processNotificationsBackground(notifications: any[]): Promise<void> {
-  for (const notification of notifications) {
+  // Dédupliquer les messageIds — Graph peut envoyer plusieurs notifs pour le même message
+  const seen    = new Set<string>()
+  const unique  = notifications.filter(n => {
+    const id = n.resourceData?.id as string | undefined
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+
+  if (unique.length < notifications.length) {
+    console.log(`[Webhook] Déduplication: ${notifications.length} → ${unique.length} notification(s)`)
+  }
+
+  for (const notification of unique) {
     const messageId = notification.resourceData?.id as string | undefined
 
     if (!messageId) {

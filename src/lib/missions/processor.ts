@@ -324,8 +324,22 @@ async function handleAllianzOTP(message: any, token: string): Promise<void> {
       .maybeSingle()
 
     if (!pending) {
-      console.warn('[Allianz] Aucun refNo en attente pour cet OTP')
-      return
+      // Race condition possible — attendre 5s et réessayer une fois
+      console.warn('[Allianz] Aucun refNo en attente — retry dans 5s')
+      await new Promise(r => setTimeout(r, 5000))
+      const { data: pendingRetry } = await supabase
+        .from('allianz_otp_pending')
+        .select('*')
+        .eq('status', 'waiting')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!pendingRetry) {
+        console.warn('[Allianz] Toujours aucun refNo après retry — abandon')
+        return
+      }
+      // Continuer avec le retry
+      Object.assign(pending || {}, pendingRetry)
     }
 
     // Vérifier l'OTP avec Allianz API
