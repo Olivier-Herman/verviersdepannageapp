@@ -269,9 +269,10 @@ interface ClosingData {
   signatureName: string; note: string; paymentMethod: string; amountCollected: string
 }
 
-function CloseModal({ mission, onClose, onSubmit, loading }: {
+function CloseModal({ mission, onClose, onSubmit, loading, onPark }: {
   mission: Mission; onClose: () => void
   onSubmit: (data: ClosingData) => void; loading: boolean
+  onPark: () => void
 }) {
   const hasPayment = (mission.amount_to_collect || 0) > 0
 
@@ -334,7 +335,7 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
 
           {/* Dépôt en parc */}
-          <button onClick={() => { setShowClose(false); loadStages(); setShowPark(true) }}
+          <button onClick={onPark}
             className="w-full py-3 bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/30 text-yellow-400 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
             🅿️ Mettre le véhicule en dépôt plutôt
           </button>
@@ -774,7 +775,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       {/* Modals */}
       {showNavModal && <NavModal onSelect={handleNavChoice} />}
       {showPark     && <ParkModal stages={stages} onClose={() => setShowPark(false)} onSubmit={handlePark} loading={loading} />}
-      {showClose    && <CloseModal mission={mission} onClose={() => setShowClose(false)} onSubmit={handleComplete} loading={loading} />}
+      {showClose    && <CloseModal mission={mission} onClose={() => setShowClose(false)} onSubmit={handleComplete} loading={loading} onPark={() => { setShowClose(false); loadStages(); setShowPark(true) }} />}
     </div>
   )
 }
