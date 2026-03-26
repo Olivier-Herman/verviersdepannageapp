@@ -18,6 +18,8 @@ interface OdooVehicle {
 }
 interface Warning { id: string; label: string; icon: string; color: string }
 interface Driver  { id: string; name: string }
+interface Brand   { id: number; name: string }
+interface Model   { id: number; name: string; brand_id: number }
 interface Destination { id: string; label: string; address: string; lat: number|null; lng: number|null; city: string }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -68,15 +70,13 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
         })}
       </nav>
       <div className="px-3 py-4 border-t border-[#2a2a2a]">
-        <Link href="/profil"
-          className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-xl hover:bg-[#2a2a2a] transition-all group">
+        <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs">{initials}</div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate group-hover:text-brand transition-colors">{userName}</p>
+            <p className="text-white text-sm font-medium truncate">{userName}</p>
             <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
           </div>
-          <span className="text-zinc-600 group-hover:text-zinc-400 text-xs">→</span>
-        </Link>
+        </div>
         <button onClick={() => signOut({ callbackUrl: '/login' })}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full">
           <span>🚪</span> Déconnexion
@@ -279,6 +279,9 @@ export default function NewMissionClient({
   const [fuel,    setFuel]    = useState('')
   const [gearbox, setGearbox] = useState('')
   const [odooVehicleId, setOdooVehicleId] = useState<number|null>(null)
+  const [brands,        setBrands]        = useState<Brand[]>([])
+  const [models,        setModels]        = useState<Model[]>([])
+  const [loadingBrands, setLoadingBrands] = useState(false)
 
   // ── Destinations ──────────────────────────────────────────────────────────
   const [destinations, setDestinations] = useState<Destination[]>([
@@ -381,6 +384,22 @@ export default function NewMissionClient({
   const toggleWarning = (id: string) =>
     setSelectedWarnings(prev => prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id])
 
+  const loadBrands = async () => {
+    if (brands.length > 0) return
+    setLoadingBrands(true)
+    try {
+      const res  = await fetch('/api/vehicles?type=brands')
+      const data = await res.json()
+      setBrands(data || [])
+    } finally { setLoadingBrands(false) }
+  }
+
+  const loadModels = async (brandId: number) => {
+    const res  = await fetch(`/api/vehicles?type=models&brandId=${brandId}`)
+    const data = await res.json()
+    setModels(data || [])
+  }
+
   const handleSubmit = async () => {
     if (!missionType)               return setError('Type de mission requis')
     if (!destinations[0]?.address)  return setError('Lieu d\'incident requis')
@@ -469,7 +488,10 @@ export default function NewMissionClient({
           <div className="flex items-center gap-4">
             <Link href="/dispatch" className="text-zinc-400 hover:text-white text-lg">←</Link>
             <h1 className="text-white font-bold text-xl flex-1">Nouvelle mission</h1>
-
+            <button onClick={handleSubmit} disabled={saving}
+              className="hidden lg:block px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-medium text-sm transition disabled:opacity-50">
+              {saving ? 'Création...' : '✅ Créer la mission'}
+            </button>
           </div>
         </div>
 
@@ -658,18 +680,57 @@ export default function NewMissionClient({
                   </div>
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {[
-                    { label: 'Plaque', value: plate, set: (v: string) => setPlate(v.toUpperCase()), mono: true },
-                    { label: 'Marque', value: brand, set: setBrand },
-                    { label: 'Modèle', value: model, set: setModel },
-                    { label: 'VIN / Châssis', value: vin, set: (v: string) => setVin(v.toUpperCase()), mono: true },
-                  ].map(f => (
-                    <div key={f.label}>
-                      <label className="block text-zinc-500 text-xs mb-1.5">{f.label}</label>
-                      <input value={f.value} onChange={e => f.set(e.target.value)}
-                        className={`w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand ${f.mono ? 'font-mono uppercase' : ''}`} />
-                    </div>
-                  ))}
+                  {/* Plaque */}
+                  <div>
+                    <label className="block text-zinc-500 text-xs mb-1.5">Plaque</label>
+                    <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                  </div>
+
+                  {/* Marque */}
+                  <div>
+                    <label className="block text-zinc-500 text-xs mb-1.5">Marque</label>
+                    <select
+                      value={brand}
+                      onFocus={loadBrands}
+                      onChange={e => {
+                        const b = brands.find(b => b.name === e.target.value)
+                        setBrand(e.target.value)
+                        setModel('')
+                        setModels([])
+                        if (b) loadModels(b.id)
+                      }}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+                    >
+                      <option value="">{loadingBrands ? 'Chargement...' : '— Sélectionner —'}</option>
+                      {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Modèle */}
+                  <div>
+                    <label className="block text-zinc-500 text-xs mb-1.5">Modèle</label>
+                    {models.length > 0 ? (
+                      <select value={model} onChange={e => setModel(e.target.value)}
+                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                        <option value="">— Sélectionner —</option>
+                        {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                        <option value="_custom">Autre (saisie libre)</option>
+                      </select>
+                    ) : (
+                      <input value={model} onChange={e => setModel(e.target.value)}
+                        placeholder={brand ? 'Saisie libre...' : 'Choisir une marque d'abord'}
+                        disabled={!brand}
+                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand disabled:opacity-40" />
+                    )}
+                  </div>
+
+                  {/* VIN */}
+                  <div>
+                    <label className="block text-zinc-500 text-xs mb-1.5">VIN / Châssis</label>
+                    <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                  </div>
                   <div>
                     <label className="block text-zinc-500 text-xs mb-1.5">Carburant</label>
                     <select value={fuel} onChange={e => setFuel(e.target.value)}
