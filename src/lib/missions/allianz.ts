@@ -57,14 +57,50 @@ export async function allianzFetchMissionData(
 
   try {
     // 1. Job monitoring — véhicule, adresse, description
-    const jobRes = await fetch(
-      `${BASE_URL}/hexalite-job-monitoring/v1.0/assignments/${assignmentId}?cache_buster=${Date.now()}`,
-      { headers, signal: AbortSignal.timeout(15000) }
-    )
+    const jobUrl = `${BASE_URL}/hexalite-job-monitoring/v1.0/assignments/${assignmentId}?cache_buster=${Date.now()}`
+    const jobRes = await fetch(jobUrl, { headers, signal: AbortSignal.timeout(15000) })
+
     if (!jobRes.ok) {
-      console.warn(`[Allianz] Job ${jobRes.status}`)
-      return null
+      const errBody = await jobRes.text().catch(() => '')
+      console.warn(`[Allianz] Job ${jobRes.status} — ${errBody.slice(0, 200)}`)
+
+      // Fallback: essayer via hexalite-assignment-invoice-service/v1.0/assignments
+      const altUrl = `${BASE_URL}/hexalite-assignment-invoice-service/v1.0/assignments/${assignmentId}?cache_buster=${Date.now()}`
+      console.log(`[Allianz] Fallback invoice assignments...`)
+      const altRes = await fetch(altUrl, { headers, signal: AbortSignal.timeout(15000) })
+      if (!altRes.ok) {
+        console.warn(`[Allianz] Invoice-assignments ${altRes.status}`)
+        return null
+      }
+      const altData = await altRes.json()
+      console.log(`[Allianz] Invoice-assignments OK — caseId: ${altData.assistanceCaseId?.slice(0,20)}`)
+
+      // Fetch le case avec le caseId récupéré
+      let caseData = null
+      if (altData.assistanceCaseId) {
+        const caseRes = await fetch(
+          `${BASE_URL}/hexalite-assignment-invoice-service/v1.0/assistancecases/${altData.assistanceCaseId}?cache_buster=${Date.now()}`,
+          { headers, signal: AbortSignal.timeout(15000) }
+        )
+        if (caseRes.ok) {
+          caseData = await caseRes.json()
+          console.log(`[Allianz] Case reçu — caseNumber: ${caseData.caseNumber}`)
+        }
+      }
+      // Construire un jobData compatible depuis altData + caseData
+      const syntheticJob = {
+        assignmentNumber:    altData.assignmentNumber,
+        assistanceCaseId:    altData.assistanceCaseId,
+        assistanceCaseNumber: caseData?.caseNumber || null,
+        estimatedDispatchTime: altData.creationDate || null,
+        initialServiceType:  altData.assignmentType || null,
+        additionalCaseRemarks: caseData?.additionalCaseRemarks || null,
+        jobAssignmentVehicle: null,
+        jobAssignmentCustomer: null,
+      }
+      return { jobData: syntheticJob, caseData }
     }
+
     const jobData = await jobRes.json()
     console.log(`[Allianz] Job reçu — assignmentNumber: ${jobData.assignmentNumber}`)
 
