@@ -113,8 +113,9 @@ export default function NewDriverMissionClient() {
   const [manualVin,   setManualVin]   = useState('')
   const [note,        setNote]        = useState('')
 
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [error,      setError]      = useState('')
+  const [gpsLoading, setGpsLoading] = useState(false)
 
   // ── Charger marques au montage ────────────────────────────────────────────
 
@@ -279,6 +280,26 @@ export default function NewDriverMissionClient() {
           {step === 2 && (
             <>
               <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Où se trouve la panne ?</p>
+
+              {/* Bouton position actuelle */}
+              <button
+                onClick={handleGPS}
+                disabled={gpsLoading}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600/30 disabled:opacity-50 text-blue-300 font-semibold rounded-2xl text-base transition active:scale-95"
+              >
+                {gpsLoading ? (
+                  <><span className="animate-spin">⏳</span> Localisation en cours…</>
+                ) : (
+                  <><span>📍</span> Utiliser ma position actuelle</>
+                )}
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-[#2a2a2a]" />
+                <span className="text-zinc-600 text-xs">ou saisir manuellement</span>
+                <div className="flex-1 h-px bg-[#2a2a2a]" />
+              </div>
+
               <AddressInput
                 value={address}
                 onChange={setAddress}

@@ -189,6 +189,59 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
   )
 }
 
+// ── Bouton GPS position actuelle ─────────────────────────────────────────────
+
+function GPSButton({ onLocated }: {
+  onLocated: (addr: string, lat: number, lng: number, city: string) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  const handle = () => {
+    if (!navigator.geolocation) { setErr('Géolocalisation non disponible'); return }
+    setLoading(true); setErr('')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        const g = (window as any).google
+        if (g?.maps) {
+          new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: any[], status: string) => {
+            setLoading(false)
+            if (status === 'OK' && results[0]) {
+              const addr = results[0].formatted_address
+              const cityComp = (results[0].address_components || []).find((c: any) =>
+                c.types.includes('locality') || c.types.includes('postal_town')
+              )
+              onLocated(addr, lat, lng, cityComp?.long_name || '')
+            } else {
+              onLocated(`${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng, '')
+            }
+          })
+        } else {
+          setLoading(false)
+          onLocated(`${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng, '')
+        }
+      },
+      (e) => {
+        setLoading(false)
+        setErr(e.code === 1 ? 'Accès refusé — autorise la géolocalisation' : 'Position indisponible')
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
+
+  return (
+    <div>
+      <button onClick={handle} disabled={loading} type="button"
+        className="flex items-center gap-2 px-3 py-2 bg-blue-600/15 border border-blue-500/30 hover:bg-blue-600/25 disabled:opacity-50 text-blue-300 rounded-xl text-xs font-medium transition">
+        {loading ? <><span className="animate-spin inline-block">⏳</span> Localisation…</> : <>📍 Ma position actuelle</>}
+      </button>
+      {err && <p className="text-red-400 text-xs mt-1">{err}</p>}
+    </div>
+  )
+}
+
 // ── Composant destinations multiples ──────────────────────────────────────────
 
 function DestinationsBlock({ destinations, onChange, gmKey }: {
@@ -221,6 +274,14 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
                 placeholder="Nom du lieu..."
                 className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
             </div>
+          )}
+          {i === 0 && (
+            <GPSButton onLocated={(addr, lat, lng, city) => {
+              updateDest(dest.id, 'address', addr)
+              updateDest(dest.id, 'lat', lat)
+              updateDest(dest.id, 'lng', lng)
+              updateDest(dest.id, 'city', city)
+            }} />
           )}
           <AddressField
             label="Adresse"
