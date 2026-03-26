@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { href: '/check-vehicule',label: 'Check Véhicule',    icon: '🔍', moduleId: 'check_vehicle' },
   { href: '/services/tgr',  label: 'TGR Touring',       icon: '🛡️', moduleId: 'tgr' },
   { href: '/admin',         label: 'Administration',    icon: '⚙️', moduleId: 'admin' },
-  { href: '/profil',        label: 'Mon Profil',        icon: '👤', moduleId: null },
 ]
 
 interface AppShellProps {
@@ -80,15 +79,17 @@ export default function AppShell({
         </nav>
 
         <div className="px-3 py-4 border-t border-[#2a2a2a]">
-          <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
+          <Link href="/profil"
+            className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-xl hover:bg-[#2a2a2a] transition-all group">
             <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{userName}</p>
+              <p className="text-white text-sm font-medium truncate group-hover:text-brand transition-colors">{userName}</p>
               <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
             </div>
-          </div>
+            <span className="text-zinc-600 group-hover:text-zinc-400 text-xs">→</span>
+          </Link>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"

@@ -68,13 +68,15 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
         })}
       </nav>
       <div className="px-3 py-4 border-t border-[#2a2a2a]">
-        <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
+        <Link href="/profil"
+          className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-xl hover:bg-[#2a2a2a] transition-all group">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs">{initials}</div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{userName}</p>
+            <p className="text-white text-sm font-medium truncate group-hover:text-brand transition-colors">{userName}</p>
             <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
           </div>
-        </div>
+          <span className="text-zinc-600 group-hover:text-zinc-400 text-xs">→</span>
+        </Link>
         <button onClick={() => signOut({ callbackUrl: '/login' })}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full">
           <span>🚪</span> Déconnexion
@@ -467,10 +469,7 @@ export default function NewMissionClient({
           <div className="flex items-center gap-4">
             <Link href="/dispatch" className="text-zinc-400 hover:text-white text-lg">←</Link>
             <h1 className="text-white font-bold text-xl flex-1">Nouvelle mission</h1>
-            <button onClick={handleSubmit} disabled={saving}
-              className="hidden lg:block px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-medium text-sm transition disabled:opacity-50">
-              {saving ? 'Création...' : '✅ Créer la mission'}
-            </button>
+
           </div>
         </div>
 
