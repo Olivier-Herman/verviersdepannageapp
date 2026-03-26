@@ -40,6 +40,7 @@ interface Driver {
 
 interface Counters {
   new: number
+  dispatching: number
   assigned: number
   in_progress: number
   completed: number
@@ -85,7 +86,8 @@ function getDelai(received_at: string): { label: string; color: string } {
 }
 
 const TABS = [
-  { key: 'new',         label: 'En attente',  countKey: 'new'         as const },
+  { key: 'new',         label: 'En commande', countKey: 'new'         as const },
+  { key: 'dispatching', label: 'En attente',  countKey: 'dispatching' as const },
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
   { key: 'completed',   label: 'Terminées',   countKey: 'completed'   as const },
@@ -161,7 +163,7 @@ export default function DispatchClient({
   const [activeTab,    setActiveTab]    = useState('new')
   const [sourceFilter, setSourceFilter] = useState('')
   const [missions,     setMissions]     = useState<Mission[]>([])
-  const [counters,     setCounters]     = useState<Counters>({ new: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
+  const [counters,     setCounters]     = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState('')
   const [dispatchMode, setDispatchMode] = useState<'manual'|'auto'>('manual')
@@ -187,7 +189,7 @@ export default function DispatchClient({
       const res  = await fetch(`/api/missions/list?${params}`)
       const data = await res.json()
       setMissions(data.missions || [])
-      setCounters(data.counters || { new: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
+      setCounters(data.counters || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
     } catch (e) {
       console.error(e)
     } finally {
@@ -231,7 +233,7 @@ export default function DispatchClient({
             <div>
               <h1 className="text-white font-bold text-2xl">Dispatch missions</h1>
               <p className="text-zinc-500 text-sm mt-0.5">
-                {counters.new} en attente · actualisation auto 30s
+                {counters.new} en commande · actualisation auto 30s
               </p>
             </div>
             <div className="flex items-center gap-3">

@@ -42,6 +42,8 @@ export async function GET(req: Request) {
 
   if (status === 'new') {
     query = query.eq('status', 'new')
+  } else if (status === 'dispatching') {
+    query = query.eq('status', 'dispatching')
   } else if (status === 'assigned') {
     query = query.in('status', ['assigned', 'accepted'])
   } else if (status === 'in_progress') {
@@ -67,11 +69,12 @@ export async function GET(req: Request) {
     .gt('parse_confidence', 0.3)
 
   const counters = {
-    new:       counts?.filter(m => m.status === 'new').length        || 0,
-    assigned:  counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
+    new:         counts?.filter(m => m.status === 'new').length         || 0,
+    dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
+    assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => m.status === 'in_progress').length || 0,
-    completed: counts?.filter(m => m.status === 'completed').length  || 0,
-    errors:    counts?.filter(m => m.status === 'parse_error').length || 0,
+    completed:   counts?.filter(m => m.status === 'completed').length   || 0,
+    errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }
 
   return NextResponse.json({ missions, counters })
