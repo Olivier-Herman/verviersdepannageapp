@@ -298,7 +298,7 @@ function CloseModal({ mission, onClose, onSubmit, loading, onPark }: {
   const [errors,          setErrors]          = useState<string[]>([])
   const photoInput = useRef<HTMLInputElement>(null)
 
-  const isRem = missionType === 'remorquage'
+  const isRem = missionType === 'remorquage' || missionType === 'REM'
 
   const addPhoto = (files: FileList|null) => {
     if (!files) return
@@ -357,15 +357,19 @@ function CloseModal({ mission, onClose, onSubmit, loading, onPark }: {
           <div>
             <Label icon="🔧" text="Type de mission" />
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(TYPE_LABELS).map(([key, val]) => (
-                <button key={key} onClick={() => setMissionType(key)}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition ${
-                    missionType === key ? `${val.color} border-transparent text-white` : 'border-[#2a2a2a] bg-[#111] text-zinc-400 hover:text-white'
-                  }`}>
-                  <span className="font-bold text-xs">{val.short}</span>
-                  <span className="truncate text-xs">{val.label}</span>
-                </button>
-              ))}
+              {(['depannage','remorquage','transport','trajet_vide','reparation_place','DPR','VR','autre'] as const).map(key => {
+                const val = TYPE_LABELS[key]
+                if (!val) return null
+                return (
+                  <button key={key} onClick={() => setMissionType(key)}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition ${
+                      missionType === key ? `${val.color} border-transparent text-white` : 'border-[#2a2a2a] bg-[#111] text-zinc-400 hover:text-white'
+                    }`}>
+                    <span className="font-bold text-xs">{val.short}</span>
+                    <span className="truncate text-xs">{val.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
