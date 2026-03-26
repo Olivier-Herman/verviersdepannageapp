@@ -296,8 +296,9 @@ export default function NewMissionClient({
   const [selectedWarnings, setSelectedWarnings] = useState<string[]>([])
 
   // ── Remarques ─────────────────────────────────────────────────────────────
-  const [remarksGeneral, setRemarksGeneral] = useState('')
-  const [remarksBilling, setRemarksBilling] = useState('')
+  const [remarksGeneral,  setRemarksGeneral]  = useState('')
+  const [remarksBilling,  setRemarksBilling]  = useState('')
+  const [amountToCollect, setAmountToCollect] = useState('')
 
   // ── Soumission ────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false)
@@ -453,6 +454,7 @@ export default function NewMissionClient({
           vehicle_gearbox: gearbox,
           destinations,
           warnings:        warningLabels,
+          amount_to_collect: amountToCollect ? parseFloat(amountToCollect) : null,
           remarks_general: remarksGeneral,
           remarks_billing: remarksBilling,
           rdv_at:          rdvAt,
@@ -772,7 +774,26 @@ export default function NewMissionClient({
                 </div>
               )}
 
-              {/* 8. Remarques */}
+              {/* 8. Paiement à réclamer */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+                  <span>💳</span> Paiement à réclamer au client
+                </h2>
+                <p className="text-zinc-500 text-xs mb-3">Laisser vide si facturation directe à l'assurance</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={amountToCollect}
+                    onChange={e => setAmountToCollect(e.target.value)}
+                    placeholder="0.00"
+                    className="w-40 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+                  />
+                  <span className="text-zinc-500 text-sm">€</span>
+                </div>
+              </div>
+
+              {/* 9. Remarques */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
                 <h2 className="text-white font-semibold text-sm mb-4">📝 Remarques</h2>
                 <div className="space-y-4">

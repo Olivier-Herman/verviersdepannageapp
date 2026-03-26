@@ -1,7 +1,7 @@
 'use client'
 // src/app/mission/[id]/DriverClient.tsx
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 
@@ -12,6 +12,7 @@ const supabase = createClient(
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type MissionStatus = 'new'|'dispatching'|'assigned'|'accepted'|'in_progress'|'parked'|'completed'
+type NavApp = 'gmaps'|'waze'|'apple'
 
 interface Mission {
   id: string; status: MissionStatus
@@ -25,11 +26,12 @@ interface Mission {
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   completed_at?: string; assigned_at?: string; parked_at?: string
   amount_guaranteed?: number; amount_currency?: string
+  amount_to_collect?: number
   park_stage_name?: string
 }
 
 interface FleetStage { id: number; name: string }
-interface Props { mission: Mission; currentUserId: string; isReadOnly?: boolean }
+interface Props { mission: Mission; currentUserId: string; isReadOnly?: boolean; navApp?: NavApp }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TYPE_LABELS: Record<string, { short: string; label: string; color: string }> = {
@@ -42,21 +44,35 @@ const TYPE_LABELS: Record<string, { short: string; label: string; color: string 
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  assigned:    { label: 'À accepter',    color: 'text-blue-400',   bg: 'bg-blue-500/10'   },
-  accepted:    { label: 'Acceptée',      color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-  in_progress: { label: 'En cours',      color: 'text-orange-400', bg: 'bg-orange-500/10' },
-  parked:      { label: 'En dépôt',      color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-  completed:   { label: 'Terminée',      color: 'text-green-400',  bg: 'bg-green-500/10'  },
+  assigned:    { label: 'À accepter', color: 'text-blue-400',   bg: 'bg-blue-500/10'   },
+  accepted:    { label: 'Acceptée',   color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+  in_progress: { label: 'En cours',   color: 'text-orange-400', bg: 'bg-orange-500/10' },
+  parked:      { label: 'En dépôt',   color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+  completed:   { label: 'Terminée',   color: 'text-green-400',  bg: 'bg-green-500/10'  },
 }
 
+const NAV_APPS: { id: NavApp; label: string; icon: string }[] = [
+  { id: 'gmaps', label: 'Google Maps', icon: '🗺️' },
+  { id: 'waze',  label: 'Waze',        icon: '🧭' },
+  { id: 'apple', label: 'Plans',       icon: '📍' },
+]
+
+const PAYMENT_MODES = [
+  { value: 'cash',     label: '💵 Espèces' },
+  { value: 'terminal', label: '💳 Terminal' },
+  { value: 'qr',       label: '📱 QR Code' },
+  { value: 'virement', label: '🏦 Virement' },
+]
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function mapsUrl(lat?: number, lng?: number, addr?: string, app: 'gmaps'|'waze'|'apple' = 'gmaps') {
+function buildNavUrl(app: NavApp, lat?: number, lng?: number, addr?: string): string | null {
   const q = lat && lng ? `${lat},${lng}` : encodeURIComponent(addr || '')
   if (!q) return null
   if (app === 'waze')  return `https://waze.com/ul?ll=${q}&navigate=yes`
-  if (app === 'apple') return `https://maps.apple.com/?q=${q}`
-  return `https://www.google.com/maps?q=${q}`
+  if (app === 'apple') return `https://maps.apple.com/?daddr=${q}&dirflg=d`
+  return `https://www.google.com/maps/dir/?api=1&destination=${q}`
 }
+
 function fmt(iso?: string) {
   if (!iso) return '—'
   return new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })
@@ -69,20 +85,37 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 function Label({ icon, text }: { icon: string; text: string }) {
   return <p className="text-zinc-500 text-xs font-semibold uppercase tracking-widest mb-2 flex items-center gap-1.5"><span>{icon}</span>{text}</p>
 }
-function MapsRow({ lat, lng, addr }: { lat?: number; lng?: number; addr?: string }) {
-  if (!lat && !lng && !addr) return null
+
+// ── Google Maps Input ─────────────────────────────────────────────────────────
+function GMapsInput({ value, onChange, placeholder, className = '' }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; className?: string
+}) {
+  const ref   = useRef<HTMLInputElement>(null)
+  const acRef = useRef<any>(null)
+
+  useEffect(() => {
+    const init = () => {
+      if (!ref.current || !(window as any).google?.maps?.places || acRef.current) return
+      acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current, {
+        componentRestrictions: { country: 'be' },
+        fields: ['formatted_address'],
+      })
+      acRef.current.addListener('place_changed', () => {
+        const place = acRef.current.getPlace()
+        if (place?.formatted_address) onChange(place.formatted_address)
+      })
+    }
+    if ((window as any).google) { init() }
+    else {
+      const t = setInterval(() => { if ((window as any).google) { init(); clearInterval(t) } }, 300)
+      return () => clearInterval(t)
+    }
+  }, [])
+
   return (
-    <div className="flex gap-2 mt-2 flex-wrap">
-      {([['gmaps','Google Maps','🗺️'],['waze','Waze','🧭'],['apple','Plans','📍']] as const).map(([app,label,icon]) => {
-        const url = mapsUrl(lat, lng, addr, app)
-        return url ? (
-          <a key={app} href={url} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1.5 bg-[#2a2a2a] hover:bg-[#333] px-3 py-1.5 rounded-xl text-xs text-white transition">
-            <span>{icon}</span>{label}
-          </a>
-        ) : null
-      })}
-    </div>
+    <input ref={ref} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      className={`${className} w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600`}
+    />
   )
 }
 
@@ -113,11 +146,11 @@ function Timeline({ mission }: { mission: Mission }) {
 
 // ── Signature Canvas ──────────────────────────────────────────────────────────
 function SignatureCanvas({ onSave }: { onSave: (d: string) => void }) {
-  const ref = useRef<HTMLCanvasElement>(null)
+  const ref     = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   const [drawn, setDrawn] = useState(false)
 
-  const pos = (e: React.TouchEvent|React.MouseEvent, c: HTMLCanvasElement) => {
+  const getPos = (e: React.TouchEvent|React.MouseEvent, c: HTMLCanvasElement) => {
     const r = c.getBoundingClientRect()
     const s = 'touches' in e ? e.touches[0] : e
     return { x: s.clientX - r.left, y: s.clientY - r.top }
@@ -125,7 +158,7 @@ function SignatureCanvas({ onSave }: { onSave: (d: string) => void }) {
   const start = (e: React.TouchEvent|React.MouseEvent) => {
     e.preventDefault()
     const c = ref.current; if (!c) return
-    const p = pos(e, c)
+    const p = getPos(e, c)
     c.getContext('2d')!.beginPath(); c.getContext('2d')!.moveTo(p.x, p.y)
     drawing.current = true
   }
@@ -133,15 +166,13 @@ function SignatureCanvas({ onSave }: { onSave: (d: string) => void }) {
     e.preventDefault()
     if (!drawing.current) return
     const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    const p = pos(e, c)
+    const ctx = c.getContext('2d')!; const p = getPos(e, c)
     ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#fff'
     ctx.lineTo(p.x, p.y); ctx.stroke(); setDrawn(true)
   }
   const end = () => { drawing.current = false }
   const clear = () => {
-    const c = ref.current; if (!c) return
-    c.getContext('2d')!.clearRect(0, 0, c.width, c.height); setDrawn(false)
+    ref.current?.getContext('2d')!.clearRect(0, 0, 340, 140); setDrawn(false)
   }
 
   return (
@@ -160,26 +191,44 @@ function SignatureCanvas({ onSave }: { onSave: (d: string) => void }) {
   )
 }
 
+// ── Modal choix navigation ────────────────────────────────────────────────────
+function NavModal({ onSelect }: { onSelect: (app: NavApp) => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-end">
+      <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6">
+        <h2 className="text-white font-bold text-lg mb-1">Choisir l'app de navigation</h2>
+        <p className="text-zinc-500 text-sm mb-4">Ce choix sera mémorisé pour les prochaines fois</p>
+        <div className="space-y-2">
+          {NAV_APPS.map(app => (
+            <button key={app.id} onClick={() => onSelect(app.id)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 bg-[#111] border border-[#2a2a2a] hover:border-brand rounded-2xl transition">
+              <span className="text-2xl">{app.icon}</span>
+              <span className="text-white font-semibold">{app.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal Dépôt ───────────────────────────────────────────────────────────────
 function ParkModal({ stages, onClose, onSubmit, loading }: {
-  stages:   FleetStage[]
-  onClose:  () => void
-  onSubmit: (stageId: number, stageName: string, notes: string) => void
-  loading:  boolean
+  stages: FleetStage[]; onClose: () => void
+  onSubmit: (stageId: number, stageName: string, notes: string) => void; loading: boolean
 }) {
-  const [stageId,   setStageId]   = useState<number | null>(null)
+  const [stageId, setStageId]     = useState<number|null>(null)
   const [stageName, setStageName] = useState('')
-  const [notes,     setNotes]     = useState('')
+  const [notes, setNotes]         = useState('')
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end" onClick={onClose}>
       <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-4 max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <h2 className="text-white font-bold text-lg">🅿️ Mettre en dépôt</h2>
           <button onClick={onClose} className="text-zinc-500 text-2xl">×</button>
         </div>
-
         <div>
           <Label icon="📦" text="Parc de destination" />
           {stages.length > 0 ? (
@@ -187,35 +236,26 @@ function ParkModal({ stages, onClose, onSubmit, loading }: {
               {stages.map(s => (
                 <button key={s.id} onClick={() => { setStageId(s.id); setStageName(s.name) }}
                   className={`px-3 py-2.5 rounded-xl border text-sm font-medium transition text-left ${
-                    stageId === s.id
-                      ? 'bg-brand border-brand text-white'
-                      : 'border-[#2a2a2a] bg-[#111] text-zinc-400 hover:text-white'
-                  }`}>
-                  {s.name}
-                </button>
+                    stageId === s.id ? 'bg-brand border-brand text-white' : 'border-[#2a2a2a] bg-[#111] text-zinc-400 hover:text-white'
+                  }`}>{s.name}</button>
               ))}
             </div>
           ) : (
-            <input value={stageName} onChange={e => setStageName(e.target.value)}
-              placeholder="Nom du parc..."
+            <input value={stageName} onChange={e => setStageName(e.target.value)} placeholder="Nom du parc..."
               className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
             />
           )}
         </div>
-
         <div>
           <Label icon="📝" text="Notes (optionnel)" />
-          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="Remarques sur le dépôt..."
+          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Remarques..."
             className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none"
           />
         </div>
-
-        <button
-          onClick={() => stageId && onSubmit(stageId, stageName, notes)}
+        <button onClick={() => (stageId || stageName) && onSubmit(stageId || 0, stageName, notes)}
           disabled={loading || (!stageId && !stageName)}
           className="w-full py-3 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 text-black font-bold rounded-xl text-sm transition">
-          {loading ? '⏳ En cours...' : '🅿️ Confirmer le dépôt'}
+          {loading ? '⏳...' : '🅿️ Confirmer le dépôt'}
         </button>
       </div>
     </div>
@@ -223,12 +263,18 @@ function ParkModal({ stages, onClose, onSubmit, loading }: {
 }
 
 // ── Modal Clôture ─────────────────────────────────────────────────────────────
+interface ClosingData {
+  finalMissionType: string; mileage: string; destinationAddr: string
+  extraAddresses: string[]; photos: File[]; signatureData: string
+  signatureName: string; note: string; paymentMethod: string; amountCollected: string
+}
+
 function CloseModal({ mission, onClose, onSubmit, loading }: {
-  mission:  Mission
-  onClose:  () => void
-  onSubmit: (data: ClosingData) => void
-  loading:  boolean
+  mission: Mission; onClose: () => void
+  onSubmit: (data: ClosingData) => void; loading: boolean
 }) {
+  const hasPayment = (mission.amount_to_collect || 0) > 0
+
   const [missionType,     setMissionType]     = useState(mission.mission_type || 'depannage')
   const [mileage,         setMileage]         = useState('')
   const [destinationAddr, setDestinationAddr] = useState(mission.destination_address || '')
@@ -239,16 +285,17 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
   const [signatureName,   setSignatureName]   = useState(mission.client_name || '')
   const [showSig,         setShowSig]         = useState(false)
   const [note,            setNote]            = useState('')
+  const [paymentMethod,   setPaymentMethod]   = useState('cash')
+  const [amountCollected, setAmountCollected] = useState(mission.amount_to_collect?.toString() || '')
   const [errors,          setErrors]          = useState<string[]>([])
   const photoInput = useRef<HTMLInputElement>(null)
 
   const isRem = missionType === 'remorquage'
 
-  const addPhoto = (files: FileList | null) => {
+  const addPhoto = (files: FileList|null) => {
     if (!files) return
-    const arr = Array.from(files)
-    setPhotos(p => [...p, ...arr])
-    arr.forEach(f => {
+    Array.from(files).forEach(f => {
+      setPhotos(p => [...p, f])
       const r = new FileReader()
       r.onload = e => setPhotoPreviews(p => [...p, e.target?.result as string])
       r.readAsDataURL(f)
@@ -257,48 +304,36 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
 
   const validate = () => {
     const errs: string[] = []
-    if (!mileage)               errs.push('Kilométrage obligatoire')
-    if (photos.length === 0)    errs.push('Au moins une photo obligatoire')
-    if (photos.length < 3)      errs.push('Minimum 3 photos (châssis, plaque, véhicule général)')
-    if (isRem && !destinationAddr) errs.push('Adresse de destination obligatoire (remorquage)')
+    if (!mileage)              errs.push('Kilométrage obligatoire')
+    if (photos.length < 3)     errs.push('Minimum 3 photos (châssis, plaque, vue générale)')
+    if (isRem && !destinationAddr) errs.push('Adresse de destination obligatoire')
     setErrors(errs); return errs.length === 0
-  }
-
-  const submit = () => {
-    if (!validate()) return
-    onSubmit({ finalMissionType: missionType, mileage, destinationAddr, extraAddresses, photos, signatureData, signatureName, note })
   }
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end overflow-hidden">
-      <div className="bg-[#0F0F0F] w-full rounded-t-3xl max-h-[92vh] flex flex-col">
+      <div className="bg-[#0F0F0F] w-full rounded-t-3xl max-h-[94vh] flex flex-col">
 
-        {/* Header modal */}
+        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[#2a2a2a] flex-shrink-0">
           <h2 className="text-white font-bold text-lg">🏁 Clôture de mission</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-2xl">×</button>
+          <button onClick={onClose} className="text-zinc-500 text-2xl">×</button>
         </div>
 
-        {/* Récapitulatif mission */}
-        <div className="px-5 py-3 bg-[#1A1A1A] border-b border-[#2a2a2a] flex-shrink-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${TYPE_LABELS[mission.mission_type||'autre'].color}`}>
-              {TYPE_LABELS[mission.mission_type||'autre'].short}
-            </span>
-            <span className="text-white font-semibold text-sm truncate">{mission.client_name}</span>
-            {mission.vehicle_plate && (
-              <span className="text-zinc-400 text-xs font-mono">{mission.vehicle_plate}</span>
-            )}
-            {mission.incident_address && (
-              <span className="text-zinc-500 text-xs truncate">{mission.incident_address}</span>
-            )}
-          </div>
+        {/* Récap compact */}
+        <div className="px-5 py-2.5 bg-[#1A1A1A] border-b border-[#2a2a2a] flex-shrink-0 flex items-center gap-2 flex-wrap">
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${TYPE_LABELS[mission.mission_type||'autre'].color}`}>
+            {TYPE_LABELS[mission.mission_type||'autre'].short}
+          </span>
+          <span className="text-white font-semibold text-sm">{mission.client_name}</span>
+          {mission.vehicle_plate && <span className="text-zinc-400 text-xs font-mono">{mission.vehicle_plate}</span>}
+          {mission.incident_address && <span className="text-zinc-500 text-xs truncate max-w-[180px]">{mission.incident_address}</span>}
         </div>
 
-        {/* Formulaire scrollable */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+        {/* Formulaire */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
 
-          {/* Type mission */}
+          {/* Type */}
           <div>
             <Label icon="🔧" text="Type de mission" />
             <div className="grid grid-cols-2 gap-2">
@@ -318,10 +353,7 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
           {isRem && (
             <div>
               <Label icon="📍" text="Destination de remorquage *" />
-              <input value={destinationAddr} onChange={e => setDestinationAddr(e.target.value)}
-                placeholder="Garage, domicile, fourrière..."
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
-              />
+              <GMapsInput value={destinationAddr} onChange={setDestinationAddr} placeholder="Garage, domicile, fourrière..." />
             </div>
           )}
 
@@ -330,11 +362,10 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
             <Label icon="🗺️" text="Adresses supplémentaires" />
             {extraAddresses.map((addr, i) => (
               <div key={i} className="flex gap-2 mb-2">
-                <input value={addr} onChange={e => {
-                  const a = [...extraAddresses]; a[i] = e.target.value; setExtraAddresses(a)
-                }} className="flex-1 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand" placeholder="Adresse..." />
+                <GMapsInput value={addr} onChange={v => { const a = [...extraAddresses]; a[i] = v; setExtraAddresses(a) }}
+                  placeholder="Adresse..." className="flex-1" />
                 <button onClick={() => setExtraAddresses(a => a.filter((_, j) => j !== i))}
-                  className="w-9 h-9 flex items-center justify-center bg-red-500/10 text-red-400 rounded-xl text-sm">✕</button>
+                  className="w-9 h-9 flex items-center justify-center bg-red-500/10 text-red-400 rounded-xl">✕</button>
               </div>
             ))}
             <button onClick={() => setExtraAddresses(a => [...a, ''])}
@@ -355,7 +386,7 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
           {/* Photos */}
           <div>
             <Label icon="📷" text={`Photos du véhicule * (${photos.length}/min.3)`} />
-            <p className="text-zinc-600 text-xs mb-2">Châssis, plaque, vue générale obligatoires</p>
+            <p className="text-zinc-600 text-xs mb-2">Châssis · Plaque · Vue générale</p>
             {photoPreviews.length > 0 && (
               <div className="grid grid-cols-3 gap-2 mb-3">
                 {photoPreviews.map((src, i) => (
@@ -377,35 +408,60 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
             </button>
           </div>
 
+          {/* Paiement — uniquement si amount_to_collect défini */}
+          {hasPayment && (
+            <div className="bg-brand/10 border border-brand/30 rounded-2xl p-4">
+              <Label icon="💶" text={`Paiement à réclamer — ${mission.amount_to_collect} €`} />
+              <p className="text-zinc-400 text-xs mb-3">Le dispatch a indiqué un montant à encaisser auprès du client</p>
+              <div className="mb-3">
+                <p className="text-zinc-500 text-xs mb-1.5">Montant encaissé (€)</p>
+                <input type="number" inputMode="decimal" value={amountCollected}
+                  onChange={e => setAmountCollected(e.target.value)}
+                  placeholder={mission.amount_to_collect?.toString()}
+                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <p className="text-zinc-500 text-xs mb-1.5">Mode de paiement</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {PAYMENT_MODES.map(m => (
+                    <button key={m.value} onClick={() => setPaymentMethod(m.value)}
+                      className={`px-3 py-2 rounded-xl border text-sm transition ${
+                        paymentMethod === m.value ? 'bg-brand border-brand text-white' : 'border-[#2a2a2a] bg-[#111] text-zinc-400 hover:text-white'
+                      }`}>{m.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Signature */}
           <div>
             <Label icon="✍️" text="Décharge / Signature client (optionnel)" />
-            <div className="mb-2">
-              <input value={signatureName} onChange={e => setSignatureName(e.target.value)}
-                placeholder="Nom du signataire"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand mb-2"
-              />
-              {!signatureData ? (
-                showSig ? (
-                  <SignatureCanvas onSave={d => { setSignatureData(d); setShowSig(false) }} />
-                ) : (
-                  <button onClick={() => setShowSig(true)}
-                    className="w-full py-2.5 border border-dashed border-[#2a2a2a] rounded-xl text-zinc-400 hover:text-white text-sm transition">
-                    ✍️ Faire signer le client
-                  </button>
-                )
+            <input value={signatureName} onChange={e => setSignatureName(e.target.value)}
+              placeholder="Nom du signataire"
+              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand mb-2"
+            />
+            {!signatureData ? (
+              showSig ? (
+                <SignatureCanvas onSave={d => { setSignatureData(d); setShowSig(false) }} />
               ) : (
-                <div>
-                  <div className="border border-green-500/30 rounded-xl overflow-hidden mb-1 bg-[#111]">
-                    <img src={signatureData} alt="Signature" className="w-full max-h-24 object-contain" />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-green-400 text-xs">✅ Signé par {signatureName || 'client'}</span>
-                    <button onClick={() => { setSignatureData(''); setShowSig(false) }} className="text-zinc-500 text-xs">Refaire</button>
-                  </div>
+                <button onClick={() => setShowSig(true)}
+                  className="w-full py-2.5 border border-dashed border-[#2a2a2a] rounded-xl text-zinc-400 hover:text-white text-sm transition">
+                  ✍️ Faire signer le client
+                </button>
+              )
+            ) : (
+              <div>
+                <div className="border border-green-500/30 rounded-xl overflow-hidden mb-1 bg-[#111]">
+                  <img src={signatureData} alt="Signature" className="w-full max-h-24 object-contain" />
                 </div>
-              )}
-            </div>
+                <div className="flex justify-between">
+                  <span className="text-green-400 text-xs">✅ Signé par {signatureName || 'client'}</span>
+                  <button onClick={() => { setSignatureData(''); setShowSig(false) }} className="text-zinc-500 text-xs">Refaire</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Note */}
@@ -424,8 +480,8 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
             </div>
           )}
 
-          {/* Bouton terminer */}
-          <button onClick={submit} disabled={loading}
+          <button onClick={() => validate() && onSubmit({ finalMissionType: missionType, mileage, destinationAddr, extraAddresses, photos, signatureData, signatureName, note, paymentMethod, amountCollected })}
+            disabled={loading}
             className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg transition mb-4">
             {loading ? '⏳ Envoi en cours...' : '🏁 Terminer la mission'}
           </button>
@@ -435,20 +491,16 @@ function CloseModal({ mission, onClose, onSubmit, loading }: {
   )
 }
 
-interface ClosingData {
-  finalMissionType: string; mileage: string; destinationAddr: string
-  extraAddresses: string[]; photos: File[]; signatureData: string
-  signatureName: string; note: string
-}
-
 // ── Composant principal ───────────────────────────────────────────────────────
-export default function DriverClient({ mission: initial, isReadOnly = false }: Props) {
+export default function DriverClient({ mission: initial, currentUserId, isReadOnly = false, navApp: initialNavApp }: Props) {
   const router = useRouter()
   const [mission,      setMission]      = useState<Mission>(initial)
   const [loading,      setLoading]      = useState(false)
-  const [error,        setError]        = useState<string | null>(null)
+  const [error,        setError]        = useState<string|null>(null)
   const [showClose,    setShowClose]    = useState(false)
   const [showPark,     setShowPark]     = useState(false)
+  const [showNavModal, setShowNavModal] = useState(false)
+  const [navApp,       setNavApp]       = useState<NavApp>(initialNavApp || 'gmaps')
   const [stages,       setStages]       = useState<FleetStage[]>([])
   const [stagesLoaded, setStagesLoaded] = useState(false)
 
@@ -459,8 +511,7 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
     if (stagesLoaded) return
     try {
       const res = await fetch('/api/odoo/fleet-stages')
-      const data = await res.json()
-      setStages(data || [])
+      setStages(await res.json() || [])
     } catch {}
     setStagesLoaded(true)
   }
@@ -483,9 +534,8 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
     setLoading(true); setError(null)
     try {
       const res  = await fetch('/api/missions/driver-action', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ mission_id: mission.id, action, ...extra }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body:   JSON.stringify({ mission_id: mission.id, action, ...extra }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur serveur')
@@ -495,6 +545,25 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
     } finally {
       setLoading(false)
     }
+  }
+
+  // Navigation automatique
+  const handleOnWay = async (selectedApp?: NavApp) => {
+    const app = selectedApp || navApp
+    await doAction('on_way')
+    const url = buildNavUrl(app, mission.incident_lat, mission.incident_lng, mission.incident_address)
+    if (url) window.open(url, '_blank')
+  }
+
+  const handleNavChoice = async (app: NavApp) => {
+    setNavApp(app)
+    setShowNavModal(false)
+    // Sauvegarder préférence
+    await fetch('/api/users/nav-preference', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body:   JSON.stringify({ nav_app: app }),
+    })
+    await handleOnWay(app)
   }
 
   const handlePark = async (stageId: number, stageName: string, notes: string) => {
@@ -507,8 +576,7 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
     try {
       const photoUrls = await uploadPhotos(mission.id, data.photos)
       const res = await fetch('/api/missions/driver-action', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mission_id:   mission.id,
           action:       'completed',
@@ -521,6 +589,8 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
             signature_data:      data.signatureData || undefined,
             signature_name:      data.signatureName || undefined,
             closing_notes:       data.note || undefined,
+            payment_method:      data.amountCollected ? data.paymentMethod : undefined,
+            amount_collected:    data.amountCollected ? parseFloat(data.amountCollected) : undefined,
           },
         }),
       })
@@ -534,12 +604,11 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
     }
   }
 
-  // Mission terminée
   if (mission.status === 'completed') {
     return (
       <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6 text-center">
         <div className="text-6xl mb-4">🏁</div>
-        <h1 className="text-white font-bold text-xl mb-2">Mission terminée</h1>
+        <h1 className="text-white font-bold text-xl mb-2">Mission terminée !</h1>
         <p className="text-zinc-500 text-sm mb-6">{mission.client_name} — {mission.vehicle_plate}</p>
         <button onClick={() => router.push('/mission')}
           className="px-6 py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-white rounded-2xl text-sm">
@@ -550,7 +619,7 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] pb-28">
+    <div className="min-h-screen bg-[#0F0F0F] pb-40">
 
       {/* Header */}
       <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 sticky top-0 z-20">
@@ -558,21 +627,19 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
           <button onClick={() => router.push('/mission')}
             className="w-9 h-9 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white">←</button>
           <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${typeInfo.color}`}>
-              {typeInfo.short}
-            </span>
-            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${statusConf.bg} ${statusConf.color}`}>
-              {statusConf.label}
-            </span>
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${typeInfo.color}`}>{typeInfo.short}</span>
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${statusConf.bg} ${statusConf.color}`}>{statusConf.label}</span>
           </div>
         </div>
         <h1 className="text-white font-bold text-lg truncate">{mission.client_name || 'Client inconnu'}</h1>
-        {mission.client_phone && (
-          <a href={`tel:${mission.client_phone}`} className="text-brand text-sm font-medium flex items-center gap-1 mt-0.5">
-            📞 {mission.client_phone}
-          </a>
-        )}
-        {mission.dossier_number && <p className="text-zinc-600 text-xs font-mono mt-0.5">{mission.dossier_number}</p>}
+        <div className="flex items-center gap-3 mt-0.5">
+          {mission.client_phone && (
+            <a href={`tel:${mission.client_phone}`} className="text-brand text-sm font-medium flex items-center gap-1">
+              📞 {mission.client_phone}
+            </a>
+          )}
+          {mission.dossier_number && <p className="text-zinc-600 text-xs font-mono">{mission.dossier_number}</p>}
+        </div>
       </div>
 
       <div className="px-4 mt-4 space-y-4">
@@ -604,12 +671,11 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
           </Card>
         )}
 
-        {/* Lieu incident */}
+        {/* Lieu */}
         {(mission.incident_address || mission.incident_city) && (
           <Card>
             <Label icon="📍" text="Lieu d'intervention" />
             <p className="text-white text-sm">{mission.incident_address}{mission.incident_city ? `, ${mission.incident_city}` : ''}</p>
-            <MapsRow lat={mission.incident_lat} lng={mission.incident_lng} addr={mission.incident_address} />
           </Card>
         )}
 
@@ -619,15 +685,6 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
             <Label icon="🏁" text="Destination" />
             {mission.destination_name && <p className="text-zinc-400 text-xs mb-0.5">{mission.destination_name}</p>}
             <p className="text-white text-sm">{mission.destination_address}</p>
-            <MapsRow addr={mission.destination_address} />
-          </Card>
-        )}
-
-        {/* Remarques */}
-        {mission.remarks_general && (
-          <Card>
-            <Label icon="📝" text="Remarques" />
-            <p className="text-white text-sm whitespace-pre-wrap">{mission.remarks_general}</p>
           </Card>
         )}
 
@@ -639,40 +696,55 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
           </Card>
         )}
 
+        {/* Montant à réclamer */}
+        {(mission.amount_to_collect || 0) > 0 && (
+          <div className="bg-brand/10 border border-brand/30 rounded-2xl p-4">
+            <Label icon="💳" text="Paiement à réclamer" />
+            <p className="text-white font-bold text-2xl">{mission.amount_to_collect} €</p>
+            <p className="text-zinc-400 text-xs mt-1">À encaisser auprès du client</p>
+          </div>
+        )}
+
+        {/* Remarques */}
+        {mission.remarks_general && (
+          <Card>
+            <Label icon="📝" text="Remarques" />
+            <p className="text-white text-sm whitespace-pre-wrap">{mission.remarks_general}</p>
+          </Card>
+        )}
+
         {/* Timeline */}
         <Card>
           <Label icon="🕐" text="Progression" />
           <Timeline mission={mission} />
         </Card>
 
-        {/* Erreur */}
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">⚠️ {error}</div>
         )}
-
       </div>
 
-      {/* Boutons action — fixés en bas */}
+      {/* Boutons fixés en bas */}
       {!isReadOnly && (
-        <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 z-10 space-y-2 safe-bottom">
+        <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 z-10 space-y-2">
 
           {mission.status === 'assigned' && (
             <button onClick={() => doAction('accept')} disabled={loading}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg transition">
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg">
               {loading ? '⏳...' : '✅ Accepter la mission'}
             </button>
           )}
 
           {mission.status === 'accepted' && (
-            <button onClick={() => doAction('on_way')} disabled={loading}
-              className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg transition">
-              {loading ? '⏳...' : '🚗 Je suis en route'}
+            <button onClick={() => initialNavApp ? handleOnWay() : setShowNavModal(true)} disabled={loading}
+              className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg">
+              {loading ? '⏳...' : '🚗 Je suis en route → Navigation'}
             </button>
           )}
 
           {mission.status === 'in_progress' && !mission.on_site_at && (
             <button onClick={() => doAction('on_site')} disabled={loading}
-              className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg transition">
+              className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-lg">
               {loading ? '⏳...' : '📍 Je suis sur place'}
             </button>
           )}
@@ -680,34 +752,29 @@ export default function DriverClient({ mission: initial, isReadOnly = false }: P
           {mission.status === 'in_progress' && mission.on_site_at && (
             <div className="flex gap-2">
               <button onClick={() => { loadStages(); setShowPark(true) }}
-                className="flex-1 py-3.5 bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/30 text-yellow-400 font-bold rounded-2xl text-sm transition">
-                🅿️ Mettre en dépôt
+                className="flex-1 py-3.5 bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/30 text-yellow-400 font-bold rounded-2xl text-sm">
+                🅿️ Dépôt
               </button>
               <button onClick={() => setShowClose(true)}
-                className="flex-1 py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition">
+                className="flex-1 py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm">
                 🏁 Clôturer
               </button>
             </div>
           )}
 
           {mission.status === 'parked' && (
-            <div className="flex gap-2">
-              <button onClick={() => doAction('redeliver')} disabled={loading}
-                className="flex-1 py-3.5 bg-brand hover:bg-brand/80 disabled:opacity-50 text-white font-bold rounded-2xl text-sm transition">
-                {loading ? '⏳...' : '🚚 Relivrer'}
-              </button>
-              <button onClick={() => setShowClose(true)}
-                className="flex-1 py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition">
-                🏁 Clôturer
-              </button>
-            </div>
+            <button onClick={() => setShowClose(true)}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-base shadow-lg">
+              🏁 Clôturer la mission
+            </button>
           )}
         </div>
       )}
 
       {/* Modals */}
-      {showPark  && <ParkModal  stages={stages} onClose={() => setShowPark(false)}  onSubmit={handlePark}     loading={loading} />}
-      {showClose && <CloseModal mission={mission} onClose={() => setShowClose(false)} onSubmit={handleComplete} loading={loading} />}
+      {showNavModal && <NavModal onSelect={handleNavChoice} />}
+      {showPark     && <ParkModal stages={stages} onClose={() => setShowPark(false)} onSubmit={handlePark} loading={loading} />}
+      {showClose    && <CloseModal mission={mission} onClose={() => setShowClose(false)} onSubmit={handleComplete} loading={loading} />}
     </div>
   )
 }

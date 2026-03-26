@@ -34,6 +34,14 @@ interface Mission {
   destination_address: string | null
   amount_guaranteed: number | null
   amount_currency: string
+  amount_to_collect: number | null
+  vehicle_mileage: number | null
+  driver_photos: string[] | null
+  client_signature: string | null
+  client_signature_name: string | null
+  closing_notes: string | null
+  payment_method: string | null
+  amount_collected: number | null
   incident_at: string | null
   received_at: string
   status: string
@@ -554,16 +562,63 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Montant garanti */}
-              {(initialMission.source === 'mondial' || form.amount_guaranteed) && (
-                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+              {/* Montant garanti + Paiement client */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+                  <span>💶</span> Montants
+                </h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Montant garanti (EUR HTVA)">
+                    <Input value={form.amount_guaranteed} onChange={f('amount_guaranteed')} placeholder="0.00" />
+                  </Field>
+                  <Field label="Paiement à réclamer au client (€)">
+                    <Input value={form.amount_to_collect} onChange={f('amount_to_collect')} placeholder="0.00" />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Compte rendu clôture */}
+              {initialMission.status === 'completed' && (
+                <div className="bg-[#1A1A1A] border border-green-500/20 rounded-2xl p-5">
                   <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
-                    <span>💶</span> Montant garanti
+                    <span>🏁</span> Compte rendu de mission
                   </h2>
-                  <div className="flex items-center gap-3">
-                    <Field label="Montant (EUR HTVA)">
-                      <Input value={form.amount_guaranteed} onChange={f('amount_guaranteed')} placeholder="0.00" />
-                    </Field>
+                  <div className="space-y-3">
+                    {initialMission.vehicle_mileage && (
+                      <div><p className="text-zinc-500 text-xs">Kilométrage</p>
+                        <p className="text-white text-sm font-semibold">{initialMission.vehicle_mileage.toLocaleString()} km</p></div>
+                    )}
+                    {initialMission.closing_notes && (
+                      <div><p className="text-zinc-500 text-xs">Notes</p>
+                        <p className="text-white text-sm whitespace-pre-wrap">{initialMission.closing_notes}</p></div>
+                    )}
+                    {initialMission.amount_collected && (
+                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
+                        <p className="text-zinc-500 text-xs">Encaissement</p>
+                        <p className="text-green-400 font-bold text-lg">{initialMission.amount_collected} €</p>
+                        {initialMission.payment_method && <p className="text-zinc-400 text-xs capitalize">{initialMission.payment_method}</p>}
+                      </div>
+                    )}
+                    {initialMission.client_signature && (
+                      <div>
+                        <p className="text-zinc-500 text-xs mb-1">Signature — {initialMission.client_signature_name}</p>
+                        <div className="border border-[#2a2a2a] rounded-xl overflow-hidden bg-[#111]">
+                          <img src={initialMission.client_signature} alt="Signature" className="w-full max-h-24 object-contain" />
+                        </div>
+                      </div>
+                    )}
+                    {initialMission.driver_photos && initialMission.driver_photos.length > 0 && (
+                      <div>
+                        <p className="text-zinc-500 text-xs mb-2">Photos ({initialMission.driver_photos.length})</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {initialMission.driver_photos.map((url: string, i: number) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={`Photo ${i+1}`} className="w-full aspect-square object-cover rounded-xl" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

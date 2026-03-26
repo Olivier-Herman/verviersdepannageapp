@@ -4,7 +4,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 
-type DriverAction = 'accept' | 'on_way' | 'on_site' | 'completed' | 'park' | 'redeliver'
+type DriverAction = 'accept' | 'on_way' | 'on_site' | 'completed' | 'park'
 
 const ACTION_MAP: Record<DriverAction, { status: string; timestampField?: string; logMessage: string }> = {
   accept:    { status: 'accepted',    timestampField: 'accepted_at',  logMessage: 'Mission acceptée par le chauffeur' },
@@ -12,14 +12,13 @@ const ACTION_MAP: Record<DriverAction, { status: string; timestampField?: string
   on_site:   { status: 'in_progress', timestampField: 'on_site_at',   logMessage: 'Chauffeur sur place' },
   completed: { status: 'completed',   timestampField: 'completed_at', logMessage: 'Mission terminée' },
   park:      { status: 'parked',      timestampField: 'parked_at',    logMessage: 'Véhicule mis en dépôt' },
-  redeliver: { status: 'in_progress',                                 logMessage: 'Relivraison en cours' },
 }
 
 const ALLOWED: Record<string, DriverAction[]> = {
   assigned:    ['accept'],
   accepted:    ['on_way'],
   in_progress: ['on_site', 'completed', 'park'],
-  parked:      ['redeliver', 'completed'],
+  parked:      ['completed'],
 }
 
 export async function POST(req: Request) {
@@ -27,8 +26,8 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { mission_id, action, closing_data, park_data } = await req.json() as {
-    mission_id:   string
-    action:       DriverAction
+    mission_id: string
+    action:     DriverAction
     closing_data?: {
       final_mission_type?:  string
       mileage?:             number
@@ -38,6 +37,8 @@ export async function POST(req: Request) {
       signature_data?:      string
       signature_name?:      string
       closing_notes?:       string
+      payment_method?:      string
+      amount_collected?:    number
     }
     park_data?: {
       stage_id?:   number
@@ -53,11 +54,13 @@ export async function POST(req: Request) {
   const supabase = createAdminClient()
 
   const { data: actor } = await supabase
-    .from('users').select('id').eq('email', session.user.email!).single()
+    .from('users').select('id, name').eq('email', session.user.email!).single()
   if (!actor) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 })
 
   const { data: mission, error: fetchError } = await supabase
-    .from('incoming_missions').select('id, status, assigned_to').eq('id', mission_id).single()
+    .from('incoming_missions')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source')
+    .eq('id', mission_id).single()
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   if (mission.assigned_to !== actor.id) {
@@ -66,10 +69,7 @@ export async function POST(req: Request) {
 
   const allowed = ALLOWED[mission.status] ?? []
   if (!allowed.includes(action)) {
-    return NextResponse.json(
-      { error: `Action '${action}' non permise depuis '${mission.status}'` },
-      { status: 422 }
-    )
+    return NextResponse.json({ error: `Action '${action}' non permise depuis '${mission.status}'` }, { status: 422 })
   }
 
   const mapping = ACTION_MAP[action]
@@ -81,14 +81,14 @@ export async function POST(req: Request) {
   }
   if (mapping.timestampField) updatePayload[mapping.timestampField] = now
 
-  // Mise en dépôt
+  // Dépôt en parc
   if (action === 'park' && park_data) {
     if (park_data.stage_id)   updatePayload.park_stage_id   = park_data.stage_id
     if (park_data.stage_name) updatePayload.park_stage_name = park_data.stage_name
     if (park_data.notes)      updatePayload.closing_notes   = park_data.notes
   }
 
-  // Données de clôture
+  // Clôture
   if (action === 'completed' && closing_data) {
     if (closing_data.final_mission_type)      updatePayload.mission_type          = closing_data.final_mission_type
     if (closing_data.mileage != null)         updatePayload.vehicle_mileage        = closing_data.mileage
@@ -98,6 +98,8 @@ export async function POST(req: Request) {
     if (closing_data.signature_data)          updatePayload.client_signature       = closing_data.signature_data
     if (closing_data.signature_name)          updatePayload.client_signature_name  = closing_data.signature_name
     if (closing_data.closing_notes)           updatePayload.closing_notes          = closing_data.closing_notes
+    if (closing_data.payment_method)          updatePayload.payment_method         = closing_data.payment_method
+    if (closing_data.amount_collected != null) updatePayload.amount_collected      = closing_data.amount_collected
   }
 
   const { data: updated, error: updateError } = await supabase
@@ -108,12 +110,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur mise à jour' }, { status: 500 })
   }
 
+  // Créer encaissement automatique si montant encaissé
+  if (action === 'completed' && closing_data?.amount_collected && closing_data.amount_collected > 0) {
+    const plate  = mission.vehicle_plate || ''
+    const brand  = mission.vehicle_brand || ''
+    const model  = mission.vehicle_model || ''
+
+    await supabase.from('interventions').insert({
+      driver_id:      actor.id,
+      plate:          plate,
+      brand_text:     brand,
+      model_text:     model,
+      amount:         closing_data.amount_collected,
+      payment_mode:   closing_data.payment_method || 'cash',
+      client_name:    updated.client_name || '',
+      notes:          `Mission ${mission.external_id || mission_id.slice(0, 8)} — ${mission.source || ''}`,
+      mission_id:     mission_id,
+      auto_created:   true,
+      synced_to_odoo: false,
+    })
+
+    console.log(`[driver-action] Encaissement auto créé: ${closing_data.amount_collected}€ pour ${plate}`)
+  }
+
   await supabase.from('mission_logs').insert({
     mission_id,
     actor_id: actor.id,
     action,
     notes:    mapping.logMessage,
-    metadata: { action, status: mapping.status, park_data },
+    metadata: { action, status: mapping.status },
   })
 
   return NextResponse.json({ ok: true, mission: updated })
