@@ -177,6 +177,8 @@ function rtfToText(rtf: string): string {
 
 function htmlToText(html: string): string {
   return html
+    .replace(/<a[^>]+href="([^"]+)"[^>]*>/gi, ' $1 ') // conserver les URLs des liens
+    .replace(/<a[^>]+href='([^']+)'[^>]*>/gi, ' $1 ') // idem avec guillemets simples
     .replace(/<br\s*\/?>/gi,  '\n')
     .replace(/<\/p>/gi,       '\n')
     .replace(/<\/div>/gi,     '\n')
