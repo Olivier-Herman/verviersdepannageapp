@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     await sendPushToUser(driver_id, {
       title: `${typeLabel} — ${mission.source.toUpperCase()}`,
       body:  `${vehicleLabel} — ${mission.incident_city || mission.incident_address || ''}`,
-      url:   `/missions/${mission_id}`,
+      url:   `/mission/${mission_id}`,
       tag:   `mission-assigned-${mission_id}`,
     })
 
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     // Retirer l'assignation (retour à new)
     await supabase
       .from('incoming_missions')
-      .update({ status: 'new', assigned_to: null, assigned_at: null })
+      .update({ status: 'dispatching', assigned_to: null, assigned_at: null })
       .eq('id', mission_id)
 
     await supabase.from('mission_logs').insert({
