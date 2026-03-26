@@ -1,5 +1,6 @@
 // src/app/api/missions/driver-create/route.ts
-// Création de mission par un chauffeur — status accepted direct, assigned à lui-même
+// Missions créées par le chauffeur terrain.
+// Status: in_progress → apparaît dans l'onglet "En cours" du dispatch en temps réel.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     .from('incoming_missions')
     .insert({
       external_id:      `TERRAIN-${Date.now()}`,
-      source:           source        || 'prive',
+      source:           source         || 'prive',
       mission_type,
       incident_address,
       incident_city:    incident_city  || null,
@@ -39,11 +40,14 @@ export async function POST(req: Request) {
       vehicle_model:    vehicle_model  || null,
       vehicle_vin:      vehicle_vin    || null,
       remarks_general:  remarks_general|| null,
-      status:           'accepted',
+      // Le chauffeur crée + accepte + est déjà en route → in_progress
+      // Apparaît dans l'onglet "En cours" du dispatch
+      status:           'in_progress',
       dispatch_mode:    'manual',
       assigned_to:      session.user.id,
       assigned_at:      now,
       accepted_at:      now,
+      on_way_at:        now,
       received_at:      now,
       created_at:       now,
       updated_at:       now,

@@ -35,12 +35,19 @@ interface Props { mission: Mission; currentUserId: string; isReadOnly?: boolean;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TYPE_LABELS: Record<string, { short: string; label: string; color: string }> = {
+  // Valeurs lowercase (missions email parsées)
   depannage:        { short: 'DSP', label: 'Dépannage sur place', color: 'bg-orange-500' },
   remorquage:       { short: 'REM', label: 'Remorquage',          color: 'bg-blue-600'   },
   transport:        { short: 'TRN', label: 'Transport',           color: 'bg-purple-600' },
   trajet_vide:      { short: 'TVD', label: 'Trajet vide',         color: 'bg-zinc-600'   },
   reparation_place: { short: 'RPL', label: 'Réparation sur place',color: 'bg-green-600'  },
   autre:            { short: 'AUT', label: 'Autre',               color: 'bg-zinc-500'   },
+  // Valeurs uppercase (missions créées manuellement / chauffeur)
+  DSP:              { short: 'DSP', label: 'Dépannage sur place', color: 'bg-orange-500' },
+  REM:              { short: 'REM', label: 'Remorquage',          color: 'bg-blue-600'   },
+  Transport:        { short: 'TRN', label: 'Transport',           color: 'bg-purple-600' },
+  DPR:              { short: 'DPR', label: 'Déplacement pour rien',color: 'bg-zinc-600'  },
+  VR:               { short: 'VR',  label: 'Véhicule de remplacement', color: 'bg-teal-600' },
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -323,8 +330,8 @@ function CloseModal({ mission, onClose, onSubmit, loading, onPark }: {
 
         {/* Récap compact */}
         <div className="px-5 py-2.5 bg-[#1A1A1A] border-b border-[#2a2a2a] flex-shrink-0 flex items-center gap-2 flex-wrap">
-          <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${TYPE_LABELS[mission.mission_type||'autre'].color}`}>
-            {TYPE_LABELS[mission.mission_type||'autre'].short}
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${(TYPE_LABELS[mission.mission_type||''] ?? TYPE_LABELS.autre).color}`}>
+            {(TYPE_LABELS[mission.mission_type||''] ?? TYPE_LABELS.autre).short}
           </span>
           <span className="text-white font-semibold text-sm">{mission.client_name}</span>
           {mission.vehicle_plate && <span className="text-zinc-400 text-xs font-mono">{mission.vehicle_plate}</span>}
