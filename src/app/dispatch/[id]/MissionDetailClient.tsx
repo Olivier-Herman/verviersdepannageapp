@@ -570,7 +570,9 @@ export default function MissionDetailClient({
 
               {/* Actions */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3 sticky top-[89px]">
-                {canEdit && (
+
+                {/* Statut new → Confirmer / Refuser */}
+                {status === 'new' && (
                   <>
                     <button
                       onClick={handleConfirm}
@@ -598,7 +600,31 @@ export default function MissionDetailClient({
                   </>
                 )}
 
-                {!canEdit && (
+                {/* Statut dispatching → Assigner / Annuler */}
+                {status === 'dispatching' && (
+                  <>
+                    <div className="text-center py-2">
+                      <span className="text-blue-400 font-semibold text-sm">📡 En attente d'assignation</span>
+                    </div>
+                    <button
+                      onClick={handleSave}
+                      disabled={loadingSave}
+                      className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
+                    >
+                      {loadingSave ? 'Sauvegarde...' : '👷 Assigner la mission'}
+                    </button>
+                    <button
+                      onClick={handleRefuse}
+                      disabled={loadingRefuse}
+                      className="w-full py-2.5 bg-[#111] hover:bg-red-600/20 border border-[#2a2a2a] hover:border-red-600/50 text-zinc-400 hover:text-red-400 rounded-xl font-medium text-sm transition disabled:opacity-50"
+                    >
+                      {loadingRefuse ? 'Annulation...' : '🚫 Annuler la mission'}
+                    </button>
+                  </>
+                )}
+
+                {/* Autres statuts — lecture seule */}
+                {!['new', 'dispatching'].includes(status) && (
                   <div className={`text-center py-3 font-semibold text-sm ${statusInfo.color}`}>
                     {statusInfo.label}
                   </div>
