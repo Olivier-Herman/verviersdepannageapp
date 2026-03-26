@@ -719,7 +719,7 @@ export default function NewMissionClient({
                       </select>
                     ) : (
                       <input value={model} onChange={e => setModel(e.target.value)}
-                        placeholder={brand ? 'Saisie libre...' : 'Choisir une marque d'abord'}
+                        placeholder={brand ? 'Saisie libre...' : "Choisir une marque d'abord"}
                         disabled={!brand}
                         className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand disabled:opacity-40" />
                     )}
