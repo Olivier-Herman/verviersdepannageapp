@@ -265,14 +265,14 @@ async function enrichFromIMAPortal(
 async function triggerAllianzFlow(rawContent: string, missionId: string | undefined): Promise<void> {
   const supabase = createAdminClient()
   try {
-    // Extraire l'ID de la mission depuis le lien ou le texte
-    const assignmentMatch = rawContent.match(/no\.\s*(\d+)/i)
-      || rawContent.match(/toewijzing.*?(\d{10,})/i)
-    const assignmentId = assignmentMatch?.[1] || `unknown_${Date.now()}`
-
-    // Extraire le lien dispatch
-    const linkMatch = rawContent.match(/https:\/\/www\.allianzpartners-providerplatform\.com\/dispatch\/[^\s"<>]+/)
+    // Extraire le lien dispatch-drawer
+    const linkMatch = rawContent.match(/https:\/\/www\.allianzpartners-providerplatform\.com\/dispatch\/dispatch-drawer\/([^\s/"<>]+)\/([^\s/"<>]+)/i)
     const dispatchLink = linkMatch?.[0] || null
+
+    // L'assignmentId est la première partie du token (V290DB4B9...)
+    // C'est ce qu'on utilise pour appeler /hexalite-job-monitoring/v1.0/assignments/{id}
+    const assignmentId = linkMatch?.[1] || rawContent.match(/no\.\s*(\d+)/i)?.[1] || `unknown_${Date.now()}`
+    console.log('[Allianz] assignmentId extrait:', assignmentId.slice(0, 30))
 
     console.log(`[Allianz] Demande OTP pour mission ${assignmentId}`)
 
@@ -343,7 +343,7 @@ async function handleAllianzOTP(message: any, token: string): Promise<void> {
     }
 
     // Vérifier l'OTP avec Allianz API
-    const { allianzVerifyOTP, allianzFetchAssignment, allianzFetchAssignmentDetail, allianzExtractMissionData } = await import('./allianz')
+    const { allianzVerifyOTP } = await import('./allianz')
     const session = await allianzVerifyOTP(pending.ref_no, otp)
 
     // Mettre à jour le statut
@@ -351,54 +351,17 @@ async function handleAllianzOTP(message: any, token: string): Promise<void> {
       .update({ status: 'verified', access_token: session.access_token })
       .eq('id', pending.id)
 
-    // Récupérer les détails via le lien dispatch-drawer du mail
-    // C'est ce lien qui, une fois le token obtenu, donne accès direct à la mission
+    // Récupérer les données via les APIs Hexalite
+    // assignmentId = le token V290DB4... extrait du lien dispatch-drawer
+    const { allianzFetchMissionData, allianzExtractMissionData } = await import('./allianz')
+    const missionData = await allianzFetchMissionData(session.access_token, pending.assignment_id)
+
     let extracted: Record<string, any> = {}
-
-    if (pending.dispatch_link) {
-      console.log('[Allianz] Fetch dispatch-drawer link:', pending.dispatch_link.slice(0, 80))
-      try {
-        const pageRes = await fetch(pending.dispatch_link, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'User-Agent':    'Mozilla/5.0 (compatible; VerviersDépannage/1.0)',
-            'Accept':        'application/json, text/html, */*',
-          },
-          signal: AbortSignal.timeout(15000),
-        })
-        if (pageRes.ok) {
-          const contentType = pageRes.headers.get('content-type') || ''
-          if (contentType.includes('application/json')) {
-            const json = await pageRes.json()
-            extracted = allianzExtractMissionData(json)
-          } else {
-            // HTML — parser avec Claude
-            const html = await pageRes.text()
-            console.log('[Allianz] Page HTML reçue:', html.length, 'chars')
-            const { parseMissionContent } = await import('./parser')
-            const htmlText = html
-              .replace(/<[^>]+>/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim()
-            const parsed = await parseMissionContent('mondial' as any,
-              { textContent: htmlText, sourceFormat: 'email_plain', rawContent: html.slice(0, 15000) },
-              `Allianz dispatch-drawer ${pending.assignment_id}`
-            )
-            extracted = parsed
-          }
-        } else {
-          console.warn('[Allianz] dispatch-drawer retourné', pageRes.status)
-        }
-      } catch (e: any) {
-        console.warn('[Allianz] Erreur dispatch-drawer:', e.message)
-      }
-    }
-
-    // Fallback API si dispatch-drawer a échoué
-    if (!extracted.external_id) {
-      const assignment = await allianzFetchAssignment(session.access_token, pending.assignment_id)
-      const detail     = await allianzFetchAssignmentDetail(session.access_token, assignment?.id || pending.assignment_id)
-      extracted = allianzExtractMissionData(detail || assignment || {})
+    if (missionData) {
+      extracted = allianzExtractMissionData(missionData.jobData, missionData.caseData)
+      console.log(`[Allianz] Données extraites: ${extracted.external_id} — ${extracted.client_name} — ${extracted.vehicle_plate}`)
+    } else {
+      console.warn('[Allianz] Aucune donnée récupérée')
     }
 
     console.log(`[Allianz] Mission extraite: ${extracted.external_id}`)
