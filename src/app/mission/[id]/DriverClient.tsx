@@ -370,6 +370,118 @@ function useTouchDrag(
 }
 
 
+// ── FloatingRapportBtn — mini-rapport flottant (photos + km + remarques) ─────────
+function FloatingRapportBtn({ photoCount, mileage, note, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, inputRef }: {
+  photoCount:      number
+  mileage:         string
+  note:            string
+  showMenu:        boolean
+  setShowMenu:     (v: boolean) => void
+  onAddPhotos:     (files: FileList|null) => void
+  onMileageChange: (v: string) => void
+  onNoteChange:    (v: string) => void
+  inputRef:        React.RefObject<HTMLInputElement>
+}) {
+  const ready = photoCount >= 3 && mileage.length > 0
+  const partial = photoCount > 0 || mileage.length > 0 || note.length > 0
+
+  return (
+    <>
+      <input ref={inputRef} type="file" accept="image/*" multiple capture="environment"
+        className="hidden" onChange={e => onAddPhotos(e.target.files)} />
+
+      {/* Bouton flottant */}
+      <button
+        onClick={() => setShowMenu(!showMenu)}
+        className="fixed bottom-36 right-4 z-30 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition active:scale-95"
+        style={{ background: ready ? '#16a34a' : partial ? '#d97706' : '#CC0000' }}>
+        <span style={{ fontSize: 20 }}>📋</span>
+        {partial && !ready && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-black text-xs font-bold flex items-center justify-center">!</span>
+        )}
+        {ready && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-green-400 text-black text-xs font-bold flex items-center justify-center">✓</span>
+        )}
+      </button>
+
+      {/* Menu rapport */}
+      {showMenu && (
+        <div className="fixed inset-0 z-40 flex items-end" onClick={() => setShowMenu(false)}>
+          <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white font-bold text-base">Préparer le rapport</p>
+                <p className="text-zinc-500 text-xs mt-0.5">Tout sera pré-rempli à la clôture</p>
+              </div>
+              <button onClick={() => setShowMenu(false)} className="text-zinc-500 text-2xl">×</button>
+            </div>
+
+            {/* Photos */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Photos *</p>
+                <span className={`text-xs px-2 py-0.5 rounded font-semibold ${photoCount >= 3 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                  {photoCount >= 3 ? `${photoCount} ✓` : `${photoCount} / min. 3`}
+                </span>
+              </div>
+              <button onClick={() => inputRef.current?.click()}
+                className="w-full flex items-center gap-4 px-4 py-3.5 bg-[#111] border border-[#2a2a2a] hover:border-brand rounded-2xl transition">
+                <span style={{ fontSize: 22 }}>📷</span>
+                <div className="text-left">
+                  <p className="text-white font-semibold text-sm">Prendre des photos</p>
+                  <p className="text-zinc-500 text-xs">Châssis · Plaque · Vue générale</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Km */}
+            <div>
+              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-2">Kilométrage *</p>
+              <div className="bg-[#111] border-2 rounded-2xl p-3 text-center focus-within:border-brand transition"
+                style={{ borderColor: mileage ? '#CC0000' : '#2a2a2a' }}>
+                <input
+                  type="number" inputMode="numeric" value={mileage}
+                  onChange={e => onMileageChange(e.target.value)}
+                  placeholder="— — — — —"
+                  className="bg-transparent border-none text-white text-3xl font-mono text-center w-full focus:outline-none placeholder:text-zinc-700" />
+                <p className="text-zinc-600 text-xs mt-1">km</p>
+              </div>
+            </div>
+
+            {/* Remarques */}
+            <div>
+              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-2">
+                Remarques <span className="text-zinc-700 normal-case tracking-normal">(optionnel)</span>
+              </p>
+              <textarea rows={2} value={note} onChange={e => onNoteChange(e.target.value)}
+                placeholder="Difficultés, observations…"
+                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:border-brand resize-none" />
+            </div>
+
+            {/* Statut global */}
+            <div className={`rounded-xl px-4 py-3 ${ready ? 'bg-green-500/10 border border-green-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+              <p className={`text-sm font-medium ${ready ? 'text-green-400' : 'text-amber-400'}`}>
+                {ready
+                  ? '✅ Rapport prêt — tout sera pré-rempli à la clôture'
+                  : `⏳ ${!mileage ? 'Km manquant' : ''} ${photoCount < 3 ? `· ${3-photoCount} photo(s) manquante(s)` : ''}`
+                }
+              </p>
+            </div>
+
+            <button onClick={() => setShowMenu(false)}
+              className="w-full py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+
 // ── NavModal ────────────────────────────────────────────────────────────────────
 function NavModal({ onSelect }: { onSelect: (app: NavApp) => void }) {
   return (
@@ -438,9 +550,10 @@ function ParkModal({ stages, onClose, onSubmit, loading }: {
 }
 
 // ── WizardRapport — Rapport Mission DSP/REM (km+photos+remarques) ──────────────
-function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSubmit, loading }: {
+function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSubmit, loading, initialPhotos = [], initialMileage = '', initialNote = '' }: {
   mission: Mission; closingMode: ClosingMode; navApp: NavApp; mapsReady: boolean
   onClose: () => void; onSubmit: (data: any) => void; loading: boolean
+  initialPhotos?: File[]; initialMileage?: string; initialNote?: string
 }) {
   const isREM = closingMode === 'rem'
   const isDPR = closingMode === 'dpr'
@@ -453,12 +566,20 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
   const [vrLocations,  setVrLocations]  = useState<VrLocation[]>([])
   const [stops,        setStops]        = useState<any[]>([])
   const [stopsReady,   setStopsReady]   = useState(false)
+  const [remClosingMode, setRemClosingMode] = useState<'completed'|'parked'>('completed')
 
   // Km + photos
-  const [mileage,  setMileage]  = useState('')
-  const [photos,   setPhotos]   = useState<File[]>([])
+  const [mileage,  setMileage]  = useState(initialMileage)
+  const [photos,   setPhotos]   = useState<File[]>(initialPhotos)
   const [previews, setPreviews] = useState<string[]>([])
-  const [note,     setNote]     = useState('')
+
+  // Générer les previews des photos pré-existantes
+  useEffect(() => {
+    initialPhotos.forEach(f => {
+      const r = new FileReader(); r.onload = e => setPreviews(p => [...p, e.target?.result as string]); r.readAsDataURL(f)
+    })
+  }, [])
+  const [note,     setNote]     = useState(initialNote)
 
   // Decharge
   const [decharge,        setDecharge]        = useState<{motif:string;name:string;sig:string}|null>(null)
@@ -469,10 +590,11 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
   const [showDestEdit,    setShowDestEdit]     = useState(false)
   const [errors,          setErrors]           = useState<string[]>([])
 
-  const photoInput = useRef<HTMLInputElement>(null)
-  const dragIdx    = useRef<number|null>(null)
-  const [dragVer,  setDragVer]  = useState(0)
-  const tdWizard   = useTouchDrag(stops, (ns) => setStops(ns))
+  const photoInput     = useRef<HTMLInputElement>(null)
+  const dragIdx        = useRef<number|null>(null)
+  const [dragVer,      setDragVer]      = useState(0)
+  const [showPhotoMenu,setShowPhotoMenu] = useState(false)
+  const tdWizard       = useTouchDrag(stops, (ns) => setStops(ns))
 
   // Screen state for REM
   type Screen = 'type'|'dest_addr'|'vr_addr'|'client_addr'|'stops'|'rapport'
@@ -516,7 +638,9 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
       if (photos.length < 3) errs.push('Minimum 3 photos requises')
       if (errs.length > 0) { setErrors(errs); return }
     }
-    onSubmit({ closingMode, mileage, photos, note, decharge, stops: stopsReady ? stops : [], destAddr, destLat, destLng, vrAddr, vrLat, vrLng, clientAddr, clientLat, clientLng })
+    // Pour REM, utiliser remClosingMode (terminé ou parc)
+    const effectiveMode = isREM ? (remClosingMode === 'parked' ? 'rem_park' : 'rem') : closingMode
+    onSubmit({ closingMode: effectiveMode, mileage, photos, note, decharge, stops: stopsReady ? stops : [], destAddr, destLat, destLng, vrAddr, vrLat, vrLng, clientAddr, clientLat, clientLng })
   }
 
   // ── DPR flow — ultra léger ────────────────────────────────────────────────
@@ -556,6 +680,11 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
+        <FloatingRapportBtn
+          photoCount={photos.length} mileage={mileage} note={note}
+          showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
+          onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          inputRef={photoInput} />
       </div>
     )
   }
@@ -593,6 +722,11 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
+        <FloatingRapportBtn
+          photoCount={photos.length} mileage={mileage} note={note}
+          showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
+          onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          inputRef={photoInput} />
       </div>
     )
   }
@@ -647,6 +781,11 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
+        <FloatingRapportBtn
+          photoCount={photos.length} mileage={mileage} note={note}
+          showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
+          onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          inputRef={photoInput} />
       </div>
     )
   }
@@ -683,6 +822,11 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
+        <FloatingRapportBtn
+          photoCount={photos.length} mileage={mileage} note={note}
+          showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
+          onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          inputRef={photoInput} />
       </div>
     )
   }
@@ -752,11 +896,17 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
             className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
             📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
           </button>
-          <button onClick={() => setScreen('rapport')} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base">🏁 Remorquage Terminé</button>
-          <button onClick={() => { onSubmit({ closingMode: 'rem_park', mileage: '0', photos: [], note, decharge, stops }) }}
+          <button onClick={() => { setRemClosingMode('completed'); setScreen('rapport') }}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base">🏁 Remorquage Terminé</button>
+          <button onClick={() => { setRemClosingMode('parked'); setScreen('rapport') }}
             className="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-2xl text-base">🅿️ Mise en parc</button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
+        <FloatingRapportBtn
+          photoCount={photos.length} mileage={mileage} note={note}
+          showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
+          onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          inputRef={photoInput} />
       </div>
     )
   }
@@ -774,6 +924,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
       </div>
       <div className="bg-[#111] border-b border-[#2a2a2a] px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
         <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${isREM ? 'bg-blue-600' : 'bg-orange-500'}`}>{isREM ? 'REM' : 'DSP'}</span>
+        {isREM && <span className={`px-2 py-0.5 rounded text-xs font-semibold ${remClosingMode === 'parked' ? 'bg-amber-600/30 text-amber-300' : 'bg-blue-600/30 text-blue-300'}`}>{remClosingMode === 'parked' ? '🅿️ Mise en parc' : '🏁 Terminé'}</span>}
         {mission.client_name && <span className="text-white text-sm font-semibold">{mission.client_name}</span>}
         {mission.vehicle_plate && <span className="text-zinc-400 text-xs font-mono">{normalizePlate(mission.vehicle_plate)}</span>}
       </div>
@@ -809,7 +960,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
               ))}
             </div>
           )}
-          <input ref={photoInput} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={e => addPhotos(e.target.files)} />
+          {/* photoInput géré par FloatingPhotoBtn — pas besoin ici */}
           <button onClick={() => photoInput.current?.click()}
             className="w-full py-3.5 border-2 border-dashed border-[#2a2a2a] hover:border-brand rounded-2xl text-zinc-400 hover:text-white text-sm transition flex items-center justify-center gap-2">
             📷 Prendre des photos
@@ -837,8 +988,12 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
         </button>
         <button onClick={handleSubmit} disabled={loading || !canSubmit}
-          className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
-          {loading ? '⏳ Envoi…' : '🏁 Terminer la mission'}
+          className={`w-full py-4 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition ${
+            isREM && remClosingMode === 'parked'
+              ? 'bg-amber-600 hover:bg-amber-700'
+              : 'bg-green-600 hover:bg-green-700'
+          }`}>
+          {loading ? '⏳ Envoi…' : isREM && remClosingMode === 'parked' ? '🅿️ Confirmer mise en parc' : '🏁 Terminer la mission'}
         </button>
       </div>
       {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
@@ -965,6 +1120,11 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
   const [showDecharge,   setShowDecharge]   = useState(false)
   const [decharge,       setDecharge]       = useState<{motif:string;name:string;sig:string}|null>(null)
   const [paid,           setPaid]           = useState(false)
+  const [missionPhotos,  setMissionPhotos]  = useState<File[]>([])
+  const [missionMileage, setMissionMileage] = useState('')
+  const [missionNote,    setMissionNote]    = useState('')
+  const [showMissionPhotoMenu, setShowMissionPhotoMenu] = useState(false)
+  const missionPhotoInput = useRef<HTMLInputElement>(null)
   // Address menus
   const [addrMenuType,   setAddrMenuType]   = useState<'incident'|'dest'|null>(null)
   const [editAddrType,   setEditAddrType]   = useState<'incident'|'dest'|null>(null)
@@ -1421,11 +1581,32 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
         </div>
       )}
 
+      {/* Bouton photo flottant — disponible dès sur place */}
+      {mission.on_site_at && !showWizard && (
+        <FloatingRapportBtn
+          photoCount={missionPhotos.length}
+          mileage={missionMileage}
+          note={missionNote}
+          showMenu={showMissionPhotoMenu}
+          setShowMenu={setShowMissionPhotoMenu}
+          onAddPhotos={(files) => {
+            if (!files) return
+            Array.from(files).forEach(f => setMissionPhotos(p => [...p, f]))
+          }}
+          onMileageChange={setMissionMileage}
+          onNoteChange={setMissionNote}
+          inputRef={missionPhotoInput}
+        />
+      )}
+
       {/* Wizard */}
       {showWizard && (
         <WizardRapport
           mission={mission} closingMode={wizardMode} navApp={navApp} mapsReady={mapsReady}
           onClose={() => setShowWizard(false)} onSubmit={handleComplete} loading={loading}
+          initialPhotos={missionPhotos}
+          initialMileage={missionMileage}
+          initialNote={missionNote}
         />
       )}
     </div>
