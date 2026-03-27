@@ -16,9 +16,8 @@ const supabase = createClient(
 type MissionStatus = 'new'|'dispatching'|'assigned'|'accepted'|'in_progress'|'parked'|'completed'
 type NavApp = 'gmaps'|'waze'|'apple'
 type WizardStepId =
-  'type' | 'destination' | 'vr' | 'vr_address' |
-  'client_ride' | 'client_address' |
-  'depot_choice' | 'depot_select' |
+  'type' | 'destination' | 'rem_options' |
+  'vr_address' | 'client_address' | 'depot_select' |
   'mileage' | 'photos' | 'signature' | 'note'
 
 interface Mission {
@@ -93,19 +92,17 @@ function normalizeType(t: string | null | undefined): string {
 
 function getWizardSteps(
   finalType: string,
-  needsVR: boolean | null,
-  needsClientRide: boolean | null,
+  needsVR: boolean,
+  needsClientRide: boolean,
   closingMode: 'direct' | 'depot' | null
 ): WizardStepId[] {
   const isRem = ['REM', 'remorquage'].includes(finalType)
   const steps: WizardStepId[] = ['type']
   if (isRem) {
     steps.push('destination')
-    steps.push('vr')
-    if (needsVR === true) steps.push('vr_address')
-    steps.push('client_ride')
-    if (needsClientRide === true) steps.push('client_address')
-    steps.push('depot_choice')
+    steps.push('rem_options')
+    if (needsVR) steps.push('vr_address')
+    if (needsClientRide) steps.push('client_address')
     if (closingMode === 'depot') steps.push('depot_select')
   }
   steps.push('mileage', 'photos', 'signature', 'note')
@@ -136,17 +133,19 @@ function Label({ icon, text }: { icon: string; text: string }) {
 
 // ── AddressWithGPS ────────────────────────────────────────────────────────────
 
-function AddressWithGPS({ value, onChange, onSelect, placeholder }: {
+function AddressWithGPS({ value, onChange, onSelect, placeholder, mapsReady }: {
   value: string
   onChange: (v: string) => void
   onSelect: (addr: string, lat: number, lng: number) => void
   placeholder?: string
+  mapsReady?: boolean
 }) {
   const ref        = useRef<HTMLInputElement>(null)
   const acRef      = useRef<any>(null)
   const [gps, setGps] = useState(false)
 
   useEffect(() => {
+    if (!mapsReady && !(window as any).google?.maps?.places) return
     const init = () => {
       if (!ref.current || !(window as any).google?.maps?.places || acRef.current) return
       acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current, {
@@ -162,9 +161,8 @@ function AddressWithGPS({ value, onChange, onSelect, placeholder }: {
         }
       })
     }
-    if ((window as any).google) init()
-    else { const t = setInterval(() => { if ((window as any).google) { init(); clearInterval(t) } }, 300); return () => clearInterval(t) }
-  }, [])
+    init()
+  }, [mapsReady])
 
   const handleGPS = () => {
     if (!navigator.geolocation) return
@@ -331,17 +329,18 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
   const [destAddr,        setDestAddr]        = useState(mission.destination_address || '')
   const [destLat,         setDestLat]         = useState<number|null>(null)
   const [destLng,         setDestLng]         = useState<number|null>(null)
-  const [needsVR,         setNeedsVR]         = useState<boolean|null>(null)
+  const [needsVR,         setNeedsVR]         = useState(false)
   const [vrAddr,          setVrAddr]          = useState('')
   const [vrLat,           setVrLat]           = useState<number|null>(null)
   const [vrLng,           setVrLng]           = useState<number|null>(null)
-  const [needsClientRide, setNeedsClientRide] = useState<boolean|null>(null)
+  const [needsClientRide, setNeedsClientRide] = useState(false)
   const [clientAddr,      setClientAddr]      = useState('')
   const [clientLat,       setClientLat]       = useState<number|null>(null)
   const [clientLng,       setClientLng]       = useState<number|null>(null)
   const [closingMode,     setClosingMode]     = useState<'direct'|'depot'|null>(null)
   const [selectedDepot,   setSelectedDepot]   = useState<Depot|null>(null)
   const [depots,          setDepots]          = useState<Depot[]>([])
+  const [mapsReady,       setMapsReady]       = useState(!!(window as any)?.google?.maps?.places)
   const [mileage,         setMileage]         = useState('')
   const [photos,          setPhotos]          = useState<File[]>([])
   const [previews,        setPreviews]        = useState<string[]>([])
@@ -353,9 +352,23 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
 
   const photoInput = useRef<HTMLInputElement>(null)
 
-  // Charge les dépôts
+  // Charge les dépôts + Google Maps
   useEffect(() => {
     fetch('/api/depots').then(r => r.json()).then(d => setDepots(Array.isArray(d) ? d : [])).catch(() => {})
+    // Charge Maps si pas encore présent
+    if ((window as any).google?.maps?.places) { setMapsReady(true); return }
+    const existingScript = document.getElementById('gm-wizard-script')
+    if (existingScript) {
+      const t = setInterval(() => { if ((window as any).google?.maps?.places) { setMapsReady(true); clearInterval(t) } }, 200)
+      return () => clearInterval(t)
+    }
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!key) return
+    const s = document.createElement('script')
+    s.id  = 'gm-wizard-script'
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&language=fr`
+    s.onload = () => setMapsReady(true)
+    document.head.appendChild(s)
   }, [])
 
   const steps = getWizardSteps(finalType, needsVR, needsClientRide, closingMode)
@@ -412,8 +425,9 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
 
   const canContinue = (): boolean => {
     switch (currentStep) {
-      case 'destination':  return destAddr.length > 3
-      case 'vr_address':   return vrAddr.length > 3
+      case 'destination':   return destAddr.length > 3
+      case 'rem_options':   return closingMode !== null
+      case 'vr_address':    return vrAddr.length > 3
       case 'client_address': return clientAddr.length > 3
       case 'mileage':      return mileage.length > 0
       case 'photos':       return photos.length >= 3
@@ -459,26 +473,64 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
             <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Où livrez-vous le véhicule ?</p>
             <AddressWithGPS value={destAddr} onChange={setDestAddr}
               onSelect={(a, lat, lng) => { setDestAddr(a); setDestLat(lat); setDestLng(lng) }}
-              placeholder="Garage, domicile, fourrière…" />
+              placeholder="Garage, domicile, fourrière…" mapsReady={mapsReady} />
             {destAddr && (
               <NavButton label="Y aller" addr={destAddr} lat={destLat} lng={destLng} app={navApp} />
             )}
           </div>
         )
 
-      case 'vr':
+      case 'rem_options':
         return (
           <div className="space-y-4">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Le client a-t-il besoin d&apos;un véhicule de remplacement ?</p>
-            <div className="space-y-3">
-              <button onClick={() => { setNeedsVR(true); goNext() }}
-                className="w-full py-5 bg-[#1A1A1A] border-2 border-[#2a2a2a] hover:border-teal-500 text-white font-bold text-lg rounded-2xl transition active:scale-[0.98]">
-                ✅ Oui
-              </button>
-              <button onClick={() => { setNeedsVR(false); goNext() }}
-                className="w-full py-5 bg-[#1A1A1A] border-2 border-[#2a2a2a] hover:border-zinc-500 text-zinc-300 font-bold text-lg rounded-2xl transition active:scale-[0.98]">
-                ❌ Non
-              </button>
+            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Que se passe-t-il ensuite ?</p>
+            <p className="text-zinc-600 text-xs">Sélectionne tout ce qui s&apos;applique, puis la destination du véhicule</p>
+
+            {/* VR */}
+            <button onClick={() => setNeedsVR(!needsVR)}
+              className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 transition active:scale-[0.98] ${
+                needsVR ? 'bg-teal-500/20 border-teal-500 text-white' : 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-300'
+              }`}>
+              <span className="text-2xl">🚗</span>
+              <div className="text-left flex-1">
+                <p className="font-bold">Véhicule de remplacement</p>
+                <p className="text-xs text-zinc-500">Le client a besoin d&apos;un VR</p>
+              </div>
+              <span className="text-xl">{needsVR ? '✅' : '◻️'}</span>
+            </button>
+
+            {/* Client ride */}
+            <button onClick={() => setNeedsClientRide(!needsClientRide)}
+              className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 transition active:scale-[0.98] ${
+                needsClientRide ? 'bg-blue-500/20 border-blue-500 text-white' : 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-300'
+              }`}>
+              <span className="text-2xl">👤</span>
+              <div className="text-left flex-1">
+                <p className="font-bold">Reconduire le client</p>
+                <p className="text-xs text-zinc-500">Dépôt du client à une adresse</p>
+              </div>
+              <span className="text-xl">{needsClientRide ? '✅' : '◻️'}</span>
+            </button>
+
+            {/* Destination du véhicule — obligatoire, choix unique */}
+            <div>
+              <p className="text-zinc-500 text-xs font-semibold uppercase tracking-widest mb-2">Destination du véhicule</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setClosingMode('direct')}
+                  className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition active:scale-[0.98] ${
+                    closingMode === 'direct' ? 'bg-green-500/20 border-green-500 text-white' : 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-300'
+                  }`}>
+                  <span className="text-3xl">🚛</span>
+                  <p className="font-bold text-sm">Livraison directe</p>
+                </button>
+                <button onClick={() => setClosingMode('depot')}
+                  className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition active:scale-[0.98] ${
+                    closingMode === 'depot' ? 'bg-yellow-500/20 border-yellow-500 text-white' : 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-300'
+                  }`}>
+                  <span className="text-3xl">🅿️</span>
+                  <p className="font-bold text-sm">Mise en dépôt</p>
+                </button>
+              </div>
             </div>
           </div>
         )
@@ -489,27 +541,10 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
             <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Adresse de livraison du VR</p>
             <AddressWithGPS value={vrAddr} onChange={setVrAddr}
               onSelect={(a, lat, lng) => { setVrAddr(a); setVrLat(lat); setVrLng(lng) }}
-              placeholder="Où livrer le véhicule de remplacement ?" />
+              placeholder="Où livrer le véhicule de remplacement ?" mapsReady={mapsReady} />
             {vrAddr && (
               <NavButton label="Y aller — VR" addr={vrAddr} lat={vrLat} lng={vrLng} app={navApp} />
             )}
-          </div>
-        )
-
-      case 'client_ride':
-        return (
-          <div className="space-y-4">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Dois-tu reconduire le client quelque part ?</p>
-            <div className="space-y-3">
-              <button onClick={() => { setNeedsClientRide(true); goNext() }}
-                className="w-full py-5 bg-[#1A1A1A] border-2 border-[#2a2a2a] hover:border-blue-500 text-white font-bold text-lg rounded-2xl transition active:scale-[0.98]">
-                ✅ Oui
-              </button>
-              <button onClick={() => { setNeedsClientRide(false); goNext() }}
-                className="w-full py-5 bg-[#1A1A1A] border-2 border-[#2a2a2a] hover:border-zinc-500 text-zinc-300 font-bold text-lg rounded-2xl transition active:scale-[0.98]">
-                ❌ Non
-              </button>
-            </div>
           </div>
         )
 
@@ -519,35 +554,10 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
             <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Adresse de dépôt du client</p>
             <AddressWithGPS value={clientAddr} onChange={setClientAddr}
               onSelect={(a, lat, lng) => { setClientAddr(a); setClientLat(lat); setClientLng(lng) }}
-              placeholder="Domicile, gare, hôtel…" />
+              placeholder="Domicile, gare, hôtel…" mapsReady={mapsReady} />
             {clientAddr && (
               <NavButton label="Y aller — client" addr={clientAddr} lat={clientLat} lng={clientLng} app={navApp} />
             )}
-          </div>
-        )
-
-      case 'depot_choice':
-        return (
-          <div className="space-y-4">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Que faites-vous du véhicule ?</p>
-            <div className="space-y-3">
-              <button onClick={() => { setClosingMode('direct'); goNext() }}
-                className="w-full flex items-center gap-4 px-5 py-5 bg-[#1A1A1A] border-2 border-[#2a2a2a] hover:border-green-500 text-white rounded-2xl transition active:scale-[0.98]">
-                <span className="text-3xl">🚗</span>
-                <div className="text-left">
-                  <p className="font-bold text-lg">Relivraison directe</p>
-                  <p className="text-zinc-400 text-sm">En route vers la destination</p>
-                </div>
-              </button>
-              <button onClick={() => { setClosingMode('depot'); goNext() }}
-                className="w-full flex items-center gap-4 px-5 py-5 bg-[#1A1A1A] border-2 border-[#2a2a2a] hover:border-yellow-500 text-white rounded-2xl transition active:scale-[0.98]">
-                <span className="text-3xl">🅿️</span>
-                <div className="text-left">
-                  <p className="font-bold text-lg">Mise en dépôt</p>
-                  <p className="text-zinc-400 text-sm">Véhicule mis au parc</p>
-                </div>
-              </button>
-            </div>
           </div>
         )
 
@@ -728,7 +738,7 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
         )}
 
         {/* Continue / Submit — seulement sur les étapes qui ont un bouton explicite */}
-        {!['type','vr','client_ride','depot_choice','depot_select'].includes(currentStep) && (
+        {!['type','rem_options','depot_select'].includes(currentStep) && (
           isLastStep ? (
             <button onClick={validateAndSubmit} disabled={loading || !canContinue()}
               className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
