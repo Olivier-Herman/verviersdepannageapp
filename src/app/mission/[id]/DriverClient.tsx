@@ -304,11 +304,27 @@ function ParkModal({ stages, onClose, onSubmit, loading }: {
   )
 }
 
+// ── NavButton — bouton navigation vers une adresse ───────────────────────────
+function NavButton({ label, addr, lat, lng, app }: {
+  label: string; addr: string; lat: number|null; lng: number|null; app: NavApp
+}) {
+  if (!addr) return null
+  const url = buildNavUrl(app, lat ?? undefined, lng ?? undefined, addr)
+  if (!url) return null
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+      className="w-full flex items-center justify-center gap-2 py-3.5 bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600/30 text-blue-300 font-semibold rounded-2xl text-base transition active:scale-[0.98]">
+      🗺️ {label}
+    </a>
+  )
+}
+
 // ── WizardClose — Wizard de clôture complet ───────────────────────────────────
 
-function WizardClose({ mission, onClose, onSubmit, loading, onPark }: {
+function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
   mission: Mission; onClose: () => void
   onSubmit: (data: any) => void; loading: boolean; onPark: () => void
+  navApp: NavApp
 }) {
   const [stepIndex,       setStepIndex]       = useState(0)
   const [finalType,       setFinalType]       = useState(normalizeType(mission.mission_type))
@@ -444,6 +460,9 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark }: {
             <AddressWithGPS value={destAddr} onChange={setDestAddr}
               onSelect={(a, lat, lng) => { setDestAddr(a); setDestLat(lat); setDestLng(lng) }}
               placeholder="Garage, domicile, fourrière…" />
+            {destAddr && (
+              <NavButton label="Y aller" addr={destAddr} lat={destLat} lng={destLng} app={navApp} />
+            )}
           </div>
         )
 
@@ -471,6 +490,9 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark }: {
             <AddressWithGPS value={vrAddr} onChange={setVrAddr}
               onSelect={(a, lat, lng) => { setVrAddr(a); setVrLat(lat); setVrLng(lng) }}
               placeholder="Où livrer le véhicule de remplacement ?" />
+            {vrAddr && (
+              <NavButton label="Y aller — VR" addr={vrAddr} lat={vrLat} lng={vrLng} app={navApp} />
+            )}
           </div>
         )
 
@@ -498,6 +520,9 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark }: {
             <AddressWithGPS value={clientAddr} onChange={setClientAddr}
               onSelect={(a, lat, lng) => { setClientAddr(a); setClientLat(lat); setClientLng(lng) }}
               placeholder="Domicile, gare, hôtel…" />
+            {clientAddr && (
+              <NavButton label="Y aller — client" addr={clientAddr} lat={clientLat} lng={clientLng} app={navApp} />
+            )}
           </div>
         )
 
@@ -1001,6 +1026,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           onClose={() => setShowWizard(false)}
           onSubmit={handleComplete}
           loading={loading}
+          navApp={navApp}
           onPark={() => { setShowWizard(false); loadStages(); setShowPark(true) }}
         />
       )}
