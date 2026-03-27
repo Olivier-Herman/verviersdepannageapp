@@ -472,6 +472,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
   const photoInput = useRef<HTMLInputElement>(null)
   const dragIdx    = useRef<number|null>(null)
   const [dragVer,  setDragVer]  = useState(0)
+  const tdWizard   = useTouchDrag(stops, (ns) => setStops(ns))
 
   // Screen state for REM
   type Screen = 'type'|'dest_addr'|'vr_addr'|'client_addr'|'stops'|'rapport'
@@ -691,8 +692,6 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
     const STOP_COLORS: Record<string,string> = { client: '#7c3aed', vr: '#0f766e', dest: '#2563eb' }
     const STOP_ICONS:  Record<string,string> = { client: '👤', vr: '🚗', dest: '🏁' }
 
-    const td = useTouchDrag(stops, (ns) => setStops(ns))
-
     return (
       <div className="fixed inset-0 bg-[#0F0F0F] z-50 flex flex-col">
         <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 flex-shrink-0">
@@ -706,16 +705,16 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           <p className="text-white font-semibold">Ordre des stops</p>
           <p className="text-zinc-500 text-xs">Maintenir et glisser pour réordonner · 🗺️ pour naviguer</p>
-          <div ref={td.listRef}>
+          <div ref={tdWizard.listRef}>
           {stops.map((stop, i) => {
             const navUrl = buildNavUrl(navApp, stop.lat ?? undefined, stop.lng ?? undefined, stop.address)
-            const isActive = td.active === i
-            const isOver   = td.over === i
+            const isActive = tdWizard.active === i
+            const isOver   = tdWizard.over === i
             return (
               <div key={stop.id}
-                onTouchStart={td.onTouchStart(i)}
-                onTouchMove={td.onTouchMove}
-                onTouchEnd={td.onTouchEnd}
+                onTouchStart={tdWizard.onTouchStart(i)}
+                onTouchMove={tdWizard.onTouchMove}
+                onTouchEnd={tdWizard.onTouchEnd}
                 onDragStart={() => { dragIdx.current = i }}
                 onDragOver={e => e.preventDefault()}
                 onDrop={() => {
