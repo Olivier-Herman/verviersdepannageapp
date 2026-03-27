@@ -587,7 +587,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
             className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
             📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
           </button>
-          <button onClick={buildStops} disabled={!addrV}
+          <button onClick={() => buildStops()} disabled={!addrV}
             className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
             Enregistrer →
           </button>
