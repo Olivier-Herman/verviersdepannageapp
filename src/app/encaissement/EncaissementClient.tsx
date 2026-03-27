@@ -73,9 +73,19 @@ function ChoiceBtn({ label, selected, onClick }: { label: string; selected: bool
 }
 
 // ── Composant principal ─────────────────────────────────────
-export default function EncaissementClient({ motifs, paymentModes }: {
-  motifs: ListItem[]
+interface Prefill {
+  mission_id?: string
+  plate?:      string
+  brand?:      string
+  model?:      string
+  amount?:     number
+  return_to?:  string
+}
+
+export default function EncaissementClient({ motifs, paymentModes, prefill }: {
+  motifs:       ListItem[]
   paymentModes: ListItem[]
+  prefill?:     Prefill
 }) {
   const router = useRouter()
 
@@ -85,15 +95,16 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   const [error, setError] = useState('')
   const TOTAL = 9
 
-  // Auto-redirect vers dashboard après 5 secondes si sauvegardé
+  // Auto-redirect après sauvegarde — vers return_to si défini, sinon dashboard
   useEffect(() => {
     if (!saved) return
-    const t = setTimeout(() => router.push('/dashboard'), 5000)
+    const dest = prefill?.return_to || '/dashboard'
+    const t = setTimeout(() => router.push(dest), 3000)
     return () => clearTimeout(t)
   }, [saved])
 
-  // Page 0
-  const [plate, setPlate] = useState('')
+  // Page 0 — pré-rempli depuis mission si prefill fourni
+  const [plate, setPlate] = useState(prefill?.plate || '')
   const [plateChecking, setPlateChecking] = useState(false)
   const [odooVehicle, setOdooVehicle] = useState<OdooVehicle | null>(null)
 
@@ -117,7 +128,7 @@ export default function EncaissementClient({ motifs, paymentModes }: {
   const [locationLoading, setLocationLoading] = useState(false)
 
   // Page 4
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(prefill?.amount ? String(prefill.amount) : '')
   const [paymentMode, setPaymentMode] = useState('')
 
   // Page 4 — état SumUp
