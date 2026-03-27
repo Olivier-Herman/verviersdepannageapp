@@ -317,6 +317,59 @@ function DechargeSheet({ onSave, onClose }: {
   )
 }
 
+// ── useTouchDrag — drag & drop tactile iOS-compatible ─────────────────────────
+function useTouchDrag(
+  items: any[],
+  onReorder: (newItems: any[]) => void
+) {
+  const dragIdx  = useRef<number|null>(null)
+  const overIdx  = useRef<number|null>(null)
+  const [active, setActive]  = useState<number|null>(null)
+  const [over,   setOver]    = useState<number|null>(null)
+  const listRef  = useRef<HTMLDivElement>(null)
+
+  const getItemAtY = (y: number): number|null => {
+    if (!listRef.current) return null
+    const children = Array.from(listRef.current.children) as HTMLElement[]
+    for (let i = 0; i < children.length; i++) {
+      const rect = children[i].getBoundingClientRect()
+      if (y >= rect.top && y <= rect.bottom) return i
+    }
+    return null
+  }
+
+  const onTouchStart = (i: number) => (e: React.TouchEvent) => {
+    dragIdx.current = i
+    setActive(i)
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault()
+    const y = e.touches[0].clientY
+    const idx = getItemAtY(y)
+    if (idx !== null && idx !== overIdx.current) {
+      overIdx.current = idx
+      setOver(idx)
+    }
+  }
+  const onTouchEnd = () => {
+    const from = dragIdx.current
+    const to   = overIdx.current
+    if (from !== null && to !== null && from !== to) {
+      const ns = [...items]
+      const [moved] = ns.splice(from, 1)
+      ns.splice(to, 0, moved)
+      onReorder(ns)
+    }
+    dragIdx.current = null
+    overIdx.current = null
+    setActive(null)
+    setOver(null)
+  }
+
+  return { listRef, active, over, onTouchStart, onTouchMove, onTouchEnd }
+}
+
+
 // ── NavModal ────────────────────────────────────────────────────────────────────
 function NavModal({ onSelect }: { onSelect: (app: NavApp) => void }) {
   return (
@@ -633,18 +686,12 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
     )
   }
 
-  // ── REM — itinéraire drag & drop ──────────────────────────────────────────
+  // ── REM — itinéraire drag & drop (iOS-compatible) ───────────────────────
   if (isREM && screen === 'stops') {
     const STOP_COLORS: Record<string,string> = { client: '#7c3aed', vr: '#0f766e', dest: '#2563eb' }
     const STOP_ICONS:  Record<string,string> = { client: '👤', vr: '🚗', dest: '🏁' }
 
-    const handleDragStart = (i: number) => { dragIdx.current = i }
-    const handleDragOver  = (e: React.DragEvent) => { e.preventDefault() }
-    const handleDrop      = (i: number) => {
-      if (dragIdx.current === null || dragIdx.current === i) return
-      const ns = [...stops]; const [m] = ns.splice(dragIdx.current, 1); ns.splice(i, 0, m)
-      setStops(ns); dragIdx.current = null; setDragVer(v => v+1)
-    }
+    const td = useTouchDrag(stops, (ns) => setStops(ns))
 
     return (
       <div className="fixed inset-0 bg-[#0F0F0F] z-50 flex flex-col">
@@ -658,16 +705,28 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           <p className="text-white font-semibold">Ordre des stops</p>
-          <p className="text-zinc-500 text-xs">Glisser pour réordonner · 🗺️ pour naviguer</p>
+          <p className="text-zinc-500 text-xs">Maintenir et glisser pour réordonner · 🗺️ pour naviguer</p>
+          <div ref={td.listRef}>
           {stops.map((stop, i) => {
             const navUrl = buildNavUrl(navApp, stop.lat ?? undefined, stop.lng ?? undefined, stop.address)
+            const isActive = td.active === i
+            const isOver   = td.over === i
             return (
-              <div key={stop.id} draggable
-                onDragStart={() => handleDragStart(i)}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop(i)}
-                className="bg-[#1A1A1A] border-2 border-[#2a2a2a] rounded-2xl p-4 flex items-start gap-3 cursor-grab active:opacity-60">
-                <div className="flex flex-col gap-1 pt-1 flex-shrink-0">
+              <div key={stop.id}
+                onTouchStart={td.onTouchStart(i)}
+                onTouchMove={td.onTouchMove}
+                onTouchEnd={td.onTouchEnd}
+                onDragStart={() => { dragIdx.current = i }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIdx.current === null || dragIdx.current === i) return
+                  const ns = [...stops]; const [m] = ns.splice(dragIdx.current, 1); ns.splice(i, 0, m)
+                  setStops(ns); dragIdx.current = null; setDragVer(v => v+1)
+                }}
+                draggable
+                style={{ touchAction: 'none' }}
+                className={`bg-[#1A1A1A] border-2 rounded-2xl p-4 mb-3 flex items-start gap-3 transition ${isActive ? 'opacity-40 border-brand' : isOver ? 'border-brand' : 'border-[#2a2a2a]'}`}>
+                <div className="flex flex-col gap-1 pt-1 flex-shrink-0 cursor-grab select-none">
                   {[0,1,2].map(j => <div key={j} className="w-4 h-0.5 bg-zinc-600 rounded" />)}
                 </div>
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ background: STOP_COLORS[stop.type] || '#2563eb' }}>
@@ -687,6 +746,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
               </div>
             )
           })}
+          </div>
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
           <button onClick={() => setShowDecharge(true)}
@@ -797,8 +857,10 @@ function StopsDeliveryScreen({ mission, navApp, onArrive, onReorder, onFinish, l
   const allArrived = stops.length > 0 && stops.every(s => s.arrived_at)
   const closingMode= stops.find(s => s.type === 'depot') ? 'depot' : 'direct'
   const depotStop  = stops.find(s => s.type === 'depot')
-  const [dragIdx, setDragIdx]       = useState<number|null>(null)
-  const [dragOver, setDragOver]     = useState<number|null>(null)
+  const td = useTouchDrag(stops.filter(s => !s.arrived_at), (ns) => {
+    const done = stops.filter(s => s.arrived_at)
+    onReorder([...done, ...ns])
+  })
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] pb-40">
@@ -812,23 +874,26 @@ function StopsDeliveryScreen({ mission, navApp, onArrive, onReorder, onFinish, l
           <div className="h-full bg-teal-500 rounded-full transition-all" style={{ width: `${stops.length ? (stops.filter(s=>s.arrived_at).length / stops.length * 100) : 0}%` }} />
         </div>
       </div>
-      <div className="px-4 mt-4 space-y-3">
-        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Glisser pour réordonner</p>
+      <div className="px-4 mt-4 space-y-3" ref={td.listRef}>
+        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Maintenir et glisser pour réordonner</p>
         {stops.map((stop, i) => {
           const isDone = !!stop.arrived_at
           const isNext = !isDone && stops.slice(0, i).every(s => s.arrived_at)
           const navUrl = buildNavUrl(navApp, stop.lat ?? undefined, stop.lng ?? undefined, stop.address)
           const COLORS: Record<string,string> = { client: '#7c3aed', vr: '#0f766e', dest: '#2563eb', depot: '#d97706' }
+          const isActive = td.active === i
+          const isOver   = td.over === i
           return (
-            <div key={stop.id} draggable={!isDone}
-              onDragStart={() => setDragIdx(i)}
-              onDragOver={e => { e.preventDefault(); setDragOver(i) }}
-              onDrop={() => {
-                if (dragIdx === null || dragIdx === i) { setDragIdx(null); setDragOver(null); return }
-                const ns = [...stops]; const [m] = ns.splice(dragIdx, 1); ns.splice(i, 0, m)
-                onReorder(ns); setDragIdx(null); setDragOver(null)
-              }}
-              className={`bg-[#1A1A1A] border-2 rounded-2xl p-4 transition ${isDone ? 'border-green-500/30 opacity-60' : isNext ? 'border-teal-500' : dragOver === i ? 'border-brand' : 'border-[#2a2a2a]'}`}>
+            <div key={stop.id}
+              draggable={!isDone}
+              onDragStart={() => {}}
+              onDragOver={e => e.preventDefault()}
+              onDrop={() => {}}
+              onTouchStart={!isDone ? td.onTouchStart(i) : undefined}
+              onTouchMove={!isDone ? td.onTouchMove : undefined}
+              onTouchEnd={!isDone ? td.onTouchEnd : undefined}
+              style={!isDone ? { touchAction: 'none' } : {}}
+              className={`bg-[#1A1A1A] border-2 rounded-2xl p-4 transition ${isDone ? 'border-green-500/30 opacity-60' : isActive ? 'opacity-40 border-brand' : isNext ? 'border-teal-500' : isOver ? 'border-brand' : 'border-[#2a2a2a]'}`}>
               <div className="flex items-start gap-3">
                 {!isDone && (<div className="flex flex-col gap-1 pt-1 flex-shrink-0 cursor-grab">{[0,1,2].map(j=><div key={j} className="w-4 h-0.5 bg-zinc-600 rounded"/>)}</div>)}
                 {isDone  && <span className="text-green-400 text-xl flex-shrink-0">✓</span>}
