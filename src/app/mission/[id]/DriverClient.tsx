@@ -483,8 +483,8 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
       case 'rem_options':
         return (
           <div className="space-y-4">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Que se passe-t-il ensuite ?</p>
-            <p className="text-zinc-600 text-xs">Sélectionne tout ce qui s&apos;applique, puis la destination du véhicule</p>
+            <p className="text-white text-base font-bold">Que se passe-t-il ensuite ?</p>
+            <p className="text-zinc-300 text-sm">Sélectionne tout ce qui s&apos;applique, puis la destination du véhicule.</p>
 
             {/* VR */}
             <button onClick={() => setNeedsVR(!needsVR)}
@@ -514,7 +514,7 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
 
             {/* Destination du véhicule — obligatoire, choix unique */}
             <div>
-              <p className="text-zinc-500 text-xs font-semibold uppercase tracking-widest mb-2">Destination du véhicule</p>
+              <p className="text-white text-sm font-bold mb-2">Destination du véhicule</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setClosingMode('direct')}
                   className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition active:scale-[0.98] ${
