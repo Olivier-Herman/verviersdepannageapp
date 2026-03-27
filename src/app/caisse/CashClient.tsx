@@ -174,13 +174,18 @@ export default function CashClient({
         {entries.map(e => (
           <div key={e.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 mb-2">
             <div className="flex items-start justify-between mb-1">
-              <p className={`text-sm font-semibold ${
-                e.type === 'encaissement' ? 'text-green-400' :
-                e.type === 'reception'    ? 'text-blue-400'  : 'text-red-400'
-              }`}>
-                {e.type === 'encaissement' ? '+ Encaissement espèces' :
-                 e.type === 'reception'    ? '↓ Réception transfert'  : '↑ Transfert'}
-              </p>
+              {(() => {
+                const isAvance = e.type === 'remise' && e.notes?.startsWith('Avance de fonds')
+                const label = e.type === 'encaissement' ? '+ Encaissement espèces'
+                  : e.type === 'reception' ? '↓ Réception transfert'
+                  : isAvance               ? '↓ Avance de fonds'
+                  :                         '↑ Transfert'
+                const color = e.type === 'encaissement' ? 'text-green-400'
+                  : e.type === 'reception' ? 'text-blue-400'
+                  : isAvance               ? 'text-orange-400'
+                  :                         'text-red-400'
+                return <p className={`text-sm font-semibold ${color}`}>{label}</p>
+              })()}
               <p className={`font-bold ${e.type === 'remise' ? 'text-red-400' : 'text-green-400'}`}>
                 {e.type === 'remise' ? '-' : '+'}{e.amount.toFixed(2)} €
               </p>
