@@ -43,7 +43,6 @@ export default function AppShell({
   const visibleNav = NAV_ITEMS.filter(item => {
     if (item.moduleId === null) return true       // dashboard + profil toujours visibles
     if (item.moduleId === 'admin') return isAdmin
-    if (isAdmin) return true
     if (item.moduleId === 'finance') {
       return userModules.includes('encaissements') || userModules.includes('caisse')
     }
