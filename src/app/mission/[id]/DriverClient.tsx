@@ -706,13 +706,7 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
         {mission.vehicle_plate && <span className="text-zinc-400 text-xs font-mono">{mission.vehicle_plate}</span>}
       </div>
 
-      {/* Bouton dépôt en parc (accès rapide) */}
-      <div className="px-4 pt-3 flex-shrink-0">
-        <button onClick={onPark}
-          className="w-full py-2.5 bg-yellow-500/15 border border-yellow-500/30 hover:bg-yellow-500/25 text-yellow-400 font-medium rounded-xl text-sm transition flex items-center justify-center gap-2">
-          🅿️ Mettre en dépôt directement
-        </button>
-      </div>
+
 
       {/* Contenu de l'étape */}
       <div className="flex-1 overflow-y-auto px-4 py-5">
@@ -738,6 +732,12 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
         )}
 
         {/* Continue / Submit — seulement sur les étapes qui ont un bouton explicite */}
+        {currentStep === 'rem_options' && (
+          <button onClick={goNext} disabled={!closingMode}
+            className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
+            Continuer →
+          </button>
+        )}
         {!['type','rem_options','depot_select'].includes(currentStep) && (
           isLastStep ? (
             <button onClick={validateAndSubmit} disabled={loading || !canContinue()}
