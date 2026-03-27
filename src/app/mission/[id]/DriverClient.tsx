@@ -673,7 +673,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             // Pour REM+VR / REM+Reconduire : on reste sur cloturer mais on marque les extras
           }}
             className={`w-full flex items-center gap-3 px-4 py-3.5 ${closeType === opt.type && opt.label !== 'DPR' ? opt.color + ' opacity-100' : '#1A1A1A border border-[#2a2a2a]'} rounded-2xl transition`}
-            style={{ background: closeType === opt.type && screen !== 'dpr_close' ? '' : '#1A1A1A', border: '1px solid #2a2a2a' }}>
+            style={{ background: closeType === opt.type ? '' : '#1A1A1A', border: '1px solid #2a2a2a' }}>
             <div className={`${opt.color} rounded-lg w-9 h-9 flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>{opt.icon}</div>
             <div className="text-left">
               <p className="text-white font-medium text-sm">{opt.label}</p>
