@@ -1001,6 +1001,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       if (!res.ok) throw new Error(json.error ?? 'Erreur serveur')
       setMission(json.mission)
       if (action === 'on_site') { setWizardMode(isREM ? 'rem' : 'dsp'); setShowWizard(true) }
+      else { window.location.href = window.location.pathname + '?t=' + Date.now() }
     } catch (e) { setError(e instanceof Error ? e.message : 'Erreur inconnue') }
     finally { setLoading(false) }
   }
@@ -1066,6 +1067,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur serveur')
       setMission(json.mission); setShowWizard(false)
+      window.location.href = window.location.pathname + '?t=' + Date.now()
     } catch (e) { setError(e instanceof Error ? e.message : 'Erreur inconnue') }
     finally { setLoading(false) }
   }
@@ -1077,6 +1079,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setMission(json.mission)
+      window.location.href = window.location.pathname + '?t=' + Date.now()
     } catch (e) { setError(e instanceof Error ? e.message : 'Erreur') }
     finally { setLoading(false) }
   }
@@ -1095,6 +1098,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       const json   = await res.json()
       if (!res.ok) throw new Error(json.error)
       setMission(json.mission)
+      window.location.href = window.location.pathname + '?t=' + Date.now()
     } catch (e) { setError(e instanceof Error ? e.message : 'Erreur') }
     finally { setLoading(false) }
   }
@@ -1102,6 +1106,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
   const handlePark = async (stageId: number, stageName: string, notes: string) => {
     await doAction('park', { park_data: { stage_id: stageId, stage_name: stageName, notes } })
     setShowPark(false)
+    window.location.href = window.location.pathname + '?t=' + Date.now()
   }
 
   const handleVehicleSave = async (plate: string, brand: string, model: string, vin: string) => {
