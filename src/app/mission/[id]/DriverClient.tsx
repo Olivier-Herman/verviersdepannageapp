@@ -371,7 +371,7 @@ function useTouchDrag(
 
 
 // ── FloatingRapportBtn — mini-rapport flottant (photos + km + remarques) ─────────
-function RapportSheet({ photoCount, mileage, note, decharge, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, onDecharge, inputRef }: {
+function RapportSheet({ photoCount, mileage, note, decharge, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, onDecharge, inputRef, actionButtons }: {
   photoCount:      number
   mileage:         string
   note:            string
@@ -383,6 +383,7 @@ function RapportSheet({ photoCount, mileage, note, decharge, showMenu, setShowMe
   onNoteChange:    (v: string) => void
   onDecharge:      () => void
   inputRef:        React.RefObject<HTMLInputElement>
+  actionButtons?:  React.ReactNode
 }) {
   const ready = photoCount >= 3 && mileage.length > 0
   const partial = photoCount > 0 || mileage.length > 0 || note.length > 0
@@ -457,6 +458,14 @@ function RapportSheet({ photoCount, mileage, note, decharge, showMenu, setShowMe
                 }
               </p>
             </div>
+
+            {/* Boutons d'action */}
+            {actionButtons && (
+              <div>
+                <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-2">Actions</p>
+                <div className="space-y-2">{actionButtons}</div>
+              </div>
+            )}
 
             {/* Décharge */}
             <div>
@@ -1718,6 +1727,49 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           decharge={null}
           showMenu={showMissionPhotoMenu}
           setShowMenu={setShowMissionPhotoMenu}
+          actionButtons={<>
+            {/* DSP actions */}
+            {mission.status === 'in_progress' && mission.on_site_at && !isREM && (<>
+              <button onClick={() => { setShowMissionPhotoMenu(false); setWizardMode('dsp'); setShowWizard(true) }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-orange-500 text-white font-bold rounded-2xl text-sm">
+                <div className="bg-black/20 rounded-lg w-8 h-8 flex items-center justify-center text-xs font-black flex-shrink-0">DSP</div>
+                <div className="text-left"><p className="font-bold">DSP réussi</p><p className="opacity-75 text-xs font-normal">Dépannage effectué</p></div>
+              </button>
+              <button onClick={() => { setShowMissionPhotoMenu(false); setWizardMode('rem'); setShowWizard(true) }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-blue-600 text-white font-bold rounded-2xl text-sm">
+                <div className="bg-black/20 rounded-lg w-8 h-8 flex items-center justify-center text-xs font-black flex-shrink-0">→</div>
+                <div className="text-left"><p className="font-bold">DSP → REM</p><p className="opacity-75 text-xs font-normal">Remorquage nécessaire</p></div>
+              </button>
+              <button onClick={() => { setShowMissionPhotoMenu(false); setWizardMode('dpr'); setShowWizard(true) }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-zinc-600 text-white font-bold rounded-2xl text-sm">
+                <div className="bg-black/20 rounded-lg w-8 h-8 flex items-center justify-center text-xs font-black flex-shrink-0">DPR</div>
+                <div className="text-left"><p className="font-bold">DPR</p><p className="opacity-75 text-xs font-normal">Déplacement pour rien</p></div>
+              </button>
+            </>)}
+            {/* REM actions */}
+            {mission.status === 'in_progress' && mission.on_site_at && isREM && (<>
+              {[
+                { mode: 'rem' as ClosingMode, color: 'bg-blue-600',   icon: 'REM', label: 'REM Confirmé',          sub: 'Remorquage simple' },
+                { mode: 'rem' as ClosingMode, color: 'bg-teal-700',   icon: '🚗',  label: 'REM + VR',               sub: 'Véhicule de remplacement' },
+                { mode: 'rem' as ClosingMode, color: 'bg-purple-700', icon: '👤',  label: 'REM + Reconduire',       sub: 'Dépôt client à une adresse' },
+                { mode: 'dsp' as ClosingMode, color: 'bg-orange-500', icon: '→',   label: 'REM → DSP',              sub: 'Réparé sur place' },
+                { mode: 'dpr' as ClosingMode, color: 'bg-zinc-600',   icon: 'DPR', label: 'DPR',                    sub: 'Déplacement pour rien' },
+              ].map((b, i) => (
+                <button key={i} onClick={() => { setShowMissionPhotoMenu(false); setWizardMode(b.mode); setShowWizard(true) }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 ${b.color} text-white font-bold rounded-2xl text-sm`}>
+                  <div className="bg-black/20 rounded-lg w-8 h-8 flex items-center justify-center text-xs font-black flex-shrink-0">{b.icon}</div>
+                  <div className="text-left"><p className="font-bold">{b.label}</p><p className="opacity-75 text-xs font-normal">{b.sub}</p></div>
+                </button>
+              ))}
+            </>)}
+            {/* En parc */}
+            {mission.status === 'parked' && (
+              <button onClick={() => { setShowMissionPhotoMenu(false); setWizardMode(isREM ? 'rem' : 'dsp'); setShowWizard(true) }}
+                className="w-full py-3.5 bg-green-600 text-white font-bold rounded-2xl text-sm">
+                📋 Rapport Mission
+              </button>
+            )}
+          </>}
           onAddPhotos={async (files) => {
             if (!files) return
             const newFiles = Array.from(files)
