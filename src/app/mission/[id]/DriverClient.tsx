@@ -292,6 +292,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const photoInput = useRef<HTMLInputElement>(null)
   const mapsReady  = useRef(false)
 
+  const [activeTab,     setActiveTab]     = useState(0)
+  const [editAddrField, setEditAddrField] = useState<'dest'|null>(null)
   const missionType = mission.mission_type || ''
   const isRem = isREM(missionType)
   const isDsp = isDSP(missionType)
@@ -519,8 +521,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         <div>
           <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2">Kilométrage</p>
           <div className="bg-[#111] border-2 border-[#2a2a2a] focus-within:border-brand rounded-2xl p-4 text-center transition">
-            <input type="number" inputMode="numeric" value={mileage}
-              onChange={e => { setMileage(e.target.value); saveDraft({ mileage: e.target.value }) }}
+            <input type="number" inputMode="numeric"
+              defaultValue={mileage}
+              onBlur={e => { setMileage(e.target.value); saveDraft({ mileage: e.target.value }) }}
+              onChange={e => setMileage(e.target.value)}
+              key="km-input"
               placeholder="— — — — —"
               className="bg-transparent border-none text-white text-4xl font-mono text-center w-full outline-none placeholder:text-zinc-700" />
             <p className="text-zinc-600 text-xs mt-1">km</p>
@@ -683,19 +688,62 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </button>
         ))}
 
-        {/* Destination */}
-        {isRem && (
+        {/* Destination + VR + Reconduire pour REM */}
+        {isRem && (<>
           <div>
-            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2 mt-2">Destination véhicule</p>
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2 mt-2">Destination véhicule *</p>
             <AddressInput value={destAddr} onChange={setDestAddr}
               onSelect={(a, lat, lng) => { setDestAddr(a); setDestLat(lat); setDestLng(lng) }}
               placeholder="Garage, domicile, fourrière…" />
-            <button onClick={() => { setDestAddr(''); setCloseType('rem') }}
+            <button onClick={() => setDestAddr('')}
               className="w-full mt-2 py-2.5 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-xl text-sm">
               🅿️ Client ne sait pas encore — mise en dépôt
             </button>
           </div>
-        )}
+
+          {/* VR */}
+          <div>
+            <div className="flex items-center justify-between mb-2 mt-2">
+              <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">Véhicule de remplacement</p>
+              {vrAddr && <button onClick={() => setVrAddr('')} className="text-zinc-600 text-xs">Supprimer</button>}
+            </div>
+            {vrLocations.length > 0 && !vrAddr && (
+              <div className="space-y-1 mb-2">
+                {vrLocations.map(vr => (
+                  <button key={vr.id} onClick={() => { setVrAddr(`${vr.name}, ${vr.address}`); if (vr.lat) setVrLat(vr.lat); if (vr.lng) setVrLng(vr.lng) }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 bg-teal-900/30 border border-teal-700/40 rounded-xl text-left">
+                    <span className="text-teal-400 text-lg">🚗</span>
+                    <div><p className="text-white text-xs font-medium">{vr.name}</p><p className="text-zinc-500 text-xs">{vr.address}</p></div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {vrAddr
+              ? <div className="flex items-center gap-2 bg-teal-900/20 border border-teal-700/30 rounded-xl px-3 py-2.5">
+                  <span className="text-teal-400">🚗</span>
+                  <p className="text-white text-sm flex-1 truncate">{vrAddr}</p>
+                </div>
+              : <AddressInput value={vrAddr} onChange={setVrAddr}
+                  onSelect={(a, lat, lng) => { setVrAddr(a); setVrLat(lat); setVrLng(lng) }}
+                  placeholder="Rent A Car, garage… (optionnel)" />}
+          </div>
+
+          {/* Reconduire client */}
+          <div>
+            <div className="flex items-center justify-between mb-2 mt-2">
+              <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">Reconduire le client</p>
+              {clientAddr && <button onClick={() => setClientAddr('')} className="text-zinc-600 text-xs">Supprimer</button>}
+            </div>
+            {clientAddr
+              ? <div className="flex items-center gap-2 bg-purple-900/20 border border-purple-700/30 rounded-xl px-3 py-2.5">
+                  <span className="text-purple-400">👤</span>
+                  <p className="text-white text-sm flex-1 truncate">{clientAddr}</p>
+                </div>
+              : <AddressInput value={clientAddr} onChange={setClientAddr}
+                  onSelect={(a, lat, lng) => { setClientAddr(a); setClientLat(lat); setClientLng(lng) }}
+                  placeholder="Domicile, gare, hôtel… (optionnel)" />}
+          </div>
+        </>)}
 
         {/* Récap */}
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3">
@@ -924,8 +972,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {/* Onglets */}
       <div className="flex bg-[#111] border-b border-[#2a2a2a] sticky top-[88px] z-10">
         {['Info', 'Client', 'Véhicule', 'Facture'].map((tab, i) => (
-          <button key={tab}
-            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition ${i === 0 ? 'text-[#CC0000] border-[#CC0000]' : 'text-zinc-500 border-transparent'}`}>
+          <button key={tab} onClick={() => setActiveTab(i)}
+            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition ${activeTab === i ? 'text-[#CC0000] border-[#CC0000]' : 'text-zinc-500 border-transparent'}`}>
             {tab}
           </button>
         ))}
@@ -934,47 +982,42 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {/* Contenu onglet Info */}
       <div className="px-4 py-4 space-y-3">
 
-        {/* Description */}
+        {/* ── Onglet 0 : Info ─────────────────────────────────────────── */}
+      {activeTab === 0 && <>
         {mission.incident_description && (
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
             <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2">Description</p>
             <p className="text-white text-sm">{mission.incident_description}</p>
           </div>
         )}
-
-        {/* Lieu */}
-        {mission.incident_address && (
-          <button onClick={() => {
-            const url = navUrl(navApp, mission.incident_lat, mission.incident_lng, mission.incident_address)
-            if (url) window.open(url, '_blank')
-          }} className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 text-left hover:border-zinc-600 transition">
-            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">Lieu d'intervention</p>
-            <p className="text-white text-sm">{mission.incident_address}{mission.incident_city ? `, ${mission.incident_city}` : ''}</p>
-            <p className="text-blue-400 text-xs mt-1">🗺️ Tap pour naviguer</p>
-          </button>
-        )}
-
-        {/* Destination */}
-        {mission.destination_address && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">Destination</p>
-            {mission.destination_name && <p className="text-zinc-400 text-xs mb-0.5">{mission.destination_name}</p>}
-            <p className="text-white text-sm">{mission.destination_address}</p>
-          </div>
-        )}
-
-        {/* Véhicule */}
-        <button onClick={() => setShowVehicleEdit(true)}
-          className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 text-left hover:border-zinc-600 transition">
+        {/* Lieu d'intervention — toujours affiché, modifiable */}
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
           <div className="flex justify-between mb-1">
-            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">Véhicule</p>
-            <span className="text-red-400 text-xs">✏️ Modifier</span>
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">Lieu d'intervention</p>
           </div>
-          <p className="text-white font-semibold">{[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')}</p>
-          {mission.vehicle_plate && <p className="text-zinc-400 text-xs font-mono uppercase tracking-widest mt-0.5">{normPlate(mission.vehicle_plate)}</p>}
-        </button>
-
-        {/* Dossier */}
+          {mission.incident_address
+            ? <p className="text-white text-sm">{mission.incident_address}{mission.incident_city ? `, ${mission.incident_city}` : ''}</p>
+            : <p className="text-zinc-600 text-sm italic">Non renseigné</p>}
+          {mission.incident_address && (
+            <button onClick={() => { const u = navUrl(navApp, mission.incident_lat, mission.incident_lng, mission.incident_address); if (u) window.open(u, '_blank') }}
+              className="mt-2 text-blue-400 text-xs">🗺️ Naviguer</button>
+          )}
+        </div>
+        {/* Destination */}
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+          <div className="flex justify-between mb-1">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">Destination</p>
+            <button onClick={() => setEditAddrField('dest')} className="text-red-400 text-xs">✏️ Modifier</button>
+          </div>
+          {editAddrField === 'dest'
+            ? <AddressInput value={destAddr} onChange={setDestAddr}
+                onSelect={(a, lat, lng) => { setDestAddr(a); setDestLat(lat); setDestLng(lng); setEditAddrField(null);
+                  fetch('/api/missions/update-address', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mission_id: mission.id, type:'dest', address: a, lat, lng }) }).catch(()=>{})
+                }} placeholder="Garage, domicile, fourrière…" />
+            : mission.destination_address || destAddr
+              ? <p className="text-white text-sm">{destAddr || mission.destination_address}</p>
+              : <p className="text-zinc-600 text-sm italic">Non renseignée</p>}
+        </div>
         {mission.dossier_number && (
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
             <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">Dossier</p>
@@ -982,16 +1025,96 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             {mission.source && <p className="text-zinc-500 text-xs mt-0.5">{mission.source}</p>}
           </div>
         )}
-
-        {/* Remarques */}
+        {/* Pointages */}
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+          <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2">Pointages</p>
+          {[
+            ['Commande',    mission.accepted_at],
+            ['En route',    mission.on_way_at],
+            ['Sur place',   mission.on_site_at],
+            ['Terminé',     mission.completed_at],
+          ].map(([l, v]) => (
+            <div key={l as string} className="flex justify-between py-1.5 border-b border-[#1f1f1f] last:border-none">
+              <span className="text-zinc-500 text-xs">{l as string}</span>
+              <span className="text-white text-xs font-mono">{v ? fmt(v as string) : '—'}</span>
+            </div>
+          ))}
+        </div>
         {mission.remarks_general && (
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
             <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">Remarques</p>
             <p className="text-white text-sm whitespace-pre-wrap">{mission.remarks_general}</p>
           </div>
         )}
-
         {error && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {error}</p>}
+      </>}
+
+      {/* ── Onglet 1 : Client ────────────────────────────────────────── */}
+      {activeTab === 1 && <>
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+          <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2">Client assisté</p>
+          <p className="text-white font-semibold text-base mb-2">{mission.client_name || '—'}</p>
+          {mission.client_phone && (
+            <a href={`tel:${mission.client_phone}`}
+              className="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 text-red-400 font-medium">
+              📞 {mission.client_phone}
+            </a>
+          )}
+        </div>
+        {mission.source && (
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">Compagnie</p>
+            <p className="text-white font-semibold">{mission.source}</p>
+            {mission.dossier_number && <p className="text-zinc-500 text-xs font-mono mt-1">{mission.dossier_number}</p>}
+          </div>
+        )}
+      </>}
+
+      {/* ── Onglet 2 : Véhicule ──────────────────────────────────────── */}
+      {activeTab === 2 && <>
+        <button onClick={() => setShowVehicleEdit(true)}
+          className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 text-left hover:border-zinc-600 transition">
+          <div className="flex justify-between mb-1">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">Véhicule</p>
+            <span className="text-red-400 text-xs">✏️ Modifier</span>
+          </div>
+          <p className="text-white font-semibold text-base">{[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
+          {mission.vehicle_plate && <p className="text-zinc-400 text-xs font-mono uppercase tracking-widest mt-1">{normPlate(mission.vehicle_plate)}</p>}
+          {mission.vehicle_vin && <p className="text-zinc-500 text-xs mt-1">VIN : {mission.vehicle_vin}</p>}
+        </button>
+        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+          <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2">Données encodées</p>
+          <div className="flex justify-between py-1.5 border-b border-[#1f1f1f]">
+            <span className="text-zinc-500 text-sm">Kilométrage</span>
+            <span className={`text-sm font-mono ${mileage ? 'text-white' : 'text-zinc-600'}`}>{mileage ? `${parseInt(mileage).toLocaleString('fr-BE')} km` : '—'}</span>
+          </div>
+          <div className="flex justify-between py-1.5">
+            <span className="text-zinc-500 text-sm">Photos</span>
+            <span className={`text-sm ${totalPhotos >= 3 ? 'text-green-400' : 'text-zinc-600'}`}>{totalPhotos} {totalPhotos >= 3 ? '✓' : '/ min. 3'}</span>
+          </div>
+        </div>
+      </>}
+
+      {/* ── Onglet 3 : Facture ───────────────────────────────────────── */}
+      {activeTab === 3 && <>
+        {mission.amount_guaranteed != null ? (
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">Montant garanti</p>
+            <p className="text-white text-2xl font-semibold">{mission.amount_guaranteed?.toFixed(2)} {mission.amount_currency || '€'} TTC</p>
+            {mission.source && <p className="text-zinc-500 text-xs mt-1">Garanti par {mission.source}</p>}
+          </div>
+        ) : (
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 text-center">
+            <p className="text-zinc-600 text-sm">Aucune facturation partenaire</p>
+          </div>
+        )}
+        {mission.amount_to_collect != null && mission.amount_to_collect > 0 && (
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-1">À encaisser client</p>
+            <p className={`text-xl font-semibold ${paid ? 'text-green-400' : 'text-white'}`}>{mission.amount_to_collect?.toFixed(2)} € {paid ? '✓ Payé' : ''}</p>
+          </div>
+        )}
+      </>}
       </div>
 
       {/* Grille d'actions */}
