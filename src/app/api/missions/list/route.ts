@@ -38,7 +38,7 @@ export async function GET(req: Request) {
   query = query
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
-    .gt('parse_confidence', 0.3)
+    .or('parse_confidence.is.null,parse_confidence.gt.0.3')
 
   if (status === 'new') {
     query = query.eq('status', 'new')
@@ -66,7 +66,7 @@ export async function GET(req: Request) {
     .select('status')
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
-    .gt('parse_confidence', 0.3)
+    .or('parse_confidence.is.null,parse_confidence.gt.0.3')
 
   const counters = {
     new:         counts?.filter(m => m.status === 'new').length         || 0,
