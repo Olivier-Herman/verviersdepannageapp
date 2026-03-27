@@ -53,6 +53,7 @@ export async function POST(req: Request) {
       extra_addresses?:     string[]
       stops?:               Stop[]
       photo_urls?:          string[]
+      signature?:           string
       signature_data?:      string
       signature_name?:      string
       closing_notes?:       string
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
       amount_collected?:    number
       closing_mode?:        string
       depot?:               { id?: string; name?: string } | null
+      discharge_motif?:     string
+      discharge_name?:      string
+      discharge_sig?:       string
     }
     park_data?: {
       stage_id?:   number
@@ -115,6 +119,17 @@ export async function POST(req: Request) {
     if (park_data.stage_name) updatePayload.park_stage_name = park_data.stage_name
     if (park_data.notes)      updatePayload.closing_notes   = park_data.notes
   }
+  // closing_data peut aussi accompagner un park (rapport partiel avant mise en dépôt)
+  if (action === 'park' && closing_data) {
+    if (closing_data.final_mission_type) updatePayload.mission_type    = closing_data.final_mission_type
+    if (closing_data.mileage != null)    updatePayload.vehicle_mileage = closing_data.mileage
+    if (closing_data.photo_urls?.length) updatePayload.driver_photos   = closing_data.photo_urls
+    if (closing_data.closing_notes)      updatePayload.closing_notes   = closing_data.closing_notes
+    if (closing_data.signature)          updatePayload.client_signature = closing_data.signature
+    if (closing_data.discharge_motif)    updatePayload.discharge_motif = closing_data.discharge_motif
+    if (closing_data.discharge_name)     updatePayload.discharge_name  = closing_data.discharge_name
+    if (closing_data.discharge_sig)      updatePayload.discharge_sig   = closing_data.discharge_sig
+  }
 
   // ── Démarrage des livraisons (rapport soumis) ─────────────────────────────
   if (action === 'start_delivery' && closing_data) {
@@ -122,10 +137,14 @@ export async function POST(req: Request) {
     if (closing_data.mileage != null)     updatePayload.vehicle_mileage  = closing_data.mileage
     if (closing_data.destination_address) updatePayload.destination_address = closing_data.destination_address
     if (closing_data.photo_urls?.length)  updatePayload.driver_photos    = closing_data.photo_urls
+    if (closing_data.signature)           updatePayload.client_signature = closing_data.signature
     if (closing_data.signature_data)      updatePayload.client_signature = closing_data.signature_data
     if (closing_data.signature_name)      updatePayload.client_signature_name = closing_data.signature_name
     if (closing_data.closing_notes)       updatePayload.closing_notes    = closing_data.closing_notes
     if (closing_data.closing_mode)        updatePayload.dispatch_mode    = closing_data.closing_mode
+    if (closing_data.discharge_motif)     updatePayload.discharge_motif  = closing_data.discharge_motif
+    if (closing_data.discharge_name)      updatePayload.discharge_name   = closing_data.discharge_name
+    if (closing_data.discharge_sig)       updatePayload.discharge_sig    = closing_data.discharge_sig
     // Stocker les stops en DB
     if (closing_data.stops?.length) {
       updatePayload.extra_addresses = closing_data.stops
@@ -167,11 +186,15 @@ export async function POST(req: Request) {
     if (closing_data.destination_address)     updatePayload.destination_address  = closing_data.destination_address
     if (closing_data.extra_addresses?.length) updatePayload.extra_addresses      = closing_data.extra_addresses
     if (closing_data.photo_urls?.length)      updatePayload.driver_photos        = closing_data.photo_urls
+    if (closing_data.signature)               updatePayload.client_signature     = closing_data.signature
     if (closing_data.signature_data)          updatePayload.client_signature     = closing_data.signature_data
     if (closing_data.signature_name)          updatePayload.client_signature_name = closing_data.signature_name
     if (closing_data.closing_notes)           updatePayload.closing_notes        = closing_data.closing_notes
     if (closing_data.payment_method)          updatePayload.payment_method       = closing_data.payment_method
     if (closing_data.amount_collected != null) updatePayload.amount_collected    = closing_data.amount_collected
+    if (closing_data.discharge_motif)         updatePayload.discharge_motif      = closing_data.discharge_motif
+    if (closing_data.discharge_name)          updatePayload.discharge_name       = closing_data.discharge_name
+    if (closing_data.discharge_sig)           updatePayload.discharge_sig        = closing_data.discharge_sig
   }
 
   const { data: updated, error: updateError } = await supabase

@@ -244,7 +244,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [clientAddr, setClientAddr] = useState('')
   const [clientLat,  setClientLat]  = useState<number|null>(null)
   const [clientLng,  setClientLng]  = useState<number|null>(null)
-  const [closeType,  setCloseType]  = useState<'dsp'|'rem'|'dpr'>('dsp')
+  const [closeType,  setCloseType]  = useState<'dsp'|'rem'|'dpr'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
   const [vrLocs,     setVrLocs]     = useState<VrLoc[]>([])
 
   // Décharge locale
@@ -450,7 +450,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
         {/* Choix du type */}
-        <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Résultat</p>
+        <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Type de clôture</p>
+        {rem && closeType !== 'rem' && closeType !== 'dpr' && (
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl px-3 py-2 text-orange-300 text-xs">⚠️ Mission REM → clôturée comme DSP</div>
+        )}
+        {!rem && dsp && closeType !== 'dsp' && closeType !== 'dpr' && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-3 py-2 text-blue-300 text-xs">⚠️ Mission DSP → clôturée comme REM</div>
+        )}
         <div className="space-y-2">
           {(rem
             ? [['rem', 'bg-blue-600', 'REM', 'REM Confirmé', 'Remorquage'],
