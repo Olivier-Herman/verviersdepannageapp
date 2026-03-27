@@ -371,7 +371,7 @@ function useTouchDrag(
 
 
 // ── FloatingRapportBtn — mini-rapport flottant (photos + km + remarques) ─────────
-function FloatingRapportBtn({ photoCount, mileage, note, decharge, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, onDecharge, inputRef }: {
+function RapportSheet({ photoCount, mileage, note, decharge, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, onDecharge, inputRef }: {
   photoCount:      number
   mileage:         string
   note:            string
@@ -391,20 +391,6 @@ function FloatingRapportBtn({ photoCount, mileage, note, decharge, showMenu, set
     <>
       <input ref={inputRef} type="file" accept="image/*" multiple capture="environment"
         className="hidden" onChange={e => onAddPhotos(e.target.files)} />
-
-      {/* Bouton flottant */}
-      <button
-        onClick={() => setShowMenu(!showMenu)}
-        className="fixed top-16 right-4 z-30 w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition active:scale-95"
-        style={{ background: ready ? '#16a34a' : partial ? '#d97706' : '#CC0000' }}>
-        <span style={{ fontSize: 20 }}>📋</span>
-        {partial && !ready && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-black text-xs font-bold flex items-center justify-center">!</span>
-        )}
-        {ready && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-green-400 text-black text-xs font-bold flex items-center justify-center">✓</span>
-        )}
-      </button>
 
       {/* Menu rapport */}
       {showMenu && (
@@ -573,10 +559,10 @@ function ParkModal({ stages, onClose, onSubmit, loading }: {
 }
 
 // ── WizardRapport — Rapport Mission DSP/REM (km+photos+remarques) ──────────────
-function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSubmit, loading, initialPhotos = [], initialMileage = '', initialNote = '' }: {
+function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSubmit, loading, initialPhotos = [], initialPhotoUrls = [], initialMileage = '', initialNote = '' }: {
   mission: Mission; closingMode: ClosingMode; navApp: NavApp; mapsReady: boolean
   onClose: () => void; onSubmit: (data: any) => void; loading: boolean
-  initialPhotos?: File[]; initialMileage?: string; initialNote?: string
+  initialPhotos?: File[]; initialPhotoUrls?: string[]; initialMileage?: string; initialNote?: string
 }) {
   const isREM = closingMode === 'rem'
   const isDPR = closingMode === 'dpr'
@@ -593,15 +579,19 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
 
   // Km + photos
   const [mileage,  setMileage]  = useState(initialMileage)
-  const [photos,   setPhotos]   = useState<File[]>(initialPhotos)
-  const [previews, setPreviews] = useState<string[]>([])
+  const [photos,      setPhotos]      = useState<File[]>(initialPhotos)
+  const [photoUrls,   setPhotoUrls]   = useState<string[]>(initialPhotoUrls)
+  const [previews,    setPreviews]    = useState<string[]>([...initialPhotoUrls])
 
-  // Générer les previews des photos pré-existantes
+  // Générer les previews des photos File pré-existantes
   useEffect(() => {
     initialPhotos.forEach(f => {
       const r = new FileReader(); r.onload = e => setPreviews(p => [...p, e.target?.result as string]); r.readAsDataURL(f)
     })
   }, [])
+
+  // Total photos = fichiers nouveaux + URLs déjà uploadées
+  const totalPhotoCount = photos.length + photoUrls.length
   const [note,     setNote]     = useState(initialNote)
 
   // Decharge
@@ -658,12 +648,12 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
     if (!isDPR) {
       const errs: string[] = []
       if (!mileage) errs.push('Kilométrage obligatoire')
-      if (photos.length < 3) errs.push('Minimum 3 photos requises')
+      if (totalPhotoCount < 3) errs.push('Minimum 3 photos requises')
       if (errs.length > 0) { setErrors(errs); return }
     }
     // Pour REM, utiliser remClosingMode (terminé ou parc)
     const effectiveMode = isREM ? (remClosingMode === 'parked' ? 'rem_park' : 'rem') : closingMode
-    onSubmit({ closingMode: effectiveMode, mileage, photos, note, decharge, stops: stopsReady ? stops : [], destAddr, destLat, destLng, vrAddr, vrLat, vrLng, clientAddr, clientLat, clientLng })
+    onSubmit({ closingMode: effectiveMode, mileage, photos, photoUrls, note, decharge, stops: stopsReady ? stops : [], destAddr, destLat, destLng, vrAddr, vrLat, vrLng, clientAddr, clientLat, clientLng })
   }
 
   // ── DPR flow — ultra léger ────────────────────────────────────────────────
@@ -693,9 +683,18 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </div>
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
-          <button onClick={() => setShowDecharge(true)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium transition ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-            📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
+          <button onClick={() => setShowPhotoMenu(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#1A1A1A]">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📋</span>
+              <span className="text-zinc-400 text-sm">Rapport en cours</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${totalPhotoCount >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+              <span className="text-xs text-zinc-500">{totalPhotoCount} 📷</span>
+              {mileage && <span className="text-xs text-zinc-500">{parseInt(mileage).toLocaleString('fr-BE')} km</span>}
+              <span className="text-zinc-600">↑</span>
+            </div>
           </button>
           <button onClick={handleSubmit} disabled={loading}
             className="w-full py-4 bg-zinc-600 hover:bg-zinc-700 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
@@ -703,8 +702,8 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
-        <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
+        <RapportSheet
+          photoCount={totalPhotoCount} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
           onDecharge={() => setShowDecharge(true)}
@@ -743,8 +742,8 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
 
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
-        <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
+        <RapportSheet
+          photoCount={totalPhotoCount} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
           onDecharge={() => setShowDecharge(true)}
@@ -794,14 +793,27 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
 
+          <button onClick={() => setShowPhotoMenu(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#1A1A1A]">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📋</span>
+              <span className="text-zinc-400 text-sm">Rapport en cours</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${totalPhotoCount >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+              <span className="text-xs text-zinc-500">{totalPhotoCount} 📷</span>
+              {mileage && <span className="text-xs text-zinc-500">{parseInt(mileage).toLocaleString('fr-BE')} km</span>}
+              <span className="text-zinc-600">↑</span>
+            </div>
+          </button>
           <button onClick={() => buildStops()} disabled={!addrV}
             className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
             Enregistrer →
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
-        <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
+        <RapportSheet
+          photoCount={totalPhotoCount} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
           onDecharge={() => setShowDecharge(true)}
@@ -833,14 +845,27 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
 
+          <button onClick={() => setShowPhotoMenu(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#1A1A1A]">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📋</span>
+              <span className="text-zinc-400 text-sm">Rapport en cours</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${totalPhotoCount >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+              <span className="text-xs text-zinc-500">{totalPhotoCount} 📷</span>
+              {mileage && <span className="text-xs text-zinc-500">{parseInt(mileage).toLocaleString('fr-BE')} km</span>}
+              <span className="text-zinc-600">↑</span>
+            </div>
+          </button>
           <button onClick={() => buildStops(true)} disabled={!destAddr}
             className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
             Enregistrer →
           </button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
-        <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
+        <RapportSheet
+          photoCount={totalPhotoCount} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
           onDecharge={() => setShowDecharge(true)}
@@ -911,14 +936,40 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
 
+          <button onClick={() => setShowPhotoMenu(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#1A1A1A]">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📋</span>
+              <span className="text-zinc-400 text-sm">Rapport en cours</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${totalPhotoCount >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+              <span className="text-xs text-zinc-500">{totalPhotoCount} 📷</span>
+              {mileage && <span className="text-xs text-zinc-500">{parseInt(mileage).toLocaleString('fr-BE')} km</span>}
+              <span className="text-zinc-600">↑</span>
+            </div>
+          </button>
+          <button onClick={() => setShowPhotoMenu(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#1A1A1A]">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📋</span>
+              <span className="text-zinc-400 text-sm">Rapport en cours</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${totalPhotoCount >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+              <span className="text-xs text-zinc-500">{totalPhotoCount} 📷</span>
+              {mileage && <span className="text-xs text-zinc-500">{parseInt(mileage).toLocaleString('fr-BE')} km</span>}
+              <span className="text-zinc-600">↑</span>
+            </div>
+          </button>
           <button onClick={() => { setRemClosingMode('completed'); setScreen('rapport') }}
             className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base">🏁 Remorquage Terminé</button>
           <button onClick={() => { setRemClosingMode('parked'); setScreen('rapport') }}
             className="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-2xl text-base">🅿️ Mise en parc</button>
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
-        <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
+        <RapportSheet
+          photoCount={totalPhotoCount} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
           onDecharge={() => setShowDecharge(true)}
@@ -928,7 +979,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
   }
 
   // ── Rapport km + photos + remarques (DSP et REM terminé/parc) ────────────
-  const canSubmit = mileage.length > 0 && photos.length >= 3
+  const canSubmit = mileage.length > 0 && totalPhotoCount >= 3
   return (
     <div className="fixed inset-0 bg-[#0F0F0F] z-50 flex flex-col">
       <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 flex-shrink-0">
@@ -1000,6 +1051,19 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
       </div>
       <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
 
+        <button onClick={() => setShowPhotoMenu(true)}
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#1A1A1A]">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">📋</span>
+            <span className="text-zinc-400 text-sm">Rapport en cours</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${totalPhotoCount >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+            <span className="text-xs text-zinc-500">{totalPhotoCount} 📷</span>
+            {mileage && <span className="text-xs text-zinc-500">{parseInt(mileage).toLocaleString('fr-BE')} km</span>}
+            <span className="text-zinc-600">↑</span>
+          </div>
+        </button>
         <button onClick={handleSubmit} disabled={loading || !canSubmit}
           className={`w-full py-4 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition ${
             isREM && remClosingMode === 'parked'
@@ -1133,11 +1197,29 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
   const [showDecharge,   setShowDecharge]   = useState(false)
   const [decharge,       setDecharge]       = useState<{motif:string;name:string;sig:string}|null>(null)
   const [paid,           setPaid]           = useState(false)
-  const [missionPhotos,  setMissionPhotos]  = useState<File[]>([])
-  const [missionMileage, setMissionMileage] = useState('')
-  const [missionNote,    setMissionNote]    = useState('')
+  const DRAFT_KEY = `vd_draft_${mission.id}`
+
+  // Charger le brouillon depuis localStorage au montage
+  const loadedDraft = (() => {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}') } catch { return {} }
+  })()
+
+  const [missionPhotos,     setMissionPhotos]     = useState<File[]>([])
+  const [draftPhotoUrls,    setDraftPhotoUrls]    = useState<string[]>(loadedDraft.photoUrls || [])
+  const [missionMileage,    setMissionMileage]    = useState(loadedDraft.mileage || '')
+  const [missionNote,       setMissionNote]       = useState(loadedDraft.note || '')
   const [showMissionPhotoMenu, setShowMissionPhotoMenu] = useState(false)
   const missionPhotoInput = useRef<HTMLInputElement>(null)
+
+  // Sauvegarder le brouillon à chaque changement
+  const saveDraft = (mileage: string, note: string, photoUrls: string[]) => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ mileage, note, photoUrls })) } catch {}
+  }
+
+  // Effacer le brouillon à la clôture
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY) } catch {}
+  }
   // Address menus
   const [addrMenuType,   setAddrMenuType]   = useState<'incident'|'dest'|null>(null)
   const [editAddrType,   setEditAddrType]   = useState<'incident'|'dest'|null>(null)
@@ -1214,7 +1296,9 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
   const handleComplete = async (data: any) => {
     setLoading(true); setError(null)
     try {
-      const photoUrls = await uploadPhotos(mission.id, data.photos || [])
+      // Photos File → upload, photoUrls déjà uploadées → réutiliser directement
+      const newPhotoUrls = await uploadPhotos(mission.id, data.photos || [])
+      const photoUrls    = [...(data.photoUrls || []), ...newPhotoUrls]
       const isREMFinished = ['rem','rem_park'].includes(data.closingMode)
       const action  = (isREMFinished && data.stops?.length > 0) ? 'start_delivery'
                     : data.closingMode === 'rem_park'            ? 'park'
@@ -1444,7 +1528,43 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       {!isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 z-10 space-y-2">
 
-          {/* Paiement persistant */}
+          {/* Tirette rapport — tire vers le haut pour ouvrir */}
+          {mission.on_site_at && (
+            <button onClick={() => setShowMissionPhotoMenu(true)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📋</span>
+                <span className="text-zinc-300 text-sm font-medium">Préparer le rapport</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${(missionPhotos.length + draftPhotoUrls.length) >= 3 ? 'bg-green-400' : 'bg-red-500'}`}></span>
+                  <span className="text-xs text-zinc-500">{missionPhotos.length + draftPhotoUrls.length} photo{missionPhotos.length + draftPhotoUrls.length !== 1 ? 's' : ''}</span>
+                </div>
+                {missionMileage && <span className="text-xs text-zinc-500">{parseInt(missionMileage).toLocaleString('fr-BE')} km</span>}
+                <span className="text-zinc-600 text-sm">↑</span>
+              </div>
+            </button>
+          )}
+
+        {/* Tirette rapport — tire vers le haut pour ouvrir */}
+          {mission.on_site_at && (
+            <button onClick={() => setShowMissionPhotoMenu(true)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl transition hover:border-zinc-600 active:bg-[#222]">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📋</span>
+                <span className="text-zinc-300 text-sm font-medium">Préparer le rapport</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${(missionPhotos.length + draftPhotoUrls.length) >= 3 ? 'bg-green-400' : 'bg-zinc-600'}`}></span>
+                <span className="text-xs text-zinc-500">{missionPhotos.length + draftPhotoUrls.length} 📷</span>
+                {missionMileage && <span className="text-xs text-zinc-500">{parseInt(missionMileage).toLocaleString('fr-BE')} km</span>}
+                <span className="text-zinc-600 text-sm">↑</span>
+              </div>
+            </button>
+          )}
+
+        {/* Paiement persistant */}
           {encUrl && !paid && (
             <a href={encUrl} onClick={() => setTimeout(() => setPaid(true), 3000)}
               className="w-full flex items-center justify-between px-5 py-4 bg-brand rounded-2xl text-white font-bold text-base shadow-lg">
@@ -1589,21 +1709,37 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
         </div>
       )}
 
-      {/* Bouton photo flottant — disponible dès sur place */}
+      {/* RapportSheet — déclenché par la tirette dans le footer */}
       {mission.on_site_at && !showWizard && (
-        <FloatingRapportBtn
-          photoCount={missionPhotos.length}
+        <RapportSheet
+          photoCount={missionPhotos.length + draftPhotoUrls.length}
           mileage={missionMileage}
           note={missionNote}
           decharge={null}
           showMenu={showMissionPhotoMenu}
           setShowMenu={setShowMissionPhotoMenu}
-          onAddPhotos={(files) => {
+          onAddPhotos={async (files) => {
             if (!files) return
-            Array.from(files).forEach(f => setMissionPhotos(p => [...p, f]))
+            const newFiles = Array.from(files)
+            setMissionPhotos(p => [...p, ...newFiles])
+            const newUrls: string[] = []
+            for (const file of newFiles) {
+              const ext  = file.name.split('.').pop() || 'jpg'
+              const fpath = `${mission.id}/draft-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+              const { error } = await supabase.storage.from('mission-photos').upload(fpath, file)
+              if (!error) {
+                const { data } = supabase.storage.from('mission-photos').getPublicUrl(fpath)
+                newUrls.push(data.publicUrl)
+              }
+            }
+            setDraftPhotoUrls(prev => {
+              const updated = [...prev, ...newUrls]
+              saveDraft(missionMileage, missionNote, updated)
+              return updated
+            })
           }}
-          onMileageChange={setMissionMileage}
-          onNoteChange={setMissionNote}
+          onMileageChange={(v) => { setMissionMileage(v); saveDraft(v, missionNote, draftPhotoUrls) }}
+          onNoteChange={(v) => { setMissionNote(v); saveDraft(missionMileage, v, draftPhotoUrls) }}
           onDecharge={() => {}}
           inputRef={missionPhotoInput}
         />
@@ -1613,8 +1749,9 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       {showWizard && (
         <WizardRapport
           mission={mission} closingMode={wizardMode} navApp={navApp} mapsReady={mapsReady}
-          onClose={() => setShowWizard(false)} onSubmit={handleComplete} loading={loading}
+          onClose={() => setShowWizard(false)} onSubmit={(data) => { clearDraft(); handleComplete(data) }} loading={loading}
           initialPhotos={missionPhotos}
+          initialPhotoUrls={draftPhotoUrls}
           initialMileage={missionMileage}
           initialNote={missionNote}
         />
