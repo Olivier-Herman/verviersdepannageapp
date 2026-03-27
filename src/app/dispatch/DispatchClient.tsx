@@ -360,7 +360,7 @@ export default function DispatchClient({
   const [activeTab,      setActiveTab]      = useState('new')
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
-  const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
+  const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
   const [loading,        setLoading]        = useState(true)
   const [search,         setSearch]         = useState('')
   const [dispatchMode,   setDispatchMode]   = useState<'manual'|'auto'>('manual')
