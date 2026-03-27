@@ -417,21 +417,31 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
   const [errors,          setErrors]           = useState<string[]>([])
 
   const photoInput = useRef<HTMLInputElement>(null)
+  const dragIdx    = useRef<number|null>(null)
+  const [dragVer,  setDragVer]  = useState(0)
 
   // Screen state for REM
-  type Screen = 'type'|'vr_addr'|'client_addr'|'stops'|'rapport'
+  type Screen = 'type'|'dest_addr'|'vr_addr'|'client_addr'|'stops'|'rapport'
   const [screen, setScreen] = useState<Screen>(isREM ? 'type' : isDPR ? 'rapport' : 'rapport')
 
   useEffect(() => {
     if (isREM) fetch('/api/vr-locations').then(r => r.json()).then(d => setVrLocations(Array.isArray(d) ? d : [])).catch(() => {})
   }, [isREM])
 
-  const buildStops = () => {
+  const buildStops = (skipDestCheck = false) => {
+    // Si pas de destination encore → forcer l'écran dest_addr d'abord
+    const effectiveDest = destAddr || mission.destination_address
+    if (!skipDestCheck && !effectiveDest) {
+      setScreen('dest_addr')
+      return
+    }
     const s: any[] = []
     if (clientAddr) s.push({ id: crypto.randomUUID(), type: 'client', label: 'Reconduire le client', address: clientAddr, lat: clientLat, lng: clientLng, arrived_at: null, sort_order: s.length })
     if (vrAddr)     s.push({ id: crypto.randomUUID(), type: 'vr',     label: 'Livraison VR',         address: vrAddr,     lat: vrLat,     lng: vrLng,     arrived_at: null, sort_order: s.length })
-    if (destAddr)   s.push({ id: crypto.randomUUID(), type: 'dest',   label: 'Destination véhicule', address: destAddr,   lat: destLat,   lng: destLng,   arrived_at: null, sort_order: s.length })
-    else if (mission.destination_address) s.push({ id: crypto.randomUUID(), type: 'dest', label: 'Destination véhicule', address: mission.destination_address, lat: null, lng: null, arrived_at: null, sort_order: s.length })
+    const da = destAddr || mission.destination_address || ''
+    const dlat = destLat ?? mission.destination_lat ?? null
+    const dlng = destLng ?? mission.destination_lng ?? null
+    if (da) s.push({ id: crypto.randomUUID(), type: 'dest', label: 'Destination véhicule', address: da, lat: dlat, lng: dlng, arrived_at: null, sort_order: s.length })
     setStops(s); setStopsReady(true)
     setScreen('stops')
   }
@@ -587,19 +597,53 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
     )
   }
 
+  // ── REM — saisie adresse destination (DSP→REM ou REM sans destination) ──
+  if (isREM && screen === 'dest_addr') {
+    return (
+      <div className="fixed inset-0 bg-[#0F0F0F] z-50 flex flex-col">
+        <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 flex-shrink-0">
+          <div className="flex items-center gap-3 mb-3">
+            <button onClick={() => setScreen(remSubtype === 'vr' ? 'vr_addr' : remSubtype === 'client' ? 'client_addr' : 'type')}
+              className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg">←</button>
+            <p className="text-white font-bold text-base flex-1">Où livrer le véhicule ?</p>
+            <button onClick={onClose} className="text-zinc-500 text-2xl">×</button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 rounded-xl w-10 h-10 flex items-center justify-center text-xl flex-shrink-0">🏁</div>
+            <p className="text-white font-semibold text-base">Adresse de destination</p>
+          </div>
+          <AddressInput value={destAddr} onChange={setDestAddr}
+            onSelect={(a, lat, lng) => { setDestAddr(a); setDestLat(lat); setDestLng(lng) }}
+            placeholder="Garage, domicile, fourrière…" mapsReady={mapsReady} />
+        </div>
+        <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
+          <button onClick={() => setShowDecharge(true)}
+            className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+            📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
+          </button>
+          <button onClick={() => buildStops(true)} disabled={!destAddr}
+            className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
+            Enregistrer →
+          </button>
+        </div>
+        {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
+      </div>
+    )
+  }
+
   // ── REM — itinéraire drag & drop ──────────────────────────────────────────
   if (isREM && screen === 'stops') {
     const STOP_COLORS: Record<string,string> = { client: '#7c3aed', vr: '#0f766e', dest: '#2563eb' }
     const STOP_ICONS:  Record<string,string> = { client: '👤', vr: '🚗', dest: '🏁' }
-    const dragIdx = useRef<number|null>(null)
-    const [, forceUpdate] = useState(0)
 
     const handleDragStart = (i: number) => { dragIdx.current = i }
     const handleDragOver  = (e: React.DragEvent) => { e.preventDefault() }
     const handleDrop      = (i: number) => {
       if (dragIdx.current === null || dragIdx.current === i) return
       const ns = [...stops]; const [m] = ns.splice(dragIdx.current, 1); ns.splice(i, 0, m)
-      setStops(ns); dragIdx.current = null; forceUpdate(n => n+1)
+      setStops(ns); dragIdx.current = null; setDragVer(v => v+1)
     }
 
     return (
