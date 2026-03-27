@@ -165,6 +165,53 @@ export default function NewDriverMissionClient() {
     setVehicleState('rejected')
   }
 
+  // ── GPS position actuelle ────────────────────────────────────────────────
+
+  const handleGPS = () => {
+    if (!navigator.geolocation) {
+      setError('Géolocalisation non disponible sur cet appareil')
+      return
+    }
+    setGpsLoading(true)
+    setError('')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        const g = (window as any).google
+        if (g?.maps) {
+          new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: any[], status: string) => {
+            setGpsLoading(false)
+            if (status === 'OK' && results[0]) {
+              const addr = results[0].formatted_address
+              const cityComp = (results[0].address_components || []).find((c: any) =>
+                c.types.includes('locality') || c.types.includes('postal_town')
+              )
+              setAddress(addr)
+              setAddrLat(lat)
+              setAddrLng(lng)
+              setAddrCity(cityComp?.long_name || '')
+            } else {
+              setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+              setAddrLat(lat); setAddrLng(lng)
+            }
+          })
+        } else {
+          setGpsLoading(false)
+          setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+          setAddrLat(lat); setAddrLng(lng)
+        }
+      },
+      (err) => {
+        setGpsLoading(false)
+        setError(err.code === 1
+          ? 'Accès refusé — autorise la géolocalisation dans les réglages'
+          : 'Position indisponible, réessaye')
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
+
   // ── Soumission ────────────────────────────────────────────────────────────
 
   const handleSubmit = async (skipVehicle = false) => {
