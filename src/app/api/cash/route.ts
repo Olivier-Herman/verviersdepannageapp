@@ -74,14 +74,12 @@ export async function GET(req: NextRequest) {
     .eq('driver_id', targetId)
     .order('created_at', { ascending: false })
 
-  const balance = (entries || [])
-    .filter(e => !e.verified_at || e.type === 'encaissement' || e.type === 'reception')
-    .reduce((sum, e) => {
-      if (e.type === 'encaissement') return sum + e.amount
-      if (e.type === 'reception') return sum + e.amount
-      if (e.type === 'remise') return sum - e.amount
-      return sum
-    }, 0)
+  const balance = (entries || []).reduce((sum, e) => {
+    if (e.type === 'encaissement') return sum + e.amount
+    if (e.type === 'reception') return sum + e.amount
+    if (e.type === 'remise') return sum - e.amount
+    return sum
+  }, 0)
 
   return NextResponse.json({
     balance: Math.round(balance * 100) / 100,
