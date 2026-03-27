@@ -48,6 +48,8 @@ export async function GET(req: Request) {
     query = query.in('status', ['assigned', 'accepted'])
   } else if (status === 'in_progress') {
     query = query.eq('status', 'in_progress')
+  } else if (status === 'parked') {
+    query = query.in('status', ['parked', 'delivering'])
   } else if (status === 'completed') {
     query = query.eq('status', 'completed')
   } else if (status === 'all') {
@@ -73,6 +75,7 @@ export async function GET(req: Request) {
     dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => m.status === 'in_progress').length || 0,
+    parked:      counts?.filter(m => ['parked','delivering'].includes(m.status)).length || 0,
     completed:   counts?.filter(m => m.status === 'completed').length   || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }

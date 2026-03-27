@@ -13,12 +13,23 @@ const supabase = createClient(
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type MissionStatus = 'new'|'dispatching'|'assigned'|'accepted'|'in_progress'|'parked'|'completed'
+type MissionStatus = 'new'|'dispatching'|'assigned'|'accepted'|'in_progress'|'parked'|'completed'|'delivering'
 type NavApp = 'gmaps'|'waze'|'apple'
 type WizardStepId =
   'type' | 'destination' | 'rem_options' |
   'vr_address' | 'client_address' | 'depot_select' |
   'mileage' | 'photos' | 'signature' | 'note'
+
+interface Stop {
+  id:         string
+  type:       string
+  label:      string
+  address:    string
+  lat:        number | null
+  lng:        number | null
+  arrived_at: string | null
+  sort_order: number
+}
 
 interface Mission {
   id: string; status: MissionStatus
@@ -34,6 +45,8 @@ interface Mission {
   amount_guaranteed?: number; amount_currency?: string
   amount_to_collect?: number
   park_stage_name?: string
+  extra_addresses?: Stop[]
+  delivering_at?: string
 }
 
 interface Depot { id: string; name: string; address: string; lat: number|null; lng: number|null; is_default: boolean }
@@ -70,6 +83,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   accepted:    { label: 'Acceptée',   color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
   in_progress: { label: 'En cours',   color: 'text-orange-400', bg: 'bg-orange-500/10' },
   parked:      { label: 'En dépôt',   color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+  delivering:  { label: 'En livraison', color: 'text-teal-400',   bg: 'bg-teal-500/10'   },
   completed:   { label: 'Terminée',   color: 'text-green-400',  bg: 'bg-green-500/10'  },
 }
 
@@ -97,15 +111,21 @@ function getWizardSteps(
   closingMode: 'direct' | 'depot' | null
 ): WizardStepId[] {
   const isRem = ['REM', 'remorquage'].includes(finalType)
+  const isDPR = ['DPR', 'trajet_vide'].includes(finalType)
   const steps: WizardStepId[] = ['type']
   if (isRem) {
-    steps.push('destination')
+    // Options d'abord, destination ensuite
     steps.push('rem_options')
+    steps.push('destination')
     if (needsVR) steps.push('vr_address')
     if (needsClientRide) steps.push('client_address')
     if (closingMode === 'depot') steps.push('depot_select')
   }
-  steps.push('mileage', 'photos', 'signature', 'note')
+  if (!isDPR) {
+    // DPR = pas de km, pas de photos, pas de signature
+    steps.push('mileage', 'photos', 'signature')
+  }
+  steps.push('note')
   return steps
 }
 
@@ -397,10 +417,12 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
     })
   }
 
+  const isDPR = ['DPR', 'trajet_vide'].includes(finalType)
+
   const validateAndSubmit = () => {
     const errs: string[] = []
-    if (!mileage) errs.push('Kilométrage obligatoire')
-    if (photos.length < 3) errs.push('Minimum 3 photos requises')
+    if (!isDPR && !mileage) errs.push('Kilométrage obligatoire')
+    if (!isDPR && photos.length < 3) errs.push('Minimum 3 photos requises')
     if (['REM','remorquage'].includes(finalType) && !destAddr) errs.push('Adresse de destination obligatoire')
     if (errs.length > 0) { setErrors(errs); return }
 
@@ -408,17 +430,20 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
     onSubmit({
       finalMissionType: finalType,
       mileage,
-      destinationAddr: destAddr,
-      destinationLat:  destLat,
-      destinationLng:  destLng,
-      extraAddresses,
+      destinationAddr:  destAddr,
+      destLat,
+      destLng,
+      vrAddr,
+      vrLat,
+      vrLng,
+      clientAddr,
+      clientLat,
+      clientLng,
       photos,
       signatureData: sigData,
       signatureName: sigName,
       note,
-      paymentMethod:   '',
-      amountCollected: '',
-      depot: selectedDepot ? { id: selectedDepot.id, name: selectedDepot.name } : null,
+      depot:        selectedDepot ? { id: selectedDepot.id, name: selectedDepot.name } : null,
       closingMode,
     })
   }
@@ -686,7 +711,7 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
             ←
           </button>
           <div className="flex-1">
-            <p className="text-white font-bold text-base">Clôture — étape {stepIndex + 1}/{totalSteps}</p>
+            <p className="text-white font-bold text-base">Rapport Mission — étape {stepIndex + 1}/{totalSteps}</p>
             <p className="text-zinc-500 text-xs capitalize">{currentStep.replace('_', ' ')}</p>
           </div>
           <button onClick={onClose} className="text-zinc-500 text-2xl flex-shrink-0">×</button>
@@ -756,6 +781,151 @@ function WizardClose({ mission, onClose, onSubmit, loading, onPark, navApp }: {
   )
 }
 
+// ── StopsScreen — Écran de livraison avec stops ───────────────────────────────
+
+function StopsScreen({ mission, navApp, onArrive, onReorder, onFinish, loading }: {
+  mission:   Mission
+  navApp:    NavApp
+  onArrive:  (stopId: string) => void
+  onReorder: (stops: Stop[]) => void
+  onFinish:  (closingMode: string, depot: any) => void
+  loading:   boolean
+}) {
+  const stops = [...(mission.extra_addresses || [])].sort((a,b) => a.sort_order - b.sort_order)
+  const allArrived = stops.length > 0 && stops.every(s => s.arrived_at)
+  const closingMode = stops.find(s => s.type === 'depot') ? 'depot' : 'direct'
+  const depotStop   = stops.find(s => s.type === 'depot')
+
+  // Drag & drop state
+  const [dragIdx, setDragIdx] = useState<number|null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number|null>(null)
+
+  const handleDragStart = (i: number) => setDragIdx(i)
+  const handleDragOver  = (e: React.DragEvent, i: number) => { e.preventDefault(); setDragOverIdx(i) }
+  const handleDrop      = (i: number) => {
+    if (dragIdx === null || dragIdx === i) { setDragIdx(null); setDragOverIdx(null); return }
+    const reordered = [...stops]
+    const [moved]   = reordered.splice(dragIdx, 1)
+    reordered.splice(i, 0, moved)
+    onReorder(reordered)
+    setDragIdx(null); setDragOverIdx(null)
+  }
+
+  const TYPE_ICONS: Record<string,string> = {
+    vr: '🚗', client: '👤', destination: '🏁', depot: '🅿️'
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0F0F0F] pb-40">
+      {/* Header */}
+      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 sticky top-0 z-20">
+        <div className="flex items-center gap-3 mb-1">
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white bg-teal-600`}>EN LIVRAISON</span>
+          <span className="text-white font-bold truncate">{mission.client_name}</span>
+        </div>
+        <p className="text-zinc-500 text-xs">{stops.filter(s=>s.arrived_at).length}/{stops.length} stops effectués</p>
+        {/* Barre progression */}
+        <div className="h-1 bg-[#2a2a2a] rounded-full overflow-hidden mt-2">
+          <div className="h-full bg-teal-500 rounded-full transition-all"
+            style={{ width: `${stops.length ? (stops.filter(s=>s.arrived_at).length / stops.length * 100) : 0}%` }} />
+        </div>
+      </div>
+
+      <div className="px-4 mt-4 space-y-3">
+        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">
+          Ordre des livraisons · glisser pour réordonner
+        </p>
+
+        {stops.map((stop, i) => {
+          const isDone   = !!stop.arrived_at
+          const isNext   = !isDone && stops.slice(0,i).every(s=>s.arrived_at)
+          const navUrl   = buildNavUrl(navApp, stop.lat ?? undefined, stop.lng ?? undefined, stop.address)
+
+          return (
+            <div key={stop.id}
+              draggable={!isDone}
+              onDragStart={() => handleDragStart(i)}
+              onDragOver={e => handleDragOver(e, i)}
+              onDrop={() => handleDrop(i)}
+              className={`bg-[#1A1A1A] border-2 rounded-2xl p-4 transition ${
+                isDone       ? 'border-green-500/30 opacity-60'
+                : isNext     ? 'border-teal-500'
+                : dragOverIdx === i ? 'border-brand'
+                : 'border-[#2a2a2a]'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                {/* Drag handle */}
+                {!isDone && (
+                  <div className="flex flex-col gap-0.5 pt-1 cursor-grab flex-shrink-0 select-none">
+                    <div className="w-4 h-0.5 bg-zinc-600 rounded" />
+                    <div className="w-4 h-0.5 bg-zinc-600 rounded" />
+                    <div className="w-4 h-0.5 bg-zinc-600 rounded" />
+                  </div>
+                )}
+                {isDone && <span className="text-green-400 text-xl flex-shrink-0">✓</span>}
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">{TYPE_ICONS[stop.type] || '📍'}</span>
+                    <p className="text-white font-bold text-sm">{stop.label}</p>
+                    {isNext && <span className="px-2 py-0.5 bg-teal-500/20 border border-teal-500/40 text-teal-300 text-xs rounded-full">Prochain</span>}
+                  </div>
+                  <p className="text-zinc-400 text-xs truncate">{stop.address}</p>
+                  {isDone && stop.arrived_at && (
+                    <p className="text-green-400 text-xs mt-1">
+                      Arrivé à {new Date(stop.arrived_at).toLocaleTimeString('fr-BE', {hour:'2-digit',minute:'2-digit'})}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions si c'est le prochain stop */}
+              {isNext && (
+                <div className="flex gap-2 mt-3">
+                  {navUrl && (
+                    <a href={navUrl} target="_blank" rel="noreferrer"
+                      className="flex-1 py-3 bg-blue-600/20 border border-blue-500/40 text-blue-300 font-semibold rounded-xl text-sm text-center transition">
+                      🗺️ Y aller
+                    </a>
+                  )}
+                  <button onClick={() => onArrive(stop.id)} disabled={loading}
+                    className="flex-1 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white font-bold rounded-xl text-sm transition">
+                    {loading ? '⏳' : '✅ Arrivé'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {allArrived && (
+          <div className="mt-4 space-y-3">
+            <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 text-center">
+              <p className="text-green-400 font-bold text-lg mb-1">🎉 Tous les stops effectués</p>
+              <p className="text-zinc-400 text-sm">Confirme la fin de la mission</p>
+            </div>
+            {closingMode === 'depot' ? (
+              <button onClick={() => onFinish('depot', depotStop ? { name: depotStop.label } : null)}
+                disabled={loading}
+                className="w-full py-4 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 text-black font-bold rounded-2xl text-base transition">
+                {loading ? '⏳' : '🅿️ Confirmer la mise en dépôt'}
+              </button>
+            ) : (
+              <button onClick={() => onFinish('direct', null)}
+                disabled={loading}
+                className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
+                {loading ? '⏳' : '🏁 Terminer la mission'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function DriverClient({ mission: initial, currentUserId, isReadOnly = false, navApp: initialNavApp }: Props) {
@@ -806,6 +976,8 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur serveur')
       setMission(json.mission)
+      // Sur place → ouvrir automatiquement le rapport mission
+      if (action === 'on_site') setShowWizard(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue')
     } finally {
@@ -837,29 +1009,40 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
   const handleComplete = async (data: any) => {
     setLoading(true); setError(null)
     try {
-      const photoUrls = await uploadPhotos(mission.id, data.photos)
+      const photoUrls = await uploadPhotos(mission.id, data.photos || [])
+      const isREM = ['REM', 'remorquage'].includes(data.finalMissionType)
+
+      // Construire les stops ordonnés
+      const stops: Stop[] = []
+      let order = 0
+      if (data.vrAddr)     stops.push({ id: crypto.randomUUID(), type: 'vr',          label: 'Véhicule de remplacement', address: data.vrAddr,     lat: data.vrLat     || null, lng: data.vrLng     || null, arrived_at: null, sort_order: order++ })
+      if (data.clientAddr) stops.push({ id: crypto.randomUUID(), type: 'client',       label: 'Dépôt du client',          address: data.clientAddr, lat: data.clientLat || null, lng: data.clientLng || null, arrived_at: null, sort_order: order++ })
+      if (data.destinationAddr) stops.push({ id: crypto.randomUUID(), type: data.closingMode === 'depot' ? 'depot' : 'destination', label: data.closingMode === 'depot' ? (data.depot?.name || 'Dépôt') : 'Destination', address: data.destinationAddr, lat: data.destLat || null, lng: data.destLng || null, arrived_at: null, sort_order: order++ })
+
+      // REM avec stops → start_delivery, sinon completed direct
+      const action   = (isREM && stops.length > 0) ? 'start_delivery' : 'completed'
+      const closing  = {
+        final_mission_type:  data.finalMissionType,
+        mileage:             data.mileage ? parseInt(data.mileage) : undefined,
+        destination_address: data.destinationAddr || undefined,
+        destination_lat:     data.destLat || undefined,
+        destination_lng:     data.destLng || undefined,
+        stops:               stops.length > 0 ? stops : undefined,
+        photo_urls:          photoUrls,
+        signature_data:      data.signatureData || undefined,
+        signature_name:      data.signatureName || undefined,
+        closing_notes:       data.note || undefined,
+        closing_mode:        data.closingMode || undefined,
+        depot:               data.depot || undefined,
+      }
+
       const res = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mission_id:   mission.id,
-          action:       'completed',
-          closing_data: {
-            final_mission_type:  data.finalMissionType,
-            mileage:             data.mileage ? parseInt(data.mileage) : undefined,
-            destination_address: data.destinationAddr || undefined,
-            extra_addresses:     data.extraAddresses?.filter(Boolean) || [],
-            photo_urls:          photoUrls,
-            signature_data:      data.signatureData || undefined,
-            signature_name:      data.signatureName || undefined,
-            closing_notes:       data.note || undefined,
-            closing_mode:        data.closingMode || undefined,
-            depot:               data.depot || undefined,
-          },
-        }),
+        body: JSON.stringify({ mission_id: mission.id, action, closing_data: closing }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur serveur')
-      setMission(json.mission); setShowWizard(false); router.refresh()
+      setMission(json.mission); setShowWizard(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue')
     } finally {
@@ -867,10 +1050,79 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
     }
   }
 
+  // ── Arrivée à un stop ────────────────────────────────────────────────────
+
+  const handleArriveStop = async (stopId: string) => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: mission.id, action: 'arrive_stop', stop_id: stopId }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erreur')
+      setMission(json.mission)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Fin des livraisons ───────────────────────────────────────────────────
+
+  const handleCompleteDelivery = async (closingMode: string, depot: any | null) => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mission_id:   mission.id,
+          action:       closingMode === 'depot' ? 'park' : 'complete_delivery',
+          closing_data: { closing_mode: closingMode, depot },
+          park_data:    closingMode === 'depot' && depot ? { stage_name: depot.name } : undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erreur')
+      setMission(json.mission)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Réordonner les stops en DB ───────────────────────────────────────────
+
+  const handleReorderStops = async (newStops: Stop[]) => {
+    const reordered = newStops.map((s, i) => ({ ...s, sort_order: i }))
+    setMission(m => ({ ...m, extra_addresses: reordered }))
+    try {
+      await fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: mission.id, action: 'arrive_stop', stops: reordered }),
+      })
+    } catch {}
+  }
+
   // ── Encaissement link ─────────────────────────────────────────────────────
   const encaissementUrl = mission.amount_to_collect && mission.amount_to_collect > 0
     ? `/encaissement?prefill_mission_id=${mission.id}&prefill_plate=${mission.vehicle_plate||''}&prefill_brand=${mission.vehicle_brand||''}&prefill_model=${mission.vehicle_model||''}&prefill_amount=${mission.amount_to_collect}&return_to=/mission/${mission.id}`
     : null
+
+  if (mission.status === 'delivering') {
+    return (
+      <StopsScreen
+        mission={mission}
+        navApp={navApp}
+        loading={loading}
+        onArrive={handleArriveStop}
+        onReorder={handleReorderStops}
+        onFinish={handleCompleteDelivery}
+      />
+    )
+  }
 
   if (mission.status === 'completed') {
     return (
@@ -1014,7 +1266,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           {mission.status === 'in_progress' && mission.on_site_at && (
             <button onClick={() => setShowWizard(true)}
               className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-base shadow-lg">
-              🏁 Clôturer la mission
+              📋 Rapport Mission
             </button>
           )}
 

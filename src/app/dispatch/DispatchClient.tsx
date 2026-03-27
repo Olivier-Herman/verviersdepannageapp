@@ -55,6 +55,7 @@ interface Counters {
   dispatching: number
   assigned: number
   in_progress: number
+  parked: number
   completed: number
   errors: number
 }
@@ -96,6 +97,7 @@ const TABS = [
   { key: 'dispatching', label: 'En attente',  countKey: 'dispatching' as const },
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
+  { key: 'parked',      label: 'En Parc',     countKey: 'parked'      as const },
   { key: 'completed',   label: 'Terminées',   countKey: 'completed'   as const },
   { key: 'all',         label: 'Toutes',      countKey: null },
 ]
@@ -395,7 +397,7 @@ export default function DispatchClient({
       const mData = await mRes.json()
       const sData = await sRes.json()
       setMissions(mData.missions  || [])
-      setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, completed: 0, errors: 0 })
+      setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
       setDriverStatuses(sData.drivers || [])
     } catch (e) {
       console.error(e)
