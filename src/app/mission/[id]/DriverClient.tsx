@@ -371,15 +371,17 @@ function useTouchDrag(
 
 
 // ── FloatingRapportBtn — mini-rapport flottant (photos + km + remarques) ─────────
-function FloatingRapportBtn({ photoCount, mileage, note, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, inputRef }: {
+function FloatingRapportBtn({ photoCount, mileage, note, decharge, showMenu, setShowMenu, onAddPhotos, onMileageChange, onNoteChange, onDecharge, inputRef }: {
   photoCount:      number
   mileage:         string
   note:            string
+  decharge:        {motif:string;name:string;sig:string}|null
   showMenu:        boolean
   setShowMenu:     (v: boolean) => void
   onAddPhotos:     (files: FileList|null) => void
   onMileageChange: (v: string) => void
   onNoteChange:    (v: string) => void
+  onDecharge:      () => void
   inputRef:        React.RefObject<HTMLInputElement>
 }) {
   const ready = photoCount >= 3 && mileage.length > 0
@@ -468,6 +470,27 @@ function FloatingRapportBtn({ photoCount, mileage, note, showMenu, setShowMenu, 
                   : `⏳ ${!mileage ? 'Km manquant' : ''} ${photoCount < 3 ? `· ${3-photoCount} photo(s) manquante(s)` : ''}`
                 }
               </p>
+            </div>
+
+            {/* Décharge */}
+            <div>
+              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-2">Décharge client</p>
+              <button onClick={() => { setShowMenu(false); onDecharge() }}
+                className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl border transition ${
+                  decharge
+                    ? 'bg-amber-500/15 border-amber-500/40'
+                    : 'bg-[#111] border-[#2a2a2a] hover:border-amber-500/40'
+                }`}>
+                <span style={{ fontSize: 22 }}>📋</span>
+                <div className="text-left">
+                  <p className={`font-semibold text-sm ${decharge ? 'text-amber-300' : 'text-white'}`}>
+                    {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
+                  </p>
+                  <p className="text-zinc-500 text-xs">
+                    {decharge ? `Signé par ${decharge.name || 'client'}` : 'Motif + nom + signature'}
+                  </p>
+                </div>
+              </button>
             </div>
 
             <button onClick={() => setShowMenu(false)}
@@ -681,9 +704,10 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
         <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note}
+          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          onDecharge={() => setShowDecharge(true)}
           inputRef={photoInput} />
       </div>
     )
@@ -716,16 +740,14 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           ))}
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4">
-          <button onClick={() => setShowDecharge(true)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-            📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
-          </button>
+
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
         <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note}
+          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          onDecharge={() => setShowDecharge(true)}
           inputRef={photoInput} />
       </div>
     )
@@ -771,10 +793,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
             placeholder={ph} mapsReady={mapsReady} />
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
-          <button onClick={() => setShowDecharge(true)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-            📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
-          </button>
+
           <button onClick={() => buildStops()} disabled={!addrV}
             className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
             Enregistrer →
@@ -782,9 +801,10 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
         <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note}
+          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          onDecharge={() => setShowDecharge(true)}
           inputRef={photoInput} />
       </div>
     )
@@ -812,10 +832,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
             placeholder="Garage, domicile, fourrière…" mapsReady={mapsReady} />
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
-          <button onClick={() => setShowDecharge(true)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-            📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
-          </button>
+
           <button onClick={() => buildStops(true)} disabled={!destAddr}
             className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
             Enregistrer →
@@ -823,9 +840,10 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
         <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note}
+          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          onDecharge={() => setShowDecharge(true)}
           inputRef={photoInput} />
       </div>
     )
@@ -892,10 +910,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
           </div>
         </div>
         <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
-          <button onClick={() => setShowDecharge(true)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-            📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
-          </button>
+
           <button onClick={() => { setRemClosingMode('completed'); setScreen('rapport') }}
             className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base">🏁 Remorquage Terminé</button>
           <button onClick={() => { setRemClosingMode('parked'); setScreen('rapport') }}
@@ -903,9 +918,10 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         </div>
         {showDecharge && <DechargeSheet onClose={() => setShowDecharge(false)} onSave={(m,n,s) => { setDecharge({motif:m,name:n,sig:s}); setShowDecharge(false) }} />}
         <FloatingRapportBtn
-          photoCount={photos.length} mileage={mileage} note={note}
+          photoCount={photos.length} mileage={mileage} note={note} decharge={decharge}
           showMenu={showPhotoMenu} setShowMenu={setShowPhotoMenu}
           onAddPhotos={addPhotos} onMileageChange={setMileage} onNoteChange={setNote}
+          onDecharge={() => setShowDecharge(true)}
           inputRef={photoInput} />
       </div>
     )
@@ -983,10 +999,7 @@ function WizardRapport({ mission, closingMode, navApp, mapsReady, onClose, onSub
         )}
       </div>
       <div className="flex-shrink-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
-        <button onClick={() => setShowDecharge(true)}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-          📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
-        </button>
+
         <button onClick={handleSubmit} disabled={loading || !canSubmit}
           className={`w-full py-4 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition ${
             isREM && remClosingMode === 'parked'
@@ -1447,12 +1460,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           )}
 
           {/* Bouton décharge (après sur place) */}
-          {mission.on_site_at && (
-            <button onClick={() => setShowDecharge(true)}
-              className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-2xl text-sm font-medium transition ${decharge ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-              📋 {decharge ? 'Décharge ajoutée ✓' : 'Ajouter une décharge'}
-            </button>
-          )}
+
 
           {/* Actions principales */}
           {mission.status === 'assigned' && (
@@ -1587,6 +1595,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           photoCount={missionPhotos.length}
           mileage={missionMileage}
           note={missionNote}
+          decharge={null}
           showMenu={showMissionPhotoMenu}
           setShowMenu={setShowMissionPhotoMenu}
           onAddPhotos={(files) => {
@@ -1595,6 +1604,7 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
           }}
           onMileageChange={setMissionMileage}
           onNoteChange={setMissionNote}
+          onDecharge={() => {}}
           inputRef={missionPhotoInput}
         />
       )}
