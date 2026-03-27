@@ -395,7 +395,7 @@ function FloatingRapportBtn({ photoCount, mileage, note, decharge, showMenu, set
       {/* Bouton flottant */}
       <button
         onClick={() => setShowMenu(!showMenu)}
-        className="fixed bottom-36 right-4 z-30 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition active:scale-95"
+        className="fixed top-16 right-4 z-30 w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition active:scale-95"
         style={{ background: ready ? '#16a34a' : partial ? '#d97706' : '#CC0000' }}>
         <span style={{ fontSize: 20 }}>📋</span>
         {partial && !ready && (
@@ -1173,8 +1173,8 @@ export default function DriverClient({ mission: initial, currentUserId, isReadOn
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur serveur')
       setMission(json.mission)
-      if (action === 'on_site') { setWizardMode(isREM ? 'rem' : 'dsp'); setShowWizard(true) }
-      else { window.location.href = window.location.pathname + '?t=' + Date.now() }
+      // Sur place → refresh pour afficher les boutons DSP/REM/DPR, pas d'ouverture automatique du wizard
+      window.location.href = window.location.pathname + '?t=' + Date.now()
     } catch (e) { setError(e instanceof Error ? e.message : 'Erreur inconnue') }
     finally { setLoading(false) }
   }
