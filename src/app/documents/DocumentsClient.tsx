@@ -114,7 +114,7 @@ export default function DocumentsClient({ user }: { user: any }) {
       setError('Veuillez fournir une photo du document'); return
     }
 
-    const isDual = DUAL_PHOTO_TYPES.includes(editDoc)
+    const isDual = !!(editDoc && DUAL_PHOTO_TYPES.includes(editDoc))
     if (isDual && !formFileVerso && !getDoc(editDoc)?.file_url_verso) {
       setError('Veuillez fournir la photo verso du document'); return
     }
@@ -316,7 +316,7 @@ export default function DocumentsClient({ user }: { user: any }) {
               {/* Photo recto */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-zinc-400 mb-2">
-                  {DUAL_PHOTO_TYPES.includes(editDoc) ? 'Photo recto *' : 'Photo du document'}{!getDoc(editDoc) && ' *'}
+                  {!!(editDoc && DUAL_PHOTO_TYPES.includes(editDoc)) ? 'Photo recto *' : 'Photo du document'}{!getDoc(editDoc) && ' *'}
                 </label>
                 {formPreview ? (
                   <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
@@ -346,7 +346,7 @@ export default function DocumentsClient({ user }: { user: any }) {
               </div>
 
               {/* Photo verso (uniquement pour id_card, driving_license, driver_card) */}
-              {DUAL_PHOTO_TYPES.includes(editDoc) && (
+              {!!(editDoc && DUAL_PHOTO_TYPES.includes(editDoc)) && (
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-zinc-400 mb-2">Photo verso *</label>
                   {formPreviewVerso ? (
