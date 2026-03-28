@@ -12,13 +12,17 @@ export const DOC_TYPES = [
   { value: 'medical',         label: 'Sélection médicale',  icon: '🏥' },
 ]
 
+// Types nécessitant recto + verso
+const DUAL_PHOTO_TYPES = ['id_card', 'driving_license', 'driver_card']
+
 interface DriverDocument {
-  id:            string
-  doc_type:      string
-  expires_at:    string
-  file_url:      string
-  notes?:        string
-  updated_at:    string
+  id:              string
+  doc_type:        string
+  expires_at:      string
+  file_url:        string
+  file_url_verso?: string
+  notes?:          string
+  updated_at:      string
 }
 
 // ── Utilitaires expiration ─────────────────────────────────
@@ -62,11 +66,15 @@ export default function DocumentsClient({ user }: { user: any }) {
   // Form
   const [formExpiry, setFormExpiry] = useState('')
   const [formNotes,  setFormNotes]  = useState('')
-  const [formFile,   setFormFile]   = useState<File | null>(null)
-  const [formPreview,setFormPreview]= useState<string | null>(null)
+  const [formFile,        setFormFile]        = useState<File | null>(null)
+  const [formPreview,     setFormPreview]     = useState<string | null>(null)
+  const [formFileVerso,   setFormFileVerso]   = useState<File | null>(null)
+  const [formPreviewVerso,setFormPreviewVerso]= useState<string | null>(null)
 
-  const fileRef   = useRef<HTMLInputElement>(null)
-  const cameraRef = useRef<HTMLInputElement>(null)
+  const fileRef        = useRef<HTMLInputElement>(null)
+  const cameraRef      = useRef<HTMLInputElement>(null)
+  const fileVersoRef   = useRef<HTMLInputElement>(null)
+  const cameraVersoRef = useRef<HTMLInputElement>(null)
 
   const loadDocuments = () => {
     setLoading(true)
@@ -106,26 +114,34 @@ export default function DocumentsClient({ user }: { user: any }) {
       setError('Veuillez fournir une photo du document'); return
     }
 
+    const isDual = DUAL_PHOTO_TYPES.includes(editDoc)
+    if (isDual && !formFileVerso && !getDoc(editDoc)?.file_url_verso) {
+      setError('Veuillez fournir la photo verso du document'); return
+    }
     setUploading(true); setError(null)
     try {
       let fileUrl = getDoc(editDoc)?.file_url ?? ''
       if (formFile) fileUrl = await uploadFile(formFile, editDoc)
 
+      let fileUrlVerso = getDoc(editDoc)?.file_url_verso ?? ''
+      if (formFileVerso) fileUrlVerso = await uploadFile(formFileVerso, `${editDoc}_verso`)
+
       const res = await fetch('/api/documents', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          docType:   editDoc,
-          expiresAt: formExpiry,
+          docType:      editDoc,
+          expiresAt:    formExpiry,
           fileUrl,
-          notes:     formNotes || undefined,
+          fileUrlVerso: isDual ? (fileUrlVerso || undefined) : undefined,
+          notes:        formNotes || undefined,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
       setSuccess('Document enregistré ✅')
-      setEditDoc(null); setFormFile(null); setFormPreview(null); setFormExpiry(''); setFormNotes('')
+      setEditDoc(null); setFormFile(null); setFormPreview(null); setFormFileVerso(null); setFormPreviewVerso(null); setFormExpiry(''); setFormNotes('')
       loadDocuments()
       setTimeout(() => setSuccess(null), 3000)
     } catch (err: unknown) {
@@ -141,6 +157,8 @@ export default function DocumentsClient({ user }: { user: any }) {
     setFormNotes(existing?.notes ?? '')
     setFormFile(null)
     setFormPreview(null)
+    setFormFileVerso(null)
+    setFormPreviewVerso(null)
     setError(null)
     setEditDoc(type)
   }
@@ -245,8 +263,15 @@ export default function DocumentsClient({ user }: { user: any }) {
                 </h2>
                 <button onClick={() => setViewDoc(null)} className="text-zinc-500 text-2xl">×</button>
               </div>
-              <img src={viewDoc.file_url} alt="Document"
-                className="w-full rounded-xl border border-[#2a2a2a] mb-4 object-contain max-h-96 bg-[#0F0F0F]" />
+              <img src={viewDoc.file_url} alt="Recto"
+                className="w-full rounded-xl border border-[#2a2a2a] mb-2 object-contain max-h-96 bg-[#0F0F0F]" />
+              {viewDoc.file_url_verso && (
+                <>
+                  <p className="text-zinc-600 text-xs text-center mb-2">Verso</p>
+                  <img src={viewDoc.file_url_verso} alt="Verso"
+                    className="w-full rounded-xl border border-[#2a2a2a] mb-4 object-contain max-h-96 bg-[#0F0F0F]" />
+                </>
+              )}
               <div className="space-y-2">
                 <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
                   <span className="text-zinc-500 text-sm">Expiration</span>
@@ -288,32 +313,29 @@ export default function DocumentsClient({ user }: { user: any }) {
                 <button onClick={() => setEditDoc(null)} className="text-zinc-500 text-2xl">×</button>
               </div>
 
-              {/* Photo */}
+              {/* Photo recto */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-zinc-400 mb-2">
-                  Photo du document {!getDoc(editDoc) && '*'}
+                  {DUAL_PHOTO_TYPES.includes(editDoc) ? 'Photo recto *' : 'Photo du document'}{!getDoc(editDoc) && ' *'}
                 </label>
                 {formPreview ? (
                   <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
-                    <img src={formPreview} alt="Aperçu" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                    <img src={formPreview} alt="Aperçu recto" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
                   </div>
                 ) : getDoc(editDoc)?.file_url ? (
                   <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
-                    <img src={getDoc(editDoc)!.file_url} alt="Document actuel"
+                    <img src={getDoc(editDoc)!.file_url} alt="Recto actuel"
                       className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
-                    <p className="text-zinc-600 text-xs text-center py-1">Document actuel</p>
+                    <p className="text-zinc-600 text-xs text-center py-1">Recto actuel</p>
                   </div>
                 ) : null}
-
                 <div className="flex gap-2">
                   <button onClick={() => cameraRef.current?.click()}
-                    className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium
-                               hover:bg-[#333] transition-colors">
+                    className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
                     📷 Photo
                   </button>
                   <button onClick={() => fileRef.current?.click()}
-                    className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium
-                               hover:bg-[#333] transition-colors">
+                    className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
                     🗂️ Galerie
                   </button>
                 </div>
@@ -322,6 +344,38 @@ export default function DocumentsClient({ user }: { user: any }) {
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
                   className="hidden" onChange={handleFile} />
               </div>
+
+              {/* Photo verso (uniquement pour id_card, driving_license, driver_card) */}
+              {DUAL_PHOTO_TYPES.includes(editDoc) && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Photo verso *</label>
+                  {formPreviewVerso ? (
+                    <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
+                      <img src={formPreviewVerso} alt="Aperçu verso" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                    </div>
+                  ) : getDoc(editDoc)?.file_url_verso ? (
+                    <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
+                      <img src={getDoc(editDoc)!.file_url_verso} alt="Verso actuel"
+                        className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                      <p className="text-zinc-600 text-xs text-center py-1">Verso actuel</p>
+                    </div>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <button onClick={() => cameraVersoRef.current?.click()}
+                      className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
+                      📷 Photo
+                    </button>
+                    <button onClick={() => fileVersoRef.current?.click()}
+                      className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
+                      🗂️ Galerie
+                    </button>
+                  </div>
+                  <input ref={cameraVersoRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
+                    className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; setFormFileVerso(f); setFormPreviewVerso(URL.createObjectURL(f)) }} />
+                  <input ref={fileVersoRef} type="file" accept="image/jpeg,image/png,image/webp"
+                    className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; setFormFileVerso(f); setFormPreviewVerso(URL.createObjectURL(f)) }} />
+                </div>
+              )}
 
               {/* Date d'expiration */}
               <div className="mb-4">

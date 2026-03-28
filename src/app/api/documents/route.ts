@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = createAdminClient()
   const body     = await req.json()
-  const { docType, expiresAt, fileUrl, notes } = body
+  const { docType, expiresAt, fileUrl, fileUrlVerso, notes } = body
 
   if (!docType || !expiresAt || !fileUrl) {
     return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
@@ -49,12 +49,13 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from('driver_documents')
     .upsert({
-      user_id:      me.id,
-      doc_type:     docType,
-      expires_at:   expiresAt,
-      file_url:     fileUrl,
-      notes:        notes ?? null,
-      updated_at:   new Date().toISOString(),
+      user_id:        me.id,
+      doc_type:       docType,
+      expires_at:     expiresAt,
+      file_url:       fileUrl,
+      file_url_verso: fileUrlVerso ?? null,
+      notes:          notes ?? null,
+      updated_at:     new Date().toISOString(),
       // Réinitialiser les alertes si le document est renouvelé
       alert_6m_sent: false,
       alert_3m_sent: false,
