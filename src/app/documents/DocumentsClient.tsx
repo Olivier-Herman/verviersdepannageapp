@@ -87,19 +87,44 @@ export default function DocumentsClient({ user }: { user: any }) {
   }
 
   const uploadFile = async (file: File, docType: string): Promise<string> => {
-    // FileReader direct — évite le taint canvas sur documents officiels (iOS)
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload  = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
+    // Tente la conversion canvas (HEIC→JPEG), fallback FileReader si canvas taint (documents officiels iOS)
+    const jpegBase64 = await new Promise<string>((resolve, reject) => {
+      const img = new window.Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width  = img.naturalWidth
+          canvas.height = img.naturalHeight
+          canvas.getContext('2d')!.drawImage(img, 0, 0)
+          const b64 = canvas.toDataURL('image/jpeg', 0.88).split(',')[1]
+          if (!b64 || b64.length < 100) throw new Error('canvas taint')
+          resolve(b64)
+        } catch {
+          // Canvas taint (document officiel iOS) → FileReader brut
+          const reader = new FileReader()
+          reader.onload  = () => resolve((reader.result as string).split(',')[1])
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        }
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        // Fichier non lisible comme image → FileReader brut
+        const reader = new FileReader()
+        reader.onload  = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      }
+      img.src = url
     })
 
     const mimeType = file.type || 'image/jpeg'
     const res = await fetch(`/api/documents/upload?docType=${docType}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ base64, mimeType, filename: 'doc.jpg' }),
+      body:    JSON.stringify({ base64: jpegBase64, mimeType: 'image/jpeg', filename: 'doc.jpg' }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Upload échoué')
