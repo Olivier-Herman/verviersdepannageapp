@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
+import sharp                         from 'sharp'
 
 const SIGNED_URL_EXPIRES = 60 * 60 * 24 * 365 * 5 // 5 ans
 
@@ -18,31 +19,32 @@ export async function POST(req: NextRequest) {
 
   const contentType = req.headers.get('content-type') ?? ''
   let buffer: Buffer
-  let mimeType: string
-  let ext: string
 
   if (contentType.includes('application/json')) {
-    // Base64 JSON (iOS)
-    const body  = await req.json()
-    buffer      = Buffer.from(body.base64, 'base64')
-    mimeType    = body.mimeType ?? 'image/jpeg'
-    ext         = 'jpg'
+    const body = await req.json()
+    buffer     = Buffer.from(body.base64, 'base64')
   } else {
-    // FormData
     const formData = await req.formData()
     const file     = formData.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 })
-    buffer   = Buffer.from(await file.arrayBuffer())
-    mimeType = file.type ?? 'image/jpeg'
-    ext      = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    buffer = Buffer.from(await file.arrayBuffer())
+  }
+
+  // Convertir en JPEG via sharp — gère HEIF, HEIC, grand angle iOS, tout format
+  let jpegBuffer: Buffer
+  try {
+    jpegBuffer = await sharp(buffer).rotate().jpeg({ quality: 88 }).toBuffer()
+  } catch (e) {
+    console.error('[Documents upload] sharp conversion:', e)
+    return NextResponse.json({ error: 'Conversion image échouée' }, { status: 400 })
   }
 
   const docType = req.nextUrl.searchParams.get('docType') ?? 'misc'
-  const path    = `${me.id}/${docType}-${Date.now()}.${ext}`
+  const path    = `${me.id}/${docType}-${Date.now()}.jpg`
 
   const { error: uploadError } = await supabase
     .storage.from('documents')
-    .upload(path, buffer, { contentType: mimeType, upsert: true })
+    .upload(path, jpegBuffer, { contentType: 'image/jpeg', upsert: true })
 
   if (uploadError) {
     console.error('[Documents upload]', uploadError)

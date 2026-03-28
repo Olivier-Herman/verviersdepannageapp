@@ -317,9 +317,9 @@ export default function DocumentsClient({ user }: { user: any }) {
                     🗂️ Galerie
                   </button>
                 </div>
-                <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+                <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
                   className="hidden" onChange={handleFile} />
-                <input ref={fileRef} type="file" accept="image/*,application/pdf"
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
                   className="hidden" onChange={handleFile} />
               </div>
 
