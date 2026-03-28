@@ -87,31 +87,19 @@ export default function DocumentsClient({ user }: { user: any }) {
   }
 
   const uploadFile = async (file: File, docType: string): Promise<string> => {
-    const jpegBase64 = await new Promise<string>((resolve, reject) => {
-      const img = new window.Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => {
-        URL.revokeObjectURL(url)
-        const canvas = document.createElement('canvas')
-        canvas.width  = img.naturalWidth
-        canvas.height = img.naturalHeight
-        canvas.getContext('2d')!.drawImage(img, 0, 0)
-        resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1])
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        const reader = new FileReader()
-        reader.onload  = () => resolve((reader.result as string).split(',')[1])
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      }
-      img.src = url
+    // FileReader direct — évite le taint canvas sur documents officiels (iOS)
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload  = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
     })
 
-    const res  = await fetch(`/api/documents/upload?docType=${docType}`, {
+    const mimeType = file.type || 'image/jpeg'
+    const res = await fetch(`/api/documents/upload?docType=${docType}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ base64: jpegBase64, mimeType: 'image/jpeg', filename: 'doc.jpg' }),
+      body:    JSON.stringify({ base64, mimeType, filename: 'doc.jpg' }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Upload échoué')
