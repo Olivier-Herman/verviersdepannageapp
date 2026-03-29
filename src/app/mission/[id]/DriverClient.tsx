@@ -368,19 +368,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const addPhotos = async (files: FileList | null) => {
     if (!files) return
     const newFiles = Array.from(files)
+    // Ajouter aux previews locaux seulement — l'upload se fait via savePhotos
     setPhotos(p => [...p, ...newFiles])
     newFiles.forEach(f => { const r = new FileReader(); r.onload = e => setPreviews(p => [...p, e.target?.result as string]); r.readAsDataURL(f) })
-    const urls = await uploadPhotos(newFiles)
-    setPhotoUrls(prev => {
-      const u = [...prev, ...urls]
-      saveDraft({ photoUrls: u })
-      // Sauvegarder en DB immédiatement — source of truth persistante
-      fetch('/api/missions/driver-action', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: u }),
-      }).catch(() => {})
-      return u
-    })
   }
 
   // ── Modifier adresse ──────────────────────────────────────────────────────
