@@ -211,17 +211,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const getDraft = () => { try { return JSON.parse(localStorage.getItem(DKEY) || '{}') } catch { return {} } }
   const saveDraft = (u: object) => { try { localStorage.setItem(DKEY, JSON.stringify({ ...getDraft(), ...u })) } catch {} }
   const clearDraft = () => { try { localStorage.removeItem(DKEY) } catch {} }
-  const draft = getDraft()
 
   // Collected data
   const [photos, setPhotos]       = useState<File[]>([])
-  const [photoUrls, setPhotoUrls] = useState<string[]>(draft.photoUrls || [])
-  const [previews, setPreviews]   = useState<string[]>(draft.photoUrls || [])
-  const [sig, setSig]             = useState<string>(draft.sig || '')
-  const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}|null>(draft.disch || null)
+  const [photoUrls, setPhotoUrls] = useState<string[]>([])
+  const [previews, setPreviews]   = useState<string[]>([])
+  const [sig, setSig]             = useState<string>('')
+  const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}|null>(null)
   const [paid, setPaid]           = useState(false)
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
   const [closeNote, setCloseNote] = useState('')
+
+  // Charger le draft côté client uniquement (localStorage indisponible SSR)
+  useEffect(() => {
+    const d = getDraft()
+    if (d.photoUrls?.length) { setPhotoUrls(d.photoUrls); setPreviews(d.photoUrls) }
+    if (d.sig)   setSig(d.sig)
+    if (d.disch) setDisch(d.disch)
+  }, [])
 
   // Décharge
   const [dMotif, setDMotif] = useState(''); const [dName, setDName] = useState('')
