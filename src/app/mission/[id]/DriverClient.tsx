@@ -460,17 +460,29 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         // Upload les fichiers locaux pas encore uploadés
         const newUrls = await uploadPhotos(photos)
         const allUrls = [...photoUrls, ...newUrls]
+        if (allUrls.length === 0) { setErr('Aucune photo à sauvegarder'); setLoading(false); return }
         // Sauvegarder en DB
         const r = await fetch('/api/missions/driver-action', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: allUrls }),
         })
         const j = await r.json()
-        if (!r.ok) throw new Error(j.error || 'Erreur')
-        // Rechargement complet — page.tsx fait select('*') donc driver_photos sera chargé
-        clearDraft()
-        window.location.href = window.location.pathname + '?t=' + Date.now()
-      } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
+        if (!r.ok) {
+          setErr(`Erreur API: ${j.error || r.status}`)
+          setLoading(false)
+          return
+        }
+        // Succès — mettre à jour le state local sans recharger
+        setPhotoUrls(allUrls)
+        setPreviews(allUrls)
+        setPhotos([])
+        saveDraft({ photoUrls: allUrls })
+        setLoading(false)
+        setScreen('main')
+      } catch (e: any) {
+        setErr(e.message || 'Erreur sauvegarde')
+        setLoading(false)
+      }
     }
     return (
       <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''}`} back={() => setScreen('main')}>
