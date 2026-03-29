@@ -710,9 +710,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </div>
 
           {/* Décharge rapide "sans dégâts" */}
-          {!disch ? (
-            <button onClick={() => {
+          <button onClick={() => {
               setDMotif("Je soussigné(e) reconnais que l'intervention du dépanneur s'est déroulée correctement et que ce dernier n'a causé aucun dégât supplémentaire à mon véhicule.")
+              setDName(''); setDSig('')
               setDischFrom('close'); setScreen('decharge')
             }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#1A1A1A] border border-dashed border-[#2a2a2a] hover:border-zinc-600 rounded-2xl text-left transition">
             <span className="text-xl">🛡️</span>
