@@ -222,6 +222,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [paid, setPaid]           = useState(false)
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
   const [closeNote, setCloseNote] = useState('')
+  const [mounted,   setMounted]   = useState(false)
+
+  // Monter côté client seulement
+  useEffect(() => { setMounted(true) }, [])
 
   // Charger le draft côté client — DB prioritaire sur localStorage
   useEffect(() => {
@@ -470,6 +474,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
   }
+
+  // Éviter l'hydratation mismatch (localStorage vs SSR)
+  if (!mounted) return null
 
   // Clôture labels (doit être avant les early returns)
   const closeLabels: Record<string, [string, string]> = {
