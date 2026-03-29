@@ -617,26 +617,22 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   )
 
   // ── Encaissement ──────────────────────────────────────────────────────────
-  if (screen === 'encaissement') {
-    const amount = M.amount_to_collect || 0
-    const encUrl = `/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${amount}&return_to=/mission/${M.id}`
-    return (
-      <ScreenWrap title="Encaisser le paiement" back={() => setScreen('main')}>
-        <div className="flex-1 px-4 py-4 space-y-4">
-          <div className="bg-[#CC0000] rounded-2xl p-6 text-center">
-            <p className="text-white/70 text-sm mb-1">Montant à encaisser</p>
-            <p className="text-white text-4xl font-semibold">{amount.toFixed(2)} €</p>
-          </div>
-          {paid
-            ? <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Paiement encaissé</p></div>
-            : <a href={encUrl} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-[#CC0000] text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
+  if (screen === 'encaissement') return (
+    <ScreenWrap title="Encaisser le paiement" back={() => setScreen('main')}>
+      <div className="flex-1 px-4 py-4 space-y-4">
+        <div className="bg-[#CC0000] rounded-2xl p-6 text-center">
+          <p className="text-white/70 text-sm mb-1">Montant à encaisser</p>
+          <p className="text-white text-4xl font-semibold">{(M.amount_to_collect || 0).toFixed(2)} €</p>
         </div>
-        <div className="px-4 py-4 border-t border-[#2a2a2a]">
-          <button onClick={() => setScreen('main')} className="w-full py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">← Retour</button>
-        </div>
-      </ScreenWrap>
-    )
-  }
+        {paid
+          ? <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Paiement encaissé</p></div>
+          : <a href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${M.amount_to_collect || 0}&return_to=/mission/${M.id}`} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-[#CC0000] text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
+      </div>
+      <div className="px-4 py-4 border-t border-[#2a2a2a]">
+        <button onClick={() => setScreen('main')} className="w-full py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">← Retour</button>
+      </div>
+    </ScreenWrap>
+  )
 
   // ── Ajouter stop ──────────────────────────────────────────────────────────
   if (screen === 'add-stop') return (
