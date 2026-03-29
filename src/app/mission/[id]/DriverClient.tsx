@@ -798,10 +798,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </button>
           )}
           {(onSite || M.status === 'parked' || M.status === 'delivering') && (
-            <button onClick={() => setShowGrid(true)}
-              className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-              ☰ Actions
-            </button>
+            <>
+              {onSite && totPh < 3 && (
+                <button onClick={() => setScreen('photos')}
+                  className="w-full py-4 bg-orange-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
+                </button>
+              )}
+              {onSite && totPh >= 3 && (
+                <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
+                  className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  🏁 Terminer
+                </button>
+              )}
+              <button onClick={() => setShowGrid(true)}
+                className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                ☰ Actions
+              </button>
+            </>
           )}
         </div>
       )}
