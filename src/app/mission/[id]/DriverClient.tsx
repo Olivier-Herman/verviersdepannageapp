@@ -683,14 +683,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   )
 
   // ── Clôture ───────────────────────────────────────────────────────────────
-  if (screen === 'close') {
-    const closeLabels: Record<string, [string, string]> = {
-      dsp: ['bg-green-600', 'DSP Réussi'],
-      rem: ['bg-blue-600',  'REM Confirmé'],
-      dpr: ['bg-zinc-600',  'DPR — Déplacement pour rien'],
-    }
-    const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-zinc-600', closeType.toUpperCase()]
-    return (
+  const closeLabels: Record<string, [string, string]> = {
+    dsp: ['bg-green-600', 'DSP Réussi'],
+    rem: ['bg-blue-600',  'REM Confirmé'],
+    dpr: ['bg-zinc-600',  'DPR — Déplacement pour rien'],
+  }
+  const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-zinc-600', closeType.toUpperCase()]
+  if (screen === 'close') return (
       <ScreenWrap title="Clôturer la mission" sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
@@ -768,8 +767,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </button>
         </div>
       </ScreenWrap>
-    )
-  }
+  )
 
   // ── Mission terminée ──────────────────────────────────────────────────────
   if (M.status === 'completed') return (
