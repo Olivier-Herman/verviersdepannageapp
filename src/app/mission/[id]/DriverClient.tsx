@@ -453,36 +453,69 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // ══════════════════════════════════════════════════════════════════════════
 
   // ── Photos ────────────────────────────────────────────────────────────────
-  if (screen === 'photos') return (
-    <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''}`} back={() => setScreen('main')}>
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {previews.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {photoUrls.map((url, i) => (
-              <div key={`u${i}`} className="relative aspect-square rounded-xl overflow-hidden">
-                <img src={url} className="w-full h-full object-cover" />
-                <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-xs text-center">✓</div>
-              </div>
-            ))}
-            {previews.slice(photoUrls.length).map((src, i) => (
-              <div key={`f${i}`} className="relative aspect-square rounded-xl overflow-hidden">
-                <img src={src} className="w-full h-full object-cover" />
-                <button onClick={() => { setPhotos(p => p.filter((_, j) => j !== i)); setPreviews(p => p.filter((_, j) => j !== i + photoUrls.length)) }}
-                  className="absolute top-1 right-1 w-5 h-5 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
-              </div>
-            ))}
-          </div>
-        )}
-        <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={e => addPhotos(e.target.files)} />
-        <button onClick={() => photoRef.current?.click()} className="w-full py-4 border-2 border-dashed border-[#2a2a2a] hover:border-[#CC0000] rounded-2xl text-zinc-400 text-sm">
-          📷 Prendre des photos
-        </button>
-      </div>
-      <div className="px-4 py-4 border-t border-[#2a2a2a]">
-        <button onClick={() => setScreen('main')} className="w-full py-3.5 bg-[#CC0000] text-white font-semibold rounded-2xl">← Retour</button>
-      </div>
-    </ScreenWrap>
-  )
+  if (screen === 'photos') {
+    const savePhotos = async () => {
+      setLoading(true); setErr('')
+      try {
+        // Upload les fichiers locaux pas encore uploadés
+        const newUrls = await uploadPhotos(photos)
+        const allUrls = [...photoUrls, ...newUrls]
+        // Sauvegarder en DB
+        const r = await fetch('/api/missions/driver-action', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: allUrls }),
+        })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || 'Erreur')
+        setPhotoUrls(allUrls); setPreviews(allUrls); setPhotos([])
+        saveDraft({ photoUrls: allUrls })
+        setM(prev => ({ ...prev, driver_photos: allUrls }))
+        setScreen('main')
+      } catch (e: any) { setErr(e.message || 'Erreur sauvegarde') }
+      finally { setLoading(false) }
+    }
+    return (
+      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''}`} back={() => setScreen('main')}>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {previews.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {photoUrls.map((url, i) => (
+                <div key={`u${i}`} className="relative aspect-square rounded-xl overflow-hidden">
+                  <img src={url} className="w-full h-full object-cover" />
+                  <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-xs text-center">✓ sauvegardé</div>
+                </div>
+              ))}
+              {previews.slice(photoUrls.length).map((src, i) => (
+                <div key={`f${i}`} className="relative aspect-square rounded-xl overflow-hidden">
+                  <img src={src} className="w-full h-full object-cover" />
+                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-white text-xs text-center">non sauvegardé</div>
+                  <button onClick={() => { setPhotos(p => p.filter((_, j) => j !== i)); setPreviews(p => p.filter((_, j) => j !== i + photoUrls.length)) }}
+                    className="absolute top-1 right-1 w-5 h-5 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={e => addPhotos(e.target.files)} />
+          <button onClick={() => photoRef.current?.click()}
+            className="w-full py-4 border-2 border-dashed border-[#2a2a2a] hover:border-[#CC0000] rounded-2xl text-zinc-400 text-sm">
+            📷 Prendre des photos
+          </button>
+          {err && <p className="text-red-400 text-sm mt-3">⚠️ {err}</p>}
+        </div>
+        <div className="px-4 py-4 border-t border-[#2a2a2a] space-y-2">
+          {photos.length > 0 && (
+            <button onClick={savePhotos} disabled={loading}
+              className="w-full py-3.5 bg-green-600 disabled:opacity-50 text-white font-bold rounded-2xl">
+              {loading ? '⏳ Sauvegarde…' : `💾 Enregistrer ${totPh} photo${totPh > 1 ? 's' : ''}`}
+            </button>
+          )}
+          {photos.length === 0 && (
+            <button onClick={() => setScreen('main')} className="w-full py-3.5 bg-[#2a2a2a] text-zinc-400 font-semibold rounded-2xl">← Retour</button>
+          )}
+        </div>
+      </ScreenWrap>
+    )
+  }
 
   // ── Décharge ──────────────────────────────────────────────────────────────
   if (screen === 'decharge') return (
