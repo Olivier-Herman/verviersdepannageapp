@@ -1,11 +1,7 @@
 // src/app/api/missions/photos-upload/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 
-export const config = {
-  api: { bodyParser: false },
-}
-
-// Augmenter la limite pour les photos
+// Augmenter le timeout pour les grosses photos
 export const maxDuration = 60
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
