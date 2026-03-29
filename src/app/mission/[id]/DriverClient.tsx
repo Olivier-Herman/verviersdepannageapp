@@ -521,6 +521,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 <div key={`u${i}`} className="relative aspect-square rounded-xl overflow-hidden">
                   <img src={url} className="w-full h-full object-cover" />
                   <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-xs text-center">✓ sauvegardé</div>
+                  <button onClick={async () => {
+                    const newUrls = photoUrls.filter((_, j) => j !== i)
+                    setPhotoUrls(newUrls); setPreviews(p => p.filter((_, j) => j !== i))
+                    saveDraft({ photoUrls: newUrls })
+                    await fetch('/api/missions/driver-action', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: newUrls }),
+                    }).catch(() => {})
+                  }} className="absolute top-1 right-1 w-6 h-6 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
                 </div>
               ))}
               {previews.slice(photoUrls.length).map((src, i) => (
