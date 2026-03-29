@@ -328,20 +328,14 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // ── Upload photos ─────────────────────────────────────────────────────────
   const uploadPhotos = async (files: File[]) => {
-    const urls: string[] = []
-    for (const f of files) {
-      const ext = f.name.split('.').pop() || 'jpg'
-      const path = `${M.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await sb.storage.from('mission-photos').upload(path, f, { upsert: true })
-      if (error) {
-        console.error('[upload photo]', error.message, path)
-        setErr(`Erreur upload: ${error.message}`)
-      } else {
-        const { data } = sb.storage.from('mission-photos').getPublicUrl(path)
-        urls.push(data.publicUrl)
-      }
-    }
-    return urls
+    if (!files.length) return []
+    const formData = new FormData()
+    formData.append('mission_id', M.id)
+    files.forEach(f => formData.append('files', f))
+    const r = await fetch('/api/missions/photos-upload', { method: 'POST', body: formData })
+    const j = await r.json()
+    if (!r.ok) throw new Error(j.error || 'Upload échoué')
+    return j.urls as string[]
   }
 
   const addPhotos = async (files: FileList | null) => {
