@@ -327,14 +327,36 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   }
 
   // ── Upload photos ─────────────────────────────────────────────────────────
+  const compressPhoto = (file: File): Promise<Blob> => new Promise(resolve => {
+    const img = new window.Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const MAX = 1200
+      let { naturalWidth: w, naturalHeight: h } = img
+      if (w > MAX || h > MAX) { if (w > h) { h = Math.round(h * MAX / w); w = MAX } else { w = Math.round(w * MAX / h); h = MAX } }
+      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      canvas.toBlob(b => resolve(b || file), 'image/jpeg', 0.82)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+    img.src = url
+  })
+
   const uploadPhotos = async (files: File[]) => {
     if (!files.length) return []
     const formData = new FormData()
     formData.append('mission_id', M.id)
-    files.forEach(f => formData.append('files', f))
+    for (const f of files) {
+      const compressed = await compressPhoto(f)
+      formData.append('files', compressed, f.name.replace(/\.[^.]+$/, '.jpg'))
+    }
     const r = await fetch('/api/missions/photos-upload', { method: 'POST', body: formData })
+    if (!r.ok) {
+      const text = await r.text()
+      throw new Error(text.startsWith('{') ? JSON.parse(text).error : `Erreur ${r.status}`)
+    }
     const j = await r.json()
-    if (!r.ok) throw new Error(j.error || 'Upload échoué')
     return j.urls as string[]
   }
 
