@@ -29,7 +29,7 @@ interface Mission {
   park_stage_name?: string; extra_addresses?: Stop[]
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null }
-interface Props { mission: Mission; isReadOnly?: boolean; navApp?: NavApp }
+interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const plate = (v = '') => v.replace(/[-.\s]/g, '').toUpperCase()
