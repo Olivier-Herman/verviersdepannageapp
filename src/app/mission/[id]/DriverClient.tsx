@@ -26,7 +26,7 @@ interface Mission {
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   completed_at?: string; parked_at?: string; delivering_at?: string
   amount_guaranteed?: number; amount_currency?: string; amount_to_collect?: number
-  park_stage_name?: string; extra_addresses?: Stop[]
+  park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null }
 interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
@@ -222,10 +222,17 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
   const [closeNote, setCloseNote] = useState('')
 
-  // Charger le draft côté client uniquement (localStorage indisponible SSR)
+  // Charger le draft côté client — DB prioritaire sur localStorage
   useEffect(() => {
+    // driver_photos vient de la DB (source of truth)
+    const dbPhotos: string[] = Array.isArray((M as any).driver_photos) ? (M as any).driver_photos : []
+    if (dbPhotos.length) {
+      setPhotoUrls(dbPhotos); setPreviews(dbPhotos)
+    } else {
+      const d = getDraft()
+      if (d.photoUrls?.length) { setPhotoUrls(d.photoUrls); setPreviews(d.photoUrls) }
+    }
     const d = getDraft()
-    if (d.photoUrls?.length) { setPhotoUrls(d.photoUrls); setPreviews(d.photoUrls) }
     if (d.sig)   setSig(d.sig)
     if (d.disch) setDisch(d.disch)
   }, [])
@@ -337,7 +344,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     setPhotos(p => [...p, ...newFiles])
     newFiles.forEach(f => { const r = new FileReader(); r.onload = e => setPreviews(p => [...p, e.target?.result as string]); r.readAsDataURL(f) })
     const urls = await uploadPhotos(newFiles)
-    setPhotoUrls(prev => { const u = [...prev, ...urls]; saveDraft({ photoUrls: u }); return u })
+    setPhotoUrls(prev => {
+      const u = [...prev, ...urls]
+      saveDraft({ photoUrls: u })
+      // Sauvegarder en DB immédiatement — source of truth persistante
+      fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: u }),
+      }).catch(() => {})
+      return u
+    })
   }
 
   // ── Modifier adresse ──────────────────────────────────────────────────────

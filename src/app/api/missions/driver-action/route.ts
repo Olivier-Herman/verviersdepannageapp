@@ -18,6 +18,7 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   arrive_stop:      { status: 'delivering',                                   logMessage: 'Arrivée à un stop' },
   complete_delivery:{ status: 'completed',   timestampField: 'completed_at',  logMessage: 'Livraisons terminées' },
   change_type:      {                                                          logMessage: 'Type de mission modifié' },
+  save_photos:      {                                                          logMessage: 'Photos sauvegardées' },
   update_address:   {                                                          logMessage: 'Adresse modifiée' },
   update_stops:     {                                                          logMessage: 'Stops mis à jour' },
 }
@@ -25,9 +26,9 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
 const ALLOWED: Record<string, string[]> = {
   assigned:    ['accept'],
   accepted:    ['on_way'],
-  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops'],
-  parked:      ['completed', 'start_delivery', 'change_type'],
-  delivering:  ['arrive_stop', 'complete_delivery', 'park', 'update_stops'],
+  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops', 'save_photos'],
+  parked:      ['completed', 'start_delivery', 'change_type', 'save_photos'],
+  delivering:  ['arrive_stop', 'complete_delivery', 'park', 'update_stops', 'save_photos'],
 }
 
 interface Stop {
@@ -76,6 +77,7 @@ export async function POST(req: Request) {
     park_lng?:           number | null
     redelivery_address?: string
     stop_id?:            string
+    photo_urls?:         string[]
   }
 
   const { mission_id, action, closing_data, park_data } = body
@@ -92,7 +94,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -112,6 +114,11 @@ export async function POST(req: Request) {
   const updatePayload: Record<string, unknown> = { updated_at: now }
   if (mapping.status)         updatePayload.status     = mapping.status
   if (mapping.timestampField) updatePayload[mapping.timestampField] = now
+
+  // ── Sauvegarder photos en DB ────────────────────────────────────────────
+  if (action === 'save_photos' && body.photo_urls?.length) {
+    updatePayload.driver_photos = body.photo_urls
+  }
 
   // ── Changer type DSP↔REM ────────────────────────────────────────────────
   if (action === 'change_type' && body.new_type) {
