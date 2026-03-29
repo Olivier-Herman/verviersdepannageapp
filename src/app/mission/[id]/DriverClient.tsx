@@ -261,6 +261,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     fetch('/api/vr-locations').then(r => r.json()).then(d => setVrLocs(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
+  // Auto-accepter si assigned
+  useEffect(() => {
+    if (M.status === 'assigned' && !isReadOnly) {
+      fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, action: 'accept' }),
+      }).then(r => r.json()).then(j => { if (j.mission) setM(j.mission) }).catch(() => {})
+    }
+  }, [])
+
   // Realtime subscription
   useEffect(() => {
     const ch = sb.channel(`mission-v4-${M.id}`)
@@ -766,13 +776,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </div>
         )}
 
-        {/* Montant */}
-        {M.amount_guaranteed != null && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Montant garanti</p>
-            <p className="text-white font-semibold">{M.amount_guaranteed.toFixed(2)} {M.amount_currency || '€'}</p>
-          </div>
-        )}
+
 
         {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
       </div>
@@ -780,12 +784,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       {/* Boutons de pointage */}
       {!isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
-          {M.status === 'assigned' && (
-            <button onClick={() => api('accept')} disabled={loading}
-              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
-              {loading ? '⏳…' : '✅ Accepter la mission'}
-            </button>
-          )}
+
           {M.status === 'accepted' && (
             <button onClick={() => initNav ? api('on_way') : setShowNav(true)} disabled={loading}
               className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
