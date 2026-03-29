@@ -573,67 +573,70 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   )
 
   // ── Clôture ───────────────────────────────────────────────────────────────
-  if (screen === 'close') return (
-    <ScreenWrap title="Clôturer la mission" sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Résultat</p>
-        <div className="space-y-2">
-          {(rem
-            ? [['rem','bg-blue-600','REM','REM Confirmé','Remorquage effectué'],
-               ['dsp','bg-[#CC0000]','→','REM → DSP','Finalement réparé sur place'],
-               ['dpr','bg-zinc-600','DPR','DPR','Déplacement pour rien']]
-            : [['dsp','bg-[#CC0000]','DSP','DSP Réussi','Dépannage sur place'],
-               ['rem','bg-blue-600','→','DSP → REM','Remorquage nécessaire'],
-               ['dpr','bg-zinc-600','DPR','DPR','Déplacement pour rien']]
-          ).map(([t, bg, ic, lb, sub]) => (
-            <button key={t} onClick={() => setCloseType(t as any)}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition ${closeType === t ? `border-transparent ring-2 ring-white/20 ${bg}` : 'bg-[#1A1A1A] border-[#2a2a2a]'}`}>
-              <div className={`${bg} rounded-lg w-9 h-9 flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>{ic}</div>
-              <div className="text-left flex-1"><p className="text-white font-medium text-sm">{lb}</p><p className="text-zinc-500 text-xs">{sub}</p></div>
-              {closeType === t && <span className="text-white text-lg">✓</span>}
-            </button>
-          ))}
-        </div>
+  if (screen === 'close') {
+    const closeLabels: Record<string, [string, string]> = {
+      dsp: ['bg-[#CC0000]', 'DSP Réussi'],
+      rem: ['bg-blue-600',  'REM Confirmé'],
+      dpr: ['bg-zinc-600',  'DPR — Déplacement pour rien'],
+    }
+    const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-zinc-600', closeType.toUpperCase()]
+    return (
+      <ScreenWrap title="Clôturer la mission" sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
-        {closeType === 'dpr' && (
+          {/* Type de clôture — informatif, non modifiable ici */}
+          <div className={`${closeBg} rounded-2xl px-4 py-3 flex items-center gap-3`}>
+            <span className="text-white font-bold text-sm">{closeLabel}</span>
+          </div>
+
+          {/* Récap collecte */}
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl px-4 py-4 space-y-3">
+            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Récapitulatif</p>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400 text-sm">Photos</span>
+              <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-zinc-500' : 'text-red-400'}`}>
+                {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? '(optionnel)' : '/ min. 3'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400 text-sm">Signature client</span>
+              <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-zinc-500'}`}>{sig ? '✓ Signée' : '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400 text-sm">Décharge</span>
+              <span className={`text-sm font-medium ${disch ? 'text-amber-400' : 'text-zinc-500'}`}>{disch ? '✓ Enregistrée' : '—'}</span>
+            </div>
+            {paid && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400 text-sm">Paiement</span>
+                <span className="text-sm font-medium text-green-400">✓ Encaissé</span>
+              </div>
+            )}
+          </div>
+
+          {/* Remarques */}
           <div>
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Remarques <span className="text-zinc-700 normal-case">(optionnel)</span></p>
-            <textarea rows={3} value={closeNote} onChange={e => setCloseNote(e.target.value)} placeholder="Véhicule introuvable, accès impossible…"
+            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Remarques <span className="text-zinc-700 normal-case tracking-normal">(optionnel)</span></p>
+            <textarea rows={3} value={closeNote} onChange={e => setCloseNote(e.target.value)}
+              placeholder="Observations, état du véhicule…"
               className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none resize-none" />
           </div>
-        )}
 
-        {closeType !== 'dpr' && (
-          <>
-            <div>
-              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Signature client</p>
-              {sig
-                ? <div className="flex items-center gap-3">
-                    <div className="border border-green-500/30 rounded-xl overflow-hidden bg-[#111] flex-1 max-h-16"><img src={sig} className="w-full h-full object-contain" /></div>
-                    <button onClick={() => setScreen('sig')} className="py-2 px-3 bg-[#2a2a2a] text-zinc-400 rounded-xl text-xs">Refaire</button>
-                  </div>
-                : <button onClick={() => setScreen('sig')} className="w-full py-3 border border-dashed border-[#2a2a2a] rounded-xl text-zinc-400 text-sm">✍️ Faire signer</button>}
-            </div>
-            <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3">
-              <p className="text-zinc-600 text-xs mb-2">Récap</p>
-              <div className="flex gap-4 flex-wrap">
-                <span className={`text-sm ${totPh >= 1 ? 'text-green-400' : 'text-red-400'}`}>📷 {totPh} {totPh >= 1 ? '✓' : '— requis'}</span>
-                <span className={`text-sm ${sig ? 'text-green-400' : 'text-zinc-600'}`}>✍️ {sig ? 'Signé ✓' : '—'}</span>
-                <span className={`text-sm ${disch ? 'text-amber-400' : 'text-zinc-600'}`}>📋 {disch ? 'Décharge ✓' : '—'}</span>
-              </div>
-            </div>
-          </>
-        )}
-        {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
-      </div>
-      <div className="px-4 py-4 border-t border-[#2a2a2a]">
-        <button onClick={doClose} disabled={loading}
-          className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-semibold rounded-2xl">
-          {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
-        </button>
-      </div>
-    </ScreenWrap>
-  )
+          {closeType !== 'dpr' && totPh < 3 && (
+            <p className="text-amber-400 text-sm bg-amber-500/10 rounded-xl px-3 py-2">⚠️ {3 - totPh} photo(s) manquante(s) — retournez en arrière pour en ajouter</p>
+          )}
+          {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
+        </div>
+
+        <div className="px-4 py-4 border-t border-[#2a2a2a]">
+          <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && totPh < 3)}
+            className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-semibold rounded-2xl">
+            {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
+          </button>
+        </div>
+      </ScreenWrap>
+    )
+  }
 
   // ── Mission terminée ──────────────────────────────────────────────────────
   if (M.status === 'completed') return (
