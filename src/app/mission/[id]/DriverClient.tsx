@@ -475,45 +475,34 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // ÉCRANS FULLSCREEN
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── Photos ────────────────────────────────────────────────────────────────
-  if (screen === 'photos') {
-    const savePhotos = async () => {
-      setLoading(true); setErr('')
-      try {
-        // Upload les fichiers locaux pas encore uploadés
-        let newUrls: string[] = []
-        if (photos.length > 0) {
-          newUrls = await uploadPhotos(photos)
-          if (newUrls.length === 0) {
-            setErr(`Upload échoué — ${photos.length} fichier(s) non envoyés. Vérifiez votre connexion.`)
-            setLoading(false); return
-          }
+  // ── savePhotos ───────────────────────────────────────────────────────────
+  const savePhotos = async () => {
+    setLoading(true); setErr('')
+    try {
+      let newUrls: string[] = []
+      if (photos.length > 0) {
+        newUrls = await uploadPhotos(photos)
+        if (newUrls.length === 0) {
+          setErr(`Upload échoué — ${photos.length} fichier(s) non envoyés. Vérifiez votre connexion.`)
+          setLoading(false); return
         }
-        const allUrls = [...photoUrls, ...newUrls]
-        if (allUrls.length === 0) { setErr('Aucune photo à sauvegarder'); setLoading(false); return }
-        // Sauvegarder en DB
-        const r = await fetch('/api/missions/driver-action', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: allUrls }),
-        })
-        const j = await r.json()
-        if (!r.ok) {
-          setErr(`Erreur API: ${j.error || r.status}`)
-          setLoading(false)
-          return
-        }
-        // Succès — mettre à jour le state local sans recharger
-        setPhotoUrls(allUrls)
-        setPreviews(allUrls)
-        setPhotos([])
-        saveDraft({ photoUrls: allUrls })
-        setLoading(false)
-      } catch (e: any) {
-        setErr(e.message || 'Erreur sauvegarde')
-        setLoading(false)
       }
-    }
-    return (
+      const allUrls = [...photoUrls, ...newUrls]
+      if (allUrls.length === 0) { setErr('Aucune photo à sauvegarder'); setLoading(false); return }
+      const r = await fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: allUrls }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setErr(`Erreur API: ${j.error || r.status}`); setLoading(false); return }
+      setPhotoUrls(allUrls); setPreviews(allUrls); setPhotos([])
+      saveDraft({ photoUrls: allUrls })
+      setLoading(false)
+    } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
+  }
+
+  // ── Photos ────────────────────────────────────────────────────────────────
+  if (screen === 'photos') return (
       <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''}`} back={() => setScreen('main')}>
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {previews.length > 0 && (
@@ -562,8 +551,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           )}
         </div>
       </ScreenWrap>
-    )
-  }
+  )
 
   // ── Décharge ──────────────────────────────────────────────────────────────
   if (screen === 'decharge') return (

@@ -39,6 +39,10 @@ interface Mission {
   amount_to_collect: number | null
   vehicle_mileage: number | null
   driver_photos: string[] | null
+  discharge_data: { motif: string; name: string; sig: string }[] | null
+  discharge_motif: string | null
+  discharge_name: string | null
+  discharge_sig: string | null
   client_signature: string | null
   client_signature_name: string | null
   closing_notes: string | null
@@ -727,6 +731,43 @@ export default function MissionDetailClient({
                         </div>
                       </div>
                     )}
+                    {/* Décharges */}
+                    {(() => {
+                      const discharges = initialMission.discharge_data?.length
+                        ? initialMission.discharge_data
+                        : initialMission.discharge_motif
+                          ? [{ motif: initialMission.discharge_motif, name: initialMission.discharge_name || '', sig: initialMission.discharge_sig || '' }]
+                          : []
+                      if (!discharges.length) return null
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-zinc-500 text-xs">Décharge{discharges.length > 1 ? 's' : ''} ({discharges.length})</p>
+                            <a
+                              href={`/api/missions/${initialMission.id}/discharge-pdf`}
+                              target="_blank" rel="noreferrer"
+                              className="text-xs px-3 py-1 bg-blue-600/20 border border-blue-600/40 text-blue-400 rounded-lg hover:bg-blue-600/30 transition"
+                            >
+                              📄 Télécharger PDF
+                            </a>
+                          </div>
+                          <div className="space-y-2">
+                            {discharges.map((d, i) => (
+                              <div key={i} className="bg-[#111] border border-amber-600/20 rounded-xl p-3 space-y-2">
+                                <p className="text-amber-400 text-xs font-medium">Décharge {discharges.length > 1 ? i + 1 : ''}</p>
+                                <p className="text-zinc-300 text-xs whitespace-pre-wrap">{d.motif}</p>
+                                {d.name && <p className="text-zinc-500 text-xs">Signataire : <span className="text-zinc-300">{d.name}</span></p>}
+                                {d.sig && (
+                                  <div className="border border-[#2a2a2a] rounded-lg overflow-hidden bg-[#0F0F0F]">
+                                    <img src={d.sig} alt="Signature" className="w-full max-h-16 object-contain" />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               )}
@@ -755,7 +796,7 @@ export default function MissionDetailClient({
             <div className="space-y-5">
 
               {/* Actions */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3 sticky top-[89px]">
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3 sticky top-[89px] overflow-y-auto max-h-[calc(100vh-110px)]">
 
                 {/* Statut new → Confirmer / Refuser */}
                 {status === 'new' && (
@@ -830,18 +871,24 @@ export default function MissionDetailClient({
                 {/* Assignation chauffeur */}
                 <div className="border-t border-[#2a2a2a] pt-4">
                   <p className="text-zinc-500 text-xs mb-2">Assigner à un chauffeur</p>
-                  <select
-                    value={selectedDriver}
-                    onChange={e => setSelectedDriver(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand mb-2"
-                  >
-                    <option value="">— Non assigné —</option>
-                    {drivers.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
+                  {['completed', 'ignored', 'cancelled'].includes(status) ? (
+                    <div className="bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-zinc-400 text-sm">
+                      {initialMission.assigned_user?.name || '— Non assigné —'}
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedDriver}
+                      onChange={e => setSelectedDriver(e.target.value)}
+                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand mb-2"
+                    >
+                      <option value="">— Non assigné —</option>
+                      {drivers.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  )}
                   {initialMission.assigned_user && (
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-zinc-500 mt-1">
                       Assigné à <span className="text-green-400 font-medium">{initialMission.assigned_user.name}</span>
                     </p>
                   )}
