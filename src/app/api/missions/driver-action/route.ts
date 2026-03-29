@@ -66,6 +66,7 @@ export async function POST(req: Request) {
       discharge_motif?:     string
       discharge_name?:      string
       discharge_sig?:       string
+      discharge_data?:      { motif: string; name: string; sig: string }[]
     }
     park_data?: {
       stage_id?:   number
@@ -158,6 +159,7 @@ export async function POST(req: Request) {
       if (closing_data.photo_urls?.length) updatePayload.driver_photos   = closing_data.photo_urls
       if (closing_data.closing_notes)      updatePayload.closing_notes   = closing_data.closing_notes
       if (closing_data.signature)          updatePayload.client_signature = closing_data.signature
+      if (closing_data.discharge_data?.length) updatePayload.discharge_data = closing_data.discharge_data
       if (closing_data.discharge_motif)    updatePayload.discharge_motif = closing_data.discharge_motif
       if (closing_data.discharge_name)     updatePayload.discharge_name  = closing_data.discharge_name
       if (closing_data.discharge_sig)      updatePayload.discharge_sig   = closing_data.discharge_sig
@@ -210,6 +212,7 @@ export async function POST(req: Request) {
     if (closing_data.closing_notes)           updatePayload.closing_notes         = closing_data.closing_notes
     if (closing_data.payment_method)          updatePayload.payment_method        = closing_data.payment_method
     if (closing_data.amount_collected != null) updatePayload.amount_collected     = closing_data.amount_collected
+    if (closing_data.discharge_data?.length)  updatePayload.discharge_data        = closing_data.discharge_data
     if (closing_data.discharge_motif)         updatePayload.discharge_motif       = closing_data.discharge_motif
     if (closing_data.discharge_name)          updatePayload.discharge_name        = closing_data.discharge_name
     if (closing_data.discharge_sig)           updatePayload.discharge_sig         = closing_data.discharge_sig

@@ -200,6 +200,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [showVeh, setShowVeh]   = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showPark, setShowPark] = useState(false)
+  const [dischFrom, setDischFrom] = useState<Screen>('main')
   const [addrModal, setAddrModal] = useState<{ title: string; address: string; lat?: number; lng?: number; field: string } | null>(null)
 
   // Modify address
@@ -217,7 +218,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const [previews, setPreviews]   = useState<string[]>([])
   const [sig, setSig]             = useState<string>('')
-  const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}|null>(null)
+  const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}[]>([])
   const [paid, setPaid]           = useState(false)
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
   const [closeNote, setCloseNote] = useState('')
@@ -234,7 +235,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     }
     const d = getDraft()
     if (d.sig)   setSig(d.sig)
-    if (d.disch) setDisch(d.disch)
+    if (d.disch) setDisch(Array.isArray(d.disch) ? d.disch : d.disch ? [d.disch] : [])
   }, [])
 
   // Décharge
@@ -429,7 +430,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             final_mission_type: mType,
             photo_urls: allUrls.length ? allUrls : undefined,
             signature: sig || undefined,
-            discharge_motif: disch?.motif, discharge_name: disch?.name, discharge_sig: disch?.sig,
+            discharge_data: disch.length > 0 ? disch : undefined,
           },
           park_data: { stage_name: vr.name },
           park_address: vr.address, park_lat: vr.lat, park_lng: vr.lng,
@@ -459,7 +460,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             photo_urls: allUrls.length ? allUrls : undefined,
             closing_notes: closeNote || undefined,
             signature: sig || undefined,
-            discharge_motif: disch?.motif, discharge_name: disch?.name, discharge_sig: disch?.sig,
+            discharge_data: disch.length > 0 ? disch : undefined,
           },
         }),
       })
@@ -566,7 +567,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // ── Décharge ──────────────────────────────────────────────────────────────
   if (screen === 'decharge') return (
-    <ScreenWrap title="Décharge client" back={() => setScreen('main')}>
+    <ScreenWrap title="Décharge client" back={() => setScreen(dischFrom)}>
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <div>
           <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Motif *</p>
@@ -589,7 +590,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       </div>
       <div className="px-4 py-4 border-t border-[#2a2a2a] flex gap-3">
         <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">Annuler</button>
-        <button onClick={() => { if (!dMotif) return; const d = { motif: dMotif, name: dName, sig: dSig }; setDisch(d); saveDraft({ disch: d }); setScreen('main') }}
+        <button onClick={() => {
+            if (!dMotif) return
+            const d = { motif: dMotif, name: dName, sig: dSig }
+            const updated = [...disch, d]; setDisch(updated); saveDraft({ disch: updated })
+            setDMotif(''); setDName(''); setDSig('')
+            setScreen(dischFrom)
+          }}
           disabled={!dMotif} className="flex-1 py-3 bg-amber-600 disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
       </div>
     </ScreenWrap>
@@ -706,8 +713,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-zinc-500'}`}>{sig ? '✓ Signée' : '—'}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-zinc-400 text-sm">Décharge</span>
-              <span className={`text-sm font-medium ${disch ? 'text-amber-400' : 'text-zinc-500'}`}>{disch ? '✓ Enregistrée' : '—'}</span>
+              <span className="text-zinc-400 text-sm">Décharge{disch.length > 1 ? 's' : ''}</span>
+              <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-zinc-500'}`}>{disch.length > 0 ? `✓ ${disch.length} enregistrée${disch.length > 1 ? 's' : ''}` : '—'}</span>
             </div>
             {paid && (
               <div className="flex items-center justify-between">
@@ -721,25 +728,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {!disch ? (
             <button onClick={() => {
               setDMotif("Je soussigné(e) reconnais que l'intervention du dépanneur s'est déroulée correctement et que ce dernier n'a causé aucun dégât supplémentaire à mon véhicule.")
-              setScreen('decharge')
+              setDischFrom('close'); setScreen('decharge')
             }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#1A1A1A] border border-dashed border-[#2a2a2a] hover:border-zinc-600 rounded-2xl text-left transition">
-              <span className="text-xl">🛡️</span>
-              <div className="flex-1">
-                <p className="text-zinc-300 text-sm font-medium">Fin d'intervention sans dégâts</p>
-                <p className="text-zinc-600 text-xs">Décharge pré-remplie — signature client recommandée</p>
-              </div>
-              <span className="text-zinc-600 text-xs">optionnel</span>
-            </button>
-          ) : (
-            <div className="flex items-center gap-3 bg-amber-600/10 border border-amber-600/30 rounded-2xl px-4 py-3">
-              <span className="text-xl">🛡️</span>
-              <div className="flex-1">
-                <p className="text-amber-400 text-sm font-medium">✓ Décharge enregistrée</p>
-                <p className="text-zinc-500 text-xs truncate">{disch.motif.slice(0, 60)}…</p>
-              </div>
-              <button onClick={() => setDisch(null)} className="text-zinc-600 text-xs">✕</button>
+            <span className="text-xl">🛡️</span>
+            <div className="flex-1">
+              <p className="text-zinc-300 text-sm font-medium">+ Ajouter une décharge</p>
+              <p className="text-zinc-600 text-xs">Sans dégâts ou motif personnalisé</p>
             </div>
-          )}
+          </button>
+          {disch.map((d, i) => (
+            <div key={i} className="flex items-center gap-3 bg-amber-600/10 border border-amber-600/30 rounded-2xl px-4 py-3">
+              <span className="text-xl">🛡️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-400 text-sm font-medium">✓ Décharge {i + 1}</p>
+                <p className="text-zinc-500 text-xs truncate">{d.motif.slice(0, 60)}{d.motif.length > 60 ? '…' : ''}</p>
+              </div>
+              <button onClick={() => { const u = disch.filter((_, j) => j !== i); setDisch(u); saveDraft({ disch: u }) }} className="text-zinc-600 text-xs flex-shrink-0">✕</button>
+            </div>
+          ))}
 
           {/* Remarques */}
           <div>
@@ -971,11 +977,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-white">{totPh}</span>}
               </button>
               {/* Décharge */}
-              <button onClick={() => { setShowGrid(false); setScreen('decharge') }}
-                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch ? 'bg-amber-600/20 border-amber-600/40' : 'bg-[#111] border-[#2a2a2a]'}`}>
+              <button onClick={() => { setShowGrid(false); setDischFrom('main'); setDMotif(''); setDName(''); setDSig(''); setScreen('decharge') }}
+                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch.length > 0 ? 'bg-amber-600/20 border-amber-600/40' : 'bg-[#111] border-[#2a2a2a]'}`}>
                 <span className="text-2xl">📋</span>
-                <span className={`text-sm font-medium ${disch ? 'text-amber-400' : 'text-zinc-300'}`}>Décharge</span>
-                {disch && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white">✓</span>}
+                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-zinc-300'}`}>Décharge</span>
+                {disch.length > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white">{disch.length}</span>}
               </button>
               {/* Encaisser */}
               {M.amount_to_collect != null && M.amount_to_collect > 0 && (
