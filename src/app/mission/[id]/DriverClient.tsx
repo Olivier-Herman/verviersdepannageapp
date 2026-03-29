@@ -470,8 +470,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         // Rechargement complet — page.tsx fait select('*') donc driver_photos sera chargé
         clearDraft()
         window.location.href = window.location.pathname + '?t=' + Date.now()
-      } catch (e: any) { setErr(e.message || 'Erreur sauvegarde') }
-      finally { setLoading(false) }
+      } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
     }
     return (
       <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''}`} back={() => setScreen('main')}>

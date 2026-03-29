@@ -103,9 +103,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
-  const allowed = ALLOWED[mission.status] ?? []
-  if (!allowed.includes(action)) {
-    return NextResponse.json({ error: `Action '${action}' non permise depuis '${mission.status}'` }, { status: 422 })
+  // save_photos est toujours permis (pas de changement de statut)
+  if (action !== 'save_photos') {
+    const allowed = ALLOWED[mission.status] ?? []
+    if (!allowed.includes(action)) {
+      return NextResponse.json({ error: `Action '${action}' non permise depuis '${mission.status}'` }, { status: 422 })
+    }
   }
 
   const mapping = ACTION_MAP[action]
