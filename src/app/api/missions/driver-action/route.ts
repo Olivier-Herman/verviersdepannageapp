@@ -26,9 +26,9 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
 const ALLOWED: Record<string, string[]> = {
   assigned:    ['accept'],
   accepted:    ['on_way'],
-  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops', 'save_photos'],
+  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop'],
   parked:      ['completed', 'start_delivery', 'change_type', 'save_photos'],
-  delivering:  ['arrive_stop', 'complete_delivery', 'park', 'update_stops', 'save_photos'],
+  delivering:  ['arrive_stop', 'complete_delivery', 'park', 'update_stops', 'save_photos', 'change_type'],
 }
 
 interface Stop {

@@ -848,9 +848,26 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className="text-blue-400 text-xs flex-shrink-0">→</span>
             </button>
 
-            {/* Stops dynamiques */}
+            {/* Stops dynamiques — flèches pour réordonner */}
             {stops.map((stop, idx) => (
-              <div key={stop.id} className="flex items-center gap-3 px-4 py-3 border-b border-[#1f1f1f]">
+              <div key={stop.id} className="flex items-center gap-2 px-3 py-3 border-b border-[#1f1f1f]">
+                {/* Réordonnement */}
+                {!isReadOnly && !stop.arrived_at && (M.status === 'in_progress' || M.status === 'delivering') && (
+                  <div className="flex flex-col gap-0.5 flex-shrink-0">
+                    <button disabled={idx === 0} onClick={() => {
+                      const newStops = [...stops]
+                      ;[newStops[idx-1], newStops[idx]] = [newStops[idx], newStops[idx-1]]
+                      newStops.forEach((s, i) => s.sort_order = i)
+                      api('update_stops', { stops: newStops })
+                    }} className="w-5 h-5 flex items-center justify-center text-zinc-600 disabled:opacity-20 hover:text-zinc-300 text-xs">▲</button>
+                    <button disabled={idx === stops.length - 1} onClick={() => {
+                      const newStops = [...stops]
+                      ;[newStops[idx], newStops[idx+1]] = [newStops[idx+1], newStops[idx]]
+                      newStops.forEach((s, i) => s.sort_order = i)
+                      api('update_stops', { stops: newStops })
+                    }} className="w-5 h-5 flex items-center justify-center text-zinc-600 disabled:opacity-20 hover:text-zinc-300 text-xs">▼</button>
+                  </div>
+                )}
                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: STOP_COLORS[stop.type] || STOP_COLORS.custom }} />
                 <div className="flex-1 min-w-0">
                   <p className="text-zinc-500 text-xs">{stop.label}</p>
@@ -859,7 +876,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {!isReadOnly && !stop.arrived_at && (M.status === 'in_progress' || M.status === 'delivering') && (
                   <button onClick={() => api('arrive_stop', { stop_id: stop.id })} disabled={loading}
                     className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg flex-shrink-0 disabled:opacity-50">
-                    → Stop {idx + 1}
+                    → {idx + 1}
                   </button>
                 )}
                 {stop.arrived_at && (
