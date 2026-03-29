@@ -331,9 +331,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     const urls: string[] = []
     for (const f of files) {
       const ext = f.name.split('.').pop() || 'jpg'
-      const path = `${M.id}/draft-${Date.now()}.${ext}`
-      const { error } = await sb.storage.from('mission-photos').upload(path, f)
-      if (!error) { const { data } = sb.storage.from('mission-photos').getPublicUrl(path); urls.push(data.publicUrl) }
+      const path = `${M.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await sb.storage.from('mission-photos').upload(path, f, { upsert: true })
+      if (error) {
+        console.error('[upload photo]', error.message, path)
+        setErr(`Erreur upload: ${error.message}`)
+      } else {
+        const { data } = sb.storage.from('mission-photos').getPublicUrl(path)
+        urls.push(data.publicUrl)
+      }
     }
     return urls
   }
@@ -458,7 +464,14 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       setLoading(true); setErr('')
       try {
         // Upload les fichiers locaux pas encore uploadés
-        const newUrls = await uploadPhotos(photos)
+        let newUrls: string[] = []
+        if (photos.length > 0) {
+          newUrls = await uploadPhotos(photos)
+          if (newUrls.length === 0) {
+            setErr(`Upload échoué — ${photos.length} fichier(s) non envoyés. Vérifiez votre connexion.`)
+            setLoading(false); return
+          }
+        }
         const allUrls = [...photoUrls, ...newUrls]
         if (allUrls.length === 0) { setErr('Aucune photo à sauvegarder'); setLoading(false); return }
         // Sauvegarder en DB
@@ -478,7 +491,6 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         setPhotos([])
         saveDraft({ photoUrls: allUrls })
         setLoading(false)
-        setScreen('main')
       } catch (e: any) {
         setErr(e.message || 'Erreur sauvegarde')
         setLoading(false)
