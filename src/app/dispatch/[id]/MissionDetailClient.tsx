@@ -796,7 +796,7 @@ export default function MissionDetailClient({
             <div className="space-y-5">
 
               {/* Actions */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3 sticky top-[89px] overflow-y-auto max-h-[calc(100vh-89px)]">
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3 sticky top-[89px]">
 
                 {/* Statut new → Confirmer / Refuser */}
                 {status === 'new' && (
