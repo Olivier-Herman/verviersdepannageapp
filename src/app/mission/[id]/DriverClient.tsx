@@ -575,7 +575,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // ── Clôture ───────────────────────────────────────────────────────────────
   if (screen === 'close') {
     const closeLabels: Record<string, [string, string]> = {
-      dsp: ['bg-[#CC0000]', 'DSP Réussi'],
+      dsp: ['bg-green-600', 'DSP Réussi'],
       rem: ['bg-blue-600',  'REM Confirmé'],
       dpr: ['bg-zinc-600',  'DPR — Déplacement pour rien'],
     }
@@ -613,6 +613,30 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               </div>
             )}
           </div>
+
+          {/* Décharge rapide "sans dégâts" */}
+          {!disch ? (
+            <button onClick={() => {
+              setDMotif("Je soussigné(e) reconnais que l'intervention du dépanneur s'est déroulée correctement et que ce dernier n'a causé aucun dégât supplémentaire à mon véhicule.")
+              setScreen('decharge')
+            }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#1A1A1A] border border-dashed border-[#2a2a2a] hover:border-zinc-600 rounded-2xl text-left transition">
+              <span className="text-xl">🛡️</span>
+              <div className="flex-1">
+                <p className="text-zinc-300 text-sm font-medium">Fin d'intervention sans dégâts</p>
+                <p className="text-zinc-600 text-xs">Décharge pré-remplie — signature client recommandée</p>
+              </div>
+              <span className="text-zinc-600 text-xs">optionnel</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 bg-amber-600/10 border border-amber-600/30 rounded-2xl px-4 py-3">
+              <span className="text-xl">🛡️</span>
+              <div className="flex-1">
+                <p className="text-amber-400 text-sm font-medium">✓ Décharge enregistrée</p>
+                <p className="text-zinc-500 text-xs truncate">{disch.motif.slice(0, 60)}…</p>
+              </div>
+              <button onClick={() => setDisch(null)} className="text-zinc-600 text-xs">✕</button>
+            </div>
+          )}
 
           {/* Remarques */}
           <div>
