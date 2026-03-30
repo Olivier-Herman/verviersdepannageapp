@@ -275,8 +275,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     const pts = [...allPoints]
     const [removed] = pts.splice(from, 1)
     pts.splice(to, 0, removed)
-    const newStops = pts.filter(p => p.id !== '__dest__').map((s, i) => ({ ...s, sort_order: i }))
-    setM(prev => ({ ...prev, extra_addresses: newStops }))
+    // Inclure la destination comme un vrai stop si elle a été réordonnée
+    const newStops = pts.map((p, i) => ({
+      id:         p.id === '__dest__' ? crypto.randomUUID() : p.id,
+      type:       p.id === '__dest__' ? 'dest' : p.type,
+      label:      p.label,
+      address:    p.address,
+      lat:        p.lat,
+      lng:        p.lng,
+      arrived_at: p.arrived_at,
+      sort_order: i,
+    }))
+    // La nouvelle destination = dernier stop de type dest, sinon conserver l'ancienne
+    const lastDest = [...newStops].reverse().find(s => s.type === 'dest')
+    setM(prev => ({
+      ...prev,
+      extra_addresses: newStops,
+      destination_address: lastDest?.address ?? prev.destination_address,
+    }))
     apiSilent('update_stops', { stops: newStops })
   }
   const [tbl, tbg] = TYPE_BADGE[mType] || ['AUT', 'bg-zinc-600']
@@ -950,26 +966,42 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               {loading ? '⏳…' : '📍 Sur place'}
             </button>
           )}
-          {(onSite || M.status === 'parked' || M.status === 'delivering') && (
-            <>
-              {onSite && totPh < 3 && (
-                <button onClick={() => setScreen('photos')}
-                  className="w-full py-4 bg-orange-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                  📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
+          {(onSite || M.status === 'parked' || M.status === 'delivering') && (() => {
+            // Prochain stop non encore atteint
+            const nextStop = allPoints.find(p => p.id !== '__dest__' && !p.arrived_at)
+            const nextStopIdx = nextStop ? allPoints.indexOf(nextStop) : -1
+            const nonDestStops = allPoints.filter(p => p.id !== '__dest__')
+            const allStopsDone = nonDestStops.length > 0 && nonDestStops.every(p => !!p.arrived_at)
+            return (
+              <>
+                {/* REM : bouton "Vers Arrêt X" séquentiel */}
+                {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && (
+                  <button onClick={() => api('arrive_stop', { stop_id: nextStop.id })} disabled={loading}
+                    className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                    {loading ? '⏳…' : `📍 Arrivée Arrêt ${nextStopIdx + 1}`}
+                  </button>
+                )}
+                {/* Photos si pas encore 3 et sur place (DSP) */}
+                {!rem && onSite && totPh < 3 && (
+                  <button onClick={() => setScreen('photos')}
+                    className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                    📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
+                  </button>
+                )}
+                {/* Terminer — DSP avec photos OK, ou REM avec tous stops faits */}
+                {((!rem && onSite && totPh >= 3) || (rem && allStopsDone)) && (
+                  <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
+                    className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
+                    🏁 Terminer
+                  </button>
+                )}
+                <button onClick={() => setShowGrid(true)}
+                  className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  ☰ Actions
                 </button>
-              )}
-              {onSite && totPh >= 3 && (
-                <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
-                  className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                  🏁 Terminer
-                </button>
-              )}
-              <button onClick={() => setShowGrid(true)}
-                className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                ☰ Actions
-              </button>
-            </>
-          )}
+              </>
+            )
+          })()}
         </div>
       )}
 

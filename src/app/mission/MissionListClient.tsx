@@ -4,6 +4,10 @@
 
 import Link         from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,13 +62,31 @@ function fmt(iso?: string | null) {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function MissionListClient({
-  missions,
+  missions: initialMissions,
   navApp,
+  currentUserId,
 }: {
   missions: Mission[]
   navApp: string
+  currentUserId?: string
 }) {
   const router = useRouter()
+  const [missions, setMissions] = useState<Mission[]>(initialMissions)
+
+  // Realtime — écoute les nouvelles missions assignées
+  useEffect(() => {
+    if (!currentUserId) return
+    const ch = sb.channel('mission-list')
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'incoming_missions',
+        filter: `assigned_to=eq.${currentUserId}`,
+      }, () => {
+        // Rafraîchir la liste via hard reload léger
+        window.location.reload()
+      })
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [currentUserId])
 
   // Sépare actives et terminées
   const active    = missions.filter(m => m.status !== 'completed')
