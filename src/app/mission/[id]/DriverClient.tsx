@@ -978,7 +978,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && (
                   <button onClick={() => api('arrive_stop', { stop_id: nextStop.id })} disabled={loading}
                     className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
-                    {loading ? '⏳…' : `📍 Arrivée Arrêt ${nextStopIdx + 1}`}
+                    {loading ? '⏳…' : `📍 ${nextStop.address}`}
                   </button>
                 )}
                 {/* Photos si pas encore 3 et sur place (DSP) */}
