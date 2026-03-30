@@ -967,22 +967,42 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </button>
           )}
           {(onSite || M.status === 'parked' || M.status === 'delivering') && (() => {
-            // Prochain stop non encore atteint
-            const nextStop = allPoints.find(p => p.id !== '__dest__' && !p.arrived_at)
+            // Prochain stop non encore atteint (destination incluse)
+            const nextStop = allPoints.find(p => !p.arrived_at)
             const nextStopIdx = nextStop ? allPoints.indexOf(nextStop) : -1
-            const nonDestStops = allPoints.filter(p => p.id !== '__dest__')
-            const allStopsDone = nonDestStops.length > 0 && nonDestStops.every(p => !!p.arrived_at)
+            const allStopsDone = allPoints.length > 0 && allPoints.every(p => !!p.arrived_at)
             return (
               <>
                 {/* REM : En route vers → Arrivée à (séquentiel) */}
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && !nextStop.on_way_at && (
-                  <button onClick={() => api('depart_stop', { stop_id: nextStop.id })} disabled={loading}
+                  <button onClick={() => {
+                    if (nextStop.id === '__dest__') {
+                      // Destination virtuelle — créer un vrai stop
+                      const destAsStop = { ...nextStop, id: crypto.randomUUID(), on_way_at: new Date().toISOString() }
+                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destAsStop].map((s,i) => ({...s, sort_order: i}))
+                      setM(prev => ({ ...prev, extra_addresses: newStops, destination_address: undefined }))
+                      apiSilent('update_stops', { stops: newStops })
+                      // Marquer on_way_at via update_stops
+                    } else {
+                      api('depart_stop', { stop_id: nextStop.id })
+                    }
+                  }} disabled={loading}
                     className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base truncate px-3">
                     {loading ? '⏳…' : `🚗 En route → ${nextStop.address}`}
                   </button>
                 )}
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && nextStop.on_way_at && (
-                  <button onClick={() => api('arrive_stop', { stop_id: nextStop.id })} disabled={loading}
+                  <button onClick={() => {
+                    if (nextStop.id === '__dest__') {
+                      const newStops = allPoints.filter(p => p.id !== '__dest__').map((s,i) => ({...s, sort_order: i}))
+                      const destStop = { ...nextStop, arrived_at: new Date().toISOString() }
+                      const finalStops = [...newStops, {...destStop, id: destStop.id === '__dest__' ? crypto.randomUUID() : destStop.id}].map((s,i) => ({...s, sort_order: i}))
+                      setM(prev => ({ ...prev, extra_addresses: finalStops, destination_address: undefined }))
+                      apiSilent('update_stops', { stops: finalStops })
+                    } else {
+                      api('arrive_stop', { stop_id: nextStop.id })
+                    }
+                  }} disabled={loading}
                     className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base truncate px-3">
                     {loading ? '⏳…' : `📍 Arrivée → ${nextStop.address}`}
                   </button>
