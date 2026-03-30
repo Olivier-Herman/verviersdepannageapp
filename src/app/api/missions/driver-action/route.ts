@@ -16,6 +16,7 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   park:             { status: 'parked',      timestampField: 'parked_at',     logMessage: 'Véhicule mis en dépôt' },
   start_delivery:   { status: 'delivering',  timestampField: 'delivering_at', logMessage: 'Livraisons en cours' },
   arrive_stop:      { status: 'delivering',                                   logMessage: 'Arrivée à un stop' },
+  depart_stop:      { status: 'delivering',                                   logMessage: 'En route vers un stop' },
   complete_delivery:{ status: 'completed',   timestampField: 'completed_at',  logMessage: 'Livraisons terminées' },
   change_type:      {                                                          logMessage: 'Type de mission modifié' },
   save_photos:      {                                                          logMessage: 'Photos sauvegardées' },
@@ -26,9 +27,9 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
 const ALLOWED: Record<string, string[]> = {
   assigned:    ['accept'],
   accepted:    ['on_way'],
-  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop'],
+  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop'],
   parked:      ['completed', 'start_delivery', 'change_type', 'save_photos'],
-  delivering:  ['arrive_stop', 'complete_delivery', 'park', 'update_stops', 'save_photos', 'change_type'],
+  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'park', 'update_stops', 'save_photos', 'change_type'],
 }
 
 interface Stop {
@@ -181,6 +182,15 @@ export async function POST(req: Request) {
     if (closing_data.discharge_name)      updatePayload.discharge_name      = closing_data.discharge_name
     if (closing_data.discharge_sig)       updatePayload.discharge_sig       = closing_data.discharge_sig
     if (closing_data.stops?.length)       updatePayload.extra_addresses     = closing_data.stops
+  }
+
+  // ── En route vers un stop ────────────────────────────────────────────────
+  if (action === 'depart_stop' && body.stop_id) {
+    const currentStops: Stop[] = (mission.extra_addresses as Stop[]) || []
+    updatePayload.extra_addresses = currentStops.map(s =>
+      s.id === body.stop_id ? { ...s, on_way_at: now } : s
+    )
+    updatePayload.status = 'delivering'
   }
 
   // ── Arrivée à un stop ────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ type Screen = 'main' | 'photos' | 'decharge' | 'sig' | 'encaissement' | 'close' 
 
 interface Stop {
   id: string; type: string; label: string; address: string
-  lat: number | null; lng: number | null; arrived_at: string | null; sort_order: number
+  lat: number | null; lng: number | null; arrived_at: string | null; on_way_at?: string | null; sort_order: number
 }
 interface Mission {
   id: string; status: string; mission_type?: string
@@ -974,11 +974,17 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             const allStopsDone = nonDestStops.length > 0 && nonDestStops.every(p => !!p.arrived_at)
             return (
               <>
-                {/* REM : bouton "Vers Arrêt X" séquentiel */}
-                {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && (
+                {/* REM : En route vers → Arrivée à (séquentiel) */}
+                {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && !nextStop.on_way_at && (
+                  <button onClick={() => api('depart_stop', { stop_id: nextStop.id })} disabled={loading}
+                    className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base truncate px-3">
+                    {loading ? '⏳…' : `🚗 En route → ${nextStop.address}`}
+                  </button>
+                )}
+                {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && nextStop.on_way_at && (
                   <button onClick={() => api('arrive_stop', { stop_id: nextStop.id })} disabled={loading}
-                    className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
-                    {loading ? '⏳…' : `📍 ${nextStop.address}`}
+                    className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base truncate px-3">
+                    {loading ? '⏳…' : `📍 Arrivée → ${nextStop.address}`}
                   </button>
                 )}
                 {/* Photos si pas encore 3 et sur place (DSP) */}
