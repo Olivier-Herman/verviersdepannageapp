@@ -1002,25 +1002,17 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                     {loading ? '⏳…' : `📍 Arrivée → ${nextStop.address}`}
                   </button>
                 )}
-                {/* Photos si pas encore 3 et pas de prochain stop */}
-                {onSite && !nextStop && totPh < 3 && (
-                  <button onClick={() => setScreen('photos')}
-                    className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                    📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
-                  </button>
-                )}
-                {/* Terminer — quand pas de prochain stop ET photos OK (ou DPR) */}
-                {!nextStop && (onSite || M.status === 'delivering') && (closeType === 'dpr' || totPh >= 3) && (
-                  <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
-                    className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
-                    🏁 Terminer
-                  </button>
-                )}
-                {/* Photos manquantes quand tous stops faits */}
+                {/* Quand tous stops faits : Photos ou Terminer */}
                 {!nextStop && (onSite || M.status === 'delivering') && closeType !== 'dpr' && totPh < 3 && (
                   <button onClick={() => setScreen('photos')}
                     className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                     📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
+                  </button>
+                )}
+                {!nextStop && (onSite || M.status === 'delivering') && (closeType === 'dpr' || totPh >= 3) && (
+                  <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
+                    className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
+                    🏁 Terminer
                   </button>
                 )}
                 <button onClick={() => setShowGrid(true)}
