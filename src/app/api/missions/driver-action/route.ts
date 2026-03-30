@@ -15,8 +15,8 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   completed:        { status: 'completed',   timestampField: 'completed_at',  logMessage: 'Mission terminée' },
   park:             { status: 'parked',      timestampField: 'parked_at',     logMessage: 'Véhicule mis en dépôt' },
   start_delivery:   { status: 'delivering',  timestampField: 'delivering_at', logMessage: 'Livraisons en cours' },
-  arrive_stop:      { status: 'delivering',                                   logMessage: 'Arrivée à un stop' },
-  depart_stop:      { status: 'delivering',                                   logMessage: 'En route vers un stop' },
+  arrive_stop:      {                                                          logMessage: 'Arrivée à un stop' },
+  depart_stop:      {                                                          logMessage: 'En route vers un stop' },
   complete_delivery:{ status: 'completed',   timestampField: 'completed_at',  logMessage: 'Livraisons terminées' },
   change_type:      {                                                          logMessage: 'Type de mission modifié' },
   save_photos:      {                                                          logMessage: 'Photos sauvegardées' },
@@ -190,14 +190,14 @@ export async function POST(req: Request) {
     updatePayload.extra_addresses = currentStops.map(s =>
       s.id === body.stop_id ? { ...s, on_way_at: now } : s
     )
-    updatePayload.status = 'delivering'
+    // Pas de changement de statut automatique
   }
 
   // ── Arrivée à un stop ────────────────────────────────────────────────────
   if (action === 'arrive_stop' && body.stop_id) {
     const currentStops: Stop[] = (mission.extra_addresses as Stop[]) || []
     updatePayload.extra_addresses = currentStops.map(s => s.id === body.stop_id ? { ...s, arrived_at: now } : s)
-    updatePayload.status = 'delivering'
+    // Pas de changement de statut automatique — le chauffeur décide via Terminer
   }
 
   // ── Fin des livraisons ───────────────────────────────────────────────────
