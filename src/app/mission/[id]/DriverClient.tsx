@@ -263,9 +263,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const rem      = isREM(mType)
   const onSite   = !!M.on_site_at
   const stops    = [...(M.extra_addresses || [])].sort((a, b) => a.sort_order - b.sort_order)
+  // Si dest-final existe déjà dans stops, pas besoin d'ajouter __dest__
+  const destFinalInStops = stops.find(s => s.id === 'dest-final')
   const allPoints = [
     ...stops,
-    ...(M.destination_address ? [{
+    ...(!destFinalInStops && M.destination_address ? [{
       id: '__dest__', type: 'dest',
       label: `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
       address: M.destination_address, lat: null as null, lng: null as null,
@@ -981,7 +983,18 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && !nextStop.on_way_at && (
                   <button onClick={() => {
                     if (nextStop.id === '__dest__') {
+                      const destStop = {
+                        id: 'dest-final', type: 'dest',
+                        label: nextStop.label, address: nextStop.address,
+                        lat: nextStop.lat, lng: nextStop.lng,
+                        on_way_at: new Date().toISOString(),
+                        arrived_at: null as null,
+                        sort_order: allPoints.filter(p => p.id !== '__dest__').length,
+                      }
+                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destStop].map((s,i) => ({...s, sort_order: i}))
+                      setM(prev => ({ ...prev, extra_addresses: newStops }))
                       setDestOnWay(true)
+                      apiSilent('update_stops', { stops: newStops })
                     } else {
                       api('depart_stop', { stop_id: nextStop.id })
                     }
@@ -993,7 +1006,19 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && nextStop.on_way_at && (
                   <button onClick={() => {
                     if (nextStop.id === '__dest__') {
+                      // Sauvegarder en DB comme vrai stop (persistant au refresh)
+                      const destStop = {
+                        id: 'dest-final', type: 'dest',
+                        label: nextStop.label, address: nextStop.address,
+                        lat: nextStop.lat, lng: nextStop.lng,
+                        on_way_at: new Date().toISOString(),
+                        arrived_at: new Date().toISOString(),
+                        sort_order: allPoints.filter(p => p.id !== '__dest__').length,
+                      }
+                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destStop].map((s,i) => ({...s, sort_order: i}))
+                      setM(prev => ({ ...prev, extra_addresses: newStops }))
                       setDestArrived(true)
+                      apiSilent('update_stops', { stops: newStops })
                     } else {
                       api('arrive_stop', { stop_id: nextStop.id })
                     }
