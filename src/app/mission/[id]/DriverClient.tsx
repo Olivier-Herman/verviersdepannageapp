@@ -261,6 +261,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const rem      = isREM(mType)
   const onSite   = !!M.on_site_at
   const stops    = [...(M.extra_addresses || [])].sort((a, b) => a.sort_order - b.sort_order)
+  const allPoints = [
+    ...stops,
+    ...(M.destination_address ? [{
+      id: '__dest__', type: 'dest',
+      label: `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
+      address: M.destination_address, lat: null as null, lng: null as null,
+      arrived_at: null as null, sort_order: stops.length,
+    }] : []),
+  ]
+  const movePoint = (from: number, to: number) => {
+    if (to < 0 || to >= allPoints.length) return
+    const pts = [...allPoints]
+    const [removed] = pts.splice(from, 1)
+    pts.splice(to, 0, removed)
+    const newStops = pts.filter(p => p.id !== '__dest__').map((s, i) => ({ ...s, sort_order: i }))
+    setM(prev => ({ ...prev, extra_addresses: newStops }))
+    apiSilent('update_stops', { stops: newStops })
+  }
   const [tbl, tbg] = TYPE_BADGE[mType] || ['AUT', 'bg-zinc-600']
   const statusStr  = M.status === 'parked' ? 'En dépôt' : M.on_site_at ? 'Sur place'
     : M.on_way_at && M.status === 'in_progress' ? 'En route' : STATUS_BADGE[M.status]?.[0] || M.status
@@ -861,26 +879,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className="text-blue-400 text-xs flex-shrink-0">→</span>
             </button>
 
-            {/* Tous les stops + destination — drag & drop tactile */}
+            {/* Stops scrollables */}
+            <div className="overflow-y-auto max-h-52">
+            {/* Tous les stops + destination — réordonnement ▲▼ */}
             {(() => {
-              const allPoints = [
-                ...stops,
-                ...(M.destination_address ? [{
-                  id: '__dest__', type: 'dest',
-                  label: `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
-                  address: M.destination_address, lat: null, lng: null, arrived_at: null, sort_order: stops.length,
-                }] : []),
-              ]
               const canReorder = !isReadOnly && (M.status === 'in_progress' || M.status === 'delivering')
-              const movePoint = (from: number, to: number) => {
-                if (to < 0 || to >= allPoints.length) return
-                const pts = [...allPoints]
-                const [removed] = pts.splice(from, 1)
-                pts.splice(to, 0, removed)
-                const newStops = pts.filter(p => p.id !== '__dest__').map((s, i) => ({ ...s, sort_order: i }))
-                setM(prev => ({ ...prev, extra_addresses: newStops }))
-                apiSilent('update_stops', { stops: newStops })
-              }
               return allPoints.map((point, idx) => (
                 <div key={point.id} className="flex items-center gap-2 px-3 py-3 border-b border-[#1f1f1f] last:border-none">
                   {/* Poignée drag + flèches */}
@@ -914,6 +917,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 </div>
               ))
             })()}
+            </div>{/* end scrollable stops */}
           </div>
         )}
 
