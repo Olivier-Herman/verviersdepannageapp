@@ -204,7 +204,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [addrModal, setAddrModal] = useState<{ title: string; address: string; lat?: number; lng?: number; field: string } | null>(null)
 
   // Modify address
-  const [modField, setModField] = useState(''); const [modVal, setModVal] = useState('')
+  const [modField, setModField] = useState('')
+  const [destOnWay, setDestOnWay]   = useState(false)
+  const [destArrived, setDestArrived] = useState(false); const [modVal, setModVal] = useState('')
   const [modLat, setModLat] = useState<number|null>(null); const [modLng, setModLng] = useState<number|null>(null)
 
   // Draft
@@ -267,7 +269,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       id: '__dest__', type: 'dest',
       label: `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
       address: M.destination_address, lat: null as null, lng: null as null,
-      arrived_at: null as null, sort_order: stops.length,
+      arrived_at: destArrived ? new Date().toISOString() : null as null,
+      on_way_at: destOnWay ? new Date().toISOString() : null as null,
+      sort_order: stops.length,
     }] : []),
   ]
   const movePoint = (from: number, to: number) => {
@@ -977,10 +981,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && !nextStop.on_way_at && (
                   <button onClick={() => {
                     if (nextStop.id === '__dest__') {
-                      const destAsStop = { ...nextStop, id: crypto.randomUUID(), on_way_at: new Date().toISOString() }
-                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destAsStop].map((s,i) => ({...s, sort_order: i}))
-                      setM(prev => ({ ...prev, extra_addresses: newStops, destination_address: prev.destination_address }))
-                      apiSilent('update_stops', { stops: newStops })
+                      setDestOnWay(true)
                     } else {
                       api('depart_stop', { stop_id: nextStop.id })
                     }
@@ -992,10 +993,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && nextStop.on_way_at && (
                   <button onClick={() => {
                     if (nextStop.id === '__dest__') {
-                      const destStop = { ...nextStop, id: crypto.randomUUID(), arrived_at: new Date().toISOString() }
-                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destStop].map((s,i) => ({...s, sort_order: i}))
-                      setM(prev => ({ ...prev, extra_addresses: newStops, destination_address: prev.destination_address }))
-                      apiSilent('update_stops', { stops: newStops })
+                      setDestArrived(true)
                     } else {
                       api('arrive_stop', { stop_id: nextStop.id })
                     }
