@@ -299,7 +299,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     return () => { sb.removeChannel(ch) }
   }, [M.id])
 
-  // ── API statuts simples ───────────────────────────────────────────────────
+  // ── API statuts simples (avec reload) ───────────────────────────────────
   const api = async (action: string, extra = {}) => {
     setLoading(true); setErr('')
     try {
@@ -313,6 +313,19 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       window.location.href = window.location.pathname + '?t=' + Date.now()
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
+  }
+
+  // ── API silencieuse (sans reload — pour réordonnement) ───────────────────
+  const apiSilent = async (action: string, extra = {}) => {
+    try {
+      const r = await fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, action, ...extra }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setM(j.mission)
+    } catch (e: any) { setErr(e.message || 'Erreur') }
   }
 
   // ── Changer type DSP↔REM ──────────────────────────────────────────────────
@@ -848,51 +861,42 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className="text-blue-400 text-xs flex-shrink-0">→</span>
             </button>
 
-            {/* Tous les stops + destination — réordonnables ensemble */}
+            {/* Tous les stops + destination — drag & drop tactile */}
             {(() => {
-              // Construire la liste complète : stops existants + destination virtuelle
               const allPoints = [
                 ...stops,
                 ...(M.destination_address ? [{
-                  id: '__dest__',
-                  type: 'dest',
+                  id: '__dest__', type: 'dest',
                   label: `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
-                  address: M.destination_address,
-                  lat: null, lng: null, arrived_at: null,
-                  sort_order: stops.length,
+                  address: M.destination_address, lat: null, lng: null, arrived_at: null, sort_order: stops.length,
                 }] : []),
               ]
               const canReorder = !isReadOnly && (M.status === 'in_progress' || M.status === 'delivering')
+              const movePoint = (from: number, to: number) => {
+                if (to < 0 || to >= allPoints.length) return
+                const pts = [...allPoints]
+                const [removed] = pts.splice(from, 1)
+                pts.splice(to, 0, removed)
+                const newStops = pts.filter(p => p.id !== '__dest__').map((s, i) => ({ ...s, sort_order: i }))
+                setM(prev => ({ ...prev, extra_addresses: newStops }))
+                apiSilent('update_stops', { stops: newStops })
+              }
               return allPoints.map((point, idx) => (
                 <div key={point.id} className="flex items-center gap-2 px-3 py-3 border-b border-[#1f1f1f] last:border-none">
-                  {/* Flèches réordonnement */}
+                  {/* Poignée drag + flèches */}
                   {canReorder && !point.arrived_at && (
-                    <div className="flex flex-col gap-0.5 flex-shrink-0">
-                      <button disabled={idx === 0} onClick={() => {
-                        const pts = [...allPoints]
-                        ;[pts[idx-1], pts[idx]] = [pts[idx], pts[idx-1]]
-                        // Séparer stops et destination
-                        const newStops = pts.filter(p => p.id !== '__dest__').map((s, i) => ({ ...s, sort_order: i }))
-                        const destPt = pts.find(p => p.id === '__dest__')
-                        if (destPt) {
-                          // La destination est maintenant avant ce stop — mettre à jour destination_address via update_address n'est pas nécessaire, on la gère via stops
-                        }
-                        api('update_stops', { stops: newStops })
-                      }} className="w-5 h-5 flex items-center justify-center text-zinc-600 disabled:opacity-20 hover:text-zinc-300 text-xs">▲</button>
-                      <button disabled={idx === allPoints.length - 1} onClick={() => {
-                        const pts = [...allPoints]
-                        ;[pts[idx], pts[idx+1]] = [pts[idx+1], pts[idx]]
-                        const newStops = pts.filter(p => p.id !== '__dest__').map((s, i) => ({ ...s, sort_order: i }))
-                        api('update_stops', { stops: newStops })
-                      }} className="w-5 h-5 flex items-center justify-center text-zinc-600 disabled:opacity-20 hover:text-zinc-300 text-xs">▼</button>
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0 pr-1">
+                      <button disabled={idx === 0} onClick={() => movePoint(idx, idx - 1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-zinc-400 disabled:opacity-20 active:scale-95 text-xs">▲</button>
+                      <div className="text-zinc-700 text-xs leading-none select-none">⠿</div>
+                      <button disabled={idx === allPoints.length - 1} onClick={() => movePoint(idx, idx + 1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-zinc-400 disabled:opacity-20 active:scale-95 text-xs">▼</button>
                     </div>
                   )}
                   <div className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: point.id === '__dest__' ? '#2563eb' : (STOP_COLORS[point.type] || STOP_COLORS.custom) }} />
-                  <button className="flex-1 min-w-0 text-left" onClick={() => {
-                    if (point.id === '__dest__') {
-                      setAddrModal({ title: point.label, address: point.address, field: 'destination' })
-                    }
+                  <button className="flex-1 min-w-0 text-left py-1" onClick={() => {
+                    if (point.id === '__dest__') setAddrModal({ title: point.label, address: point.address, field: 'destination' })
                   }}>
                     <p className="text-zinc-500 text-xs">{point.label}</p>
                     <p className="text-white text-sm truncate">{point.address}</p>
