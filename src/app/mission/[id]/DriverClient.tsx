@@ -977,12 +977,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && !nextStop.on_way_at && (
                   <button onClick={() => {
                     if (nextStop.id === '__dest__') {
-                      // Destination virtuelle — créer un vrai stop
                       const destAsStop = { ...nextStop, id: crypto.randomUUID(), on_way_at: new Date().toISOString() }
                       const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destAsStop].map((s,i) => ({...s, sort_order: i}))
-                      setM(prev => ({ ...prev, extra_addresses: newStops, destination_address: undefined }))
+                      setM(prev => ({ ...prev, extra_addresses: newStops, destination_address: prev.destination_address }))
                       apiSilent('update_stops', { stops: newStops })
-                      // Marquer on_way_at via update_stops
                     } else {
                       api('depart_stop', { stop_id: nextStop.id })
                     }
@@ -994,11 +992,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && nextStop.on_way_at && (
                   <button onClick={() => {
                     if (nextStop.id === '__dest__') {
-                      const newStops = allPoints.filter(p => p.id !== '__dest__').map((s,i) => ({...s, sort_order: i}))
-                      const destStop = { ...nextStop, arrived_at: new Date().toISOString() }
-                      const finalStops = [...newStops, {...destStop, id: destStop.id === '__dest__' ? crypto.randomUUID() : destStop.id}].map((s,i) => ({...s, sort_order: i}))
-                      setM(prev => ({ ...prev, extra_addresses: finalStops, destination_address: undefined }))
-                      apiSilent('update_stops', { stops: finalStops })
+                      const destStop = { ...nextStop, id: crypto.randomUUID(), arrived_at: new Date().toISOString() }
+                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destStop].map((s,i) => ({...s, sort_order: i}))
+                      setM(prev => ({ ...prev, extra_addresses: newStops, destination_address: prev.destination_address }))
+                      apiSilent('update_stops', { stops: newStops })
                     } else {
                       api('arrive_stop', { stop_id: nextStop.id })
                     }
@@ -1007,18 +1004,25 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                     {loading ? '⏳…' : `📍 Arrivée → ${nextStop.address}`}
                   </button>
                 )}
-                {/* Photos si pas encore 3 et sur place (DSP) */}
-                {!rem && onSite && totPh < 3 && (
+                {/* Photos si pas encore 3 et pas de prochain stop */}
+                {onSite && !nextStop && totPh < 3 && (
                   <button onClick={() => setScreen('photos')}
                     className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                     📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
                   </button>
                 )}
-                {/* Terminer — DSP avec photos OK, ou REM avec tous stops faits */}
-                {((!rem && onSite && totPh >= 3) || (rem && allStopsDone)) && (
+                {/* Terminer — quand pas de prochain stop ET photos OK (ou DPR) */}
+                {!nextStop && (onSite || M.status === 'delivering') && (closeType === 'dpr' || totPh >= 3) && (
                   <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
                     className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
                     🏁 Terminer
+                  </button>
+                )}
+                {/* Photos manquantes quand tous stops faits */}
+                {!nextStop && (onSite || M.status === 'delivering') && closeType !== 'dpr' && totPh < 3 && (
+                  <button onClick={() => setScreen('photos')}
+                    className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                    📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
                   </button>
                 )}
                 <button onClick={() => setShowGrid(true)}

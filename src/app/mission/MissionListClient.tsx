@@ -73,6 +73,11 @@ export default function MissionListClient({
   const router = useRouter()
   const [missions, setMissions] = useState<Mission[]>(initialMissions)
 
+  // Force refresh à l'ouverture — données toujours fraîches
+  useEffect(() => {
+    router.refresh()
+  }, [])
+
   // Realtime — écoute les nouvelles missions assignées
   useEffect(() => {
     if (!currentUserId) return
@@ -81,7 +86,6 @@ export default function MissionListClient({
         event: '*', schema: 'public', table: 'incoming_missions',
         filter: `assigned_to=eq.${currentUserId}`,
       }, () => {
-        // Rafraîchir la liste via hard reload léger
         window.location.reload()
       })
       .subscribe()
