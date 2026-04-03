@@ -1,12 +1,11 @@
 // src/app/api/cron/poll-missions/route.ts
-// Polling de secours — lit les emails non lus et délègue à processEmailMessage
-// pour avoir exactement la même logique que le webhook (MIME fallback inclus)
+export const maxDuration = 60
 
 import { NextResponse }          from 'next/server'
 import { getGraphToken, processEmailMessage } from '@/lib/missions/processor'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
-const MAX_MESSAGES   = 25
+const MAX_MESSAGES   = 10
 
 async function graphGet(token: string, path: string): Promise<any> {
   const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
@@ -20,11 +19,7 @@ async function graphGet(token: string, path: string): Promise<any> {
 }
 
 export async function GET(req: Request) {
-  const authHeader = req.headers.get('authorization')
-  if (authHeader && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+  // Pas d'auth — cron-job.org appelle directement
   const results: Record<string, number> = { new: 0, duplicate: 0, skipped: 0, error: 0 }
 
   try {
@@ -42,15 +37,13 @@ export async function GET(req: Request) {
     const messages: any[] = messagesData.value || []
     console.log(`[PollMissions] ${messages.length} message(s) non lu(s)`)
 
-    // Traiter séquentiellement pour éviter les conflits sur source_email_id
     for (const message of messages) {
       try {
         const result = await processEmailMessage(message.id)
         results[result.status] = (results[result.status] || 0) + 1
         if (result.status === 'inserted') results.new++
-        console.log(`[PollMissions] ${message.id.slice(-8)} → ${result.status}`)
       } catch (err: any) {
-        console.error(`[PollMissions] Erreur message ${message.id.slice(-8)}:`, err.message)
+        console.error(`[PollMissions] Erreur:`, err.message)
         results.error++
       }
     }
