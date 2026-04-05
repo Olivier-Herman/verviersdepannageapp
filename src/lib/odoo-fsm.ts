@@ -59,18 +59,28 @@ export async function rpcFsm<T = any>(
 }
 
 // ============================================================
-// STAGES FSM — Récupérer l'ID d'une étape par son nom
+// STAGES FSM — IDs hardcodés depuis la base test
 // ============================================================
-const stageCache: Record<string, number> = {}
+export const FSM_STAGES: Record<string, number> = {
+  'Nouveau':               66,
+  'Assigné':               67,
+  'En route':              68,
+  'Sur place':             69,
+  'En route vers destination': 70,
+  'Arrivé à destination':  76,
+  'Mise en parc':          77,
+  'À facturer':            78,
+  'Terminé':               79,
+}
 
 export async function getFsmStageId(stageName: string): Promise<number> {
-  if (stageCache[stageName]) return stageCache[stageName]
+  if (FSM_STAGES[stageName]) return FSM_STAGES[stageName]
+  // Fallback: chercher dans Odoo
   const results = await rpcFsm<any[]>('project.task.type', 'search_read',
     [[['name', 'ilike', stageName]]],
     { fields: ['id', 'name'], limit: 1 }
   )
   if (!results.length) throw new Error(`[FSM] Étape "${stageName}" introuvable`)
-  stageCache[stageName] = results[0].id
   return results[0].id
 }
 
@@ -217,4 +227,36 @@ export async function testFsmConnection(): Promise<{ ok: boolean; db: string; st
     db: FSM_DB,
     stages: stages.map(s => `${s.id}: ${s.name}`),
   }
+}
+
+// ============================================================
+// PARTENAIRE — Recherche ou création dans la base FSM
+// ============================================================
+export async function findOrCreateFsmPartner(data: {
+  name?:  string
+  phone?: string
+  email?: string
+}): Promise<number> {
+  // Chercher par téléphone
+  if (data.phone) {
+    const clean = data.phone.replace(/\s/g, '')
+    const r = await rpcFsm<any[]>('res.partner', 'search_read',
+      [[['phone', 'like', clean]]], { fields: ['id', 'name'], limit: 1 })
+    if (r.length > 0) return r[0].id
+  }
+  // Chercher par nom
+  if (data.name) {
+    const r = await rpcFsm<any[]>('res.partner', 'search_read',
+      [[['name', 'ilike', data.name]]], { fields: ['id', 'name'], limit: 1 })
+    if (r.length > 0) return r[0].id
+  }
+  // Créer
+  const id = await rpcFsm<number>('res.partner', 'create', [{
+    name:          data.name || 'Client inconnu',
+    phone:         data.phone || false,
+    email:         data.email || false,
+    customer_rank: 1,
+    company_type:  'person',
+  }])
+  return id
 }
