@@ -1,7 +1,6 @@
 'use client'
 // src/components/missions/DriverTimeline.tsx
 
-// Note : utilise assigned_user (champ existant dans MissionDetailClient)
 interface AssignedUser {
   id: string
   name?: string
@@ -15,6 +14,8 @@ interface Mission {
   on_way_at?: string | null
   on_site_at?: string | null
   completed_at?: string | null
+  parked_at?: string | null
+  delivering_at?: string | null
   assigned_user?: AssignedUser | null
 }
 
@@ -25,23 +26,53 @@ function fmt(iso?: string | null) {
   })
 }
 
-const STEPS: { key: keyof Mission; label: string; icon: string }[] = [
-  { key: 'assigned_at',  label: 'Assignée',  icon: '👤' },
-  { key: 'accepted_at',  label: 'Acceptée',  icon: '✅' },
-  { key: 'on_way_at',    label: 'En route',  icon: '🚗' },
-  { key: 'on_site_at',   label: 'Sur place', icon: '📍' },
-  { key: 'completed_at', label: 'Terminée',  icon: '🏁' },
+const STEPS: { key: keyof Mission; label: string; icon: string; statuses?: string[] }[] = [
+  { key: 'assigned_at',   label: 'Assignée',         icon: '👤' },
+  { key: 'accepted_at',   label: 'Acceptée',          icon: '✅' },
+  { key: 'on_way_at',     label: 'En route',          icon: '🚗' },
+  { key: 'on_site_at',    label: 'Sur place',         icon: '📍' },
+  { key: 'delivering_at', label: 'En livraison',      icon: '🚛', statuses: ['delivering'] },
+  { key: 'parked_at',     label: 'Mis en parc',       icon: '🅿️', statuses: ['parked'] },
+  { key: 'completed_at',  label: 'Terminée',          icon: '🏁' },
 ]
+
+const STATUS_BADGE: Record<string, { label: string; color: string }> = {
+  new:         { label: 'Nouvelle',      color: 'bg-yellow-500/20 text-yellow-400' },
+  dispatching: { label: 'En attente',    color: 'bg-blue-500/20 text-blue-400' },
+  assigned:    { label: 'Assignée',      color: 'bg-purple-500/20 text-purple-400' },
+  accepted:    { label: 'Acceptée',      color: 'bg-indigo-500/20 text-indigo-400' },
+  in_progress: { label: 'En cours',      color: 'bg-orange-500/20 text-orange-400' },
+  delivering:  { label: 'En livraison',  color: 'bg-cyan-500/20 text-cyan-400' },
+  parked:      { label: 'En parc',       color: 'bg-amber-500/20 text-amber-400' },
+  completed:   { label: 'Terminée',      color: 'bg-green-500/20 text-green-400' },
+  cancelled:   { label: 'Annulée',       color: 'bg-red-500/20 text-red-400' },
+  ignored:     { label: 'Refusée',       color: 'bg-red-500/20 text-red-500' },
+}
 
 export function DriverTimeline({ mission }: { mission: Mission }) {
   const hasAny = STEPS.some(s => !!mission[s.key])
+  const badge = STATUS_BADGE[mission.status]
 
   if (!mission.assigned_user && !hasAny) {
     return <div className="text-zinc-500 text-sm italic">Aucun chauffeur assigné</div>
   }
 
+  // Filtrer les étapes à afficher selon le statut
+  const visibleSteps = STEPS.filter(s => {
+    if (!s.statuses) return true
+    return s.statuses.includes(mission.status) || !!mission[s.key]
+  })
+
   return (
     <div className="space-y-3">
+      {/* Statut actuel */}
+      {badge && (
+        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${badge.color}`}>
+          {badge.label}
+        </div>
+      )}
+
+      {/* Chauffeur */}
       {mission.assigned_user && (
         <div className="flex items-center gap-2 text-sm">
           <span className="text-zinc-500">Chauffeur :</span>
@@ -54,8 +85,9 @@ export function DriverTimeline({ mission }: { mission: Mission }) {
         </div>
       )}
 
+      {/* Timeline */}
       <ol className="relative border-l border-[#2a2a2a] ml-2 space-y-3 pt-1">
-        {STEPS.map(step => {
+        {visibleSteps.map(step => {
           const ts = mission[step.key] as string | null | undefined
           return (
             <li key={String(step.key)} className={`ml-4 ${ts ? '' : 'opacity-30'}`}>
