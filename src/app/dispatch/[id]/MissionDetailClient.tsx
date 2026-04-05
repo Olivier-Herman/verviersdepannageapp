@@ -379,8 +379,18 @@ export default function MissionDetailClient({
         event: 'UPDATE', schema: 'public', table: 'incoming_missions',
         filter: `id=eq.${initialMission.id}`,
       }, payload => {
-        setM(prev => ({ ...prev, ...payload.new }))
-        if ((payload.new as any).status) setStatus((payload.new as any).status)
+        const updated = payload.new as any
+        setM(prev => ({ ...prev, ...updated }))
+        if (updated.status) setStatus(updated.status)
+        // Mettre à jour uniquement les champs chauffeur (pas les champs du formulaire dispatch)
+        const driverFields = ['driver_photos', 'discharge_data', 'client_signature',
+          'closing_notes', 'on_way_at', 'on_site_at', 'completed_at',
+          'accepted_at', 'assigned_at', 'parked_at', 'extra_addresses']
+        const formUpdates: Partial<typeof form> = {}
+        if (updated.vehicle_plate && updated.vehicle_plate !== form.vehicle_plate) formUpdates.vehicle_plate = updated.vehicle_plate
+        if (updated.vehicle_brand && updated.vehicle_brand !== form.vehicle_brand) formUpdates.vehicle_brand = updated.vehicle_brand
+        if (updated.vehicle_model && updated.vehicle_model !== form.vehicle_model) formUpdates.vehicle_model = updated.vehicle_model
+        if (Object.keys(formUpdates).length > 0) setForm(prev => ({ ...prev, ...formUpdates }))
       })
       .subscribe()
     return () => { sb.removeChannel(ch) }
