@@ -41,20 +41,31 @@ export async function PATCH(
   const body = await req.json()
   const supabase = createAdminClient()
 
-  // Champs éditables depuis le formulaire de complétion
   const allowed = [
     'mission_type', 'incident_type', 'incident_description',
+    'billed_to_name', 'billed_to_id',
     'client_name', 'client_phone', 'client_address',
+    'assisted_name', 'assisted_phone',
     'vehicle_plate', 'vehicle_brand', 'vehicle_model', 'vehicle_vin',
-    'vehicle_fuel', 'vehicle_gearbox',
+    'vehicle_fuel', 'vehicle_gearbox', 'vehicle_mileage',
     'incident_address', 'incident_city', 'incident_country',
+    'incident_lat', 'incident_lng',
     'destination_name', 'destination_address',
-    'amount_guaranteed', 'incident_at',
+    'destination_lat', 'destination_lng',
+    'amount_guaranteed', 'amount_to_collect', 'amount_currency',
+    'incident_at', 'remarks_general',
   ]
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
-    if (key in body) updates[key] = body[key]
+    if (key in body) {
+      // Convertir les strings vides en null pour les champs numériques
+      if (['amount_guaranteed', 'amount_to_collect', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng'].includes(key)) {
+        updates[key] = body[key] === '' ? null : Number(body[key]) || null
+      } else {
+        updates[key] = body[key] === '' ? null : body[key]
+      }
+    }
   }
 
   const { data, error } = await supabase

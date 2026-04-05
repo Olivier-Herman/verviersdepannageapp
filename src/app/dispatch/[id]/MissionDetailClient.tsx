@@ -5,7 +5,13 @@ import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
+
+const sb = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -363,6 +369,23 @@ export default function MissionDetailClient({
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
   const [odooError,      setOdooError]        = useState<string | null>(null)
 
+  const [M, setM] = useState<Mission>(initialMission)
+  const [saveOk, setSaveOk] = useState(false)
+
+  // Realtime — mise à jour automatique depuis le chauffeur
+  useEffect(() => {
+    const ch = sb.channel(`dispatch-mission-${initialMission.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'incoming_missions',
+        filter: `id=eq.${initialMission.id}`,
+      }, payload => {
+        setM(prev => ({ ...prev, ...payload.new }))
+        if ((payload.new as any).status) setStatus((payload.new as any).status)
+      })
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [initialMission.id])
+
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
   // Détecter lien IMA dans raw_content
@@ -414,11 +437,16 @@ export default function MissionDetailClient({
   // Sauvegarder les modifications du formulaire
   const handleSave = async () => {
     setLoadingSave(true)
-    await fetch(`/api/missions/${initialMission.id}`, {
+    setSaveOk(false)
+    const res = await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(form)
     })
+    if (res.ok) {
+      setSaveOk(true)
+      setTimeout(() => setSaveOk(false), 3000)
+    }
     setLoadingSave(false)
   }
 
@@ -867,7 +895,7 @@ export default function MissionDetailClient({
                         disabled={loadingSave}
                         className="w-full py-2.5 bg-[#111] hover:bg-[#2a2a2a] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-sm transition disabled:opacity-50"
                       >
-                        {loadingSave ? 'Sauvegarde...' : '💾 Sauvegarder'}
+                        {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder'}
                       </button>
                     </div>
                   </>
@@ -908,7 +936,7 @@ export default function MissionDetailClient({
                         disabled={loadingSave}
                         className="w-full py-2.5 bg-[#111] hover:bg-[#2a2a2a] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-sm transition disabled:opacity-50"
                       >
-                        {loadingSave ? 'Sauvegarde...' : '💾 Sauvegarder'}
+                        {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder'}
                       </button>
                     )}
                   </>
@@ -949,13 +977,30 @@ export default function MissionDetailClient({
                   </h3>
                   <DriverTimeline mission={{
                     status,
-                    assigned_at:  initialMission.assigned_at,
-                    accepted_at:  initialMission.accepted_at,
-                    on_way_at:    initialMission.on_way_at,
-                    on_site_at:   initialMission.on_site_at,
-                    completed_at: initialMission.completed_at,
-                    assigned_user: initialMission.assigned_user,
+                    assigned_at:  M.assigned_at,
+                    accepted_at:  M.accepted_at,
+                    on_way_at:    M.on_way_at,
+                    on_site_at:   M.on_site_at,
+                    completed_at: M.completed_at,
+                    assigned_user: M.assigned_user || initialMission.assigned_user,
                   }} />
+                </div>
+              )}
+
+              {/* Photos chauffeur */}
+              {M.driver_photos && M.driver_photos.length > 0 && (
+                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                  <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-3">
+                    📷 Photos chauffeur ({M.driver_photos.length})
+                  </h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {M.driver_photos.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className="aspect-square rounded-xl overflow-hidden block">
+                        <img src={url} className="w-full h-full object-cover hover:opacity-80 transition" />
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
 
