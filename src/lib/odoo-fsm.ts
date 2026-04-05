@@ -94,18 +94,13 @@ export async function createHelpdeskTicket(params: {
   clientName:    string
   partnerId?:    number
   description?:  string
+  teamId?:       number
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
   // Trouver l'équipe Helpdesk (première équipe disponible)
-  const teams = await rpcFsm<any[]>('helpdesk.team', 'search_read',
-    [[]], { fields: ['id', 'name'], limit: 1 }
-  )
-  if (!teams.length) throw new Error('[FSM] Aucune équipe Helpdesk trouvée')
-  const teamId = teams[0].id
-
   const ticketData: any = {
     name:       `${params.source} — ${params.clientName} — ${params.dossierNumber}`,
-    team_id:    teamId,
+    team_id:    params.teamId || 12,
     description: params.description || '',
     [HELPDESK_FIELDS.supabase_id]:    params.supabaseId,
     [HELPDESK_FIELDS.dossier_number]: params.dossierNumber,

@@ -28,7 +28,9 @@ export async function POST(req: Request) {
 
     const sb = adminClient()
 
-    // Récupérer le chauffeur si assigné
+    const HELPDESK_TEAM_ID = 12 // Interventions Verviers Dépannage
+
+  // Récupérer le chauffeur si assigné
     let chauffeurName = ''
     if (chauffeur_id) {
       const { data: driver } = await sb.from('users').select('name').eq('id', chauffeur_id).maybeSingle()
