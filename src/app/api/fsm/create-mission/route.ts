@@ -30,7 +30,20 @@ export async function POST(req: Request) {
 
     const HELPDESK_TEAM_ID = 12 // Interventions Verviers Dépannage
 
-  // Récupérer le chauffeur si assigné
+    // Récupérer la mission depuis Supabase pour avoir le type correct
+    const { data: mission } = await sb.from('incoming_missions')
+      .select('mission_type')
+      .eq('id', mission_id)
+      .maybeSingle()
+
+    // Mapper le type d'intervention
+    const missionType = (mission?.mission_type || '').toUpperCase()
+    let interventionType = 'DSP'
+    if (['REMORQUAGE', 'REM'].some(t => missionType.includes(t))) interventionType = 'REM_DIRECT'
+    if (['DPR', 'DEPLACE'].some(t => missionType.includes(t))) interventionType = 'DPR'
+    if (['REL', 'RELIVR'].some(t => missionType.includes(t))) interventionType = 'REL'
+
+    // Récupérer le chauffeur si assigné
     let chauffeurName = ''
     if (chauffeur_id) {
       const { data: driver } = await sb.from('users').select('name').eq('id', chauffeur_id).maybeSingle()
@@ -63,7 +76,7 @@ export async function POST(req: Request) {
     const { taskId, taskUrl } = await createFsmTask({
       supabaseId:          supabase_id || mission_id,
       helpdeskTicketId:    ticketId,
-      interventionType:    'DSP', // sera mis à jour par le dispatch
+      interventionType:    interventionType,
       interventionContext: 'STANDARD',
       source:              source?.toUpperCase() || 'PRIVÉ',
       dossierNumber:       dossier_number || '',

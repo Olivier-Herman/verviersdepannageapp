@@ -109,7 +109,7 @@ export async function createHelpdeskTicket(params: {
   if (params.partnerId) ticketData.partner_id = params.partnerId
 
   const ticketId = await rpcFsm<number>('helpdesk.ticket', 'create', [ticketData])
-  const ticketUrl = `${FSM_URL}/odoo/helpdesk/${ticketId}`
+  const ticketUrl = `${FSM_URL}/web#id=${ticketId}&model=helpdesk.ticket&view_type=form`
 
   console.log(`[FSM] Helpdesk ticket créé: #${ticketId}`)
   return { ticketId, ticketUrl }
@@ -163,6 +163,7 @@ export async function createFsmTask(params: {
     project_id: projectId,
     stage_id:   stageId,
     is_fsm:     true,
+    helpdesk_ticket_id: params.helpdeskTicketId,
     description,
     [FSM_FIELDS.supabase_id]:          params.supabaseId,
     [FSM_FIELDS.intervention_type]:    params.interventionType,
@@ -177,7 +178,7 @@ export async function createFsmTask(params: {
   if (params.partnerId)   taskData.partner_id = params.partnerId
 
   const taskId = await rpcFsm<number>('project.task', 'create', [taskData])
-  const taskUrl = `${FSM_URL}/odoo/field-service/${taskId}`
+  const taskUrl = `${FSM_URL}/web#id=${taskId}&model=project.task&view_type=form`
 
   console.log(`[FSM] Tâche FSM créée: #${taskId} — ${taskName}`)
   return { taskId, taskUrl }
