@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install Vercel CLI
+        run: npm install -g vercel
       - name: Deploy
-        run: |
-          curl -X POST "https://api.vercel.com/v1/integrations/deploy/prj_pIqhQ4sLBPEoAAwA9dWCzJGfzQ0V/B4E0hr3ODt"
+        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
