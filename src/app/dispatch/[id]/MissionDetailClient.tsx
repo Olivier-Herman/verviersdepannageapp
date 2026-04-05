@@ -354,6 +354,10 @@ export default function MissionDetailClient({
   const [loadingIMA,     setLoadingIMA]       = useState(false)
   const [imaSuccess,     setImaSuccess]       = useState(false)
   const [status,         setStatus]           = useState(initialMission.status)
+  const [odooTicketUrl,  setOdooTicketUrl]    = useState<string | null>(null)
+  const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(null)
+  const [loadingOdoo,    setLoadingOdoo]      = useState(false)
+  const [odooError,      setOdooError]        = useState<string | null>(null)
 
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -436,7 +440,45 @@ export default function MissionDetailClient({
     })
     setStatus('dispatching')
     setLoadingConfirm(false)
+    // Créer le dossier dans Odoo FSM (en arrière-plan)
+    createOdooFsmDossier()
     router.push('/dispatch')
+  }
+
+  // Créer Helpdesk ticket + FSM Task dans Odoo
+  const createOdooFsmDossier = async () => {
+    setLoadingOdoo(true)
+    setOdooError(null)
+    try {
+      const res = await fetch('/api/fsm/create-mission', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          mission_id:          initialMission.id,
+          supabase_id:         initialMission.id,
+          dossier_number:      form.mission_type || initialMission.dossier_number || initialMission.external_id,
+          source:              initialMission.source?.toUpperCase() || 'PRIVÉ',
+          client_name:         form.client_name || 'Client inconnu',
+          client_phone:        form.client_phone || '',
+          vehicle_plate:       form.vehicle_plate || '',
+          vehicle_brand:       form.vehicle_brand || '',
+          vehicle_model:       form.vehicle_model || '',
+          incident_address:    form.incident_address || '',
+          incident_city:       form.incident_city || '',
+          destination_address: form.destination_address || '',
+          destination_name:    form.destination_name || '',
+          description:         form.incident_description || '',
+          chauffeur_id:        selectedDriver || '',
+        })
+      })
+      const data = await res.json()
+      if (data.ticketUrl) setOdooTicketUrl(data.ticketUrl)
+      if (data.taskUrl)   setOdooTaskUrl(data.taskUrl)
+    } catch (e: any) {
+      setOdooError(e.message)
+    } finally {
+      setLoadingOdoo(false)
+    }
   }
 
   // Refuser la mission
@@ -944,6 +986,32 @@ export default function MissionDetailClient({
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Bouton dossier Odoo FSM */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-3">Dossier Odoo</h3>
+                {odooTicketUrl ? (
+                  <a href={odooTicketUrl} target="_blank" rel="noopener noreferrer"
+                    className="block w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium text-center transition">
+                    🔗 Ouvrir le dossier Odoo ↗
+                  </a>
+                ) : loadingOdoo ? (
+                  <div className="text-zinc-500 text-sm text-center py-2">⏳ Création dossier Odoo...</div>
+                ) : odooError ? (
+                  <div className="space-y-2">
+                    <p className="text-red-400 text-xs">{odooError}</p>
+                    <button onClick={createOdooFsmDossier}
+                      className="w-full py-2 bg-purple-600/20 border border-purple-600/30 text-purple-400 rounded-xl text-xs">
+                      🔄 Réessayer
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={createOdooFsmDossier}
+                    className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium transition">
+                    📋 Créer dossier Odoo
+                  </button>
+                )}
               </div>
 
               {/* Bouton enrichissement IMA */}
