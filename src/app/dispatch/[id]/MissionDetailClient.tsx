@@ -456,7 +456,7 @@ export default function MissionDetailClient({
         body:    JSON.stringify({
           mission_id:          initialMission.id,
           supabase_id:         initialMission.id,
-          dossier_number:      form.mission_type || initialMission.dossier_number || initialMission.external_id,
+          dossier_number:      initialMission.dossier_number || initialMission.external_id || '',
           source:              initialMission.source?.toUpperCase() || 'PRIVÉ',
           client_name:         form.client_name || 'Client inconnu',
           client_phone:        form.client_phone || '',

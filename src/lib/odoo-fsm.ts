@@ -101,7 +101,7 @@ export async function createHelpdeskTicket(params: {
 
   // Trouver l'équipe Helpdesk (première équipe disponible)
   const ticketData: any = {
-    name:       [params.vehiclePlate, params.dossierNumber, params.city].filter(Boolean).join(' — ') || `${params.source} — ${params.clientName}`,
+    name:       [params.vehiclePlate, params.dossierNumber, params.city].filter(Boolean).join(' - ') || `${params.source} — ${params.clientName}`,
     team_id:    params.teamId || 12,
     description: params.description || '',
     [HELPDESK_FIELDS.supabase_id]:    params.supabaseId,
@@ -153,7 +153,7 @@ export async function createFsmTask(params: {
     vehiclePlate || params.vehicleInfo,
     params.dossierNumber,
     params.incidentAddress?.split(',').pop()?.trim() || '',
-  ].filter(Boolean).join(' — ')
+  ].filter(Boolean).join(' - ')
 
   const description = [
     params.description || '',
