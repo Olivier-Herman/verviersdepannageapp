@@ -132,6 +132,7 @@ export async function createFsmTask(params: {
   depotDepart?:        string
   clientName:          string
   partnerId?:          number
+  vehicleId?:          number
   vehicleInfo?:        string
   incidentAddress?:    string
   destinationAddress?: string
@@ -177,8 +178,11 @@ export async function createFsmTask(params: {
     [FSM_FIELDS.chauffeur_id]:         params.chauffeurSupabaseId,
   }
 
-  if (params.depotDepart) taskData[FSM_FIELDS.depot_depart] = params.depotDepart
-  if (params.partnerId)   taskData.partner_id = params.partnerId
+  if (params.depotDepart)       taskData[FSM_FIELDS.depot_depart]              = params.depotDepart
+  if (params.partnerId)         taskData.partner_id                              = params.partnerId
+  if (params.vehicleId)         taskData['x_studio_vehicule']                   = params.vehicleId
+  if (params.incidentAddress)   taskData['x_studio_adresse_dintervention']      = params.incidentAddress
+  if (params.destinationAddress) taskData['x_studio_adresse_de_destination']   = params.destinationAddress
 
   const taskId = await rpcFsm<number>('project.task', 'create', [taskData])
   const taskUrl = `${FSM_URL}/web#id=${taskId}&model=project.task&view_type=form`
@@ -258,4 +262,74 @@ export async function findOrCreateFsmPartner(data: {
     company_type:  'person',
   }])
   return id
+}
+
+
+// ============================================================
+// FLEET — Chercher ou créer un véhicule dans la base FSM
+// ============================================================
+export async function findOrCreateFsmVehicle(data: {
+  licensePlate: string
+  brandName?:   string
+  modelName?:   string
+  vin?:         string
+  fuel?:        string
+}): Promise<number | null> {
+  if (!data.licensePlate) return null
+  const plate = data.licensePlate.toUpperCase().replace(/[-.\s]/g, '')
+
+  // Chercher par plaque
+  const existing = await rpcFsm<any[]>('fleet.vehicle', 'search_read',
+    [[['license_plate', 'ilike', plate]]],
+    { fields: ['id', 'license_plate'], limit: 10 }
+  )
+  const match = existing.find(v =>
+    v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === plate
+  )
+  if (match) {
+    console.log(`[FSM Fleet] Véhicule trouvé: ${plate} (ID: ${match.id})`)
+    return match.id
+  }
+
+  // Créer le véhicule
+  try {
+    let modelId: number | null = null
+
+    if (data.brandName && data.modelName) {
+      // Chercher ou créer la marque
+      let brandId: number | null = null
+      const brands = await rpcFsm<any[]>('fleet.vehicle.model.brand', 'search_read',
+        [[['name', 'ilike', data.brandName]]], { fields: ['id'], limit: 1 })
+      if (brands.length > 0) {
+        brandId = brands[0].id
+      } else {
+        brandId = await rpcFsm<number>('fleet.vehicle.model.brand', 'create', [{ name: data.brandName }])
+      }
+
+      // Chercher ou créer le modèle
+      const models = await rpcFsm<any[]>('fleet.vehicle.model', 'search_read',
+        [[['name', 'ilike', data.modelName], ['brand_id', '=', brandId]]],
+        { fields: ['id'], limit: 1 })
+      if (models.length > 0) {
+        modelId = models[0].id
+      } else {
+        modelId = await rpcFsm<number>('fleet.vehicle.model', 'create', [{
+          name: data.modelName, brand_id: brandId
+        }])
+      }
+    }
+
+    const vehicleData: any = {
+      license_plate: data.licensePlate.toUpperCase(),
+      ...(modelId ? { model_id: modelId } : {}),
+      ...(data.vin   ? { vin_sn: data.vin } : {}),
+    }
+
+    const vehicleId = await rpcFsm<number>('fleet.vehicle', 'create', [vehicleData])
+    console.log(`[FSM Fleet] Véhicule créé: ${plate} (ID: ${vehicleId})`)
+    return vehicleId
+  } catch (e) {
+    console.error('[FSM Fleet] Erreur création véhicule:', e)
+    return null
+  }
 }

@@ -3,7 +3,7 @@
 
 import { NextResponse }       from 'next/server'
 import { createClient }       from '@supabase/supabase-js'
-import { createHelpdeskTicket, createFsmTask, findOrCreateFsmPartner } from '@/lib/odoo-fsm'
+import { createHelpdeskTicket, createFsmTask, findOrCreateFsmPartner, findOrCreateFsmVehicle } from '@/lib/odoo-fsm'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,6 +74,17 @@ export async function POST(req: Request) {
       city:          incident_city || '',
     })
 
+    // Chercher ou créer le véhicule dans Parc Auto
+    let vehicleId: number | undefined
+    if (vehicle_plate) {
+      const vId = await findOrCreateFsmVehicle({
+        licensePlate: vehicle_plate,
+        brandName:    vehicle_brand || '',
+        modelName:    vehicle_model || '',
+      })
+      if (vId) vehicleId = vId
+    }
+
     // Créer la FSM Task liée au ticket
     const incidentFull = [incident_address, incident_city].filter(Boolean).join(', ')
     const { taskId, taskUrl } = await createFsmTask({
@@ -85,6 +96,7 @@ export async function POST(req: Request) {
       dossierNumber:       dossier_number || '',
       chauffeurName,
       chauffeurSupabaseId: chauffeur_id || '',
+      vehicleId,
       clientName:          client_name || 'Client inconnu',
       partnerId,
       vehicleInfo:         [vehicle_plate, vehicle_brand, vehicle_model].filter(Boolean).join(' '),
