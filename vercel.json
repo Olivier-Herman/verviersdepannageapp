@@ -2,7 +2,6 @@
   "crons": [
     { "path": "/api/cron/daily-report",   "schedule": "0 8 * * *"   },
     { "path": "/api/cron/check-vehicule", "schedule": "30 13 * * *" },
-    { "path": "/api/cron/renew-webhook",  "schedule": "0 6 * * *"   },
-    { "path": "/api/cron/poll-missions",  "schedule": "0 * * * *"   }
+    { "path": "/api/cron/renew-webhook",  "schedule": "0 6 * * *"   }
   ]
 }
