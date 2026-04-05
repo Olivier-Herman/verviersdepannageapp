@@ -69,6 +69,9 @@ export async function POST(req: Request) {
       clientName:    client_name || 'Client inconnu',
       partnerId,
       description:   description || '',
+      teamId:        12,
+      vehiclePlate:  vehicle_plate || '',
+      city:          incident_city || '',
     })
 
     // Créer la FSM Task liée au ticket

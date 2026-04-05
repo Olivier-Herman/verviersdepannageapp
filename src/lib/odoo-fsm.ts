@@ -95,11 +95,13 @@ export async function createHelpdeskTicket(params: {
   partnerId?:    number
   description?:  string
   teamId?:       number
+  vehiclePlate?: string
+  city?:         string
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
   // Trouver l'équipe Helpdesk (première équipe disponible)
   const ticketData: any = {
-    name:       `${params.source} — ${params.clientName} — ${params.dossierNumber}`,
+    name:       [params.vehiclePlate, params.dossierNumber, params.city].filter(Boolean).join(' — ') || `${params.source} — ${params.clientName}`,
     team_id:    params.teamId || 12,
     description: params.description || '',
     [HELPDESK_FIELDS.supabase_id]:    params.supabaseId,
@@ -146,10 +148,11 @@ export async function createFsmTask(params: {
   if (!projects.length) throw new Error('[FSM] Aucun projet Field Service trouvé')
   const projectId = projects[0].id
 
+  const vehiclePlate = params.vehicleInfo?.split(' ')[0] || ''
   const taskName = [
-    params.interventionType,
-    params.clientName,
-    params.vehicleInfo,
+    vehiclePlate || params.vehicleInfo,
+    params.dossierNumber,
+    params.incidentAddress?.split(',').pop()?.trim() || '',
   ].filter(Boolean).join(' — ')
 
   const description = [
