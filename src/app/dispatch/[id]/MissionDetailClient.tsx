@@ -987,12 +987,15 @@ export default function MissionDetailClient({
                   </h3>
                   <DriverTimeline mission={{
                     status,
-                    assigned_at:  M.assigned_at,
-                    accepted_at:  M.accepted_at,
-                    on_way_at:    M.on_way_at,
-                    on_site_at:   M.on_site_at,
-                    completed_at: M.completed_at,
-                    assigned_user: M.assigned_user || initialMission.assigned_user,
+                    assigned_at:     M.assigned_at,
+                    accepted_at:     M.accepted_at,
+                    on_way_at:       M.on_way_at,
+                    on_site_at:      M.on_site_at,
+                    completed_at:    M.completed_at,
+                    parked_at:       (M as any).parked_at,
+                    delivering_at:   (M as any).delivering_at,
+                    extra_addresses: (M as any).extra_addresses,
+                    assigned_user:   M.assigned_user || initialMission.assigned_user,
                   }} />
                 </div>
               )}

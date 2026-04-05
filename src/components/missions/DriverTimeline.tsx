@@ -7,6 +7,15 @@ interface AssignedUser {
   phone?: string
 }
 
+interface Stop {
+  id: string
+  label: string
+  address: string
+  arrived_at?: string | null
+  on_way_at?: string | null
+  sort_order: number
+}
+
 interface Mission {
   status: string
   assigned_at?: string | null
@@ -16,6 +25,7 @@ interface Mission {
   completed_at?: string | null
   parked_at?: string | null
   delivering_at?: string | null
+  extra_addresses?: Stop[] | null
   assigned_user?: AssignedUser | null
 }
 
@@ -103,6 +113,23 @@ export function DriverTimeline({ mission }: { mission: Mission }) {
             </li>
           )
         })}
+        {/* Stops intermédiaires */}
+        {mission.extra_addresses && [...mission.extra_addresses]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((stop, i) => (
+            <li key={stop.id} className={`ml-4 ${stop.arrived_at ? '' : 'opacity-30'}`}>
+              <span className={`absolute -left-3 flex items-center justify-center w-6 h-6 rounded-full text-xs ring-2 ring-[#0F0F0F] ${
+                stop.arrived_at ? 'bg-blue-500/20 text-blue-400' : 'bg-[#2a2a2a] text-zinc-500'
+              }`}>🏴</span>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className={`text-sm ${stop.arrived_at ? 'font-semibold text-white' : 'text-zinc-500'}`}>
+                  Stop {i + 1} — {stop.address.split(',')[0]}
+                </span>
+                {stop.on_way_at && !stop.arrived_at && <span className="text-xs text-amber-400">En route</span>}
+                {stop.arrived_at && <span className="text-xs text-zinc-500">{fmt(stop.arrived_at)}</span>}
+              </div>
+            </li>
+          ))}
       </ol>
     </div>
   )
