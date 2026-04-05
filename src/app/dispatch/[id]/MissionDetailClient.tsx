@@ -47,6 +47,10 @@ interface Mission {
   client_signature_name: string | null
   closing_notes: string | null
   payment_method: string | null
+  odoo_helpdesk_id: number | null
+  odoo_task_id: number | null
+  odoo_ticket_url: string | null
+  odoo_task_url: string | null
   amount_collected: number | null
   incident_at: string | null
   received_at: string
@@ -354,8 +358,8 @@ export default function MissionDetailClient({
   const [loadingIMA,     setLoadingIMA]       = useState(false)
   const [imaSuccess,     setImaSuccess]       = useState(false)
   const [status,         setStatus]           = useState(initialMission.status)
-  const [odooTicketUrl,  setOdooTicketUrl]    = useState<string | null>(null)
-  const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(null)
+  const [odooTicketUrl,  setOdooTicketUrl]    = useState<string | null>(initialMission.odoo_ticket_url || null)
+  const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(initialMission.odoo_task_url || null)
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
   const [odooError,      setOdooError]        = useState<string | null>(null)
 
@@ -440,9 +444,9 @@ export default function MissionDetailClient({
     })
     setStatus('dispatching')
     setLoadingConfirm(false)
-    // Créer le dossier dans Odoo FSM (en arrière-plan)
-    createOdooFsmDossier()
-    router.push('/dispatch')
+    // Créer le dossier dans Odoo FSM (en arrière-plan, sans bloquer)
+    createOdooFsmDossier().catch(console.error)
+    window.location.href = '/dispatch'
   }
 
   // Créer Helpdesk ticket + FSM Task dans Odoo
