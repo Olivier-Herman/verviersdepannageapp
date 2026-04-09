@@ -564,13 +564,52 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       console.log('[Processor] Parsed enrichi avec données IMA')
     }
 
+    // ── Déduplication sur dossier_number ────────────────────────────────────
+    // Calculer le "groupe dossier" selon la source
+    let dossierGroup: string | null = null
+    if (parsed.dossier_number) {
+      const dn = parsed.dossier_number.trim()
+      if (['ethias', 'vivium', 'p&v', 'ima'].includes(source)) {
+        // Ethias/P&V/IMA : dossier = référence sans les 2 dernières lettres
+        dossierGroup = dn.length > 2 ? dn.slice(0, -2) : dn
+      } else {
+        // Touring et autres : dossier_number est déjà le groupe
+        dossierGroup = dn
+      }
+    }
+
+    // Chercher une mission existante avec le même groupe dossier
+    let existingMissionId: string | null = null
+    if (dossierGroup) {
+      let existingQuery = supabase
+        .from('incoming_missions')
+        .select('id, external_id, status')
+        .not('id', 'eq', placeholderId || '')
+        .not('status', 'in', '("ignored","cancelled","completed")')
+
+      if (['ethias', 'vivium', 'p&v', 'ima'].includes(source)) {
+        existingQuery = existingQuery.ilike('dossier_number', `${dossierGroup}%`)
+      } else {
+        existingQuery = existingQuery.eq('dossier_number', dossierGroup)
+      }
+
+      const { data: existing } = await existingQuery.maybeSingle()
+      if (existing) {
+        existingMissionId = existing.id
+        console.log(`[Processor] Dossier existant trouvé: ${existing.external_id} (${existing.id}) → mise à jour`)
+      }
+    }
+
+    // Si dossier existant → mettre à jour + supprimer le placeholder
+    const targetId = existingMissionId || placeholderId!
+
     // Déclenchement flow Allianz si email de mission Allianz (pas OTP)
     if (source === 'mondial' && content.rawContent.includes('allianzpartners-providerplatform.com')) {
       console.log('[Processor] Mission Allianz détectée — démarrage flow OTP')
       await triggerAllianzFlow(content.rawContent, placeholderId)
     }
 
-    // Mettre à jour le placeholder
+    // Mettre à jour la mission (existante ou nouveau placeholder)
     await supabase.from('incoming_missions').update({
       external_id:          parsed.external_id,
       dossier_number:       parsed.dossier_number,
@@ -601,12 +640,18 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       raw_content:          content.rawContent.slice(0, 10000),
       parsed_data:          parsed,
       parse_confidence:     parsed.confidence,
-    }).eq('id', placeholderId!)
+    }).eq('id', targetId)
+
+    // Supprimer le placeholder si on a mis à jour une mission existante
+    if (existingMissionId && placeholderId && existingMissionId !== placeholderId) {
+      await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      console.log(`[Processor] Placeholder supprimé: ${placeholderId}`)
+    }
 
     await markAsRead(token, messageId)
 
     await supabase.from('mission_logs').insert({
-      mission_id: placeholderId!,
+      mission_id: targetId,
       action:     'received',
       notes:      `Reçu de ${source.toUpperCase()} — ${subject}`,
       metadata:   { source_email_id: messageId, confidence: parsed.confidence, from: fromEmail }
@@ -619,16 +664,17 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const vehicleLabel = [parsed.vehicle_brand, parsed.vehicle_model, parsed.vehicle_plate]
       .filter(Boolean).join(' ')
 
-    await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+    // Notification push seulement si c'est une nouvelle mission
+    if (!existingMissionId) await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
       title: `${typeLabel} — ${source.toUpperCase()}`,
       body:  vehicleLabel || parsed.client_name || 'Nouvelle mission reçue',
       url:   '/dispatch',
-      tag:   `mission-${placeholderId}`,
+      tag:   `mission-${targetId}`,
       icon:  '/icons/apple-touch-icon.png'
     })
 
-    console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence})`)
-    return { status: 'inserted', missionId: placeholderId!, externalId: parsed.external_id, source }
+    console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence}) ${existingMissionId ? '→ mise à jour dossier existant' : '→ nouveau'}`)
+    return { status: existingMissionId ? 'duplicate' : 'inserted', missionId: targetId, externalId: parsed.external_id, source }
 
   } catch (err: any) {
     console.error('[Processor] Erreur inattendue:', err.message)

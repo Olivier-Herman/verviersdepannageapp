@@ -606,8 +606,8 @@ export default function DispatchClient({
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-white font-mono text-xs">{m.external_id}</p>
-                          {m.dossier_number && <p className="text-zinc-500 text-xs">{m.dossier_number}</p>}
+                          <p className="text-white font-mono text-xs">{m.dossier_number || m.external_id}</p>
+                          <p className="text-zinc-500 text-xs">{m.external_id}</p>
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-white">{m.client_name || '—'}</p>
