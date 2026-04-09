@@ -596,7 +596,7 @@ export default function EncaissementClient({ motifs, paymentModes, prefill }: {
             type="text"
             id="amount-field"
             value={amount}
-            onChange={e => { setAmount(e.target.value.replace(/[^0-9.]/g, '')); setSumupData(null); setSumupStatus(null) }}
+            onChange={e => { setAmount(e.target.value.replace(',', '.').replace(/[^0-9.]/g, '')); setSumupData(null); setSumupStatus(null) }}
             placeholder="0.00"
             autoFocus
             autoComplete="off"
