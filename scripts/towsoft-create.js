@@ -182,6 +182,26 @@ async function updateQueue(status, missionNumber, error) {
     await updateQueue('done', missionNumber, null);
     console.log('✓ Queue mise à jour');
 
+    // Callback vers notre app pour mettre à jour le ticket Odoo
+    if (missionNumber && process.env.SUPABASE_URL) {
+      try {
+        const appUrl = 'https://app.verviersdepannage.com'
+        const cbRes = await fetch(`${appUrl}/api/towsoft/callback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            queue_id: process.env.QUEUE_ID,
+            mission_number: missionNumber,
+            secret: process.env.TOWSOFT_CALLBACK_SECRET,
+          }),
+        })
+        const cbData = await cbRes.json()
+        console.log('✓ Callback Odoo:', cbData.ok ? 'OK' : cbData.error)
+      } catch (e) {
+        console.error('❌ Callback Odoo échec:', e.message)
+      }
+    }
+
   } catch (err) {
     console.error('❌ Erreur:', err.message);
     await updateQueue('error', null, err.message);

@@ -6,7 +6,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendEmail, sendPoliceEmail } from '@/lib/emails'
 
-export const maxDuration = 60
+export const maxDuration = 30
 
 const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }> = {
   accident:  { label: '🚨 Police Accident',    parc: 'K3', motif: 'ACCIDENT' },
@@ -139,23 +139,33 @@ export async function POST(req: Request) {
     // 3. Helpdesk Odoo
     import('@/lib/odoo-fsm').then(({ createHelpdeskTicket }) =>
       createHelpdeskTicket({
-        supabaseId:    queueEntry.id,
-        dossierNumber: `${config.label} — ${date}`,
-        source:        'POLICE',
-        clientName:    [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
-        vehiclePlate:  plate || '',
-        city:          location || '',
-        description:   [
+        supabaseId:        queueEntry.id,
+        dossierNumber:     queueEntry.id,
+        source:            config.label.replace(/[^A-Z]/g, '') || type.toUpperCase(),
+        clientName:        [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
+        vehiclePlate:      plate || '',
+        vehicleBrand:      brand || '',
+        vehicleModel:      model || '',
+        vehicleVin:        vin || '',
+        city:              location || '',
+        dateIntervention:  date || '',
+        missionType:       type,
+        description:       [
           `Chauffeur: ${dbUser.name}`,
           `Lieu: ${location}`,
           officerName ? `Policier: ${officerName}` : '',
-          plate ? `Plaque: ${plate}` : '',
-          brand ? `Véhicule: ${brand} ${model || ''}` : '',
           remarks ? `Remarques: ${remarks}` : '',
         ].filter(Boolean).join(' | '),
         teamId: 12,
       })
-    ).then(() => console.log('[TowSoft] Helpdesk Odoo créé'))
+    ).then(async (result: any) => {
+      console.log('[TowSoft] Helpdesk Odoo créé')
+      // Sauvegarder l'ID du ticket dans la queue
+      if (result?.ticketId) {
+        const sb2 = createAdminClient()
+        await sb2.from('towsoft_queue').update({ odoo_ticket_id: result.ticketId }).eq('id', queueEntry.id)
+      }
+    })
      .catch(e => console.error('[TowSoft] Helpdesk Odoo échec:', e)),
 
   ])

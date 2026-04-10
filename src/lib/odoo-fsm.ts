@@ -25,9 +25,18 @@ export const FSM_FIELDS = {
 }
 
 export const HELPDESK_FIELDS = {
-  supabase_id:    'x_studio_id_supabase',
-  dossier_number: 'x_studio_n_dossier',
-  source:         'x_studio_source',
+  supabase_id:      'x_studio_id_supabase',
+  dossier_number:   'x_studio_n_dossier',
+  source:           'x_studio_source',
+  mission_towsoft:  'x_studio_mission_towsoft',
+  date_entree:      'x_studio_date_dentree',
+  vehicule:         'x_studio_vehicule',
+}
+
+// États véhicule Parc Auto
+export const FLEET_STATES = {
+  transit: 15,  // K3 / J / K2
+  mal_garee: 17, // L (MG)
 }
 
 // ============================================================
@@ -88,33 +97,70 @@ export async function getFsmStageId(stageName: string): Promise<number> {
 // HELPDESK — Créer un ticket (dossier chapeau)
 // ============================================================
 export async function createHelpdeskTicket(params: {
-  supabaseId:    string
-  dossierNumber: string
-  source:        string
-  clientName:    string
-  partnerId?:    number
-  description?:  string
-  teamId?:       number
-  vehiclePlate?: string
-  city?:         string
+  supabaseId:      string
+  dossierNumber:   string
+  source:          string
+  clientName:      string
+  partnerId?:      number
+  description?:    string
+  teamId?:         number
+  vehiclePlate?:   string
+  vehicleBrand?:   string
+  vehicleModel?:   string
+  vehicleVin?:     string
+  city?:           string
+  dateIntervention?: string
+  missionType?:    string  // 'accident' | 'saisie' | 'snc' | 'mal_garee'
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
-  // Trouver l'équipe Helpdesk (première équipe disponible)
-  const ticketData: any = {
-    name:       [params.vehiclePlate, params.dossierNumber, params.city].filter(Boolean).join(' - ') || `${params.source} — ${params.clientName}`,
-    team_id:    params.teamId || 12,
-    description: params.description || '',
-    [HELPDESK_FIELDS.supabase_id]:    params.supabaseId,
-    [HELPDESK_FIELDS.dossier_number]: params.dossierNumber,
-    [HELPDESK_FIELDS.source]:         params.source,
+  // Chercher/créer le véhicule et mettre à jour son statut
+  let vehicleId: number | null = null
+  if (params.vehiclePlate) {
+    vehicleId = await findOrCreateFsmVehicle({
+      licensePlate: params.vehiclePlate,
+      brandName:    params.vehicleBrand,
+      modelName:    params.vehicleModel,
+      vin:          params.vehicleVin,
+    })
+    // Mettre à jour le statut du véhicule
+    if (vehicleId && params.missionType) {
+      const stateId = params.missionType === 'mal_garee' ? FLEET_STATES.mal_garee : FLEET_STATES.transit
+      await updateVehicleState(vehicleId, stateId)
+    }
   }
-  if (params.partnerId) ticketData.partner_id = params.partnerId
+
+  const ticketName = [params.source, params.vehiclePlate, params.city || params.dossierNumber]
+    .filter(Boolean).join(' — ')
+
+  const ticketData: any = {
+    name:        ticketName || `${params.source} — ${params.clientName}`,
+    team_id:     params.teamId || 12,
+    description: params.description || '',
+  }
+
+  // Champs Studio production
+  if (params.supabaseId)      ticketData[HELPDESK_FIELDS.supabase_id]    = params.supabaseId
+  if (params.dossierNumber)   ticketData[HELPDESK_FIELDS.dossier_number] = params.dossierNumber
+  if (params.source)          ticketData[HELPDESK_FIELDS.source]         = params.source
+  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree]   = params.dateIntervention
+  if (vehicleId)              ticketData[HELPDESK_FIELDS.vehicule]        = vehicleId
+  if (params.partnerId)       ticketData.partner_id                       = params.partnerId
 
   const ticketId = await rpcFsm<number>('helpdesk.ticket', 'create', [ticketData])
   const ticketUrl = `${FSM_URL}/web#id=${ticketId}&model=helpdesk.ticket&view_type=form`
 
   console.log(`[FSM] Helpdesk ticket créé: #${ticketId}`)
   return { ticketId, ticketUrl }
+}
+
+// Mettre à jour le numéro TowSoft sur un ticket Helpdesk
+export async function updateHelpdeskTowsoftNumber(ticketId: number, missionNumber: string): Promise<void> {
+  // Extraire uniquement les chiffres (ex: SVR-55547 → 55547)
+  const number = missionNumber.replace(/[^0-9]/g, '')
+  await rpcFsm('helpdesk.ticket', 'write', [[ticketId], {
+    [HELPDESK_FIELDS.mission_towsoft]: number,
+  }])
+  console.log(`[FSM] Ticket #${ticketId} → TowSoft #${number}`)
 }
 
 // ============================================================

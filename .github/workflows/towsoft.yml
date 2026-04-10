@@ -28,6 +28,7 @@ jobs:
           TOWSOFT_PASS:      ${{ secrets.TOWSOFT_PASS }}
           SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:      ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          QUEUE_ID:          ${{ github.event.client_payload.queue_id }}
-          PAYLOAD_DATA:      ${{ github.event.client_payload.data }}
+          QUEUE_ID:                   ${{ github.event.client_payload.queue_id }}
+          PAYLOAD_DATA:               ${{ github.event.client_payload.data }}
+          TOWSOFT_CALLBACK_SECRET:    ${{ secrets.TOWSOFT_CALLBACK_SECRET }}
         run: node scripts/towsoft-create.js
