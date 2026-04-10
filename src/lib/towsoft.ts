@@ -60,216 +60,217 @@ export async function createTowsoftMission(data: TowsoftMissionData): Promise<{
 }> {
   const config = TYPE_CONFIG[data.type]
 
-  const script = `
-    const puppeteer = require('puppeteer-core');
+  // Build script as JSON payload for Browserless
+  const scriptData = {
+    type: '${data.type}',
+    url: TOWSOFT_URL,
+    user: TOWSOFT_USER,
+    pass: TOWSOFT_PASS,
+    date: data.date,
+    time: data.time,
+    plate: data.plate || '',
+    vin: data.vin || '',
+    brand: data.brand || '',
+    model: data.model || '',
+    location: data.location,
+    officerName: data.officerName || '',
+    ownerFirstName: data.ownerFirstName || '',
+    ownerLastName: data.ownerLastName || '',
+    ownerPhone: data.ownerPhone || '',
+    remarks: data.remarks || '',
+    driverName: data.driverTowsoftName,
+    codeService: config.codeService,
+    parc: config.parc,
+    motif: config.motif,
+  }
 
-    module.exports = async ({ page }) => {
-    try {
-      await page.setDefaultTimeout(30000);
+  const script = `
+    export default async function ({ page }) {
+      const d = ${JSON.stringify(scriptData).replace(/\`/g, "'")}
+      await page.setDefaultTimeout(30000)
+
       // Login
-      await page.goto('${TOWSOFT_URL}/auth/login', { waitUntil: 'networkidle0' });
-      await page.type('#username', '${TOWSOFT_USER}');
-      await page.type('#password', '${TOWSOFT_PASS}');
-      await page.click('[type="submit"]');
-      await page.waitForNavigation({ waitUntil: 'networkidle0' });
+      await page.goto(d.url + '/auth/login', { waitUntil: 'networkidle0' })
+      await page.type('#username', d.user)
+      await page.type('#password', d.pass)
+      await page.click('[type="submit"]')
+      await page.waitForNavigation({ waitUntil: 'networkidle0' })
 
       // Nouvelle mission
-      await page.goto('${TOWSOFT_URL}/missions/create', { waitUntil: 'networkidle0' });
+      await page.goto(d.url + '/missions/create', { waitUntil: 'networkidle0' })
 
-      // Date et heure
+      // Date
       await page.evaluate((date, time) => {
-        const dateInput = document.querySelector('#rdv_date') || document.querySelector('[name="rdv_date"]');
-        const timeInput = document.querySelector('#rdv_time') || document.querySelector('[name="rdv_time"]');
-        if (dateInput) { dateInput.value = date; dateInput.dispatchEvent(new Event('change', {bubbles:true})); }
-        if (timeInput) { timeInput.value = time; timeInput.dispatchEvent(new Event('change', {bubbles:true})); }
-      }, '${data.date}', '${data.time}');
+        const di = document.querySelector('[name="rdv_date"]') || document.querySelector('#rdv_date')
+        const ti = document.querySelector('[name="rdv_time"]') || document.querySelector('#rdv_time')
+        if (di) { di.value = date; di.dispatchEvent(new Event('change', {bubbles:true})) }
+        if (ti) { ti.value = time; ti.dispatchEvent(new Event('change', {bubbles:true})) }
+      }, d.date, d.time)
 
-      // Facturé à — Clients divers
+      // Facturé à = Clients divers
       await page.evaluate(() => {
-        const inputs = [...document.querySelectorAll('input')];
-        const factureInput = inputs.find(i => i.placeholder && i.placeholder.toLowerCase().includes('factur'));
-        if (factureInput) { factureInput.value = 'Clients divers'; factureInput.dispatchEvent(new Event('input', {bubbles:true})); }
-      });
-      await page.waitForTimeout(500);
+        const inputs = [...document.querySelectorAll('input')]
+        const fi = inputs.find(i => i.placeholder && i.placeholder.toLowerCase().includes('factur'))
+        if (fi) { fi.value = 'Clients divers'; fi.dispatchEvent(new Event('input', {bubbles:true})) }
+      })
+      await page.waitForTimeout(800)
       await page.evaluate(() => {
-        const suggestions = [...document.querySelectorAll('[class*="suggestion"], [class*="dropdown"] li, [class*="autocomplete"] li')];
-        const match = suggestions.find(s => s.textContent.toLowerCase().includes('clients divers'));
-        if (match) match.click();
-      });
+        const s = [...document.querySelectorAll('[class*="suggestion"], .autocomplete-result, .dropdown-item, li')]
+        const m = s.find(x => x.textContent && x.textContent.toLowerCase().includes('clients divers'))
+        if (m) m.click()
+      })
 
-      // N° dossier
+      // N° Dossier = Encodage automatique
       await page.evaluate(() => {
-        const inputs = [...document.querySelectorAll('input')];
-        const dossierInput = inputs.find(i => i.placeholder && i.placeholder.toLowerCase().includes('dossier'));
-        if (dossierInput) dossierInput.value = 'Encodage automatique';
-      });
+        const inputs = [...document.querySelectorAll('input')]
+        const di = inputs.find(i => i.placeholder && i.placeholder.toLowerCase().includes('dossier'))
+        if (di) di.value = 'Encodage automatique'
+      })
 
       // Bénéficiaire
-      ${data.ownerFirstName ? `
-      await page.evaluate((fn, ln, phone) => {
-        const fnInput = document.querySelector('#beneficiaire_prenom') || document.querySelector('[name*="prenom"]');
-        const lnInput = document.querySelector('#beneficiaire_nom') || document.querySelector('[name*="nom_ben"]');
-        const phInput = document.querySelector('#telephone_beneficiaire') || document.querySelector('[name*="tel_ben"]');
-        if (fnInput) fnInput.value = fn;
-        if (lnInput) lnInput.value = ln;
-        if (phInput) phInput.value = phone;
-      }, '${data.ownerFirstName}', '${data.ownerLastName || ''}', '${data.ownerPhone || ''}');
-      ` : ''}
+      if (d.ownerFirstName) {
+        await page.evaluate((fn, ln, phone) => {
+          const inputs = [...document.querySelectorAll('input')]
+          const pn = inputs.find(i => i.name && i.name.toLowerCase().includes('prenom'))
+          const nm = inputs.find(i => i.name && i.name.toLowerCase().includes('nom') && !i.name.toLowerCase().includes('prenom'))
+          const ph = inputs.find(i => i.name && i.name.toLowerCase().includes('tel'))
+          if (pn) pn.value = fn
+          if (nm) nm.value = ln
+          if (ph) ph.value = phone
+        }, d.ownerFirstName, d.ownerLastName, d.ownerPhone)
+      }
 
-      // Nom du responsable (policier)
-      ${data.officerName ? `
-      await page.evaluate((name) => {
-        const inputs = [...document.querySelectorAll('input')];
-        const respInput = inputs.find(i => i.name && i.name.toLowerCase().includes('responsable'));
-        if (respInput) respInput.value = name;
-      }, '${data.officerName}');
-      ` : ''}
+      // Responsable (policier)
+      if (d.officerName) {
+        await page.evaluate((name) => {
+          const inputs = [...document.querySelectorAll('input')]
+          const ri = inputs.find(i => i.name && i.name.toLowerCase().includes('responsable'))
+          if (ri) ri.value = name
+        }, d.officerName)
+      }
 
       // Code de service
       await page.evaluate((code) => {
-        const selects = [...document.querySelectorAll('select')];
-        const codeSelect = selects.find(s => {
-          const opts = [...s.options];
-          return opts.some(o => o.text.toLowerCase().includes(code.toLowerCase().substring(0, 10)));
-        });
-        if (codeSelect) {
-          const opt = [...codeSelect.options].find(o => o.text.toLowerCase().includes(code.toLowerCase().substring(0, 10)));
-          if (opt) { codeSelect.value = opt.value; codeSelect.dispatchEvent(new Event('change', {bubbles:true})); }
+        const sels = [...document.querySelectorAll('select')]
+        for (const sel of sels) {
+          const opt = [...sel.options].find(o => o.text.toLowerCase().includes(code.toLowerCase().substring(0,12)))
+          if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change',{bubbles:true})); break }
         }
-      }, '${config.codeService}');
+      }, d.codeService)
 
-      // Nature de l'intervention = Remorquage
+      // Nature = Remorquage
       await page.evaluate(() => {
-        const selects = [...document.querySelectorAll('select')];
-        const natSelect = selects.find(s => {
-          const label = s.closest('.form-group')?.querySelector('label');
-          return label && label.textContent.toLowerCase().includes('nature');
-        });
-        if (natSelect) {
-          const opt = [...natSelect.options].find(o => o.text.toLowerCase().includes('remorquage'));
-          if (opt) { natSelect.value = opt.value; natSelect.dispatchEvent(new Event('change', {bubbles:true})); }
+        const sels = [...document.querySelectorAll('select')]
+        for (const sel of sels) {
+          const opt = [...sel.options].find(o => o.text.toLowerCase().includes('remorquage'))
+          if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change',{bubbles:true})); break }
         }
-      });
+      })
 
       // Lieu d'intervention
       await page.evaluate((lieu) => {
-        const locationInput = document.querySelector('#lieu_intervention') || document.querySelector('[placeholder*="INDIQUEZ UN LIEU"]');
-        if (locationInput) {
-          locationInput.value = lieu;
-          locationInput.dispatchEvent(new Event('input', {bubbles:true}));
-        }
-      }, '${data.location}');
-      await page.waitForTimeout(1000);
-      // Fermer autocomplete si ouvert
-      await page.keyboard.press('Escape');
+        const li = document.querySelector('[placeholder*="INDIQUEZ"]') || document.querySelector('#lieu_intervention')
+        if (li) { li.value = lieu; li.dispatchEvent(new Event('input',{bubbles:true})) }
+      }, d.location)
+      await page.waitForTimeout(800)
+      await page.keyboard.press('Escape')
 
-      // Véhicule — immatriculation
-      ${data.plate ? `
-      await page.evaluate((plate) => {
-        const inputs = [...document.querySelectorAll('input')];
-        const plateInput = inputs.find(i => i.name && i.name.toLowerCase().includes('immatriculation'));
-        if (plateInput) plateInput.value = plate;
-      }, '${data.plate}');
-      ` : ''}
+      // Plaque
+      if (d.plate) {
+        await page.evaluate((p) => {
+          const inputs = [...document.querySelectorAll('input')]
+          const pi = inputs.find(i => i.name && i.name.toLowerCase().includes('immatriculation'))
+          if (pi) pi.value = p
+        }, d.plate)
+      }
 
       // VIN
-      ${data.vin ? `
-      await page.evaluate((vin) => {
-        const inputs = [...document.querySelectorAll('input')];
-        const vinInput = inputs.find(i => i.name && (i.name.toLowerCase().includes('serie') || i.name.toLowerCase().includes('vin')));
-        if (vinInput) vinInput.value = vin;
-      }, '${data.vin}');
-      ` : ''}
+      if (d.vin) {
+        await page.evaluate((v) => {
+          const inputs = [...document.querySelectorAll('input')]
+          const vi = inputs.find(i => i.name && (i.name.toLowerCase().includes('serie') || i.name.toLowerCase().includes('vin')))
+          if (vi) vi.value = v
+        }, d.vin)
+      }
 
-      // Remarques générales
-      ${data.remarks ? `
-      await page.evaluate((remarks) => {
-        const textareas = [...document.querySelectorAll('textarea')];
-        const remarksTA = textareas.find(t => t.name && t.name.toLowerCase().includes('remarque') && t.name.toLowerCase().includes('general'));
-        if (remarksTA) remarksTA.value = remarks;
-      }, '${data.remarks.replace(/'/g, "\\'")}');
-      ` : ''}
+      // Remarques
+      if (d.remarks) {
+        await page.evaluate((r) => {
+          const tas = [...document.querySelectorAll('textarea')]
+          const ri = tas.find(t => t.name && t.name.toLowerCase().includes('remarque') && t.name.toLowerCase().includes('general'))
+          if (ri) ri.value = r
+        }, d.remarks)
+      }
 
-      // Répartition — Conducteur
-      await page.evaluate((driverName) => {
-        const selects = [...document.querySelectorAll('select')];
-        const conducteurSelect = selects.find(s => {
-          const label = s.closest('.form-group')?.querySelector('label');
-          return label && label.textContent.toLowerCase().includes('conducteur');
-        });
-        if (conducteurSelect) {
-          const opt = [...conducteurSelect.options].find(o => o.text.toLowerCase().includes(driverName.toLowerCase()));
-          if (opt) { conducteurSelect.value = opt.value; conducteurSelect.dispatchEvent(new Event('change', {bubbles:true})); }
+      // Conducteur
+      await page.evaluate((name) => {
+        const sels = [...document.querySelectorAll('select')]
+        for (const sel of sels) {
+          const lbl = sel.closest('[class*="form"]')?.querySelector('label')
+          if (lbl && lbl.textContent.toLowerCase().includes('conducteur')) {
+            const opt = [...sel.options].find(o => o.text.toLowerCase().includes(name.toLowerCase()))
+            if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change',{bubbles:true})) }
+            break
+          }
         }
-      }, '${data.driverTowsoftName}');
+      }, d.driverName)
 
       // Dépanneuse = Balisage
       await page.evaluate(() => {
-        const selects = [...document.querySelectorAll('select')];
-        const depSelect = selects.find(s => {
-          const label = s.closest('.form-group')?.querySelector('label');
-          return label && label.textContent.toLowerCase().includes('dépanneuse');
-        });
-        if (depSelect) {
-          const opt = [...depSelect.options].find(o => o.text.toLowerCase().includes('balisage'));
-          if (opt) { depSelect.value = opt.value; depSelect.dispatchEvent(new Event('change', {bubbles:true})); }
+        const sels = [...document.querySelectorAll('select')]
+        for (const sel of sels) {
+          const lbl = sel.closest('[class*="form"]')?.querySelector('label')
+          if (lbl && lbl.textContent.toLowerCase().includes('panneuse')) {
+            const opt = [...sel.options].find(o => o.text.toLowerCase().includes('balisage'))
+            if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change',{bubbles:true})) }
+            break
+          }
         }
-      });
+      })
 
       // Confirmer la mission
-      await page.click('[onclick*="confirmer"], button[class*="confirm"], a[class*="confirm"]');
-      await page.waitForTimeout(2000);
+      const confirmBtns = await page.$$('button, a')
+      for (const btn of confirmBtns) {
+        const txt = await btn.evaluate(el => el.textContent)
+        if (txt && txt.toLowerCase().includes('confirmer')) {
+          await btn.click()
+          break
+        }
+      }
+      await page.waitForTimeout(2500)
 
-      // Récupérer le numéro de mission
+      // Numéro de mission
       const missionNumber = await page.evaluate(() => {
-        const heading = document.querySelector('h1, h2, h3');
-        const match = heading?.textContent?.match(/\\d{4,}/);
-        return match ? match[0] : null;
-      });
+        const h = document.querySelector('h1, h2, .mission-number')
+        const m = h?.textContent?.match(/\d{4,}/)
+        return m ? m[0] : null
+      })
 
-      // Modal parc — sélectionner le parc et le motif
-      const modalVisible = await page.evaluate(() => {
-        return !!document.querySelector('.modal.show, .modal[style*="display: block"]');
-      });
-
-      if (modalVisible) {
-        // Sélectionner le parc
-        await page.evaluate((parcName) => {
-          const selects = [...document.querySelectorAll('.modal select, #modal select')];
-          for (const sel of selects) {
-            const opt = [...sel.options].find(o => o.text.includes(parcName.substring(0, 15)));
-            if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', {bubbles:true})); break; }
+      // Modal parc
+      const modalOpen = await page.evaluate(() => !!document.querySelector('.modal.show, [role="dialog"]'))
+      if (modalOpen) {
+        await page.evaluate((parc, motif) => {
+          const sels = [...document.querySelectorAll('.modal select, [role="dialog"] select')]
+          for (const sel of sels) {
+            const parcOpt = [...sel.options].find(o => o.text.includes(parc.substring(0,10)))
+            if (parcOpt) { sel.value = parcOpt.value; sel.dispatchEvent(new Event('change',{bubbles:true})); continue }
+            const motifOpt = [...sel.options].find(o => o.text.toUpperCase().includes(motif))
+            if (motifOpt) { sel.value = motifOpt.value; sel.dispatchEvent(new Event('change',{bubbles:true})) }
           }
-        }, '${config.parc}');
-
-        await page.waitForTimeout(500);
-
-        // Sélectionner le motif
-        await page.evaluate((motif) => {
-          const selects = [...document.querySelectorAll('.modal select, #modal select')];
-          for (const sel of selects) {
-            const opt = [...sel.options].find(o => o.text.toUpperCase().includes(motif.toUpperCase()));
-            if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', {bubbles:true})); break; }
+        }, d.parc, d.motif)
+        await page.waitForTimeout(500)
+        const modalBtns = await page.$$('.modal button, [role="dialog"] button')
+        for (const btn of modalBtns) {
+          const txt = await btn.evaluate(el => el.textContent)
+          if (txt && (txt.toLowerCase().includes('parc') || txt.toLowerCase().includes('confirm'))) {
+            await btn.click()
+            break
           }
-        }, '${config.motif}');
-
-        await page.waitForTimeout(500);
-
-        // Cliquer Mise en parc
-        await page.evaluate(() => {
-          const btns = [...document.querySelectorAll('.modal button, .modal a')];
-          const btn = btns.find(b => b.textContent.toLowerCase().includes('mise en parc') || b.textContent.toLowerCase().includes('confirmer'));
-          if (btn) btn.click();
-        });
-
-        await page.waitForTimeout(2000);
+        }
+        await page.waitForTimeout(1500)
       }
 
-      return { ok: true, missionNumber };
-
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
+      return { ok: true, missionNumber }
     }
   `;
 
