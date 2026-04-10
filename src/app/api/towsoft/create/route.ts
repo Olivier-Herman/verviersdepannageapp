@@ -6,7 +6,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }> = {
   accident:  { label: '🚨 Police Accident',    parc: 'K3', motif: 'ACCIDENT' },
