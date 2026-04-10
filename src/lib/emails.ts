@@ -61,7 +61,7 @@ function emailLayout(content: string, title: string) {
       <tr><td style="background:${BRAND_RED};padding:28px 36px;">
         <table width="100%"><tr>
           <td>
-            <p style="margin:0;color:white;font-size:20px;font-weight:700;letter-spacing:-0.3px;">VERVIERS DÉPANNAGE</p>
+            <p style="margin:0;color:white;font-size:16px;font-weight:700;letter-spacing:-0.3px;">VERVIERS DÉPANNAGE</p>
             <p style="margin:4px 0 0;color:rgba(255,255,255,0.7);font-size:12px;letter-spacing:0.5px;">24H/7J — DÉPANNAGE & ASSISTANCE</p>
           </td>
           <td align="right" style="vertical-align:top">
