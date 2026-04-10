@@ -149,7 +149,7 @@ export async function createHelpdeskTicket(params: {
   // x_studio_id_supabase non disponible en production — désactivé
   if (params.supabaseId)       ticketData[HELPDESK_FIELDS.supabase_id]    = params.supabaseId
   if (params.dossierNumber)    ticketData[HELPDESK_FIELDS.dossier_number] = params.dossierNumber
-  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree]    = params.dateIntervention
+  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree] = params.dateIntervention.split('-').reverse().join('-')
   if (vehicleId)               ticketData[HELPDESK_FIELDS.vehicule]       = vehicleId
   if (params.partnerId)        ticketData.partner_id                      = params.partnerId
   if (params.missionType && HELPDESK_TAGS[params.missionType]) {
