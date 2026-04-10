@@ -140,7 +140,7 @@ ${ownerPhone ? `<p><strong>Tél propriétaire :</strong> ${ownerPhone}</p>` : ''
 ${remarks ? `<p><strong>Remarques :</strong> ${remarks}</p>` : ''}
 <hr/>
 <p><strong>Création TowSoft :</strong> En cours via GitHub Actions...</p>
-${photoUrls?.length ? `<p><strong>Photos :</strong><br/>${photoUrls.map((url, i) => `<a href="${url}" target="_blank">Photo ${i+1}</a>`).join(' &nbsp;|&nbsp; ')}</p>` : ''}
+${photoUrls?.length ? `<p><strong>Photos :</strong><br/>${photoUrls.map((url: string, i: number) => `<a href="${url}" target="_blank">Photo ${i+1}</a>`).join(' &nbsp;|&nbsp; ')}</p>` : ''}
     `.trim()
 
     await sendEmail(
