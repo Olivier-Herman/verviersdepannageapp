@@ -73,7 +73,7 @@ ${ownerFirstName || ownerLastName ? `<p><strong>Propriétaire :</strong> ${owner
 ${ownerPhone ? `<p><strong>Tél propriétaire :</strong> ${ownerPhone}</p>` : ''}
 ${remarks ? `<p><strong>Remarques :</strong> ${remarks}</p>` : ''}
 <hr/>
-<p><strong>Création TowSoft :</strong> ${result.ok ? `✅ Mission #${result.missionNumber || '?'}` : `❌ Échec — ${result.error}`}</p>
+<p><strong>Création TowSoft :</strong> En cours de création...</p>
 ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s) disponible(s)</p>` : ''}
   `.trim()
 
