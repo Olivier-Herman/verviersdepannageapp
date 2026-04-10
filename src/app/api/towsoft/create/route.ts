@@ -79,9 +79,11 @@ export async function POST(req: Request) {
     photoUrls?.length ? `Photos: ${photoUrls.join(' | ')}` : '',
   ].filter(Boolean).join(' --- ')
 
-  // Déclencher la GitHub Action
-  try {
-    const ghRes = await fetch(
+  // Lancer GitHub Action + Email + Helpdesk en parallèle
+  await Promise.allSettled([
+
+    // 1. GitHub Action TowSoft
+    fetch(
       `https://api.github.com/repos/Olivier-Herman/verviersdepannageapp/dispatches`,
       {
         method: 'POST',
@@ -110,24 +112,14 @@ export async function POST(req: Request) {
           },
         }),
       }
-    )
+    ).then(r => {
+      if (!r.ok) r.text().then(e => console.error('[TowSoft] GitHub dispatch error:', e))
+      else console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
+    }),
 
-    if (!ghRes.ok) {
-      const err = await ghRes.text()
-      console.error('[TowSoft] GitHub dispatch error:', err)
-    } else {
-      console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
-    }
-  } catch (e) {
-    console.error('[TowSoft] GitHub dispatch exception:', e)
-  }
-
-  // Envoyer l'email récapitulatif
-  try {
-    await sendPoliceEmail({
-      type:           type,
-      typeLabel:      config.label,
-      chauffeurName:  dbUser.name,
+    // 2. Email récapitulatif
+    sendPoliceEmail({
+      type, typeLabel: config.label, chauffeurName: dbUser.name,
       date, time, location,
       policeZone:     policeZone || '',
       officerName:    officerName || '',
@@ -141,35 +133,32 @@ export async function POST(req: Request) {
       remarks:        remarksWithPhotos || '',
       photoUrls:      photoUrls || [],
       parc:           config.parc,
-    })
-  } catch (e) {
-    console.error('[TowSoft] Email échec:', e)
-  }
+    }).then(() => console.log('[TowSoft] Email envoyé'))
+     .catch(e => console.error('[TowSoft] Email échec:', e)),
 
-  // Créer fiche Helpdesk Odoo
-  try {
-    const { createHelpdeskTicket } = await import('@/lib/odoo-fsm')
-    await createHelpdeskTicket({
-      supabaseId:    queueEntry.id,
-      dossierNumber: `${config.label} — ${date}`,
-      source:        'POLICE',
-      clientName:    [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
-      vehiclePlate:  plate || '',
-      city:          location || '',
-      description:   [
-        `Chauffeur: ${dbUser.name}`,
-        `Lieu: ${location}`,
-        officerName ? `Policier: ${officerName}` : '',
-        plate ? `Plaque: ${plate}` : '',
-        brand ? `Véhicule: ${brand} ${model || ''}` : '',
-        remarks ? `Remarques: ${remarks}` : '',
-      ].filter(Boolean).join(' | '),
-      teamId: 12,
-    })
-    console.log('[TowSoft] Helpdesk Odoo créé')
-  } catch (e) {
-    console.error('[TowSoft] Helpdesk Odoo échec:', e)
-  }
+    // 3. Helpdesk Odoo
+    import('@/lib/odoo-fsm').then(({ createHelpdeskTicket }) =>
+      createHelpdeskTicket({
+        supabaseId:    queueEntry.id,
+        dossierNumber: `${config.label} — ${date}`,
+        source:        'POLICE',
+        clientName:    [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
+        vehiclePlate:  plate || '',
+        city:          location || '',
+        description:   [
+          `Chauffeur: ${dbUser.name}`,
+          `Lieu: ${location}`,
+          officerName ? `Policier: ${officerName}` : '',
+          plate ? `Plaque: ${plate}` : '',
+          brand ? `Véhicule: ${brand} ${model || ''}` : '',
+          remarks ? `Remarques: ${remarks}` : '',
+        ].filter(Boolean).join(' | '),
+        teamId: 12,
+      })
+    ).then(() => console.log('[TowSoft] Helpdesk Odoo créé'))
+     .catch(e => console.error('[TowSoft] Helpdesk Odoo échec:', e)),
+
+  ])
 
   return NextResponse.json({
     ok: true,
