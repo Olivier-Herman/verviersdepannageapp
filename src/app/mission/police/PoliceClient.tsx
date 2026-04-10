@@ -1,21 +1,21 @@
 'use client'
 // src/app/mission/police/PoliceClient.tsx
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
 type MissionType = 'accident' | 'saisie' | 'mal_garee' | 'snc'
 
-const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string }> = {
-  accident:  { label: 'Police Accident',     icon: '🚨', color: 'bg-red-600' },
-  saisie:    { label: 'Saisie',              icon: '⚖️', color: 'bg-purple-600' },
-  mal_garee: { label: 'Mal Garée',           icon: '🚫', color: 'bg-amber-600' },
-  snc:       { label: 'Siabis Non Couvert',  icon: '🛣️', color: 'bg-blue-600' },
+const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string }> = {
+  accident:  { label: 'Police Accident',    icon: '🚨', color: 'bg-red-600',    colorLight: 'bg-red-50 border-red-200' },
+  saisie:    { label: 'Saisie',             icon: '⚖️', color: 'bg-purple-600', colorLight: 'bg-purple-50 border-purple-200' },
+  mal_garee: { label: 'Mal Garée',          icon: '🚫', color: 'bg-amber-600',  colorLight: 'bg-amber-50 border-amber-200' },
+  snc:       { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
 }
 
 const POLICE_ZONES = ['Police Zone Vesdre', 'Police Zone Fagnes']
 
-function now() {
+function nowFormatted() {
   const d = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   return {
@@ -24,12 +24,48 @@ function now() {
   }
 }
 
+// ── Input light ────────────────────────────────────────────────────────────
+function LInput({ label, value, onChange, placeholder, type = 'text', required }: {
+  label: string; value: string; onChange: (v: string) => void
+  placeholder?: string; type?: string; required?: boolean
+}) {
+  return (
+    <div>
+      <label className="block text-gray-600 text-xs font-medium mb-1">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+    </div>
+  )
+}
+
+function LSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]
+}) {
+  return (
+    <div>
+      <label className="block text-gray-600 text-xs font-medium mb-1">{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500">
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+      <p className="text-gray-400 text-xs uppercase tracking-widest font-semibold">{title}</p>
+      {children}
+    </div>
+  )
+}
+
 export default function PoliceClient() {
   const router = useRouter()
   const [selectedType, setSelectedType] = useState<MissionType | null>(null)
-  const { date: initDate, time: initTime } = now()
+  const { date: initDate, time: initTime } = nowFormatted()
 
-  // Form state
   const [date,           setDate]           = useState(initDate)
   const [time,           setTime]           = useState(initTime)
   const [plate,          setPlate]          = useState('')
@@ -47,28 +83,98 @@ export default function PoliceClient() {
   const [previews,       setPreviews]       = useState<string[]>([])
   const [loading,        setLoading]        = useState(false)
   const [err,            setErr]            = useState('')
-  const [success,        setSuccess]        = useState('')
-  const photoRef = useRef<HTMLInputElement>(null)
+  const [done,           setDone]           = useState(false)
+
+  // Brands/Models from Odoo
+  const [brands,          setBrands]          = useState<{id:number;name:string}[]>([])
+  const [models,          setModels]          = useState<{id:number;name:string}[]>([])
+  const [selectedBrandId, setSelectedBrandId] = useState<number|null>(null)
+  const [loadingBrands,   setLoadingBrands]   = useState(false)
+  const [showBrands,      setShowBrands]      = useState(false)
+  const [showModels,      setShowModels]      = useState(false)
+  const [brandSearch,     setBrandSearch]     = useState('')
+  const [modelSearch,     setModelSearch]     = useState('')
+
+  const locationRef = useRef<HTMLInputElement>(null)
+  const photoRef    = useRef<HTMLInputElement>(null)
+  const acRef       = useRef<any>(null)
+
+  // Load brands on mount
+  useEffect(() => {
+    setLoadingBrands(true)
+    fetch('/api/vehicles?type=brands')
+      .then(r => r.json())
+      .then(d => setBrands(d || []))
+      .finally(() => setLoadingBrands(false))
+  }, [])
+
+  // Load models when brand changes
+  useEffect(() => {
+    if (!selectedBrandId) { setModels([]); return }
+    fetch(`/api/vehicles?type=models&brandId=${selectedBrandId}`)
+      .then(r => r.json())
+      .then(d => setModels(d || []))
+  }, [selectedBrandId])
+
+  // Google Maps autocomplete
+  useEffect(() => {
+    if (!locationRef.current || acRef.current) return
+    const init = () => {
+      if (!window.google?.maps?.places || !locationRef.current) return
+      acRef.current = new window.google.maps.places.Autocomplete(locationRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
+      })
+      acRef.current.addListener('place_changed', () => {
+        const place = acRef.current.getPlace()
+        if (place?.formatted_address) setLocation(place.formatted_address)
+      })
+    }
+    if (window.google?.maps?.places) { init() }
+    else {
+      const existing = document.getElementById('gmaps-script')
+      if (!existing) {
+        const script = document.createElement('script')
+        script.id = 'gmaps-script'
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`
+        script.async = true
+        script.onload = init
+        document.head.appendChild(script)
+      } else {
+        existing.addEventListener('load', init)
+      }
+    }
+  }, [selectedType])
+
+  const getGPS = () => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const res = await fetch(`/api/geocode?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
+      const data = await res.json()
+      if (data.formatted) setLocation(data.formatted)
+    })
+  }
 
   const addPhotos = (files: FileList | null) => {
     if (!files) return
-    const newFiles = Array.from(files)
-    setPhotos(p => [...p, ...newFiles])
-    newFiles.forEach(f => {
+    Array.from(files).forEach(f => {
+      setPhotos(p => [...p, f])
       const r = new FileReader()
       r.onload = e => setPreviews(p => [...p, e.target?.result as string])
       r.readAsDataURL(f)
     })
   }
 
+  const filteredBrands = brands.filter(b => b.name.toLowerCase().includes(brandSearch.toLowerCase()))
+  const filteredModels = models.filter(m => m.name.toLowerCase().includes(modelSearch.toLowerCase()))
+
   const handleSubmit = async () => {
     if (!selectedType) return
     if (!location.trim()) { setErr('Le lieu d\'intervention est requis'); return }
-    if (!plate && !vin) { setErr('Plaque ou VIN requis'); return }
+    if (!plate && !vin)   { setErr('Plaque ou VIN requis'); return }
 
-    setLoading(true); setErr(''); setSuccess('')
+    setLoading(true); setErr('')
 
-    // Photos — pas d'upload bloquant, on passe les noms dans les remarques
     const photoUrls: string[] = []
 
     const res = await fetch('/api/towsoft/create', {
@@ -86,25 +192,41 @@ export default function PoliceClient() {
     setLoading(false)
 
     if (data.ok) {
-      setSuccess(`✅ Mission TowSoft créée${data.missionNumber ? ` #${data.missionNumber}` : ''} — Email envoyé à la fourrière`)
-      setTimeout(() => router.push('/mission'), 3000)
+      setDone(true)
+      setTimeout(() => router.push('/dashboard'), 2000)
     } else {
-      setErr(data.error || 'Erreur création TowSoft')
+      setErr(data.error || 'Erreur création')
     }
   }
 
   const cfg = selectedType ? TYPE_CONFIG[selectedType] : null
 
-  // ── Écran sélection du type ────────────────────────────────────────────────
+  // ── Écran succès ──────────────────────────────────────────────────────────
+  if (done) return (
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+      <div className="bg-white rounded-3xl shadow-lg p-10 text-center max-w-sm w-full">
+        <div className="text-6xl mb-4">✅</div>
+        <h1 className="text-gray-900 text-2xl font-bold mb-2">Mission créée</h1>
+        <p className="text-gray-500 text-sm">Email envoyé — TowSoft en cours de mise à jour</p>
+        <div className="mt-6 w-full bg-gray-200 rounded-full h-1">
+          <div className="bg-green-500 h-1 rounded-full animate-[width_2s_ease-in-out]" style={{width:'100%',transition:'width 2s'}} />
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Écran sélection type ──────────────────────────────────────────────────
   if (!selectedType) return (
-    <div className="min-h-screen bg-[#0F0F0F] px-4 pt-12 pb-8">
-      <button onClick={() => router.push('/mission')} className="mb-6 text-zinc-400 text-sm">← Retour</button>
-      <h1 className="text-white text-2xl font-bold mb-2">Créer une mission</h1>
-      <p className="text-zinc-500 text-sm mb-8">Sélectionne le type d&apos;intervention</p>
+    <div className="min-h-screen bg-gray-50 px-4 pt-12 pb-8">
+      <button onClick={() => router.push('/dashboard')} className="mb-6 text-gray-500 text-sm flex items-center gap-1">
+        ← Retour
+      </button>
+      <h1 className="text-gray-900 text-2xl font-bold mb-1">Créer une mission</h1>
+      <p className="text-gray-500 text-sm mb-8">Sélectionne le type d&apos;intervention</p>
       <div className="space-y-3">
         {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).map(([type, conf]) => (
           <button key={type} onClick={() => setSelectedType(type)}
-            className={`w-full flex items-center gap-4 p-5 ${conf.color} rounded-2xl text-left active:scale-[0.98] transition`}>
+            className={`w-full flex items-center gap-4 p-5 ${conf.color} rounded-2xl text-left active:scale-[0.98] transition shadow-md`}>
             <span className="text-3xl">{conf.icon}</span>
             <span className="text-white font-bold text-lg">{conf.label}</span>
             <span className="ml-auto text-white/70 text-xl">›</span>
@@ -116,147 +238,176 @@ export default function PoliceClient() {
 
   // ── Formulaire ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0F0F0F] pb-32">
+    <div className="min-h-screen bg-gray-50 pb-32">
       {/* Header */}
-      <div className={`${cfg!.color} px-4 pt-12 pb-5`}>
-        <button onClick={() => setSelectedType(null)} className="mb-3 text-white/70 text-sm">← Changer de type</button>
+      <div className={`${cfg!.color} px-4 pt-12 pb-5 shadow-md`}>
+        <button onClick={() => setSelectedType(null)} className="mb-3 text-white/80 text-sm">← Changer de type</button>
         <h1 className="text-white text-xl font-bold">{cfg!.icon} {cfg!.label}</h1>
       </div>
 
       <div className="px-4 py-5 space-y-4">
 
         {/* Date/Heure */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 space-y-3">
-          <p className="text-zinc-400 text-xs uppercase tracking-widest font-medium">Date & Heure</p>
+        <Section title="Date & Heure">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Date</p>
-              <input value={date} onChange={e => setDate(e.target.value)} placeholder="DD-MM-YYYY"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-            </div>
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Heure</p>
-              <input value={time} onChange={e => setTime(e.target.value)} placeholder="HH:MM"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-            </div>
+            <LInput label="Date" value={date} onChange={setDate} placeholder="DD-MM-YYYY" />
+            <LInput label="Heure" value={time} onChange={setTime} placeholder="HH:MM" />
           </div>
-        </div>
+        </Section>
 
         {/* Véhicule */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 space-y-3">
-          <p className="text-zinc-400 text-xs uppercase tracking-widest font-medium">Véhicule</p>
+        <Section title="Véhicule">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Plaque</p>
-              <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())} placeholder="1ABC234"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-red-500" />
-            </div>
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">VIN (optionnel)</p>
-              <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-red-500" />
-            </div>
+            <LInput label="Plaque" value={plate} onChange={v => setPlate(v.toUpperCase())} placeholder="1ABC234" required />
+            <LInput label="VIN" value={vin} onChange={v => setVin(v.toUpperCase())} placeholder="Optionnel" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Marque</p>
-              <input value={brand} onChange={e => setBrand(e.target.value)}
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-            </div>
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Modèle</p>
-              <input value={model} onChange={e => setModel(e.target.value)}
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-            </div>
+
+          {/* Marque */}
+          <div>
+            <label className="block text-gray-600 text-xs font-medium mb-1">Marque</label>
+            <button onClick={() => { setShowBrands(true); setBrandSearch('') }}
+              className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-left text-sm text-gray-900 flex items-center justify-between">
+              <span className={brand ? 'text-gray-900' : 'text-gray-400'}>{brand || 'Sélectionner une marque'}</span>
+              <span className="text-gray-400">▼</span>
+            </button>
           </div>
-        </div>
+
+          {/* Modèle */}
+          {brand && (
+            <div>
+              <label className="block text-gray-600 text-xs font-medium mb-1">Modèle</label>
+              <button onClick={() => { setShowModels(true); setModelSearch('') }}
+                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-left text-sm text-gray-900 flex items-center justify-between">
+                <span className={model ? 'text-gray-900' : 'text-gray-400'}>{model || 'Sélectionner un modèle'}</span>
+                <span className="text-gray-400">▼</span>
+              </button>
+            </div>
+          )}
+        </Section>
 
         {/* Intervention */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 space-y-3">
-          <p className="text-zinc-400 text-xs uppercase tracking-widest font-medium">Intervention</p>
+        <Section title="Intervention">
           <div>
-            <p className="text-zinc-500 text-xs mb-1">Lieu d&apos;intervention *</p>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Rue, autoroute..."
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
+            <label className="block text-gray-600 text-xs font-medium mb-1">Lieu d&apos;intervention <span className="text-red-500">*</span></label>
+            <div className="flex gap-2">
+              <input ref={locationRef} value={location} onChange={e => setLocation(e.target.value)}
+                placeholder="Rue, autoroute..."
+                className="flex-1 bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500" />
+              <button onClick={getGPS}
+                className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-600 text-sm font-medium">
+                🎯
+              </button>
+            </div>
           </div>
-          <div>
-            <p className="text-zinc-500 text-xs mb-1">Zone de police</p>
-            <select value={policeZone} onChange={e => setPoliceZone(e.target.value)}
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500">
-              {POLICE_ZONES.map(z => <option key={z} value={z}>{z}</option>)}
-            </select>
-          </div>
-          <div>
-            <p className="text-zinc-500 text-xs mb-1">Nom du policier</p>
-            <input value={officerName} onChange={e => setOfficerName(e.target.value)}
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-          </div>
-        </div>
+          <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={POLICE_ZONES} />
+          <LInput label="Nom du policier" value={officerName} onChange={setOfficerName} />
+        </Section>
 
         {/* Propriétaire */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 space-y-3">
-          <p className="text-zinc-400 text-xs uppercase tracking-widest font-medium">Propriétaire <span className="text-zinc-600 normal-case tracking-normal font-normal">(optionnel)</span></p>
+        <Section title="Propriétaire (optionnel)">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Prénom</p>
-              <input value={ownerFirstName} onChange={e => setOwnerFirstName(e.target.value)}
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-            </div>
-            <div>
-              <p className="text-zinc-500 text-xs mb-1">Nom</p>
-              <input value={ownerLastName} onChange={e => setOwnerLastName(e.target.value)}
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-            </div>
+            <LInput label="Prénom" value={ownerFirstName} onChange={setOwnerFirstName} />
+            <LInput label="Nom" value={ownerLastName} onChange={setOwnerLastName} />
           </div>
-          <div>
-            <p className="text-zinc-500 text-xs mb-1">Téléphone</p>
-            <input value={ownerPhone} onChange={e => setOwnerPhone(e.target.value)} type="tel"
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-red-500" />
-          </div>
-        </div>
+          <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" />
+        </Section>
 
         {/* Remarques */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-          <p className="text-zinc-400 text-xs uppercase tracking-widest font-medium mb-3">Remarques</p>
+        <Section title="Remarques">
           <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
             placeholder="Observations..."
-            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm outline-none resize-none focus:border-red-500" />
-        </div>
+            className="w-full bg-white border border-gray-300 rounded-xl px-3 py-3 text-gray-900 text-sm outline-none resize-none focus:border-blue-500" />
+        </Section>
 
         {/* Photos */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-          <p className="text-zinc-400 text-xs uppercase tracking-widest font-medium mb-3">Photos ({photos.length})</p>
+        <Section title={`Photos (${photos.length})`}>
           {previews.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="grid grid-cols-3 gap-2 mb-2">
               {previews.map((src, i) => (
                 <div key={i} className="aspect-square rounded-xl overflow-hidden relative">
                   <img src={src} className="w-full h-full object-cover" />
                   <button onClick={() => {
                     setPhotos(p => p.filter((_, j) => j !== i))
                     setPreviews(p => p.filter((_, j) => j !== i))
-                  }} className="absolute top-1 right-1 w-6 h-6 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
+                  }} className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full text-white text-xs flex items-center justify-center">✕</button>
                 </div>
               ))}
             </div>
           )}
-          <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={e => addPhotos(e.target.files)} />
+          <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addPhotos(e.target.files)} />
           <button onClick={() => photoRef.current?.click()}
-            className="w-full py-3 border-2 border-dashed border-[#2a2a2a] rounded-xl text-zinc-400 text-sm hover:border-zinc-500">
+            className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 text-sm hover:border-gray-400">
             📷 Ajouter des photos
           </button>
-        </div>
+        </Section>
 
-        {err && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">{err}</div>}
-        {success && <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 text-green-400 text-sm">{success}</div>}
+        {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">{err}</div>}
       </div>
 
       {/* Bottom button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 border-t border-gray-200 px-4 py-4 shadow-lg">
         <button onClick={handleSubmit} disabled={loading}
-          className={`w-full py-4 ${cfg!.color} disabled:opacity-50 text-white font-bold rounded-2xl text-base`}>
+          className={`w-full py-4 ${cfg!.color} disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-md`}>
           {loading ? '⏳ Création en cours...' : `${cfg!.icon} Créer la mission`}
         </button>
       </div>
+
+      {/* Modal Marques */}
+      {showBrands && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">Sélectionner une marque</h2>
+              <button onClick={() => setShowBrands(false)} className="text-gray-400 text-xl">✕</button>
+            </div>
+            <div className="px-4 py-2">
+              <input value={brandSearch} onChange={e => setBrandSearch(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm outline-none" autoFocus />
+            </div>
+            <div className="overflow-y-auto flex-1 px-4 pb-4">
+              {filteredBrands.map(b => (
+                <button key={b.id} onClick={() => {
+                  setBrand(b.name); setSelectedBrandId(b.id); setModel(''); setShowBrands(false)
+                }} className="w-full text-left py-3 border-b border-gray-100 text-gray-900 text-sm">
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Modèles */}
+      {showModels && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">{brand}</h2>
+              <button onClick={() => setShowModels(false)} className="text-gray-400 text-xl">✕</button>
+            </div>
+            <div className="px-4 py-2">
+              <input value={modelSearch} onChange={e => setModelSearch(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm outline-none" autoFocus />
+            </div>
+            <div className="overflow-y-auto flex-1 px-4 pb-4">
+              {filteredModels.map(m => (
+                <button key={m.id} onClick={() => {
+                  setModel(m.name); setShowModels(false)
+                }} className="w-full text-left py-3 border-b border-gray-100 text-gray-900 text-sm">
+                  {m.name}
+                </button>
+              ))}
+              <button onClick={() => {
+                setModel(''); setShowModels(false)
+              }} className="w-full text-left py-3 text-gray-400 text-sm">
+                Saisir manuellement →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
