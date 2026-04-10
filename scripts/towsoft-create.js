@@ -136,22 +136,28 @@ async function updateQueue(status, missionNumber, error) {
     // Modal parc
     const modalVisible = await page.$('#modal');
     if (modalVisible) {
-      // Parc
+      // Attendre que les selects du modal soient chargés
+      await wait(1500);
+
+      // Parc — 1er select de #formRemise
       await page.evaluate((parc) => {
-        const selects = [...document.querySelectorAll('#formRemise select')];
-        for (const sel of selects) {
-          const opt = [...sel.options].find(o => o.text.includes(parc));
-          if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); break; }
+        const selects = [...document.querySelectorAll('#formRemise select, #modal select')];
+        console.log('Nombre de selects:', selects.length);
+        const parcSelect = selects[0]; // Premier select = Informations fiche parc
+        if (parcSelect) {
+          const opt = [...parcSelect.options].find(o => o.text.includes(parc) || o.value.toUpperCase().includes(parc));
+          if (opt) { parcSelect.value = opt.value; parcSelect.dispatchEvent(new Event('change', { bubbles: true })); console.log('Parc:', opt.text); }
         }
       }, config.parc);
-      await wait(500);
+      await wait(1000);
 
-      // Motif
+      // Motif — 2ème select de #formRemise
       await page.evaluate((motif) => {
-        const selects = [...document.querySelectorAll('#formRemise select')];
-        for (const sel of selects) {
-          const opt = [...sel.options].find(o => o.text.toUpperCase().includes(motif));
-          if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); break; }
+        const selects = [...document.querySelectorAll('#formRemise select, #modal select')];
+        const motifSelect = selects[1]; // Deuxième select = Motif
+        if (motifSelect) {
+          const opt = [...motifSelect.options].find(o => o.text.toUpperCase().includes(motif));
+          if (opt) { motifSelect.value = opt.value; motifSelect.dispatchEvent(new Event('change', { bubbles: true })); console.log('Motif:', opt.text); }
         }
       }, config.motif);
       await wait(500);
