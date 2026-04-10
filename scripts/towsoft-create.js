@@ -3,6 +3,9 @@ const puppeteer = require('puppeteer');
 const TOWSOFT_URL = process.env.TOWSOFT_URL;
 const QUEUE_ID    = process.env.QUEUE_ID;
 
+// Parser le payload JSON
+const payload = JSON.parse(process.env.PAYLOAD_DATA || '{}');
+
 const TYPE_CONFIG = {
   accident:  { codeService: 'Appel Police - Accident',                           parc: 'K3', motif: 'ACCIDENT' },
   saisie:    { codeService: 'Appel Police - Saisie (Cyclo, voiture, camionette)', parc: 'J',  motif: 'SAISIE' },
@@ -29,7 +32,7 @@ async function updateQueue(status, missionNumber, error) {
 }
 
 (async () => {
-  const missionType = process.env.MISSION_TYPE;
+  const missionType = payload.mission_type;
   const config = TYPE_CONFIG[missionType];
   if (!config) {
     await updateQueue('error', null, `Type inconnu: ${missionType}`);
@@ -69,8 +72,8 @@ async function updateQueue(status, missionNumber, error) {
     await page.evaluate(() => { document.querySelector('#numero_dossier').value = 'Encodage automatique'; });
 
     // Nom responsable
-    if (process.env.OFFICER_NAME) {
-      await page.evaluate((n) => { document.querySelector('#nom_responsable').value = n; }, process.env.OFFICER_NAME);
+    if (payload.officer_name) {
+      await page.evaluate((n) => { document.querySelector('#nom_responsable').value = n; }, payload.officer_name);
     }
 
     // Code service
@@ -85,7 +88,7 @@ async function updateQueue(status, missionNumber, error) {
 
     // Lieu d'intervention
     await page.click('#origine');
-    await page.type('#origine', process.env.LOCATION);
+    await page.type('#origine', payload.location);
     await wait(2000);
     await page.keyboard.press('Escape');
 
@@ -95,20 +98,20 @@ async function updateQueue(status, missionNumber, error) {
       if (brand) document.querySelector('#marque').value = brand;
       if (model) document.querySelector('#modele').value = model;
       if (vin)   document.querySelector('#serie').value  = vin;
-    }, process.env.PLATE, process.env.BRAND, process.env.MODEL, process.env.VIN);
+    }, payload.plate, payload.brand, payload.model, payload.vin);
 
     // Propriétaire
-    if (process.env.OWNER_FIRST || process.env.OWNER_LAST) {
+    if (payload.owner_first || payload.owner_last) {
       await page.evaluate((fn, ln, ph) => {
         if (fn) document.querySelector('#prenom_beneficiaire').value   = fn;
         if (ln) document.querySelector('#nom_beneficiaire').value      = ln;
         if (ph) document.querySelector('#beneficiaireTelephone').value = ph;
-      }, process.env.OWNER_FIRST, process.env.OWNER_LAST, process.env.OWNER_PHONE);
+      }, payload.owner_first, payload.owner_last, payload.owner_phone);
     }
 
     // Remarques
-    if (process.env.REMARKS) {
-      await page.evaluate((r) => { document.querySelector('#remarques').value = r; }, process.env.REMARKS);
+    if (payload.remarks) {
+      await page.evaluate((r) => { document.querySelector('#remarques').value = r; }, payload.remarks);
     }
 
     // Dépanneuse = Balisage (value 13)
@@ -119,7 +122,7 @@ async function updateQueue(status, missionNumber, error) {
       const sel = document.querySelector('#chauffeur');
       const opt = [...sel.options].find(o => o.text.toLowerCase().includes(dn.toLowerCase()));
       if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, process.env.DRIVER_NAME);
+    }, payload.driver_name);
 
     // Soumettre
     await page.evaluate(() => {
