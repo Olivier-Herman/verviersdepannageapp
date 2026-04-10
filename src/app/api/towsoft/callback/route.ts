@@ -8,7 +8,6 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { queue_id, mission_number, secret } = body
 
-  // Vérification simple
   if (secret !== process.env.TOWSOFT_CALLBACK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -19,7 +18,6 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient()
 
-  // Récupérer l'ID du ticket Helpdesk depuis la queue
   const { data: queue } = await supabase
     .from('towsoft_queue')
     .select('odoo_ticket_id, status')
@@ -38,6 +36,15 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error('[Callback] Erreur Odoo:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+
+  // Déclencher l'impression de l'étiquette
+  try {
+    const printUrl = `https://verviers-qr.vercel.app/print/${queue.odoo_ticket_id}`
+    await fetch(printUrl, { method: 'GET' })
+    console.log(`[Callback] Impression étiquette déclenchée: ${printUrl}`)
+  } catch (e: any) {
+    console.error('[Callback] Impression échec:', e.message)
   }
 
   return NextResponse.json({ ok: true })
