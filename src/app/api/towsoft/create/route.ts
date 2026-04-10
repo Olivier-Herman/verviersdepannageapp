@@ -1,13 +1,19 @@
 // src/app/api/towsoft/create/route.ts
 
-import { NextResponse }          from 'next/server'
-import { getServerSession }      from 'next-auth'
-import { authOptions }           from '@/lib/auth'
-import { createAdminClient }     from '@/lib/supabase'
-import { createTowsoftMission }  from '@/lib/towsoft'
-import { sendEmail }             from '@/lib/emails'
+import { NextResponse }      from 'next/server'
+import { getServerSession }  from 'next-auth'
+import { authOptions }       from '@/lib/auth'
+import { createAdminClient } from '@/lib/supabase'
+import { sendEmail }         from '@/lib/emails'
 
-export const maxDuration = 60
+export const maxDuration = 30
+
+const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }> = {
+  accident:  { label: '🚨 Police Accident',    parc: 'K3', motif: 'ACCIDENT' },
+  saisie:    { label: '⚖️ Saisie',             parc: 'J',  motif: 'SAISIE' },
+  mal_garee: { label: '🚫 Mal Garée',          parc: 'L',  motif: 'MAL GARÉE' },
+  snc:       { label: '🛣️ Siabis Non Couvert', parc: 'K2', motif: 'SIABIS NON COUVERT' },
+}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -28,7 +34,6 @@ export async function POST(req: Request) {
   const supabase = createAdminClient()
   const user = session.user as any
 
-  // Récupérer le towsoft_name du chauffeur
   const { data: dbUser } = await supabase
     .from('users')
     .select('towsoft_name, name')
@@ -36,32 +41,83 @@ export async function POST(req: Request) {
     .maybeSingle()
 
   if (!dbUser?.towsoft_name) {
-    return NextResponse.json({ error: 'Votre profil TowSoft n\'est pas configuré. Contactez l\'administrateur.' }, { status: 400 })
+    return NextResponse.json({ error: 'Profil TowSoft non configuré. Contactez l\'administrateur.' }, { status: 400 })
   }
 
-  const typeLabels: Record<string, string> = {
-    accident:  '🚨 Police Accident',
-    saisie:    '⚖️ Saisie',
-    mal_garee: '🚫 Mal Garée',
-    snc:       '🛣️ Siabis Non Couvert',
-  }
+  const config = TYPE_CONFIG[type]
+  if (!config) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
 
-  // Lancer TowSoft en arrière-plan
-  const runTowsoft = async () => {
-    const result = await createTowsoftMission({
-      type, date, time, plate, vin, brand, model,
-      location, policeZone, officerName,
-      ownerFirstName, ownerLastName, ownerPhone,
-      remarks, driverTowsoftName: dbUser.towsoft_name,
+  // Sauvegarder dans la queue
+  const { data: queueEntry, error: queueError } = await supabase
+    .from('towsoft_queue')
+    .insert({
+      mission_type: type,
+      date, time, plate, vin, brand, model,
+      location,
+      police_zone:  policeZone,
+      officer_name: officerName,
+      owner_first:  ownerFirstName,
+      owner_last:   ownerLastName,
+      owner_phone:  ownerPhone,
+      remarks,
+      driver_name:  dbUser.towsoft_name,
+      parc:         config.parc,
+      motif:        config.motif,
+      status:       'pending',
     })
-    console.log('[TowSoft] Résultat:', result)
-  }
-  runTowsoft().catch(console.error)
+    .select('id')
+    .single()
 
-  // Envoyer l'email via le service emails centralisé
+  if (queueError) {
+    console.error('[TowSoft] Queue error:', queueError)
+    return NextResponse.json({ error: 'Erreur création queue' }, { status: 500 })
+  }
+
+  // Déclencher la GitHub Action
+  try {
+    const ghRes = await fetch(
+      `https://api.github.com/repos/Olivier-Herman/verviersdepannageapp/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/vnd.github.v3+json',
+        },
+        body: JSON.stringify({
+          event_type: 'create-towsoft-mission',
+          client_payload: {
+            queue_id:     queueEntry.id,
+            mission_type: type,
+            date, time, plate, vin, brand, model,
+            location,
+            officer_name: officerName || '',
+            owner_first:  ownerFirstName || '',
+            owner_last:   ownerLastName || '',
+            owner_phone:  ownerPhone || '',
+            remarks:      remarks || '',
+            driver_name:  dbUser.towsoft_name,
+            parc:         config.parc,
+            motif:        config.motif,
+          },
+        }),
+      }
+    )
+
+    if (!ghRes.ok) {
+      const err = await ghRes.text()
+      console.error('[TowSoft] GitHub dispatch error:', err)
+    } else {
+      console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
+    }
+  } catch (e) {
+    console.error('[TowSoft] GitHub dispatch exception:', e)
+  }
+
+  // Envoyer l'email récapitulatif
   try {
     const emailBody = `
-<h2>${typeLabels[type] || type}</h2>
+<h2>${config.label}</h2>
 <p><strong>Chauffeur :</strong> ${dbUser.name}</p>
 <p><strong>Date/Heure :</strong> ${date} à ${time}</p>
 <p><strong>Lieu :</strong> ${location}</p>
@@ -75,32 +131,25 @@ ${ownerFirstName || ownerLastName ? `<p><strong>Propriétaire :</strong> ${owner
 ${ownerPhone ? `<p><strong>Tél propriétaire :</strong> ${ownerPhone}</p>` : ''}
 ${remarks ? `<p><strong>Remarques :</strong> ${remarks}</p>` : ''}
 <hr/>
-<p><strong>Création TowSoft :</strong> En cours de création...</p>
+<p><strong>Création TowSoft :</strong> En cours via GitHub Actions...</p>
 ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s)</p>` : ''}
     `.trim()
 
     await sendEmail(
       'info@verviersdepannage.com',
-      `${typeLabels[type]} — ${plate || 'Véhicule'} — ${date}`,
+      `${config.label} — ${plate || 'Véhicule'} — ${date}`,
       emailBody,
     )
-    console.log('[TowSoft] Email fourrière envoyé')
   } catch (e) {
-    console.error('[TowSoft] Email fourrière échec:', e)
+    console.error('[TowSoft] Email échec:', e)
   }
 
-  // Créer fiche Helpdesk Odoo équipe ID 12
+  // Créer fiche Helpdesk Odoo
   try {
     const { createHelpdeskTicket } = await import('@/lib/odoo-fsm')
-    const typeContextMap: Record<string, string> = {
-      accident:  'POLICE',
-      saisie:    'SAISIE_POLICE',
-      mal_garee: 'MAL_GAREE',
-      snc:       'SNC',
-    }
     await createHelpdeskTicket({
-      supabaseId:    `police-${Date.now()}`,
-      dossierNumber: `${typeLabels[type]} — ${date}`,
+      supabaseId:    queueEntry.id,
+      dossierNumber: `${config.label} — ${date}`,
       source:        'POLICE',
       clientName:    [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
       vehiclePlate:  plate || '',
@@ -108,23 +157,21 @@ ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s)
       description:   [
         `Chauffeur: ${dbUser.name}`,
         `Lieu: ${location}`,
-        `Zone police: ${policeZone}`,
         officerName ? `Policier: ${officerName}` : '',
         plate ? `Plaque: ${plate}` : '',
-        vin ? `VIN: ${vin}` : '',
-        brand ? `Marque: ${brand} ${model || ''}` : '',
-        ownerPhone ? `Tél propriétaire: ${ownerPhone}` : '',
+        brand ? `Véhicule: ${brand} ${model || ''}` : '',
         remarks ? `Remarques: ${remarks}` : '',
       ].filter(Boolean).join(' | '),
       teamId: 12,
     })
-    console.log('[TowSoft] Fiche Helpdesk Odoo créée')
+    console.log('[TowSoft] Helpdesk Odoo créé')
   } catch (e) {
     console.error('[TowSoft] Helpdesk Odoo échec:', e)
   }
 
   return NextResponse.json({
     ok: true,
-    message: 'Mission en cours de création — Email envoyé',
+    queueId: queueEntry.id,
+    message: 'Mission en cours de création',
   })
 }

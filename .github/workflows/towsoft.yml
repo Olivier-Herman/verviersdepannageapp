@@ -1,0 +1,48 @@
+name: TowSoft Mission Creator
+
+on:
+  repository_dispatch:
+    types: [create-towsoft-mission]
+
+jobs:
+  create-mission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Puppeteer
+        run: npm install puppeteer
+
+      - name: Create TowSoft Mission
+        env:
+          TOWSOFT_URL:       https://verviers.towsoft.ca
+          TOWSOFT_USER:      ${{ secrets.TOWSOFT_USER }}
+          TOWSOFT_PASS:      ${{ secrets.TOWSOFT_PASS }}
+          SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:      ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          QUEUE_ID:          ${{ github.event.client_payload.queue_id }}
+          MISSION_TYPE:      ${{ github.event.client_payload.mission_type }}
+          DATE:              ${{ github.event.client_payload.date }}
+          TIME:              ${{ github.event.client_payload.time }}
+          PLATE:             ${{ github.event.client_payload.plate }}
+          VIN:               ${{ github.event.client_payload.vin }}
+          BRAND:             ${{ github.event.client_payload.brand }}
+          MODEL:             ${{ github.event.client_payload.model }}
+          LOCATION:          ${{ github.event.client_payload.location }}
+          OFFICER_NAME:      ${{ github.event.client_payload.officer_name }}
+          OWNER_FIRST:       ${{ github.event.client_payload.owner_first }}
+          OWNER_LAST:        ${{ github.event.client_payload.owner_last }}
+          OWNER_PHONE:       ${{ github.event.client_payload.owner_phone }}
+          REMARKS:           ${{ github.event.client_payload.remarks }}
+          DRIVER_NAME:       ${{ github.event.client_payload.driver_name }}
+          PARC:              ${{ github.event.client_payload.parc }}
+          MOTIF:             ${{ github.event.client_payload.motif }}
+        run: node scripts/towsoft-create.js
