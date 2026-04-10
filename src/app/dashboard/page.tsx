@@ -1,38 +1,39 @@
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-import { getServerSession } from 'next-auth'
-import { redirect } from 'next/navigation'
-import { authOptions } from '@/lib/auth'
+// src/app/dashboard/page.tsx
+import { getServerSession }  from 'next-auth'
+import { redirect }          from 'next/navigation'
+import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import DashboardClient from './DashboardClient'
+import DashboardClient       from './DashboardClient'
+
+export const dynamic  = 'force-dynamic'
+export const revalidate = 0
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
   const supabase = createAdminClient()
+  const user = session.user as any
 
-  // Charger les modules depuis Supabase en temps réel (pas depuis le JWT en cache)
-  const { data: userModulesDb } = await supabase
-    .from('user_modules')
-    .select('module_id, granted')
-    .eq('user_id', (session.user as any).id)
-    .eq('granted', true)
-
-  const liveModules = (userModulesDb || []).map(m => m.module_id)
-
-  const { data: callShortcuts } = await supabase
+  // Récupérer les raccourcis d'appel
+  const { data: shortcuts } = await supabase
     .from('call_shortcuts')
-    .select('*')
-    .eq('active', true)
+    .select('label, phone')
     .order('sort_order')
 
-  // Injecter les modules live dans la session
-  const sessionWithLiveModules = {
-    ...session,
-    user: { ...session.user, modules: liveModules }
-  }
+  // Vérifier si le chauffeur a un towsoft_name configuré
+  const { data: dbUser } = await supabase
+    .from('users')
+    .select('towsoft_name')
+    .eq('email', user.email!)
+    .maybeSingle()
 
-  return <DashboardClient session={sessionWithLiveModules} callShortcuts={callShortcuts || []} />
+  return (
+    <DashboardClient
+      session={session}
+      callShortcuts={shortcuts || []}
+      hasTowsoft={!!dbUser?.towsoft_name}
+      currentUserRole={user.role || 'driver'}
+    />
+  )
 }

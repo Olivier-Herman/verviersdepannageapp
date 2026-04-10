@@ -20,7 +20,11 @@ function Toggle({ value, onChange }: { value: boolean; onChange: () => void }) {
   )
 }
 
-export default function UsersClient({ users, modules }: { users: any[], modules: any[] }) {
+export default function UsersClient({ users, modules, currentUserRole = 'admin' }: {
+  users: any[]
+  modules: any[]
+  currentUserRole?: string
+}) {
   // ── Liste ──────────────────────────────────────────────
   const [search,      setSearch]      = useState('')
   const [selectedUser,setSelectedUser]= useState<any>(null)
@@ -47,6 +51,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [welcomeSuccess,   setWelcomeSuccess]   = useState('')
   const [showRoleModal,    setShowRoleModal]    = useState(false)
   const [roleModalRoles,   setRoleModalRoles]   = useState<string[]>([])
+  const isSuperAdmin = currentUserRole === 'superadmin'
   const [roleSaving,       setRoleSaving]       = useState(false)
   const [userTowsoftName,  setUserTowsoftName]  = useState('')
   const [roleError,        setRoleError]        = useState('')
@@ -331,14 +336,16 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           <p className="text-zinc-700 text-xs mt-1">ID partenaire Odoo pour les devis TGR</p>
         </div>
 
-        <div>
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Nom TowSoft</label>
-          <input type="text" placeholder="Ex: Mobi, FPalm, MLoslever..." value={userTowsoftName}
-            onChange={e => setUserTowsoftName(e.target.value)}
-            className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
-                       text-white text-sm outline-none focus:border-brand" />
-          <p className="text-zinc-700 text-xs mt-1">Nom exact dans la liste conducteurs TowSoft</p>
-        </div>
+        {isSuperAdmin && (
+          <div>
+            <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Nom TowSoft</label>
+            <input type="text" placeholder="Ex: Mobi, FPalm, MLoslever..." value={userTowsoftName}
+              onChange={e => setUserTowsoftName(e.target.value)}
+              className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
+                         text-white text-sm outline-none focus:border-brand" />
+            <p className="text-zinc-700 text-xs mt-1">Nom exact dans la liste conducteurs TowSoft</p>
+          </div>
+        )}
       </div>
 
       {/* ── Modules ── */}

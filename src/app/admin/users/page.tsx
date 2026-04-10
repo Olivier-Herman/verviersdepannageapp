@@ -1,10 +1,18 @@
+// src/app/admin/users/page.tsx
+import { getServerSession }  from 'next-auth'
+import { redirect }          from 'next/navigation'
+import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import UsersClient from './UsersClient'
+import UsersClient           from './UsersClient'
 
-export const dynamic = 'force-dynamic'
+export const dynamic  = 'force-dynamic'
 export const revalidate = 0
 
 export default async function UsersPage() {
+  const session = await getServerSession(authOptions)
+  if (!session) redirect('/login')
+
+  const user = session.user as any
   const supabase = createAdminClient()
 
   const { data: users } = await supabase
@@ -22,5 +30,11 @@ export default async function UsersPage() {
     .eq('active', true)
     .order('sort_order')
 
-  return <UsersClient users={users || []} modules={modules || []} />
+  return (
+    <UsersClient
+      users={users || []}
+      modules={modules || []}
+      currentUserRole={user.role || 'admin'}
+    />
+  )
 }
