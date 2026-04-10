@@ -73,6 +73,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur création queue' }, { status: 500 })
   }
 
+  // Ajouter les URLs des photos dans les remarques
+  const remarksWithPhotos = [
+    remarks,
+    photoUrls?.length ? `Photos: ${photoUrls.join(' | ')}` : '',
+  ].filter(Boolean).join(' --- ')
+
   // Déclencher la GitHub Action
   try {
     const ghRes = await fetch(
@@ -96,7 +102,7 @@ export async function POST(req: Request) {
               owner_first:  ownerFirstName || '',
               owner_last:   ownerLastName || '',
               owner_phone:  ownerPhone || '',
-              remarks:      remarks || '',
+              remarks:      remarksWithPhotos || '',
               driver_name:  dbUser.towsoft_name,
               parc:         config.parc,
               motif:        config.motif,
