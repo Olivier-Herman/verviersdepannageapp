@@ -33,7 +33,7 @@ export default async function DashboardPage() {
       session={session}
       callShortcuts={shortcuts || []}
       hasTowsoft={!!dbUser?.towsoft_name}
-      currentUserRole={user.role || 'driver'}
+      
     />
   )
 }
