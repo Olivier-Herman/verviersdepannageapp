@@ -149,16 +149,32 @@ export default function PoliceClient() {
     }
   }, [selectedType])
 
-  const getGPS = () => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(async pos => {
-      try {
-        const res = await fetch(`/api/geocode?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
-        const data = await res.json()
-        if (data.formatted) setLocation(data.formatted)
-      } catch (e) { console.error('GPS geocode error:', e) }
-    }, (err) => { console.error('GPS error:', err) })
-  }
+  const getGPS = useCallback(() => {
+    if (!navigator.geolocation) {
+      alert('Géolocalisation non disponible')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        try {
+          const res = await fetch(`/api/geocode?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
+          const data = await res.json()
+          if (data.formatted) {
+            setLocation(data.formatted)
+          } else {
+            setLocation(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+          }
+        } catch (e) {
+          setLocation(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+        }
+      },
+      err => {
+        console.error('GPS error:', err.code, err.message)
+        alert('Impossible d\'obtenir votre position')
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }, [])
 
   const addPhotos = (files: FileList | null) => {
     if (!files) return
