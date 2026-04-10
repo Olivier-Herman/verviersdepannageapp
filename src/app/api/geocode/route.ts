@@ -7,7 +7,7 @@ export async function GET(req: Request) {
   const lat     = searchParams.get('lat')
   const lng     = searchParams.get('lng')
 
-  const apiKey = process.env.GOOGLE_MAPS_SERVER_KEY
+  const apiKey = process.env.GOOGLE_GEOCODING
 
   // Reverse geocoding (lat/lng → address)
   if (lat && lng) {
