@@ -1,38 +1,47 @@
 // src/app/api/geocode/route.ts
-import { NextResponse }     from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions }      from '@/lib/auth'
+import { NextResponse } from 'next/server'
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const { searchParams } = new URL(req.url)
   const address = searchParams.get('address')
-  if (!address) return NextResponse.json({ error: 'Adresse manquante' }, { status: 400 })
+  const lat     = searchParams.get('lat')
+  const lng     = searchParams.get('lng')
 
-  const key = process.env.GOOGLE_MAPS_SERVER_KEY
-  if (!key)  return NextResponse.json({ error: 'Clé Maps manquante' }, { status: 500 })
+  const apiKey = process.env.GOOGLE_MAPS_SERVER_KEY
 
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=be&language=fr&key=${key}`
-    const res  = await fetch(url)
+  // Reverse geocoding (lat/lng → address)
+  if (lat && lng) {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}&language=fr`
+    )
     const data = await res.json()
-
-    if (data.status !== 'OK' || !data.results?.length) {
-      return NextResponse.json({ found: false, original: address })
+    if (data.results?.[0]) {
+      return NextResponse.json({ formatted: data.results[0].formatted_address, found: true })
     }
-
-    const result = data.results[0]
-    return NextResponse.json({
-      found:     true,
-      original:  address,
-      formatted: result.formatted_address,
-      lat:       result.geometry.location.lat,
-      lng:       result.geometry.location.lng,
-      same:      result.formatted_address.toLowerCase().includes(address.toLowerCase().split(',')[0].trim()),
-    })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ found: false })
   }
+
+  // Forward geocoding (address → lat/lng)
+  if (!address) return NextResponse.json({ error: 'address or lat/lng requis' }, { status: 400 })
+
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}&language=fr`
+  )
+  const data = await res.json()
+  if (!data.results?.length) return NextResponse.json({ found: false })
+
+  const result = data.results[0]
+  const loc    = result.geometry.location
+
+  // Comparer avec l'adresse originale
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const same = normalize(result.formatted_address).includes(normalize(address.split(',')[0]))
+
+  return NextResponse.json({
+    found:     true,
+    formatted: result.formatted_address,
+    lat:       loc.lat,
+    lng:       loc.lng,
+    same,
+  })
 }
