@@ -129,11 +129,9 @@ export async function createHelpdeskTicket(params: {
     }
   }
 
-  const ticketName = [params.source, params.vehiclePlate, params.city || params.dossierNumber]
-    .filter(Boolean).join(' — ')
-
   const ticketData: any = {
-    name:        ticketName || `${params.source} — ${params.clientName}`,
+    name:        'Etiquette automatique',
+    x_studio_note_sur_etiquette: 'Généré par VDBot by HOOS',
     team_id:     params.teamId || 12,
     description: params.description || '',
   }
