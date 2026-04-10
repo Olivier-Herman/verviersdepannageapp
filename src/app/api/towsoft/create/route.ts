@@ -5,7 +5,6 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { createTowsoftMission }  from '@/lib/towsoft'
-import { sendEmailWithGraph }    from '@/lib/emails'
 
 export const maxDuration = 60
 
