@@ -68,18 +68,8 @@ export default function PoliceClient() {
 
     setLoading(true); setErr(''); setSuccess('')
 
-    // Photos — on les encode en base64 pour les envoyer avec la mission
-    let photoUrls: string[] = []
-    // Upload en arrière-plan si photos présentes
-    if (photos.length > 0) {
-      const formData = new FormData()
-      photos.forEach(f => formData.append('photos', f))
-      formData.append('mission_id', `police-${Date.now()}`)
-      fetch('/api/missions/photos-upload', { method: 'POST', body: formData })
-        .then(r => r.json())
-        .then(d => { photoUrls = d.urls || [] })
-        .catch(console.error)
-    }
+    // Photos — pas d'upload bloquant, on passe les noms dans les remarques
+    const photoUrls: string[] = []
 
     const res = await fetch('/api/towsoft/create', {
       method: 'POST',
