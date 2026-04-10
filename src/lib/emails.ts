@@ -26,7 +26,7 @@ async function getAppToken(): Promise<string> {
   return data.access_token
 }
 
-async function sendEmail(to: string, subject: string, html: string, toName?: string) {
+export async function sendEmail(to: string, subject: string, html: string, toName?: string) {
   const token = await getAppToken()
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
     method: 'POST',
