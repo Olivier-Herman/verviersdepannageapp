@@ -59,7 +59,7 @@ function emailLayout(content: string, title: string) {
       
       <!-- Header -->
       <tr><td style="background:${BRAND_RED};padding:28px 36px;">
-        <table width="100%"><tr>
+        <table width="100%" style="background:transparent;"><tr>
           <td>
             <p style="margin:0;color:white;font-size:16px;font-weight:700;letter-spacing:-0.3px;">VERVIERS DÉPANNAGE</p>
             <p style="margin:4px 0 0;color:rgba(255,255,255,0.7);font-size:12px;letter-spacing:0.5px;">24H/7J — DÉPANNAGE & ASSISTANCE</p>
@@ -187,7 +187,7 @@ export async function sendClientReceipt(data: {
     ${isPaid ? `
     <!-- Paiement reçu -->
     <div style="background:#e8f5e9;border:1px solid #c8e6c9;border-radius:8px;padding:14px 18px;margin-bottom:20px;">
-      <table width="100%"><tr>
+      <table width="100%" style="background:transparent;"><tr>
         <td style="font-size:13px;font-weight:700;color:#2e7d32;">✅ Paiement reçu</td>
         <td style="font-size:13px;color:#388e3c;text-align:right;">${paymentLabel}</td>
       </tr>
