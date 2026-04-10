@@ -157,15 +157,14 @@ export default function PoliceClient() {
     navigator.geolocation.getCurrentPosition(
       async pos => {
         try {
-          const res = await fetch(`/api/geocode?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
+            { headers: { 'Accept-Language': 'fr' } }
+          )
           const data = await res.json()
-          if (data.formatted) {
-            setLocation(data.formatted)
-          } else {
-            setLocation(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-          }
-        } catch (e) {
-          setLocation(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+          setLocation(data.display_name || `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
+        } catch {
+          setLocation(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`)
         }
       },
       err => {
