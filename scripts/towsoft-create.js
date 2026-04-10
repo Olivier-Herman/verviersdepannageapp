@@ -9,7 +9,7 @@ const payload = JSON.parse(process.env.PAYLOAD_DATA || '{}');
 const TYPE_CONFIG = {
   accident:  { codeService: 'Appel Police - Accident',                           parc: 'K3', motif: 'ACCIDENT' },
   saisie:    { codeService: 'Appel Police - Saisie',                             parc: 'J',  motif: 'SAISIE' },
-  mal_garee: { codeService: 'Appel Police - Mal Garée',                           parc: 'L',  motif: 'MAL GARÉE' },
+  mal_garee: { codeService: 'Appel Police - Mal Garée',                           parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
   snc:       { codeService: 'Siabis Non Couvert - Remorquage avec balisage',      parc: 'K2', motif: 'SIABIS NON COUVERT' },
 };
 
