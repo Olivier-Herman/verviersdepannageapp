@@ -33,9 +33,11 @@ const CALL_MODULES = [
 export default function DashboardClient({
   session,
   callShortcuts,
+  hasTowsoft = false,
 }: {
   session: Session
   callShortcuts: any[]
+  hasTowsoft?: boolean
 }) {
   const userModules = (session.user as any).modules || []
   const isAdmin     = ['admin', 'superadmin'].includes((session.user as any).role)
@@ -79,7 +81,7 @@ export default function DashboardClient({
             <span className="text-green-500 text-xs">En service</span>
           </div>
         </div>
-        <ModuleGrid visibleNav={visibleNav} visibleCalls={visibleCalls} getPhone={getPhone} />
+        <ModuleGrid visibleNav={visibleNav} visibleCalls={visibleCalls} getPhone={getPhone} hasTowsoft={hasTowsoft} />
       </div>
 
       {/* ── DESKTOP ──────────────────────────────────────── */}
@@ -103,6 +105,16 @@ export default function DashboardClient({
         </div>
 
         <div className="grid grid-cols-3 gap-4 max-w-5xl">
+          {hasTowsoft && (
+            <Link href="/mission/police"
+              className="col-span-3 bg-red-900 border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80">
+              <div>
+                <p className="text-white font-semibold text-base leading-tight">Créer une mission</p>
+                <p className="text-white/50 text-xs mt-1">Police · Saisie · Mal Garée · SNC</p>
+              </div>
+              <span className="text-3xl">🚔</span>
+            </Link>
+          )}
           {visibleNav.map(mod => (
             <Link key={mod.id} href={mod.href}
               className={`${mod.color} ${mod.size === 'large' ? 'col-span-3' : ''} border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80`}
@@ -144,11 +156,12 @@ export default function DashboardClient({
 }
 
 function ModuleGrid({
-  visibleNav, visibleCalls, getPhone,
+  visibleNav, visibleCalls, getPhone, hasTowsoft,
 }: {
   visibleNav:   typeof NAV_MODULES
   visibleCalls: typeof CALL_MODULES
   getPhone:     (id: string) => string | undefined
+  hasTowsoft?:  boolean
 }) {
   if (visibleNav.length === 0 && visibleCalls.length === 0) {
     return (
@@ -163,6 +176,16 @@ function ModuleGrid({
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
+        {hasTowsoft && (
+          <Link href="/mission/police"
+            className="col-span-2 bg-red-900 border border-[#2a2a2a] rounded-2xl p-4 flex items-center justify-between gap-3 active:opacity-80 transition-opacity">
+            <div>
+              <p className="text-white font-semibold text-sm leading-tight">Créer une mission</p>
+              <p className="text-white/60 text-xs mt-1">Police · Saisie · Mal Garée · SNC</p>
+            </div>
+            <span className="text-2xl">🚔</span>
+          </Link>
+        )}
         {visibleNav.map(mod => (
           <Link key={mod.id} href={mod.href}
             className={`
