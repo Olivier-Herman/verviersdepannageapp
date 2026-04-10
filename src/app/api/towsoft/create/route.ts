@@ -115,8 +115,7 @@ ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s)
         brand ? `Marque: ${brand} ${model || ''}` : '',
         ownerPhone ? `Tél propriétaire: ${ownerPhone}` : '',
         remarks ? `Remarques: ${remarks}` : '',
-      ].filter(Boolean).join('
-'),
+      ].filter(Boolean).join(' | '),
       teamId: 12,
     })
     console.log('[TowSoft] Fiche Helpdesk Odoo créée')
