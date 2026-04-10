@@ -124,21 +124,8 @@ async function updateQueue(status, missionNumber, error) {
       if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
     }, payload.driver_name);
 
-    // Soumettre — clic direct via querySelector
-    const confirmBtn = await page.$('button.btn-success, a.btn-success');
-    if (confirmBtn) {
-      await confirmBtn.click();
-    } else {
-      // Fallback: chercher par texte
-      await page.evaluate(() => {
-        const btns = [...document.querySelectorAll('button, a')];
-        const btn = btns.find(b => {
-          const t = b.textContent?.trim().toLowerCase() || '';
-          return t.includes('confirmer') && t.includes('mission');
-        });
-        if (btn) btn.click();
-      });
-    }
+    // Soumettre via ID exact du bouton TowSoft
+    await page.click('#triggerSubmitAppelAjouterForm');
     await wait(3000);
     // Screenshot pour debug
     const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
