@@ -517,7 +517,7 @@ export async function sendCheckVehiculeNonConformeReport(data: {
 }
 
 // ─── Email Police/Saisie/Mal Garée/SNC ───────────────────
-export async function sendPoliceEmail(data: {
+type PoliceEmailData = {
   type:           string
   typeLabel:      string
   chauffeurName:  string
@@ -536,7 +536,9 @@ export async function sendPoliceEmail(data: {
   remarks?:       string
   photoUrls?:     string[]
   parc:           string
-}) {
+}
+
+export function buildPoliceEmailHtml(data: PoliceEmailData): string {
   const TYPE_COLORS: Record<string, string> = {
     accident:  '#DC2626',
     saisie:    '#7C3AED',
@@ -603,7 +605,11 @@ export async function sendPoliceEmail(data: {
     ${divider()}
     <p style="margin:0;font-size:12px;color:#aaa;text-align:center;">Mission créée via Mobioueb · TowSoft en cours de mise à jour</p>
   `
+  return emailLayout(content, `${data.typeLabel} — ${data.plate || data.location}`)
+}
 
-  const html = emailLayout(content, `${data.typeLabel} — ${data.plate || data.location}`)
+export async function sendPoliceEmail(data: PoliceEmailData) {
+  const html = buildPoliceEmailHtml(data)
   await sendEmail('info@verviersdepannage.com', `${data.typeLabel} — ${data.plate || 'Véhicule'} — ${data.date}`, html)
+  return html
 }
