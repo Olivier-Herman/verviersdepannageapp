@@ -4,7 +4,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sendEmail, sendPoliceEmail } from '@/lib/emails'
+import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 
 export const maxDuration = 30
 
@@ -79,6 +79,24 @@ export async function POST(req: Request) {
     photoUrls?.length ? `Photos: ${photoUrls.join(' | ')}` : '',
   ].filter(Boolean).join(' --- ')
 
+  // Construire le HTML (même template que l'email)
+  const odooDescription = buildPoliceEmailHtml({
+    type: type, typeLabel: config.label, chauffeurName: dbUser.name,
+    date, time, location,
+    policeZone:     policeZone || '',
+    officerName:    officerName || '',
+    plate:          plate || '',
+    vin:            vin || '',
+    brand:          brand || '',
+    model:          model || '',
+    ownerFirstName: ownerFirstName || '',
+    ownerLastName:  ownerLastName || '',
+    ownerPhone:     ownerPhone || '',
+    remarks:        remarksWithPhotos || '',
+    photoUrls:      photoUrls || [],
+    parc:           config.parc,
+  })
+
   // Lancer GitHub Action + Email + Helpdesk en parallèle
   await Promise.allSettled([
 
@@ -117,7 +135,7 @@ export async function POST(req: Request) {
       else console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
     }),
 
-    // 2. Email récapitulatif
+    // 2. Email récapitulatif — on capture le HTML pour la description Odoo
     sendPoliceEmail({
       type, typeLabel: config.label, chauffeurName: dbUser.name,
       date, time, location,
@@ -150,12 +168,7 @@ export async function POST(req: Request) {
         city:              location || '',
         dateIntervention:  date || '',
         missionType:       type,
-        description:       [
-          `Chauffeur: ${dbUser.name}`,
-          `Lieu: ${location}`,
-          officerName ? `Policier: ${officerName}` : '',
-          remarks ? `Remarques: ${remarks}` : '',
-        ].filter(Boolean).join(' | '),
+        description:       odooDescription,
         teamId: 12,
       })
     ).then(async (result: any) => {
