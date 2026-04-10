@@ -80,7 +80,7 @@ ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s)
     `.trim()
 
     await sendEmail(
-      'fourriere@verviersdepannage.be',
+      'info@verviersdepannage.com',
       `${typeLabels[type]} — ${plate || 'Véhicule'} — ${date}`,
       emailBody,
     )
@@ -89,8 +89,43 @@ ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s)
     console.error('[TowSoft] Email fourrière échec:', e)
   }
 
+  // Créer fiche Helpdesk Odoo équipe ID 12
+  try {
+    const { createHelpdeskTicket } = await import('@/lib/odoo-fsm')
+    const typeContextMap: Record<string, string> = {
+      accident:  'POLICE',
+      saisie:    'SAISIE_POLICE',
+      mal_garee: 'MAL_GAREE',
+      snc:       'SNC',
+    }
+    await createHelpdeskTicket({
+      supabaseId:    `police-${Date.now()}`,
+      dossierNumber: `${typeLabels[type]} — ${date}`,
+      source:        'POLICE',
+      clientName:    [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
+      vehiclePlate:  plate || '',
+      city:          location || '',
+      description:   [
+        `Chauffeur: ${dbUser.name}`,
+        `Lieu: ${location}`,
+        `Zone police: ${policeZone}`,
+        officerName ? `Policier: ${officerName}` : '',
+        plate ? `Plaque: ${plate}` : '',
+        vin ? `VIN: ${vin}` : '',
+        brand ? `Marque: ${brand} ${model || ''}` : '',
+        ownerPhone ? `Tél propriétaire: ${ownerPhone}` : '',
+        remarks ? `Remarques: ${remarks}` : '',
+      ].filter(Boolean).join('
+'),
+      teamId: 12,
+    })
+    console.log('[TowSoft] Fiche Helpdesk Odoo créée')
+  } catch (e) {
+    console.error('[TowSoft] Helpdesk Odoo échec:', e)
+  }
+
   return NextResponse.json({
     ok: true,
-    message: 'Mission en cours de création — Email envoyé à la fourrière',
+    message: 'Mission en cours de création — Email envoyé',
   })
 }

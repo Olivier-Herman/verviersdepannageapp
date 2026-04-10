@@ -62,13 +62,10 @@ export async function createTowsoftMission(data: TowsoftMissionData): Promise<{
 
   const script = `
     const puppeteer = require('puppeteer-core');
-    const browser = await puppeteer.connect({
-      browserWSEndpoint: 'wss://production-sfo.browserless.io?token=${BROWSERLESS_TOKEN}',
-    });
-    const page = await browser.newPage();
-    await page.setDefaultTimeout(30000);
 
+    module.exports = async ({ page }) => {
     try {
+      await page.setDefaultTimeout(30000);
       // Login
       await page.goto('${TOWSOFT_URL}/auth/login', { waitUntil: 'networkidle0' });
       await page.type('#username', '${TOWSOFT_USER}');
@@ -268,20 +265,19 @@ export async function createTowsoftMission(data: TowsoftMissionData): Promise<{
         await page.waitForTimeout(2000);
       }
 
-      await browser.close();
       return { ok: true, missionNumber };
 
     } catch (err) {
-      await browser.close();
       return { ok: false, error: err.message };
+    }
     }
   `;
 
   try {
-    const res = await fetch('https://production-sfo.browserless.io/function?token=' + BROWSERLESS_TOKEN, {
+    const res = await fetch(`https://production-sfo.browserless.io/function?token=${BROWSERLESS_TOKEN}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: script }),
+      headers: { 'Content-Type': 'application/javascript' },
+      body: script,
     })
 
     if (!res.ok) {
