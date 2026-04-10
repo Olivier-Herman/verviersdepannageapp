@@ -116,9 +116,10 @@ export default function PoliceClient() {
       .then(d => setModels(d || []))
   }, [selectedBrandId])
 
-  // Google Maps autocomplete
+  // Google Maps autocomplete — réinitialiser quand le formulaire apparaît
   useEffect(() => {
-    if (!locationRef.current || acRef.current) return
+    if (!selectedType) return
+    acRef.current = null // Reset pour forcer la réinit
     const init = () => {
       if (!window.google?.maps?.places || !locationRef.current) return
       acRef.current = new window.google.maps.places.Autocomplete(locationRef.current, {
@@ -130,8 +131,9 @@ export default function PoliceClient() {
         if (place?.formatted_address) setLocation(place.formatted_address)
       })
     }
-    if (window.google?.maps?.places) { init() }
-    else {
+    if (window.google?.maps?.places) {
+      init()
+    } else {
       const existing = document.getElementById('gmaps-script')
       if (!existing) {
         const script = document.createElement('script')
@@ -141,7 +143,8 @@ export default function PoliceClient() {
         script.onload = init
         document.head.appendChild(script)
       } else {
-        existing.addEventListener('load', init)
+        if (window.google?.maps?.places) init()
+        else existing.addEventListener('load', init)
       }
     }
   }, [selectedType])
@@ -149,10 +152,12 @@ export default function PoliceClient() {
   const getGPS = () => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(async pos => {
-      const res = await fetch(`/api/geocode?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
-      const data = await res.json()
-      if (data.formatted) setLocation(data.formatted)
-    })
+      try {
+        const res = await fetch(`/api/geocode?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
+        const data = await res.json()
+        if (data.formatted) setLocation(data.formatted)
+      } catch (e) { console.error('GPS geocode error:', e) }
+    }, (err) => { console.error('GPS error:', err) })
   }
 
   const addPhotos = (files: FileList | null) => {
