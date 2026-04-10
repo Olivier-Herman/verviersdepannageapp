@@ -136,10 +136,18 @@ async function updateQueue(status, missionNumber, error) {
           const t = b.textContent?.trim().toLowerCase() || '';
           return t.includes('confirmer') && t.includes('mission');
         });
-        if (btn) btn.click();
+        if (btn) (btn as HTMLElement).click();
       });
     }
     await wait(3000);
+    // Screenshot pour debug
+    const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
+    console.log('SCREENSHOT_BASE64:' + screenshotBuffer.substring(0, 100) + '...');
+    const pageTitle = await page.title();
+    const pageUrl = page.url();
+    const pageText = await page.evaluate(() => document.body.innerText.substring(0, 500));
+    console.log('Page après soumission:', pageTitle, pageUrl);
+    console.log('Texte page:', pageText);
     console.log('✓ Formulaire soumis');
 
     // Modal parc
