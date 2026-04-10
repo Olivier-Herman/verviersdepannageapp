@@ -48,6 +48,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
   const [showRoleModal,    setShowRoleModal]    = useState(false)
   const [roleModalRoles,   setRoleModalRoles]   = useState<string[]>([])
   const [roleSaving,       setRoleSaving]       = useState(false)
+  const [userTowsoftName,  setUserTowsoftName]  = useState('')
   const [roleError,        setRoleError]        = useState('')
 
   // ── Ouvrir un utilisateur ──────────────────────────────
@@ -65,6 +66,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
     setUserAuthProvider(user.auth_provider || 'email_password')
     setUserTgrPush(!!user.tgr_push_notify)
     setUserOdooId(user.odoo_partner_id ? String(user.odoo_partner_id) : '')
+    setUserTowsoftName(user.towsoft_name || '')
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
     setResetSuccess('')
   }
@@ -132,6 +134,7 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
           modules:         userModules,
           tgr_push_notify: userTgrPush,
           odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
+          towsoft_name:    userTowsoftName || null,
         }),
       })
       const data = await res.json()
@@ -326,6 +329,15 @@ export default function UsersClient({ users, modules }: { users: any[], modules:
             className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
                        text-white text-sm outline-none focus:border-brand" />
           <p className="text-zinc-700 text-xs mt-1">ID partenaire Odoo pour les devis TGR</p>
+        </div>
+
+        <div>
+          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Nom TowSoft</label>
+          <input type="text" placeholder="Ex: Mobi, FPalm, MLoslever..." value={userTowsoftName}
+            onChange={e => setUserTowsoftName(e.target.value)}
+            className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
+                       text-white text-sm outline-none focus:border-brand" />
+          <p className="text-zinc-700 text-xs mt-1">Nom exact dans la liste conducteurs TowSoft</p>
         </div>
       </div>
 
