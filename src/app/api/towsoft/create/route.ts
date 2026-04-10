@@ -5,6 +5,7 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { createTowsoftMission }  from '@/lib/towsoft'
+import { sendEmail }             from '@/lib/emails'
 
 export const maxDuration = 60
 
@@ -57,24 +58,8 @@ export async function POST(req: Request) {
   }
   runTowsoft().catch(console.error)
 
-  // Envoyer l'email via Microsoft Graph directement
+  // Envoyer l'email via le service emails centralisé
   try {
-    const tokenRes = await fetch(
-      `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id:     process.env.AZURE_AD_CLIENT_ID!,
-          client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
-          grant_type:    'client_credentials',
-          scope:         'https://graph.microsoft.com/.default',
-        }),
-      }
-    )
-    const tokenData = await tokenRes.json()
-    const token = tokenData.access_token
-
     const emailBody = `
 <h2>${typeLabels[type] || type}</h2>
 <p><strong>Chauffeur :</strong> ${dbUser.name}</p>
@@ -94,23 +79,10 @@ ${remarks ? `<p><strong>Remarques :</strong> ${remarks}</p>` : ''}
 ${photoUrls?.length ? `<p><strong>Photos :</strong> ${photoUrls.length} photo(s)</p>` : ''}
     `.trim()
 
-    await fetch(
-      `https://graph.microsoft.com/v1.0/users/${process.env.MISSIONS_EMAIL}/sendMail`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: {
-            subject: `${typeLabels[type]} — ${plate || 'Véhicule'} — ${date}`,
-            body: { contentType: 'HTML', content: emailBody },
-            toRecipients: [{ emailAddress: { address: 'fourriere@verviersdepannage.be' } }],
-          },
-          saveToSentItems: false,
-        }),
-      }
+    await sendEmail(
+      'fourriere@verviersdepannage.be',
+      `${typeLabels[type]} — ${plate || 'Véhicule'} — ${date}`,
+      emailBody,
     )
     console.log('[TowSoft] Email fourrière envoyé')
   } catch (e) {
