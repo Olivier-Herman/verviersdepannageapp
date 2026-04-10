@@ -4,7 +4,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { sendEmail }         from '@/lib/emails'
+import { sendEmail, sendPoliceEmail } from '@/lib/emails'
 
 export const maxDuration = 30
 
@@ -124,30 +124,24 @@ export async function POST(req: Request) {
 
   // Envoyer l'email récapitulatif
   try {
-    const emailBody = `
-<h2>${config.label}</h2>
-<p><strong>Chauffeur :</strong> ${dbUser.name}</p>
-<p><strong>Date/Heure :</strong> ${date} à ${time}</p>
-<p><strong>Lieu :</strong> ${location}</p>
-<p><strong>Zone de police :</strong> ${policeZone || '—'}</p>
-${officerName ? `<p><strong>Policier :</strong> ${officerName}</p>` : ''}
-<hr/>
-<p><strong>Véhicule :</strong> ${[plate, brand, model].filter(Boolean).join(' — ') || '—'}</p>
-${vin ? `<p><strong>VIN :</strong> ${vin}</p>` : ''}
-<hr/>
-${ownerFirstName || ownerLastName ? `<p><strong>Propriétaire :</strong> ${ownerFirstName || ''} ${ownerLastName || ''}</p>` : ''}
-${ownerPhone ? `<p><strong>Tél propriétaire :</strong> ${ownerPhone}</p>` : ''}
-${remarks ? `<p><strong>Remarques :</strong> ${remarks}</p>` : ''}
-<hr/>
-<p><strong>Création TowSoft :</strong> En cours via GitHub Actions...</p>
-${photoUrls?.length ? `<p><strong>Photos :</strong><br/>${photoUrls.map((url: string, i: number) => `<a href="${url}" target="_blank">Photo ${i+1}</a>`).join(' &nbsp;|&nbsp; ')}</p>` : ''}
-    `.trim()
-
-    await sendEmail(
-      'info@verviersdepannage.com',
-      `${config.label} — ${plate || 'Véhicule'} — ${date}`,
-      emailBody,
-    )
+    await sendPoliceEmail({
+      type:           type,
+      typeLabel:      config.label,
+      chauffeurName:  dbUser.name,
+      date, time, location,
+      policeZone:     policeZone || '',
+      officerName:    officerName || '',
+      plate:          plate || '',
+      vin:            vin || '',
+      brand:          brand || '',
+      model:          model || '',
+      ownerFirstName: ownerFirstName || '',
+      ownerLastName:  ownerLastName || '',
+      ownerPhone:     ownerPhone || '',
+      remarks:        remarksWithPhotos || '',
+      photoUrls:      photoUrls || [],
+      parc:           config.parc,
+    })
   } catch (e) {
     console.error('[TowSoft] Email échec:', e)
   }
