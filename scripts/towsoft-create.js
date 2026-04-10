@@ -136,7 +136,7 @@ async function updateQueue(status, missionNumber, error) {
           const t = b.textContent?.trim().toLowerCase() || '';
           return t.includes('confirmer') && t.includes('mission');
         });
-        if (btn) (btn as HTMLElement).click();
+        if (btn) btn.click();
       });
     }
     await wait(3000);
