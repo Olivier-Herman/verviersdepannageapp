@@ -515,3 +515,95 @@ export async function sendCheckVehiculeNonConformeReport(data: {
   const subject = `⚠️ Check Véhicule — Non-conformités — ${data.vehicleName} (${data.vehiclePlate})`
   await sendEmail(TO, subject, emailLayout(content, subject), 'Verviers Dépannage')
 }
+
+// ─── Email Police/Saisie/Mal Garée/SNC ───────────────────
+export async function sendPoliceEmail(data: {
+  type:           string
+  typeLabel:      string
+  chauffeurName:  string
+  date:           string
+  time:           string
+  location:       string
+  policeZone?:    string
+  officerName?:   string
+  plate?:         string
+  vin?:           string
+  brand?:         string
+  model?:         string
+  ownerFirstName?: string
+  ownerLastName?:  string
+  ownerPhone?:     string
+  remarks?:       string
+  photoUrls?:     string[]
+  parc:           string
+}) {
+  const TYPE_COLORS: Record<string, string> = {
+    accident:  '#DC2626',
+    saisie:    '#7C3AED',
+    mal_garee: '#D97706',
+    snc:       '#2563EB',
+  }
+  const color = TYPE_COLORS[data.type] || BRAND_RED
+  const vehicleLabel = [data.plate, data.brand, data.model].filter(Boolean).join(' — ')
+
+  const content = `
+    <p style="margin:0 0 4px;font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Intervention</p>
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111;">${data.typeLabel}</h1>
+    <p style="margin:0 0 24px;">
+      ${badge(color, data.parc)}
+    </p>
+
+    ${divider()}
+
+    <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Détails de l'intervention</p>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      ${infoRow('Chauffeur', data.chauffeurName)}
+      ${infoRow('Date', data.date + ' à ' + data.time)}
+      ${infoRow('Lieu', data.location)}
+      ${data.policeZone ? infoRow('Zone de police', data.policeZone) : ''}
+      ${data.officerName ? infoRow('Policier', data.officerName) : ''}
+    </table>
+
+    ${vehicleLabel ? `
+    ${divider()}
+    <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Véhicule</p>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      ${data.plate ? infoRow('Plaque', '<span style="font-family:monospace;font-weight:700;font-size:15px;">' + data.plate + '</span>') : ''}
+      ${data.brand || data.model ? infoRow('Marque / Modèle', [data.brand, data.model].filter(Boolean).join(' ')) : ''}
+      ${data.vin ? infoRow('VIN', '<span style="font-family:monospace;">' + data.vin + '</span>') : ''}
+    </table>` : ''}
+
+    ${data.ownerFirstName || data.ownerLastName || data.ownerPhone ? `
+    ${divider()}
+    <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Propriétaire</p>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      ${data.ownerFirstName || data.ownerLastName ? infoRow('Nom', [data.ownerFirstName, data.ownerLastName].filter(Boolean).join(' ')) : ''}
+      ${data.ownerPhone ? infoRow('Téléphone', data.ownerPhone) : ''}
+    </table>` : ''}
+
+    ${data.remarks ? `
+    ${divider()}
+    <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Remarques</p>
+    <p style="margin:0;font-size:13px;color:#444;line-height:1.6;background:#f8f8f8;padding:12px 16px;border-radius:8px;border-left:3px solid ${color};">${data.remarks}</p>
+    ` : ''}
+
+    ${data.photoUrls?.length ? `
+    ${divider()}
+    <p style="margin:0 0 12px;font-size:14px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Photos (${data.photoUrls.length})</p>
+    <table cellpadding="4" cellspacing="0"><tr>
+      ${data.photoUrls.slice(0, 6).map((url, i) => `
+        <td><a href="${url}" target="_blank" style="display:block;width:80px;height:80px;border-radius:8px;overflow:hidden;background:#eee;">
+          <img src="${url}" width="80" height="80" style="object-fit:cover;display:block;" alt="Photo ${i+1}"/>
+        </a></td>
+      `).join('')}
+    </tr></table>
+    ${data.photoUrls.length > 6 ? `<p style="margin:8px 0 0;font-size:12px;color:#888;">+ ${data.photoUrls.length - 6} photo(s) supplémentaire(s) dans le système</p>` : ''}
+    ` : ''}
+
+    ${divider()}
+    <p style="margin:0;font-size:12px;color:#aaa;text-align:center;">Mission créée via Mobioueb · TowSoft en cours de mise à jour</p>
+  `
+
+  const html = emailLayout(content, `${data.typeLabel} — ${data.plate || data.location}`)
+  await sendEmail('info@verviersdepannage.com', `${data.typeLabel} — ${data.plate || 'Véhicule'} — ${data.date}`, html)
+}
