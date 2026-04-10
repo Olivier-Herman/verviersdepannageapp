@@ -172,10 +172,18 @@ async function updateQueue(status, missionNumber, error) {
       console.log('✓ Mise en parc effectuée');
     }
 
-    // Récupérer le numéro de mission
+    // Récupérer le numéro de mission depuis l'URL ou le contenu de la page
     const missionNumber = await page.evaluate(() => {
-      const match = document.body.innerText.match(/SVR-(\d+)/);
-      return match ? match[0] : null;
+      // Chercher dans l'URL
+      const urlMatch = window.location.href.match(/num=(\d+)/);
+      if (urlMatch) return urlMatch[1];
+      // Chercher "# de mission: XXXXX" dans la page
+      const missionMatch = document.body.innerText.match(/de mission[^\d]*(\d{4,6})/i);
+      if (missionMatch) return missionMatch[1];
+      // Chercher "# de livraison: XXXXX"
+      const livraisonMatch = document.body.innerText.match(/de livraison[^\d]*(\d{4,6})/i);
+      if (livraisonMatch) return livraisonMatch[1];
+      return null;
     });
     console.log('✓ Mission TowSoft:', missionNumber);
 

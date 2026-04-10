@@ -34,13 +34,6 @@ export const HELPDESK_FIELDS = {
 }
 
 // États véhicule Parc Auto
-export const HELPDESK_TAGS: Record<string, number> = {
-  accident:  6,
-  saisie:    5,
-  snc:       15,
-  mal_garee: 1,
-}
-
 export const FLEET_STATES = {
   transit: 15,  // K3 / J / K2
   mal_garee: 17, // L (MG)
@@ -149,7 +142,7 @@ export async function createHelpdeskTicket(params: {
   // x_studio_id_supabase non disponible en production — désactivé
   if (params.supabaseId)       ticketData[HELPDESK_FIELDS.supabase_id]    = params.supabaseId
   if (params.dossierNumber)    ticketData[HELPDESK_FIELDS.dossier_number] = params.dossierNumber
-  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree] = params.dateIntervention.split('-').reverse().join('-')
+  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree]    = params.dateIntervention
   if (vehicleId)               ticketData[HELPDESK_FIELDS.vehicule]       = vehicleId
   if (params.partnerId)        ticketData.partner_id                      = params.partnerId
   if (params.missionType && HELPDESK_TAGS[params.missionType]) {
