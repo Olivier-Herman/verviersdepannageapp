@@ -175,7 +175,20 @@ export default function PoliceClient() {
 
     setLoading(true); setErr('')
 
-    const photoUrls: string[] = []
+    // Upload photos vers Supabase
+    let photoUrls: string[] = []
+    if (photos.length > 0) {
+      try {
+        const fd = new FormData()
+        fd.append('mission_id', `police-${Date.now()}`)
+        photos.forEach(f => fd.append('files', f))
+        const upRes = await fetch('/api/missions/photos-upload', { method: 'POST', body: fd })
+        if (upRes.ok) {
+          const upData = await upRes.json()
+          photoUrls = upData.urls || []
+        }
+      } catch (e) { console.error('Upload photos:', e) }
+    }
 
     const res = await fetch('/api/towsoft/create', {
       method: 'POST',
