@@ -29,8 +29,9 @@ interface Entry {
   motif_text?:    string
   amount:         number
   payment_mode:   string
-  client_name?:   string
-  client_email?:  string
+  client_name?:    string
+  client_email?:   string
+  client_address?: string
   synced_to_odoo?: boolean
   odoo_quote_id?:  number
   driver:         { name: string; email: string }
@@ -292,6 +293,7 @@ export default function EncaissementsClient({
               ['Motif',     selected.motif_text],
               ['Paiement',  PAYMENT_LABELS[selected.payment_mode] || selected.payment_mode],
               ['Client',    selected.client_name],
+              ['Adresse',   selected.client_address],
               ['Email',     selected.client_email],
               ['Chauffeur', selected.driver?.name],
               ['Notes',     selected.notes],
