@@ -40,7 +40,7 @@ export async function POST(req: Request) {
 
   // Déclencher l'impression de l'étiquette
   try {
-    const printUrl = `https://verviers-qr.vercel.app/print/${queue.odoo_ticket_id}`
+    const printUrl = `https://verviers-qr.vercel.app/api/print/${queue.odoo_ticket_id}`
     await fetch(printUrl, { method: 'GET' })
     console.log(`[Callback] Impression étiquette déclenchée: ${printUrl}`)
   } catch (e: any) {
