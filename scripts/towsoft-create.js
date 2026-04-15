@@ -124,28 +124,31 @@ async function updateQueue(status, missionNumber, error) {
     const dossierValue = payload.dossier_number || 'Encodage automatique';
     await page.evaluate((d) => { document.querySelector('#numero_dossier').value = d; }, dossierValue);
     console.log('✓ Dossier:', dossierValue);
+    console.log('→ Nom responsable...');
 
     // Nom responsable (police uniquement)
     if (payload.officer_name) {
       await page.evaluate((n) => { document.querySelector('#nom_responsable').value = n; }, payload.officer_name);
     }
+    console.log('→ Code service:', codeService);
 
-    // Code service
-    await page.evaluate(() => {
+    // Code service — via evaluate uniquement (évite les problèmes de clickabilité)
+    await page.evaluate((service) => {
       const el = document.querySelector('#nom_service');
-      if (el) { el.value = ''; el.focus(); }
-    });
-    await page.type('#nom_service', codeService);
-    await wait(2000);
+      if (el) {
+        el.value = service;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      }
+    }, codeService);
+    await wait(3000);
     const s = await page.$('.ui-autocomplete li.ui-menu-item');
-    if (s) await s.click();
-    else {
-      // Fallback: essayer avec triple click
-      await page.click('#nom_service', { clickCount: 3 });
-      await page.type('#nom_service', codeService);
-      await wait(2000);
-      const s2 = await page.$('.ui-autocomplete li.ui-menu-item');
-      if (s2) await s2.click();
+    console.log('→ Autocomplete service trouvé:', !!s);
+    if (s) {
+      await s.click();
+      console.log('✓ Service sélectionné');
+    } else {
+      console.log('⚠️ Pas de suggestion, on continue sans cliquer');
     }
 
     // Nature intervention selon type
