@@ -175,13 +175,37 @@ export default function PoliceClient() {
     )
   }, [])
 
+  const compressPhoto = (file: File): Promise<{ blob: Blob; preview: string }> => {
+    return new Promise(resolve => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        const MAX = 1200
+        let w = img.width, h = img.height
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+          else       { w = Math.round(w * MAX / h); h = MAX }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+        canvas.toBlob(blob => {
+          const preview = canvas.toDataURL('image/jpeg', 0.8)
+          URL.revokeObjectURL(url)
+          resolve({ blob: blob!, preview })
+        }, 'image/jpeg', 0.8)
+      }
+      img.src = url
+    })
+  }
+
   const addPhotos = (files: FileList | null) => {
     if (!files) return
-    Array.from(files).forEach(f => {
-      setPhotos(p => [...p, f])
-      const r = new FileReader()
-      r.onload = e => setPreviews(p => [...p, e.target?.result as string])
-      r.readAsDataURL(f)
+    Array.from(files).forEach(async f => {
+      const { blob, preview } = await compressPhoto(f)
+      const compressed = new File([blob], f.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+      setPhotos(p => [...p, compressed])
+      setPreviews(p => [...p, preview])
     })
   }
 
