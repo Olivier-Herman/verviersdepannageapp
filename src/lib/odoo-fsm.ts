@@ -110,6 +110,7 @@ export async function createHelpdeskTicket(params: {
   source:          string
   clientName:      string
   partnerId?:      number
+  odooPartner?:    string  // nom du partenaire Odoo pour recherche auto
   description?:    string
   teamId?:         number
   vehiclePlate?:   string
@@ -118,7 +119,8 @@ export async function createHelpdeskTicket(params: {
   vehicleVin?:     string
   city?:           string
   dateIntervention?: string
-  missionType?:    string  // 'accident' | 'saisie' | 'snc' | 'mal_garee'
+  missionType?:    string
+  tagIds?:         number[]  // tags multiples (compagnie + type)
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
   // Chercher/créer le véhicule et mettre à jour son statut
@@ -137,6 +139,18 @@ export async function createHelpdeskTicket(params: {
     }
   }
 
+  // Chercher le partenaire Odoo si spécifié
+  let partnerId = params.partnerId
+  if (!partnerId && params.odooPartner) {
+    try {
+      const partners = await rpcFsm<any[]>('res.partner', 'search_read',
+        [[['name', '=', params.odooPartner]]],
+        { fields: ['id', 'name'], limit: 1 }
+      )
+      if (partners.length > 0) partnerId = partners[0].id
+    } catch (e) { console.error('[FSM] Partenaire non trouvé:', params.odooPartner) }
+  }
+
   const ticketData: any = {
     name:        'Etiquette automatique',
     x_studio_note_sur_etiquette: 'Généré par VDBot by HOOS',
@@ -150,8 +164,11 @@ export async function createHelpdeskTicket(params: {
   if (params.dossierNumber)    ticketData[HELPDESK_FIELDS.dossier_number] = params.dossierNumber
   if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree] = params.dateIntervention.split('-').reverse().join('-')
   if (vehicleId)               ticketData[HELPDESK_FIELDS.vehicule]       = vehicleId
-  if (params.partnerId)        ticketData.partner_id                      = params.partnerId
-  if (params.missionType && HELPDESK_TAGS[params.missionType]) {
+  if (partnerId)               ticketData.partner_id                      = partnerId
+  // Tags — priorité à tagIds si fourni, sinon fallback sur HELPDESK_TAGS
+  if (params.tagIds && params.tagIds.length > 0) {
+    ticketData.tag_ids = params.tagIds.map(id => [4, id])
+  } else if (params.missionType && HELPDESK_TAGS[params.missionType]) {
     ticketData.tag_ids = [[4, HELPDESK_TAGS[params.missionType]]]
   }
 
