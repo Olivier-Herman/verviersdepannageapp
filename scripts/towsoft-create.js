@@ -101,9 +101,18 @@ async function updateQueue(status, missionNumber, error) {
     // Facturé à
     await page.click('#recherche_client');
     await page.type('#recherche_client', towsoftClient);
-    await wait(2000);
-    const c = await page.$('.ui-autocomplete li.ui-menu-item');
-    if (c) await c.click();
+    await wait(3000);
+    const c = await page.$('.ui-autocomplete li.ui-menu-item:first-child');
+    if (c) {
+      await c.click();
+    } else {
+      // Fallback: essayer de vider et retaper
+      await page.evaluate(() => { document.querySelector('#recherche_client').value = ''; });
+      await page.type('#recherche_client', towsoftClient.split(' ')[0]); // Premier mot seulement
+      await wait(3000);
+      const c2 = await page.$('.ui-autocomplete li.ui-menu-item:first-child');
+      if (c2) await c2.click();
+    }
 
     // N° dossier
     const dossierValue = payload.dossier_number || 'Encodage automatique';
@@ -115,11 +124,22 @@ async function updateQueue(status, missionNumber, error) {
     }
 
     // Code service
-    await page.click('#nom_service', { clickCount: 3 });
+    await page.evaluate(() => {
+      const el = document.querySelector('#nom_service');
+      if (el) { el.value = ''; el.focus(); }
+    });
     await page.type('#nom_service', codeService);
     await wait(2000);
     const s = await page.$('.ui-autocomplete li.ui-menu-item');
     if (s) await s.click();
+    else {
+      // Fallback: essayer avec triple click
+      await page.click('#nom_service', { clickCount: 3 });
+      await page.type('#nom_service', codeService);
+      await wait(2000);
+      const s2 = await page.$('.ui-autocomplete li.ui-menu-item');
+      if (s2) await s2.click();
+    }
 
     // Nature intervention
     await page.select('#natureIntervention', 'REMORQUAGE_RELIVRAISON');
