@@ -7,10 +7,11 @@ const QUEUE_ID    = process.env.QUEUE_ID;
 const payload = JSON.parse(process.env.PAYLOAD_DATA || '{}');
 
 const TYPE_CONFIG = {
-  accident:  { codeService: 'Appel Police - Accident',                           parc: 'K3', motif: 'ACCIDENT' },
-  saisie:    { codeService: 'Appel Police - Saisie',                             parc: 'J',  motif: 'SAISIE' },
-  mal_garee: { codeService: 'Appel Police - Mal Garée',                           parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
-  snc:       { codeService: 'Siabis Non Couvert - Remorquage avec balisage',      parc: 'K2', motif: 'SIABIS NON COUVERT' },
+  accident:      { codeService: 'Appel Police - Accident',                           parc: 'K3', motif: 'ACCIDENT' },
+  saisie:        { codeService: 'Appel Police - Saisie',                             parc: 'J',  motif: 'SAISIE' },
+  mal_garee:     { codeService: 'Appel Police - Mal Garée',                           parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
+  snc:           { codeService: 'Siabis Non Couvert - Remorquage avec balisage',      parc: 'K2', motif: 'SIABIS NON COUVERT' },
+  appel_prive:   { codeService: 'Appel Police - Accident',                           parc: 'K3', motif: 'APPEL PRIVE' },
 };
 
 async function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -110,8 +111,11 @@ async function updateQueue(status, missionNumber, error) {
     }
 
     // Remarques
-    if (payload.remarks) {
-      await page.evaluate((r) => { document.querySelector('#remarques').value = r; }, payload.remarks);
+    const remarksText = payload.mission_type === 'appel_prive'
+      ? `!!! APPEL PRIVE !!! ${payload.remarks ? '--- ' + payload.remarks : ''}`.trim()
+      : (payload.remarks || '');
+    if (remarksText) {
+      await page.evaluate((r) => { document.querySelector('#remarques').value = r; }, remarksText);
     }
 
     // Dépanneuse = Balisage (value 13)
