@@ -141,8 +141,9 @@ async function updateQueue(status, missionNumber, error) {
       if (s2) await s2.click();
     }
 
-    // Nature intervention
-    await page.select('#natureIntervention', 'REMORQUAGE_RELIVRAISON');
+    // Nature intervention selon type
+    const natureValue = (isAssistance && interventionType === 'dsp') ? 'DEPANNAGE_SUR_PLACE' : 'REMORQUAGE_RELIVRAISON';
+    await page.select('#natureIntervention', natureValue);
 
     // Lieu d'intervention
     await page.click('#origine');
@@ -153,11 +154,9 @@ async function updateQueue(status, missionNumber, error) {
     // Destination (REM / REM+Parc assistance)
     if (payload.destination) {
       await wait(500);
-      await page.click('[id*="destination"]:not([id*="ajouter"]), #destination1', { clickCount: 1 }).catch(() => {});
       await page.evaluate((dest) => {
-        // Chercher le premier champ destination visible
-        const destInputs = [...document.querySelectorAll('[id*="destination"]')].filter(el => el.tagName === 'INPUT');
-        if (destInputs.length > 0) destInputs[0].value = dest;
+        const el = document.querySelector('#destination');
+        if (el) { el.value = dest; el.dispatchEvent(new Event('input', { bubbles: true })); }
       }, payload.destination);
       await wait(500);
     }
