@@ -208,17 +208,27 @@ async function updateQueue(status, missionNumber, error) {
 
     console.log('→ Dépanneuse...');
     // Dépanneuse = Balisage (value 13)
-    await page.select('#remorque', '13');
+    await page.evaluate(() => {
+      const el = document.querySelector('#remorque');
+      if (el) { el.value = '13'; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    console.log('✓ Dépanneuse sélectionnée');
 
     // Conducteur
+    console.log('→ Conducteur...');
     await page.evaluate((dn) => {
       const sel = document.querySelector('#chauffeur');
       const opt = [...sel.options].find(o => o.text.toLowerCase().includes(dn.toLowerCase()));
       if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
     }, payload.driver_name);
+    console.log('✓ Conducteur sélectionné');
 
     // Soumettre
-    await page.click('#triggerSubmitAppelAjouterForm');
+    console.log('→ Soumission...');
+    await page.evaluate(() => {
+      const btn = document.querySelector('#triggerSubmitAppelAjouterForm');
+      if (btn) btn.click();
+    });
     await wait(3000);
     console.log('✓ Formulaire soumis');
 
