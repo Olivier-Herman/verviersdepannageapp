@@ -200,7 +200,7 @@ export async function POST(req: Request) {
         dossierNumber:     dossierNumber || queueEntry.id,
         source:            isAssistance ? `ASSISTANCE_${(company || '').toUpperCase()}` : type.toUpperCase(),
         clientName:        [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
-        odooPartner:       isAssistance ? assistanceConfig!.odooPartner : undefined,
+        odooPartner:       isAssistance ? 'Assistance Dépannage' : undefined,
         vehiclePlate:      plate || '',
         vehicleBrand:      brand || '',
         vehicleModel:      model || '',
