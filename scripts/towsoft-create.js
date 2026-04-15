@@ -233,12 +233,12 @@ async function updateQueue(status, missionNumber, error) {
 
     // Soumettre
     console.log('→ Soumission...');
-    await page.evaluate(() => {
+    // Ne pas attendre le retour du evaluate car la page va naviguer
+    page.evaluate(() => {
       const btn = document.querySelector('#triggerSubmitAppelAjouterForm');
-      if (btn) {
-        btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      }
-    });
+      if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }).catch(() => {});
+    await wait(5000);
     await wait(3000);
     console.log('✓ Formulaire soumis');
 
