@@ -93,18 +93,24 @@ async function updateQueue(status, missionNumber, error) {
     console.log('✓ Connecté');
 
     await page.goto(`${TOWSOFT_URL}/appel-ajouter5.php`, { waitUntil: 'networkidle0' });
+    console.log('✓ Page formulaire chargée');
 
     // Répartir
     await page.select('#dispatch', dispatchValue);
+    console.log('✓ Dispatch sélectionné:', dispatchValue);
     await wait(500);
 
     // Facturé à
+    console.log('→ Clic recherche_client...');
     await page.click('#recherche_client');
+    console.log('→ Saisie client:', towsoftClient);
     await page.type('#recherche_client', towsoftClient);
     await wait(3000);
     const c = await page.$('.ui-autocomplete li.ui-menu-item:first-child');
+    console.log('→ Autocomplete client trouvé:', !!c);
     if (c) {
       await c.click();
+      console.log('✓ Client sélectionné');
     } else {
       // Fallback: essayer de vider et retaper
       await page.evaluate(() => { document.querySelector('#recherche_client').value = ''; });
@@ -114,9 +120,10 @@ async function updateQueue(status, missionNumber, error) {
       if (c2) await c2.click();
     }
 
-    // N° dossier
+    console.log('→ N° dossier...');
     const dossierValue = payload.dossier_number || 'Encodage automatique';
     await page.evaluate((d) => { document.querySelector('#numero_dossier').value = d; }, dossierValue);
+    console.log('✓ Dossier:', dossierValue);
 
     // Nom responsable (police uniquement)
     if (payload.officer_name) {
