@@ -35,10 +35,11 @@ export const HELPDESK_FIELDS = {
 
 // États véhicule Parc Auto
 export const HELPDESK_TAGS: Record<string, number> = {
-  accident:  6,
-  saisie:    5,
-  snc:       15,
-  mal_garee: 1,
+  accident:    6,
+  saisie:      5,
+  snc:         15,
+  mal_garee:   1,
+  appel_prive: 25,
 }
 
 export const FLEET_STATES = {
