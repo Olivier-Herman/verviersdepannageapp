@@ -9,10 +9,19 @@ import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 export const maxDuration = 60
 
 const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }> = {
-  accident:  { label: '🚨 Police Accident',    parc: 'K3', motif: 'ACCIDENT' },
-  saisie:    { label: '⚖️ Saisie',             parc: 'J',  motif: 'SAISIE' },
-  mal_garee: { label: '🚫 Mal Garée',          parc: 'L',  motif: 'MAL GARÉE' },
-  snc:       { label: '🛣️ Siabis Non Couvert', parc: 'K2', motif: 'SIABIS NON COUVERT' },
+  accident:    { label: '🚨 Police Accident',    parc: 'K3', motif: 'ACCIDENT' },
+  saisie:      { label: '⚖️ Saisie',             parc: 'J',  motif: 'SAISIE' },
+  mal_garee:   { label: '🚫 Mal Garée',          parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
+  snc:         { label: '🛣️ Siabis Non Couvert', parc: 'K2', motif: 'SIABIS NON COUVERT' },
+  appel_prive: { label: '📞 Appel Privé',        parc: 'K3', motif: 'APPEL PRIVE' },
+}
+
+const ASSISTANCE_COMPANY: Record<string, { label: string; towsoftClient: string; odooPartner: string; tagId: number; dsp: string; rem: string }> = {
+  touring: { label: 'Touring',  towsoftClient: 'Touring SA',                         odooPartner: 'Touring',        tagId: 27, dsp: 'TOURING - DEPANNAGE',                   rem: 'TOUREM TOURING - REMORQUAGE' },
+  vab:     { label: 'VAB',      towsoftClient: 'VAB NV',                              odooPartner: 'VAB',            tagId: 28, dsp: 'VAB - DEPANNAGE SURPLACE (APD 07/2024)', rem: 'VAB - REMORQUAGE (APD 07/2024)' },
+  ima:     { label: 'IMA',      towsoftClient: 'IMA BENELUX',                         odooPartner: 'Ima Benelux',    tagId: 29, dsp: 'IMA BENELUX - DEPANNAGE SURPLACE',        rem: 'IMA BENELUX - REMORQUAGE' },
+  mondial: { label: 'Mondial',  towsoftClient: 'AWP Automatique Dispatch',            odooPartner: 'AWP P&C S.A.',   tagId: 30, dsp: 'MONDIAL - DSP',                           rem: 'MONDIAL - REMORQUAGE' },
+  ipa:     { label: 'IPA',      towsoftClient: 'Inter Partner Assistance (007928)',   odooPartner: 'Inter Partner Assistance, Dossier 01 ou 34', tagId: 31, dsp: 'IPA - DEPANNAGE SURPLACE', rem: 'IPA - REMORQUAGE' },
 }
 
 export async function POST(req: Request) {
@@ -21,8 +30,10 @@ export async function POST(req: Request) {
 
   const body = await req.json()
   const {
-    type, date, time, plate, vin, brand, model,
-    location, policeZone, officerName,
+    type, company, interventionType,
+    date, time, plate, vin, brand, model,
+    location, destination, dossierNumber,
+    policeZone, officerName,
     ownerFirstName, ownerLastName, ownerPhone,
     remarks, photoUrls,
   } = body
@@ -41,29 +52,43 @@ export async function POST(req: Request) {
     .maybeSingle()
 
   if (!dbUser?.towsoft_name) {
-    return NextResponse.json({ error: 'Profil TowSoft non configuré. Contactez l\'administrateur.' }, { status: 400 })
+    return NextResponse.json({ error: "Profil TowSoft non configuré. Contactez l'administrateur." }, { status: 400 })
   }
 
-  const config = TYPE_CONFIG[type]
-  if (!config) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
+  const isAssistance = type === 'assistance'
+  const assistanceConfig = isAssistance ? ASSISTANCE_COMPANY[company] : null
+  const config = isAssistance ? null : TYPE_CONFIG[type]
+
+  if (!isAssistance && !config) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
+  if (isAssistance && !assistanceConfig) return NextResponse.json({ error: 'Compagnie invalide' }, { status: 400 })
+
+  const typeLabel = isAssistance
+    ? `🤝 ${assistanceConfig!.label} — ${interventionType?.toUpperCase()}`
+    : config!.label
+  const parcValue = isAssistance
+    ? (interventionType === 'rem_parc' ? 'K - Relivraison - Zone K' : '')
+    : config!.parc
+  const motifValue = isAssistance
+    ? (interventionType === 'rem_parc' ? 'A Relivrer' : '')
+    : config!.motif
 
   // Sauvegarder dans la queue
   const { data: queueEntry, error: queueError } = await supabase
     .from('towsoft_queue')
     .insert({
-      mission_type: type,
+      mission_type:  type,
       date, time, plate, vin, brand, model,
       location,
-      police_zone:  policeZone,
-      officer_name: officerName,
-      owner_first:  ownerFirstName,
-      owner_last:   ownerLastName,
-      owner_phone:  ownerPhone,
+      police_zone:   policeZone,
+      officer_name:  officerName,
+      owner_first:   ownerFirstName,
+      owner_last:    ownerLastName,
+      owner_phone:   ownerPhone,
       remarks,
-      driver_name:  dbUser.towsoft_name,
-      parc:         config.parc,
-      motif:        config.motif,
-      status:       'pending',
+      driver_name:   dbUser.towsoft_name,
+      parc:          parcValue,
+      motif:         motifValue,
+      status:        'pending',
     })
     .select('id')
     .single()
@@ -73,15 +98,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur création queue' }, { status: 500 })
   }
 
-  // Ajouter les URLs des photos dans les remarques
+  // Remarques avec photos
   const remarksWithPhotos = [
+    isAssistance && type === 'appel_prive' ? '!!! APPEL PRIVE !!!' : '',
     remarks,
     photoUrls?.length ? `Photos: ${photoUrls.join(' | ')}` : '',
   ].filter(Boolean).join(' --- ')
 
-  // Construire le HTML (même template que l'email)
+  // Description Odoo
   const odooDescription = buildPoliceEmailHtml({
-    type: type, typeLabel: config.label, chauffeurName: dbUser.name,
+    type: type, typeLabel, chauffeurName: dbUser.name,
     date, time, location,
     policeZone:     policeZone || '',
     officerName:    officerName || '',
@@ -94,10 +120,19 @@ export async function POST(req: Request) {
     ownerPhone:     ownerPhone || '',
     remarks:        remarksWithPhotos || '',
     photoUrls:      photoUrls || [],
-    parc:           config.parc,
+    parc:           parcValue,
   })
 
-  // Lancer GitHub Action + Email + Helpdesk en parallèle
+  // Tags Odoo selon type
+  const odoTags: number[] = []
+  if (isAssistance) {
+    odoTags.push(assistanceConfig!.tagId) // tag compagnie
+    odoTags.push(interventionType === 'rem_parc' ? 19 : 26) // REL ou Assistance
+  } else {
+    const POLICE_TAGS: Record<string, number> = { accident: 6, saisie: 5, snc: 15, mal_garee: 1, appel_prive: 25 }
+    if (POLICE_TAGS[type]) odoTags.push(POLICE_TAGS[type])
+  }
+
   await Promise.allSettled([
 
     // 1. GitHub Action TowSoft
@@ -115,17 +150,21 @@ export async function POST(req: Request) {
           client_payload: {
             queue_id: queueEntry.id,
             data: JSON.stringify({
-              mission_type: type,
+              mission_type:      type,
+              company:           company || '',
+              intervention_type: interventionType || '',
               date, time, plate, vin, brand, model,
               location,
-              officer_name: officerName || '',
-              owner_first:  ownerFirstName || '',
-              owner_last:   ownerLastName || '',
-              owner_phone:  ownerPhone || '',
-              remarks:      remarksWithPhotos || '',
-              driver_name:  dbUser.towsoft_name,
-              parc:         config.parc,
-              motif:        config.motif,
+              destination:       destination || '',
+              dossier_number:    dossierNumber || '',
+              officer_name:      officerName || '',
+              owner_first:       ownerFirstName || '',
+              owner_last:        ownerLastName || '',
+              owner_phone:       ownerPhone || '',
+              remarks:           remarksWithPhotos || '',
+              driver_name:       dbUser.towsoft_name,
+              parc:              parcValue,
+              motif:             motifValue,
             }),
           },
         }),
@@ -135,9 +174,9 @@ export async function POST(req: Request) {
       else console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
     }),
 
-    // 2. Email récapitulatif — on capture le HTML pour la description Odoo
+    // 2. Email
     sendPoliceEmail({
-      type, typeLabel: config.label, chauffeurName: dbUser.name,
+      type, typeLabel, chauffeurName: dbUser.name,
       date, time, location,
       policeZone:     policeZone || '',
       officerName:    officerName || '',
@@ -150,7 +189,7 @@ export async function POST(req: Request) {
       ownerPhone:     ownerPhone || '',
       remarks:        remarksWithPhotos || '',
       photoUrls:      photoUrls || [],
-      parc:           config.parc,
+      parc:           parcValue,
     }).then(() => console.log('[TowSoft] Email envoyé'))
      .catch(e => console.error('[TowSoft] Email échec:', e)),
 
@@ -158,34 +197,30 @@ export async function POST(req: Request) {
     import('@/lib/odoo-fsm').then(({ createHelpdeskTicket }) =>
       createHelpdeskTicket({
         supabaseId:        queueEntry.id,
-        dossierNumber:     queueEntry.id,
-        source:            config.label.replace(/[^A-Z]/g, '') || type.toUpperCase(),
+        dossierNumber:     dossierNumber || queueEntry.id,
+        source:            isAssistance ? `ASSISTANCE_${(company || '').toUpperCase()}` : type.toUpperCase(),
         clientName:        [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
+        odooPartner:       isAssistance ? assistanceConfig!.odooPartner : undefined,
         vehiclePlate:      plate || '',
         vehicleBrand:      brand || '',
         vehicleModel:      model || '',
         vehicleVin:        vin || '',
         city:              location || '',
         dateIntervention:  date || '',
-        missionType:       type,
+        missionType:       isAssistance ? (interventionType === 'rem_parc' ? 'rem_parc' : 'dsp') : type,
+        tagIds:            odoTags,
         description:       odooDescription,
-        teamId: 12,
+        teamId:            12,
       })
     ).then(async (result: any) => {
       console.log('[TowSoft] Helpdesk Odoo créé')
-      // Sauvegarder l'ID du ticket dans la queue
       if (result?.ticketId) {
         const sb2 = createAdminClient()
         await sb2.from('towsoft_queue').update({ odoo_ticket_id: result.ticketId }).eq('id', queueEntry.id)
       }
-    })
-     .catch(e => console.error('[TowSoft] Helpdesk Odoo échec:', e)),
+    }).catch(e => console.error('[TowSoft] Helpdesk Odoo échec:', e)),
 
   ])
 
-  return NextResponse.json({
-    ok: true,
-    queueId: queueEntry.id,
-    message: 'Mission en cours de création',
-  })
+  return NextResponse.json({ ok: true, queueId: queueEntry.id, message: 'Mission en cours de création' })
 }
