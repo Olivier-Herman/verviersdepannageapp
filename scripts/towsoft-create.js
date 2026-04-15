@@ -233,17 +233,11 @@ async function updateQueue(status, missionNumber, error) {
 
     // Soumettre
     console.log('→ Soumission...');
-    // Ne pas attendre le retour du evaluate car la page va naviguer
-    page.evaluate(() => {
-      const btn = document.querySelector('#triggerSubmitAppelAjouterForm');
-      if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    }).catch(() => {});
-    // Attendre la navigation
-    try {
-      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 });
-    } catch (e) {
-      await wait(5000); // fallback si pas de navigation
-    }
+    // Attendre que la page soit stable avant de soumettre
+    await wait(2000);
+    console.log('→ Soumission...');
+    await page.click('#triggerSubmitAppelAjouterForm');
+    await wait(5000);
     console.log('✓ Formulaire soumis');
     console.log('URL après soumission:', page.url());
 
