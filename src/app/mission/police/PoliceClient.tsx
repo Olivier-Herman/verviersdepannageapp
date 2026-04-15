@@ -4,13 +4,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
-type MissionType = 'accident' | 'saisie' | 'mal_garee' | 'snc'
+type MissionType = 'accident' | 'saisie' | 'mal_garee' | 'snc' | 'appel_prive'
 
-const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string }> = {
-  accident:  { label: 'Police Accident',    icon: '🚨', color: 'bg-red-600',    colorLight: 'bg-red-50 border-red-200' },
-  saisie:    { label: 'Saisie',             icon: '⚖️', color: 'bg-purple-600', colorLight: 'bg-purple-50 border-purple-200' },
-  mal_garee: { label: 'Mal Garée',          icon: '🚫', color: 'bg-amber-600',  colorLight: 'bg-amber-50 border-amber-200' },
-  snc:       { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
+const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string; hidePolice?: boolean }> = {
+  accident:    { label: 'Police Accident',    icon: '🚨', color: 'bg-red-600',    colorLight: 'bg-red-50 border-red-200' },
+  saisie:      { label: 'Saisie',             icon: '⚖️', color: 'bg-purple-600', colorLight: 'bg-purple-50 border-purple-200' },
+  mal_garee:   { label: 'Mal Garée',          icon: '🚫', color: 'bg-amber-600',  colorLight: 'bg-amber-50 border-amber-200' },
+  snc:         { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
+  appel_prive: { label: 'Appel Privé',        icon: '📞', color: 'bg-green-800',  colorLight: 'bg-green-50 border-green-200', hidePolice: true },
 }
 
 const POLICE_ZONES = ['Police Zone Vesdre', 'Police Zone Fagnes']
@@ -356,8 +357,8 @@ export default function PoliceClient() {
               </button>
             </div>
           </div>
-          <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={POLICE_ZONES} />
-          <LInput label="Nom du policier" value={officerName} onChange={setOfficerName} />
+          {!cfg!.hidePolice && <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={POLICE_ZONES} />}
+          {!cfg!.hidePolice && <LInput label="Nom du policier" value={officerName} onChange={setOfficerName} />}
         </Section>
 
         {/* Propriétaire */}
