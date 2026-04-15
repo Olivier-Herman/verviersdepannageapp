@@ -233,8 +233,9 @@ async function updateQueue(status, missionNumber, error) {
 
     // Soumettre
     console.log('→ Soumission...');
-    // Attendre que la page soit stable avant de soumettre
-    await wait(2000);
+    // Attendre que le réseau soit calme avant de soumettre
+    await wait(3000);
+    try { await page.waitForNetworkIdle({ idleTime: 500, timeout: 8000 }); } catch(e) {}
     console.log('→ Soumission...');
     await page.click('#triggerSubmitAppelAjouterForm');
     await wait(5000);
