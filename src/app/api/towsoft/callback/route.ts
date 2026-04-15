@@ -1,12 +1,10 @@
 // src/app/api/towsoft/callback/route.ts
-// Appelé par GitHub Actions après création TowSoft pour mettre à jour le ticket Helpdesk
-
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { queue_id, mission_number, secret } = body
+  const { queue_id, mission_number, secret, print_label } = body
 
   if (secret !== process.env.TOWSOFT_CALLBACK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -38,13 +36,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 
-  // Déclencher l'impression de l'étiquette
-  try {
-    const printUrl = `https://verviers-qr.vercel.app/api/print/${queue.odoo_ticket_id}`
-    await fetch(printUrl, { method: 'GET' })
-    console.log(`[Callback] Impression étiquette déclenchée: ${printUrl}`)
-  } catch (e: any) {
-    console.error('[Callback] Impression échec:', e.message)
+  // Impression étiquette (seulement si print_label !== false)
+  if (print_label !== false) {
+    try {
+      const printUrl = `https://verviers-qr.vercel.app/api/print/${queue.odoo_ticket_id}`
+      await fetch(printUrl, { method: 'GET' })
+      console.log(`[Callback] Impression étiquette déclenchée: ${printUrl}`)
+    } catch (e: any) {
+      console.error('[Callback] Impression échec:', e.message)
+    }
   }
 
   return NextResponse.json({ ok: true })
