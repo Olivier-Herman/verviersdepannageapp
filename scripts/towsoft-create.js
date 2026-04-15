@@ -79,6 +79,7 @@ async function updateQueue(status, missionNumber, error) {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    protocolTimeout: 120000,
   });
   const page = await browser.newPage();
   await page.setDefaultTimeout(60000);
@@ -175,9 +176,16 @@ async function updateQueue(status, missionNumber, error) {
       await wait(500);
       await page.evaluate((dest) => {
         const el = document.querySelector('#destination');
-        if (el) { el.value = dest; el.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (el) {
+          el.focus();
+          el.value = dest;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+        }
       }, payload.destination);
       await wait(500);
+      console.log('✓ Destination:', payload.destination);
     }
 
     console.log('→ Véhicule...');
@@ -227,7 +235,9 @@ async function updateQueue(status, missionNumber, error) {
     console.log('→ Soumission...');
     await page.evaluate(() => {
       const btn = document.querySelector('#triggerSubmitAppelAjouterForm');
-      if (btn) btn.click();
+      if (btn) {
+        btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
     });
     await wait(3000);
     console.log('✓ Formulaire soumis');
