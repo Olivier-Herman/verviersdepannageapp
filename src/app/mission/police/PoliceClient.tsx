@@ -150,7 +150,8 @@ function AddressField({ label, value, onChange, required }: {
   )
 }
 
-export default function PoliceClient() {
+export default function PoliceClient({ userRole = 'driver' }: { userRole?: string }) {
+  const isSuperAdmin = userRole === 'superadmin'
   const router = useRouter()
   const [screen, setScreen] = useState<Screen>('type')
   const [selectedType, setSelectedType] = useState<MissionType | null>(null)
@@ -310,18 +311,21 @@ export default function PoliceClient() {
       <h1 className="text-gray-900 text-2xl font-bold mb-1">Créer une mission</h1>
       <p className="text-gray-500 text-sm mb-8">Sélectionne le type d&apos;intervention</p>
       <div className="space-y-3">
-        {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).map(([type, conf]) => (
-          <button key={type} onClick={() => {
-            setSelectedType(type)
-            if (type === 'assistance') setScreen('company')
-            else setScreen('form')
-          }}
-            className={`w-full flex items-center gap-4 p-5 ${conf.color} rounded-2xl text-left active:scale-[0.98] transition shadow-md`}>
-            <span className="text-3xl">{conf.icon}</span>
-            <span className="text-white font-bold text-lg">{conf.label}</span>
-            <span className="ml-auto text-white/70 text-xl">›</span>
-          </button>
-        ))}
+        {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).map(([type, conf]) => {
+          if (type === 'assistance' && !isSuperAdmin) return null
+          return (
+            <button key={type} onClick={() => {
+              setSelectedType(type)
+              if (type === 'assistance') setScreen('company')
+              else setScreen('form')
+            }}
+              className={`w-full flex items-center gap-4 p-5 ${conf.color} rounded-2xl text-left active:scale-[0.98] transition shadow-md`}>
+              <span className="text-3xl">{conf.icon}</span>
+              <span className="text-white font-bold text-lg">{conf.label}</span>
+              <span className="ml-auto text-white/70 text-xl">›</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
