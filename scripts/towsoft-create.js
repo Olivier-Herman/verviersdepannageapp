@@ -231,13 +231,14 @@ async function updateQueue(status, missionNumber, error) {
     }, payload.driver_name);
     console.log('✓ Conducteur sélectionné');
 
-    // Soumettre
-    console.log('→ Soumission...');
-    // Attendre que le réseau soit calme avant de soumettre
+    // Soumettre — utiliser la méthode native HTMLElement.click()
     await wait(3000);
     try { await page.waitForNetworkIdle({ idleTime: 500, timeout: 8000 }); } catch(e) {}
     console.log('→ Soumission...');
-    await page.click('#triggerSubmitAppelAjouterForm');
+    await page.evaluate(() => {
+      const btn = document.getElementById('triggerSubmitAppelAjouterForm');
+      if (btn) btn.click(); // méthode native HTMLElement, pas dispatchEvent
+    });
     await wait(5000);
     console.log('✓ Formulaire soumis');
     console.log('URL après soumission:', page.url());
