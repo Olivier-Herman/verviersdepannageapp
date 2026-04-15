@@ -169,6 +169,7 @@ async function updateQueue(status, missionNumber, error) {
     await wait(500);
     console.log('✓ Lieu:', payload.location);
 
+    console.log('→ Destination...');
     // Destination (REM / REM+Parc assistance)
     if (payload.destination) {
       await wait(500);
@@ -179,6 +180,7 @@ async function updateQueue(status, missionNumber, error) {
       await wait(500);
     }
 
+    console.log('→ Véhicule...');
     // Véhicule
     await page.evaluate((plate, brand, model, vin) => {
       if (plate) document.querySelector('#plaque').value = plate;
@@ -187,6 +189,7 @@ async function updateQueue(status, missionNumber, error) {
       if (vin)   document.querySelector('#serie').value  = vin;
     }, payload.plate, payload.brand, payload.model, payload.vin);
 
+    console.log('✓ Véhicule rempli');
     // Propriétaire
     if (payload.owner_first || payload.owner_last) {
       await page.evaluate((fn, ln, ph) => {
@@ -196,12 +199,14 @@ async function updateQueue(status, missionNumber, error) {
       }, payload.owner_first, payload.owner_last, payload.owner_phone);
     }
 
+    console.log('→ Remarques...');
     // Remarques
     const remarksText = payload.remarks || '';
     if (remarksText) {
       await page.evaluate((r) => { document.querySelector('#remarques').value = r; }, remarksText);
     }
 
+    console.log('→ Dépanneuse...');
     // Dépanneuse = Balisage (value 13)
     await page.select('#remorque', '13');
 
