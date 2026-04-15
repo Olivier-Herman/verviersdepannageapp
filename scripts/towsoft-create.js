@@ -84,6 +84,21 @@ async function updateQueue(status, missionNumber, error) {
   const page = await browser.newPage();
   await page.setDefaultTimeout(60000);
 
+  // Bloquer les ressources non-essentielles pour éviter les timeouts
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    const type = req.resourceType();
+    const url = req.url();
+    // Bloquer images, fonts, analytics mais garder XHR/fetch/document
+    if (['image', 'font', 'media'].includes(type) ||
+        url.includes('google-analytics') || url.includes('hotjar') ||
+        url.includes('facebook') || url.includes('intercom')) {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+
   try {
     // Login
     await page.goto(`${TOWSOFT_URL}/auth/login`, { waitUntil: 'networkidle0' });
