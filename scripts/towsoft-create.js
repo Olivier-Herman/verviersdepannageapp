@@ -154,13 +154,20 @@ async function updateQueue(status, missionNumber, error) {
 
     // Nature intervention selon type
     const natureValue = (isAssistance && interventionType === 'dsp') ? 'DEPANNAGE_SUR_PLACE' : 'REMORQUAGE_RELIVRAISON';
-    await page.select('#natureIntervention', natureValue);
+    await page.evaluate((val) => {
+      const el = document.querySelector('#natureIntervention');
+      if (el) { el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    }, natureValue);
+    console.log('✓ Nature:', natureValue);
 
     // Lieu d'intervention
-    await page.click('#origine');
-    await page.type('#origine', payload.location);
-    await wait(2000);
-    await page.keyboard.press('Escape');
+    console.log('→ Lieu intervention...');
+    await page.evaluate((loc) => {
+      const el = document.querySelector('#origine');
+      if (el) { el.value = loc; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    }, payload.location);
+    await wait(500);
+    console.log('✓ Lieu:', payload.location);
 
     // Destination (REM / REM+Parc assistance)
     if (payload.destination) {
