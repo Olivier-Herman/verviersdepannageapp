@@ -109,15 +109,13 @@ async function updateQueue(status, missionNumber, error) {
     const c = await page.$('.ui-autocomplete li.ui-menu-item:first-child');
     console.log('→ Autocomplete client trouvé:', !!c);
     if (c) {
-      await c.click();
+      await page.evaluate(() => {
+        const item = document.querySelector('.ui-autocomplete li.ui-menu-item');
+        if (item) item.click();
+      });
       console.log('✓ Client sélectionné');
     } else {
-      // Fallback: essayer de vider et retaper
-      await page.evaluate(() => { document.querySelector('#recherche_client').value = ''; });
-      await page.type('#recherche_client', towsoftClient.split(' ')[0]); // Premier mot seulement
-      await wait(3000);
-      const c2 = await page.$('.ui-autocomplete li.ui-menu-item:first-child');
-      if (c2) await c2.click();
+      console.log('⚠️ Client non trouvé en autocomplete');
     }
 
     console.log('→ N° dossier...');
@@ -145,7 +143,10 @@ async function updateQueue(status, missionNumber, error) {
     const s = await page.$('.ui-autocomplete li.ui-menu-item');
     console.log('→ Autocomplete service trouvé:', !!s);
     if (s) {
-      await s.click();
+      await page.evaluate(() => {
+        const item = document.querySelector('.ui-autocomplete li.ui-menu-item');
+        if (item) item.click();
+      });
       console.log('✓ Service sélectionné');
     } else {
       console.log('⚠️ Pas de suggestion, on continue sans cliquer');
