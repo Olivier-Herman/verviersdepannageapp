@@ -238,9 +238,14 @@ async function updateQueue(status, missionNumber, error) {
       const btn = document.querySelector('#triggerSubmitAppelAjouterForm');
       if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     }).catch(() => {});
-    await wait(5000);
-    await wait(3000);
+    // Attendre la navigation
+    try {
+      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 });
+    } catch (e) {
+      await wait(5000); // fallback si pas de navigation
+    }
     console.log('✓ Formulaire soumis');
+    console.log('URL après soumission:', page.url());
 
     // Modal parc (uniquement si useParc)
     if (useParc) {
