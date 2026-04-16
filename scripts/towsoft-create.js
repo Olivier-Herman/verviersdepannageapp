@@ -206,13 +206,7 @@ async function selectSelect2(page, containerId, value) {
     await selectAutocomplete(page, '#nom_service', codeService);
     await wait(500);
 
-    // Nature intervention
-    const natureValue = (isAssistance && interventionType === 'dsp') ? 'DEPANNAGE_SUR_PLACE' : 'REMORQUAGE_RELIVRAISON';
-    await page.evaluate((val) => {
-      const el = document.querySelector('#natureIntervention');
-      if (el) { el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, natureValue);
-    console.log('✓ Nature:', natureValue);
+    // Nature intervention — laissée automatique selon code service
 
     // Lieu d'intervention — comme le script police (click + type + Escape)
     await page.click('#origine');
@@ -230,6 +224,8 @@ async function selectSelect2(page, containerId, value) {
       await page.keyboard.press('Escape');
       await wait(500);
       console.log('✓ Destination:', payload.destination);
+      // Attendre que TomTom finisse ses calculs
+      await wait(4000);
     }
 
     // Véhicule
