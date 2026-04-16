@@ -98,10 +98,15 @@ async function selectSelect2(page, containerId, value) {
     if (!cc) { await updateQueue('error', null, `Compagnie inconnue: ${company}`); process.exit(1); }
     towsoftClient = cc.client;
     codeService   = interventionType === 'dsp' ? cc.dsp : cc.rem;
-    dispatchValue = interventionType === 'rem_parc' ? '3' : '2';
-    useParc       = interventionType === 'rem_parc';
-    parc          = 'K - Relivraison - Zone K';
-    motif         = 'A Relivrer';
+    dispatchValue = '3'; // Toujours En parc pour assistance
+    useParc       = true;
+    if (interventionType === 'rem_parc') {
+      parc  = 'K - Relivraison - Zone K';
+      motif = 'A Relivrer';
+    } else {
+      parc  = '112 - CAPTURE ECRAN';
+      motif = interventionType === 'dsp' ? 'DSP' : 'REM';
+    }
   } else {
     const config = TYPE_CONFIG[missionType];
     if (!config) { await updateQueue('error', null, `Type inconnu: ${missionType}`); process.exit(1); }
