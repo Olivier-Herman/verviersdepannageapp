@@ -258,13 +258,10 @@ async function selectSelect2(page, containerId, value) {
       }, payload.officer_name);
     }
 
-    // Soumettre
+    // Soumettre — même approche que script police
     console.log('→ Soumission...');
-    await wait(2000);
-    const navPromise = page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 25000 }).catch(() => null);
     await page.click('#triggerSubmitAppelAjouterForm');
-    await navPromise;
-    await wait(2000);
+    await wait(5000);
     console.log('✓ Formulaire soumis');
     console.log('URL:', page.url());
 
