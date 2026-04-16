@@ -209,29 +209,21 @@ async function selectSelect2(page, containerId, value) {
     }, natureValue);
     console.log('✓ Nature:', natureValue);
 
-    // Lieu d'intervention — écrire directement la valeur
-    await page.evaluate((loc) => {
-      const el = document.querySelector('#origine');
-      if (el) {
-        el.value = loc;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }, payload.location);
-    await wait(1000);
+    // Lieu d'intervention — comme le script police (click + type + Escape)
+    await page.click('#origine');
+    await page.type('#origine', payload.location);
+    await wait(2000);
+    await page.keyboard.press('Escape');
+    await wait(500);
     console.log('✓ Lieu:', payload.location);
 
     // Destination (REM / REM+Parc)
     if (payload.destination) {
-      await page.evaluate((dest) => {
-        const el = document.querySelector('#destination');
-        if (el) {
-          el.value = dest;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, payload.destination);
-      await wait(1000);
+      await page.click('#destination');
+      await page.type('#destination', payload.destination);
+      await wait(2000);
+      await page.keyboard.press('Escape');
+      await wait(500);
       console.log('✓ Destination:', payload.destination);
     }
 
@@ -261,21 +253,12 @@ async function selectSelect2(page, containerId, value) {
       }, payload.officer_name);
     }
 
-    // Soumettre — d'abord submitAppelAjouterForm puis triggerSubmitAppelAjouterForm
+    // Soumettre
     console.log('→ Soumission...');
-    await wait(1000);
-    await page.evaluate(() => {
-      const btn1 = document.getElementById('submitAppelAjouterForm');
-      if (btn1) btn1.click();
-    });
-    await wait(300);
-    // Déclencher la navigation et attendre
-    const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => null);
-    await page.evaluate(() => {
-      const btn2 = document.getElementById('triggerSubmitAppelAjouterForm');
-      if (btn2) btn2.click();
-    });
-    await navigationPromise;
+    await wait(2000);
+    const navPromise = page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 25000 }).catch(() => null);
+    await page.click('#triggerSubmitAppelAjouterForm');
+    await navPromise;
     await wait(2000);
     console.log('✓ Formulaire soumis');
     console.log('URL:', page.url());
