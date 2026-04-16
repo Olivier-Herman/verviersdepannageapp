@@ -5,22 +5,20 @@ const QUEUE_ID    = process.env.QUEUE_ID;
 
 const payload = JSON.parse(process.env.PAYLOAD_DATA || '{}');
 
-// Config types police/saisie/etc.
 const TYPE_CONFIG = {
-  accident:    { codeService: 'Appel Police - Accident',                       parc: 'K3',                         motif: 'ACCIDENT',          dispatch: '3' },
-  saisie:      { codeService: 'Appel Police - Saisie',                         parc: 'J',                          motif: 'SAISIE',            dispatch: '3' },
-  mal_garee:   { codeService: 'Appel Police - Mal Garée',                       parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE', dispatch: '3' },
-  snc:         { codeService: 'Siabis Non Couvert - Remorquage avec balisage', parc: 'K2',                         motif: 'SIABIS NON COUVERT', dispatch: '3' },
-  appel_prive: { codeService: 'Appel Police - Accident',                       parc: 'K3',                         motif: 'APPEL PRIVE',        dispatch: '3' },
+  accident:    { codeService: 'Appel Police - Accident',                        parc: 'K3',                               motif: 'ACCIDENT',           dispatch: '3' },
+  saisie:      { codeService: 'Appel Police - Saisie',                          parc: 'J',                                motif: 'SAISIE',             dispatch: '3' },
+  mal_garee:   { codeService: 'Appel Police - Mal Garée',                        parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE',          dispatch: '3' },
+  snc:         { codeService: 'Siabis Non Couvert - Remorquage avec balisage',  parc: 'K2',                               motif: 'SIABIS NON COUVERT', dispatch: '3' },
+  appel_prive: { codeService: 'Appel Police - Accident',                        parc: 'K3',                               motif: 'APPEL PRIVE',         dispatch: '3' },
 };
 
-// Config compagnies assistance
 const ASSISTANCE_COMPANY = {
-  touring: { client: 'Touring SA',                       dsp: 'TOURING - DEPANNAGE',                    rem: 'TOUREM TOURING - REMORQUAGE' },
-  vab:     { client: 'VAB NV',                           dsp: 'VAB - DEPANNAGE SURPLACE (APD 07/2024)', rem: 'VAB - REMORQUAGE (APD 07/2024)' },
-  ima:     { client: 'IMA BENELUX',                      dsp: 'IMA BENELUX - DEPANNAGE SURPLACE',       rem: 'IMA BENELUX - REMORQUAGE' },
-  mondial: { client: 'AWP Automatique Dispatch',         dsp: 'MONDIAL - DSP',                          rem: 'MONDIAL - REMORQUAGE' },
-  ipa:     { client: 'Inter Partner Assistance (007928)',dsp: 'IPA - DEPANNAGE SURPLACE',               rem: 'IPA - REMORQUAGE' },
+  touring: { client: 'Touring SA',                        dsp: 'TOURING - DEPANNAGE',                    rem: 'TOUREM TOURING - REMORQUAGE' },
+  vab:     { client: 'VAB NV',                            dsp: 'VAB - DEPANNAGE SURPLACE (APD 07/2024)', rem: 'VAB - REMORQUAGE (APD 07/2024)' },
+  ima:     { client: 'IMA BENELUX',                       dsp: 'IMA BENELUX - DEPANNAGE SURPLACE',       rem: 'IMA BENELUX - REMORQUAGE' },
+  mondial: { client: 'AWP Automatique Dispatch',          dsp: 'MONDIAL - DSP',                          rem: 'MONDIAL - REMORQUAGE' },
+  ipa:     { client: 'Inter Partner Assistance (007928)', dsp: 'IPA - DEPANNAGE SURPLACE',               rem: 'IPA - REMORQUAGE' },
 };
 
 async function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -29,7 +27,6 @@ async function updateQueue(status, missionNumber, error) {
   const body = { status, processed_at: new Date().toISOString() };
   if (missionNumber) body.towsoft_mission_number = missionNumber;
   if (error)         body.error_message = error;
-
   await fetch(`${process.env.SUPABASE_URL}/rest/v1/towsoft_queue?id=eq.${QUEUE_ID}`, {
     method: 'PATCH',
     headers: {
@@ -41,39 +38,75 @@ async function updateQueue(status, missionNumber, error) {
   });
 }
 
-(async () => {
-  const missionType     = payload.mission_type;
-  const company         = payload.company;
-  const interventionType = payload.intervention_type; // 'dsp' | 'rem' | 'rem_parc'
-  const isAssistance    = missionType === 'assistance';
+// Taper dans un champ lettre par lettre (simule un vrai utilisateur)
+async function typeInField(page, selector, value) {
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (el) { el.value = ''; el.focus(); }
+  }, selector);
+  await page.type(selector, value, { delay: 50 });
+}
 
-  // Résoudre la config
+// Sélectionner dans un autocomplete jQuery UI
+async function selectAutocomplete(page, inputSelector, value) {
+  await typeInField(page, inputSelector, value);
+  await wait(2500);
+  const clicked = await page.evaluate(() => {
+    const item = document.querySelector('.ui-autocomplete li.ui-menu-item');
+    if (item) { item.click(); return true; }
+    return false;
+  });
+  console.log(`Autocomplete ${inputSelector}: ${clicked ? '✓' : '⚠️ non trouvé'}`);
+  return clicked;
+}
+
+// Sélectionner dans un Select2
+async function selectSelect2(page, containerId, value) {
+  // Ouvrir le dropdown
+  await page.evaluate((id) => {
+    const container = document.getElementById(id);
+    if (container) container.click();
+  }, containerId);
+  await wait(500);
+  // Chercher et cliquer l'option
+  const clicked = await page.evaluate((val) => {
+    const results = document.querySelector('.select2-results__options');
+    if (!results) return false;
+    const opts = [...results.querySelectorAll('li')];
+    const opt = opts.find(o => o.textContent.toLowerCase().includes(val.toLowerCase()));
+    if (opt) { opt.click(); return true; }
+    return false;
+  }, value);
+  console.log(`Select2 ${containerId}: ${clicked ? '✓' : '⚠️ non trouvé'}`);
+  return clicked;
+}
+
+(async () => {
+  const missionType      = payload.mission_type;
+  const company          = payload.company;
+  const interventionType = payload.intervention_type;
+  const isAssistance     = missionType === 'assistance';
+
   let towsoftClient, codeService, dispatchValue, useParc, parc, motif;
 
   if (isAssistance) {
-    const companyConfig = ASSISTANCE_COMPANY[company];
-    if (!companyConfig) {
-      await updateQueue('error', null, `Compagnie inconnue: ${company}`);
-      process.exit(1);
-    }
-    towsoftClient  = companyConfig.client;
-    codeService    = interventionType === 'dsp' ? companyConfig.dsp : companyConfig.rem;
-    dispatchValue  = interventionType === 'rem_parc' ? '3' : '2'; // En parc ou Mission passée
-    useParc        = interventionType === 'rem_parc';
-    parc           = 'K - Relivraison - Zone K';
-    motif          = 'A Relivrer';
+    const cc = ASSISTANCE_COMPANY[company];
+    if (!cc) { await updateQueue('error', null, `Compagnie inconnue: ${company}`); process.exit(1); }
+    towsoftClient = cc.client;
+    codeService   = interventionType === 'dsp' ? cc.dsp : cc.rem;
+    dispatchValue = interventionType === 'rem_parc' ? '3' : '2';
+    useParc       = interventionType === 'rem_parc';
+    parc          = 'K - Relivraison - Zone K';
+    motif         = 'A Relivrer';
   } else {
     const config = TYPE_CONFIG[missionType];
-    if (!config) {
-      await updateQueue('error', null, `Type inconnu: ${missionType}`);
-      process.exit(1);
-    }
-    towsoftClient  = 'Clients divers';
-    codeService    = config.codeService;
-    dispatchValue  = config.dispatch;
-    useParc        = true;
-    parc           = config.parc;
-    motif          = config.motif;
+    if (!config) { await updateQueue('error', null, `Type inconnu: ${missionType}`); process.exit(1); }
+    towsoftClient = 'Clients divers';
+    codeService   = config.codeService;
+    dispatchValue = config.dispatch;
+    useParc       = true;
+    parc          = config.parc;
+    motif         = config.motif;
   }
 
   const browser = await puppeteer.launch({
@@ -83,8 +116,6 @@ async function updateQueue(status, missionNumber, error) {
   });
   const page = await browser.newPage();
   await page.setDefaultTimeout(60000);
-
-  
 
   try {
     // Login
@@ -99,63 +130,53 @@ async function updateQueue(status, missionNumber, error) {
     console.log('✓ Page formulaire chargée');
 
     // Répartir
-    await page.select('#dispatch', dispatchValue);
-    console.log('✓ Dispatch sélectionné:', dispatchValue);
+    await page.evaluate((val) => {
+      const el = document.querySelector('#dispatch');
+      if (el) { el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    }, dispatchValue);
+    console.log('✓ Dispatch:', dispatchValue);
     await wait(500);
 
-    // Facturé à
-    console.log('→ Clic recherche_client...');
-    await page.click('#recherche_client');
-    console.log('→ Saisie client:', towsoftClient);
-    await page.type('#recherche_client', towsoftClient);
-    await wait(3000);
-    const c = await page.$('.ui-autocomplete li.ui-menu-item:first-child');
-    console.log('→ Autocomplete client trouvé:', !!c);
-    if (c) {
-      await page.evaluate(() => {
-        const item = document.querySelector('.ui-autocomplete li.ui-menu-item');
-        if (item) item.click();
-      });
-      console.log('✓ Client sélectionné');
-    } else {
-      console.log('⚠️ Client non trouvé en autocomplete');
-    }
+    // Client (autocomplete)
+    await selectAutocomplete(page, '#recherche_client', towsoftClient);
+    await wait(500);
 
-    console.log('→ N° dossier...');
+    // N° dossier → champ #po (pas #numero_dossier !)
     const dossierValue = payload.dossier_number || 'Encodage automatique';
-    await page.evaluate((d) => { document.querySelector('#numero_dossier').value = d; }, dossierValue);
-    console.log('✓ Dossier:', dossierValue);
-    console.log('→ Nom responsable...');
+    await page.evaluate((val) => {
+      const el = document.querySelector('#po');
+      if (el) { el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    }, dossierValue);
+    console.log('✓ Dossier (#po):', dossierValue);
 
-    // Nom responsable (police uniquement)
-    if (payload.officer_name) {
-      await page.evaluate((n) => { document.querySelector('#nom_responsable').value = n; }, payload.officer_name);
-    }
-    console.log('→ Code service:', codeService);
-
-    // Code service — via evaluate uniquement (évite les problèmes de clickabilité)
-    await page.evaluate((service) => {
-      const el = document.querySelector('#nom_service');
-      if (el) {
-        el.value = service;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-      }
-    }, codeService);
-    await wait(3000);
-    const s = await page.$('.ui-autocomplete li.ui-menu-item');
-    console.log('→ Autocomplete service trouvé:', !!s);
-    if (s) {
-      await page.evaluate(() => {
-        const item = document.querySelector('.ui-autocomplete li.ui-menu-item');
-        if (item) item.click();
-      });
-      console.log('✓ Service sélectionné');
-    } else {
-      console.log('⚠️ Pas de suggestion, on continue sans cliquer');
+    // Prénom bénéficiaire
+    if (payload.owner_first) {
+      await typeInField(page, '#prenom_beneficiaire', payload.owner_first);
     }
 
-    // Nature intervention selon type
+    // Nom bénéficiaire
+    if (payload.owner_last) {
+      await typeInField(page, '#nom_beneficiaire', payload.owner_last);
+    }
+
+    // Téléphone bénéficiaire
+    if (payload.owner_phone) {
+      await typeInField(page, '#beneficiaireTelephone', payload.owner_phone);
+    }
+
+    // Dépanneuse via Select2
+    await selectSelect2(page, 'select2-remorque-container', 'Balisage');
+    await wait(500);
+
+    // Conducteur via Select2
+    await selectSelect2(page, 'select2-chauffeur-container', payload.driver_name);
+    await wait(500);
+
+    // Code service (autocomplete)
+    await selectAutocomplete(page, '#nom_service', codeService);
+    await wait(500);
+
+    // Nature intervention
     const natureValue = (isAssistance && interventionType === 'dsp') ? 'DEPANNAGE_SUR_PLACE' : 'REMORQUAGE_RELIVRAISON';
     await page.evaluate((val) => {
       const el = document.querySelector('#natureIntervention');
@@ -163,95 +184,80 @@ async function updateQueue(status, missionNumber, error) {
     }, natureValue);
     console.log('✓ Nature:', natureValue);
 
-    // Lieu d'intervention
-    console.log('→ Lieu intervention...');
-    await page.evaluate((loc) => {
-      const el = document.querySelector('#origine');
-      if (el) { el.value = loc; el.dispatchEvent(new Event('input', { bubbles: true })); }
-    }, payload.location);
-    await wait(500);
+    // Lieu d'intervention (type lettre par lettre + clic suggestion)
+    await typeInField(page, '#origine', payload.location);
+    await wait(2500);
+    await page.evaluate(() => {
+      const suggestion = document.querySelector('.tt-suggestion, .tomtom-suggestion, [class*="suggestion"]');
+      if (suggestion) suggestion.click();
+      // Fallback: simuler Enter
+    });
+    await page.keyboard.press('Enter');
+    await wait(1000);
     console.log('✓ Lieu:', payload.location);
 
-    console.log('→ Destination...');
-    // Destination (REM / REM+Parc assistance)
+    // Destination (REM / REM+Parc)
     if (payload.destination) {
-      await wait(500);
-      await page.evaluate((dest) => {
-        const el = document.querySelector('#destination');
-        if (el) {
-          el.focus();
-          el.value = dest;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-          el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-        }
-      }, payload.destination);
-      await wait(500);
+      await typeInField(page, '#destination', payload.destination);
+      await wait(2500);
+      await page.evaluate(() => {
+        const suggestion = document.querySelector('.tt-suggestion, .tomtom-suggestion, [class*="suggestion"]');
+        if (suggestion) suggestion.click();
+      });
+      await page.keyboard.press('Enter');
+      await wait(1000);
       console.log('✓ Destination:', payload.destination);
     }
 
-    console.log('→ Véhicule...');
     // Véhicule
     await page.evaluate((plate, brand, model, vin) => {
-      if (plate) document.querySelector('#plaque').value = plate;
-      if (brand) document.querySelector('#marque').value = brand;
-      if (model) document.querySelector('#modele').value = model;
-      if (vin)   document.querySelector('#serie').value  = vin;
+      if (plate) document.querySelector('#plaque').value  = plate;
+      if (brand) document.querySelector('#marque').value  = brand;
+      if (model) document.querySelector('#modele').value  = model;
+      if (vin)   document.querySelector('#serie').value   = vin;
     }, payload.plate, payload.brand, payload.model, payload.vin);
+    console.log('✓ Véhicule');
 
-    console.log('✓ Véhicule rempli');
-    // Propriétaire
-    if (payload.owner_first || payload.owner_last) {
-      await page.evaluate((fn, ln, ph) => {
-        if (fn) document.querySelector('#prenom_beneficiaire').value   = fn;
-        if (ln) document.querySelector('#nom_beneficiaire').value      = ln;
-        if (ph) document.querySelector('#beneficiaireTelephone').value = ph;
-      }, payload.owner_first, payload.owner_last, payload.owner_phone);
+    // Remarques (TEXTAREA)
+    if (payload.remarks) {
+      await page.evaluate((r) => {
+        const el = document.querySelector('#remarques');
+        if (el) { el.value = r; el.dispatchEvent(new Event('change', { bubbles: true })); }
+      }, payload.remarks);
+      console.log('✓ Remarques');
     }
 
-    console.log('→ Remarques...');
-    // Remarques
-    const remarksText = payload.remarks || '';
-    if (remarksText) {
-      await page.evaluate((r) => { document.querySelector('#remarques').value = r; }, remarksText);
+    // Nom responsable (police uniquement)
+    if (payload.officer_name) {
+      await page.evaluate((n) => {
+        const el = document.querySelector('#nom_responsable');
+        if (el) el.value = n;
+      }, payload.officer_name);
     }
 
-    console.log('→ Dépanneuse...');
-    // Dépanneuse = Balisage (value 13)
-    await page.evaluate(() => {
-      const el = document.querySelector('#remorque');
-      if (el) { el.value = '13'; el.dispatchEvent(new Event('change', { bubbles: true })); }
-    });
-    console.log('✓ Dépanneuse sélectionnée');
-
-    // Conducteur
-    console.log('→ Conducteur...');
-    await page.evaluate((dn) => {
-      const sel = document.querySelector('#chauffeur');
-      const opt = [...sel.options].find(o => o.text.toLowerCase().includes(dn.toLowerCase()));
-      if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, payload.driver_name);
-    console.log('✓ Conducteur sélectionné');
-
-    // Soumettre — utiliser la méthode native HTMLElement.click()
-    await wait(3000);
-    try { await page.waitForNetworkIdle({ idleTime: 500, timeout: 8000 }); } catch(e) {}
+    // Soumettre — d'abord submitAppelAjouterForm puis triggerSubmitAppelAjouterForm
     console.log('→ Soumission...');
+    await wait(1000);
     await page.evaluate(() => {
-      const btn = document.getElementById('triggerSubmitAppelAjouterForm');
-      if (btn) btn.click(); // méthode native HTMLElement, pas dispatchEvent
+      // Clic sur le bouton submit interne d'abord
+      const btn1 = document.getElementById('submitAppelAjouterForm');
+      if (btn1) btn1.click();
+    });
+    await wait(500);
+    await page.evaluate(() => {
+      const btn2 = document.getElementById('triggerSubmitAppelAjouterForm');
+      if (btn2) btn2.click();
     });
     await wait(5000);
     console.log('✓ Formulaire soumis');
-    console.log('URL après soumission:', page.url());
+    console.log('URL:', page.url());
 
     // Modal parc (uniquement si useParc)
     if (useParc) {
-      const modalVisible = await page.$('#modal');
+      const modalVisible = await page.$('#modal, #formRemise');
       if (modalVisible) {
         await wait(1500);
-
-        // Parc — 1er select
+        // Parc
         await page.evaluate((parcValue) => {
           const selects = [...document.querySelectorAll('#formRemise select, #modal select')];
           const parcSelect = selects[0];
@@ -261,8 +267,7 @@ async function updateQueue(status, missionNumber, error) {
           }
         }, parc);
         await wait(1000);
-
-        // Motif — 2ème select
+        // Motif
         await page.evaluate((motifValue) => {
           const selects = [...document.querySelectorAll('#formRemise select, #modal select')];
           const motifSelect = selects[1];
@@ -272,14 +277,16 @@ async function updateQueue(status, missionNumber, error) {
           }
         }, motif);
         await wait(500);
-
-        await page.click('#remiserSubmitButton');
+        await page.evaluate(() => {
+          const btn = document.getElementById('remiserSubmitButton');
+          if (btn) btn.click();
+        });
         await wait(3000);
         console.log('✓ Mise en parc effectuée');
       }
     }
 
-    // Récupérer le numéro de mission
+    // Numéro de mission
     const missionNumber = await page.evaluate(() => {
       const urlMatch = window.location.href.match(/num=(\d+)/);
       if (urlMatch) return urlMatch[1];
@@ -294,8 +301,8 @@ async function updateQueue(status, missionNumber, error) {
     await updateQueue('done', missionNumber, null);
     console.log('✓ Queue mise à jour');
 
-    // Callback Odoo (avec impression étiquette seulement pour rem_parc)
-    if (missionNumber && process.env.SUPABASE_URL) {
+    // Callback Odoo
+    if (missionNumber) {
       try {
         const appUrl = 'https://app.verviersdepannage.com';
         const cbRes = await fetch(`${appUrl}/api/towsoft/callback`, {
