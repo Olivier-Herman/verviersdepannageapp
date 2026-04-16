@@ -168,13 +168,34 @@ async function selectSelect2(page, containerId, value) {
       await typeInField(page, '#beneficiaireTelephone', payload.owner_phone);
     }
 
-    // Dépanneuse via Select2
-    await selectSelect2(page, 'select2-remorque-container', 'Balisage');
-    await wait(500);
+    // Dépanneuse — via le select natif #remorque + trigger Select2
+    await page.evaluate(() => {
+      const el = document.querySelector('#remorque');
+      if (el) {
+        el.value = '13'; // Balisage 01
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        // Trigger Select2 update
+        if (window.$ && $(el).data('select2')) $(el).trigger('change');
+      }
+    });
+    console.log('✓ Dépanneuse (Balisage)');
+    await wait(300);
 
-    // Conducteur via Select2
-    await selectSelect2(page, 'select2-chauffeur-container', payload.driver_name);
-    await wait(500);
+    // Conducteur — via le select natif #chauffeur
+    await page.evaluate((dn) => {
+      const sel = document.querySelector('#chauffeur');
+      if (sel) {
+        const opt = [...sel.options].find(o => o.text.toLowerCase().includes(dn.toLowerCase()));
+        if (opt) {
+          sel.value = opt.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          if (window.$ && $(sel).data('select2')) $(sel).trigger('change');
+          console.log('Conducteur:', opt.text);
+        }
+      }
+    }, payload.driver_name);
+    console.log('✓ Conducteur sélectionné');
+    await wait(300);
 
     // Code service (autocomplete)
     await selectAutocomplete(page, '#nom_service', codeService);
