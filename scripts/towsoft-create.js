@@ -62,15 +62,19 @@ async function selectAutocomplete(page, inputSelector, value) {
 
 // Sélectionner dans un Select2
 async function selectSelect2(page, containerId, value) {
-  // Ouvrir le dropdown
+  // Ouvrir le dropdown en cliquant le SPAN à l'intérieur
   await page.evaluate((id) => {
     const container = document.getElementById(id);
-    if (container) container.click();
+    if (container) {
+      const span = container.querySelector('span');
+      if (span) span.click();
+      else container.click();
+    }
   }, containerId);
-  await wait(500);
+  await wait(800);
   // Chercher et cliquer l'option
   const clicked = await page.evaluate((val) => {
-    const results = document.querySelector('.select2-results__options');
+    const results = document.querySelector('.select2-results__options, .select2-dropdown ul');
     if (!results) return false;
     const opts = [...results.querySelectorAll('li')];
     const opt = opts.find(o => o.textContent.toLowerCase().includes(val.toLowerCase()));
@@ -239,16 +243,18 @@ async function selectSelect2(page, containerId, value) {
     console.log('→ Soumission...');
     await wait(1000);
     await page.evaluate(() => {
-      // Clic sur le bouton submit interne d'abord
       const btn1 = document.getElementById('submitAppelAjouterForm');
       if (btn1) btn1.click();
     });
-    await wait(500);
+    await wait(300);
+    // Déclencher la navigation et attendre
+    const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => null);
     await page.evaluate(() => {
       const btn2 = document.getElementById('triggerSubmitAppelAjouterForm');
       if (btn2) btn2.click();
     });
-    await wait(5000);
+    await navigationPromise;
+    await wait(2000);
     console.log('✓ Formulaire soumis');
     console.log('URL:', page.url());
 
