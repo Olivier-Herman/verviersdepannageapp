@@ -209,27 +209,28 @@ async function selectSelect2(page, containerId, value) {
     }, natureValue);
     console.log('✓ Nature:', natureValue);
 
-    // Lieu d'intervention (type lettre par lettre + clic suggestion)
-    await typeInField(page, '#origine', payload.location);
-    await wait(2500);
-    await page.evaluate(() => {
-      const suggestion = document.querySelector('.tt-suggestion, .tomtom-suggestion, [class*="suggestion"]');
-      if (suggestion) suggestion.click();
-      // Fallback: simuler Enter
-    });
-    await page.keyboard.press('Enter');
+    // Lieu d'intervention — écrire directement la valeur
+    await page.evaluate((loc) => {
+      const el = document.querySelector('#origine');
+      if (el) {
+        el.value = loc;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, payload.location);
     await wait(1000);
     console.log('✓ Lieu:', payload.location);
 
     // Destination (REM / REM+Parc)
     if (payload.destination) {
-      await typeInField(page, '#destination', payload.destination);
-      await wait(2500);
-      await page.evaluate(() => {
-        const suggestion = document.querySelector('.tt-suggestion, .tomtom-suggestion, [class*="suggestion"]');
-        if (suggestion) suggestion.click();
-      });
-      await page.keyboard.press('Enter');
+      await page.evaluate((dest) => {
+        const el = document.querySelector('#destination');
+        if (el) {
+          el.value = dest;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }, payload.destination);
       await wait(1000);
       console.log('✓ Destination:', payload.destination);
     }
