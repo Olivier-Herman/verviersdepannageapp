@@ -11,7 +11,6 @@ const TYPE_CONFIG = {
   mal_garee:   { codeService: 'Appel Police - Mal Garée',                        parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE',          dispatch: '3' },
   snc:         { codeService: 'Siabis Non Couvert - Remorquage avec balisage',  parc: 'K2',                               motif: 'SIABIS NON COUVERT', dispatch: '3' },
   appel_prive: { codeService: 'Appel Police - Accident',                        parc: 'K3',                               motif: 'APPEL PRIVE',         dispatch: '3' },
-  avp:         { codeService: 'Appel Police - Saisie',                          parc: 'J',                                motif: 'ABANDON',             dispatch: '3' },
 };
 
 const ASSISTANCE_COMPANY = {
@@ -282,7 +281,10 @@ async function selectSelect2(page, containerId, value) {
           const selects = [...document.querySelectorAll('#formRemise select, #modal select')];
           const motifSelect = selects[1];
           if (motifSelect) {
-            const opt = [...motifSelect.options].find(o => o.text.toUpperCase().includes(motifValue));
+            // Chercher correspondance exacte d'abord, puis partielle
+            const opts = [...motifSelect.options];
+            const opt = opts.find(o => o.text.toUpperCase() === motifValue)
+                     || opts.find(o => o.text.toUpperCase() === motifValue.toUpperCase());
             if (opt) { motifSelect.value = opt.value; motifSelect.dispatchEvent(new Event('change', { bubbles: true })); console.log('Motif:', opt.text); }
           }
         }, motif);
