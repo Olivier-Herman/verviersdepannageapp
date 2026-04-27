@@ -121,6 +121,7 @@ export async function createHelpdeskTicket(params: {
   dateIntervention?: string
   missionType?:    string
   tagIds?:         number[]  // tags multiples (compagnie + type)
+  noteEtiquette?:  string
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
   // Chercher/créer le véhicule et mettre à jour son statut
@@ -151,9 +152,11 @@ export async function createHelpdeskTicket(params: {
     } catch (e) { console.error('[FSM] Partenaire non trouvé:', params.odooPartner) }
   }
 
+  const noteEtiquette = params.noteEtiquette || 'Généré par VDBot by HOOS'
+
   const ticketData: any = {
     name:        'Etiquette automatique',
-    x_studio_note_sur_etiquette: 'Généré par VDBot by HOOS',
+    x_studio_note_sur_etiquette: noteEtiquette,
     team_id:     params.teamId || 12,
     description: params.description || '',
   }

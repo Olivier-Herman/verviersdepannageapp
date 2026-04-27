@@ -11,6 +11,7 @@ const TYPE_CONFIG = {
   mal_garee:   { codeService: 'Appel Police - Mal Garée',                        parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE',          dispatch: '3' },
   snc:         { codeService: 'Siabis Non Couvert - Remorquage avec balisage',  parc: 'K2',                               motif: 'SIABIS NON COUVERT', dispatch: '3' },
   appel_prive: { codeService: 'Appel Police - Accident',                        parc: 'K3',                               motif: 'APPEL PRIVE',         dispatch: '3' },
+  avp:         { codeService: 'Appel Police - Saisie',                          parc: 'J',                                motif: 'ABANDON',             dispatch: '3' },
 };
 
 const ASSISTANCE_COMPANY = {

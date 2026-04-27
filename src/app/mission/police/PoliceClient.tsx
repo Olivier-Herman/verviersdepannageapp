@@ -4,14 +4,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
-type MissionType = 'accident' | 'saisie' | 'mal_garee' | 'snc' | 'appel_prive'
+type MissionType = 'accident' | 'saisie' | 'mal_garee' | 'snc' | 'appel_prive' | 'avp'
 
-const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string; hidePolice?: boolean }> = {
+const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string; hidePolice?: boolean; hideOwner?: boolean }> = {
   accident:    { label: 'Police Accident',    icon: '🚨', color: 'bg-red-600',    colorLight: 'bg-red-50 border-red-200' },
   saisie:      { label: 'Saisie',             icon: '⚖️', color: 'bg-purple-600', colorLight: 'bg-purple-50 border-purple-200' },
   mal_garee:   { label: 'Mal Garée',          icon: '🚫', color: 'bg-amber-600',  colorLight: 'bg-amber-50 border-amber-200' },
   snc:         { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
   appel_prive: { label: 'Appel Privé',        icon: '📞', color: 'bg-green-800',  colorLight: 'bg-green-50 border-green-200', hidePolice: true },
+  avp:         { label: 'AVP',                icon: '🔲', color: 'bg-black',     colorLight: 'bg-gray-50 border-gray-200',  hidePolice: true, hideOwner: true },
 }
 
 const POLICE_ZONES = ['Police Zone Vesdre', 'Police Zone Fagnes']
@@ -367,13 +368,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         </Section>
 
         {/* Propriétaire */}
-        <Section title="Propriétaire (optionnel)">
+        {!cfg!.hideOwner && <Section title="Propriétaire (optionnel)">
           <div className="grid grid-cols-2 gap-3">
             <LInput label="Prénom" value={ownerFirstName} onChange={setOwnerFirstName} />
             <LInput label="Nom" value={ownerLastName} onChange={setOwnerLastName} />
           </div>
           <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" />
-        </Section>
+        </Section>}
 
         {/* Remarques */}
         <Section title="Remarques">

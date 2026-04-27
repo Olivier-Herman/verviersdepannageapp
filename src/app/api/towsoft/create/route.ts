@@ -14,6 +14,7 @@ const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }
   mal_garee:   { label: '🚫 Mal Garée',          parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
   snc:         { label: '🛣️ Siabis Non Couvert', parc: 'K2', motif: 'SIABIS NON COUVERT' },
   appel_prive: { label: '📞 Appel Privé',        parc: 'K3', motif: 'APPEL PRIVE' },
+  avp:         { label: '🔲 AVP',                parc: 'J',  motif: 'ABANDON' },
 }
 
 const ASSISTANCE_COMPANY: Record<string, { label: string; towsoftClient: string; odooPartner: string; tagId: number; dsp: string; rem: string }> = {
@@ -100,7 +101,7 @@ export async function POST(req: Request) {
 
   // Remarques avec photos
   const remarksWithPhotos = [
-    isAssistance && type === 'appel_prive' ? '!!! APPEL PRIVE !!!' : '',
+    type === 'appel_prive' ? '!!! APPEL PRIVE !!!' : '',
     remarks,
     photoUrls?.length ? `Photos: ${photoUrls.join(' | ')}` : '',
   ].filter(Boolean).join(' --- ')
@@ -129,7 +130,7 @@ export async function POST(req: Request) {
     odoTags.push(assistanceConfig!.tagId) // tag compagnie
     odoTags.push(interventionType === 'rem_parc' ? 19 : 26) // REL ou Assistance
   } else {
-    const POLICE_TAGS: Record<string, number> = { accident: 6, saisie: 5, snc: 15, mal_garee: 1, appel_prive: 25 }
+    const POLICE_TAGS: Record<string, number> = { accident: 6, saisie: 5, snc: 15, mal_garee: 1, appel_prive: 25, avp: 10 }
     if (POLICE_TAGS[type]) odoTags.push(POLICE_TAGS[type])
   }
 
@@ -211,6 +212,16 @@ export async function POST(req: Request) {
         tagIds:            odoTags,
         description:       odooDescription,
         teamId:            12,
+        noteEtiquette:     type === 'avp' ? (() => {
+          // AVP note = "AVP " + date+2mois
+          const parts = (date || '').split('-')
+          if (parts.length === 3) {
+            const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1+2, parseInt(parts[0]))
+            const pad = (n: number) => String(n).padStart(2,'0')
+            return 'AVP ' + pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear()
+          }
+          return 'AVP'
+        })() : undefined,
       })
     ).then(async (result: any) => {
       console.log('[TowSoft] Helpdesk Odoo créé')
