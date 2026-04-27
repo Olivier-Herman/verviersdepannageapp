@@ -220,6 +220,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     if (!plate && !vin)   { setErr('Plaque ou VIN requis'); return }
     if (!brand)           { setErr('La marque du véhicule est requise'); return }
     if (!model)           { setErr('Le modèle du véhicule est requis'); return }
+    // Si plaque vide, utiliser le VIN
+    const finalPlate = plate.trim() || vin.trim()
 
     setLoading(true); setErr('')
 
@@ -242,7 +244,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: selectedType, date, time, plate, vin, brand, model,
+        type: selectedType, date, time, plate: finalPlate, vin, brand, model,
         location, policeZone, officerName,
         ownerFirstName, ownerLastName, ownerPhone,
         remarks, photoUrls,
