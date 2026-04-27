@@ -427,7 +427,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             <div className="px-4 py-2">
               <input value={brandSearch} onChange={e => setBrandSearch(e.target.value)}
                 placeholder="Rechercher..."
-                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm outline-none" autoFocus />
+                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm text-gray-900 outline-none" autoFocus />
             </div>
             <div className="overflow-y-auto flex-1 px-4 pb-4">
               {filteredBrands.map(b => (
@@ -460,7 +460,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             <div className="px-4 py-2">
               <input value={modelSearch} onChange={e => setModelSearch(e.target.value)}
                 placeholder="Rechercher..."
-                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm outline-none" autoFocus />
+                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm text-gray-900 outline-none" autoFocus />
             </div>
             <div className="overflow-y-auto flex-1 px-4 pb-4">
               {filteredModels.map(m => (
