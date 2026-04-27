@@ -437,6 +437,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                   {b.name}
                 </button>
               ))}
+              {filteredBrands.length === 0 && brandSearch && (
+                <button onClick={() => {
+                  setBrand(brandSearch); setSelectedBrandId(null); setModel(''); setShowBrands(false)
+                }} className="w-full text-left py-3 text-blue-600 text-sm font-medium">
+                  ✚ Utiliser &quot;{brandSearch}&quot;
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -463,11 +470,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                   {m.name}
                 </button>
               ))}
-              <button onClick={() => {
-                setModel(''); setShowModels(false)
-              }} className="w-full text-left py-3 text-gray-400 text-sm">
-                Saisir manuellement →
-              </button>
+              {(filteredModels.length === 0 || modelSearch) && modelSearch && (
+                <button onClick={() => {
+                  setModel(modelSearch); setShowModels(false)
+                }} className="w-full text-left py-3 text-blue-600 text-sm font-medium">
+                  ✚ Utiliser &quot;{modelSearch}&quot;
+                </button>
+              )}
+              {filteredModels.length === 0 && !modelSearch && (
+                <p className="text-gray-400 text-sm py-3">Tapez un modèle dans la recherche</p>
+              )}
             </div>
           </div>
         </div>
