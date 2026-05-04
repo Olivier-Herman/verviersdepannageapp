@@ -99,11 +99,13 @@ export async function POST(req: Request) {
       .maybeSingle()
 
     if (adminUser?.id) {
+      // URL et tag courts — iOS PWA n'ouvre que des URLs du même origin via clients.openWindow,
+      // les URLs externes (github.com pour les artifacts) sont à ouvrir depuis le mail uniquement.
       const result = await sendPushToUser(adminUser.id, {
         title: '❌ TowSoft échec',
         body:  `${queue.mission_type} — ${queue.plate || 'sans plaque'} — ${queue.driver_name || ''}`,
-        url:   runUrl || '/admin/missions',
-        tag:   `towsoft-error-${queue.id}`,
+        url:   '/admin/missions',
+        tag:   'towsoft-error',
       })
       console.log(`[ErrorNotify] Push: ${result.sent} envoyé(s), ${result.failed} échec(s)`)
     } else {
