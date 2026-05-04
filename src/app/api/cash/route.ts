@@ -99,72 +99,12 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient()
 
   if (action === 'remise') {
-    if (!pin) return NextResponse.json({ error: 'PIN requis' }, { status: 400 })
-    if (!body.verifierId) return NextResponse.json({ error: 'Responsable requis' }, { status: 400 })
-
-    // Récupérer le chauffeur
-    const { data: driverUser } = await supabase
-      .from('users').select('id, name').eq('id', driverId).single()
-
-    // Récupérer le responsable sélectionné
-    const { data: verifier } = await supabase
-      .from('users')
-      .select('id, name, verify_pin_hash')
-      .eq('id', body.verifierId)
-      .eq('can_verify', true)
-      .eq('active', true)
-      .single()
-
-    if (!verifier) {
-      return NextResponse.json({ error: 'Responsable introuvable' }, { status: 404 })
-    }
-
-    if (!verifier.verify_pin_hash) {
-      return NextResponse.json({ error: `${verifier.name} n'a pas encore défini son PIN` }, { status: 400 })
-    }
-
-    // Vérifier le PIN contre CE responsable spécifiquement
-    const match = await bcrypt.compare(pin.toString(), verifier.verify_pin_hash)
-    if (!match) {
-      return NextResponse.json({ error: 'PIN incorrect pour ce responsable' }, { status: 403 })
-    }
-
-    const now = new Date()
-    const dateStr = now.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const timeStr = now.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })
-    const transferNote = `${driverUser?.name || 'Chauffeur'} a transféré la somme de ${parseFloat(amount).toFixed(2)} € à ${verifier.name} le ${dateStr} à ${timeStr}`
-
-    const { data: remise, error } = await supabase
-      .from('cash_register')
-      .insert({
-        driver_id: driverId,
-        amount: parseFloat(amount),
-        type: 'remise',
-        verified_by: verifier.id,
-        verified_at: now.toISOString(),
-        notes: transferNote,
-      })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    // Créer l'entrée de réception pour le responsable
-    await supabase.from('cash_register').insert({
-      driver_id: verifier.id,
-      amount: parseFloat(amount),
-      type: 'reception',
-      verified_by: verifier.id,
-      verified_at: now.toISOString(),
-      notes: transferNote,
-    })
-
-    return NextResponse.json({
-      success: true,
-      remise,
-      validatedBy: verifier.name,
-      transferNote,
-    })
+    // L'ancienne action remise (transfert PIN) est obsolète depuis la Phase 3 du chantier caisse.
+    // Le nouveau flow passe par /api/cash/transfer (peer-to-peer atomique avec validation push).
+    return NextResponse.json(
+      { error: 'Cette action est obsolète. Utilisez /api/cash/transfer.' },
+      { status: 410 }
+    )
   }
 
   if (action === 'misc_income') {
