@@ -54,8 +54,11 @@ if (!GITHUB_TOKEN) {
   process.exit(1);
 }
 
-// ── 8 missions à rejouer (test #9 et mission de validation 56371 exclues) ──
-const QUEUE_IDS = [
+// ── Liste des queues à rejouer ──
+// Si des queue_ids sont passés en argv, on les utilise (rejouer des tests / un nouveau bug ad hoc).
+// Sinon, fallback sur la liste historique du bug du week-end 01/05/2026.
+const argvIds = process.argv.slice(2).filter(a => /^[0-9a-f-]{36}$/i.test(a));
+const HISTORICAL_LOST_QUEUES = [
   '26249e8f-0c1e-4ef5-bd3f-f20131c99b68',  // 01/05 09:32 mal_garee → ticket 1641
   'a67f328f-d13f-4c54-aa98-4a038f980892',  // 01/05 18:32 accident  → ticket 1642
   '2c3ad6a6-fbf3-4173-a77f-ab3aca69a3de',  // 01/05 18:34 accident  → ticket 1643
@@ -65,6 +68,7 @@ const QUEUE_IDS = [
   '6e264ee0-6219-4ab6-8066-27fc1e910f83',  // 03/05 15:49 accident  → ticket 1648
   '7fdfd135-5e3d-41ea-803a-bd8c81955d5b',  // 03/05 17:00 saisie    → ticket 1649
 ];
+const QUEUE_IDS = argvIds.length > 0 ? argvIds : HISTORICAL_LOST_QUEUES;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 async function getQueue(id) {
