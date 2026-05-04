@@ -6,7 +6,7 @@ on:
 
 jobs:
   create-mission:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
 
     steps:
@@ -32,3 +32,14 @@ jobs:
           PAYLOAD_DATA:               ${{ github.event.client_payload.data }}
           TOWSOFT_CALLBACK_SECRET:    ${{ secrets.TOWSOFT_CALLBACK_SECRET }}
         run: node scripts/towsoft-create.js
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: towsoft-debug-${{ github.run_id }}
+          path: |
+            debug-before-submit.png
+            debug-after-submit.png
+          retention-days: 14
+          if-no-files-found: warn

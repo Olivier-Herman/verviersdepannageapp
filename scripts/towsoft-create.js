@@ -11,6 +11,9 @@ const TYPE_CONFIG = {
   mal_garee:   { codeService: 'Appel Police - Mal Garée',                        parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE',          dispatch: '3' },
   snc:         { codeService: 'Siabis Non Couvert - Remorquage avec balisage',  parc: 'K2',                               motif: 'SIABIS NON COUVERT', dispatch: '3' },
   appel_prive: { codeService: 'Appel Police - Accident',                        parc: 'K3',                               motif: 'APPEL PRIVE',         dispatch: '3' },
+  // AVP : parc + motif confirmés côté src/app/api/towsoft/create/route.ts.
+  // codeService non spécifié côté Next → valeur héritée par analogie avec appel_prive (TowSoft route les "Appel Police - Accident" vers les sous-types). À VALIDER avec un test réel.
+  avp:         { codeService: 'Appel Police - Accident',                        parc: 'J',                                motif: 'ABANDON',            dispatch: '3' },
 };
 
 const ASSISTANCE_COMPANY = {
@@ -256,8 +259,72 @@ async function selectSelect2(page, containerId, value) {
 
     // Soumettre — même approche que script police
     console.log('→ Soumission...');
+
+    // === DIAGNOSTIC AVANT SUBMIT ===
+    console.log('========== DIAGNOSTIC AVANT SUBMIT ==========');
+    const urlBeforeSubmit = page.url();
+    console.log('URL avant submit:', urlBeforeSubmit);
+    await page.screenshot({ path: 'debug-before-submit.png', fullPage: true });
+    console.log('Screenshot avant submit sauvé');
+
+    const buttonState = await page.evaluate(() => {
+      const b = document.querySelector('#triggerSubmitAppelAjouterForm');
+      if (!b) return { exists: false };
+      return {
+        exists: true,
+        disabled: b.disabled,
+        visible: b.offsetParent !== null,
+        text: (b.innerText || b.value || '').substring(0, 100),
+        tagName: b.tagName,
+        type: b.type,
+        onclick: b.getAttribute('onclick'),
+      };
+    });
+    console.log('Bouton submit:', JSON.stringify(buttonState));
+
+    const formInfo = await page.evaluate(() => {
+      const form = document.querySelector('form');
+      if (!form) return { exists: false };
+      const fields = Array.from(form.querySelectorAll('input, select, textarea'))
+        .filter(f => f.name && !['hidden'].includes(f.type))
+        .map(f => ({ name: f.name, type: f.type, value: (f.value || '').substring(0, 80), required: f.required }));
+      return { exists: true, action: form.action, method: form.method, fieldCount: fields.length, fields };
+    });
+    console.log('Form (premiers 30 champs):', JSON.stringify({ ...formInfo, fields: formInfo.fields?.slice(0, 30) }));
+    console.log('=============================================');
+
     await page.click('#triggerSubmitAppelAjouterForm');
     await wait(5000);
+
+    // === DIAGNOSTIC APRÈS SUBMIT ===
+    console.log('========== DIAGNOSTIC APRÈS SUBMIT ==========');
+    await page.screenshot({ path: 'debug-after-submit.png', fullPage: true });
+    console.log('Screenshot après submit sauvé');
+    const urlAfterSubmit = page.url();
+    console.log('URL après submit:', urlAfterSubmit);
+    console.log('URL identique avant/après ?', urlBeforeSubmit === urlAfterSubmit);
+    console.log('Page title:', await page.title());
+
+    const bodyText = await page.evaluate(() => document.body.innerText || '');
+    console.log('Body text (2500 premiers chars):', bodyText.substring(0, 2500));
+
+    const alertsAndModals = await page.evaluate(() => {
+      const selectors = ['.alert', '.alert-danger', '.alert-warning', '.error', '.modal.show', '.modal[style*="display: block"]', '.swal2-popup', '[role="alert"]', '.has-error', '.field-validation-error'];
+      const found = [];
+      selectors.forEach(sel => {
+        document.querySelectorAll(sel).forEach(el => {
+          const txt = (el.innerText || '').trim();
+          if (txt) found.push({ selector: sel, text: txt.substring(0, 400) });
+        });
+      });
+      return found;
+    });
+    console.log('Alertes / modales / erreurs:', JSON.stringify(alertsAndModals));
+
+    const urlMatch = urlAfterSubmit.match(/num=(\d+)/);
+    console.log('Numéro trouvé dans URL après submit:', urlMatch ? urlMatch[1] : 'AUCUN');
+    console.log('=============================================');
+
     console.log('✓ Formulaire soumis');
     console.log('URL:', page.url());
 
@@ -298,16 +365,33 @@ async function selectSelect2(page, containerId, value) {
       }
     }
 
-    // Numéro de mission
-    const missionNumber = await page.evaluate(() => {
-      const urlMatch = window.location.href.match(/num=(\d+)/);
-      if (urlMatch) return urlMatch[1];
-      const missionMatch = document.body.innerText.match(/de mission[^\d]*(\d{4,6})/i);
-      if (missionMatch) return missionMatch[1];
-      const livraisonMatch = document.body.innerText.match(/de livraison[^\d]*(\d{4,6})/i);
-      if (livraisonMatch) return livraisonMatch[1];
-      return null;
-    });
+    // === CAPTURE STRICTE — bug semaine du 01/05/2026 ===
+    // On ne fait confiance QU'à l'URL après submit
+    // + on vérifie que l'URL a CHANGÉ (sinon = formulaire pas soumis, numéro pré-réservé fantôme)
+    const captureResult = {
+      number: urlAfterSubmit.match(/num=(\d+)/)?.[1] || null,
+      urlChanged: urlBeforeSubmit !== urlAfterSubmit,
+      url: urlAfterSubmit,
+    };
+
+    console.log('Capture résultat:', JSON.stringify(captureResult));
+
+    // IMPORTANT : on ne se fie plus à la regex DOM "de mission XXXXX" ni "de livraison XXXXX"
+    // Ces fallbacks captaient n'importe quel numéro qui traînait dans le DOM (cause du bug week-end).
+
+    if (!captureResult.number) {
+      console.error('❌ Numéro mission absent de l\'URL après submit');
+      await updateQueue('error', null, `Création TowSoft échouée - numéro absent de l'URL. URL: ${captureResult.url}`);
+      process.exit(1);
+    }
+
+    if (!captureResult.urlChanged) {
+      console.error('❌ URL identique avant/après submit - formulaire probablement pas soumis');
+      await updateQueue('error', null, `Création TowSoft échouée - URL inchangée après submit (numéro ${captureResult.number} probablement pré-réservé fantôme). URL: ${captureResult.url}`);
+      process.exit(1);
+    }
+
+    const missionNumber = captureResult.number;
     console.log('✓ Mission TowSoft:', missionNumber);
 
     await updateQueue('done', missionNumber, null);
