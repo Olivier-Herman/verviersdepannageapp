@@ -16,14 +16,14 @@ const PAYMENT_LABELS: Record<string, string> = {
   unpaid:       '📋 À facturer',
 }
 
-type EntryType = 'intervention' | 'advance'
+type EntryType = 'intervention' | 'advance' | 'odoo_payment'
 
 interface Entry {
   id:             string
   type:           EntryType
   reference?:     string
   created_at:     string
-  plate:          string
+  plate?:         string
   brand_text?:    string
   model_text?:    string
   motif_text?:    string
@@ -37,6 +37,9 @@ interface Entry {
   driver:         { name: string; email: string }
   notes?:         string
   invoice_url?:   string
+  // Paiements Odoo (encaissements directs encodés au bureau, sync via cron)
+  odoo_payment_id?: number
+  odoo_status?:    'pending' | 'confirmed' | null
 }
 
 export default function EncaissementsClient({
@@ -51,7 +54,7 @@ export default function EncaissementsClient({
   const [search,       setSearch]       = useState('')
   const [filterMode,   setFilterMode]   = useState('')
   const [filterDriver, setFilterDriver] = useState('')
-  const [filterType,   setFilterType]   = useState<'' | 'intervention' | 'advance'>('')
+  const [filterType,   setFilterType]   = useState<'' | 'intervention' | 'advance' | 'odoo_payment'>('')
   const [drivers,      setDrivers]      = useState<{ id: string; name: string }[]>([])
   const [selected,     setSelected]     = useState<Entry | null>(null)
 
@@ -86,8 +89,9 @@ export default function EncaissementsClient({
   })
 
   const totalEncaissements = filtered.filter(e => e.type === 'intervention').reduce((s, e) => s + e.amount, 0)
+  const totalOdoo          = filtered.filter(e => e.type === 'odoo_payment').reduce((s, e) => s + e.amount, 0)
   const totalAvances       = filtered.filter(e => e.type === 'advance').reduce((s, e) => s + e.amount, 0)
-  const solde              = totalEncaissements - totalAvances
+  const solde              = totalEncaissements + totalOdoo - totalAvances
 
   const Filters = (
     <div className="flex flex-col gap-2 mt-3 lg:mt-0">
@@ -102,7 +106,8 @@ export default function EncaissementsClient({
         <select value={filterType} onChange={e => setFilterType(e.target.value as any)}
           className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2 text-zinc-400 text-xs outline-none appearance-none">
           <option value="">Tous types</option>
-          <option value="intervention">Encaissements</option>
+          <option value="intervention">Encaissements app</option>
+          <option value="odoo_payment">Encaissements Odoo</option>
           <option value="advance">Avances de fonds</option>
         </select>
         <select value={filterMode} onChange={e => setFilterMode(e.target.value)}
@@ -127,10 +132,14 @@ export default function EncaissementsClient({
     <AppShell title="Mouvements" userRole={userRole} headerExtra={Filters}>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 px-4 lg:px-8 py-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 px-4 lg:px-8 py-4">
         <div className="bg-[#1A1A1A] rounded-xl p-3 border border-[#2a2a2a]">
-          <p className="text-zinc-500 text-xs">Encaissements</p>
+          <p className="text-zinc-500 text-xs">Encaissements app</p>
           <p className="text-green-400 text-lg font-bold">+{totalEncaissements.toFixed(2)} €</p>
+        </div>
+        <div className="bg-[#1A1A1A] rounded-xl p-3 border border-[#2a2a2a]">
+          <p className="text-zinc-500 text-xs">Encaissements Odoo</p>
+          <p className="text-green-400 text-lg font-bold">+{totalOdoo.toFixed(2)} €</p>
         </div>
         <div className="bg-[#1A1A1A] rounded-xl p-3 border border-[#2a2a2a]">
           <p className="text-zinc-500 text-xs">Avances</p>
@@ -179,18 +188,25 @@ export default function EncaissementsClient({
                                        px-2 py-0.5 rounded-full border border-orange-400/20">
                         📄 Avance
                       </span>
+                    ) : entry.type === 'odoo_payment' ? (
+                      <span className="text-blue-400 text-xs font-semibold bg-blue-400/10
+                                       px-2 py-0.5 rounded-full border border-blue-400/20">
+                        🏦 Odoo {entry.odoo_status === 'pending' ? '⏳' : ''}
+                      </span>
                     ) : (
                       <span className="text-brand text-xs font-mono">{entry.reference}</span>
                     )}
                   </td>
                   <td className="py-3 pr-4 text-white text-sm">
-                    <p className="font-medium">{entry.plate}</p>
+                    <p className="font-medium">{entry.plate || '—'}</p>
                     {(entry.brand_text || entry.model_text) && (
                       <p className="text-zinc-500 text-xs">{entry.brand_text} {entry.model_text}</p>
                     )}
                   </td>
                   <td className="py-3 pr-4 text-zinc-400 text-sm">
-                    {entry.type === 'advance' ? (entry.notes || '—') : (entry.client_name || '—')}
+                    {entry.type === 'advance'      ? (entry.notes || '—')
+                    : entry.type === 'odoo_payment' ? (entry.notes || 'Sans facture')
+                    :                                 (entry.client_name || '—')}
                   </td>
                   <td className="py-3 pr-4 text-zinc-400 text-xs">
                     {PAYMENT_LABELS[entry.payment_mode] || entry.payment_mode}
@@ -231,12 +247,17 @@ export default function EncaissementsClient({
                                        px-2 py-0.5 rounded-full border border-orange-400/20">
                         📄 Avance
                       </span>
+                    ) : entry.type === 'odoo_payment' ? (
+                      <span className="text-blue-400 text-xs font-semibold bg-blue-400/10
+                                       px-2 py-0.5 rounded-full border border-blue-400/20">
+                        🏦 Odoo {entry.odoo_status === 'pending' ? '⏳' : ''}
+                      </span>
                     ) : (
                       <span className="text-brand text-xs font-mono">{entry.reference}</span>
                     )}
                   </div>
                   <p className="text-white font-semibold text-sm truncate">
-                    {entry.plate}
+                    {entry.plate || (entry.type === 'odoo_payment' ? (entry.notes || 'Sans facture') : '—')}
                     {(entry.brand_text || entry.model_text) && (
                       <span className="text-zinc-400 font-normal"> — {entry.brand_text} {entry.model_text}</span>
                     )}
@@ -248,7 +269,9 @@ export default function EncaissementsClient({
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-zinc-500 text-xs">
-                  {entry.type === 'advance' ? (entry.notes || 'Avance de fonds') : (entry.client_name || 'Client inconnu')}
+                  {entry.type === 'advance'      ? (entry.notes || 'Avance de fonds')
+                  : entry.type === 'odoo_payment' ? (entry.notes || 'Paiement Odoo sans facture')
+                  :                                 (entry.client_name || 'Client inconnu')}
                 </p>
                 <p className="text-zinc-600 text-xs">{PAYMENT_LABELS[entry.payment_mode] || entry.payment_mode}</p>
               </div>
@@ -271,7 +294,9 @@ export default function EncaissementsClient({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-white font-bold text-lg">
-                  {selected.type === 'advance' ? 'Avance de fonds' : selected.reference}
+                  {selected.type === 'advance'      ? 'Avance de fonds'
+                  : selected.type === 'odoo_payment' ? `Paiement Odoo${selected.notes ? ' — ' + selected.notes : ''}`
+                  :                                    selected.reference}
                 </h2>
                 <p className={`font-bold text-xl ${selected.type === 'advance' ? 'text-red-400' : 'text-green-400'}`}>
                   {selected.type === 'advance' ? '-' : '+'}{selected.amount?.toFixed(2)} €
@@ -288,15 +313,18 @@ export default function EncaissementsClient({
             )}
 
             {[
-              ['Type',      selected.type === 'advance' ? '📄 Avance de fonds' : '💳 Encaissement'],
-              ['Véhicule',  `${selected.plate}${selected.brand_text ? ` — ${selected.brand_text} ${selected.model_text}` : ''}`],
+              ['Type',      selected.type === 'advance'      ? '📄 Avance de fonds'
+                          : selected.type === 'odoo_payment' ? `🏦 Encaissement Odoo${selected.odoo_status === 'pending' ? ' (en cours de traitement)' : ''}`
+                          :                                    '💳 Encaissement'],
+              ['Référence Odoo', selected.type === 'odoo_payment' ? selected.notes : null],
+              ['Véhicule',  selected.plate ? `${selected.plate}${selected.brand_text ? ` — ${selected.brand_text} ${selected.model_text}` : ''}` : null],
               ['Motif',     selected.motif_text],
               ['Paiement',  PAYMENT_LABELS[selected.payment_mode] || selected.payment_mode],
               ['Client',    selected.client_name],
               ['Adresse',   selected.client_address],
               ['Email',     selected.client_email],
               ['Chauffeur', selected.driver?.name],
-              ['Notes',     selected.notes],
+              ['Notes',     selected.type === 'odoo_payment' ? null : selected.notes],
               ['Date',      new Date(selected.created_at).toLocaleString('fr-BE')],
             ].filter(r => r[1]).map(([label, value]) => (
               <div key={label} className="flex justify-between py-2 border-b border-[#2a2a2a]">

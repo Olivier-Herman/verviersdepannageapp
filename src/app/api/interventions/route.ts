@@ -170,7 +170,34 @@ export async function GET(req: NextRequest) {
     notes:         i.notes,
   }))
 
-  if (!includeAdv) return NextResponse.json(intEntries)
+  // ── Paiements Odoo espèces (cash_register avec odoo_payment_id) ─────────
+  // Encaissements directs encodés au bureau, sync via cron sync-cash-payments.
+  let cashQuery = supabase
+    .from('cash_register')
+    .select('*, driver:users!cash_register_driver_id_fkey(name, email)')
+    .not('odoo_payment_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (!isAdmin && me) cashQuery = cashQuery.eq('driver_id', me.id)
+  const { data: odooPayments } = await cashQuery
+
+  const odooEntries = (odooPayments || []).map((c: any) => ({
+    id:               c.id,
+    type:             'odoo_payment',
+    created_at:       c.created_at,
+    amount:           c.amount || 0,
+    payment_mode:     'cash',
+    driver:           c.driver,
+    notes:            c.notes,            // = numéro facture / référence Odoo
+    odoo_payment_id:  c.odoo_payment_id,
+    odoo_status:      c.odoo_status,
+  }))
+
+  if (!includeAdv) {
+    const merged = [...intEntries, ...odooEntries]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return NextResponse.json(merged)
+  }
 
   // ── Avances de fonds ───────────────────────────────────────
   let advQuery = supabase
@@ -198,7 +225,7 @@ export async function GET(req: NextRequest) {
   }))
 
   // ── Fusion + tri par date ──────────────────────────────────
-  const all = [...intEntries, ...advEntries]
+  const all = [...intEntries, ...advEntries, ...odooEntries]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
   return NextResponse.json(all)
