@@ -483,18 +483,21 @@ async function selectSelect2(page, containerId, value) {
           document.querySelectorAll('.swal2-confirm, .swal2-close, .swal2-cancel').forEach(b => b.click());
           document.querySelectorAll('.swal2-container, .swal2-backdrop-show').forEach(el => el.remove());
         });
-        // Le widget chat est lazy-loaded via IntersectionObserver attaché à #discution-container.
-        // Le AJAX $.load("Src/router.php?controller=Messenger/Messenger/showDiscussion&reference_id=..")
-        // ne se lance que quand le container devient visible dans le viewport.
-        // 1. Wait pour laisser le JS init et attacher l'observer.
-        await wait(1500);
-        // 2. ScrollIntoView du container chat (déclenche l'observer de manière fiable).
+        // Le widget chat est lazy-loaded via IntersectionObserver attaché à #discution-container :
+        // au moment de la visibilité, $.load("Src/router.php?controller=Messenger/Messenger/showDiscussion&reference_id=..")
+        // injecte le DOM interne (#sendMessageInfoForJs, #messageMessengerInput, #newMessage, ...).
+        // L'observer ne fire pas toujours fiablement sous Puppeteer → on déclenche le AJAX nous-mêmes.
+        await wait(1500);  // laisser le JS init (jQuery, variables globales)
         await page.evaluate(() => {
           const el = document.getElementById('discution-container');
           if (el) el.scrollIntoView({ block: 'center' });
+          // Force le AJAX manuellement (idempotent : si déjà chargé, $.load remplace par la même chose)
+          const appelId = window.appel_id || /[?&]num=(\d+)/.exec(window.location.href)?.[1];
+          if (appelId && window.$) {
+            window.$('#discution-container').load(`Src/router.php?controller=Messenger/Messenger/showDiscussion&reference_id=${appelId}`);
+          }
         });
-        // 3. Wait que le AJAX $.load() complète et que le DOM interne soit injecté.
-        await wait(3000);
+        await wait(3500);  // le $.load() prend 2-4s côté serveur TowSoft
 
         // Tenter de localiser l'input avec timeout étendu
         await page.waitForSelector('#messageMessengerInput', { timeout: 20000 });
