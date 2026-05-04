@@ -9,10 +9,11 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendEmail }         from '@/lib/emails'
 import { sendPushToUser }    from '@/lib/push'
 
-const NOTIFY_EMAIL    = process.env.TOWSOFT_ERROR_NOTIFY_EMAIL || 'info@olivierherman.be'
+// .trim() pour absorber les espaces/tabs collés en trop dans la valeur Vercel
+const NOTIFY_EMAIL    = (process.env.TOWSOFT_ERROR_NOTIFY_EMAIL || 'info@olivierherman.be').trim()
 // Email du compte Supabase qui doit recevoir le push (peut différer du destinataire mail).
 // Si non défini, on retombe sur NOTIFY_EMAIL.
-const PUSH_USER_EMAIL = process.env.TOWSOFT_ERROR_PUSH_USER_EMAIL || NOTIFY_EMAIL
+const PUSH_USER_EMAIL = (process.env.TOWSOFT_ERROR_PUSH_USER_EMAIL || NOTIFY_EMAIL).trim()
 
 const HTML_ESCAPES: Record<string, string> = { '<': '&lt;', '>': '&gt;', '&': '&amp;' }
 function escapeHtml(s: string): string {
