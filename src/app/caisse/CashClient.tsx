@@ -10,6 +10,8 @@ interface CashEntry {
   verified_at: string | null
   notes: string
   created_at: string
+  odoo_status: 'pending' | 'confirmed' | null
+  odoo_payment_id: number | null
   intervention: { reference: string; plate: string; amount: number; created_at: string } | null
 }
 
@@ -265,11 +267,15 @@ export default function CashClient({
         <h3 className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-3">Historique</h3>
         {loading && <p className="text-zinc-600 text-sm text-center py-4">Chargement…</p>}
         {entries.map(e => (
-          <div key={e.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 mb-2">
+          <div key={e.id} className={`bg-[#1A1A1A] border rounded-xl p-3 mb-2 ${
+            e.odoo_status === 'pending' ? 'border-yellow-500/40' : 'border-[#2a2a2a]'
+          }`}>
             <div className="flex items-start justify-between mb-1">
               {(() => {
                 const isAvance = e.type === 'remise' && e.notes?.startsWith('Avance de fonds')
-                const label = e.type === 'encaissement' ? '+ Encaissement espèces'
+                const isOdoo   = !!e.odoo_payment_id
+                const label = e.type === 'encaissement'
+                  ? (isOdoo ? '+ Encaissement Odoo' : '+ Encaissement espèces')
                   : e.type === 'reception' ? '↓ Réception transfert'
                   : isAvance               ? '↓ Avance de fonds'
                   :                         '↑ Transfert'
@@ -283,11 +289,22 @@ export default function CashClient({
                 {e.type === 'remise' ? '-' : '+'}{e.amount.toFixed(2)} €
               </p>
             </div>
+            {e.odoo_status === 'pending' && (
+              <span className="inline-block bg-yellow-500/15 border border-yellow-500/40 text-yellow-400 text-[10px] uppercase tracking-wider font-bold rounded px-2 py-0.5 mb-1">
+                ⏳ En cours de traitement
+              </span>
+            )}
             {e.type !== 'encaissement' && e.notes && (
               <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
             )}
-            {e.type === 'encaissement' && e.intervention?.reference && (
+            {e.type === 'encaissement' && e.odoo_payment_id && e.notes && (
+              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
+            )}
+            {e.type === 'encaissement' && !e.odoo_payment_id && e.intervention?.reference && (
               <p className="text-zinc-600 text-xs">{e.intervention.reference}</p>
+            )}
+            {e.type === 'encaissement' && !e.odoo_payment_id && !e.intervention?.reference && e.notes && (
+              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
             )}
             <p className="text-zinc-700 text-xs mt-1">{new Date(e.created_at).toLocaleDateString('fr-BE')}</p>
           </div>
