@@ -1,5 +1,6 @@
 // src/app/api/cron/poll-missions/route.ts
 export const maxDuration = 60
+export const dynamic    = 'force-dynamic'
 
 import { NextResponse }          from 'next/server'
 import { getGraphToken, processEmailMessage } from '@/lib/missions/processor'
