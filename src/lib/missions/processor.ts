@@ -664,14 +664,15 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     const vehicleLabel = [parsed.vehicle_brand, parsed.vehicle_model, parsed.vehicle_plate]
       .filter(Boolean).join(' ')
 
+    // TODO: réactiver quand le module dispatch sera complet (désactivé temporairement)
     // Notification push seulement si c'est une nouvelle mission
-    if (!existingMissionId) await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
-      title: `${typeLabel} — ${source.toUpperCase()}`,
-      body:  vehicleLabel || parsed.client_name || 'Nouvelle mission reçue',
-      url:   '/dispatch',
-      tag:   `mission-${targetId}`,
-      icon:  '/icons/apple-touch-icon.png'
-    })
+    // if (!existingMissionId) await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+    //   title: `${typeLabel} — ${source.toUpperCase()}`,
+    //   body:  vehicleLabel || parsed.client_name || 'Nouvelle mission reçue',
+    //   url:   '/dispatch',
+    //   tag:   `mission-${targetId}`,
+    //   icon:  '/icons/apple-touch-icon.png'
+    // })
 
     console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence}) ${existingMissionId ? '→ mise à jour dossier existant' : '→ nouveau'}`)
     return { status: existingMissionId ? 'duplicate' : 'inserted', missionId: targetId, externalId: parsed.external_id, source }
