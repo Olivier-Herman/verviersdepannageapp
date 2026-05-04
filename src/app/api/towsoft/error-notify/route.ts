@@ -11,6 +11,11 @@ import { sendPushToUser }    from '@/lib/push'
 
 const NOTIFY_EMAIL = process.env.TOWSOFT_ERROR_NOTIFY_EMAIL || 'info@olivierherman.be'
 
+const HTML_ESCAPES: Record<string, string> = { '<': '&lt;', '>': '&gt;', '&': '&amp;' }
+function escapeHtml(s: string): string {
+  return s.replace(/[<>&]/g, c => HTML_ESCAPES[c] || c)
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { queue_id, error_message, run_id, secret } = body
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
       <hr style="border:none;border-top:1px solid #ddd;margin:20px 0"/>
 
       <p style="margin:0 0 8px"><b>Message d'erreur :</b></p>
-      <pre style="background:#f5f5f5;padding:12px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-word">${(error_message || 'Inconnu').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))}</pre>
+      <pre style="background:#f5f5f5;padding:12px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-word">${escapeHtml(error_message || 'Inconnu')}</pre>
 
       ${runUrl ? `
       <hr style="border:none;border-top:1px solid #ddd;margin:20px 0"/>
