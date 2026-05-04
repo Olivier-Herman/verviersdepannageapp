@@ -468,7 +468,10 @@ async function selectSelect2(page, containerId, value) {
           document.querySelectorAll('.swal2-confirm, .swal2-close, .swal2-cancel').forEach(b => b.click());
           document.querySelectorAll('.swal2-container, .swal2-backdrop-show').forEach(el => el.remove());
         });
-        await wait(3000);  // le widget chat met 2-3 secondes à s'initialiser après chargement de la fiche
+        // Scroller jusqu'en bas — le widget chat est tout en bas de la fiche et probablement
+        // lazy-loaded (Intersection Observer ou équivalent), donc invisible tant qu'on est en haut.
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await wait(3000);  // le widget chat met 2-3 secondes à s'initialiser après scroll/chargement
 
         // Tenter de localiser l'input avec timeout étendu
         await page.waitForSelector('#messageMessengerInput', { timeout: 20000 });
