@@ -456,8 +456,18 @@ async function selectSelect2(page, containerId, value) {
     const photoUrls = Array.isArray(payload.photo_urls) ? payload.photo_urls : [];
     if (missionNumber && photoUrls.length > 0) {
       try {
-        await page.goto(`${TOWSOFT_URL}/appel.php?num=${missionNumber}`, { waitUntil: 'networkidle0' });
-        await page.waitForSelector('#messageMessengerInput', { timeout: 10000 });
+        await page.goto(`${TOWSOFT_URL}/appel.php?num=${missionNumber}`, { waitUntil: 'networkidle2' });
+
+        // Fermer toute modale SweetAlert2 résiduelle qui bloquerait l'init du widget chat
+        await page.evaluate(() => {
+          if (window.Swal && typeof window.Swal.close === 'function') window.Swal.close();
+          document.querySelectorAll('.swal2-confirm, .swal2-close, .swal2-cancel').forEach(b => b.click());
+          document.querySelectorAll('.swal2-container, .swal2-backdrop-show').forEach(el => el.remove());
+        });
+        await wait(3000);  // le widget chat met 2-3 secondes à s'initialiser après chargement de la fiche
+
+        // Tenter de localiser l'input avec timeout étendu
+        await page.waitForSelector('#messageMessengerInput', { timeout: 20000 });
 
         const noteText = 'Photos:\n' + photoUrls.join('\n');
 
@@ -489,6 +499,21 @@ async function selectSelect2(page, containerId, value) {
         console.log(`✓ Note envoyée dans le chat avec ${photoUrls.length} photo(s)`);
       } catch (e) {
         console.error('⚠️ Note chat échec (non bloquant):', e.message);
+        // Diagnostic : screenshot + dump des sélecteurs présents pour identifier la cause
+        try {
+          await page.screenshot({ path: 'debug-chat-fail.png', fullPage: true });
+          const diag = await page.evaluate(() => ({
+            url: window.location.href,
+            hasMessageBody: !!document.getElementById('messageBody'),
+            hasMessengerInfo: !!document.getElementById('sendMessageInfoForJs'),
+            hasInput: !!document.getElementById('messageMessengerInput'),
+            hasNewMessageBtn: !!document.getElementById('newMessage'),
+            chatFooterHtml: document.querySelector('.chat-footer')?.outerHTML?.substring(0, 500) || null,
+            modalsOpen: document.querySelectorAll('.swal2-popup').length,
+            bodyTextStart: (document.body.innerText || '').substring(0, 300),
+          }));
+          console.log('Diagnostic chat:', JSON.stringify(diag));
+        } catch {/* on ne fait pas planter le run pour un diag */}
       }
     }
 

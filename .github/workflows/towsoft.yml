@@ -41,5 +41,6 @@ jobs:
           path: |
             debug-before-submit.png
             debug-after-submit.png
+            debug-chat-fail.png
           retention-days: 14
           if-no-files-found: warn
