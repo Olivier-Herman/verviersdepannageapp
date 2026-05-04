@@ -521,19 +521,36 @@ async function selectSelect2(page, containerId, value) {
         console.log(`✓ Note envoyée dans le chat avec ${photoUrls.length} photo(s)`);
       } catch (e) {
         console.error('⚠️ Note chat échec (non bloquant):', e.message);
-        // Diagnostic : screenshot + dump des sélecteurs présents pour identifier la cause
+        // Diagnostic étendu : screenshot + dump complet HTML pour analyse a posteriori
         try {
           await page.screenshot({ path: 'debug-chat-fail.png', fullPage: true });
-          const diag = await page.evaluate(() => ({
-            url: window.location.href,
-            hasMessageBody: !!document.getElementById('messageBody'),
-            hasMessengerInfo: !!document.getElementById('sendMessageInfoForJs'),
-            hasInput: !!document.getElementById('messageMessengerInput'),
-            hasNewMessageBtn: !!document.getElementById('newMessage'),
-            chatFooterHtml: document.querySelector('.chat-footer')?.outerHTML?.substring(0, 500) || null,
-            modalsOpen: document.querySelectorAll('.swal2-popup').length,
-            bodyTextStart: (document.body.innerText || '').substring(0, 300),
-          }));
+
+          const html = await page.content();
+          require('fs').writeFileSync('debug-chat-fail.html', html);
+
+          const diag = await page.evaluate(() => {
+            const body = document.body.innerHTML;
+            const lower = body.toLowerCase();
+            return {
+              url: window.location.href,
+              title: document.title,
+              htmlLength: body.length,
+              hasMessageBody:    !!document.getElementById('messageBody'),
+              hasMessengerInfo:  !!document.getElementById('sendMessageInfoForJs'),
+              hasInput:          !!document.getElementById('messageMessengerInput'),
+              hasNewMessageBtn:  !!document.getElementById('newMessage'),
+              hasContainerMessagerie: !!document.querySelector('.container-messagerie'),
+              hasDiscutionContainer: !!document.getElementById('discution-container'),
+              modalsOpen: document.querySelectorAll('.swal2-popup').length,
+              // Cherche des traces du chat dans le HTML
+              mentionsMessagerie: lower.includes('messagerie'),
+              mentionsDiscussion: lower.includes('discussion'),
+              mentionsSendMessage: lower.includes('sendmessage'),
+              mentionsChat: lower.includes('chat-'),
+              // Quelques scripts chargés
+              scriptSrcs: Array.from(document.querySelectorAll('script[src]')).map(s => s.src.split('/').pop()).slice(0, 20),
+            };
+          });
           console.log('Diagnostic chat:', JSON.stringify(diag));
         } catch {/* on ne fait pas planter le run pour un diag */}
       }
