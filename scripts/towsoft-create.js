@@ -143,7 +143,12 @@ async function selectSelect2(page, containerId, value) {
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      // Anti-bot detection : empêche Chromium d'exposer les flags d'automation au DOM
+      '--disable-blink-features=AutomationControlled',
+    ],
     protocolTimeout: 120000,
   });
   const page = await browser.newPage();
@@ -152,6 +157,16 @@ async function selectSelect2(page, containerId, value) {
   // pour HeadlessChrome ou pour les viewports trop petits (responsive).
   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1920, height: 1080 });
+
+  // Stealth minimal : masquer navigator.webdriver et faker chrome.runtime pour échapper
+  // aux détections "bot" qui empêchent TowSoft d'inclure le widget chat dans la fiche mission.
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    if (!(window).chrome) (window).chrome = {};
+    if (!(window).chrome.runtime) (window).chrome.runtime = {};
+    Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'en-US', 'en'] });
+    Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3, 4, 5] });
+  });
 
   try {
     // Login
