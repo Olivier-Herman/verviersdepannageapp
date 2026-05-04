@@ -92,7 +92,6 @@ export async function POST(req: Request) {
   }
 
   // Push (si l'admin est inscrit dans la base + a une subscription active)
-  let pushDebug: any = { user: null, sent: 0, failed: 0, error: null }
   try {
     const { data: adminUser } = await supabase
       .from('users')
@@ -101,7 +100,6 @@ export async function POST(req: Request) {
       .maybeSingle()
 
     if (adminUser?.id) {
-      pushDebug.user = adminUser.id
       // URL et tag courts — iOS PWA n'ouvre que des URLs du même origin via clients.openWindow,
       // les URLs externes (github.com pour les artifacts) sont à ouvrir depuis le mail uniquement.
       const result = await sendPushToUser(adminUser.id, {
@@ -110,17 +108,13 @@ export async function POST(req: Request) {
         url:   '/admin/missions',
         tag:   'towsoft-error',
       })
-      pushDebug.sent   = result.sent
-      pushDebug.failed = result.failed
       console.log(`[ErrorNotify] Push: ${result.sent} envoyé(s), ${result.failed} échec(s)`)
     } else {
-      pushDebug.error = `Aucun user trouvé pour ${PUSH_USER_EMAIL}`
       console.warn('[ErrorNotify] Aucun user trouvé pour', PUSH_USER_EMAIL, '— pas de push')
     }
   } catch (e: any) {
-    pushDebug.error = e.message
     console.error('[ErrorNotify] Push échec:', e.message)
   }
 
-  return NextResponse.json({ ok: true, push: pushDebug })
+  return NextResponse.json({ ok: true })
 }
