@@ -134,9 +134,55 @@ export async function POST(req: Request) {
     if (POLICE_TAGS[type]) odoTags.push(POLICE_TAGS[type])
   }
 
-  await Promise.allSettled([
+  // 1. Helpdesk Odoo créé EN PREMIER pour récupérer son ID. On l'intègre ensuite dans
+  // le numéro de dossier TowSoft afin que la fiche TowSoft pointe vers son ticket Odoo.
+  let odooTicketId: number | null = null
+  try {
+    const { createHelpdeskTicket } = await import('@/lib/odoo-fsm')
+    const result = await createHelpdeskTicket({
+      supabaseId:        queueEntry.id,
+      dossierNumber:     dossierNumber || queueEntry.id,
+      source:            isAssistance ? `ASSISTANCE_${(company || '').toUpperCase()}` : type.toUpperCase(),
+      clientName:        [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
+      odooPartner:       isAssistance ? 'Assistance Dépannage' : undefined,
+      vehiclePlate:      plate || '',
+      vehicleBrand:      brand || '',
+      vehicleModel:      model || '',
+      vehicleVin:        vin || '',
+      city:              location || '',
+      dateIntervention:  date || '',
+      missionType:       isAssistance ? (interventionType === 'rem_parc' ? 'rem_parc' : 'dsp') : type,
+      tagIds:            odoTags,
+      description:       odooDescription,
+      teamId:            12,
+      // Missions police créées par chauffeur : ticket directement à l'étape "Résolu" (id 4).
+      // Missions assistance : étape par défaut (workflow normal continue côté dispatch).
+      stageId:           isAssistance ? undefined : 4,
+      noteEtiquette:     type === 'avp' ? (() => {
+        // AVP note = "AVP " + date+2mois
+        const parts = (date || '').split('-')
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1+2, parseInt(parts[0]))
+          const pad = (n: number) => String(n).padStart(2,'0')
+          return 'AVP ' + pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear()
+        }
+        return 'AVP'
+      })() : undefined,
+    })
+    odooTicketId = result.ticketId
+    console.log('[TowSoft] Helpdesk Odoo créé:', odooTicketId)
+    await supabase.from('towsoft_queue').update({ odoo_ticket_id: odooTicketId }).eq('id', queueEntry.id)
+  } catch (e) {
+    console.error('[TowSoft] Helpdesk Odoo échec:', e)
+  }
 
-    // 1. GitHub Action TowSoft
+  // Numéro de dossier final pour TowSoft : si dossier explicite fourni on le garde,
+  // sinon "Encodage automatique <ticketOdoo>" pour faire le lien depuis TowSoft vers Odoo.
+  const towsoftDossierNumber = dossierNumber
+    || (odooTicketId ? `Encodage automatique ${odooTicketId}` : 'Encodage automatique')
+
+  // 2. GH dispatch + email en parallèle (le ticket Odoo est déjà créé)
+  await Promise.allSettled([
     fetch(
       `https://api.github.com/repos/Olivier-Herman/verviersdepannageapp/dispatches`,
       {
@@ -157,7 +203,7 @@ export async function POST(req: Request) {
               date, time, plate, vin, brand, model,
               location,
               destination:       destination || '',
-              dossier_number:    dossierNumber || '',
+              dossier_number:    towsoftDossierNumber,
               officer_name:      officerName || '',
               owner_first:       ownerFirstName || '',
               owner_last:        ownerLastName || '',
@@ -175,7 +221,6 @@ export async function POST(req: Request) {
       else console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
     }),
 
-    // 2. Email
     sendPoliceEmail({
       type, typeLabel, chauffeurName: dbUser.name,
       date, time, location,
@@ -193,47 +238,6 @@ export async function POST(req: Request) {
       parc:           parcValue,
     }).then(() => console.log('[TowSoft] Email envoyé'))
      .catch(e => console.error('[TowSoft] Email échec:', e)),
-
-    // 3. Helpdesk Odoo
-    import('@/lib/odoo-fsm').then(({ createHelpdeskTicket }) =>
-      createHelpdeskTicket({
-        supabaseId:        queueEntry.id,
-        dossierNumber:     dossierNumber || queueEntry.id,
-        source:            isAssistance ? `ASSISTANCE_${(company || '').toUpperCase()}` : type.toUpperCase(),
-        clientName:        [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || 'Inconnu',
-        odooPartner:       isAssistance ? 'Assistance Dépannage' : undefined,
-        vehiclePlate:      plate || '',
-        vehicleBrand:      brand || '',
-        vehicleModel:      model || '',
-        vehicleVin:        vin || '',
-        city:              location || '',
-        dateIntervention:  date || '',
-        missionType:       isAssistance ? (interventionType === 'rem_parc' ? 'rem_parc' : 'dsp') : type,
-        tagIds:            odoTags,
-        description:       odooDescription,
-        teamId:            12,
-        // Missions police créées par chauffeur : ticket directement à l'étape "Résolu" (id 4).
-        // Missions assistance : étape par défaut (workflow normal continue côté dispatch).
-        stageId:           isAssistance ? undefined : 4,
-        noteEtiquette:     type === 'avp' ? (() => {
-          // AVP note = "AVP " + date+2mois
-          const parts = (date || '').split('-')
-          if (parts.length === 3) {
-            const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1+2, parseInt(parts[0]))
-            const pad = (n: number) => String(n).padStart(2,'0')
-            return 'AVP ' + pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear()
-          }
-          return 'AVP'
-        })() : undefined,
-      })
-    ).then(async (result: any) => {
-      console.log('[TowSoft] Helpdesk Odoo créé')
-      if (result?.ticketId) {
-        const sb2 = createAdminClient()
-        await sb2.from('towsoft_queue').update({ odoo_ticket_id: result.ticketId }).eq('id', queueEntry.id)
-      }
-    }).catch(e => console.error('[TowSoft] Helpdesk Odoo échec:', e)),
-
   ])
 
   return NextResponse.json({ ok: true, queueId: queueEntry.id, message: 'Mission en cours de création' })

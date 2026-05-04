@@ -108,7 +108,9 @@ async function triggerWorkflow(queue) {
     model:             queue.model || '',
     location:          queue.location || '',
     destination:       '',
-    dossier_number:    '',
+    // Si on connaît déjà le ticket Odoo lié, on l'inclut dans le dossier TowSoft
+    // pour permettre le ping-pong TowSoft↔Odoo depuis n'importe quelle fiche.
+    dossier_number:    queue.odoo_ticket_id ? `Encodage automatique ${queue.odoo_ticket_id}` : '',
     officer_name:      queue.officer_name || '',
     owner_first:       queue.owner_first || '',
     owner_last:        queue.owner_last || '',
