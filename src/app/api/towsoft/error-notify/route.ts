@@ -9,7 +9,10 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendEmail }         from '@/lib/emails'
 import { sendPushToUser }    from '@/lib/push'
 
-const NOTIFY_EMAIL = process.env.TOWSOFT_ERROR_NOTIFY_EMAIL || 'info@olivierherman.be'
+const NOTIFY_EMAIL    = process.env.TOWSOFT_ERROR_NOTIFY_EMAIL || 'info@olivierherman.be'
+// Email du compte Supabase qui doit recevoir le push (peut différer du destinataire mail).
+// Si non défini, on retombe sur NOTIFY_EMAIL.
+const PUSH_USER_EMAIL = process.env.TOWSOFT_ERROR_PUSH_USER_EMAIL || NOTIFY_EMAIL
 
 const HTML_ESCAPES: Record<string, string> = { '<': '&lt;', '>': '&gt;', '&': '&amp;' }
 function escapeHtml(s: string): string {
@@ -92,7 +95,7 @@ export async function POST(req: Request) {
     const { data: adminUser } = await supabase
       .from('users')
       .select('id')
-      .ilike('email', NOTIFY_EMAIL)
+      .ilike('email', PUSH_USER_EMAIL)
       .maybeSingle()
 
     if (adminUser?.id) {
@@ -104,7 +107,7 @@ export async function POST(req: Request) {
       })
       console.log(`[ErrorNotify] Push: ${result.sent} envoyé(s), ${result.failed} échec(s)`)
     } else {
-      console.warn('[ErrorNotify] Aucun user trouvé pour', NOTIFY_EMAIL, '— pas de push')
+      console.warn('[ErrorNotify] Aucun user trouvé pour', PUSH_USER_EMAIL, '— pas de push')
     }
   } catch (e: any) {
     console.error('[ErrorNotify] Push échec:', e.message)
