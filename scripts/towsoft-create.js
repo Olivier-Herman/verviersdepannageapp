@@ -483,10 +483,18 @@ async function selectSelect2(page, containerId, value) {
           document.querySelectorAll('.swal2-confirm, .swal2-close, .swal2-cancel').forEach(b => b.click());
           document.querySelectorAll('.swal2-container, .swal2-backdrop-show').forEach(el => el.remove());
         });
-        // Scroller jusqu'en bas — le widget chat est tout en bas de la fiche et probablement
-        // lazy-loaded (Intersection Observer ou équivalent), donc invisible tant qu'on est en haut.
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await wait(3000);  // le widget chat met 2-3 secondes à s'initialiser après scroll/chargement
+        // Le widget chat est lazy-loaded via IntersectionObserver attaché à #discution-container.
+        // Le AJAX $.load("Src/router.php?controller=Messenger/Messenger/showDiscussion&reference_id=..")
+        // ne se lance que quand le container devient visible dans le viewport.
+        // 1. Wait pour laisser le JS init et attacher l'observer.
+        await wait(1500);
+        // 2. ScrollIntoView du container chat (déclenche l'observer de manière fiable).
+        await page.evaluate(() => {
+          const el = document.getElementById('discution-container');
+          if (el) el.scrollIntoView({ block: 'center' });
+        });
+        // 3. Wait que le AJAX $.load() complète et que le DOM interne soit injecté.
+        await wait(3000);
 
         // Tenter de localiser l'input avec timeout étendu
         await page.waitForSelector('#messageMessengerInput', { timeout: 20000 });
