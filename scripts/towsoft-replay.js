@@ -27,7 +27,9 @@ if (fs.existsSync(envPath)) {
   fs.readFileSync(envPath, 'utf-8').split('\n').forEach(line => {
     const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
     if (m && !process.env[m[1]]) {
-      process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+      // Strip commentaire inline (whitespace + # ...) puis quotes éventuelles
+      const value = m[2].replace(/\s+#.*$/, '').replace(/^["']|["']$/g, '').trim();
+      process.env[m[1]] = value;
     }
   });
 }
