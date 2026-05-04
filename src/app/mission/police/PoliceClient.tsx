@@ -98,6 +98,39 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [brandSearch,     setBrandSearch]     = useState('')
   const [modelSearch,     setModelSearch]     = useState('')
 
+  // Lookup véhicule Odoo par plaque
+  const [vehicleMatches,   setVehicleMatches]   = useState<any[] | null>(null)
+  const [vehicleFromOdoo,  setVehicleFromOdoo]  = useState(false)
+  const [searchingPlate,   setSearchingPlate]   = useState(false)
+
+  const searchVehicleByPlate = async () => {
+    const trimmed = plate.trim()
+    if (trimmed.length < 4) return
+    setSearchingPlate(true)
+    try {
+      const res = await fetch(`/api/odoo/search-vehicle?q=${encodeURIComponent(trimmed)}`)
+      if (!res.ok) return
+      const { vehicles = [] } = await res.json()
+      const norm = (s: string) => (s || '').replace(/[-.\s]/g, '').toUpperCase()
+      const exact = vehicles.filter((v: any) => norm(v.plate) === norm(trimmed))
+      if (exact.length > 0) setVehicleMatches(exact)
+    } catch { /* silencieux : ne pas polluer le user, le formulaire reste utilisable */ }
+    finally { setSearchingPlate(false) }
+  }
+
+  const acceptVehicleMatch = (v: any) => {
+    if (v.brand) setBrand(v.brand)
+    if (v.model) setModel(v.model)
+    if (v.vin)   setVin(v.vin)
+    setVehicleFromOdoo(true)
+    setVehicleMatches(null)
+  }
+
+  const rejectVehicleMatch = () => {
+    setVehicleMatches(null)
+    setVehicleFromOdoo(false)
+  }
+
   const locationRef = useRef<HTMLInputElement>(null)
   const photoRef    = useRef<HTMLInputElement>(null)
   const acRef       = useRef<any>(null)
@@ -322,7 +355,20 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {/* Véhicule */}
         <Section title="Véhicule">
           <div className="grid grid-cols-2 gap-3">
-            <LInput label="Plaque" value={plate} onChange={v => setPlate(v.toUpperCase())} placeholder="1ABC234" required />
+            <div>
+              <label className="block text-gray-600 text-xs font-medium mb-1">
+                Plaque<span className="text-red-500 ml-0.5">*</span>
+                {searchingPlate && <span className="ml-2 text-blue-500 text-[10px]">recherche…</span>}
+              </label>
+              <input type="text" value={plate}
+                onChange={e => {
+                  setPlate(e.target.value.toUpperCase())
+                  if (vehicleFromOdoo) setVehicleFromOdoo(false)
+                }}
+                onBlur={searchVehicleByPlate}
+                placeholder="1ABC234"
+                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+            </div>
             <LInput label="VIN" value={vin} onChange={v => setVin(v.toUpperCase())} placeholder="Optionnel" />
           </div>
 
@@ -345,6 +391,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 <span className={model ? 'text-gray-900' : 'text-gray-400'}>{model || 'Sélectionner un modèle'}</span>
                 <span className="text-gray-400">▼</span>
               </button>
+            </div>
+          )}
+
+          {vehicleFromOdoo && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 text-orange-800 text-xs leading-relaxed">
+              ✓ Véhicule existant Odoo utilisé. Modifier marque/modèle ne créera pas de doublon — la plaque pointe déjà sur cette fiche.
             </div>
           )}
         </Section>
@@ -481,6 +533,36 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 <p className="text-gray-400 text-sm py-3">Tapez un modèle dans la recherche</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — véhicule trouvé dans Odoo par la plaque */}
+      {vehicleMatches && vehicleMatches.length > 0 && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl">
+            <h3 className="font-bold text-gray-900 text-base mb-1">Véhicule existant trouvé</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {vehicleMatches.length === 1 ? 'Un véhicule' : `${vehicleMatches.length} véhicules`} avec la plaque <b>{plate}</b> {vehicleMatches.length === 1 ? 'existe' : 'existent'} dans Odoo. C&apos;est bien ce véhicule ?
+            </p>
+            <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
+              {vehicleMatches.map((v: any) => (
+                <button key={v.id} onClick={() => acceptVehicleMatch(v)}
+                  className="w-full text-left p-3 border border-gray-300 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-colors">
+                  <div className="font-semibold text-gray-900">{[v.brand, v.model].filter(Boolean).join(' ') || 'Sans marque/modèle'}</div>
+                  {v.vin && <div className="text-xs text-gray-500 mt-0.5">VIN : {v.vin}</div>}
+                  {(v.fuel || v.gearbox || v.color) && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {[v.fuel, v.gearbox, v.color].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+            <button onClick={rejectVehicleMatch}
+              className="w-full bg-gray-100 text-gray-700 rounded-xl py-2.5 font-medium text-sm hover:bg-gray-200">
+              Non, c&apos;est un autre véhicule
+            </button>
           </div>
         </div>
       )}
