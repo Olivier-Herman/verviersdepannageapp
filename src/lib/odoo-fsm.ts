@@ -356,14 +356,54 @@ export async function findOrCreateFsmVehicle(data: {
   // Chercher par plaque
   const existing = await rpcFsm<any[]>('fleet.vehicle', 'search_read',
     [[['license_plate', 'ilike', plate]]],
-    { fields: ['id', 'license_plate'], limit: 10 }
+    { fields: ['id', 'license_plate', 'model_id'], limit: 10 }
   )
-  const match = existing.find(v =>
+  const platesMatch = existing.filter(v =>
     v.license_plate.replace(/[-.\s]/g, '').toUpperCase() === plate
   )
-  if (match) {
-    console.log(`[FSM Fleet] Véhicule trouvé: ${plate} (ID: ${match.id})`)
-    return match.id
+
+  if (platesMatch.length > 0) {
+    // Si on n'a pas marque+modèle entrants, fallback historique : premier match plaque
+    if (!data.brandName || !data.modelName) {
+      console.log(`[FSM Fleet] Véhicule trouvé (sans comparaison marque/modèle): ${plate} (ID: ${platesMatch[0].id})`)
+      return platesMatch[0].id
+    }
+
+    // Vérifier que marque+modèle correspondent — si le client a remis sa plaque
+    // sur un nouveau véhicule, on doit créer une nouvelle fiche véhicule (la plaque
+    // existe en double dans Odoo, l'ancienne fiche reste pour l'historique).
+    const modelIds = platesMatch
+      .map(v => Array.isArray(v.model_id) ? v.model_id[0] : null)
+      .filter((id): id is number => typeof id === 'number')
+
+    const models = modelIds.length > 0
+      ? await rpcFsm<any[]>('fleet.vehicle.model', 'search_read',
+          [[['id', 'in', modelIds]]],
+          { fields: ['id', 'name', 'brand_id'] })
+      : []
+
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[-.\s]/g, '').trim()
+    // Match permissif : l'un inclut l'autre après normalisation (ex: "Mercedes" ⊂ "Mercedes-Benz")
+    const fuzzyMatch = (a: string, b: string) => {
+      const na = norm(a), nb = norm(b)
+      if (!na || !nb) return false
+      return na.includes(nb) || nb.includes(na)
+    }
+
+    for (const candidate of platesMatch) {
+      const modelId = Array.isArray(candidate.model_id) ? candidate.model_id[0] : null
+      if (!modelId) continue
+      const m = models.find(x => x.id === modelId)
+      if (!m) continue
+      const existingBrand = Array.isArray(m.brand_id) ? (m.brand_id[1] || '') : ''
+      const existingModel = m.name || ''
+      if (fuzzyMatch(existingBrand, data.brandName) && fuzzyMatch(existingModel, data.modelName)) {
+        console.log(`[FSM Fleet] Véhicule existant compatible: ${plate} (ID: ${candidate.id}) — "${existingBrand} ${existingModel}" ≈ "${data.brandName} ${data.modelName}"`)
+        return candidate.id
+      }
+    }
+
+    console.log(`[FSM Fleet] Plaque ${plate} existe (${platesMatch.length} véhicule(s)) mais aucune marque/modèle ne correspond à "${data.brandName} ${data.modelName}" — création d'une nouvelle fiche véhicule`)
   }
 
   // Créer le véhicule
