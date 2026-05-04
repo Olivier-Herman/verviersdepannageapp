@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { createClient } from '@/lib/supabase'
+// Pattern utilisé partout dans les Client Components du projet (MissionListClient, DriverClient...)
+// — éviter d'importer depuis @/lib/supabase qui embarque next/headers (serveur uniquement).
+import { createClient } from '@supabase/supabase-js'
+
+const sb = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface CashEntry {
   id: string
@@ -107,8 +114,7 @@ export default function CashClient({
   // ── Realtime sur le transfert sortant : écran d'attente fermé dès résolution ──
   useEffect(() => {
     if (!outgoingPending) return
-    const supabase = createClient()
-    const channel = supabase
+    const channel = sb
       .channel(`cash_transfer_${outgoingPending.id}`)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'cash_transfers',
@@ -128,7 +134,7 @@ export default function CashClient({
           }
         })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { sb.removeChannel(channel) }
   }, [outgoingPending?.id])
 
   // ── Solde projeté côté formulaire de transfert ──────────
