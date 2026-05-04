@@ -57,7 +57,11 @@ if (!GITHUB_TOKEN) {
 // ── Liste des queues à rejouer ──
 // Si des queue_ids sont passés en argv, on les utilise (rejouer des tests / un nouveau bug ad hoc).
 // Sinon, fallback sur la liste historique du bug du week-end 01/05/2026.
-const argvIds = process.argv.slice(2).filter(a => /^[0-9a-f-]{36}$/i.test(a));
+const argvAll  = process.argv.slice(2);
+const argvIds  = argvAll.filter(a => /^[0-9a-f-]{36}$/i.test(a));
+// Option : --photos url1,url2,url3 — utile pour tester le chat sans avoir la colonne photo_urls en DB
+const photosArg = argvAll.find(a => a.startsWith('--photos='));
+const photoUrls = photosArg ? photosArg.replace('--photos=', '').split(',').map(s => s.trim()).filter(Boolean) : [];
 const HISTORICAL_LOST_QUEUES = [
   '26249e8f-0c1e-4ef5-bd3f-f20131c99b68',  // 01/05 09:32 mal_garee → ticket 1641
   'a67f328f-d13f-4c54-aa98-4a038f980892',  // 01/05 18:32 accident  → ticket 1642
@@ -115,6 +119,8 @@ async function triggerWorkflow(queue) {
     // Si on connaît déjà le ticket Odoo lié, on l'inclut dans le dossier TowSoft
     // pour permettre le ping-pong TowSoft↔Odoo depuis n'importe quelle fiche.
     dossier_number:    queue.odoo_ticket_id ? `Encodage automatique ${queue.odoo_ticket_id}` : '',
+    // Photos passées via --photos=url1,url2 (la table towsoft_queue ne stocke pas encore les photo_urls)
+    photo_urls:        photoUrls,
     officer_name:      queue.officer_name || '',
     owner_first:       queue.owner_first || '',
     owner_last:        queue.owner_last || '',
