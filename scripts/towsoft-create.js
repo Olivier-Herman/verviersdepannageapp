@@ -502,34 +502,35 @@ async function selectSelect2(page, containerId, value) {
         // Tenter de localiser l'input avec timeout étendu
         await page.waitForSelector('#messageMessengerInput', { timeout: 20000 });
 
-        const noteText = 'Photos:\n' + photoUrls.join('\n');
+        // TowSoft n'auto-linkifie une URL que si elle est SEULE dans un message — donc on envoie
+        // un message par photo (précédé d'un message "Photos:" pour le contexte).
+        const messages = ['Photos:', ...photoUrls];
 
-        // Inscrire la note via l'API emojioneArea si dispo, sinon set direct du textarea
-        const setMethod = await page.evaluate((text) => {
-          if (window.$ && window.$('#messageMessengerInput').data('emojioneArea')) {
-            window.$('#messageMessengerInput').data('emojioneArea').setText(text);
-            return 'emojionearea';
-          }
-          const ta = document.getElementById('messageMessengerInput');
-          if (ta) {
-            ta.value = text;
-            ta.dispatchEvent(new Event('input',  { bubbles: true }));
-            ta.dispatchEvent(new Event('change', { bubbles: true }));
-            return 'textarea';
-          }
-          return 'not-found';
-        }, noteText);
-        console.log('Note saisie via:', setMethod);
+        for (const msg of messages) {
+          const setMethod = await page.evaluate((text) => {
+            if (window.$ && window.$('#messageMessengerInput').data('emojioneArea')) {
+              window.$('#messageMessengerInput').data('emojioneArea').setText(text);
+              return 'emojionearea';
+            }
+            const ta = document.getElementById('messageMessengerInput');
+            if (ta) {
+              ta.value = text;
+              ta.dispatchEvent(new Event('input',  { bubbles: true }));
+              ta.dispatchEvent(new Event('change', { bubbles: true }));
+              return 'textarea';
+            }
+            return 'not-found';
+          }, msg);
 
-        await wait(500);
-
-        // Cliquer le bouton d'envoi
-        await page.evaluate(() => {
-          const btn = document.getElementById('newMessage');
-          if (btn) btn.click();
-        });
-        await wait(2500);
-        console.log(`✓ Note envoyée dans le chat avec ${photoUrls.length} photo(s)`);
+          await wait(300);
+          await page.evaluate(() => {
+            const btn = document.getElementById('newMessage');
+            if (btn) btn.click();
+          });
+          await wait(1200);  // laisser TowSoft enregistrer + reset l'input avant le prochain
+          console.log(`  → "${msg.length > 60 ? msg.substring(0, 57) + '...' : msg}" (via ${setMethod})`);
+        }
+        console.log(`✓ ${messages.length} note(s) envoyée(s) dans le chat (${photoUrls.length} photo(s) + titre)`);
       } catch (e) {
         console.error('⚠️ Note chat échec (non bloquant):', e.message);
         // Diagnostic étendu : screenshot + dump complet HTML pour analyse a posteriori
