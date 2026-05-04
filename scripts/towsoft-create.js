@@ -39,6 +39,26 @@ async function updateQueue(status, missionNumber, error) {
     },
     body: JSON.stringify(body),
   });
+
+  // En cas d'erreur, notifier l'admin (email + push) — best effort, on n'arrête pas le script
+  if (status === 'error') {
+    try {
+      const appUrl = 'https://app.verviersdepannage.com';
+      await fetch(`${appUrl}/api/towsoft/error-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          queue_id:      QUEUE_ID,
+          error_message: error,
+          run_id:        process.env.GITHUB_RUN_ID,
+          secret:        process.env.TOWSOFT_CALLBACK_SECRET,
+        }),
+      });
+      console.log('✓ Notification d\'erreur envoyée à l\'admin');
+    } catch (e) {
+      console.error('⚠️ Notification d\'erreur échec:', e.message);
+    }
+  }
 }
 
 // Taper dans un champ lettre par lettre (simule un vrai utilisateur)
