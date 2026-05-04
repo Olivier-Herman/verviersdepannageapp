@@ -2,6 +2,8 @@
 // Renouvelle quotidiennement la subscription Graph (expire tous les 3 jours max)
 // Appelle simplement /api/missions/subscribe en interne
 
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 
 export async function GET(req: Request) {
