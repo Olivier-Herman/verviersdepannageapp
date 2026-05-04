@@ -141,6 +141,20 @@ async function selectSelect2(page, containerId, value) {
     await page.goto(`${TOWSOFT_URL}/appel-ajouter5.php`, { waitUntil: 'networkidle0' });
     console.log('✓ Page formulaire chargée');
 
+    // Fermer toute modale SweetAlert2 affichée à l'ouverture (depuis ~01/05/2026 TowSoft
+    // affiche un bandeau "Avis important concernant votre abonnement" qui interceptait
+    // les clics et bloquait silencieusement le submit du formulaire mission).
+    const modalsClosed = await page.evaluate(() => {
+      let n = 0;
+      if (window.Swal && typeof window.Swal.close === 'function') { window.Swal.close(); n++; }
+      document.querySelectorAll('.swal2-confirm, .swal2-close, .swal2-cancel').forEach(b => { b.click(); n++; });
+      // Fallback : retire tout overlay résiduel
+      document.querySelectorAll('.swal2-container, .swal2-backdrop-show').forEach(el => el.remove());
+      return n;
+    });
+    if (modalsClosed > 0) console.log(`✓ ${modalsClosed} modale(s) SweetAlert2 fermée(s)`);
+    await wait(500);
+
     // Répartir
     await page.evaluate((val) => {
       const el = document.querySelector('#dispatch');
@@ -293,7 +307,11 @@ async function selectSelect2(page, containerId, value) {
     console.log('Form (premiers 30 champs):', JSON.stringify({ ...formInfo, fields: formInfo.fields?.slice(0, 30) }));
     console.log('=============================================');
 
-    await page.click('#triggerSubmitAppelAjouterForm');
+    // Submit en JS direct (bypass tout overlay résiduel qui intercepterait le clic souris)
+    await page.evaluate(() => {
+      const btn = document.getElementById('triggerSubmitAppelAjouterForm');
+      if (btn) btn.click();
+    });
     await wait(5000);
 
     // === DIAGNOSTIC APRÈS SUBMIT ===
