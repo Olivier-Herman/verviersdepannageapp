@@ -384,12 +384,28 @@ async function selectSelect2(page, containerId, value) {
     }
 
     // === CAPTURE STRICTE — bug semaine du 01/05/2026 ===
-    // On ne fait confiance QU'à l'URL après submit
-    // + on vérifie que l'URL a CHANGÉ (sinon = formulaire pas soumis, numéro pré-réservé fantôme)
+    // TowSoft redirige vers ?num=XXXXX seulement APRÈS la mise en parc complète.
+    // On attend explicitement que l'URL contienne ?num= (timeout 15s).
+    // Pour les missions sans parc (useParc=false), on attend aussi la redirection directe.
+    let finalUrl = page.url();
+    try {
+      await page.waitForFunction(
+        () => /[?&]num=\d+/.test(window.location.href),
+        { timeout: 15000 }
+      );
+      finalUrl = page.url();
+      console.log('✓ Redirection finale détectée:', finalUrl);
+    } catch (e) {
+      finalUrl = page.url();
+      console.log('⚠️ waitForFunction timeout (15s) — URL au moment du timeout:', finalUrl);
+    }
+
+    // On ne fait confiance QU'à l'URL finale (post mise en parc + redirection)
+    // + on vérifie que l'URL a CHANGÉ depuis avant submit
     const captureResult = {
-      number: urlAfterSubmit.match(/num=(\d+)/)?.[1] || null,
-      urlChanged: urlBeforeSubmit !== urlAfterSubmit,
-      url: urlAfterSubmit,
+      number: finalUrl.match(/num=(\d+)/)?.[1] || null,
+      urlChanged: urlBeforeSubmit !== finalUrl,
+      url: finalUrl,
     };
 
     console.log('Capture résultat:', JSON.stringify(captureResult));
