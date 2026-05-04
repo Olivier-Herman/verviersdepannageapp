@@ -122,6 +122,7 @@ export async function createHelpdeskTicket(params: {
   missionType?:    string
   tagIds?:         number[]  // tags multiples (compagnie + type)
   noteEtiquette?:  string
+  stageId?:        number    // ID de l'étape helpdesk.stage (4 = Résolu)
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
   // Chercher/créer le véhicule et mettre à jour son statut
@@ -168,6 +169,7 @@ export async function createHelpdeskTicket(params: {
   if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree] = params.dateIntervention.split('-').reverse().join('-')
   if (vehicleId)               ticketData[HELPDESK_FIELDS.vehicule]       = vehicleId
   if (partnerId)               ticketData.partner_id                      = partnerId
+  if (params.stageId)          ticketData.stage_id                        = params.stageId
   // Tags — priorité à tagIds si fourni, sinon fallback sur HELPDESK_TAGS
   if (params.tagIds && params.tagIds.length > 0) {
     ticketData.tag_ids = params.tagIds.map(id => [4, id])

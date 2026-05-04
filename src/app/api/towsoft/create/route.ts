@@ -212,6 +212,9 @@ export async function POST(req: Request) {
         tagIds:            odoTags,
         description:       odooDescription,
         teamId:            12,
+        // Missions police créées par chauffeur : ticket directement à l'étape "Résolu" (id 4).
+        // Missions assistance : étape par défaut (workflow normal continue côté dispatch).
+        stageId:           isAssistance ? undefined : 4,
         noteEtiquette:     type === 'avp' ? (() => {
           // AVP note = "AVP " + date+2mois
           const parts = (date || '').split('-')
