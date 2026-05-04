@@ -148,6 +148,10 @@ async function selectSelect2(page, containerId, value) {
   });
   const page = await browser.newPage();
   await page.setDefaultTimeout(60000);
+  // UA et viewport "desktop standard" — TowSoft renvoie un HTML différent (sans le widget chat)
+  // pour HeadlessChrome ou pour les viewports trop petits (responsive).
+  await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+  await page.setViewport({ width: 1920, height: 1080 });
 
   try {
     // Login
