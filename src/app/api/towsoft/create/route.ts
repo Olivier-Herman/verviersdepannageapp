@@ -99,10 +99,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur création queue' }, { status: 500 })
   }
 
-  // Remarques avec photos
-  const remarksWithPhotos = [
+  // Remarques pour le champ #remarques de TowSoft (texte brut, pas de liens cliquables là-bas)
+  // Les photos sont publiées séparément en note de chat sur la fiche mission après création
+  // (le chat TowSoft auto-linkifie les URLs, contrairement au champ remarques).
+  const remarksClean = [
     type === 'appel_prive' ? '!!! APPEL PRIVE !!!' : '',
     remarks,
+  ].filter(Boolean).join(' --- ')
+
+  // remarksWithPhotos reste utilisé pour l'email + la description Odoo qui rendent le HTML
+  const remarksWithPhotos = [
+    remarksClean,
     photoUrls?.length ? `Photos: ${photoUrls.join(' | ')}` : '',
   ].filter(Boolean).join(' --- ')
 
@@ -208,7 +215,8 @@ export async function POST(req: Request) {
               owner_first:       ownerFirstName || '',
               owner_last:        ownerLastName || '',
               owner_phone:       ownerPhone || '',
-              remarks:           remarksWithPhotos || '',
+              remarks:           remarksClean || '',
+              photo_urls:        photoUrls || [],
               driver_name:       dbUser.towsoft_name,
               parc:              parcValue,
               motif:             motifValue,

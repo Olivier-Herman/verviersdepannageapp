@@ -451,6 +451,47 @@ async function selectSelect2(page, containerId, value) {
     await updateQueue('done', missionNumber, null);
     console.log('✓ Queue mise à jour');
 
+    // Publier les liens photos en note de chat sur la fiche mission
+    // (le textarea #remarques affiche les URLs en texte brut alors que le chat les rend cliquables)
+    const photoUrls = Array.isArray(payload.photo_urls) ? payload.photo_urls : [];
+    if (missionNumber && photoUrls.length > 0) {
+      try {
+        await page.goto(`${TOWSOFT_URL}/appel.php?num=${missionNumber}`, { waitUntil: 'networkidle0' });
+        await page.waitForSelector('#messageMessengerInput', { timeout: 10000 });
+
+        const noteText = 'Photos:\n' + photoUrls.join('\n');
+
+        // Inscrire la note via l'API emojioneArea si dispo, sinon set direct du textarea
+        const setMethod = await page.evaluate((text) => {
+          if (window.$ && window.$('#messageMessengerInput').data('emojioneArea')) {
+            window.$('#messageMessengerInput').data('emojioneArea').setText(text);
+            return 'emojionearea';
+          }
+          const ta = document.getElementById('messageMessengerInput');
+          if (ta) {
+            ta.value = text;
+            ta.dispatchEvent(new Event('input',  { bubbles: true }));
+            ta.dispatchEvent(new Event('change', { bubbles: true }));
+            return 'textarea';
+          }
+          return 'not-found';
+        }, noteText);
+        console.log('Note saisie via:', setMethod);
+
+        await wait(500);
+
+        // Cliquer le bouton d'envoi
+        await page.evaluate(() => {
+          const btn = document.getElementById('newMessage');
+          if (btn) btn.click();
+        });
+        await wait(2500);
+        console.log(`✓ Note envoyée dans le chat avec ${photoUrls.length} photo(s)`);
+      } catch (e) {
+        console.error('⚠️ Note chat échec (non bloquant):', e.message);
+      }
+    }
+
     // Callback Odoo
     if (missionNumber) {
       try {
