@@ -16,9 +16,10 @@ export async function GET(req: NextRequest) {
   const all = req.nextUrl.searchParams.get('all')
   const driverId = req.nextUrl.searchParams.get('driverId')
 
-  // Récupérer l'ID du chauffeur connecté
+  // Récupérer l'ID du chauffeur connecté + son mapping Odoo
+  // Note : odoo_user_id requiert la migration 202605041200_cash_odoo_sync.sql appliquée.
   const { data: me } = await supabase
-    .from('users').select('id, can_verify').eq('email', session.user.email).single()
+    .from('users').select('id, can_verify, odoo_user_id').eq('email', session.user.email).single()
 
   if (all && isAdmin) {
     // Tous les chauffeurs avec leur solde
@@ -84,6 +85,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     balance: Math.round(balance * 100) / 100,
     entries: entries || [],
+    odoo_user_id: me?.odoo_user_id ?? null,
   })
 }
 
@@ -163,6 +165,48 @@ export async function POST(req: NextRequest) {
       validatedBy: verifier.name,
       transferNote,
     })
+  }
+
+  if (action === 'misc_income') {
+    // Réception d'un paiement divers (Rent a car, etc.) — réservé aux users liés à Odoo.
+    // Crée un mouvement type='encaissement' sans intervention liée, motif libre dans notes.
+    const { motif } = body
+    const amt = parseFloat(amount)
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
+    }
+    if (!motif || !motif.trim()) {
+      return NextResponse.json({ error: 'Motif requis' }, { status: 400 })
+    }
+    if (motif.length > 500) {
+      return NextResponse.json({ error: 'Motif trop long (500 caractères max)' }, { status: 400 })
+    }
+
+    const { data: me } = await supabase
+      .from('users')
+      .select('id, odoo_user_id')
+      .eq('email', session.user.email)
+      .single()
+
+    if (!me?.id) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
+    if (!me.odoo_user_id) {
+      return NextResponse.json({ error: 'Réservé aux comptes liés à Odoo' }, { status: 403 })
+    }
+
+    const { data: entry, error } = await supabase
+      .from('cash_register')
+      .insert({
+        driver_id:       me.id,
+        amount:          amt,
+        type:            'encaissement',
+        intervention_id: null,
+        notes:           motif.trim(),
+      })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true, entry })
   }
 
   if (action === 'set_pin') {

@@ -34,6 +34,15 @@ export default function CashClient({
   const [verifiers,       setVerifiers]       = useState<{ id: string; name: string; hasPin: boolean }[]>([])
   const [selectedVerifier,setSelectedVerifier]= useState('')
 
+  // Paiement divers (réservé aux users liés à Odoo)
+  const [odooUserId,    setOdooUserId]    = useState<number | null>(null)
+  const [showMisc,      setShowMisc]      = useState(false)
+  const [miscAmount,    setMiscAmount]    = useState('')
+  const [miscMotif,     setMiscMotif]     = useState('')
+  const [miscLoading,   setMiscLoading]   = useState(false)
+  const [miscError,     setMiscError]     = useState('')
+  const [miscSuccess,   setMiscSuccess]   = useState('')
+
   const loadData = () => {
     setLoading(true)
     fetch('/api/cash')
@@ -41,6 +50,7 @@ export default function CashClient({
       .then(data => {
         setBalance(data.balance || 0)
         setEntries(data.entries || [])
+        setOdooUserId(data.odoo_user_id ?? null)
         setLoading(false)
       })
   }
@@ -54,6 +64,28 @@ export default function CashClient({
   useEffect(() => {
     fetch('/api/cash?verifiers=true').then(r => r.json()).then(setVerifiers)
   }, [])
+
+  const handleMiscIncome = async () => {
+    setMiscError('')
+    if (!miscAmount || parseFloat(miscAmount) <= 0) { setMiscError('Montant invalide'); return }
+    if (!miscMotif.trim())                          { setMiscError('Motif requis'); return }
+    if (miscMotif.length > 500)                     { setMiscError('Motif trop long (500 caractères max)'); return }
+
+    setMiscLoading(true)
+    const res  = await fetch('/api/cash', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action: 'misc_income', amount: parseFloat(miscAmount), motif: miscMotif.trim() }),
+    })
+    const data = await res.json()
+    setMiscLoading(false)
+    if (!res.ok) { setMiscError(data.error || 'Erreur'); return }
+
+    setMiscSuccess(`Paiement enregistré : ${parseFloat(miscAmount).toFixed(2)} €`)
+    setShowMisc(false); setMiscAmount(''); setMiscMotif('')
+    loadData()
+    setTimeout(() => setMiscSuccess(''), 4000)
+  }
 
   const handleRemise = async () => {
     if (!remiseAmount || parseFloat(remiseAmount) <= 0) { setRemiseError('Montant invalide'); return }
@@ -97,12 +129,73 @@ export default function CashClient({
             {remiseSuccess}
           </div>
         )}
+        {miscSuccess && (
+          <div className="bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl px-4 py-3 mb-4">
+            {miscSuccess}
+          </div>
+        )}
 
-        {balance > 0 && !showRemise && (
+        {balance > 0 && !showRemise && !showMisc && (
           <button onClick={() => setShowRemise(true)}
-            className="w-full bg-brand text-white font-bold rounded-2xl py-4 mb-6 active:scale-95 transition-all">
+            className="w-full bg-brand text-white font-bold rounded-2xl py-4 mb-3 active:scale-95 transition-all">
             💸 Transférer l'argent à un responsable
           </button>
+        )}
+
+        {/* Paiement divers — réservé aux users liés à Odoo (odoo_user_id non null) */}
+        {odooUserId !== null && !showRemise && !showMisc && (
+          <button onClick={() => { setShowMisc(true); setMiscError('') }}
+            className="w-full bg-[#1A1A1A] border border-brand/40 text-brand font-bold rounded-2xl py-4 mb-6 active:scale-95 transition-all">
+            ➕ Recevoir un paiement divers
+          </button>
+        )}
+
+        {showMisc && (
+          <div className="bg-[#1A1A1A] border border-brand/30 rounded-2xl p-5 mb-6">
+            <h3 className="text-white font-bold mb-1">Paiement divers</h3>
+            <p className="text-zinc-400 text-xs mb-4">
+              Ex : Rent a car, divers. Pour les paiements liés à une intervention, utilisez le module Encaissement.
+            </p>
+
+            <div className="mb-4">
+              <label className="text-zinc-400 text-xs mb-1.5 block">Montant reçu</label>
+              <div className="relative">
+                <input type="text" inputMode="decimal" value={miscAmount}
+                  onChange={e => setMiscAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                  placeholder="0.00"
+                  className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
+                             text-white text-2xl font-bold text-center outline-none focus:border-brand" />
+                <span className="absolute right-4 top-3 text-zinc-400">€</span>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-zinc-400 text-xs mb-1.5 block">Motif</label>
+              <textarea value={miscMotif} onChange={e => setMiscMotif(e.target.value.slice(0, 500))}
+                placeholder="Ex : Rent a car — location véhicule M. Dupont"
+                rows={3}
+                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
+                           text-white text-sm outline-none focus:border-brand resize-none" />
+              <p className="text-zinc-600 text-[10px] mt-1 text-right">{miscMotif.length} / 500</p>
+            </div>
+
+            {miscError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">
+                {miscError}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => { setShowMisc(false); setMiscError(''); setMiscAmount(''); setMiscMotif('') }}
+                className="flex-1 bg-[#2a2a2a] text-zinc-400 rounded-xl py-3 font-medium">
+                Annuler
+              </button>
+              <button onClick={handleMiscIncome} disabled={miscLoading}
+                className="flex-1 bg-brand text-white rounded-xl py-3 font-bold disabled:opacity-50">
+                {miscLoading ? '…' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
         )}
 
         {showRemise && (
