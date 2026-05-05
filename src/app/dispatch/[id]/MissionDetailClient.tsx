@@ -398,6 +398,43 @@ export default function MissionDetailClient({
     setForm(prev => ({ ...prev, billed_to_name: '' }))
   }
 
+  // ── Recherche/lien véhicule Odoo (par plaque ou VIN) ────────────────────────
+  const [odooVehicleId,    setOdooVehicleId]    = useState<number | null>(null)
+  const [vehicleResults,   setVehicleResults]   = useState<Array<{id:number;plate:string;vin:string;brand:string;model:string;fuel:string;gearbox:string}>>([])
+  const [showVehicleDrop,  setShowVehicleDrop]  = useState(false)
+  const [vehicleSearched,  setVehicleSearched]  = useState(false)
+  const vehicleTimer = useRef<NodeJS.Timeout>()
+  useEffect(() => {
+    const q = (form.vehicle_plate || '').trim()
+    if (q.length < 3) { setVehicleResults([]); setVehicleSearched(false); return }
+    if (odooVehicleId) return  // déjà lié, on n'écrase pas
+    clearTimeout(vehicleTimer.current)
+    vehicleTimer.current = setTimeout(async () => {
+      try {
+        const data = await fetch(`/api/odoo/search-vehicle?q=${encodeURIComponent(q)}`).then(r => r.json())
+        setVehicleResults(data.vehicles || [])
+        setVehicleSearched(true)
+        if ((data.vehicles || []).length > 0) setShowVehicleDrop(true)
+      } catch {}
+    }, 400)
+  }, [form.vehicle_plate, odooVehicleId])
+
+  const selectOdooVehicle = (v: {id:number;plate:string;vin:string;brand:string;model:string;fuel:string;gearbox:string}) => {
+    setOdooVehicleId(v.id)
+    setForm(prev => ({
+      ...prev,
+      vehicle_plate:   v.plate || prev.vehicle_plate,
+      vehicle_brand:   v.brand || prev.vehicle_brand,
+      vehicle_model:   v.model || prev.vehicle_model,
+      vehicle_vin:     v.vin   || prev.vehicle_vin,
+      vehicle_fuel:    v.fuel  || prev.vehicle_fuel,
+      vehicle_gearbox: v.gearbox || prev.vehicle_gearbox,
+    }))
+    setVehicleResults([])
+    setShowVehicleDrop(false)
+  }
+  const clearOdooVehicle = () => { setOdooVehicleId(null); setVehicleSearched(false) }
+
   const [M, setM] = useState<Mission>(initialMission)
   const [saveOk, setSaveOk] = useState(false)
 
@@ -450,14 +487,18 @@ export default function MissionDetailClient({
     }
   }
 
-  // Charger les marques depuis l'API véhicules
+  // Normalisation pour fuzzy match marque/modèle (case + tirets/espaces ignorés)
+  const normalizeBrand = (s: string) => (s || '').toLowerCase().replace(/[-.\s]/g, '').trim()
+
+  // Charger les marques depuis l'API véhicules + auto-match insensible à la casse
   const loadBrands = async () => {
-    if (brands.length > 0) return
+    if (brands.length > 0) return brands
     setLoadingBrands(true)
     try {
       const res  = await fetch('/api/vehicles?type=brands')
-      const data = await res.json()
+      const data: {id:number;name:string}[] = await res.json()
       setBrands(data || [])
+      return data || []
     } finally { setLoadingBrands(false) }
   }
 
@@ -465,12 +506,29 @@ export default function MissionDetailClient({
     const res  = await fetch(`/api/vehicles?type=models&brandId=${brandId}`)
     const data = await res.json()
     setModels(data || [])
+    return data || []
   }
 
   useEffect(() => {
-    if (form.vehicle_brand && brands.length === 0) {
-      loadBrands().then(() => {})
-    }
+    (async () => {
+      if (!form.vehicle_brand || brands.length > 0) return
+      const list = await loadBrands()
+      // Si le parser a retourné une marque qui matche un brand Odoo (insensible à la casse),
+      // on réécrit la valeur du form avec la casse exacte d'Odoo pour que le <select> match.
+      const target = normalizeBrand(form.vehicle_brand)
+      const matched = list.find(b => normalizeBrand(b.name) === target)
+                   ?? list.find(b => normalizeBrand(b.name).includes(target) || target.includes(normalizeBrand(b.name)))
+      if (matched) {
+        if (matched.name !== form.vehicle_brand) f('vehicle_brand')(matched.name)
+        const modelList = await loadModels(matched.id)
+        if (form.vehicle_model) {
+          const targetModel = normalizeBrand(form.vehicle_model)
+          const matchedModel = modelList.find((m: any) => normalizeBrand(m.name) === targetModel)
+                            ?? modelList.find((m: any) => normalizeBrand(m.name).includes(targetModel) || targetModel.includes(normalizeBrand(m.name)))
+          if (matchedModel && matchedModel.name !== form.vehicle_model) f('vehicle_model')(matchedModel.name)
+        }
+      }
+    })()
   }, [])
 
   // Sauvegarder les modifications du formulaire
@@ -735,6 +793,36 @@ export default function MissionDetailClient({
                 <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>🚗</span> Véhicule
                 </h2>
+
+                {/* Badge lien véhicule Odoo + lookup automatique par plaque */}
+                {odooVehicleId && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
+                    <span className="text-green-400 text-xs">✓ Lié Odoo véhicule #{odooVehicleId}</span>
+                    <button type="button" onClick={clearOdooVehicle}
+                      className="ml-auto text-zinc-500 hover:text-red-400 text-xs">Délier ✕</button>
+                  </div>
+                )}
+                {!odooVehicleId && vehicleSearched && vehicleResults.length === 0 && form.vehicle_plate.trim().length >= 3 && (
+                  <p className="text-amber-400/80 text-xs mb-3">⚠ Aucun véhicule Odoo avec cette plaque — un nouveau sera créé à la confirmation.</p>
+                )}
+                {!odooVehicleId && vehicleResults.length > 0 && (
+                  <div className="mb-4 bg-[#111] border border-brand/30 rounded-xl p-3">
+                    <p className="text-zinc-400 text-xs mb-2">{vehicleResults.length} véhicule(s) trouvé(s) dans Odoo — clique pour lier (évite le doublon) :</p>
+                    <div className="space-y-1">
+                      {vehicleResults.map(v => (
+                        <button key={v.id} type="button" onClick={() => selectOdooVehicle(v)}
+                          className="w-full text-left px-3 py-2 bg-[#1A1A1A] hover:bg-[#222] border border-[#2a2a2a] rounded-lg transition">
+                          <p className="text-white text-sm">
+                            <span className="font-mono font-semibold">{v.plate}</span>
+                            <span className="text-zinc-400 ml-2">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
+                          </p>
+                          {v.vin && <p className="text-zinc-500 text-xs">VIN: {v.vin}</p>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-4">
                   <Field label="Plaque">
                     <Input value={form.vehicle_plate} onChange={f('vehicle_plate')} placeholder="1ABC234" />
