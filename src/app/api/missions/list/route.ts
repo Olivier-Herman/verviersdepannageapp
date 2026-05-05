@@ -45,8 +45,10 @@ export async function GET(req: Request) {
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
 
   if (mapMode) {
-    // Vue carte : toutes les missions actives, peu importe le tab
-    query = query.in('status', ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'parked', 'delivering'])
+    // Vue carte : missions actives à partir de "En attente" (les "En commande"
+    // sont exclues car leurs adresses ne sont géocodées qu'à l'ouverture de la
+    // fiche — donc affichage carte non pertinent à ce stade).
+    query = query.in('status', ['dispatching', 'assigned', 'accepted', 'in_progress', 'parked', 'delivering'])
   } else if (status === 'new') {
     query = query.eq('status', 'new')
   } else if (status === 'dispatching') {
