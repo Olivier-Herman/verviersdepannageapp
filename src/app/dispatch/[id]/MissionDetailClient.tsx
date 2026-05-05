@@ -277,6 +277,53 @@ function AddressReviewModal({
   )
 }
 
+function RelivrerButton({ missionId }: { missionId: string }) {
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+  const [createdId, setCreatedId] = useState<string | null>(null)
+
+  const handle = async () => {
+    if (!confirm('Créer la mission de relivraison ? Le véhicule sera à charger depuis le parc et livré à l\'adresse originale.')) return
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`/api/missions/${missionId}/relivrer`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur')
+      setCreatedId(data.mission_id)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (createdId) {
+    return (
+      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4">
+        <p className="text-emerald-300 text-sm font-semibold mb-2">✅ Mission REL créée</p>
+        <Link href={`/dispatch/${createdId}`}
+          className="block w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium text-center transition">
+          📋 Ouvrir la mission de relivraison →
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+      <h3 className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2">🅿️ Véhicule en parc</h3>
+      <p className="text-zinc-400 text-xs mb-3">
+        Le véhicule attend en zone TRANSIT. Crée la mission de relivraison pour la planifier dans le dispatch.
+      </p>
+      <button onClick={handle} disabled={loading}
+        className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
+        {loading ? '⏳ Création…' : '🚛 Relivrer'}
+      </button>
+      {error && <p className="text-red-400 text-xs mt-2">⚠ {error}</p>}
+    </div>
+  )
+}
+
 function MissionKmInfo({ missionId, refreshKey }: { missionId: string; refreshKey: string }) {
   const [data, setData]   = useState<{ total_km: number; segments: Array<{ label: string; km: number | null }>; error: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1579,6 +1626,11 @@ export default function MissionDetailClient({
                   )}
                 </div>
               </div>
+
+              {/* Bouton Relivrer — visible uniquement quand mission en parc */}
+              {status === 'parked' && (
+                <RelivrerButton missionId={initialMission.id} />
+              )}
 
               {/* Bouton dossier Odoo FSM */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">

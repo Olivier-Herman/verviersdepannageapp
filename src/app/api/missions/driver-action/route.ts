@@ -4,7 +4,6 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
-import { createRelivraisonMission } from '@/lib/missions/create-relivraison'
 
 // Mapping action chauffeur → stage FSM Odoo. null = pas de changement de stage.
 const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
@@ -289,9 +288,11 @@ export async function POST(req: Request) {
           await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.charge_sur_camion).catch(() => {})
         }
       }
-      // Mise en parc → état véhicule = parc choisi (si fourni)
-      if (action === 'park' && park_data?.stage_id && mission.odoo_vehicle_id) {
-        await updateVehicleState(mission.odoo_vehicle_id, park_data.stage_id).catch(() => {})
+      // Mise en parc → état véhicule = TRANSIT (zone de relivraison) quel que soit
+      // le parc physique choisi par le chauffeur. Le dispatcher pourra ensuite
+      // déclencher la REL via le bouton Relivrer sur la fiche.
+      if (action === 'park' && mission.odoo_vehicle_id) {
+        await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.transit).catch(() => {})
       }
       // Mission terminée → état véhicule = Terminé (sauf si déjà mis en parc avant)
       if ((action === 'completed' || action === 'complete_delivery') && mission.odoo_vehicle_id) {
@@ -320,22 +321,6 @@ export async function POST(req: Request) {
         })
       }
     }
-  }
-
-  // ── Mise en parc : création auto d'une mission REL si destination originale connue ──
-  // Le véhicule est désormais au parc (= incident_address de la nouvelle mission).
-  // L'adresse originale (où il devait aller) devient la destination de la REL.
-  // La nouvelle mission est en statut 'dispatching' (à assigner par le dispatcher).
-  if (action === 'park' && body.redelivery_address && body.park_address) {
-    createRelivraisonMission({
-      parentMissionId:   mission_id,
-      parkAddress:       body.park_address,
-      parkLat:           body.park_lat ?? null,
-      parkLng:           body.park_lng ?? null,
-      redeliveryAddress: body.redelivery_address,
-    }).catch(e => {
-      console.error('[REL] Création mission REL échouée (non bloquant):', e.message)
-    })
   }
 
   return NextResponse.json({ ok: true, mission: updated })
