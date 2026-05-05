@@ -282,18 +282,20 @@ export async function createFsmTask(params: {
   }
   const projectId = projects[0].id
 
-  // Stage Assigné — fallback à "New"/"Planned" si "Assigné" n'existe pas
+  // Stage initial à la création : "Nouveau" (= confirmation dispatch, pas encore de chauffeur).
+  // Le passage à "Assigné" se fait dans /api/missions/assign quand un chauffeur est attribué.
+  // Fallback New/Planned si l'utilisateur n'a pas créé "Nouveau".
   let stageId: number
   try {
-    stageId = await getFsmStageId('Assigné')
+    stageId = await getFsmStageId('Nouveau')
   } catch {
     try {
-      stageId = await getFsmStageId('Planned')
+      stageId = await getFsmStageId('New')
     } catch {
       try {
-        stageId = await getFsmStageId('New')
+        stageId = await getFsmStageId('Planned')
       } catch (e) {
-        console.warn('[FSM] Aucun stage trouvé (Assigné/Planned/New) — création tâche ignorée')
+        console.warn('[FSM] Aucun stage trouvé (Nouveau/New/Planned) — création tâche ignorée')
         return null
       }
     }

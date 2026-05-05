@@ -1,10 +1,14 @@
 // src/app/api/missions/assign/route.ts
+//
+// Assigne ou désassigne un chauffeur sur une mission.
+// À l'assignation : update auto la task FSM Odoo (stage → Assigné + champs chauffeur).
 
-import { NextResponse }      from 'next/server'
-import { getServerSession }  from 'next-auth'
-import { authOptions }       from '@/lib/auth'
-import { createAdminClient } from '@/lib/supabase'
-import { sendPushToUser }    from '@/lib/push'
+import { NextResponse }              from 'next/server'
+import { getServerSession }          from 'next-auth'
+import { authOptions }               from '@/lib/auth'
+import { createAdminClient }         from '@/lib/supabase'
+import { sendPushToUser }            from '@/lib/push'
+import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -15,10 +19,10 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient()
 
-  // Récupérer les infos de la mission
+  // Récupérer les infos de la mission (incl. odoo_task_id pour update FSM)
   const { data: mission, error: mErr } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, source, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city')
+    .select('id, external_id, source, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id')
     .eq('id', mission_id)
     .single()
 
@@ -72,6 +76,21 @@ export async function POST(req: Request) {
       tag:   `mission-assigned-${mission_id}`,
     })
 
+    // Update task FSM Odoo : stage → Assigné + chauffeur (best effort, non bloquant)
+    if (mission.odoo_task_id) {
+      try {
+        const stageId = await getFsmStageId('Assigné')
+        await rpcFsm('project.task', 'write', [[mission.odoo_task_id], {
+          stage_id:                       stageId,
+          [FSM_FIELDS.chauffeur_name]:    driver?.name || '',
+          [FSM_FIELDS.chauffeur_id]:      driver_id,
+        }])
+        console.log(`[FSM] Task #${mission.odoo_task_id} → Assigné (chauffeur: ${driver?.name})`)
+      } catch (e: any) {
+        console.error('[FSM] Update assignation échoué (non bloquant):', e.message)
+      }
+    }
+
     return NextResponse.json({ ok: true, status: 'assigned', driver_name: driver?.name })
 
   } else {
@@ -87,6 +106,21 @@ export async function POST(req: Request) {
       action:   'reassigned',
       notes:    'Assignation retirée',
     })
+
+    // Repasser la task FSM en Nouveau (best effort)
+    if (mission.odoo_task_id) {
+      try {
+        const stageId = await getFsmStageId('Nouveau')
+        await rpcFsm('project.task', 'write', [[mission.odoo_task_id], {
+          stage_id:                       stageId,
+          [FSM_FIELDS.chauffeur_name]:    '',
+          [FSM_FIELDS.chauffeur_id]:      '',
+        }])
+        console.log(`[FSM] Task #${mission.odoo_task_id} → Nouveau (désassignation)`)
+      } catch (e: any) {
+        console.error('[FSM] Update désassignation échoué (non bloquant):', e.message)
+      }
+    }
 
     return NextResponse.json({ ok: true, status: 'new' })
   }
