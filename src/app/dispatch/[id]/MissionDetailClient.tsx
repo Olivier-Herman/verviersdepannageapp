@@ -45,6 +45,7 @@ interface Mission {
   incident_sens: string | null
   destination_borne_km: string | null
   destination_sens: string | null
+  odoo_vehicle_id: number | null
   amount_guaranteed: number | null
   amount_currency: string
   amount_to_collect: number | null
@@ -524,7 +525,9 @@ export default function MissionDetailClient({
   }
 
   // ── Recherche/lien véhicule Odoo (par plaque ou VIN) ────────────────────────
-  const [odooVehicleId,    setOdooVehicleId]    = useState<number | null>(null)
+  // Si la mission a déjà un odoo_vehicle_id persisté, on initialise l'état avec
+  // pour skipper la recherche de suggestions au chargement.
+  const [odooVehicleId,    setOdooVehicleId]    = useState<number | null>(initialMission.odoo_vehicle_id || null)
   const [vehicleResults,   setVehicleResults]   = useState<Array<{id:number;plate:string;vin:string;brand:string;model:string;fuel:string;gearbox:string}>>([])
   const [showVehicleDrop,  setShowVehicleDrop]  = useState(false)
   const [vehicleSearched,  setVehicleSearched]  = useState(false)
@@ -532,7 +535,7 @@ export default function MissionDetailClient({
   useEffect(() => {
     const q = (form.vehicle_plate || '').trim()
     if (q.length < 3) { setVehicleResults([]); setVehicleSearched(false); return }
-    if (odooVehicleId) return  // déjà lié, on n'écrase pas
+    if (odooVehicleId) return  // déjà lié (état session ou persisté DB) → on n'écrase pas
     clearTimeout(vehicleTimer.current)
     vehicleTimer.current = setTimeout(async () => {
       try {
@@ -558,6 +561,13 @@ export default function MissionDetailClient({
     }))
     setVehicleResults([])
     setShowVehicleDrop(false)
+
+    // Persistance immédiate du lien — le dispatcher n'aura plus à reconfirmer à chaque ouverture
+    fetch(`/api/missions/${initialMission.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ odoo_vehicle_id: v.id }),
+    }).catch(() => {})
 
     // Charger la liste des modèles pour la marque liée, sinon le <select> Modèle
     // n'a pas l'option correspondante et le champ apparaît vide.
@@ -588,7 +598,15 @@ export default function MissionDetailClient({
       } catch {}
     }
   }
-  const clearOdooVehicle = () => { setOdooVehicleId(null); setVehicleSearched(false) }
+  const clearOdooVehicle = () => {
+    setOdooVehicleId(null)
+    setVehicleSearched(false)
+    fetch(`/api/missions/${initialMission.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ odoo_vehicle_id: null }),
+    }).catch(() => {})
+  }
 
   // Comparaison fuzzy brand/model d'un véhicule Odoo vs ce qui est saisi dans le form
   const vehicleSimilarity = (v: {brand:string;model:string}): 'match' | 'mismatch' | 'unknown' => {
@@ -720,12 +738,27 @@ export default function MissionDetailClient({
   // Confirmer la mission
   const handleConfirm = async () => {
     setLoadingConfirm(true)
-    const payload = { ...form, billed_to_id: billedPartnerId }
+    const payload = { ...form, billed_to_id: billedPartnerId, odoo_vehicle_id: odooVehicleId }
     await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     })
+
+    // Si un véhicule Odoo est lié, propage les champs saisis (VIN/carburant/boîte)
+    // qui auraient pu être ajoutés après le clic initial sur la suggestion.
+    if (odooVehicleId) {
+      fetch('/api/odoo/update-vehicle', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicle_id: odooVehicleId,
+          vin:        form.vehicle_vin || undefined,
+          fuel:       form.vehicle_fuel || undefined,
+          gearbox:    form.vehicle_gearbox || undefined,
+        }),
+      }).catch(() => {})
+    }
     if (selectedDriver) {
       await fetch('/api/missions/assign', {
         method:  'POST',

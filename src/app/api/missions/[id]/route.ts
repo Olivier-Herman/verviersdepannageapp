@@ -44,6 +44,7 @@ export async function PATCH(
   const allowed = [
     'mission_type', 'incident_type', 'incident_description',
     'billed_to_name', 'billed_to_id',
+    'odoo_vehicle_id',
     'client_name', 'client_phone', 'client_address',
     'assisted_name', 'assisted_phone',
     'vehicle_plate', 'vehicle_brand', 'vehicle_model', 'vehicle_vin',
@@ -62,8 +63,8 @@ export async function PATCH(
   for (const key of allowed) {
     if (key in body) {
       // Convertir les strings vides en null pour les champs numériques
-      if (['amount_guaranteed', 'amount_to_collect', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng'].includes(key)) {
-        updates[key] = body[key] === '' ? null : Number(body[key]) || null
+      if (['amount_guaranteed', 'amount_to_collect', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'billed_to_id', 'odoo_vehicle_id'].includes(key)) {
+        updates[key] = body[key] === '' || body[key] == null ? null : Number(body[key]) || null
       } else {
         updates[key] = body[key] === '' ? null : body[key]
       }
