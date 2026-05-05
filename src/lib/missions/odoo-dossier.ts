@@ -25,7 +25,9 @@ export interface OdooDossierResult {
   created:   boolean
 }
 
-const HELPDESK_TEAM_ID = 12  // Interventions Verviers Dépannage
+// Équipe Helpdesk dédiée au dispatch assistance (FSM activé, créée le 2026-05-05).
+// Police continue d'utiliser team 12 ("Mission Créée par Chauffeur") via /api/towsoft/create.
+const HELPDESK_TEAM_ID = 14  // Dispatch Assistance
 
 /**
  * Crée (ou récupère) le dossier Odoo pour une mission.
