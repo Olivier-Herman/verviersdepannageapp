@@ -1,10 +1,12 @@
 // src/app/api/missions/confirm/route.ts
-// Confirme (new→dispatching ou assigned) ou refuse (new→ignored) une mission
+// Confirme (new→dispatching ou assigned) ou refuse (new→ignored) une mission.
+// À la confirmation : création AUTO du dossier Odoo (Helpdesk + FSM Task).
 
-import { NextResponse }      from 'next/server'
-import { getServerSession }  from 'next-auth'
-import { authOptions }       from '@/lib/auth'
-import { createAdminClient } from '@/lib/supabase'
+import { NextResponse }                 from 'next/server'
+import { getServerSession }             from 'next-auth'
+import { authOptions }                  from '@/lib/auth'
+import { createAdminClient }            from '@/lib/supabase'
+import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -48,7 +50,41 @@ export async function POST(req: Request) {
       notes:    `Mission confirmée par ${actor?.name || 'dispatcher'}`,
     })
 
-    return NextResponse.json({ ok: true, status: newStatus })
+    // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.
+    // Si ça plante, le dispatcher peut toujours utiliser le bouton "Créer dossier Odoo"
+    // sur la fiche mission (route /api/fsm/create-mission, idempotent).
+    let odooResult: any = null
+    try {
+      odooResult = await createOdooDossierForMission(mission_id)
+      if (odooResult.created) {
+        await supabase.from('mission_logs').insert({
+          mission_id,
+          actor_id: actor?.id || null,
+          action:   'odoo_synced',
+          notes:    `Dossier Odoo créé : helpdesk #${odooResult.ticketId}, task #${odooResult.taskId}`,
+        })
+      }
+    } catch (e: any) {
+      console.error('[Confirm] Création Odoo échouée (non bloquant):', e.message)
+      await supabase.from('mission_logs').insert({
+        mission_id,
+        actor_id: actor?.id || null,
+        action:   'error',
+        notes:    `Création Odoo échouée : ${e.message}. Réessayer via le bouton "Créer dossier Odoo".`,
+      })
+    }
+
+    return NextResponse.json({
+      ok:     true,
+      status: newStatus,
+      odoo:   odooResult ? {
+        ticketId:  odooResult.ticketId,
+        ticketUrl: odooResult.ticketUrl,
+        taskId:    odooResult.taskId,
+        taskUrl:   odooResult.taskUrl,
+        created:   odooResult.created,
+      } : null,
+    })
 
   } else if (action === 'refuse') {
     await supabase

@@ -107,14 +107,13 @@ export async function POST(req: Request) {
     ? ` ⚠️ ${body.warnings.join(', ')}`
     : ''
 
-  // TODO: réactiver quand le module dispatch sera complet (désactivé temporairement)
-  // await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
-  //   title: `${typeLabel} — ${(body.source || 'MANUEL').toUpperCase()}`,
-  //   body:  (vehicle || body.assisted_name || body.billed_to_name || 'Nouvelle mission') + warningPush,
-  //   url:   `/dispatch/${mission.id}`,
-  //   tag:   `mission-${mission.id}`,
-  //   icon:  '/icons/apple-touch-icon.png'
-  // })
+  await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+    title: `${typeLabel} — ${(body.source || 'MANUEL').toUpperCase()}`,
+    body:  (vehicle || body.assisted_name || body.billed_to_name || 'Nouvelle mission') + warningPush,
+    url:   `/dispatch/${mission.id}`,
+    tag:   `mission-${mission.id}`,
+    icon:  '/icons/apple-touch-icon.png'
+  })
 
   return NextResponse.json({ ok: true, mission_id: mission.id, external_id: mission.external_id })
 }
