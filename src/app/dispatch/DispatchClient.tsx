@@ -8,6 +8,7 @@ import { useRouter }   from 'next/navigation'
 import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
+import DriverPickerModal from '@/components/DriverPickerModal'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -194,7 +195,7 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
   const styleByStatus = {
     en_mission:   'bg-orange-500/10 border-orange-500/30 text-orange-300',
     en_service:   'bg-green-500/10 border-green-500/20 text-green-400',
-    hors_service: 'bg-zinc-500/10 border-zinc-500/20 text-zinc-500',
+    hors_service: 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-500',
   } as const
   const dotByStatus = {
     en_mission:   'bg-orange-400',
@@ -211,10 +212,18 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
     onRefresh()
   }
 
+  // Tri : en mission d'abord, puis en service, puis hors service
+  const sorted = [...statuses].sort((a, b) => {
+    const order = { en_mission: 0, en_service: 1, hors_service: 2 }
+    return order[a.status] - order[b.status]
+  })
+  const actifs = sorted.filter(d => d.status !== 'hors_service')
+  const inactifs = sorted.filter(d => d.status === 'hors_service')
+
   return (
     <>
-      <div className="flex flex-wrap gap-2 px-8 py-3 bg-[#111] border-b border-[#2a2a2a]">
-        {statuses.map(d => {
+      <div className="flex flex-wrap items-center gap-2 px-8 py-3 bg-[#111] border-b border-[#2a2a2a]">
+        {actifs.map(d => {
           const isOnSchedule = d.on_schedule
           return (
             <button key={d.id} type="button" onClick={() => setEditing(d)}
@@ -223,17 +232,25 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
               {d.name}
               {d.status === 'en_mission' && (
-                <span className="text-orange-500/70 font-normal">· En mission</span>
+                <span className="text-orange-500/70 font-normal">· {d.client_name || 'En mission'}</span>
               )}
               {d.status === 'en_service' && isOnSchedule && (
                 <span className="opacity-70">🛡️</span>
               )}
-              {d.status === 'hors_service' && (
-                <span className="font-normal opacity-70">· hors service</span>
-              )}
             </button>
           )
         })}
+        {inactifs.length > 0 && actifs.length > 0 && (
+          <div className="w-px h-5 bg-[#2a2a2a] mx-1" />
+        )}
+        {inactifs.map(d => (
+          <button key={d.id} type="button" onClick={() => setEditing(d)}
+            title="Cliquer pour activer la garde de ce chauffeur"
+            className={`flex items-center gap-2 px-2.5 py-1 rounded-xl border text-xs font-medium transition hover:opacity-100 opacity-50 hover:border-zinc-500 ${styleByStatus[d.status]}`}>
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
+            <span className="opacity-80">{d.name}</span>
+          </button>
+        ))}
       </div>
 
       {/* Modal d'édition rapide de la garde */}
@@ -338,6 +355,18 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh }: {
   const router  = useRouter()
   const delai   = getDelai(mission.received_at)
   const srcInfo = SOURCE_LABELS[mission.source] || { label: '?', color: 'bg-zinc-600' }
+  const [showDriverModal, setShowDriverModal] = useState(false)
+  const isAwaitingDispatch = mission.status === 'dispatching'
+
+  const assignDriver = async (driverId: string) => {
+    await fetch('/api/missions/assign', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ mission_id: mission.id, driver_id: driverId }),
+    })
+    setShowDriverModal(false)
+    onRefresh()
+  }
 
   return (
     <div
@@ -407,7 +436,15 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh }: {
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[#2a2a2a]">
         <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-1 min-w-0">
-          {mission.status !== 'completed' && (
+          {/* Mission "en attente" (dispatching) → bouton ⚡ Assigner direct (modal ETA) */}
+          {isAwaitingDispatch && (
+            <button type="button" onClick={() => setShowDriverModal(true)}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition">
+              ⚡ Assigner
+            </button>
+          )}
+          {/* Autres états : dropdown classique pour réassigner ou afficher chauffeur */}
+          {!isAwaitingDispatch && mission.status !== 'completed' && mission.status !== 'new' && (
             <AssignDropdown mission={mission} drivers={drivers} driverStatuses={driverStatuses} onAssigned={onRefresh} />
           )}
           {mission.assigned_user && (
@@ -419,6 +456,17 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh }: {
           VOIR →
         </Link>
       </div>
+
+      {/* Modal sélection chauffeur (rendu hors du Link cliquable parent grâce a stopPropagation au-dessus) */}
+      {showDriverModal && (
+        <div onClick={e => e.stopPropagation()}>
+          <DriverPickerModal
+            missionId={mission.id}
+            onPick={assignDriver}
+            onClose={() => setShowDriverModal(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -604,7 +652,10 @@ export default function DispatchClient({
             </Link>
 
             {/* Switch Manuel / Auto */}
-            <div className="flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2"
+              title={dispatchMode === 'auto'
+                ? 'Mode Auto activé : le système réceptionne et assigne les missions automatiquement (utile la nuit, selon les chauffeurs en garde).'
+                : 'Mode Manuel : toutes les nouvelles missions doivent être confirmées et assignées manuellement par un dispatcher.'}>
               <span className="text-zinc-500 text-xs">Dispatch</span>
               <button
                 onClick={toggleMode}
@@ -619,23 +670,39 @@ export default function DispatchClient({
               <span className={`text-xs font-medium ${dispatchMode === 'auto' ? 'text-brand' : 'text-zinc-400'}`}>
                 {dispatchMode === 'auto' ? 'Auto' : 'Manuel'}
               </span>
+              <span className="text-zinc-600 text-xs cursor-help">ⓘ</span>
             </div>
           </div>
+          {dispatchMode === 'auto' && (
+            <div className="mt-3 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2">
+              ⚙️ <span><strong>Mode Auto activé</strong> — le système gère réception et assignation. Supervision uniquement.</span>
+            </div>
+          )}
 
-          {/* Onglets */}
+          {/* Onglets — l'onglet "En commande" est mis en valeur si > 0 (action requise) */}
           <div className="flex gap-1 mt-4 overflow-x-auto">
             {TABS.map(tab => {
               const count  = tab.countKey ? counters[tab.countKey] : null
               const active = activeTab === tab.key
+              const isUrgent = tab.key === 'new' && count !== null && count > 0
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition ${
-                    active ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white hover:bg-[#2a2a2a]'
+                    active
+                      ? (isUrgent ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'bg-brand text-white')
+                      : isUrgent
+                        ? 'bg-red-600/15 text-red-300 hover:bg-red-600/25 border border-red-600/40'
+                        : 'text-zinc-400 hover:text-white hover:bg-[#2a2a2a]'
                   }`}>
+                  {isUrgent && !active && <span className="animate-pulse">●</span>}
                   {tab.label}
                   {count !== null && count > 0 && (
                     <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
-                      active ? 'bg-white/20 text-white' : 'bg-[#2a2a2a] text-zinc-300'
+                      active
+                        ? 'bg-white/20 text-white'
+                        : isUrgent
+                          ? 'bg-red-500 text-white'
+                          : 'bg-[#2a2a2a] text-zinc-300'
                     }`}>{count}</span>
                   )}
                 </button>
