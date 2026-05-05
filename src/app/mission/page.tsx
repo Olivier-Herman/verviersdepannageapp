@@ -9,10 +9,12 @@ import AppShell   from '@/components/layout/AppShell'
 export const dynamic = 'force-dynamic'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  assigned:    { label: 'À accepter', color: 'text-blue-400'   },
-  accepted:    { label: 'Acceptée',   color: 'text-indigo-400' },
-  in_progress: { label: 'En cours',   color: 'text-orange-400' },
-  completed:   { label: 'Terminée',   color: 'text-zinc-500'   },
+  assigned:    { label: 'À accepter',  color: 'text-blue-400'   },
+  accepted:    { label: 'Acceptée',    color: 'text-indigo-400' },
+  in_progress: { label: 'En cours',    color: 'text-orange-400' },
+  delivering:  { label: 'En livraison',color: 'text-amber-400'  },
+  parked:      { label: 'En dépôt',    color: 'text-purple-400' },
+  completed:   { label: 'Terminée',    color: 'text-zinc-500'   },
 }
 
 export default async function MissionListPage() {
@@ -33,7 +35,7 @@ export default async function MissionListPage() {
     .from('incoming_missions')
     .select('id, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at')
     .eq('assigned_to', user.id)
-    .in('status', ['assigned', 'accepted', 'in_progress', 'completed'])
+    .in('status', ['assigned', 'accepted', 'in_progress', 'delivering', 'parked'])
     .order('assigned_at', { ascending: false })
     .limit(20)
 

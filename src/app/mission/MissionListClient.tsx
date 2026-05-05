@@ -92,16 +92,14 @@ export default function MissionListClient({
     return () => { sb.removeChannel(ch) }
   }, [currentUserId])
 
-  // Sépare actives et terminées
-  const active    = missions.filter(m => m.status !== 'completed')
-  const completed = missions.filter(m => m.status === 'completed')
+  // Filtrage des completed cote serveur deja, ici on a uniquement les actives
+  const active = missions
 
   return (
     <div className="relative pb-24">
       <div className="px-4 py-4 space-y-2">
 
-        {/* ── Missions actives ─────────────────────────────────────────── */}
-        {active.length === 0 && completed.length === 0 && (
+        {active.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
             <p className="text-5xl mb-4">🚗</p>
             <p className="text-lg font-semibold text-white mb-1">Aucune mission</p>
@@ -119,16 +117,6 @@ export default function MissionListClient({
               En cours · {active.length}
             </p>
             {active.map(m => <MissionRow key={m.id} mission={m} router={router} />)}
-          </>
-        )}
-
-        {/* ── Missions terminées (repliables) ──────────────────────────── */}
-        {completed.length > 0 && (
-          <>
-            <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wide px-1 mt-6 mb-3">
-              Terminées récentes · {completed.length}
-            </p>
-            {completed.map(m => <MissionRow key={m.id} mission={m} router={router} />)}
           </>
         )}
       </div>
