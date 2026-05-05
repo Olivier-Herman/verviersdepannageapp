@@ -4,6 +4,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
+import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 
 // Mapping action chauffeur → stage FSM Odoo. null = pas de changement de stage.
 const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
@@ -325,6 +326,15 @@ export async function POST(req: Request) {
         })
       }
     }
+  }
+
+  // Sync Odoo des modifs métier (best effort, non bloquant)
+  // Les actions chauffeur qui changent des données réutilisées dans Odoo
+  // (adresses, stops, véhicule) doivent se propager au helpdesk + task FSM.
+  if (['update_address', 'update_stops', 'change_type'].includes(action)) {
+    updateOdooDossierForMission(mission_id).catch(e => {
+      console.error('[Odoo sync] driver-action échoué:', e.message)
+    })
   }
 
   return NextResponse.json({ ok: true, mission: updated })

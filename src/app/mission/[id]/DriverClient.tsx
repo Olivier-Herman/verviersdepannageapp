@@ -915,23 +915,27 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className="text-blue-400 text-xs flex-shrink-0">✏️</span>
             </button>
 
-            {/* Lieu d'intervention */}
-            <div className="px-4 py-3">
-              <p className="text-zinc-500 text-xs">📍 Lieu d'intervention</p>
-              <p className="text-white text-sm">
-                {M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}
+            {/* Itinéraire complet : prise en charge → stops → destination (dernière) */}
+            <div className="px-4 py-3 space-y-1.5">
+              <p className="text-zinc-500 text-xs">📍 Itinéraire</p>
+              <p className="text-white text-sm flex items-start gap-1.5">
+                <span className="text-amber-400 flex-shrink-0">⏺</span>
+                <span>{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</span>
               </p>
+              {rem && allPoints.map((p, idx) => {
+                const isLast = idx === allPoints.length - 1
+                return (
+                  <p key={p.id} className="text-white text-sm flex items-start gap-1.5">
+                    <span className={`flex-shrink-0 ${isLast ? 'text-blue-400' : 'text-zinc-500'}`}>{isLast ? '🏁' : '▸'}</span>
+                    <span>
+                      {p.label && p.label !== p.address ? <span className="text-zinc-400">{p.label} — </span> : null}
+                      {p.address}
+                      {isLast && <span className="text-blue-400 text-xs ml-1">(destination)</span>}
+                    </span>
+                  </p>
+                )
+              })}
             </div>
-
-            {/* Destination (REM uniquement) */}
-            {rem && M.destination_address && (
-              <div className="px-4 py-3">
-                <p className="text-zinc-500 text-xs">🏁 Destination</p>
-                <p className="text-white text-sm">
-                  {M.destination_name ? `${M.destination_name} — ` : ''}{M.destination_address}
-                </p>
-              </div>
-            )}
 
             {/* Photos */}
             <button onClick={() => setScreen('photos')}
