@@ -3,8 +3,10 @@
 // Calcule les kilomètres d'une mission via Google Directions API.
 // Itinéraire :
 //   - DSP / réparation sur place / trajet vide : depot → incident → depot
-//   - REM (avec destination)                   : depot → incident → destination → depot
-// Retourne le détail par segment + total.
+//   - REM (avec destination)                   : depot → incident → [stops...] → depot
+//   Si extra_addresses contient des stops avec lat/lng, ils sont inclus en
+//   séquence. Le dernier stop est l'arrivée. Sinon fallback sur destination_lat/lng
+//   ou destination_address (sans coords → segment manqué + warning).
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -36,10 +38,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
-  const { data: mission } = await sb
+  // SELECT * pour être robuste aux colonnes manquantes (destination_lat/lng peut ne pas exister)
+  const { data: mission, error } = await sb
     .from('incoming_missions')
-    .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, depot_depart_id')
-    .eq('id', params.id).single()
+    .select('*')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (error)   return NextResponse.json({ error: error.message }, { status: 500 })
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   if (mission.incident_lat == null || mission.incident_lng == null) {
@@ -61,36 +66,64 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!depot) return NextResponse.json({ error: 'Aucun dépôt configuré ou sans coordonnées' }, { status: 400 })
 
   const noDest = ['depannage', 'reparation_place', 'trajet_vide'].includes((mission.mission_type || '').toLowerCase())
-  const hasDest = !noDest && mission.destination_lat != null && mission.destination_lng != null
-  const destination: Coord | null = hasDest
-    ? { lat: Number(mission.destination_lat), lng: Number(mission.destination_lng) }
+
+  // Construire la liste des stops avec coords (extra_addresses)
+  const rawStops: Array<{ id: string; label?: string; address: string; lat: number | null; lng: number | null; sort_order: number; type?: string }>
+    = Array.isArray(mission.extra_addresses) ? mission.extra_addresses : []
+  const stopsOrdered = [...rawStops].sort((a, b) => a.sort_order - b.sort_order)
+  const stopsWithCoords: { label: string; coord: Coord }[] = stopsOrdered
+    .filter(s => s.lat != null && s.lng != null)
+    .map(s => ({ label: s.label || s.address, coord: { lat: Number(s.lat), lng: Number(s.lng) } }))
+
+  // Destination finale (utilisée si REM et pas de stops, ou pour fermer la boucle)
+  const destLat = (mission as any).destination_lat
+  const destLng = (mission as any).destination_lng
+  const destinationFromField: Coord | null = !noDest && destLat != null && destLng != null
+    ? { lat: Number(destLat), lng: Number(destLng) }
     : null
 
-  const segments: Array<{ label: string; km: number | null }> = []
+  type Segment = { label: string; km: number | null }
+  const segments: Segment[] = []
 
   // Aller : depot → incident
   const outbound = await getDistanceKm(depot, incident)
   segments.push({ label: `${depotName} → incident`, km: outbound })
 
-  if (destination) {
-    // REM : incident → destination → depot
-    const toDestination = await getDistanceKm(incident, destination)
-    segments.push({ label: 'incident → destination', km: toDestination })
-    const back = await getDistanceKm(destination, depot)
-    segments.push({ label: `destination → ${depotName}`, km: back })
-  } else {
-    // DSP : incident → depot (retour)
+  if (noDest) {
+    // DSP : retour direct depot
     const back = await getDistanceKm(incident, depot)
     segments.push({ label: `incident → ${depotName}`, km: back })
+  } else {
+    // REM : incident → stops séquentiels → depot
+    let prev = incident
+    let prevLabel = 'incident'
+    for (let i = 0; i < stopsWithCoords.length; i++) {
+      const s = stopsWithCoords[i]
+      const km = await getDistanceKm(prev, s.coord)
+      segments.push({ label: `${prevLabel} → ${s.label}`, km })
+      prev = s.coord
+      prevLabel = s.label
+    }
+    // Si pas de stops mais une destination_lat/lng, l'utiliser
+    if (stopsWithCoords.length === 0 && destinationFromField) {
+      const km = await getDistanceKm(incident, destinationFromField)
+      segments.push({ label: 'incident → destination', km })
+      prev = destinationFromField
+      prevLabel = 'destination'
+    }
+    // Retour depot
+    const back = await getDistanceKm(prev, depot)
+    segments.push({ label: `${prevLabel} → ${depotName}`, km: back })
   }
 
   const total = segments.reduce((sum, s) => sum + (s.km || 0), 0)
   const allOk = segments.every(s => s.km != null)
 
   return NextResponse.json({
-    total_km:    Math.round(total * 10) / 10,
-    segments:    segments.map(s => ({ label: s.label, km: s.km != null ? Math.round(s.km * 10) / 10 : null })),
-    has_destination: !!destination,
-    error:       allOk ? null : 'Certains segments n\'ont pas pu être calculés',
+    total_km:        Math.round(total * 10) / 10,
+    segments:        segments.map(s => ({ label: s.label, km: s.km != null ? Math.round(s.km * 10) / 10 : null })),
+    has_destination: !noDest,
+    has_stops:       stopsWithCoords.length > 0,
+    error:           allOk ? null : 'Certains segments n\'ont pas pu être calculés',
   })
 }
