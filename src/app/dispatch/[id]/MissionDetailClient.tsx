@@ -41,6 +41,10 @@ interface Mission {
   incident_lng: number | null
   destination_name: string | null
   destination_address: string | null
+  incident_borne_km: string | null
+  incident_sens: string | null
+  destination_borne_km: string | null
+  destination_sens: string | null
   amount_guaranteed: number | null
   amount_currency: string
   amount_to_collect: number | null
@@ -245,6 +249,18 @@ export default function MissionDetailClient({
 }) {
   const router = useRouter()
 
+  // Combiner rue + ville/CP en une seule adresse complète si la ville n'y est pas déjà.
+  // Le parser email écrit incident_address (rue) et incident_city séparément. L'UI a un seul
+  // champ unifié, donc on les concatène à l'init.
+  const combineAddress = (street: string | null, city: string | null) => {
+    const s = (street || '').trim()
+    const c = (city   || '').trim()
+    if (!s) return c
+    if (!c) return s
+    const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '')
+    return norm(s).includes(norm(c)) ? s : `${s}, ${c}`
+  }
+
   // Formulaire éditable
   const [form, setForm] = useState({
     mission_type:         initialMission.mission_type         || '',
@@ -260,17 +276,30 @@ export default function MissionDetailClient({
     vehicle_vin:          initialMission.vehicle_vin          || '',
     vehicle_fuel:         initialMission.vehicle_fuel         || '',
     vehicle_gearbox:      initialMission.vehicle_gearbox      || '',
-    incident_address:     initialMission.incident_address     || '',
+    incident_address:     combineAddress(initialMission.incident_address, initialMission.incident_city),
     incident_lat:         initialMission.incident_lat         != null ? String(initialMission.incident_lat)  : '',
     incident_lng:         initialMission.incident_lng         != null ? String(initialMission.incident_lng)  : '',
     incident_city:        initialMission.incident_city        || '',
     destination_name:     initialMission.destination_name     || '',
-    destination_address:  initialMission.destination_address  || '',
+    // Destination : nom du lieu (garage, hôtel) en PRÉFIXE de l'adresse → "Garage X, Rue Y"
+    destination_address:  initialMission.destination_name && initialMission.destination_address
+                            && !initialMission.destination_address.toLowerCase().includes(initialMission.destination_name.toLowerCase())
+                            ? `${initialMission.destination_name}, ${initialMission.destination_address}`
+                            : (initialMission.destination_address || ''),
     destination_lat:      '',
     destination_lng:      '',
+    incident_borne_km:    initialMission.incident_borne_km    || '',
+    incident_sens:        initialMission.incident_sens        || '',
+    destination_borne_km: initialMission.destination_borne_km || '',
+    destination_sens:     initialMission.destination_sens     || '',
     amount_guaranteed:    initialMission.amount_guaranteed != null ? String(initialMission.amount_guaranteed) : '',
     amount_to_collect:    initialMission.amount_to_collect != null  ? String(initialMission.amount_to_collect)  : '',
   })
+
+  // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,
+  // ou mot-clé "autoroute" / "highway".
+  const isHighway = (addr: string) =>
+    /(^|[\s,])A\d{1,3}\b/.test(addr) || /\b(autoroute|highway)\b/i.test(addr)
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
   const [showRawContent, setShowRawContent]   = useState(false)
@@ -869,6 +898,19 @@ export default function MissionDetailClient({
                     {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (
                       <p className="text-zinc-600 text-xs">📥 Reçu : <span className="text-zinc-500">{initialMission.incident_address}</span></p>
                     )}
+                    {isHighway(form.incident_address) && (
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                        <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
+                          🛣️ Autoroute détectée
+                        </div>
+                        <Field label="Borne kilométrique">
+                          <Input value={form.incident_borne_km} onChange={f('incident_borne_km')} placeholder="Ex: 132.5 ou 132+200" />
+                        </Field>
+                        <Field label="Sens de circulation">
+                          <Input value={form.incident_sens} onChange={f('incident_sens')} placeholder="Ex: vers Liège" />
+                        </Field>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Destination</p>
@@ -886,6 +928,19 @@ export default function MissionDetailClient({
                       gmKey={googleMapsKey}
                       placeholder="Ex: Garage Citroën Verviers, Rue..."
                     />
+                    {isHighway(form.destination_address) && (
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                        <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
+                          🛣️ Autoroute détectée
+                        </div>
+                        <Field label="Borne kilométrique">
+                          <Input value={form.destination_borne_km} onChange={f('destination_borne_km')} placeholder="Ex: 132.5" />
+                        </Field>
+                        <Field label="Sens de circulation">
+                          <Input value={form.destination_sens} onChange={f('destination_sens')} placeholder="Ex: vers Bruxelles" />
+                        </Field>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

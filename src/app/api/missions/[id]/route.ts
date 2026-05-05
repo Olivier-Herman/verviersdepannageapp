@@ -50,8 +50,10 @@ export async function PATCH(
     'vehicle_fuel', 'vehicle_gearbox', 'vehicle_mileage',
     'incident_address', 'incident_city', 'incident_country',
     'incident_lat', 'incident_lng',
+    'incident_borne_km', 'incident_sens',
     'destination_name', 'destination_address',
     'destination_lat', 'destination_lng',
+    'destination_borne_km', 'destination_sens',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency',
     'incident_at', 'remarks_general',
   ]
