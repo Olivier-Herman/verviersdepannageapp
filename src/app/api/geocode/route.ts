@@ -7,7 +7,9 @@ export async function GET(req: Request) {
   const lat     = searchParams.get('lat')
   const lng     = searchParams.get('lng')
 
-  const apiKey = process.env.GOOGLE_GEOCODING
+  // GOOGLE_GEOCODING (clé dédiée) sinon fallback sur la clé Maps publique qui supporte aussi Geocoding API
+  const apiKey = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  if (!apiKey) return NextResponse.json({ error: 'Google API key absente' }, { status: 500 })
 
   // Reverse geocoding (lat/lng → address)
   if (lat && lng) {

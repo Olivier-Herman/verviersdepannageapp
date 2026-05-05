@@ -193,6 +193,31 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 
+function GeoStatusBanner({ status, onApply }: {
+  status:  { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
+  onApply: () => void
+}) {
+  if (status.state === 'idle')        return null
+  if (status.state === 'checking')    return <p className="text-zinc-500 text-xs">⏳ Vérification Google…</p>
+  if (status.state === 'confirmed')   return <p className="text-green-400 text-xs">✅ Adresse confirmée par Google</p>
+  if (status.state === 'not_found')   return <p className="text-red-400 text-xs">❌ Adresse non trouvée par Google</p>
+  // different
+  return (
+    <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-amber-400 text-xs font-medium">⚠ Suggestion Google différente :</p>
+          <p className="text-amber-200 text-xs mt-0.5 break-words">{status.suggestion?.addr}</p>
+        </div>
+        <button type="button" onClick={onApply}
+          className="flex-shrink-0 px-2.5 py-1 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold transition">
+          Utiliser
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -300,6 +325,81 @@ export default function MissionDetailClient({
   // ou mot-clé "autoroute" / "highway".
   const isHighway = (addr: string) =>
     /(^|[\s,])A\d{1,3}\b/.test(addr) || /\b(autoroute|highway)\b/i.test(addr)
+
+  // ── Auto-vérification Google sur chargement ─────────────────────────────────
+  // État par adresse : 'idle' | 'checking' | 'confirmed' | 'different' | 'not_found'
+  type GeoStatus = { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
+  const [incidentGeo,    setIncidentGeo]    = useState<GeoStatus>({ state: 'idle' })
+  const [destinationGeo, setDestinationGeo] = useState<GeoStatus>({ state: 'idle' })
+
+  const verifyAddress = async (addr: string): Promise<GeoStatus> => {
+    if (!addr.trim()) return { state: 'idle' }
+    try {
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(addr)}`)
+      const data = await res.json()
+      if (!data.found) return { state: 'not_found' }
+      // data.same === true si Google retrouve une adresse qui contient le début de l'input
+      if (data.same) {
+        return { state: 'confirmed', suggestion: { addr: data.formatted, lat: data.lat, lng: data.lng } }
+      }
+      return { state: 'different', suggestion: { addr: data.formatted, lat: data.lat, lng: data.lng } }
+    } catch {
+      return { state: 'not_found' }
+    }
+  }
+
+  // Au chargement : vérifier les 2 adresses + appliquer silencieusement si "confirmed"
+  useEffect(() => {
+    (async () => {
+      if (form.incident_address && !initialMission.incident_lat) {
+        setIncidentGeo({ state: 'checking' })
+        const r = await verifyAddress(form.incident_address)
+        setIncidentGeo(r)
+        if (r.state === 'confirmed' && r.suggestion) {
+          setForm(prev => ({
+            ...prev,
+            incident_address: r.suggestion!.addr,
+            incident_lat:     String(r.suggestion!.lat),
+            incident_lng:     String(r.suggestion!.lng),
+          }))
+        }
+      }
+      if (form.destination_address) {
+        setDestinationGeo({ state: 'checking' })
+        const r = await verifyAddress(form.destination_address)
+        setDestinationGeo(r)
+        if (r.state === 'confirmed' && r.suggestion) {
+          setForm(prev => ({
+            ...prev,
+            destination_address: r.suggestion!.addr,
+            destination_lat:     String(r.suggestion!.lat),
+            destination_lng:     String(r.suggestion!.lng),
+          }))
+        }
+      }
+    })()
+  }, [])
+
+  const applyIncidentSuggestion = () => {
+    if (!incidentGeo.suggestion) return
+    setForm(prev => ({
+      ...prev,
+      incident_address: incidentGeo.suggestion!.addr,
+      incident_lat:     String(incidentGeo.suggestion!.lat),
+      incident_lng:     String(incidentGeo.suggestion!.lng),
+    }))
+    setIncidentGeo({ state: 'confirmed', suggestion: incidentGeo.suggestion })
+  }
+  const applyDestinationSuggestion = () => {
+    if (!destinationGeo.suggestion) return
+    setForm(prev => ({
+      ...prev,
+      destination_address: destinationGeo.suggestion!.addr,
+      destination_lat:     String(destinationGeo.suggestion!.lat),
+      destination_lng:     String(destinationGeo.suggestion!.lng),
+    }))
+    setDestinationGeo({ state: 'confirmed', suggestion: destinationGeo.suggestion })
+  }
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
   const [showRawContent, setShowRawContent]   = useState(false)
@@ -884,17 +984,21 @@ export default function MissionDetailClient({
                     <AddressField
                       label="Adresse complète"
                       value={form.incident_address}
-                      onChange={f('incident_address')}
-                      onSelect={(addr, lat, lng, city) => setForm(prev => ({
-                        ...prev,
-                        incident_address: addr,
-                        incident_lat:     String(lat),
-                        incident_lng:     String(lng),
-                        ...(city ? { incident_city: city } : {}),
-                      }))}
+                      onChange={v => { f('incident_address')(v); setIncidentGeo({ state: 'idle' }) }}
+                      onSelect={(addr, lat, lng, city) => {
+                        setForm(prev => ({
+                          ...prev,
+                          incident_address: addr,
+                          incident_lat:     String(lat),
+                          incident_lng:     String(lng),
+                          ...(city ? { incident_city: city } : {}),
+                        }))
+                        setIncidentGeo({ state: 'confirmed', suggestion: { addr, lat, lng } })
+                      }}
                       gmKey={googleMapsKey}
                       placeholder="Tapez et choisissez une suggestion Google..."
                     />
+                    <GeoStatusBanner status={incidentGeo} onApply={applyIncidentSuggestion} />
                     {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (
                       <p className="text-zinc-600 text-xs">📥 Reçu : <span className="text-zinc-500">{initialMission.incident_address}</span></p>
                     )}
@@ -917,17 +1021,21 @@ export default function MissionDetailClient({
                     <AddressField
                       label="Adresse complète (nom de lieu inclus si garage, hôtel…)"
                       value={form.destination_address}
-                      onChange={f('destination_address')}
-                      onSelect={(addr, lat, lng, _city, name) => setForm(prev => ({
-                        ...prev,
-                        destination_address: addr,
-                        destination_lat:     String(lat),
-                        destination_lng:     String(lng),
-                        ...(name ? { destination_name: name } : {}),
-                      }))}
+                      onChange={v => { f('destination_address')(v); setDestinationGeo({ state: 'idle' }) }}
+                      onSelect={(addr, lat, lng, _city, name) => {
+                        setForm(prev => ({
+                          ...prev,
+                          destination_address: addr,
+                          destination_lat:     String(lat),
+                          destination_lng:     String(lng),
+                          ...(name ? { destination_name: name } : {}),
+                        }))
+                        setDestinationGeo({ state: 'confirmed', suggestion: { addr, lat, lng } })
+                      }}
                       gmKey={googleMapsKey}
                       placeholder="Ex: Garage Citroën Verviers, Rue..."
                     />
+                    <GeoStatusBanner status={destinationGeo} onApply={applyDestinationSuggestion} />
                     {isHighway(form.destination_address) && (
                       <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
                         <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
