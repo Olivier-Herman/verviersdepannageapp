@@ -879,6 +879,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className="text-blue-400 text-xs flex-shrink-0">✏️</span>
             </button>
 
+            {/* Lieu d'intervention */}
+            <div className="px-4 py-3">
+              <p className="text-zinc-500 text-xs">📍 Lieu d'intervention</p>
+              <p className="text-white text-sm">
+                {M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}
+              </p>
+            </div>
+
+            {/* Destination (REM uniquement) */}
+            {rem && M.destination_address && (
+              <div className="px-4 py-3">
+                <p className="text-zinc-500 text-xs">🏁 Destination</p>
+                <p className="text-white text-sm">
+                  {M.destination_name ? `${M.destination_name} — ` : ''}{M.destination_address}
+                </p>
+              </div>
+            )}
+
             {/* Photos */}
             <button onClick={() => setScreen('photos')}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
