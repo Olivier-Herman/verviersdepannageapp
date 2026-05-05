@@ -87,12 +87,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     incident = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
   }
 
-  // Tous les chauffeurs actifs (role driver/admin/superadmin, active=true)
+  // Chauffeurs = utilisateurs actifs avec un towsoft_name renseigne
+  // (= meme flag que celui qui affiche le module "Mission chauffeur")
   const { data: drivers } = await sb
     .from('users')
     .select('id, name, avatar_url, last_location_lat, last_location_lng, location_updated_at')
     .eq('active', true)
-    .in('role', ['driver', 'admin', 'superadmin'])
+    .not('towsoft_name', 'is', null)
+    .neq('towsoft_name', '')
     .order('name')
   if (!drivers || drivers.length === 0) return NextResponse.json({ drivers: [] })
 

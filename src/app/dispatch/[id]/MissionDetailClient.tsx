@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
+import OnDutyToggle from '@/components/OnDutyToggle'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -175,6 +176,7 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
           )
         })}
       </nav>
+      <OnDutyToggle />
       <div className="px-3 py-4 border-t border-[#2a2a2a]">
         <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs">{initials}</div>
@@ -992,27 +994,6 @@ export default function MissionDetailClient({
     router.push('/dispatch')
   }
 
-  // Assigner la mission (dispatching → assigned)
-  const handleAssign = async () => {
-    if (!selectedDriver) {
-      alert("Veuillez sélectionner un chauffeur avant d'assigner la mission.")
-      return
-    }
-    setLoadingSave(true)
-    await fetch(`/api/missions/${initialMission.id}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(form)
-    })
-    await fetch('/api/missions/assign', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ mission_id: initialMission.id, driver_id: selectedDriver })
-    })
-    setStatus('assigned')
-    setLoadingSave(false)
-    router.push('/dispatch')
-  }
 
   const srcInfo    = SOURCE_LABELS[initialMission.source] || { label: '?', color: 'bg-zinc-600' }
   const statusInfo = STATUS_LABELS[status] || { label: status, color: 'text-zinc-400' }
@@ -1502,19 +1483,13 @@ export default function MissionDetailClient({
                   </>
                 )}
 
-                {/* Statut dispatching → Assigner / Annuler */}
+                {/* Statut dispatching → indication + Annuler. L'assignation se fait via le modal "Choisir un chauffeur" plus haut. */}
                 {status === 'dispatching' && (
                   <>
                     <div className="text-center py-2">
                       <span className="text-blue-400 font-semibold text-sm">📡 En attente d'assignation</span>
+                      <p className="text-zinc-500 text-xs mt-1">Clique « Choisir un chauffeur » plus haut pour assigner</p>
                     </div>
-                    <button
-                      onClick={handleAssign}
-                      disabled={loadingSave}
-                      className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
-                    >
-                      {loadingSave ? 'Assignation...' : '👷 Assigner la mission'}
-                    </button>
                     <button
                       onClick={handleRefuse}
                       disabled={loadingRefuse}
@@ -1729,7 +1704,20 @@ export default function MissionDetailClient({
           missionId={initialMission.id}
           incidentLat={form.incident_lat ? Number(form.incident_lat) : null}
           incidentLng={form.incident_lng ? Number(form.incident_lng) : null}
-          onPick={(driverId) => { setSelectedDriver(driverId); setShowDriverModal(false) }}
+          onPick={async (driverId) => {
+            setSelectedDriver(driverId)
+            setShowDriverModal(false)
+            // Si la mission est déjà confirmée, on assigne directement (pas besoin de cliquer "Assigner")
+            if (status === 'dispatching') {
+              await fetch('/api/missions/assign', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ mission_id: initialMission.id, driver_id: driverId }),
+              })
+              setStatus('assigned')
+              router.push('/dispatch')
+            }
+          }}
           onClose={() => setShowDriverModal(false)}
         />
       )}
