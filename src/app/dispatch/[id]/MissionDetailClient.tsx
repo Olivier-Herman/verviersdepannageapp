@@ -7,6 +7,7 @@ import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
+import AddressField from '@/components/AddressField'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -188,90 +189,6 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 
-// ── Champ adresse avec vérification Google ───────────────────────────────────
-function VerifiedAddressField({ label, value, rawValue, onAccept, onChange }: {
-  label:     string
-  value:     string       // adresse actuelle dans le form
-  rawValue?: string       // adresse brute reçue de l'assistance (pour comparaison)
-  onAccept:  (addr: string, lat: number, lng: number) => void
-  onChange:  (v: string) => void
-}) {
-  const [suggestion, setSuggestion]   = useState<{ formatted: string; lat: number; lng: number } | null>(null)
-  const [loading,    setLoading]      = useState(false)
-  const [checked,    setChecked]      = useState(false)
-  const [different,  setDifferent]    = useState(false)
-
-  const verify = async () => {
-    if (!value) return
-    setLoading(true)
-    try {
-      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(value)}`)
-      const data = await res.json()
-      if (data.found) {
-        setSuggestion({ formatted: data.formatted, lat: data.lat, lng: data.lng })
-        setDifferent(!data.same)
-      }
-    } catch {}
-    setChecked(true)
-    setLoading(false)
-  }
-
-  const accept = () => {
-    if (!suggestion) return
-    onAccept(suggestion.formatted, suggestion.lat, suggestion.lng)
-    setSuggestion(null)
-    setChecked(false)
-    setDifferent(false)
-  }
-
-  return (
-    <div>
-      <label className="block text-zinc-500 text-xs mb-1.5">{label}</label>
-      <div className="flex gap-2 items-start">
-        <div className="flex-1">
-          <input
-            value={value}
-            onChange={e => { onChange(e.target.value); setChecked(false); setSuggestion(null) }}
-            placeholder="Rue, autoroute..."
-            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
-          />
-          {rawValue && rawValue !== value && (
-            <p className="text-zinc-600 text-xs mt-1">📥 Reçu : <span className="text-zinc-500">{rawValue}</span></p>
-          )}
-          {checked && suggestion && (
-            <div className={`mt-2 p-2.5 rounded-xl border text-xs ${
-              different
-                ? 'bg-yellow-500/10 border-yellow-500/30'
-                : 'bg-green-500/10 border-green-500/30'
-            }`}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  {different
-                    ? <p className="text-yellow-400 font-semibold mb-0.5">⚠️ Adresse différente suggérée</p>
-                    : <p className="text-green-400 font-semibold mb-0.5">✅ Adresse confirmée</p>
-                  }
-                  <p className={different ? 'text-yellow-300' : 'text-green-300'}>{suggestion.formatted}</p>
-                </div>
-                <button onClick={accept}
-                  className="flex-shrink-0 px-2.5 py-1 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold transition">
-                  Utiliser
-                </button>
-              </div>
-            </div>
-          )}
-          {checked && !suggestion && (
-            <p className="text-red-400 text-xs mt-1">❌ Adresse introuvable sur Google Maps</p>
-          )}
-        </div>
-        <button onClick={verify} disabled={loading || !value}
-          className="flex-shrink-0 mt-0.5 px-3 py-2.5 bg-[#2a2a2a] hover:bg-[#333] disabled:opacity-40 text-zinc-400 hover:text-white rounded-xl text-xs transition whitespace-nowrap">
-          {loading ? '⏳' : '🔍 Vérifier'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -317,12 +234,14 @@ export default function MissionDetailClient({
   drivers,
   userName,
   userRole,
+  googleMapsKey,
 }: {
-  mission:  Mission
-  logs:     MissionLog[]
-  drivers:  Driver[]
-  userName: string
-  userRole: string
+  mission:       Mission
+  logs:          MissionLog[]
+  drivers:       Driver[]
+  userName:      string
+  userRole:      string
+  googleMapsKey: string
 }) {
   const router = useRouter()
 
@@ -419,8 +338,9 @@ export default function MissionDetailClient({
     }, 400)
   }, [form.vehicle_plate, odooVehicleId])
 
-  const selectOdooVehicle = (v: {id:number;plate:string;vin:string;brand:string;model:string;fuel:string;gearbox:string}) => {
+  const selectOdooVehicle = async (v: {id:number;plate:string;vin:string;brand:string;model:string;fuel:string;gearbox:string}) => {
     setOdooVehicleId(v.id)
+    // Préserve les valeurs Odoo (source de vérité) sauf si vides → fallback sur le form
     setForm(prev => ({
       ...prev,
       vehicle_plate:   v.plate || prev.vehicle_plate,
@@ -432,8 +352,42 @@ export default function MissionDetailClient({
     }))
     setVehicleResults([])
     setShowVehicleDrop(false)
+
+    // Si le form a un VIN/fuel/boîte que le véhicule Odoo n'a pas → on complète Odoo
+    const needsUpdate =
+      (form.vehicle_vin     && !v.vin) ||
+      (form.vehicle_fuel    && !v.fuel) ||
+      (form.vehicle_gearbox && !v.gearbox)
+    if (needsUpdate) {
+      try {
+        await fetch('/api/odoo/update-vehicle', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vehicle_id: v.id,
+            vin:        !v.vin     ? form.vehicle_vin     : undefined,
+            fuel:       !v.fuel    ? form.vehicle_fuel    : undefined,
+            gearbox:    !v.gearbox ? form.vehicle_gearbox : undefined,
+          }),
+        })
+      } catch {}
+    }
   }
   const clearOdooVehicle = () => { setOdooVehicleId(null); setVehicleSearched(false) }
+
+  // Comparaison fuzzy brand/model d'un véhicule Odoo vs ce qui est saisi dans le form
+  const vehicleSimilarity = (v: {brand:string;model:string}): 'match' | 'mismatch' | 'unknown' => {
+    if (!form.vehicle_brand && !form.vehicle_model) return 'unknown'
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[-.\s]/g, '').trim()
+    const fuzzy = (a: string, b: string) => {
+      const na = norm(a), nb = norm(b)
+      if (!na || !nb) return false
+      return na.includes(nb) || nb.includes(na)
+    }
+    const brandOk = !form.vehicle_brand || fuzzy(v.brand, form.vehicle_brand)
+    const modelOk = !form.vehicle_model || fuzzy(v.model, form.vehicle_model)
+    return brandOk && modelOk ? 'match' : 'mismatch'
+  }
 
   const [M, setM] = useState<Mission>(initialMission)
   const [saveOk, setSaveOk] = useState(false)
@@ -781,9 +735,13 @@ export default function MissionDetailClient({
                     <Input value={form.client_phone} onChange={f('client_phone')} placeholder="+32..." />
                   </Field>
                   <div className="col-span-2">
-                    <Field label="Adresse domicile">
-                      <Input value={form.client_address} onChange={f('client_address')} placeholder="Rue, numéro, ville" />
-                    </Field>
+                    <AddressField
+                      label="Adresse domicile"
+                      value={form.client_address}
+                      onChange={f('client_address')}
+                      gmKey={googleMapsKey}
+                      placeholder="Rue, numéro, ville..."
+                    />
                   </div>
                 </div>
               </div>
@@ -809,17 +767,35 @@ export default function MissionDetailClient({
                   <div className="mb-4 bg-[#111] border border-brand/30 rounded-xl p-3">
                     <p className="text-zinc-400 text-xs mb-2">{vehicleResults.length} véhicule(s) trouvé(s) dans Odoo — clique pour lier (évite le doublon) :</p>
                     <div className="space-y-1">
-                      {vehicleResults.map(v => (
-                        <button key={v.id} type="button" onClick={() => selectOdooVehicle(v)}
-                          className="w-full text-left px-3 py-2 bg-[#1A1A1A] hover:bg-[#222] border border-[#2a2a2a] rounded-lg transition">
-                          <p className="text-white text-sm">
-                            <span className="font-mono font-semibold">{v.plate}</span>
-                            <span className="text-zinc-400 ml-2">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
-                          </p>
-                          {v.vin && <p className="text-zinc-500 text-xs">VIN: {v.vin}</p>}
-                        </button>
-                      ))}
+                      {vehicleResults.map(v => {
+                        const sim = vehicleSimilarity(v)
+                        return (
+                          <button key={v.id} type="button" onClick={() => selectOdooVehicle(v)}
+                            className={`w-full text-left px-3 py-2 border rounded-lg transition ${
+                              sim === 'match'    ? 'bg-green-500/10 hover:bg-green-500/20 border-green-500/30'    :
+                              sim === 'mismatch' ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'    :
+                                                    'bg-[#1A1A1A] hover:bg-[#222] border-[#2a2a2a]'
+                            }`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-white text-sm">
+                                <span className="font-mono font-semibold">{v.plate}</span>
+                                <span className="text-zinc-400 ml-2">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
+                              </p>
+                              {sim === 'match'    && <span className="text-green-400 text-xs">✓ correspond</span>}
+                              {sim === 'mismatch' && <span className="text-amber-400 text-xs">⚠ marque/modèle ≠</span>}
+                            </div>
+                            {v.vin && <p className="text-zinc-500 text-xs">VIN: {v.vin}</p>}
+                          </button>
+                        )
+                      })}
                     </div>
+                    {/* Forcer la création d'un nouveau si l'utilisateur juge qu'aucun résultat ne correspond */}
+                    {form.vehicle_plate.trim().length >= 3 && (
+                      <button type="button" onClick={() => { setVehicleResults([]); setVehicleSearched(true) }}
+                        className="mt-2 w-full text-center px-3 py-2 bg-[#0a0a0a] hover:bg-[#222] border border-dashed border-[#3a3a3a] rounded-lg text-zinc-400 hover:text-white text-xs transition">
+                        ➕ Aucun ne correspond — créer un nouveau véhicule
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -876,18 +852,23 @@ export default function MissionDetailClient({
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>
-                    <VerifiedAddressField
+                    <AddressField
                       label="Adresse"
                       value={form.incident_address}
-                      rawValue={initialMission.incident_address || undefined}
                       onChange={f('incident_address')}
-                      onAccept={(addr, lat, lng) => setForm(prev => ({
+                      onSelect={(addr, lat, lng, city) => setForm(prev => ({
                         ...prev,
                         incident_address: addr,
                         incident_lat:     String(lat),
                         incident_lng:     String(lng),
+                        ...(city ? { incident_city: city } : {}),
                       }))}
+                      gmKey={googleMapsKey}
+                      placeholder="Tapez et choisissez une suggestion Google..."
                     />
+                    {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (
+                      <p className="text-zinc-600 text-xs">📥 Reçu : <span className="text-zinc-500">{initialMission.incident_address}</span></p>
+                    )}
                     <Field label="Ville / Code postal">
                       <Input value={form.incident_city} onChange={f('incident_city')} placeholder="4800 Verviers" />
                     </Field>
@@ -897,16 +878,18 @@ export default function MissionDetailClient({
                     <Field label="Nom du lieu">
                       <Input value={form.destination_name} onChange={f('destination_name')} placeholder="Garage, domicile..." />
                     </Field>
-                    <VerifiedAddressField
+                    <AddressField
                       label="Adresse"
                       value={form.destination_address}
                       onChange={f('destination_address')}
-                      onAccept={(addr, lat, lng) => setForm(prev => ({
+                      onSelect={(addr, lat, lng) => setForm(prev => ({
                         ...prev,
                         destination_address: addr,
                         destination_lat:     String(lat),
                         destination_lng:     String(lng),
                       }))}
+                      gmKey={googleMapsKey}
+                      placeholder="Tapez et choisissez une suggestion Google..."
                     />
                   </div>
                 </div>
