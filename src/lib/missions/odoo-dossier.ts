@@ -76,10 +76,17 @@ export async function createOdooDossierForMission(
 
   // ── Mapper le type d'intervention vers les codes FSM ─────────────────────
   const missionType = (mission.mission_type || '').toUpperCase()
+  const missionTypeRaw = (mission.mission_type || '').toLowerCase()
   let interventionType: 'DSP' | 'REM_DIRECT' | 'REM_DEPOT' | 'REL' | 'DPR' = 'DSP'
   if (['REMORQUAGE', 'REM'].some(t => missionType.includes(t))) interventionType = 'REM_DIRECT'
   if (['DPR', 'DEPLACE'].some(t => missionType.includes(t)))    interventionType = 'DPR'
   if (['REL', 'RELIVR'].some(t => missionType.includes(t)))     interventionType = 'REL'
+
+  // Pour DSP / réparation sur place / trajet vide → pas de destination, le véhicule
+  // reste sur place ou le déplacement est interne. On évite d'envoyer une destination
+  // potentiellement parasite (si le parser en a trouvé une à tort, par exemple).
+  const noDestinationTypes = ['depannage', 'reparation_place', 'trajet_vide']
+  const skipDestination = noDestinationTypes.includes(missionTypeRaw)
 
   // ── Chauffeur si assigné ──────────────────────────────────────────────────
   let chauffeurName = ''
@@ -186,7 +193,7 @@ export async function createOdooDossierForMission(
     vehicleInfo:         [mission.vehicle_plate, mission.vehicle_brand, mission.vehicle_model]
                          .filter(Boolean).join(' '),
     incidentAddress:     incidentFull,
-    destinationAddress:  mission.destination_address || '',
+    destinationAddress:  skipDestination ? '' : (mission.destination_address || ''),
     description:         mission.incident_description || '',
     beneficiaryName:     mission.client_name  || '',
     beneficiaryPhone:    mission.client_phone || '',
