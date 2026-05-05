@@ -15,12 +15,20 @@ export default function GardeClient({ userName, userRole }: { userName: string; 
   const [drivers, setDrivers]   = useState<Driver[]>([])
   const [loading, setLoading]   = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [error,    setError]    = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/garde').then(r => r.json()).then(d => {
-      setDrivers(Array.isArray(d) ? d : [])
+    fetch('/api/garde').then(async r => {
+      const d = await r.json()
+      if (!r.ok) {
+        setError(`HTTP ${r.status}: ${d.error || 'erreur inconnue'}`)
+      } else if (Array.isArray(d)) {
+        setDrivers(d)
+      } else {
+        setError(`Réponse inattendue : ${JSON.stringify(d)}`)
+      }
       setLoading(false)
-    }).catch(() => setLoading(false))
+    }).catch(e => { setError(e.message); setLoading(false) })
   }, [])
 
   const toggle = async (driver: Driver, field: 'schedule_day' | 'schedule_night') => {
@@ -55,7 +63,14 @@ export default function GardeClient({ userName, userRole }: { userName: string; 
 
         {loading && <p className="text-zinc-500 text-center py-8">Chargement…</p>}
 
-        {!loading && drivers.length === 0 && (
+        {!loading && error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
+            <p className="font-semibold mb-1">Erreur</p>
+            <p className="text-xs">{error}</p>
+          </div>
+        )}
+
+        {!loading && !error && drivers.length === 0 && (
           <p className="text-zinc-500 text-center py-8">Aucun chauffeur actif (towsoft_name manquant ?)</p>
         )}
 
