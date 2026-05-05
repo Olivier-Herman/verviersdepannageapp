@@ -591,16 +591,52 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
   }
 
-  // ── Photos ────────────────────────────────────────────────────────────────
-  if (screen === 'photos') return (
-      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''}`} back={() => setScreen('main')}>
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+  // ── Photos (wizard guidé par catégorie) ───────────────────────────────────
+  if (screen === 'photos') {
+    // Catégories suggérées au chauffeur. Le compteur n'est pas tagué côté DB
+    // (pas de migration nécessaire) — c'est un guide visuel pour qu'il pense à
+    // toutes les vues importantes. Le seuil "couverte" = au moins 1 photo prise
+    // après ouverture de la catégorie (via le state local catPhotos).
+    const PHOTO_CATS: Array<{ id: string; icon: string; label: string; hint: string; required?: boolean }> = [
+      { id: 'plaque',    icon: '🔢', label: 'Plaque',         hint: 'Lisible en gros plan',                  required: true },
+      { id: 'avant',     icon: '⬆️', label: 'Avant',          hint: 'Vue 3/4 côté conducteur idéalement',    required: true },
+      { id: 'arriere',   icon: '⬇️', label: 'Arrière',        hint: 'Vue 3/4 côté conducteur idéalement',    required: true },
+      { id: 'gauche',    icon: '⬅️', label: 'Côté gauche',    hint: 'Vue latérale complète' },
+      { id: 'droite',    icon: '➡️', label: 'Côté droit',     hint: 'Vue latérale complète' },
+      { id: 'interieur', icon: '🪑', label: 'Intérieur',      hint: 'Tableau de bord + état général' },
+      { id: 'defauts',   icon: '⚠️', label: 'Défauts/dégâts', hint: 'Rayures, bosses, cassures (si applicable)' },
+    ]
+    // Quels catégories ont été ouvertes (= photos prises depuis cette cat)
+    // Stocké dans localStorage pour persister entre rafraîchissements.
+    const lsKey = `photo-cats-${M.id}`
+    const coveredCats: string[] = (() => {
+      try { return JSON.parse(localStorage.getItem(lsKey) || '[]') } catch { return [] }
+    })()
+    const markCovered = (catId: string) => {
+      const next = Array.from(new Set([...coveredCats, catId]))
+      localStorage.setItem(lsKey, JSON.stringify(next))
+    }
+    const requiredCats = PHOTO_CATS.filter(c => c.required).map(c => c.id)
+    const allRequiredDone = requiredCats.every(id => coveredCats.includes(id))
+
+    return (
+      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''} · ${coveredCats.length}/${PHOTO_CATS.length} angles couverts`} back={() => setScreen('main')}>
+        <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" className="hidden"
+          onChange={e => {
+            // La catégorie cliquée a été stockée dans data-cat sur le button
+            const cat = (photoRef.current as any)?.dataset?.cat
+            if (cat) markCovered(cat)
+            addPhotos(e.target.files)
+          }} />
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {/* Aperçu des photos déjà prises */}
           {previews.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-3 gap-2 mb-3">
               {photoUrls.map((url, i) => (
                 <div key={`u${i}`} className="relative aspect-square rounded-xl overflow-hidden">
                   <img src={url} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-xs text-center">✓ sauvegardé</div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-xs text-center">✓</div>
                   <button onClick={async () => {
                     const newUrls = photoUrls.filter((_, j) => j !== i)
                     setPhotoUrls(newUrls); setPreviews(p => p.filter((_, j) => j !== i))
@@ -615,25 +651,63 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               {previews.slice(photoUrls.length).map((src, i) => (
                 <div key={`f${i}`} className="relative aspect-square rounded-xl overflow-hidden">
                   <img src={src} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-white text-xs text-center">non sauvegardé</div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-white text-xs text-center">non sauv.</div>
                   <button onClick={() => { setPhotos(p => p.filter((_, j) => j !== i)); setPreviews(p => p.filter((_, j) => j !== i + photoUrls.length)) }}
                     className="absolute top-1 right-1 w-5 h-5 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
                 </div>
               ))}
             </div>
           )}
-          <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={e => addPhotos(e.target.files)} />
-          <button onClick={() => photoRef.current?.click()}
-            className="w-full py-4 border-2 border-dashed border-[#2a2a2a] hover:border-[#CC0000] rounded-2xl text-zinc-400 text-sm">
-            📷 Prendre des photos
+
+          {/* Wizard : carte par catégorie */}
+          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Que photographier ?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {PHOTO_CATS.map(cat => {
+              const done = coveredCats.includes(cat.id)
+              return (
+                <button key={cat.id}
+                  onClick={() => {
+                    if (photoRef.current) (photoRef.current as any).dataset.cat = cat.id
+                    photoRef.current?.click()
+                  }}
+                  className={`relative p-3 rounded-2xl border text-left transition active:scale-95 ${
+                    done ? 'bg-green-500/10 border-green-500/40' :
+                    cat.required ? 'bg-red-500/5 border-red-500/30 hover:border-red-500/60'
+                                 : 'bg-[#1A1A1A] border-[#2a2a2a] hover:border-zinc-600'
+                  }`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xl">{cat.icon}</span>
+                    {done && <span className="text-green-400 text-xs">✓</span>}
+                    {!done && cat.required && <span className="text-red-400 text-[10px] font-bold">REQUIS</span>}
+                  </div>
+                  <p className={`font-semibold text-sm ${done ? 'text-green-300' : 'text-white'}`}>{cat.label}</p>
+                  <p className="text-zinc-500 text-[11px] mt-0.5 leading-tight">{cat.hint}</p>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Catégorie libre / photo générique */}
+          <button onClick={() => {
+              if (photoRef.current) (photoRef.current as any).dataset.cat = 'autre'
+              photoRef.current?.click()
+            }}
+            className="w-full mt-3 py-3 border-2 border-dashed border-[#2a2a2a] hover:border-zinc-500 rounded-2xl text-zinc-400 text-sm">
+            + Autre photo (libre)
           </button>
+
+          {!allRequiredDone && (
+            <p className="text-amber-400 text-xs bg-amber-500/10 rounded-xl px-3 py-2 mt-2">
+              ⚠ {requiredCats.filter(id => !coveredCats.includes(id)).length} angle(s) requis manquant(s)
+            </p>
+          )}
           {err && <p className="text-red-400 text-sm mt-3">⚠️ {err}</p>}
         </div>
         <div className="px-4 py-4 border-t border-[#2a2a2a] space-y-2">
           {photos.length > 0 && (
             <button onClick={savePhotos} disabled={loading}
               className="w-full py-3.5 bg-green-600 disabled:opacity-50 text-white font-bold rounded-2xl">
-              {loading ? '⏳ Sauvegarde…' : `💾 Enregistrer ${totPh} photo${totPh > 1 ? 's' : ''}`}
+              {loading ? '⏳ Sauvegarde…' : `💾 Enregistrer ${photos.length} nouvelle${photos.length > 1 ? 's' : ''}`}
             </button>
           )}
           {photos.length === 0 && (
@@ -641,7 +715,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           )}
         </div>
       </ScreenWrap>
-  )
+    )
+  }
 
   // ── Décharge ──────────────────────────────────────────────────────────────
   if (screen === 'decharge') return (
@@ -766,28 +841,66 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             <span className="text-white font-bold text-sm">{closeLabel}</span>
           </div>
 
-          {/* Récap collecte */}
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl px-4 py-4 space-y-3">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Récapitulatif</p>
-            <div className="flex items-center justify-between">
-              <span className="text-zinc-400 text-sm">Photos</span>
-              <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-zinc-500' : 'text-red-400'}`}>
-                {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? '(optionnel)' : '/ min. 3'}
-              </span>
+          {/* Récap éditable — chaque ligne cliquable mène à l'écran correspondant */}
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl divide-y divide-[#2a2a2a]">
+            <div className="px-4 py-3">
+              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Récapitulatif (cliquer pour modifier)</p>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-zinc-400 text-sm">Signature client</span>
+
+            {/* Véhicule — éditable */}
+            <button onClick={() => setShowVeh(true)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
+              <div className="flex-1 min-w-0">
+                <p className="text-zinc-500 text-xs">Véhicule</p>
+                <p className="text-white text-sm font-medium truncate">
+                  {[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || '—'} · {plate(M.vehicle_plate)}
+                </p>
+              </div>
+              <span className="text-blue-400 text-xs flex-shrink-0">✏️</span>
+            </button>
+
+            {/* Photos */}
+            <button onClick={() => setScreen('photos')}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
+              <span className="text-zinc-400 text-sm">📷 Photos</span>
+              <span className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-zinc-500' : 'text-red-400'}`}>
+                  {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? '(opt.)' : '/ 3 min.'}
+                </span>
+                <span className="text-blue-400 text-xs">→</span>
+              </span>
+            </button>
+
+            {/* Décharge */}
+            <button onClick={() => { setDischFrom('close'); setDMotif(''); setDName(''); setDSig(''); setScreen('decharge') }}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
+              <span className="text-zinc-400 text-sm">🛡️ Décharge{disch.length > 1 ? 's' : ''}</span>
+              <span className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                  {disch.length > 0 ? `✓ ${disch.length}` : '+ ajouter'}
+                </span>
+                <span className="text-blue-400 text-xs">→</span>
+              </span>
+            </button>
+
+            {/* Signature (signée pendant la décharge généralement) */}
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-zinc-400 text-sm">✍️ Signature client</span>
               <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-zinc-500'}`}>{sig ? '✓ Signée' : '—'}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-zinc-400 text-sm">Décharge{disch.length > 1 ? 's' : ''}</span>
-              <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-zinc-500'}`}>{disch.length > 0 ? `✓ ${disch.length} enregistrée${disch.length > 1 ? 's' : ''}` : '—'}</span>
-            </div>
-            {paid && (
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400 text-sm">Paiement</span>
-                <span className="text-sm font-medium text-green-400">✓ Encaissé</span>
-              </div>
+
+            {/* Encaissement */}
+            {M.amount_to_collect != null && M.amount_to_collect > 0 && (
+              <button onClick={() => setScreen('encaissement')}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
+                <span className="text-zinc-400 text-sm">💶 Encaissement</span>
+                <span className="flex items-center gap-2">
+                  <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-red-400'}`}>
+                    {paid ? '✓ Encaissé' : `${M.amount_to_collect.toFixed(2)} ${M.amount_currency || 'EUR'}`}
+                  </span>
+                  <span className="text-blue-400 text-xs">→</span>
+                </span>
+              </button>
             )}
           </div>
 
