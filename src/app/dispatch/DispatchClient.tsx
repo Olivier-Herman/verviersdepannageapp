@@ -492,6 +492,7 @@ export default function DispatchClient({
   const [activeTab,      setActiveTab]      = useState('new')
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
+  const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
   const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
   const [loading,        setLoading]        = useState(true)
   const [search,         setSearch]         = useState('')
@@ -522,21 +523,33 @@ export default function DispatchClient({
       if (sourceFilter) params.set('source', sourceFilter)
       if (search)       params.set('q', search)
 
-      const [mRes, sRes] = await Promise.all([
+      // Mode carte : on charge en parallèle les missions actives globales (toutes statuses)
+      const requests: Promise<Response>[] = [
         fetch(`/api/missions/list?${params}`),
         fetch('/api/users/driver-status'),
-      ])
-      const mData = await mRes.json()
-      const sData = await sRes.json()
+      ]
+      if (viewMode === 'map') {
+        const mapParams = new URLSearchParams({ view: 'map' })
+        if (sourceFilter) mapParams.set('source', sourceFilter)
+        requests.push(fetch(`/api/missions/list?${mapParams}`))
+      }
+
+      const responses = await Promise.all(requests)
+      const mData = await responses[0].json()
+      const sData = await responses[1].json()
       setMissions(mData.missions  || [])
       setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
       setDriverStatuses(sData.drivers || [])
+      if (responses[2]) {
+        const mapData = await responses[2].json()
+        setMapMissions(mapData.missions || [])
+      }
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
     }
-  }, [activeTab, sourceFilter, search])
+  }, [activeTab, sourceFilter, search, viewMode])
 
   useEffect(() => { load() }, [load])
 
@@ -738,14 +751,28 @@ export default function DispatchClient({
           ) : viewMode === 'map' ? (
 
             /* ── VUE CARTE GÉOGRAPHIQUE ─────────────────────────── */
-            <div className="h-[calc(100vh-280px)] min-h-[500px] rounded-2xl overflow-hidden border border-[#2a2a2a]">
+            <div className="h-[calc(100vh-280px)] min-h-[500px] rounded-2xl overflow-hidden border border-[#2a2a2a] relative">
               <DispatchMap
-                missions={filtered as unknown as MapMission[]}
+                missions={mapMissions as unknown as MapMission[]}
                 drivers={driverStatuses as unknown as MapDriver[]}
                 gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
                 onMissionClick={(m) => router.push(`/dispatch/${m.id}`)}
                 onDriverClick={() => { /* hook futur */ }}
               />
+              {/* Compteur missions affichées vs sans coords */}
+              {(() => {
+                const total    = mapMissions.length
+                const withCoords = mapMissions.filter(m => m.incident_lat != null && m.incident_lng != null).length
+                const withoutCoords = total - withCoords
+                return (
+                  <div className="absolute top-4 right-4 bg-[#1A1A1A]/95 backdrop-blur border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs">
+                    <p className="text-white font-semibold">{withCoords} pin{withCoords > 1 ? 's' : ''} · {total} mission{total > 1 ? 's' : ''} active{total > 1 ? 's' : ''}</p>
+                    {withoutCoords > 0 && (
+                      <p className="text-amber-400 mt-0.5">⚠ {withoutCoords} sans coords GPS (ouvre la fiche pour valider l'adresse)</p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
           ) : viewMode === 'card' ? (

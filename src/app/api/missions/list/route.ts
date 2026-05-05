@@ -12,6 +12,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || 'new'
   const source = searchParams.get('source') || ''
+  // Mode carte : charge toutes les missions actives (new + dispatching + assigned +
+  // in_progress + parked) indépendamment de l'onglet, avec une limite plus haute.
+  const mapMode = searchParams.get('view') === 'map'
 
   const supabase = createAdminClient()
 
@@ -33,7 +36,7 @@ export async function GET(req: Request) {
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
     .order('received_at', { ascending: false })
-    .limit(100)
+    .limit(mapMode ? 500 : 100)
 
   // Filtrer les entrées parasites (corps vides, PROCESSING, etc.)
   query = query
@@ -41,7 +44,10 @@ export async function GET(req: Request) {
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
 
-  if (status === 'new') {
+  if (mapMode) {
+    // Vue carte : toutes les missions actives, peu importe le tab
+    query = query.in('status', ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'parked', 'delivering'])
+  } else if (status === 'new') {
     query = query.eq('status', 'new')
   } else if (status === 'dispatching') {
     query = query.eq('status', 'dispatching')
