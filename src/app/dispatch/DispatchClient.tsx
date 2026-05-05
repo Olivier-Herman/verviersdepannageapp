@@ -349,29 +349,71 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
   )
 }
 
-// ── Vue CARTE — MissionCard ───────────────────────────────────────────────────
-
-function MissionCard({ mission, drivers, driverStatuses, onRefresh }: {
+// ── Action d'assignation contextuelle (selon état) ────────────────────────────
+// Mission "dispatching" → bouton ⚡ Assigner qui ouvre le modal ETA temps réel.
+// Autres états (assigned/in_progress/...) → dropdown classique pour réassigner.
+// "new" / "completed" → rien (action contextuelle).
+function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChange }: {
   mission:        Mission
   drivers:        Driver[]
   driverStatuses: DriverStatus[]
   onRefresh:      () => void
+  onModalChange?: (open: boolean) => void
 }) {
-  const router  = useRouter()
-  const delai   = getDelai(mission.received_at)
-  const srcInfo = SOURCE_LABELS[mission.source] || { label: '?', color: 'bg-zinc-600' }
-  const [showDriverModal, setShowDriverModal] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const isAwaitingDispatch = mission.status === 'dispatching'
 
-  const assignDriver = async (driverId: string) => {
+  const openModal  = () => { setShowModal(true);  onModalChange?.(true) }
+  const closeModal = () => { setShowModal(false); onModalChange?.(false) }
+
+  const assign = async (driverId: string) => {
     await fetch('/api/missions/assign', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ mission_id: mission.id, driver_id: driverId }),
     })
-    setShowDriverModal(false)
+    closeModal()
     onRefresh()
   }
+
+  if (mission.status === 'completed') {
+    return <span className="text-green-400 text-xs font-medium">{mission.assigned_user?.name || '—'}</span>
+  }
+  if (mission.status === 'new') {
+    return <span className="text-zinc-600 text-xs">À confirmer</span>
+  }
+  if (isAwaitingDispatch) {
+    return (
+      <>
+        <button type="button" onClick={openModal}
+          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition">
+          ⚡ Assigner
+        </button>
+        {showModal && (
+          <DriverPickerModal
+            missionId={mission.id}
+            onPick={assign}
+            onClose={closeModal}
+          />
+        )}
+      </>
+    )
+  }
+  return <AssignDropdown mission={mission} drivers={drivers} driverStatuses={driverStatuses} onAssigned={onRefresh} />
+}
+
+// ── Vue CARTE — MissionCard ───────────────────────────────────────────────────
+
+function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChange }: {
+  mission:        Mission
+  drivers:        Driver[]
+  driverStatuses: DriverStatus[]
+  onRefresh:      () => void
+  onModalChange?: (open: boolean) => void
+}) {
+  const router  = useRouter()
+  const delai   = getDelai(mission.received_at)
+  const srcInfo = SOURCE_LABELS[mission.source] || { label: '?', color: 'bg-zinc-600' }
 
   return (
     <div
@@ -441,18 +483,8 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh }: {
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[#2a2a2a]">
         <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-1 min-w-0">
-          {/* Mission "en attente" (dispatching) → bouton ⚡ Assigner direct (modal ETA) */}
-          {isAwaitingDispatch && (
-            <button type="button" onClick={() => setShowDriverModal(true)}
-              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition">
-              ⚡ Assigner
-            </button>
-          )}
-          {/* Autres états : dropdown classique pour réassigner ou afficher chauffeur */}
-          {!isAwaitingDispatch && mission.status !== 'completed' && mission.status !== 'new' && (
-            <AssignDropdown mission={mission} drivers={drivers} driverStatuses={driverStatuses} onAssigned={onRefresh} />
-          )}
-          {mission.assigned_user && (
+          <AssignAction mission={mission} drivers={drivers} driverStatuses={driverStatuses} onRefresh={onRefresh} onModalChange={onModalChange} />
+          {mission.assigned_user && mission.status !== 'completed' && (
             <span className="text-green-400 text-xs font-medium">✓ {mission.assigned_user.name}</span>
           )}
         </div>
@@ -461,17 +493,6 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh }: {
           VOIR →
         </Link>
       </div>
-
-      {/* Modal sélection chauffeur (rendu hors du Link cliquable parent grâce a stopPropagation au-dessus) */}
-      {showDriverModal && (
-        <div onClick={e => e.stopPropagation()}>
-          <DriverPickerModal
-            missionId={mission.id}
-            onPick={assignDriver}
-            onClose={() => setShowDriverModal(false)}
-          />
-        </div>
-      )}
     </div>
   )
 }
@@ -493,6 +514,12 @@ export default function DispatchClient({
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
+  // Compte les modals ouvertes — quand > 0, on suspend les refreshs auto pour
+  // éviter le clignotement du contenu pendant qu'un modal est en interaction.
+  const [modalOpenCount, setModalOpenCount] = useState(0)
+  const onModalChange = useCallback((open: boolean) => {
+    setModalOpenCount(c => Math.max(0, c + (open ? 1 : -1)))
+  }, [])
   const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
   const [loading,        setLoading]        = useState(true)
   const [search,         setSearch]         = useState('')
@@ -556,23 +583,25 @@ export default function DispatchClient({
   // ── Realtime : nouvelle mission ou changement de statut ──────────────────
   // Chaque INSERT/UPDATE/DELETE sur incoming_missions trigger un reload.
   // Évite au dispatcher de devoir F5 pour voir les nouveautés.
+  // Suspendu si une modal est ouverte (évite le clignotement).
   useEffect(() => {
     const channel = sb.channel('dispatch-missions')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'incoming_missions' },
-        () => load()
+        () => { if (modalOpenCount === 0) load() }
       )
       .subscribe()
     return () => { sb.removeChannel(channel) }
-  }, [load])
+  }, [load, modalOpenCount])
 
   // ── Polling 20s : statuts chauffeurs (positions GPS, gardes) ─────────────
   // Realtime serait possible mais lourd (chaque ping GPS = update users).
   // Polling court suffit pour le besoin temps réel.
+  // Suspendu si une modal est ouverte.
   useEffect(() => {
-    const id = setInterval(() => { load() }, 20_000)
+    const id = setInterval(() => { if (modalOpenCount === 0) load() }, 20_000)
     return () => clearInterval(id)
-  }, [load])
+  }, [load, modalOpenCount])
 
   // Charge le dispatch mode
   useEffect(() => {
@@ -786,6 +815,7 @@ export default function DispatchClient({
                   drivers={drivers}
                   driverStatuses={driverStatuses}
                   onRefresh={load}
+                  onModalChange={onModalChange}
                 />
               ))}
             </div>
@@ -855,11 +885,7 @@ export default function DispatchClient({
                           {m.destination_name || m.destination_address || '—'}
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                          {m.status !== 'completed' ? (
-                            <AssignDropdown mission={m} drivers={drivers} driverStatuses={driverStatuses} onAssigned={load} />
-                          ) : (
-                            <span className="text-green-400 text-xs font-medium">{m.assigned_user?.name || '—'}</span>
-                          )}
+                          <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} />
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <Link href={`/dispatch/${m.id}`}
