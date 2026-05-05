@@ -5,6 +5,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser }    from '@/lib/push'
+import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 
 export async function GET(
   req: Request,
@@ -91,6 +92,14 @@ export async function PATCH(
       url:   `/mission/${params.id}`,
       tag:   `mission-updated-${params.id}`,
     }).catch(() => {})
+  }
+
+  // Sync vers Odoo (helpdesk + task) : pousse les modifs dispatcher.
+  // No-op si pas encore de dossier Odoo créé. Best effort, non bloquant.
+  if (body._notify_driver) {
+    updateOdooDossierForMission(params.id).catch(e => {
+      console.error('[Mission PATCH] Sync Odoo échoué:', e.message)
+    })
   }
 
   return NextResponse.json({ ok: true, mission: data })

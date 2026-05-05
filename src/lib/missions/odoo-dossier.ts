@@ -7,12 +7,16 @@
 // Appelé depuis :
 //   - POST /api/missions/confirm  (création auto à la confirmation dispatch)
 //   - POST /api/fsm/create-mission (fallback / re-création manuelle via bouton)
+//   - PATCH /api/missions/[id]    (sync des modifications dispatcher vers Odoo)
 
 import {
   createHelpdeskTicket,
   createFsmTask,
   findOrCreateFsmPartner,
   findOrCreateFsmVehicle,
+  rpcFsm,
+  HELPDESK_FIELDS,
+  FSM_FIELDS,
 } from '@/lib/odoo-fsm'
 import { createAdminClient } from '@/lib/supabase'
 
@@ -234,4 +238,119 @@ export async function createOdooDossierForMission(
     taskUrl: taskUrl || '',
     created: true,
   }
+}
+
+/**
+ * Synchronise les modifications d'une mission vers son helpdesk + task FSM Odoo.
+ * Appelé après chaque PATCH dispatcher pour garder Odoo à jour avec les modifs
+ * (adresses, bénéficiaire, dépôt, partner, description, etc.).
+ *
+ * Best effort : ne plante pas si une partie échoue.
+ * No-op si la mission n'a pas encore de dossier Odoo créé.
+ */
+export async function updateOdooDossierForMission(missionId: string): Promise<{ updated: boolean }> {
+  const sb = createAdminClient()
+  const { data: mission } = await sb
+    .from('incoming_missions').select('*').eq('id', missionId).maybeSingle()
+  if (!mission) return { updated: false }
+  if (!mission.odoo_helpdesk_id && !mission.odoo_task_id) return { updated: false }
+
+  // Recalcul partner_id (lien explicite > mapping source > findOrCreate)
+  const sourceLower = (mission.source || '').toLowerCase()
+  let partnerId: number | undefined = mission.billed_to_id || ASSISTANCE_PARTNER_BY_SOURCE[sourceLower]
+  if (!partnerId && mission.billed_to_name) {
+    try {
+      partnerId = await findOrCreateFsmPartner({ name: mission.billed_to_name, phone: mission.client_phone })
+    } catch {}
+  }
+
+  // Détection [TEST] (réutilise la logique de la création)
+  const rawTextForTestDetect = [
+    mission.incident_description || '',
+    mission.notes || '',
+    mission.parsed_data?.notes || '',
+  ].join(' ')
+  const isTest = /\[TEST\]/i.test(rawTextForTestDetect)
+  const testPrefix = isTest ? '[TEST] ' : ''
+
+  // Bénéficiaire dans la description
+  const beneficiaryParts: string[] = []
+  if (mission.client_name)  beneficiaryParts.push(`Bénéficiaire : ${mission.client_name}`)
+  if (mission.client_phone) beneficiaryParts.push(`Tél : ${mission.client_phone}`)
+  if (mission.client_email) beneficiaryParts.push(`Email : ${mission.client_email}`)
+  const beneficiaryLine = beneficiaryParts.length > 0
+    ? beneficiaryParts.join(' — ') + '\n\n'
+    : ''
+  const enrichedDescription = beneficiaryLine + (mission.incident_description || '')
+
+  // Filtrage destination pour DSP
+  const noDestinationTypes = ['depannage', 'reparation_place', 'trajet_vide']
+  const skipDestination = noDestinationTypes.includes((mission.mission_type || '').toLowerCase())
+
+  // Adresse incident composée
+  const incidentFull = [mission.incident_address, mission.incident_city].filter(Boolean).join(', ')
+
+  // Dépôt label
+  let depotDepartLabel = ''
+  if (mission.depot_depart_id) {
+    const { data: depot } = await sb
+      .from('depots').select('name, address').eq('id', mission.depot_depart_id).maybeSingle()
+    if (depot) depotDepartLabel = `${depot.name} — ${depot.address}`
+  }
+
+  // ── Update helpdesk ticket ───────────────────────────────────────────────
+  if (mission.odoo_helpdesk_id) {
+    try {
+      const update: any = {
+        name:        testPrefix + 'Etiquette automatique',
+        description: enrichedDescription,
+      }
+      if (partnerId)             update.partner_id                       = partnerId
+      if (mission.source)        update[HELPDESK_FIELDS.source]          = mission.source.toUpperCase()
+      if (mission.dossier_number) update[HELPDESK_FIELDS.dossier_number] = mission.dossier_number
+      await rpcFsm('helpdesk.ticket', 'write', [[mission.odoo_helpdesk_id], update])
+      console.log(`[FSM] Helpdesk #${mission.odoo_helpdesk_id} synchronisé`)
+    } catch (e: any) {
+      console.error('[FSM] Update helpdesk échoué:', e.message)
+    }
+  }
+
+  // ── Update FSM task ──────────────────────────────────────────────────────
+  if (mission.odoo_task_id) {
+    try {
+      const taskName = (testPrefix) + [
+        mission.vehicle_plate,
+        mission.dossier_number,
+        mission.incident_city,
+      ].filter(Boolean).join(' - ')
+
+      const update: any = {
+        name: taskName || 'Mission',
+        description: [
+          mission.incident_description || '',
+          incidentFull ? `📍 Prise en charge: ${incidentFull}` : '',
+          !skipDestination && mission.destination_address ? `🏁 Destination: ${mission.destination_address}` : '',
+        ].filter(Boolean).join('\n'),
+      }
+      if (partnerId)                          update.partner_id                       = partnerId
+      if (mission.source)                     update[FSM_FIELDS.source]               = mission.source.toUpperCase()
+      if (mission.dossier_number)             update[FSM_FIELDS.dossier_number]       = mission.dossier_number
+      if (incidentFull)                       update[FSM_FIELDS.adresse_intervention] = incidentFull
+      if (!skipDestination && mission.destination_address) {
+        update[FSM_FIELDS.adresse_destination] = mission.destination_address
+      } else if (skipDestination) {
+        update[FSM_FIELDS.adresse_destination] = ''
+      }
+      if (mission.client_name)                update[FSM_FIELDS.beneficiaire_name]    = mission.client_name
+      if (mission.client_phone)               update[FSM_FIELDS.beneficiaire_phone]   = mission.client_phone
+      if (depotDepartLabel)                   update[FSM_FIELDS.depot_depart]         = depotDepartLabel
+
+      await rpcFsm('project.task', 'write', [[mission.odoo_task_id], update])
+      console.log(`[FSM] Task #${mission.odoo_task_id} synchronisée`)
+    } catch (e: any) {
+      console.error('[FSM] Update task échoué:', e.message)
+    }
+  }
+
+  return { updated: true }
 }
