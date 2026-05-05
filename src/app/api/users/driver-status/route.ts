@@ -23,7 +23,7 @@ export async function GET() {
   // Chauffeurs = users actifs avec un towsoft_name (= flag canonique)
   const { data: drivers, error } = await supabase
     .from('users')
-    .select('id, name, schedule_day, schedule_night, location_updated_at')
+    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng')
     .eq('active', true)
     .not('towsoft_name', 'is', null)
     .neq('towsoft_name', '')
@@ -66,6 +66,8 @@ export async function GET() {
         mission_status: m.status,
         schedule_day:   d.schedule_day,
         schedule_night: d.schedule_night,
+        lat:            d.last_location_lat,
+        lng:            d.last_location_lng,
       }
     }
 
@@ -88,6 +90,8 @@ export async function GET() {
       schedule_night: d.schedule_night,
       on_schedule:    onSchedule,
       fresh_ping:     freshPing,
+      lat:            d.last_location_lat,
+      lng:            d.last_location_lng,
     }
   })
 

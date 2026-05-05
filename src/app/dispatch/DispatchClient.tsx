@@ -9,6 +9,7 @@ import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import DriverPickerModal from '@/components/DriverPickerModal'
+import DispatchMap, { type MapMission, type MapDriver } from '@/components/dispatch/DispatchMap'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,8 +32,12 @@ interface Mission {
   vehicle_model: string | null
   incident_address: string | null
   incident_city: string | null
+  incident_lat: number | null
+  incident_lng: number | null
   destination_name: string | null
   destination_address: string | null
+  destination_lat: number | null
+  destination_lng: number | null
   received_at: string
   incident_at: string | null
   status: string
@@ -59,6 +64,8 @@ interface DriverStatus {
   schedule_night?: boolean
   on_schedule?: boolean
   fresh_ping?: boolean
+  lat?: number | null
+  lng?: number | null
 }
 
 interface Counters {
@@ -71,7 +78,7 @@ interface Counters {
   errors: number
 }
 
-type ViewMode = 'list' | 'card'
+type ViewMode = 'list' | 'card' | 'map'
 
 // ── Helpers & Constantes ──────────────────────────────────────────────────────
 
@@ -499,7 +506,7 @@ export default function DispatchClient({
   useEffect(() => {
     try {
       const saved = localStorage.getItem('vd_dispatch_view') as ViewMode | null
-      if (saved === 'list' || saved === 'card') setViewMode(saved)
+      if (saved === 'list' || saved === 'card' || saved === 'map') setViewMode(saved)
     } catch { /* SSR / private browsing */ }
   }, [])
 
@@ -628,7 +635,7 @@ export default function DispatchClient({
               ↻
             </button>
 
-            {/* Toggle vue liste / cartes */}
+            {/* Toggle vue liste / cartes / carte géographique */}
             <div className="flex items-center bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden">
               <button
                 onClick={() => switchView('list')}
@@ -643,6 +650,13 @@ export default function DispatchClient({
                   viewMode === 'card' ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white'
                 }`}>
                 ⊞ Cartes
+              </button>
+              <button
+                onClick={() => switchView('map')}
+                className={`px-3 py-2 text-sm font-medium transition ${
+                  viewMode === 'map' ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white'
+                }`}>
+                🗺️ Carte
               </button>
             </div>
 
@@ -723,6 +737,19 @@ export default function DispatchClient({
               <p className="text-4xl mb-4">📋</p>
               <p>Aucune mission dans cette catégorie</p>
             </div>
+          ) : viewMode === 'map' ? (
+
+            /* ── VUE CARTE GÉOGRAPHIQUE ─────────────────────────── */
+            <div className="h-[calc(100vh-280px)] min-h-[500px] rounded-2xl overflow-hidden border border-[#2a2a2a]">
+              <DispatchMap
+                missions={filtered as unknown as MapMission[]}
+                drivers={driverStatuses as unknown as MapDriver[]}
+                gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+                onMissionClick={(m) => router.push(`/dispatch/${m.id}`)}
+                onDriverClick={() => { /* hook futur */ }}
+              />
+            </div>
+
           ) : viewMode === 'card' ? (
 
             /* ── VUE CARTES ─────────────────────────────────────── */
