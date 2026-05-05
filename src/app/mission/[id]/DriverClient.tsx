@@ -57,6 +57,45 @@ const STOP_COLORS: Record<string, string> = {
   client: '#7c3aed', vr: '#0f766e', dest: '#2563eb', depot: '#d97706', custom: '#64748b',
 }
 
+// ─── Stepper visuel : étapes du workflow chauffeur ────────────────────────────
+function Stepper({ status, onSite }: { status: string; onSite: boolean }) {
+  // Détermination de l'étape courante (0..3)
+  const step =
+    status === 'assigned'                  ? 0 :
+    status === 'accepted'                  ? 1 :
+    (status === 'in_progress' && !onSite)  ? 2 :
+    (onSite || status === 'parked' || status === 'delivering') ? 3 :
+    status === 'completed'                 ? 4 : 0
+  const labels = ['Accepter', 'En route', 'Sur place', 'Clôture']
+  return (
+    <div className="flex items-center gap-1 mt-3">
+      {labels.map((label, i) => {
+        const done    = i < step
+        const current = i === step
+        return (
+          <div key={i} className="flex-1 flex items-center gap-1">
+            <div className={`flex-1 flex flex-col items-center gap-1 ${current ? 'opacity-100' : done ? 'opacity-90' : 'opacity-40'}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                done    ? 'bg-green-600 text-white' :
+                current ? 'bg-brand text-white ring-2 ring-brand/40' :
+                          'bg-[#2a2a2a] text-zinc-500'
+              }`}>
+                {done ? '✓' : i + 1}
+              </div>
+              <p className={`text-[10px] font-medium leading-tight text-center ${
+                current ? 'text-white' : done ? 'text-green-400' : 'text-zinc-500'
+              }`}>{label}</p>
+            </div>
+            {i < labels.length - 1 && (
+              <div className={`h-0.5 flex-shrink-0 w-3 -mt-3 ${done ? 'bg-green-600' : 'bg-[#2a2a2a]'}`} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── SigPad ───────────────────────────────────────────────────────────────────
 function SigPad({ onSave }: { onSave: (d: string) => void }) {
   const ref = useRef<HTMLCanvasElement>(null); const pen = useRef(false); const [drawn, setDrawn] = useState(false)
@@ -320,15 +359,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     fetch('/api/vr-locations').then(r => r.json()).then(d => setVrLocs(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
-  // Auto-accepter si assigned
-  useEffect(() => {
-    if (M.status === 'assigned' && !isReadOnly) {
-      fetch('/api/missions/driver-action', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, action: 'accept' }),
-      }).then(r => r.json()).then(j => { if (j.mission) setM(j.mission) }).catch(() => {})
-    }
-  }, [])
+  // ⚠ Plus d'auto-accept : le chauffeur doit cliquer "Accepter la mission" en bas.
+  // Ouvrir la fiche n'engage pas le chauffeur (il peut consulter avant de prendre).
 
   // Realtime subscription
   useEffect(() => {
@@ -836,7 +868,32 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             📞 {M.client_phone}
           </a>
         )}
+        {/* Stepper visuel : étapes du workflow chauffeur */}
+        <Stepper status={M.status} onSite={onSite} />
       </div>
+
+      {/* Banderole rouge : montant à encaisser */}
+      {M.amount_to_collect != null && M.amount_to_collect > 0 && !paid && (
+        <div className="bg-red-600 border-b-2 border-red-700 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">💶</span>
+            <div>
+              <p className="text-white font-bold text-sm uppercase tracking-wide">À encaisser</p>
+              <p className="text-white text-xl font-bold">{M.amount_to_collect.toFixed(2)} {M.amount_currency || 'EUR'}</p>
+            </div>
+          </div>
+          <button onClick={() => setScreen('encaissement')}
+            className="px-3 py-2 bg-white text-red-700 rounded-lg text-xs font-bold whitespace-nowrap">
+            Encaisser →
+          </button>
+        </div>
+      )}
+      {paid && M.amount_to_collect != null && M.amount_to_collect > 0 && (
+        <div className="bg-green-600/15 border-b border-green-600/30 px-4 py-2 flex items-center gap-2">
+          <span className="text-lg">✅</span>
+          <p className="text-green-400 text-sm font-medium">Encaissé : {M.amount_to_collect.toFixed(2)} {M.amount_currency || 'EUR'}</p>
+        </div>
+      )}
 
       <div className="px-4 py-4 space-y-3">
 
@@ -960,6 +1017,17 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       {!isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
 
+          {M.status === 'assigned' && (
+            <>
+              <p className="text-zinc-400 text-xs text-center px-2">
+                Vérifie les infos avant d'accepter. Une fois acceptée, le dispatch est notifié.
+              </p>
+              <button onClick={() => api('accept')} disabled={loading}
+                className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                {loading ? '⏳…' : '✅ Accepter la mission'}
+              </button>
+            </>
+          )}
           {M.status === 'accepted' && (
             <button onClick={() => initNav ? api('on_way') : setShowNav(true)} disabled={loading}
               className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
