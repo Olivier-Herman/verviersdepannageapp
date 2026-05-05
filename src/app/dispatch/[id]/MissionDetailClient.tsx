@@ -1051,13 +1051,17 @@ export default function MissionDetailClient({
               </div>
 
               {/* Lieu d'intervention / Destination */}
+              {(() => {
+                // DSP / Réparation sur place : pas de remorquage donc pas de destination.
+                const noDestination = ['depannage', 'reparation_place'].includes(form.mission_type)
+                return (
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
                 <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>📍</span> Lieu d'intervention / Destination
+                  <span>📍</span> {noDestination ? 'Lieu d\'intervention' : 'Lieu d\'intervention / Destination'}
                 </h2>
-                <div className="grid grid-cols-2 gap-6">
+                <div className={noDestination ? '' : 'grid grid-cols-2 gap-6'}>
                   <div className="space-y-3">
-                    <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>
+                    {!noDestination && <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>}
                     <AddressField
                       label="Adresse complète"
                       value={form.incident_address}
@@ -1093,6 +1097,7 @@ export default function MissionDetailClient({
                       </div>
                     )}
                   </div>
+                  {!noDestination && (
                   <div className="space-y-3">
                     <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Destination</p>
                     <AddressField
@@ -1127,8 +1132,11 @@ export default function MissionDetailClient({
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               </div>
+                )
+              })()}
 
               {/* Montant garanti + Paiement client */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
