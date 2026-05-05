@@ -193,14 +193,103 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 
-function GeoStatusBanner({ status, onApply }: {
-  status:  { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
-  onApply: () => void
+function AddressReviewModal({
+  which, parsedAddress, currentAddress, googleSuggestion, gmKey, onPick, onSkip,
+}: {
+  which:            'incident' | 'destination'
+  parsedAddress:    string
+  currentAddress:   string
+  googleSuggestion?: { addr: string; lat: number; lng: number }
+  gmKey:            string
+  onPick:           (addr: string, lat: number | null, lng: number | null) => void
+  onSkip:           () => void
 }) {
-  if (status.state === 'idle')        return null
-  if (status.state === 'checking')    return <p className="text-zinc-500 text-xs">⏳ Vérification Google…</p>
-  if (status.state === 'confirmed')   return <p className="text-green-400 text-xs">✅ Adresse confirmée par Google</p>
-  if (status.state === 'not_found')   return <p className="text-red-400 text-xs">❌ Adresse non trouvée par Google</p>
+  const [manualAddr, setManualAddr] = useState('')
+  const [manualPick, setManualPick] = useState<{ lat: number; lng: number } | null>(null)
+  const title = which === 'incident' ? "Lieu d'incident" : 'Destination'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="p-6 border-b border-[#2a2a2a]">
+          <h2 className="text-white font-bold text-lg flex items-center gap-2">
+            🛰️ Vérifier l'adresse — {title}
+          </h2>
+          <p className="text-zinc-400 text-xs mt-1">
+            Choisis une adresse géolocalisée pour permettre le calcul des kilomètres.
+          </p>
+        </div>
+
+        <div className="p-6 space-y-3">
+          {/* Adresse parsée originale */}
+          <button type="button" onClick={() => onPick(parsedAddress, null, null)}
+            className="w-full text-left p-4 bg-[#111] hover:bg-[#222] border border-[#2a2a2a] hover:border-zinc-600 rounded-xl transition">
+            <p className="text-zinc-500 text-xs font-medium uppercase mb-1">📥 Adresse reçue (parser)</p>
+            <p className="text-white text-sm">{parsedAddress || <span className="text-zinc-600">(vide)</span>}</p>
+            <p className="text-amber-500/80 text-xs mt-2">⚠ Sera envoyée sans coordonnées GPS — pas de calcul KM</p>
+          </button>
+
+          {/* Suggestion Google */}
+          {googleSuggestion && (
+            <button type="button" onClick={() => onPick(googleSuggestion.addr, googleSuggestion.lat, googleSuggestion.lng)}
+              className="w-full text-left p-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-400 rounded-xl transition">
+              <p className="text-green-400 text-xs font-medium uppercase mb-1">🌐 Suggestion Google</p>
+              <p className="text-white text-sm">{googleSuggestion.addr}</p>
+              <p className="text-green-300/80 text-xs mt-2">✓ Géolocalisée ({googleSuggestion.lat.toFixed(5)}, {googleSuggestion.lng.toFixed(5)})</p>
+            </button>
+          )}
+
+          {/* Saisie manuelle avec autocomplete */}
+          <div className="p-4 bg-[#111] border border-[#2a2a2a] rounded-xl">
+            <p className="text-brand text-xs font-medium uppercase mb-2">🔍 Saisie manuelle</p>
+            <AddressField
+              value={manualAddr}
+              onChange={v => { setManualAddr(v); setManualPick(null) }}
+              onSelect={(addr, lat, lng) => { setManualAddr(addr); setManualPick({ lat, lng }) }}
+              gmKey={gmKey}
+              placeholder="Tape une adresse précise…"
+            />
+            {manualPick && (
+              <button type="button"
+                onClick={() => onPick(manualAddr, manualPick.lat, manualPick.lng)}
+                className="mt-3 w-full px-4 py-2.5 bg-brand hover:bg-brand/80 text-white text-sm font-semibold rounded-xl transition">
+                Utiliser cette adresse
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-[#2a2a2a] flex justify-between">
+          <p className="text-zinc-500 text-xs self-center">
+            Adresse actuelle dans le form : <span className="text-zinc-300">{currentAddress || '(vide)'}</span>
+          </p>
+          <button type="button" onClick={onSkip}
+            className="px-4 py-2 text-zinc-400 hover:text-white text-xs transition">
+            Plus tard
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GeoStatusBanner({ status, onApply, onReview }: {
+  status:   { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
+  onApply:  () => void
+  onReview: () => void
+}) {
+  if (status.state === 'idle')      return null
+  if (status.state === 'checking')  return <p className="text-zinc-500 text-xs">⏳ Vérification Google…</p>
+  if (status.state === 'confirmed') return <p className="text-green-400 text-xs">✅ Adresse confirmée par Google</p>
+  if (status.state === 'not_found') return (
+    <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-2">
+      <p className="text-red-400 text-xs">❌ Adresse non trouvée par Google — pas de calcul KM possible</p>
+      <button type="button" onClick={onReview}
+        className="flex-shrink-0 px-2.5 py-1 bg-red-500/30 hover:bg-red-500/50 text-white rounded-lg text-xs font-semibold transition">
+        Corriger
+      </button>
+    </div>
+  )
   // different
   return (
     <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl">
@@ -209,10 +298,16 @@ function GeoStatusBanner({ status, onApply }: {
           <p className="text-amber-400 text-xs font-medium">⚠ Suggestion Google différente :</p>
           <p className="text-amber-200 text-xs mt-0.5 break-words">{status.suggestion?.addr}</p>
         </div>
-        <button type="button" onClick={onApply}
-          className="flex-shrink-0 px-2.5 py-1 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold transition">
-          Utiliser
-        </button>
+        <div className="flex-shrink-0 flex gap-1">
+          <button type="button" onClick={onReview}
+            className="px-2.5 py-1 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-zinc-300 rounded-lg text-xs transition">
+            Choisir
+          </button>
+          <button type="button" onClick={onApply}
+            className="px-2.5 py-1 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold transition">
+            Utiliser
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -400,6 +495,29 @@ export default function MissionDetailClient({
     }))
     setDestinationGeo({ state: 'confirmed', suggestion: destinationGeo.suggestion })
   }
+
+  // ── Modal de vérification d'adresse ─────────────────────────────────────────
+  // Ouverte automatiquement quand le geocoding renvoie "different" ou "not_found".
+  // Le dispatcher choisit entre adresse originale, suggestion Google, ou saisie manuelle.
+  // Indispensable pour le calcul des kilométrages (sans lat/lng, pas de KM).
+  const [reviewQueue,   setReviewQueue]   = useState<Array<'incident'|'destination'>>([])
+  const [activeReview,  setActiveReview]  = useState<'incident'|'destination'|null>(null)
+
+  // Quand le statut geo change, ajouter à la queue si nécessaire
+  useEffect(() => {
+    const needs = (g: GeoStatus) => g.state === 'different' || g.state === 'not_found'
+    const queue: Array<'incident'|'destination'> = []
+    if (needs(incidentGeo))    queue.push('incident')
+    if (needs(destinationGeo)) queue.push('destination')
+    setReviewQueue(queue)
+    if (queue.length > 0 && !activeReview) setActiveReview(queue[0])
+  }, [incidentGeo.state, destinationGeo.state])
+
+  const closeReview = () => {
+    const remaining = reviewQueue.filter(k => k !== activeReview)
+    setActiveReview(remaining.length > 0 ? remaining[0] : null)
+  }
+  const reopenReview = (which: 'incident'|'destination') => setActiveReview(which)
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
   const [showRawContent, setShowRawContent]   = useState(false)
@@ -998,7 +1116,7 @@ export default function MissionDetailClient({
                       gmKey={googleMapsKey}
                       placeholder="Tapez et choisissez une suggestion Google..."
                     />
-                    <GeoStatusBanner status={incidentGeo} onApply={applyIncidentSuggestion} />
+                    <GeoStatusBanner status={incidentGeo} onApply={applyIncidentSuggestion} onReview={() => reopenReview('incident')} />
                     {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (
                       <p className="text-zinc-600 text-xs">📥 Reçu : <span className="text-zinc-500">{initialMission.incident_address}</span></p>
                     )}
@@ -1035,7 +1153,7 @@ export default function MissionDetailClient({
                       gmKey={googleMapsKey}
                       placeholder="Ex: Garage Citroën Verviers, Rue..."
                     />
-                    <GeoStatusBanner status={destinationGeo} onApply={applyDestinationSuggestion} />
+                    <GeoStatusBanner status={destinationGeo} onApply={applyDestinationSuggestion} onReview={() => reopenReview('destination')} />
                     {isHighway(form.destination_address) && (
                       <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
                         <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
@@ -1419,6 +1537,50 @@ export default function MissionDetailClient({
           </div>
         </div>
       </div>
+
+      {/* Modal de vérification d'adresse — bloque tant que le dispatcher n'a pas choisi */}
+      {activeReview && (
+        <AddressReviewModal
+          which={activeReview}
+          parsedAddress={
+            activeReview === 'incident'
+              ? (initialMission.incident_address || form.incident_address)
+              : (initialMission.destination_address || form.destination_address)
+          }
+          currentAddress={
+            activeReview === 'incident' ? form.incident_address : form.destination_address
+          }
+          googleSuggestion={
+            activeReview === 'incident' ? incidentGeo.suggestion : destinationGeo.suggestion
+          }
+          gmKey={googleMapsKey}
+          onPick={(addr, lat, lng) => {
+            if (activeReview === 'incident') {
+              setForm(prev => ({
+                ...prev,
+                incident_address: addr,
+                incident_lat:     lat != null ? String(lat) : prev.incident_lat,
+                incident_lng:     lng != null ? String(lng) : prev.incident_lng,
+              }))
+              setIncidentGeo(lat != null
+                ? { state: 'confirmed', suggestion: { addr, lat, lng: lng! } }
+                : { state: 'not_found' })
+            } else {
+              setForm(prev => ({
+                ...prev,
+                destination_address: addr,
+                destination_lat:     lat != null ? String(lat) : prev.destination_lat,
+                destination_lng:     lng != null ? String(lng) : prev.destination_lng,
+              }))
+              setDestinationGeo(lat != null
+                ? { state: 'confirmed', suggestion: { addr, lat, lng: lng! } }
+                : { state: 'not_found' })
+            }
+            closeReview()
+          }}
+          onSkip={closeReview}
+        />
+      )}
     </div>
   )
 }
