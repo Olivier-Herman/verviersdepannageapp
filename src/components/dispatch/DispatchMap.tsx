@@ -124,18 +124,47 @@ export default function DispatchMap({ missions, drivers, gmKey, onMissionClick, 
         zIndex: mi.status === 'new' ? 100 : 50,
       })
       marker.addListener('click', () => {
+        // Dedup ville si déjà présente dans l'adresse (ex: "Rue X, 4900 Spa" + city "Spa")
+        const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const addr = mi.incident_address || ''
+        const city = mi.incident_city || ''
+        const fullAddr = city && !norm(addr).includes(norm(city))
+          ? [addr, city].filter(Boolean).join(', ')
+          : addr || city || '—'
+
+        const STATUS_LABEL: Record<string, string> = {
+          new: 'En commande', dispatching: 'En attente', assigned: 'Assignée',
+          accepted: 'Acceptée', in_progress: 'En cours',
+          parked: 'En parc', delivering: 'En livraison', completed: 'Terminée',
+        }
+        const STATUS_COLOR: Record<string, string> = {
+          new: '#dc2626', dispatching: '#f59e0b', assigned: '#3b82f6',
+          accepted: '#3b82f6', in_progress: '#f97316',
+          parked: '#a855f7', delivering: '#0ea5e9', completed: '#16a34a',
+        }
+        const statusLbl = STATUS_LABEL[mi.status] || mi.status
+        const statusCol = STATUS_COLOR[mi.status] || '#71717a'
+        const typeLbl = mi.mission_type
+          ? mi.mission_type.charAt(0).toUpperCase() + mi.mission_type.slice(1)
+          : ''
+
         const html = `
-          <div style="color:#fff; font-family: system-ui; padding:6px; max-width:240px;">
-            <div style="font-size:11px; opacity:0.7; margin-bottom:4px;">${mi.source.toUpperCase()} · ${mi.status}</div>
-            <div style="font-weight:600; font-size:14px; margin-bottom:2px;">${mi.client_name || 'Client inconnu'}</div>
-            <div style="font-size:12px; color:#d4d4d8;">${mi.vehicle_plate || ''}</div>
-            <div style="font-size:11px; color:#9ca3af; margin-top:4px;">${[mi.incident_address, mi.incident_city].filter(Boolean).join(', ')}</div>
-            ${mi.assigned_user ? `<div style="font-size:11px; color:#86efac; margin-top:4px;">→ ${mi.assigned_user.name}</div>` : ''}
-            <div style="margin-top:8px; font-size:11px; color:#3b82f6; cursor:pointer;" id="mp-open-${mi.id}">Ouvrir la fiche →</div>
+          <div style="font-family: system-ui, -apple-system, sans-serif; padding:4px 2px; min-width:220px; max-width:280px;">
+            <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+              <span style="background:${statusCol}; color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:0.3px;">${statusLbl}</span>
+              <span style="background:#f3f4f6; color:#374151; font-size:10px; font-weight:600; padding:2px 8px; border-radius:6px; text-transform:uppercase;">${mi.source}</span>
+              ${typeLbl ? `<span style="background:#f3f4f6; color:#374151; font-size:10px; font-weight:600; padding:2px 8px; border-radius:6px;">${typeLbl}</span>` : ''}
+            </div>
+            <div style="font-weight:600; font-size:14px; color:#111827; margin-bottom:2px;">${mi.client_name || 'Client inconnu'}</div>
+            ${mi.vehicle_plate ? `<div style="font-size:12px; color:#6b7280; font-family: ui-monospace, monospace; font-weight:600; margin-bottom:6px;">${mi.vehicle_plate}</div>` : ''}
+            <div style="font-size:12px; color:#4b5563; margin-bottom:8px; line-height:1.4;">📍 ${fullAddr}</div>
+            ${mi.assigned_user ? `<div style="font-size:11px; color:#059669; margin-bottom:8px;">🚛 ${mi.assigned_user.name}</div>` : ''}
+            <div style="border-top:1px solid #e5e7eb; padding-top:8px; display:flex; gap:6px;">
+              <button id="mp-open-${mi.id}" style="flex:1; background:#dc2626; color:#fff; border:none; padding:6px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">Ouvrir la fiche →</button>
+            </div>
           </div>`
         infoWindowRef.current.setContent(html)
         infoWindowRef.current.open(mapRef.current, marker)
-        // Hook click sur le lien dans l'info window
         google.maps.event.addListenerOnce(infoWindowRef.current, 'domready', () => {
           const el = document.getElementById(`mp-open-${mi.id}`)
           if (el) el.onclick = () => onMissionClick?.(mi)
@@ -173,10 +202,14 @@ export default function DispatchMap({ missions, drivers, gmKey, onMissionClick, 
         zIndex: 200,
       })
       marker.addListener('click', () => {
+        const statusLbl = dr.status === 'en_mission' ? 'En mission'
+                       : dr.status === 'en_service' ? 'En service' : 'Hors service'
+        const statusCol = dr.status === 'en_mission' ? '#f97316'
+                       : dr.status === 'en_service' ? '#16a34a' : '#71717a'
         const html = `
-          <div style="color:#fff; font-family: system-ui; padding:6px;">
-            <div style="font-weight:600; font-size:14px; margin-bottom:2px;">🚛 ${dr.name}</div>
-            <div style="font-size:11px; color:#9ca3af;">${dr.status === 'en_mission' ? 'En mission' : dr.status === 'en_service' ? 'En service' : 'Hors service'}</div>
+          <div style="font-family: system-ui, -apple-system, sans-serif; padding:4px 2px; min-width:180px;">
+            <div style="font-weight:600; font-size:14px; color:#111827; margin-bottom:6px;">🚛 ${dr.name}</div>
+            <span style="background:${statusCol}; color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px; text-transform:uppercase;">${statusLbl}</span>
           </div>`
         infoWindowRef.current.setContent(html)
         infoWindowRef.current.open(mapRef.current, marker)
