@@ -7,6 +7,12 @@ import Link        from 'next/link'
 import { useRouter }   from 'next/navigation'
 import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
+
+const sb = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -480,6 +486,27 @@ export default function DispatchClient({
   }, [activeTab, sourceFilter, search])
 
   useEffect(() => { load() }, [load])
+
+  // ── Realtime : nouvelle mission ou changement de statut ──────────────────
+  // Chaque INSERT/UPDATE/DELETE sur incoming_missions trigger un reload.
+  // Évite au dispatcher de devoir F5 pour voir les nouveautés.
+  useEffect(() => {
+    const channel = sb.channel('dispatch-missions')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'incoming_missions' },
+        () => load()
+      )
+      .subscribe()
+    return () => { sb.removeChannel(channel) }
+  }, [load])
+
+  // ── Polling 20s : statuts chauffeurs (positions GPS, gardes) ─────────────
+  // Realtime serait possible mais lourd (chaque ping GPS = update users).
+  // Polling court suffit pour le besoin temps réel.
+  useEffect(() => {
+    const id = setInterval(() => { load() }, 20_000)
+    return () => clearInterval(id)
+  }, [load])
 
   // Charge le dispatch mode
   useEffect(() => {
