@@ -44,10 +44,14 @@ interface Driver {
 interface DriverStatus {
   id: string
   name: string
-  status: 'libre' | 'en_mission'
+  status: 'en_service' | 'en_mission' | 'hors_service'
   mission_id?: string
   client_name?: string
   mission_type?: string
+  schedule_day?: boolean
+  schedule_night?: boolean
+  on_schedule?: boolean
+  fresh_ping?: boolean
 }
 
 interface Counters {
@@ -177,28 +181,97 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
 
 // ── Panel statut chauffeurs ───────────────────────────────────────────────────
 
-function DriverStatusPanel({ statuses }: { statuses: DriverStatus[] }) {
+function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; onRefresh: () => void }) {
+  const [editing, setEditing] = useState<DriverStatus | null>(null)
   if (statuses.length === 0) return null
+
+  const styleByStatus = {
+    en_mission:   'bg-orange-500/10 border-orange-500/30 text-orange-300',
+    en_service:   'bg-green-500/10 border-green-500/20 text-green-400',
+    hors_service: 'bg-zinc-500/10 border-zinc-500/20 text-zinc-500',
+  } as const
+  const dotByStatus = {
+    en_mission:   'bg-orange-400',
+    en_service:   'bg-green-400',
+    hors_service: 'bg-zinc-600',
+  } as const
+
+  const toggleSchedule = async (driverId: string, field: 'schedule_day' | 'schedule_night', current: boolean) => {
+    await fetch('/api/garde', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: driverId, [field]: !current }),
+    })
+    onRefresh()
+  }
+
   return (
-    <div className="flex flex-wrap gap-2 px-8 py-3 bg-[#111] border-b border-[#2a2a2a]">
-      {statuses.map(d => (
-        <div key={d.id}
-          title={d.status === 'en_mission' ? `${d.client_name || '?'} · ${d.mission_type || ''}` : 'Disponible'}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium ${
-            d.status === 'en_mission'
-              ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
-              : 'bg-green-500/10  border-green-500/20  text-green-400'
-          }`}>
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-            d.status === 'en_mission' ? 'bg-orange-400' : 'bg-green-400'
-          }`} />
-          {d.name}
-          {d.status === 'en_mission' && (
-            <span className="text-orange-500/70 font-normal">· En mission</span>
-          )}
+    <>
+      <div className="flex flex-wrap gap-2 px-8 py-3 bg-[#111] border-b border-[#2a2a2a]">
+        {statuses.map(d => {
+          const isOnSchedule = d.on_schedule
+          return (
+            <button key={d.id} type="button" onClick={() => setEditing(d)}
+              title={d.status === 'en_mission' ? `${d.client_name || '?'} · ${d.mission_type || ''}` : 'Cliquer pour modifier la garde'}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition hover:opacity-80 ${styleByStatus[d.status]}`}>
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
+              {d.name}
+              {d.status === 'en_mission' && (
+                <span className="text-orange-500/70 font-normal">· En mission</span>
+              )}
+              {d.status === 'en_service' && isOnSchedule && (
+                <span className="opacity-70">🛡️</span>
+              )}
+              {d.status === 'hors_service' && (
+                <span className="font-normal opacity-70">· hors service</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Modal d'édition rapide de la garde */}
+      {editing && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setEditing(null)}>
+          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl max-w-sm w-full p-5"
+            onClick={e => e.stopPropagation()}>
+            <h3 className="text-white font-bold text-base mb-1">{editing.name}</h3>
+            <p className="text-zinc-500 text-xs mb-4">Activer/désactiver la garde — le statut sera forcé pendant les heures.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button"
+                onClick={() => { toggleSchedule(editing.id, 'schedule_day', !!editing.schedule_day); setEditing(null) }}
+                className={`px-4 py-3 rounded-xl border text-left transition ${
+                  editing.schedule_day
+                    ? 'bg-green-500/10 border-green-500/40'
+                    : 'bg-[#0F0F0F] border-[#2a2a2a] hover:border-zinc-600'
+                }`}>
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-white text-sm font-semibold">☀️ Jour</span>
+                  <span className={`w-2 h-2 rounded-full ${editing.schedule_day ? 'bg-green-400' : 'bg-zinc-600'}`} />
+                </div>
+                <p className="text-zinc-500 text-xs">07h → 20h</p>
+              </button>
+              <button type="button"
+                onClick={() => { toggleSchedule(editing.id, 'schedule_night', !!editing.schedule_night); setEditing(null) }}
+                className={`px-4 py-3 rounded-xl border text-left transition ${
+                  editing.schedule_night
+                    ? 'bg-indigo-500/10 border-indigo-500/40'
+                    : 'bg-[#0F0F0F] border-[#2a2a2a] hover:border-zinc-600'
+                }`}>
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-white text-sm font-semibold">🌙 Nuit</span>
+                  <span className={`w-2 h-2 rounded-full ${editing.schedule_night ? 'bg-indigo-400' : 'bg-zinc-600'}`} />
+                </div>
+                <p className="text-zinc-500 text-xs">17h → 09h</p>
+              </button>
+            </div>
+            <button type="button" onClick={() => setEditing(null)}
+              className="w-full mt-4 py-2.5 text-zinc-500 hover:text-white text-xs transition">Fermer</button>
+          </div>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   )
 }
 
@@ -240,7 +313,7 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
         const ds = statusMap.get(d.id)
         return (
           <option key={d.id} value={d.id}>
-            {d.name}{ds?.status === 'en_mission' ? ' 🟠' : ' 🟢'}
+            {d.name}{ds?.status === 'en_mission' ? ' 🟠' : ds?.status === 'hors_service' ? ' ⚫' : ' 🟢'}
           </option>
         )
       })}
@@ -545,7 +618,7 @@ export default function DispatchClient({
         </div>
 
         {/* ── Panel statut chauffeurs ──────────────────────────────────── */}
-        <DriverStatusPanel statuses={driverStatuses} />
+        <DriverStatusPanel statuses={driverStatuses} onRefresh={load} />
 
         {/* ── Contenu ─────────────────────────────────────────────────── */}
         <main className="flex-1 overflow-auto px-6 py-6">
