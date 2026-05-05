@@ -90,21 +90,29 @@ export async function createOdooDossierForMission(
   }
 
   // ── Partner Odoo : compagnie d'assistance (= client à FACTURER) ──────────
-  // Pour les sources connues (touring, ethias, etc.) → mapping direct vers le partner Odoo.
-  // Pour les sources sans mapping (privé, garage, etc.) → fallback création depuis client_name.
+  // Priorité :
+  //  1. billed_to_id (lien explicite choisi par le dispatcher dans /dispatch/[id])
+  //  2. mapping source → partner connu (touring=14, ethias=16, vab=32, …)
+  //  3. fallback findOrCreate sur le billed_to_name (ou client_name si vide)
   const sourceLower = (mission.source || '').toLowerCase()
-  let partnerId: number | undefined = ASSISTANCE_PARTNER_BY_SOURCE[sourceLower]
-  if (!partnerId) {
-    try {
-      partnerId = await findOrCreateFsmPartner({
-        name:  mission.client_name,
-        phone: mission.client_phone,
-      })
-    } catch (e: any) {
-      console.warn(`[FSM] Partner non créé pour mission ${missionId}: ${e.message}`)
-    }
+  let partnerId: number | undefined = mission.billed_to_id || undefined
+
+  if (partnerId) {
+    console.log(`[FSM] Partner facturation = lien explicite dispatcher (#${partnerId})`)
   } else {
-    console.log(`[FSM] Partner facturation = compagnie ${sourceLower.toUpperCase()} (#${partnerId})`)
+    partnerId = ASSISTANCE_PARTNER_BY_SOURCE[sourceLower]
+    if (partnerId) {
+      console.log(`[FSM] Partner facturation = compagnie ${sourceLower.toUpperCase()} (#${partnerId})`)
+    } else {
+      try {
+        partnerId = await findOrCreateFsmPartner({
+          name:  mission.billed_to_name || mission.client_name,
+          phone: mission.client_phone,
+        })
+      } catch (e: any) {
+        console.warn(`[FSM] Partner non créé pour mission ${missionId}: ${e.message}`)
+      }
+    }
   }
 
   // ── Description enrichie : bénéficiaire = client physiquement dépanné ────

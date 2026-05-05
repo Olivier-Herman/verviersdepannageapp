@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect }    from 'react'
+import { useState, useEffect, useRef }    from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { signOut }     from 'next-auth/react'
@@ -369,6 +369,35 @@ export default function MissionDetailClient({
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
   const [odooError,      setOdooError]        = useState<string | null>(null)
 
+  // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
+  const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
+  const [clientQuery,     setClientQuery]     = useState('')
+  const [clientResults,   setClientResults]   = useState<Array<{id:number;name:string;phone?:string;mobile?:string;city?:string}>>([])
+  const [showClientDrop,  setShowClientDrop]  = useState(false)
+  const clientTimer = useRef<NodeJS.Timeout>()
+  useEffect(() => {
+    if (clientQuery.length < 3) { setClientResults([]); return }
+    clearTimeout(clientTimer.current)
+    clientTimer.current = setTimeout(async () => {
+      try {
+        const data = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(clientQuery)}`).then(r => r.json())
+        setClientResults(data.clients || [])
+      } catch {}
+    }, 300)
+  }, [clientQuery])
+
+  const selectBilledClient = (c: {id:number;name:string}) => {
+    setBilledPartnerId(c.id)
+    setForm(prev => ({ ...prev, billed_to_name: c.name }))
+    setClientQuery('')
+    setClientResults([])
+    setShowClientDrop(false)
+  }
+  const clearBilledClient = () => {
+    setBilledPartnerId(null)
+    setForm(prev => ({ ...prev, billed_to_name: '' }))
+  }
+
   const [M, setM] = useState<Mission>(initialMission)
   const [saveOk, setSaveOk] = useState(false)
 
@@ -448,10 +477,11 @@ export default function MissionDetailClient({
   const handleSave = async () => {
     setLoadingSave(true)
     setSaveOk(false)
+    const payload = { ...form, billed_to_id: billedPartnerId }
     const res = await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(form)
+      body:    JSON.stringify(payload)
     })
     if (res.ok) {
       setSaveOk(true)
@@ -463,10 +493,11 @@ export default function MissionDetailClient({
   // Confirmer la mission
   const handleConfirm = async () => {
     setLoadingConfirm(true)
+    const payload = { ...form, billed_to_id: billedPartnerId }
     await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(form)
+      body:    JSON.stringify(payload)
     })
     if (selectedDriver) {
       await fetch('/api/missions/assign', {
@@ -636,11 +667,46 @@ export default function MissionDetailClient({
                 <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>🧾</span> Client facturé
                 </h2>
+
+                {/* Recherche Odoo */}
+                <div className="relative mb-3">
+                  <label className="block text-zinc-500 text-xs mb-1.5">Rechercher dans Odoo</label>
+                  <input
+                    value={clientQuery}
+                    onChange={e => { setClientQuery(e.target.value); setShowClientDrop(true) }}
+                    onFocus={() => setShowClientDrop(true)}
+                    onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
+                    placeholder="Min. 3 caractères — nom ou téléphone..."
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600"
+                  />
+                  {showClientDrop && clientResults.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+                      {clientResults.map(c => (
+                        <button key={c.id} type="button" onMouseDown={() => selectBilledClient(c)}
+                          className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] transition border-b border-[#222] last:border-0">
+                          <p className="text-white text-sm font-medium">{c.name}</p>
+                          <p className="text-zinc-500 text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Badge lien Odoo */}
+                {billedPartnerId && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-3">
+                    <span className="text-green-400 text-xs">✓ Lié Odoo #{billedPartnerId}</span>
+                    <span className="text-green-300 text-xs font-medium">{form.billed_to_name}</span>
+                    <button type="button" onClick={clearBilledClient}
+                      className="ml-auto text-zinc-500 hover:text-red-400 text-xs">✕</button>
+                  </div>
+                )}
+
                 <Field label="Nom / Raison sociale">
                   <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
                 </Field>
-                {initialMission.billed_to_id && (
-                  <p className="text-zinc-500 text-xs mt-1.5">Odoo ID #{initialMission.billed_to_id}</p>
+                {!billedPartnerId && form.billed_to_name && (
+                  <p className="text-amber-400/80 text-xs mt-1.5">⚠ Pas de contact Odoo lié — un nouveau sera créé à la confirmation.</p>
                 )}
               </div>
 
