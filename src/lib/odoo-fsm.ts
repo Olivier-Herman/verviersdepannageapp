@@ -27,7 +27,7 @@ export const FSM_FIELDS = {
 export const HELPDESK_FIELDS = {
   supabase_id:      'x_studio_id_supabase',
   dossier_number:   'x_studio_n_dossier',
-  source:           'x_studio_source',
+  source:           'x_studio_source_1',  // suffixe _1 ajouté par Studio (conflit avec un autre source ailleurs)
   mission_towsoft:  'x_studio_mission_towsoft',
   date_entree:      'x_studio_date_dentree',
   vehicule:         'x_studio_vehicule',
