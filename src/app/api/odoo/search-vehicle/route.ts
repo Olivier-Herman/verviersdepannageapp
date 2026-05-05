@@ -53,6 +53,18 @@ export async function GET(req: Request) {
       order: 'license_plate asc',
     })
 
+    // model_id[1] retourne le display_name de fleet.vehicle.model (souvent "Brand/Model")
+    // qui ne match pas la liste déroulante (qui a les pures `name`). On lit explicitement
+    // les modèles pour récupérer leur vrai `name`.
+    const modelIds = Array.from(new Set(
+      (vehicles || []).map((v: any) => v.model_id?.[0]).filter((x: any) => typeof x === 'number')
+    ))
+    const modelMap = new Map<number, string>()
+    if (modelIds.length > 0) {
+      const models = await odooCall('fleet.vehicle.model', 'read', [modelIds], { fields: ['id', 'name'] })
+      for (const m of (models as any[])) modelMap.set(m.id, m.name)
+    }
+
     // Normaliser les données
     const normalized = (vehicles || []).map((v: any) => ({
       id:           v.id,
@@ -60,7 +72,7 @@ export async function GET(req: Request) {
       plate:        v.license_plate,
       vin:          v.vin_sn,
       brand:        v.brand_id?.[1] || '',
-      model:        v.model_id?.[1] || '',
+      model:        v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : '',
       partner_id:   null,
       partner_name: null,
       fuel:         v.fuel_type || '',
