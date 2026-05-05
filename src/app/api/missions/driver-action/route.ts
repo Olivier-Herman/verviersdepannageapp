@@ -3,6 +3,20 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS } from '@/lib/odoo-fsm'
+
+// Mapping action chauffeur → stage FSM Odoo. null = pas de changement de stage.
+const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
+  accept:            'Assigné',
+  on_way:            'En route',
+  on_site:           'Sur place',
+  depart_stop:       'En route vers destination',
+  arrive_stop:       'Arrivé à destination',
+  start_delivery:    'En route vers destination',
+  complete_delivery: 'Terminé',
+  park:              'Mise en parc',
+  completed:         'Terminé',
+}
 
 type DriverAction = 'accept' | 'on_way' | 'on_site' | 'completed' | 'park'
   | 'start_delivery' | 'arrive_stop' | 'complete_delivery'
@@ -96,7 +110,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -252,6 +266,48 @@ export async function POST(req: Request) {
     mission_id, actor_id: actor.id, action, notes: mapping.logMessage,
     metadata: { action, status: mapping.status || mission.status },
   })
+
+  // ── Propagation Odoo : stage FSM + état véhicule (best effort, non bloquant) ──
+  if (mission.odoo_task_id) {
+    const stageName = ACTION_TO_FSM_STAGE[action]
+    try {
+      const odooUpdate: Record<string, any> = {}
+      if (stageName) {
+        const stageId = await getFsmStageId(stageName)
+        if (stageId) odooUpdate.stage_id = stageId
+      }
+      // Sécurité : à la 1re action chauffeur (accept), on (re)pousse son nom et son id Supabase
+      // sur le task. Couvre le cas où /api/missions/assign aurait été skippé ou échoué.
+      if (action === 'accept') {
+        odooUpdate[FSM_FIELDS.chauffeur_name] = actor.name || ''
+        odooUpdate[FSM_FIELDS.chauffeur_id]   = actor.id
+      }
+      // Cas particuliers : chauffeur a chargé le véhicule → "Chargé sur camion"
+      if (action === 'depart_stop' || action === 'start_delivery') {
+        if (mission.odoo_vehicle_id) {
+          await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.charge_sur_camion).catch(() => {})
+        }
+      }
+      // Mise en parc → état véhicule = parc choisi (si fourni)
+      if (action === 'park' && park_data?.stage_id && mission.odoo_vehicle_id) {
+        await updateVehicleState(mission.odoo_vehicle_id, park_data.stage_id).catch(() => {})
+      }
+      // Mission terminée → état véhicule = Terminé (sauf si déjà mis en parc avant)
+      if ((action === 'completed' || action === 'complete_delivery') && mission.odoo_vehicle_id) {
+        // On ne force pas si la mission est de type REM (le parc est la position finale)
+        const isDsp = ['depannage', 'reparation_place', 'trajet_vide'].includes((mission.mission_type || '').toLowerCase())
+        if (isDsp) {
+          await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.termine).catch(() => {})
+        }
+      }
+      if (Object.keys(odooUpdate).length > 0) {
+        await rpcFsm('project.task', 'write', [[mission.odoo_task_id], odooUpdate])
+      }
+      console.log(`[FSM] Action chauffeur ${action} → stage "${stageName || '(inchangé)'}" sur task #${mission.odoo_task_id}`)
+    } catch (e: any) {
+      console.error('[FSM] Propagation action chauffeur échouée (non bloquant):', e.message)
+    }
+  }
 
   return NextResponse.json({ ok: true, mission: updated })
 }
