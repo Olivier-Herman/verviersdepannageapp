@@ -29,7 +29,7 @@ interface Mission {
   amount_guaranteed?: number; amount_currency?: string; amount_to_collect?: number
   park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
 }
-interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null }
+interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
 interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -376,7 +376,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // VR locations
   useEffect(() => {
-    fetch('/api/vr-locations').then(r => r.json()).then(d => setVrLocs(Array.isArray(d) ? d : [])).catch(() => {})
+    // Liste des dépôts physiques où le chauffeur peut déposer un véhicule.
+    // /api/depots = dépôts Verviers Dépannage (Pépinster par défaut, Aywaille, etc.).
+    fetch('/api/depots').then(r => r.json()).then(d => setVrLocs(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
   // ⚠ Plus d'auto-accept : le chauffeur doit cliquer "Accepter la mission" en bas.
@@ -1329,22 +1331,30 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowPark(false)}>
           <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-              <h2 className="text-white font-semibold text-lg">Choisir le parc</h2>
+              <h2 className="text-white font-semibold text-lg">🅿️ Choisir le dépôt</h2>
               <button onClick={() => setShowPark(false)} className="text-zinc-500 text-2xl">×</button>
             </div>
             {M.destination_address && (
               <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl px-3 py-2.5">
-                <p className="text-blue-300 text-xs font-medium">Adresse de relivraison</p>
+                <p className="text-blue-300 text-xs font-medium">📍 Adresse de relivraison à enregistrer</p>
                 <p className="text-white text-sm">{M.destination_address}</p>
               </div>
             )}
             {vrLocs.length === 0
-              ? <p className="text-zinc-600 text-sm text-center py-4">Aucun parc enregistré</p>
+              ? <p className="text-zinc-600 text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
               : vrLocs.map(vr => (
                 <button key={vr.id} onClick={() => doPark(vr)} disabled={loading}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#111] border border-[#2a2a2a] rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95">
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 bg-[#111] border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
+                    vr.is_default ? 'border-amber-500/40' : 'border-[#2a2a2a]'
+                  }`}>
                   <span className="text-xl">🅿️</span>
-                  <div><p className="text-white font-medium text-sm">{vr.name}</p><p className="text-zinc-500 text-xs">{vr.address}</p></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium text-sm flex items-center gap-2">
+                      {vr.name}
+                      {vr.is_default && <span className="text-amber-400 text-xs font-normal">défaut</span>}
+                    </p>
+                    <p className="text-zinc-500 text-xs truncate">{vr.address}</p>
+                  </div>
                 </button>
               ))}
           </div>
