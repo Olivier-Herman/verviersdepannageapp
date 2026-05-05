@@ -24,6 +24,7 @@ interface Mission {
   incident_description?: string; remarks_general?: string
   destination_address?: string; destination_name?: string; redelivery_address?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
+  loaded_at?: string
   completed_at?: string; parked_at?: string; delivering_at?: string
   amount_guaranteed?: number; amount_currency?: string; amount_to_collect?: number
   park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
@@ -58,15 +59,33 @@ const STOP_COLORS: Record<string, string> = {
 }
 
 // ─── Stepper visuel : étapes du workflow chauffeur ────────────────────────────
-function Stepper({ status, onSite }: { status: string; onSite: boolean }) {
-  // Détermination de l'étape courante (0..3)
-  const step =
-    status === 'assigned'                  ? 0 :
-    status === 'accepted'                  ? 1 :
-    (status === 'in_progress' && !onSite)  ? 2 :
-    (onSite || status === 'parked' || status === 'delivering') ? 3 :
-    status === 'completed'                 ? 4 : 0
-  const labels = ['Accepter', 'En route', 'Sur place', 'Clôture']
+// Étapes différentes selon DSP (4) ou REM (6) :
+//   DSP : Accepter → En route → Sur place → Clôture
+//   REM : Accepter → En route → Sur place → Chargé → À destination → Clôture
+function Stepper({ status, onSite, loaded, isRem }: {
+  status: string; onSite: boolean; loaded: boolean; isRem: boolean
+}) {
+  const labels = isRem
+    ? ['Accepter', 'En route', 'Sur place', 'Chargé', 'Destination', 'Clôture']
+    : ['Accepter', 'En route', 'Sur place', 'Clôture']
+
+  const step = isRem
+    ? (
+        status === 'assigned'                                    ? 0 :
+        status === 'accepted'                                    ? 1 :
+        (status === 'in_progress' && !onSite)                    ? 2 :
+        (onSite && !loaded && status !== 'delivering')           ? 3 :
+        (status === 'delivering' || (loaded && status !== 'completed' && status !== 'parked')) ? 4 :
+        (status === 'completed' || status === 'parked')          ? 5 : 0
+      )
+    : (
+        status === 'assigned'                                    ? 0 :
+        status === 'accepted'                                    ? 1 :
+        (status === 'in_progress' && !onSite)                    ? 2 :
+        onSite                                                   ? 3 :
+        status === 'completed'                                   ? 4 : 0
+      )
+
   return (
     <div className="flex items-center gap-1 mt-3">
       {labels.map((label, i) => {
@@ -75,19 +94,19 @@ function Stepper({ status, onSite }: { status: string; onSite: boolean }) {
         return (
           <div key={i} className="flex-1 flex items-center gap-1">
             <div className={`flex-1 flex flex-col items-center gap-1 ${current ? 'opacity-100' : done ? 'opacity-90' : 'opacity-40'}`}>
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
                 done    ? 'bg-green-600 text-white' :
                 current ? 'bg-brand text-white ring-2 ring-brand/40' :
                           'bg-[#2a2a2a] text-zinc-500'
               }`}>
                 {done ? '✓' : i + 1}
               </div>
-              <p className={`text-[10px] font-medium leading-tight text-center ${
+              <p className={`text-[9px] font-medium leading-tight text-center ${
                 current ? 'text-white' : done ? 'text-green-400' : 'text-zinc-500'
               }`}>{label}</p>
             </div>
             {i < labels.length - 1 && (
-              <div className={`h-0.5 flex-shrink-0 w-3 -mt-3 ${done ? 'bg-green-600' : 'bg-[#2a2a2a]'}`} />
+              <div className={`h-0.5 flex-shrink-0 w-2 -mt-3 ${done ? 'bg-green-600' : 'bg-[#2a2a2a]'}`} />
             )}
           </div>
         )
@@ -301,6 +320,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const mType    = M.mission_type || ''
   const rem      = isREM(mType)
   const onSite   = !!M.on_site_at
+  const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
   const stops    = [...(M.extra_addresses || [])].sort((a, b) => a.sort_order - b.sort_order)
   // Si dest-final existe déjà dans stops, pas besoin d'ajouter __dest__
   const destFinalInStops = stops.find(s => s.id === 'dest-final')
@@ -986,7 +1006,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </a>
         )}
         {/* Stepper visuel : étapes du workflow chauffeur */}
-        <Stepper status={M.status} onSite={onSite} />
+        <Stepper status={M.status} onSite={onSite} loaded={loaded} isRem={rem} />
       </div>
 
       {/* Banderole rouge : montant à encaisser */}
@@ -1157,81 +1177,65 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               {loading ? '⏳…' : '📍 Sur place'}
             </button>
           )}
-          {(onSite || M.status === 'parked' || M.status === 'delivering') && (() => {
-            // Prochain stop non encore atteint (destination incluse)
-            const nextStop = allPoints.find(p => !p.arrived_at)
-            const nextStopIdx = nextStop ? allPoints.indexOf(nextStop) : -1
-            const allStopsDone = allPoints.length > 0 && allPoints.every(p => !!p.arrived_at)
-            return (
-              <>
-                {/* REM : En route vers → Arrivée à (séquentiel) */}
-                {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && !nextStop.on_way_at && (
-                  <button onClick={() => {
-                    if (nextStop.id === '__dest__') {
-                      const destStop = {
-                        id: 'dest-final', type: 'dest',
-                        label: nextStop.label, address: nextStop.address,
-                        lat: nextStop.lat, lng: nextStop.lng,
-                        on_way_at: new Date().toISOString(),
-                        arrived_at: null as null,
-                        sort_order: allPoints.filter(p => p.id !== '__dest__').length,
-                      }
-                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destStop].map((s,i) => ({...s, sort_order: i}))
-                      setM(prev => ({ ...prev, extra_addresses: newStops }))
-                      setDestOnWay(true)
-                      apiSilent('update_stops', { stops: newStops })
-                    } else {
-                      api('depart_stop', { stop_id: nextStop.id })
-                    }
-                  }} disabled={loading}
-                    className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base truncate px-3">
-                    {loading ? '⏳…' : `🚗 En route → ${nextStop.address}`}
-                  </button>
-                )}
-                {rem && nextStop && (M.status === 'in_progress' || M.status === 'delivering') && nextStop.on_way_at && (
-                  <button onClick={() => {
-                    if (nextStop.id === '__dest__') {
-                      // Sauvegarder en DB comme vrai stop (persistant au refresh)
-                      const destStop = {
-                        id: 'dest-final', type: 'dest',
-                        label: nextStop.label, address: nextStop.address,
-                        lat: nextStop.lat, lng: nextStop.lng,
-                        on_way_at: new Date().toISOString(),
-                        arrived_at: new Date().toISOString(),
-                        sort_order: allPoints.filter(p => p.id !== '__dest__').length,
-                      }
-                      const newStops = [...allPoints.filter(p => p.id !== '__dest__'), destStop].map((s,i) => ({...s, sort_order: i}))
-                      setM(prev => ({ ...prev, extra_addresses: newStops }))
-                      setDestArrived(true)
-                      apiSilent('update_stops', { stops: newStops })
-                    } else {
-                      api('arrive_stop', { stop_id: nextStop.id })
-                    }
-                  }} disabled={loading}
-                    className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base truncate px-3">
-                    {loading ? '⏳…' : `📍 Arrivée → ${nextStop.address}`}
-                  </button>
-                )}
-                {/* Quand tous stops faits : Photos ou Terminer */}
-                {!nextStop && (onSite || M.status === 'delivering') && closeType !== 'dpr' && totPh < 3 && (
-                  <button onClick={() => setScreen('photos')}
-                    className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                    📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
-                  </button>
-                )}
-                {!nextStop && (onSite || M.status === 'delivering') && (closeType === 'dpr' || totPh >= 3) && (
-                  <button onClick={() => { setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
-                    className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
-                    🏁 Terminer
-                  </button>
-                )}
-                <button onClick={() => setShowGrid(true)}
-                  className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                  ☰ Actions
+
+          {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" */}
+          {rem && M.status === 'in_progress' && onSite && !loaded && (
+            <button onClick={() => api('load_vehicle')} disabled={loading}
+              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+              {loading ? '⏳…' : '🚛 Véhicule chargé sur le camion'}
+            </button>
+          )}
+
+          {/* REM : véhicule chargé → 2 choix : aller à destination OU mettre en parc */}
+          {rem && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
+            <>
+              {M.destination_address && (
+                <button onClick={() => { setCloseType('rem'); setScreen('close') }} disabled={loading}
+                  className="w-full py-4 bg-green-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  📍 Arrivé à destination
+                  <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
                 </button>
-              </>
-            )
-          })()}
+              )}
+              <button onClick={() => setShowPark(true)} disabled={loading}
+                className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                🅿️ Mise en parc
+              </button>
+            </>
+          )}
+
+          {/* DSP : sur place → photos / terminer (pas de chargement) */}
+          {!rem && onSite && M.status !== 'completed' && (
+            <>
+              {totPh < 3 && (
+                <button onClick={() => setScreen('photos')}
+                  className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
+                </button>
+              )}
+              {totPh >= 3 && (
+                <button onClick={() => { setCloseType('dsp'); setScreen('close') }}
+                  className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
+                  🏁 Terminer
+                </button>
+              )}
+            </>
+          )}
+
+          {/* En parc : terminer la mission (pour avant la création de la REL) */}
+          {M.status === 'parked' && (
+            <button onClick={() => { setCloseType('rem'); setScreen('close') }}
+              className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
+              🏁 Terminer
+            </button>
+          )}
+
+          {/* Bouton secondaire — Actions (DPR, photos, etc.) toujours accessible quand on est sur place ou plus avancé */}
+          {(onSite || M.status === 'parked' || M.status === 'delivering' || loaded) && (
+            <button onClick={() => setShowGrid(true)}
+              className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-zinc-400 hover:text-white font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
+              ☰ Autres actions
+            </button>
+          )}
         </div>
       )}
 

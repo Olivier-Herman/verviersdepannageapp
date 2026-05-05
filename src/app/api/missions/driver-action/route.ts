@@ -10,6 +10,7 @@ const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
   accept:            'Assigné',
   on_way:            'En route',
   on_site:           'Sur place',
+  load_vehicle:      'En route vers destination',
   depart_stop:       'En route vers destination',
   arrive_stop:       'Arrivé à destination',
   start_delivery:    'En route vers destination',
@@ -18,7 +19,7 @@ const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
   completed:         'Terminé',
 }
 
-type DriverAction = 'accept' | 'on_way' | 'on_site' | 'completed' | 'park'
+type DriverAction = 'accept' | 'on_way' | 'on_site' | 'completed' | 'park' | 'load_vehicle'
   | 'start_delivery' | 'arrive_stop' | 'complete_delivery'
   | 'change_type' | 'update_address' | 'update_stops'
 
@@ -26,6 +27,9 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   accept:           { status: 'accepted',    timestampField: 'accepted_at',   logMessage: 'Mission acceptée par le chauffeur' },
   on_way:           { status: 'in_progress', timestampField: 'on_way_at',     logMessage: 'Chauffeur en route' },
   on_site:          { status: 'in_progress', timestampField: 'on_site_at',    logMessage: 'Chauffeur sur place' },
+  // REM : chargement du véhicule sur le camion. Déclenche le passage au statut
+  // 'delivering' (= en route vers destination) et l'état fleet "Chargé sur camion".
+  load_vehicle:     { status: 'delivering',  timestampField: 'loaded_at',     logMessage: 'Véhicule chargé sur le camion' },
   completed:        { status: 'completed',   timestampField: 'completed_at',  logMessage: 'Mission terminée' },
   park:             { status: 'parked',      timestampField: 'parked_at',     logMessage: 'Véhicule mis en dépôt' },
   start_delivery:   { status: 'delivering',  timestampField: 'delivering_at', logMessage: 'Livraisons en cours' },
@@ -41,9 +45,9 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
 const ALLOWED: Record<string, string[]> = {
   assigned:    ['accept'],
   accepted:    ['on_way'],
-  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop'],
+  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop'],
   parked:      ['completed', 'start_delivery', 'change_type', 'save_photos'],
-  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'park', 'update_stops', 'save_photos', 'change_type'],
+  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_stops', 'save_photos', 'change_type'],
 }
 
 interface Stop {
@@ -283,7 +287,7 @@ export async function POST(req: Request) {
         odooUpdate[FSM_FIELDS.chauffeur_id]   = actor.id
       }
       // Cas particuliers : chauffeur a chargé le véhicule → "Chargé sur camion"
-      if (action === 'depart_stop' || action === 'start_delivery') {
+      if (action === 'load_vehicle' || action === 'depart_stop' || action === 'start_delivery') {
         if (mission.odoo_vehicle_id) {
           await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.charge_sur_camion).catch(() => {})
         }
