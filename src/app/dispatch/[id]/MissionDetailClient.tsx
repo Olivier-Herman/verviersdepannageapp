@@ -7,7 +7,7 @@ import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
-import AddressField from '@/components/AddressField'
+import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -273,42 +273,30 @@ function AddressReviewModal({
   )
 }
 
-function GeoStatusBanner({ status, onApply, onReview }: {
+function GeoStatusBanner({ status, onReview }: {
   status:   { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
-  onApply:  () => void
   onReview: () => void
 }) {
   if (status.state === 'idle')      return null
   if (status.state === 'checking')  return <p className="text-zinc-500 text-xs">⏳ Vérification Google…</p>
   if (status.state === 'confirmed') return <p className="text-green-400 text-xs">✅ Adresse confirmée par Google</p>
-  if (status.state === 'not_found') return (
+  if (status.state === 'different') return (
+    <div className="px-3 py-2 bg-green-500/5 border border-green-500/20 rounded-xl flex items-center justify-between gap-2">
+      <p className="text-green-300 text-xs">✅ Normalisée par Google (lat/lng appliqués)</p>
+      <button type="button" onClick={onReview}
+        className="flex-shrink-0 px-2.5 py-1 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-zinc-400 rounded-lg text-xs transition">
+        Pas la bonne ?
+      </button>
+    </div>
+  )
+  // not_found
+  return (
     <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-2">
       <p className="text-red-400 text-xs">❌ Adresse non trouvée par Google — pas de calcul KM possible</p>
       <button type="button" onClick={onReview}
         className="flex-shrink-0 px-2.5 py-1 bg-red-500/30 hover:bg-red-500/50 text-white rounded-lg text-xs font-semibold transition">
         Corriger
       </button>
-    </div>
-  )
-  // different
-  return (
-    <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-amber-400 text-xs font-medium">⚠ Suggestion Google différente :</p>
-          <p className="text-amber-200 text-xs mt-0.5 break-words">{status.suggestion?.addr}</p>
-        </div>
-        <div className="flex-shrink-0 flex gap-1">
-          <button type="button" onClick={onReview}
-            className="px-2.5 py-1 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-zinc-300 rounded-lg text-xs transition">
-            Choisir
-          </button>
-          <button type="button" onClick={onApply}
-            className="px-2.5 py-1 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold transition">
-            Utiliser
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -427,30 +415,33 @@ export default function MissionDetailClient({
   const [incidentGeo,    setIncidentGeo]    = useState<GeoStatus>({ state: 'idle' })
   const [destinationGeo, setDestinationGeo] = useState<GeoStatus>({ state: 'idle' })
 
+  // Vérification d'adresse via Places API client-side (même moteur que l'autocomplete,
+  // bien plus tolérant que Geocoding API pour les adresses abrégées/approximatives).
   const verifyAddress = async (addr: string): Promise<GeoStatus> => {
     if (!addr.trim()) return { state: 'idle' }
     try {
-      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(addr)}`)
-      const data = await res.json()
-      if (!data.found) return { state: 'not_found' }
-      // data.same === true si Google retrouve une adresse qui contient le début de l'input
-      if (data.same) {
-        return { state: 'confirmed', suggestion: { addr: data.formatted, lat: data.lat, lng: data.lng } }
+      const r = await verifyAddressViaPlaces(addr, googleMapsKey)
+      if (!r) return { state: 'not_found' }
+      return {
+        state: r.same ? 'confirmed' : 'different',
+        suggestion: { addr: r.formatted, lat: r.lat, lng: r.lng },
       }
-      return { state: 'different', suggestion: { addr: data.formatted, lat: data.lat, lng: data.lng } }
     } catch {
       return { state: 'not_found' }
     }
   }
 
-  // Au chargement : vérifier les 2 adresses + appliquer silencieusement si "confirmed"
+  // Au chargement : vérifier les 2 adresses et appliquer silencieusement la version
+  // canonique Google (confirmed OU different — on fait confiance à Places, comme si
+  // le dispatcher avait tapé l'adresse et choisi la 1re suggestion). La bannière
+  // signale le statut. Le dispatcher peut toujours rouvrir le modal pour corriger.
   useEffect(() => {
     (async () => {
       if (form.incident_address && !initialMission.incident_lat) {
         setIncidentGeo({ state: 'checking' })
         const r = await verifyAddress(form.incident_address)
         setIncidentGeo(r)
-        if (r.state === 'confirmed' && r.suggestion) {
+        if (r.suggestion && (r.state === 'confirmed' || r.state === 'different')) {
           setForm(prev => ({
             ...prev,
             incident_address: r.suggestion!.addr,
@@ -463,7 +454,7 @@ export default function MissionDetailClient({
         setDestinationGeo({ state: 'checking' })
         const r = await verifyAddress(form.destination_address)
         setDestinationGeo(r)
-        if (r.state === 'confirmed' && r.suggestion) {
+        if (r.suggestion && (r.state === 'confirmed' || r.state === 'different')) {
           setForm(prev => ({
             ...prev,
             destination_address: r.suggestion!.addr,
@@ -475,48 +466,16 @@ export default function MissionDetailClient({
     })()
   }, [])
 
-  const applyIncidentSuggestion = () => {
-    if (!incidentGeo.suggestion) return
-    setForm(prev => ({
-      ...prev,
-      incident_address: incidentGeo.suggestion!.addr,
-      incident_lat:     String(incidentGeo.suggestion!.lat),
-      incident_lng:     String(incidentGeo.suggestion!.lng),
-    }))
-    setIncidentGeo({ state: 'confirmed', suggestion: incidentGeo.suggestion })
-  }
-  const applyDestinationSuggestion = () => {
-    if (!destinationGeo.suggestion) return
-    setForm(prev => ({
-      ...prev,
-      destination_address: destinationGeo.suggestion!.addr,
-      destination_lat:     String(destinationGeo.suggestion!.lat),
-      destination_lng:     String(destinationGeo.suggestion!.lng),
-    }))
-    setDestinationGeo({ state: 'confirmed', suggestion: destinationGeo.suggestion })
-  }
-
   // ── Modal de vérification d'adresse ─────────────────────────────────────────
   // Ouverte automatiquement quand le geocoding renvoie "different" ou "not_found".
   // Le dispatcher choisit entre adresse originale, suggestion Google, ou saisie manuelle.
   // Indispensable pour le calcul des kilométrages (sans lat/lng, pas de KM).
-  const [reviewQueue,   setReviewQueue]   = useState<Array<'incident'|'destination'>>([])
   const [activeReview,  setActiveReview]  = useState<'incident'|'destination'|null>(null)
 
-  // Quand le statut geo change, ajouter à la queue si nécessaire
-  useEffect(() => {
-    const needs = (g: GeoStatus) => g.state === 'different' || g.state === 'not_found'
-    const queue: Array<'incident'|'destination'> = []
-    if (needs(incidentGeo))    queue.push('incident')
-    if (needs(destinationGeo)) queue.push('destination')
-    setReviewQueue(queue)
-    if (queue.length > 0 && !activeReview) setActiveReview(queue[0])
-  }, [incidentGeo.state, destinationGeo.state])
-
-  const closeReview = () => {
-    const remaining = reviewQueue.filter(k => k !== activeReview)
-    setActiveReview(remaining.length > 0 ? remaining[0] : null)
-  }
+  // Plus d'auto-ouverture : le modal est strictement à la demande du dispatcher
+  // (clic "Corriger" sur la bannière "❌ non trouvée"). Pour les cas confirmed/different,
+  // l'application est silencieuse et le dispatcher juge sur pièce.
+  const closeReview = () => setActiveReview(null)
   const reopenReview = (which: 'incident'|'destination') => setActiveReview(which)
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
@@ -1116,7 +1075,7 @@ export default function MissionDetailClient({
                       gmKey={googleMapsKey}
                       placeholder="Tapez et choisissez une suggestion Google..."
                     />
-                    <GeoStatusBanner status={incidentGeo} onApply={applyIncidentSuggestion} onReview={() => reopenReview('incident')} />
+                    <GeoStatusBanner status={incidentGeo} onReview={() => reopenReview('incident')} />
                     {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (
                       <p className="text-zinc-600 text-xs">📥 Reçu : <span className="text-zinc-500">{initialMission.incident_address}</span></p>
                     )}
@@ -1153,7 +1112,7 @@ export default function MissionDetailClient({
                       gmKey={googleMapsKey}
                       placeholder="Ex: Garage Citroën Verviers, Rue..."
                     />
-                    <GeoStatusBanner status={destinationGeo} onApply={applyDestinationSuggestion} onReview={() => reopenReview('destination')} />
+                    <GeoStatusBanner status={destinationGeo} onReview={() => reopenReview('destination')} />
                     {isHighway(form.destination_address) && (
                       <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
                         <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
