@@ -83,6 +83,19 @@ interface Mission {
   billed_to_id: number | null
   assisted_name: string | null
   assisted_phone: string | null
+  extra_addresses: Stop[] | null
+}
+
+interface Stop {
+  id:         string
+  type:       string
+  label:      string
+  address:    string
+  lat:        number | null
+  lng:        number | null
+  arrived_at: string | null
+  on_way_at?: string | null
+  sort_order: number
 }
 
 interface MissionLog {
@@ -593,6 +606,12 @@ export default function MissionDetailClient({
   const [showDriverModal, setShowDriverModal] = useState(false)
   const [depots, setDepots]                   = useState<Array<{id:string;name:string;address:string;is_default:boolean}>>([])
   const [depotId, setDepotId]                 = useState<string>(initialMission.depot_depart_id || '')
+  // Stops intermédiaires : liste de {id, label, address, lat, lng, sort_order}
+  // Le dernier stop = destination dans le calcul KM. Sauvegarde en extra_addresses (JSONB).
+  const [stops, setStops]                     = useState<Stop[]>(() => {
+    const raw = initialMission.extra_addresses
+    return Array.isArray(raw) ? [...raw].sort((a, b) => a.sort_order - b.sort_order) : []
+  })
 
   // Charger la liste des dépôts pour le sélecteur "Dépôt de départ"
   useEffect(() => {
@@ -620,6 +639,31 @@ export default function MissionDetailClient({
   const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(initialMission.odoo_task_url || null)
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
   const [odooError,      setOdooError]        = useState<string | null>(null)
+
+  // ── Helpers stops ────────────────────────────────────────────────────────────
+  const addStop = () => {
+    setStops(prev => [
+      ...prev,
+      { id: crypto.randomUUID(), type: 'custom', label: '', address: '', lat: null, lng: null, arrived_at: null, sort_order: prev.length },
+    ])
+  }
+  const removeStop = (id: string) => {
+    setStops(prev => prev.filter(s => s.id !== id).map((s, i) => ({ ...s, sort_order: i })))
+  }
+  const updateStop = (id: string, patch: Partial<Stop>) => {
+    setStops(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+  }
+  const moveStop = (id: string, dir: -1 | 1) => {
+    setStops(prev => {
+      const idx = prev.findIndex(s => s.id === id)
+      if (idx === -1) return prev
+      const target = idx + dir
+      if (target < 0 || target >= prev.length) return prev
+      const arr = [...prev]
+      ;[arr[idx], arr[target]] = [arr[target], arr[idx]]
+      return arr.map((s, i) => ({ ...s, sort_order: i }))
+    })
+  }
 
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
@@ -856,7 +900,7 @@ export default function MissionDetailClient({
   const handleSave = async () => {
     setLoadingSave(true)
     setSaveOk(false)
-    const payload = { ...form, billed_to_id: billedPartnerId, depot_depart_id: depotId || null, _notify_driver: true }
+    const payload = { ...form, billed_to_id: billedPartnerId, depot_depart_id: depotId || null, extra_addresses: stops.length > 0 ? stops : null, _notify_driver: true }
     const res = await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -873,7 +917,7 @@ export default function MissionDetailClient({
   // Confirmer la mission
   const handleConfirm = async () => {
     setLoadingConfirm(true)
-    const payload = { ...form, billed_to_id: billedPartnerId, odoo_vehicle_id: odooVehicleId, depot_depart_id: depotId || null }
+    const payload = { ...form, billed_to_id: billedPartnerId, odoo_vehicle_id: odooVehicleId, depot_depart_id: depotId || null, extra_addresses: stops.length > 0 ? stops : null }
     await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1298,6 +1342,60 @@ export default function MissionDetailClient({
               </div>
                 )
               })()}
+
+              {/* Stops intermédiaires (REM uniquement) */}
+              {!['depannage', 'reparation_place', 'trajet_vide'].includes(form.mission_type) && (
+                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-white font-semibold text-sm flex items-center gap-2">
+                      <span>🛣️</span> Stops intermédiaires
+                    </h2>
+                    <button type="button" onClick={addStop}
+                      className="px-3 py-1.5 bg-[#111] border border-[#2a2a2a] hover:border-brand text-white text-xs rounded-lg transition">
+                      + Ajouter un stop
+                    </button>
+                  </div>
+
+                  {stops.length === 0 ? (
+                    <p className="text-zinc-600 text-xs">Aucun stop. La destination ci-dessus est l'arrivée finale.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-zinc-500 text-xs">
+                        Le dernier stop est l'arrivée finale (la destination renseignée plus haut sera ignorée si des stops existent).
+                      </p>
+                      {stops.map((s, idx) => (
+                        <div key={s.id} className="flex items-start gap-2 p-3 bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl">
+                          <div className="flex flex-col gap-1 pt-1.5">
+                            <button type="button" disabled={idx === 0} onClick={() => moveStop(s.id, -1)}
+                              className="w-6 h-6 flex items-center justify-center rounded bg-[#2a2a2a] text-zinc-400 disabled:opacity-20 hover:bg-[#3a3a3a] text-xs">▲</button>
+                            <button type="button" disabled={idx === stops.length - 1} onClick={() => moveStop(s.id, 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded bg-[#2a2a2a] text-zinc-400 disabled:opacity-20 hover:bg-[#3a3a3a] text-xs">▼</button>
+                          </div>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-bold ${idx === stops.length - 1 ? 'text-blue-400' : 'text-zinc-500'}`}>
+                                {idx === stops.length - 1 ? '🏁 Arrivée' : `Stop ${idx + 1}`}
+                              </span>
+                              <input value={s.label}
+                                onChange={e => updateStop(s.id, { label: e.target.value })}
+                                placeholder="Label (optionnel)"
+                                className="flex-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                            </div>
+                            <AddressField
+                              value={s.address}
+                              onChange={v => updateStop(s.id, { address: v })}
+                              onSelect={(addr, lat, lng) => updateStop(s.id, { address: addr, lat, lng })}
+                              gmKey={googleMapsKey}
+                              placeholder="Adresse — tape et choisis Google..." />
+                          </div>
+                          <button type="button" onClick={() => removeStop(s.id)}
+                            className="w-7 h-7 flex items-center justify-center rounded bg-red-500/10 hover:bg-red-500/30 text-red-400 text-sm">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Montant garanti + Paiement client */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">

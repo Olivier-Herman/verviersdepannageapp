@@ -58,6 +58,7 @@ export async function PATCH(
     'destination_lat', 'destination_lng',
     'destination_borne_km', 'destination_sens',
     'depot_depart_id',
+    'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency',
     'incident_at', 'remarks_general',
   ]
