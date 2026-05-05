@@ -570,6 +570,16 @@ export default function MissionDetailClient({
     }
   }
 
+  // Persistance silencieuse partielle — pour que d'autres opérations (driver-eta,
+  // calcul KM…) puissent lire les champs depuis la DB sans attendre un save manuel.
+  const silentPatch = (fields: Record<string, any>) => {
+    fetch(`/api/missions/${initialMission.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(fields),
+    }).catch(() => {})
+  }
+
   // Au chargement : vérifier les 2 adresses et appliquer silencieusement la version
   // canonique Google (confirmed OU different — on fait confiance à Places, comme si
   // le dispatcher avait tapé l'adresse et choisi la 1re suggestion). La bannière
@@ -587,6 +597,11 @@ export default function MissionDetailClient({
             incident_lat:     String(r.suggestion!.lat),
             incident_lng:     String(r.suggestion!.lng),
           }))
+          silentPatch({
+            incident_address: r.suggestion!.addr,
+            incident_lat:     r.suggestion!.lat,
+            incident_lng:     r.suggestion!.lng,
+          })
         }
       }
       if (form.destination_address) {
@@ -600,6 +615,11 @@ export default function MissionDetailClient({
             destination_lat:     String(r.suggestion!.lat),
             destination_lng:     String(r.suggestion!.lng),
           }))
+          silentPatch({
+            destination_address: r.suggestion!.addr,
+            destination_lat:     r.suggestion!.lat,
+            destination_lng:     r.suggestion!.lng,
+          })
         }
       }
     })()
@@ -1259,6 +1279,7 @@ export default function MissionDetailClient({
                           ...(city ? { incident_city: city } : {}),
                         }))
                         setIncidentGeo({ state: 'confirmed', suggestion: { addr, lat, lng } })
+                        silentPatch({ incident_address: addr, incident_lat: lat, incident_lng: lng, ...(city ? { incident_city: city } : {}) })
                       }}
                       gmKey={googleMapsKey}
                       placeholder="Tapez et choisissez une suggestion Google..."
@@ -1297,6 +1318,7 @@ export default function MissionDetailClient({
                           ...(name ? { destination_name: name } : {}),
                         }))
                         setDestinationGeo({ state: 'confirmed', suggestion: { addr, lat, lng } })
+                        silentPatch({ destination_address: addr, destination_lat: lat, destination_lng: lng, ...(name ? { destination_name: name } : {}) })
                       }}
                       gmKey={googleMapsKey}
                       placeholder="Ex: Garage Citroën Verviers, Rue..."
@@ -1732,6 +1754,7 @@ export default function MissionDetailClient({
               setIncidentGeo(lat != null
                 ? { state: 'confirmed', suggestion: { addr, lat, lng: lng! } }
                 : { state: 'not_found' })
+              silentPatch({ incident_address: addr, ...(lat != null ? { incident_lat: lat, incident_lng: lng } : {}) })
             } else {
               setForm(prev => ({
                 ...prev,
@@ -1742,6 +1765,7 @@ export default function MissionDetailClient({
               setDestinationGeo(lat != null
                 ? { state: 'confirmed', suggestion: { addr, lat, lng: lng! } }
                 : { state: 'not_found' })
+              silentPatch({ destination_address: addr, ...(lat != null ? { destination_lat: lat, destination_lng: lng } : {}) })
             }
             closeReview()
           }}
