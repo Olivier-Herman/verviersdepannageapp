@@ -853,7 +853,7 @@ export default function MissionDetailClient({
                   <div className="space-y-3">
                     <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>
                     <AddressField
-                      label="Adresse"
+                      label="Adresse complète"
                       value={form.incident_address}
                       onChange={f('incident_address')}
                       onSelect={(addr, lat, lng, city) => setForm(prev => ({
@@ -869,27 +869,22 @@ export default function MissionDetailClient({
                     {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (
                       <p className="text-zinc-600 text-xs">📥 Reçu : <span className="text-zinc-500">{initialMission.incident_address}</span></p>
                     )}
-                    <Field label="Ville / Code postal">
-                      <Input value={form.incident_city} onChange={f('incident_city')} placeholder="4800 Verviers" />
-                    </Field>
                   </div>
                   <div className="space-y-3">
                     <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide">Destination</p>
-                    <Field label="Nom du lieu">
-                      <Input value={form.destination_name} onChange={f('destination_name')} placeholder="Garage, domicile..." />
-                    </Field>
                     <AddressField
-                      label="Adresse"
+                      label="Adresse complète (nom de lieu inclus si garage, hôtel…)"
                       value={form.destination_address}
                       onChange={f('destination_address')}
-                      onSelect={(addr, lat, lng) => setForm(prev => ({
+                      onSelect={(addr, lat, lng, _city, name) => setForm(prev => ({
                         ...prev,
                         destination_address: addr,
                         destination_lat:     String(lat),
                         destination_lng:     String(lng),
+                        ...(name ? { destination_name: name } : {}),
                       }))}
                       gmKey={googleMapsKey}
-                      placeholder="Tapez et choisissez une suggestion Google..."
+                      placeholder="Ex: Garage Citroën Verviers, Rue..."
                     />
                   </div>
                 </div>

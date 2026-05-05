@@ -18,7 +18,7 @@ interface OdooVehicle {
 }
 
 declare global {
-  interface Window { google: any; initGooglePlaces: () => void }
+  interface Window { google?: any; initGooglePlaces?: () => void }
 }
 
 const normalizePlate = (v: string) => v.replace(/[-.\s]/g, '').toUpperCase()

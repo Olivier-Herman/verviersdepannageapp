@@ -8,7 +8,7 @@ export default function AddressField({
   label?:       string
   value:        string
   onChange:     (v: string) => void
-  onSelect?:    (addr: string, lat: number, lng: number, city?: string) => void
+  onSelect?:    (addr: string, lat: number, lng: number, city?: string, name?: string) => void
   gmKey:        string
   placeholder?: string
   className?:   string
@@ -25,7 +25,7 @@ export default function AddressField({
       if (!(window as any).google?.maps?.places || acRef.current) return
       acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current!, {
         componentRestrictions: { country: ['be','lu','fr','nl','de'] },
-        fields: ['formatted_address', 'geometry', 'address_components'],
+        fields: ['name', 'formatted_address', 'geometry', 'address_components', 'types'],
       })
       acRef.current.addListener('place_changed', () => {
         const p = acRef.current.getPlace()
@@ -36,8 +36,13 @@ export default function AddressField({
         const cityComp = (p.address_components || []).find((c: any) => c.types.includes('locality'))
                      || (p.address_components || []).find((c: any) => c.types.includes('postal_town'))
         const city = cityComp?.long_name
-        onChange(addr)
-        onSelectRef.current?.(addr, lat, lng, city)
+        // Si c'est un établissement (garage, hôtel, etc.) et que name est utile (pas juste le numéro de rue),
+        // on préfixe l'adresse avec le nom — sinon juste l'adresse.
+        const isEstablishment = (p.types || []).some((t: string) => t === 'establishment' || t === 'point_of_interest')
+        const name = isEstablishment && p.name && !addr.startsWith(p.name) ? p.name as string : undefined
+        const display = name ? `${name}, ${addr}` : addr
+        onChange(display)
+        onSelectRef.current?.(display, lat, lng, city, name)
       })
     }
 
