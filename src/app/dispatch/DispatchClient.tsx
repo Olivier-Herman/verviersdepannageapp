@@ -36,8 +36,6 @@ interface Mission {
   incident_lng: number | null
   destination_name: string | null
   destination_address: string | null
-  destination_lat: number | null
-  destination_lng: number | null
   received_at: string
   incident_at: string | null
   status: string

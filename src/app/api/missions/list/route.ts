@@ -26,7 +26,6 @@ export async function GET(req: Request) {
       incident_address, incident_city, incident_country,
       incident_lat, incident_lng,
       destination_name, destination_address,
-      destination_lat, destination_lng,
       amount_guaranteed, incident_at, received_at,
       status, dispatch_mode,
       assigned_to, assigned_at, accepted_at,
