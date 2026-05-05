@@ -1486,19 +1486,21 @@ export default function MissionDetailClient({
                   </>
                 )}
 
-                {/* Autres statuts — statut + sauvegarder */}
+                {/* Autres statuts — statut + sauvegarder (sauf 'ignored' qui est figé) */}
                 {!['new', 'dispatching'].includes(status) && (
                   <>
                     <div className={`text-center py-2 font-semibold text-sm ${statusInfo.color}`}>
                       {statusInfo.label}
                     </div>
-                    {!['completed', 'ignored'].includes(status) && (
+                    {status !== 'ignored' && (
                       <button
                         onClick={handleSave}
                         disabled={loadingSave || vehicleDecisionPending}
                         className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                       >
-                        {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé — chauffeur notifié' : '💾 Sauvegarder les modifications'}
+                        {loadingSave ? 'Sauvegarde...' : saveOk
+                          ? (status === 'completed' ? '✅ Sauvegardé' : '✅ Sauvegardé — chauffeur notifié')
+                          : '💾 Sauvegarder les modifications'}
                       </button>
                     )}
                   </>
