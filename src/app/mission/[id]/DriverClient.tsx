@@ -936,7 +936,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </div>
 
           {closeType !== 'dpr' && totPh < 3 && (
-            <p className="text-amber-400 text-sm bg-amber-500/10 rounded-xl px-3 py-2">⚠️ {3 - totPh} photo(s) manquante(s) — retournez en arrière pour en ajouter</p>
+            <button onClick={() => setScreen('photos')}
+              className="w-full flex items-center justify-between bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl px-3 py-3 transition active:scale-95">
+              <span className="text-amber-400 text-sm font-medium">⚠️ {3 - totPh} photo(s) manquante(s)</span>
+              <span className="text-amber-300 text-xs">📷 Ajouter →</span>
+            </button>
           )}
           {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
         </div>
