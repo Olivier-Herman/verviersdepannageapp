@@ -45,9 +45,14 @@ export const HELPDESK_TAGS: Record<string, number> = {
   appel_prive: 25,
 }
 
+// IDs fleet.vehicle.state (Odoo prod 2026-05-05)
+// Workflow : confirmation → intervention_en_cours → (charge_sur_camion → parc final | termine pour DSP/annulation)
 export const FLEET_STATES = {
-  transit: 15,  // K3 / J / K2
-  mal_garee: 17, // L (MG)
+  intervention_en_cours: 27,
+  charge_sur_camion:     28,
+  transit:               15,  // = zone de relivraison (parc, pas un état de transit)
+  mal_garee:             17,  // L (MG)
+  termine:               18,  // état final : DSP fermé, mission annulée, restitution
 }
 
 // ============================================================
@@ -191,9 +196,15 @@ export async function createHelpdeskTicket(params: {
       modelName:    params.vehicleModel,
       vin:          params.vehicleVin,
     })
-    // Mettre à jour le statut du véhicule
+    // Mettre à jour le statut du véhicule à la création du dossier :
+    // - mal_garee  → directement en parc L (MG), le véhicule est déjà déplacé par la police
+    // - autres cas → "Intervention en cours" (mission engagée, véhicule pas encore chez nous).
+    //   Les transitions ultérieures (Chargé sur camion → parc final → Terminé) seront
+    //   déclenchées par l'app chauffeur quand elle existera.
     if (vehicleId && params.missionType) {
-      const stateId = params.missionType === 'mal_garee' ? FLEET_STATES.mal_garee : FLEET_STATES.transit
+      const stateId = params.missionType === 'mal_garee'
+        ? FLEET_STATES.mal_garee
+        : FLEET_STATES.intervention_en_cours
       await updateVehicleState(vehicleId, stateId)
     }
   }
