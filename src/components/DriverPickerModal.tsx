@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 interface DriverEta {
   id: string
@@ -65,8 +66,11 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
     return `il y a ${Math.floor(min / 60)}h`
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+  // Portal au niveau body pour éviter les conflits de z-index/transform
+  // si le modal est instancié depuis une card avec transform/overflow.
+  if (typeof window === 'undefined') return null
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
       onClick={onClose}>
       <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
         onClick={e => e.stopPropagation()}>
@@ -148,6 +152,7 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
           })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

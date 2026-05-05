@@ -236,9 +236,7 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition hover:opacity-80 ${styleByStatus[d.status]}`}>
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
               {d.name}
-              {d.status === 'en_mission' && (
-                <span className="text-orange-500/70 font-normal">· {d.client_name || 'En mission'}</span>
-              )}
+              {/* On ne reaffiche pas le client_name : le code couleur orange + dot suffit */}
               {d.status === 'en_service' && isOnSchedule && (
                 <span className="opacity-70">🛡️</span>
               )}
