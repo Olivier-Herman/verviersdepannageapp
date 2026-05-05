@@ -348,6 +348,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         )}
       </div>
 
+
       {/* ── Modules ── */}
       <p className="text-zinc-500 text-xs font-semibold uppercase tracking-widest mb-3">Modules accessibles</p>
       <div className="grid grid-cols-2 gap-2 mb-6">

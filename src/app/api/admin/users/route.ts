@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, email, name, role, roles, active, can_verify, personal_email, auth_provider,
       last_login, created_at, tgr_push_notify, odoo_partner_id, towsoft_name,
+      schedule_day, schedule_night,
       user_modules!user_modules_user_id_fkey (module_id, granted)
     `)
     .order('name')

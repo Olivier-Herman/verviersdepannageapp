@@ -8,6 +8,7 @@ import AppShell from '@/components/layout/AppShell'
 
 const NAV_MODULES = [
   { id: 'missions',      label: 'Dispatch Missions',      icon: '📡', href: '/dispatch',        color: 'bg-blue-900',   size: 'large' },
+  { id: 'garde',         label: 'Garde',                  icon: '🛡️', href: '/garde',          color: 'bg-surface',    size: 'small' },
   { id: 'driver_missions', label: 'Mes Missions',           icon: '🚗', href: '/mission',          color: 'bg-orange-800', size: 'large' },
   { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',      size: 'large' },
   { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'large' },
@@ -49,10 +50,16 @@ export default function DashboardClient({
     return callShortcuts.find(s => s.label === label)?.phone
   }
 
+  const userRoles: string[] = Array.isArray((session.user as any).roles)
+    ? (session.user as any).roles
+    : ((session.user as any).role ? [(session.user as any).role] : [])
+  const isDispatcher = userRoles.some(r => ['dispatcher', 'admin', 'superadmin'].includes(r))
+
   const isModuleVisible = (id: string): boolean => {
-    if (id === 'profil') return true
-    if (id === 'admin')  return isAdmin && userModules.includes('admin')
+    if (id === 'profil')  return true
+    if (id === 'admin')   return isAdmin && userModules.includes('admin')
     if (id === 'finance') return userModules.includes('encaissements') || userModules.includes('caisse')
+    if (id === 'garde')   return isDispatcher  // accessible a tous les dispatchers
     return userModules.includes(id)
   }
 
