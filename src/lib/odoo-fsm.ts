@@ -127,18 +127,20 @@ async function filterCustomFields<T extends Record<string, any>>(
 }
 
 // ============================================================
-// STAGES FSM — IDs hardcodés depuis la base test
+// STAGES FSM — IDs hardcodés du projet Field Service #6 (prod 2026-05-05)
+// 'A facturer' sans accent (Odoo SaaS ne permet pas la majuscule À via UI Studio)
 // ============================================================
 export const FSM_STAGES: Record<string, number> = {
-  'Nouveau':               66,
-  'Assigné':               67,
-  'En route':              68,
-  'Sur place':             69,
-  'En route vers destination': 70,
-  'Arrivé à destination':  76,
-  'Mise en parc':          77,
-  'À facturer':            78,
-  'Terminé':               79,
+  'Nouveau':                    66,
+  'Assigné':                    67,
+  'En route':                   76,
+  'Sur place':                  68,
+  'En route vers destination':  79,
+  'Arrivé à destination':       80,
+  'Mise en parc':               77,
+  'A facturer':                 78,
+  'Terminé':                    69,
+  'Annulé':                     70,
 }
 
 export async function getFsmStageId(stageName: string): Promise<number> {
