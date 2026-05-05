@@ -559,6 +559,15 @@ export default function MissionDetailClient({
     setVehicleResults([])
     setShowVehicleDrop(false)
 
+    // Charger la liste des modèles pour la marque liée, sinon le <select> Modèle
+    // n'a pas l'option correspondante et le champ apparaît vide.
+    if (v.brand) {
+      const allBrands = brands.length > 0 ? brands : await loadBrands()
+      const matched = allBrands.find(b => b.name === v.brand)
+                   ?? allBrands.find(b => normalizeBrand(b.name) === normalizeBrand(v.brand))
+      if (matched) await loadModels(matched.id)
+    }
+
     // Si le form a un VIN/fuel/boîte que le véhicule Odoo n'a pas → on complète Odoo
     const needsUpdate =
       (form.vehicle_vin     && !v.vin) ||
@@ -1052,8 +1061,11 @@ export default function MissionDetailClient({
 
               {/* Lieu d'intervention / Destination */}
               {(() => {
-                // DSP / Réparation sur place : pas de remorquage donc pas de destination.
-                const noDestination = ['depannage', 'reparation_place'].includes(form.mission_type)
+                // Pas de destination pour :
+                //  - DSP / Réparation sur place : pas de remorquage
+                //  - Trajet vide / DPR (déplacement) : la destination est le prochain point
+                //    d'intervention, géré séparément
+                const noDestination = ['depannage', 'reparation_place', 'trajet_vide'].includes(form.mission_type)
                 return (
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
                 <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
