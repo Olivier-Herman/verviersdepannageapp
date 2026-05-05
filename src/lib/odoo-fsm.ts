@@ -400,6 +400,58 @@ export async function testFsmConnection(): Promise<{ ok: boolean; db: string; st
 }
 
 // ============================================================
+// ATTACHMENTS — Upload photos sur une fiche FSM (project.task)
+// ============================================================
+/**
+ * Récupère les photos depuis leurs URLs Supabase et les upload sur Odoo
+ * comme ir.attachment liées à la project.task. Apparaissent dans l'onglet
+ * "Pièces jointes" du chatter Odoo et dans la barre latérale.
+ *
+ * Best effort : log les erreurs mais ne fait pas crasher l'appel parent.
+ */
+export async function attachPhotosToFsmTask(
+  taskId:    number,
+  photoUrls: string[]
+): Promise<{ uploaded: number; skipped: number; failed: number }> {
+  if (photoUrls.length === 0) return { uploaded: 0, skipped: 0, failed: 0 }
+
+  // Dédup par filename : on récupère les attachments existants pour ne pas uploader 2 fois.
+  const existing = await rpcFsm<any[]>('ir.attachment', 'search_read',
+    [[['res_model', '=', 'project.task'], ['res_id', '=', taskId]]],
+    { fields: ['name'] }
+  )
+  const existingNames = new Set(existing.map(a => a.name))
+
+  let uploaded = 0, skipped = 0, failed = 0
+  for (let i = 0; i < photoUrls.length; i++) {
+    const url = photoUrls[i]
+    const filename = url.split('/').pop()?.split('?')[0] || `photo-${i + 1}.jpg`
+    if (existingNames.has(filename)) { skipped++; continue }
+    try {
+      const res = await fetch(url)
+      if (!res.ok) { failed++; continue }
+      const buf = await res.arrayBuffer()
+      const b64 = Buffer.from(buf).toString('base64')
+      const mimetype = res.headers.get('content-type') || 'image/jpeg'
+      await rpcFsm('ir.attachment', 'create', [{
+        name:      filename,
+        type:      'binary',
+        datas:     b64,
+        res_model: 'project.task',
+        res_id:    taskId,
+        mimetype,
+      }])
+      uploaded++
+    } catch (e: any) {
+      console.warn(`[FSM] Échec upload photo ${i + 1}/${photoUrls.length}: ${e.message}`)
+      failed++
+    }
+  }
+  console.log(`[FSM] Photos task #${taskId}: ${uploaded} uploaded, ${skipped} skipped (déjà présent), ${failed} échecs`)
+  return { uploaded, skipped, failed }
+}
+
+// ============================================================
 // PARTENAIRE — Recherche ou création dans la base FSM
 // ============================================================
 export async function findOrCreateFsmPartner(data: {

@@ -3,7 +3,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS } from '@/lib/odoo-fsm'
+import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
 
 // Mapping action chauffeur → stage FSM Odoo. null = pas de changement de stage.
 const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
@@ -306,6 +306,18 @@ export async function POST(req: Request) {
       console.log(`[FSM] Action chauffeur ${action} → stage "${stageName || '(inchangé)'}" sur task #${mission.odoo_task_id}`)
     } catch (e: any) {
       console.error('[FSM] Propagation action chauffeur échouée (non bloquant):', e.message)
+    }
+
+    // Upload photos vers la FSM en pièces jointes (idempotent grâce au dédup par filename)
+    if (action === 'save_photos' || action === 'completed' || action === 'complete_delivery') {
+      const photoUrls: string[] = action === 'save_photos'
+        ? (body.photo_urls || [])
+        : (closing_data?.photo_urls || updated.driver_photos || [])
+      if (photoUrls.length > 0) {
+        attachPhotosToFsmTask(mission.odoo_task_id, photoUrls).catch(e => {
+          console.error('[FSM] Upload photos échoué (non bloquant):', e.message)
+        })
+      }
     }
   }
 
