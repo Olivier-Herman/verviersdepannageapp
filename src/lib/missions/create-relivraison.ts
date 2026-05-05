@@ -17,6 +17,7 @@
 import { createAdminClient }            from '@/lib/supabase'
 import { createOdooDossierForMission }  from '@/lib/missions/odoo-dossier'
 import { sendPushToUser }               from '@/lib/push'
+import { rpcFsm, getFsmStageId }        from '@/lib/odoo-fsm'
 
 export interface RelivraisonInput {
   parentMissionId:  string
@@ -110,7 +111,32 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
 
   console.log(`[REL] Mission REL créée: ${rel.id} (parent: ${input.parentMissionId})`)
 
-  // Créer le dossier Odoo en arrière-plan (best effort, non bloquant)
+  // La mission parente passe en 'completed' : sa partie 'remorquage vers parc'
+  // est terminée, le reste de la chaîne (relivraison) est portée par la nouvelle REL.
+  await sb
+    .from('incoming_missions')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('id', input.parentMissionId)
+  await sb.from('mission_logs').insert({
+    mission_id: input.parentMissionId,
+    action:     'completed',
+    notes:      `Terminée — relivraison déléguée à la mission ${externalId}`,
+    metadata:   { rel_mission_id: rel.id },
+  })
+
+  // Passer aussi le stage FSM Odoo de la mission parente à "Terminé"
+  if (parent.odoo_task_id) {
+    try {
+      const stageId = await getFsmStageId('Terminé')
+      if (stageId) {
+        await rpcFsm('project.task', 'write', [[parent.odoo_task_id], { stage_id: stageId }])
+      }
+    } catch (e: any) {
+      console.error('[REL] Update stage FSM parent échoué:', e.message)
+    }
+  }
+
+  // Créer le dossier Odoo pour la REL en arrière-plan
   createOdooDossierForMission(rel.id).catch(e => {
     console.error('[REL] Création dossier Odoo échouée:', e.message)
   })
