@@ -541,7 +541,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      clearDraft(); window.location.href = window.location.pathname + '?t=' + Date.now()
+      clearDraft()
+      // Mission terminée pour le chauffeur (le dispatcher reprend la main pour la REL).
+      // On redirige vers la liste des missions plutôt que de recharger la fiche.
+      window.location.href = '/mission'
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false); setShowPark(false) }
   }
@@ -1288,12 +1291,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </>
           )}
 
-          {/* En parc : terminer la mission (pour avant la création de la REL) */}
+          {/* En parc : la mission est finie pour le chauffeur, plus rien à faire.
+              Le dispatcher prendra le relais pour créer la REL si besoin. */}
           {M.status === 'parked' && (
-            <button onClick={() => { setCloseType('rem'); setScreen('close') }}
-              className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
-              🏁 Terminer
-            </button>
+            <div className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-center">
+              <p className="text-amber-400 text-sm font-semibold">🅿️ Véhicule déposé au parc</p>
+              <p className="text-amber-300/80 text-xs mt-1">Mission terminée pour toi. Le dispatcher gère la suite.</p>
+            </div>
           )}
 
           {/* Bouton secondaire — Actions (DPR, photos, etc.) toujours accessible quand on est sur place ou plus avancé */}
