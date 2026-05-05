@@ -46,6 +46,7 @@ interface Mission {
   destination_borne_km: string | null
   destination_sens: string | null
   odoo_vehicle_id: number | null
+  depot_depart_id: string | null
   amount_guaranteed: number | null
   amount_currency: string
   amount_to_collect: number | null
@@ -644,6 +645,21 @@ export default function MissionDetailClient({
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
   const [showDriverModal, setShowDriverModal] = useState(false)
+  const [depots, setDepots]                   = useState<Array<{id:string;name:string;address:string;is_default:boolean}>>([])
+  const [depotId, setDepotId]                 = useState<string>(initialMission.depot_depart_id || '')
+
+  // Charger la liste des dépôts pour le sélecteur "Dépôt de départ"
+  useEffect(() => {
+    fetch('/api/depots').then(r => r.json()).then(d => {
+      const list = Array.isArray(d) ? d : []
+      setDepots(list)
+      // Si rien de pré-saisi, défaut = depot is_default
+      if (!initialMission.depot_depart_id) {
+        const def = list.find((x: any) => x.is_default)
+        if (def) setDepotId(def.id)
+      }
+    }).catch(() => {})
+  }, [])
   const [showRawContent, setShowRawContent]   = useState(false)
   const [loadingConfirm, setLoadingConfirm]   = useState(false)
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
@@ -886,7 +902,7 @@ export default function MissionDetailClient({
   const handleSave = async () => {
     setLoadingSave(true)
     setSaveOk(false)
-    const payload = { ...form, billed_to_id: billedPartnerId }
+    const payload = { ...form, billed_to_id: billedPartnerId, depot_depart_id: depotId || null }
     const res = await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -902,7 +918,7 @@ export default function MissionDetailClient({
   // Confirmer la mission
   const handleConfirm = async () => {
     setLoadingConfirm(true)
-    const payload = { ...form, billed_to_id: billedPartnerId, odoo_vehicle_id: odooVehicleId }
+    const payload = { ...form, billed_to_id: billedPartnerId, odoo_vehicle_id: odooVehicleId, depot_depart_id: depotId || null }
     await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1515,6 +1531,23 @@ export default function MissionDetailClient({
                     )}
                   </>
                 )}
+
+                {/* Dépôt de départ — sert au calcul KM aller/retour */}
+                <div className="border-t border-[#2a2a2a] pt-4">
+                  <label className="block text-zinc-500 text-xs mb-2">Dépôt de départ</label>
+                  <select value={depotId} onChange={e => setDepotId(e.target.value)}
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                    <option value="">— Choisir —</option>
+                    {depots.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.is_default ? '(défaut)' : ''} — {d.address}
+                      </option>
+                    ))}
+                  </select>
+                  {depots.length === 0 && (
+                    <p className="text-zinc-600 text-xs mt-1.5">Aucun dépôt configuré — <Link href="/admin/depots" className="text-brand underline">configurer dans /admin/depots</Link></p>
+                  )}
+                </div>
 
                 {/* Assignation chauffeur */}
                 <div className="border-t border-[#2a2a2a] pt-4">

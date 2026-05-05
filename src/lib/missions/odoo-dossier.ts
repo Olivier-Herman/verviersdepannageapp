@@ -88,6 +88,14 @@ export async function createOdooDossierForMission(
   const noDestinationTypes = ['depannage', 'reparation_place', 'trajet_vide']
   const skipDestination = noDestinationTypes.includes(missionTypeRaw)
 
+  // ── Dépôt de départ (pour calcul KM aller/retour côté assistance) ────────
+  let depotDepartLabel = ''
+  if (mission.depot_depart_id) {
+    const { data: depot } = await sb
+      .from('depots').select('name, address').eq('id', mission.depot_depart_id).maybeSingle()
+    if (depot) depotDepartLabel = `${depot.name} — ${depot.address}`
+  }
+
   // ── Chauffeur si assigné ──────────────────────────────────────────────────
   let chauffeurName = ''
   if (mission.assigned_to) {
@@ -194,6 +202,7 @@ export async function createOdooDossierForMission(
                          .filter(Boolean).join(' '),
     incidentAddress:     incidentFull,
     destinationAddress:  skipDestination ? '' : (mission.destination_address || ''),
+    depotDepart:         depotDepartLabel,
     description:         mission.incident_description || '',
     beneficiaryName:     mission.client_name  || '',
     beneficiaryPhone:    mission.client_phone || '',
