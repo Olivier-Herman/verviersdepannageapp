@@ -29,6 +29,23 @@ export interface OdooDossierResult {
 // Police continue d'utiliser team 12 ("Mission Créée par Chauffeur") via /api/towsoft/create.
 const HELPDESK_TEAM_ID = 14  // Dispatch Assistance
 
+// Mapping source mission → ID partner Odoo (= compagnie d'assistance qui FACTURE).
+// Le client physiquement dépanné (mission.client_name) devient le bénéficiaire,
+// stocké dans la description du ticket pour traçabilité.
+// IDs récupérés via API Odoo le 2026-05-05.
+const ASSISTANCE_PARTNER_BY_SOURCE: Record<string, number> = {
+  touring:  14,   // Touring SA
+  ethias:   16,   // Ethias
+  vab:      32,   // VAB
+  mondial:  45,   // AWP P&C S.A. - Belgian Branch (Allianz/Mondial Assistance Belgique)
+  ima:      20,   // Ima Benelux
+  ipa:      34,   // Inter Partner Assistance
+  // À compléter quand les partners Odoo auront été créés/identifiés :
+  // vivium:   ?,
+  // axa:      ?,  (#286 AXA ASSISTANCE FRANCE — vérifier si correct pour BE)
+  // ardenne:  ?,
+}
+
 /**
  * Crée (ou récupère) le dossier Odoo pour une mission.
  * Lecture en autonome depuis Supabase à partir du missionId — pas besoin de passer les champs.
@@ -72,16 +89,35 @@ export async function createOdooDossierForMission(
     chauffeurName = driver?.name || ''
   }
 
-  // ── Contact Odoo (best effort) ────────────────────────────────────────────
-  let partnerId: number | undefined
-  try {
-    partnerId = await findOrCreateFsmPartner({
-      name:  mission.client_name,
-      phone: mission.client_phone,
-    })
-  } catch (e: any) {
-    console.warn(`[FSM] Partner non créé pour mission ${missionId}: ${e.message}`)
+  // ── Partner Odoo : compagnie d'assistance (= client à FACTURER) ──────────
+  // Pour les sources connues (touring, ethias, etc.) → mapping direct vers le partner Odoo.
+  // Pour les sources sans mapping (privé, garage, etc.) → fallback création depuis client_name.
+  const sourceLower = (mission.source || '').toLowerCase()
+  let partnerId: number | undefined = ASSISTANCE_PARTNER_BY_SOURCE[sourceLower]
+  if (!partnerId) {
+    try {
+      partnerId = await findOrCreateFsmPartner({
+        name:  mission.client_name,
+        phone: mission.client_phone,
+      })
+    } catch (e: any) {
+      console.warn(`[FSM] Partner non créé pour mission ${missionId}: ${e.message}`)
+    }
+  } else {
+    console.log(`[FSM] Partner facturation = compagnie ${sourceLower.toUpperCase()} (#${partnerId})`)
   }
+
+  // ── Description enrichie : bénéficiaire = client physiquement dépanné ────
+  // (different de partnerId qui est le payeur/compagnie d'assistance)
+  const beneficiaryParts: string[] = []
+  if (mission.client_name)  beneficiaryParts.push(`Bénéficiaire : ${mission.client_name}`)
+  if (mission.client_phone) beneficiaryParts.push(`Tél : ${mission.client_phone}`)
+  if (mission.client_email) beneficiaryParts.push(`Email : ${mission.client_email}`)
+  const beneficiaryLine = beneficiaryParts.length > 0
+    ? beneficiaryParts.join(' — ') + '\n\n'
+    : ''
+
+  const enrichedDescription = beneficiaryLine + (mission.incident_description || '')
 
   // ── Helpdesk ticket (dossier chapeau) ─────────────────────────────────────
   const { ticketId, ticketUrl } = await createHelpdeskTicket({
@@ -90,7 +126,7 @@ export async function createOdooDossierForMission(
     source:        mission.source || 'PRIVÉ',
     clientName:    mission.client_name  || 'Client inconnu',
     partnerId,
-    description:   mission.incident_description || '',
+    description:   enrichedDescription,
     teamId:        HELPDESK_TEAM_ID,
     vehiclePlate:  mission.vehicle_plate || '',
     city:          mission.incident_city || '',
