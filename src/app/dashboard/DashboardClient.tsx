@@ -1,6 +1,7 @@
 'use client'
 
-import { signOut } from 'next-auth/react'
+import { signOut }      from 'next-auth/react'
+import DutyIndicator    from '@/components/DutyIndicator'
 import Link from 'next/link'
 import type { Session } from 'next-auth'
 import AppShell from '@/components/layout/AppShell'
@@ -76,10 +77,7 @@ export default function DashboardClient({
             <p className="text-white text-sm font-medium truncate">{session.user.name}</p>
             <p className="text-zinc-500 text-xs capitalize">{(session.user as any).role}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            <span className="text-green-500 text-xs">En service</span>
-          </div>
+          <DutyIndicator compact />
         </div>
         <ModuleGrid visibleNav={visibleNav} visibleCalls={visibleCalls} getPhone={getPhone} hasTowsoft={hasTowsoft} />
       </div>
@@ -94,10 +92,7 @@ export default function DashboardClient({
             <p className="text-white font-semibold">{session.user.name}</p>
             <p className="text-zinc-500 text-sm capitalize">{(session.user as any).role}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-green-500 text-sm">En service</span>
-          </div>
+          <DutyIndicator />
           <button onClick={() => signOut({ callbackUrl: '/login' })}
             className="text-zinc-500 hover:text-red-400 text-sm transition-colors ml-4">
             Déconnexion

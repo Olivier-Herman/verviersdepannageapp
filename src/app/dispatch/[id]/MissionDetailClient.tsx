@@ -8,7 +8,6 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
-import OnDutyToggle from '@/components/OnDutyToggle'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -176,7 +175,6 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
           )
         })}
       </nav>
-      <OnDutyToggle />
       <div className="px-3 py-4 border-t border-[#2a2a2a]">
         <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs">{initials}</div>

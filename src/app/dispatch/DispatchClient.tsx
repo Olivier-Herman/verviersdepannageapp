@@ -7,7 +7,6 @@ import Link        from 'next/link'
 import { useRouter }   from 'next/navigation'
 import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
-import OnDutyToggle    from '@/components/OnDutyToggle'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -156,7 +155,6 @@ function Sidebar({ userName, userRole }: { userName: string; userRole: string })
           )
         })}
       </nav>
-      <OnDutyToggle />
       <div className="px-3 py-4 border-t border-[#2a2a2a]">
         <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
           <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
