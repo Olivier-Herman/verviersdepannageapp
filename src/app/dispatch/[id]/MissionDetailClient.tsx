@@ -828,6 +828,13 @@ export default function MissionDetailClient({
     }).catch(() => {})
   }
 
+  // Le dispatcher doit choisir explicitement entre un véhicule existant ou créer
+  // un nouveau dès lors qu'il y a des matches potentiels en attente.
+  // Évite de créer des doublons par inadvertance dans Odoo.
+  const vehicleDecisionPending = !odooVehicleId
+    && vehicleResults.length > 0
+    && (form.vehicle_plate || '').trim().length >= 3
+
   // Comparaison fuzzy brand/model d'un véhicule Odoo vs ce qui est saisi dans le form
   const vehicleSimilarity = (v: {brand:string;model:string}): 'match' | 'mismatch' | 'unknown' => {
     if (!form.vehicle_brand && !form.vehicle_model) return 'unknown'
@@ -1510,12 +1517,22 @@ export default function MissionDetailClient({
               {/* Actions */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3">
 
+                {/* Avertissement véhicule en attente de décision — bloque save/confirm */}
+                {vehicleDecisionPending && (
+                  <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-2.5">
+                    <p className="text-amber-400 text-xs font-semibold mb-1">⚠ Véhicule à valider</p>
+                    <p className="text-amber-200/80 text-xs">
+                      Choisis « Lier » sur un véhicule existant ou clique « Aucun ne correspond — créer un nouveau véhicule » pour pouvoir sauvegarder.
+                    </p>
+                  </div>
+                )}
+
                 {/* Statut new → Confirmer / Refuser */}
                 {status === 'new' && (
                   <>
                     <button
                       onClick={handleConfirm}
-                      disabled={loadingConfirm}
+                      disabled={loadingConfirm || vehicleDecisionPending}
                       className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                     >
                       {loadingConfirm ? 'Confirmation...' : '✅ Confirmer la mission'}
@@ -1530,7 +1547,7 @@ export default function MissionDetailClient({
                     <div className="border-t border-[#2a2a2a] pt-3">
                       <button
                         onClick={handleSave}
-                        disabled={loadingSave}
+                        disabled={loadingSave || vehicleDecisionPending}
                         className="w-full py-2.5 bg-[#111] hover:bg-[#2a2a2a] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-sm transition disabled:opacity-50"
                       >
                         {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder'}
@@ -1548,7 +1565,7 @@ export default function MissionDetailClient({
                     </div>
                     <button
                       onClick={handleSave}
-                      disabled={loadingSave}
+                      disabled={loadingSave || vehicleDecisionPending}
                       className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                     >
                       {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder les modifications'}
@@ -1572,7 +1589,7 @@ export default function MissionDetailClient({
                     {!['completed', 'ignored'].includes(status) && (
                       <button
                         onClick={handleSave}
-                        disabled={loadingSave}
+                        disabled={loadingSave || vehicleDecisionPending}
                         className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                       >
                         {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé — chauffeur notifié' : '💾 Sauvegarder les modifications'}
