@@ -280,7 +280,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}[]>([])
   const [paid, setPaid]           = useState(false)
-  const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
+  const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'|'park'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
+  const [parkDepot, setParkDepot] = useState<VrLoc | null>(null)
   const [closeNote, setCloseNote] = useState('')
   const [mounted,   setMounted]   = useState(false)
 
@@ -577,9 +578,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // Clôture labels (doit être avant les early returns)
   const closeLabels: Record<string, [string, string]> = {
-    dsp: ['bg-green-600', 'DSP Réussi'],
-    rem: ['bg-blue-600',  'REM Confirmé'],
-    dpr: ['bg-zinc-600',  'DPR — Déplacement pour rien'],
+    dsp:  ['bg-green-600', 'DSP Réussi'],
+    rem:  ['bg-blue-600',  'REM Confirmé'],
+    dpr:  ['bg-zinc-600',  'DPR — Déplacement pour rien'],
+    park: ['bg-amber-500', '🅿️ Mise en parc'],
   }
   const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-zinc-600', closeType.toUpperCase()]
 
@@ -855,13 +857,42 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // ── Clôture ───────────────────────────────────────────────────────────────
   if (screen === 'close') return (
-      <ScreenWrap title="Clôturer la mission" sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
+      <ScreenWrap title={closeType === 'park' ? 'Mise en parc' : 'Clôturer la mission'} sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
           {/* Type de clôture — informatif, non modifiable ici */}
           <div className={`${closeBg} rounded-2xl px-4 py-3 flex items-center gap-3`}>
             <span className="text-white font-bold text-sm">{closeLabel}</span>
           </div>
+
+          {/* Sélection dépôt — uniquement pour Mise en parc */}
+          {closeType === 'park' && (
+            <div className="bg-[#1A1A1A] border border-amber-500/30 rounded-2xl p-4">
+              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">Dépôt de dépose</p>
+              <div className="space-y-2">
+                {vrLocs.length === 0
+                  ? <p className="text-zinc-600 text-sm">Aucun dépôt configuré — vois /admin/depots</p>
+                  : vrLocs.map(vr => {
+                      const selected = parkDepot?.id === vr.id
+                      return (
+                        <button key={vr.id} onClick={() => setParkDepot(vr)}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition active:scale-95 ${
+                            selected ? 'bg-amber-500/15 border border-amber-500/60' : 'bg-[#111] border border-[#2a2a2a] hover:border-zinc-600'
+                          }`}>
+                          <span className="text-lg">{selected ? '🅿️' : '◯'}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-medium">{vr.name}{(vr as any).is_default ? ' (défaut)' : ''}</p>
+                            <p className="text-zinc-500 text-xs truncate">{vr.address}</p>
+                          </div>
+                        </button>
+                      )
+                    })}
+              </div>
+              {M.destination_address && (
+                <p className="text-blue-400/80 text-xs mt-3">📍 Adresse de relivraison à enregistrer : {M.destination_address}</p>
+              )}
+            </div>
+          )}
 
           {/* Récap éditable — chaque ligne cliquable mène à l'écran correspondant */}
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl divide-y divide-[#2a2a2a]">
@@ -986,10 +1017,18 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         </div>
 
         <div className="px-4 py-4 border-t border-[#2a2a2a]">
-          <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && totPh < 3)}
-            className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-semibold rounded-2xl">
-            {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
-          </button>
+          {closeType === 'park' ? (
+            <button onClick={() => parkDepot && doPark(parkDepot)}
+              disabled={loading || !parkDepot || totPh < 3}
+              className="w-full py-4 bg-amber-500 disabled:opacity-40 text-white font-semibold rounded-2xl">
+              {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
+            </button>
+          ) : (
+            <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && totPh < 3)}
+              className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-semibold rounded-2xl">
+              {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
+            </button>
+          )}
         </div>
       </ScreenWrap>
   )
@@ -1216,7 +1255,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
                 </button>
               )}
-              <button onClick={() => setShowPark(true)} disabled={loading}
+              <button onClick={() => {
+                  // Pré-sélectionne le dépôt par défaut (Pépinster) si aucun choix
+                  if (!parkDepot) {
+                    const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
+                    if (def) setParkDepot(def)
+                  }
+                  setCloseType('park')
+                  setScreen('close')
+                }} disabled={loading}
                 className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
                 🅿️ Mise en parc
               </button>
