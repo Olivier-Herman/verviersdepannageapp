@@ -139,10 +139,10 @@ function getDelai(received_at: string): { label: string; color: string; urgency:
 }
 
 const URGENCY_BORDER: Record<string, string> = {
-  ok:       'border-[#2a2a2a]',
-  warn:     'border-yellow-500/30',
-  alert:    'border-orange-500/40',
-  critical: 'border-red-500/50 animate-pulse',
+  ok:       'border-green-500/40',                  // 0-15 min : fraiche
+  warn:     'border-yellow-500/40',                 // 15-30 min : attention
+  alert:    'border-orange-500/50',                 // 30-60 min : urgent
+  critical: 'border-red-500/70 animate-pulse',      // > 60 min : critique, clignote
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -512,6 +512,10 @@ export default function DispatchClient({
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
+  // Tick toutes les 60s — force le re-render des cards pour que les delais
+  // (vert/jaune/orange/rouge selon l'âge depuis received_at) soient à jour
+  // sans attendre un poll/realtime data refresh.
+  const [, setNowTick]  = useState(0)
   // Compte les modals ouvertes — quand > 0, on suspend les refreshs auto pour
   // éviter le clignotement du contenu pendant qu'un modal est en interaction.
   const [modalOpenCount, setModalOpenCount] = useState(0)
@@ -600,6 +604,14 @@ export default function DispatchClient({
     const id = setInterval(() => { if (modalOpenCount === 0) load() }, 20_000)
     return () => clearInterval(id)
   }, [load, modalOpenCount])
+
+  // ── Tick 60s : recalcule les delais des cards (couleur urgence + label) ──
+  // Sans ça, une mission passe de vert à jaune seulement quand le polling
+  // refresh — pas idéal car le label "5min" reste affiché jusqu'au prochain poll.
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   // Charge le dispatch mode
   useEffect(() => {
