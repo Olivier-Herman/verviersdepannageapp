@@ -214,10 +214,12 @@ interface DriverEta {
   }
 }
 
-function DriverPickerModal({ missionId, onPick, onClose }: {
-  missionId: string
-  onPick:    (driverId: string) => void
-  onClose:   () => void
+function DriverPickerModal({ missionId, incidentLat, incidentLng, onPick, onClose }: {
+  missionId:   string
+  incidentLat: number | null
+  incidentLng: number | null
+  onPick:      (driverId: string) => void
+  onClose:     () => void
 }) {
   const [drivers, setDrivers] = useState<DriverEta[]>([])
   const [loading, setLoading] = useState(true)
@@ -227,7 +229,10 @@ function DriverPickerModal({ missionId, onPick, onClose }: {
     (async () => {
       setLoading(true)
       try {
-        const res  = await fetch(`/api/missions/${missionId}/driver-eta`)
+        const qs = incidentLat != null && incidentLng != null
+          ? `?lat=${incidentLat}&lng=${incidentLng}`
+          : ''
+        const res  = await fetch(`/api/missions/${missionId}/driver-eta${qs}`)
         const data = await res.json()
         if (data.error) setError(data.error)
         else setDrivers(data.drivers || [])
@@ -237,7 +242,7 @@ function DriverPickerModal({ missionId, onPick, onClose }: {
         setLoading(false)
       }
     })()
-  }, [missionId])
+  }, [missionId, incidentLat, incidentLng])
 
   const fmtAge = (sec: number | null) => {
     if (sec == null) return ''
@@ -1722,6 +1727,8 @@ export default function MissionDetailClient({
       {showDriverModal && (
         <DriverPickerModal
           missionId={initialMission.id}
+          incidentLat={form.incident_lat ? Number(form.incident_lat) : null}
+          incidentLng={form.incident_lng ? Number(form.incident_lng) : null}
           onPick={(driverId) => { setSelectedDriver(driverId); setShowDriverModal(false) }}
           onClose={() => setShowDriverModal(false)}
         />

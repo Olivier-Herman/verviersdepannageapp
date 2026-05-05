@@ -57,22 +57,35 @@ async function getTruckEtaMinutes(origin: Coord, destination: Coord): Promise<nu
   }
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
+  const url = new URL(req.url)
 
-  const { data: mission } = await sb
-    .from('incoming_missions')
-    .select('id, incident_lat, incident_lng')
-    .eq('id', params.id)
-    .single()
-  if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
-  if (mission.incident_lat == null || mission.incident_lng == null) {
-    return NextResponse.json({ error: 'Lieu d\'incident sans coordonnees' }, { status: 400 })
+  // Coords passees en query par le modal (form state, toujours frais) prioritaires.
+  // Sinon fallback sur les valeurs DB (utile si on cale-back depuis un autre contexte).
+  const queryLat = url.searchParams.get('lat')
+  const queryLng = url.searchParams.get('lng')
+  let incident: Coord | null = null
+  if (queryLat && queryLng) {
+    const lat = Number(queryLat), lng = Number(queryLng)
+    if (!Number.isNaN(lat) && !Number.isNaN(lng)) incident = { lat, lng }
   }
-  const incident: Coord = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
+
+  if (!incident) {
+    const { data: mission } = await sb
+      .from('incoming_missions')
+      .select('id, incident_lat, incident_lng')
+      .eq('id', params.id)
+      .single()
+    if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+    if (mission.incident_lat == null || mission.incident_lng == null) {
+      return NextResponse.json({ error: 'Lieu d\'incident sans coordonnees' }, { status: 400 })
+    }
+    incident = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
+  }
 
   // Tous les chauffeurs actifs (role driver/admin/superadmin, active=true)
   const { data: drivers } = await sb
