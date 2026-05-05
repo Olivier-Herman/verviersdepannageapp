@@ -76,6 +76,57 @@ export async function rpcFsm<T = any>(
 }
 
 // ============================================================
+// Filtrage défensif des champs Studio custom (x_*)
+// ============================================================
+// Si un champ custom attendu par le code n'existe pas (encore) côté Odoo,
+// on l'ignore silencieusement avec un warning au lieu de planter.
+// Cache module-level : 1 query Odoo par modèle au démarrage du process Vercel.
+const _knownCustomFieldsCache: Record<string, Set<string>> = {}
+
+async function getKnownCustomFields(model: string): Promise<Set<string>> {
+  if (_knownCustomFieldsCache[model]) return _knownCustomFieldsCache[model]
+  try {
+    const fields = await rpcFsm<any[]>(
+      'ir.model.fields',
+      'search_read',
+      [[['model', '=', model], ['name', '=like', 'x_%']]],
+      { fields: ['name'] }
+    )
+    _knownCustomFieldsCache[model] = new Set(fields.map(f => f.name))
+  } catch (e: any) {
+    console.warn(`[FSM] Impossible de lister les champs custom de ${model}: ${e.message}. Le payload sera envoyé tel quel.`)
+    _knownCustomFieldsCache[model] = new Set()  // vide → on n'enverra aucun x_*
+  }
+  return _knownCustomFieldsCache[model]
+}
+
+/** Retire du payload les champs x_* qui n'existent pas dans Odoo, garde les champs standards. */
+async function filterCustomFields<T extends Record<string, any>>(
+  model: string,
+  payload: T
+): Promise<T> {
+  const known = await getKnownCustomFields(model)
+  const out: Record<string, any> = {}
+  const skipped: string[] = []
+  for (const [k, v] of Object.entries(payload)) {
+    if (!k.startsWith('x_')) {
+      // Champ standard Odoo → toujours garder
+      out[k] = v
+      continue
+    }
+    if (known.has(k)) {
+      out[k] = v
+    } else {
+      skipped.push(k)
+    }
+  }
+  if (skipped.length > 0) {
+    console.warn(`[FSM] Champs custom absents de ${model} → ignorés : ${skipped.join(', ')}`)
+  }
+  return out as T
+}
+
+// ============================================================
 // STAGES FSM — IDs hardcodés depuis la base test
 // ============================================================
 export const FSM_STAGES: Record<string, number> = {
@@ -177,7 +228,9 @@ export async function createHelpdeskTicket(params: {
     ticketData.tag_ids = [[4, HELPDESK_TAGS[params.missionType]]]
   }
 
-  const ticketId = await rpcFsm<number>('helpdesk.ticket', 'create', [ticketData])
+  // Filtrage défensif : retirer les x_studio_* qui n'existent pas (encore) côté Odoo
+  const filteredTicketData = await filterCustomFields('helpdesk.ticket', ticketData)
+  const ticketId = await rpcFsm<number>('helpdesk.ticket', 'create', [filteredTicketData])
   const ticketUrl = `${FSM_URL}/web#id=${ticketId}&model=helpdesk.ticket&view_type=form`
 
   console.log(`[FSM] Helpdesk ticket créé: #${ticketId}`)
@@ -214,17 +267,35 @@ export async function createFsmTask(params: {
   incidentAddress?:    string
   destinationAddress?: string
   description?:        string
-}): Promise<{ taskId: number; taskUrl: string }> {
-
-  const stageId = await getFsmStageId('Assigné')
+}): Promise<{ taskId: number; taskUrl: string } | null> {
 
   // Trouver le projet FSM (premier projet FSM disponible)
   const projects = await rpcFsm<any[]>('project.project', 'search_read',
     [[['is_fsm', '=', true]]],
     { fields: ['id', 'name'], limit: 1 }
   )
-  if (!projects.length) throw new Error('[FSM] Aucun projet Field Service trouvé')
+  if (!projects.length) {
+    console.warn('[FSM] Aucun projet Field Service trouvé — création de la tâche FSM ignorée. Active use_fsm sur une équipe Helpdesk pour générer le projet automatiquement.')
+    return null
+  }
   const projectId = projects[0].id
+
+  // Stage Assigné — fallback à "New"/"Planned" si "Assigné" n'existe pas
+  let stageId: number
+  try {
+    stageId = await getFsmStageId('Assigné')
+  } catch {
+    try {
+      stageId = await getFsmStageId('Planned')
+    } catch {
+      try {
+        stageId = await getFsmStageId('New')
+      } catch (e) {
+        console.warn('[FSM] Aucun stage trouvé (Assigné/Planned/New) — création tâche ignorée')
+        return null
+      }
+    }
+  }
 
   const vehiclePlate = params.vehicleInfo?.split(' ')[0] || ''
   const taskName = [
@@ -261,7 +332,9 @@ export async function createFsmTask(params: {
   if (params.incidentAddress)   taskData['x_studio_adresse_dintervention']      = params.incidentAddress
   if (params.destinationAddress) taskData['x_studio_adresse_de_destination']   = params.destinationAddress
 
-  const taskId = await rpcFsm<number>('project.task', 'create', [taskData])
+  // Filtrage défensif : retirer les x_studio_* qui n'existent pas (encore) côté Odoo
+  const filteredTaskData = await filterCustomFields('project.task', taskData)
+  const taskId = await rpcFsm<number>('project.task', 'create', [filteredTaskData])
   const taskUrl = `${FSM_URL}/web#id=${taskId}&model=project.task&view_type=form`
 
   console.log(`[FSM] Tâche FSM créée: #${taskId} — ${taskName}`)

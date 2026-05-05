@@ -109,9 +109,9 @@ export async function createOdooDossierForMission(
     }
   }
 
-  // ── FSM Task liée au ticket ──────────────────────────────────────────────
+  // ── FSM Task liée au ticket (peut retourner null si projet FSM/stages absents) ──
   const incidentFull = [mission.incident_address, mission.incident_city].filter(Boolean).join(', ')
-  const { taskId, taskUrl } = await createFsmTask({
+  const fsmResult = await createFsmTask({
     supabaseId:          mission.id,
     helpdeskTicketId:    ticketId,
     interventionType,
@@ -130,14 +130,29 @@ export async function createOdooDossierForMission(
     description:         mission.incident_description || '',
   })
 
-  // ── Sauvegarde des IDs Odoo ──────────────────────────────────────────────
-  await sb.from('incoming_missions').update({
-    odoo_helpdesk_id: ticketId,
-    odoo_task_id:     taskId,
-    odoo_ticket_url:  ticketUrl,
-    odoo_task_url:    taskUrl,
-  }).eq('id', missionId)
+  const taskId  = fsmResult?.taskId  || null
+  const taskUrl = fsmResult?.taskUrl || ''
 
-  console.log(`[FSM] Dossier créé pour mission ${missionId}: ticket #${ticketId}, task #${taskId}`)
-  return { ticketId, ticketUrl, taskId, taskUrl, created: true }
+  // ── Sauvegarde des IDs Odoo ──────────────────────────────────────────────
+  const update: any = {
+    odoo_helpdesk_id: ticketId,
+    odoo_ticket_url:  ticketUrl,
+  }
+  if (taskId)  update.odoo_task_id  = taskId
+  if (taskUrl) update.odoo_task_url = taskUrl
+  await sb.from('incoming_missions').update(update).eq('id', missionId)
+
+  if (taskId) {
+    console.log(`[FSM] Dossier créé pour mission ${missionId}: ticket #${ticketId}, task #${taskId}`)
+  } else {
+    console.log(`[FSM] Dossier partiel pour mission ${missionId}: ticket #${ticketId} OK, task FSM ignorée (config Odoo incomplète)`)
+  }
+
+  return {
+    ticketId,
+    ticketUrl,
+    taskId:  taskId  || 0,
+    taskUrl: taskUrl || '',
+    created: true,
+  }
 }
