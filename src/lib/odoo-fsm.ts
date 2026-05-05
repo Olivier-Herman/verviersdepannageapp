@@ -8,7 +8,8 @@ const FSM_DB      = process.env.ODOO_TEST_DB  || process.env.ODOO_DB!
 const FSM_UID     = parseInt(process.env.ODOO_UID || '8')
 const FSM_API_KEY = process.env.ODOO_API_KEY!
 
-// Noms techniques des champs custom Studio
+// Noms techniques des champs custom Studio sur project.task
+// (vehicule_fleet1 = related lecture seule vers helpdesk_ticket_id.x_studio_vehicule, donc pas écrit ici)
 export const FSM_FIELDS = {
   intervention_type:    'x_studio_intervention_type',
   intervention_context: 'x_studio_intervention_context',
@@ -17,11 +18,13 @@ export const FSM_FIELDS = {
   chauffeur_name:       'x_studio_chauffeur_name',
   chauffeur_id:         'x_studio_chauffeur_id',
   depot_depart:         'x_studio_depot_depart',
-  zone_parc:            'x_studio_zone_de_parc_1',
-  parc_depot:           'x_studio_parc_depot',
   rel_address:          'x_studio_rel_address',
   mission_parent_id:    'x_studio_mission_parent_id',
   supabase_id:          'x_studio_supabase_id',
+  adresse_intervention: 'x_studio_adresse_intervention',
+  adresse_destination:  'x_studio_adresse_destination',
+  beneficiaire_name:    'x_studio_beneficiaire_name',
+  beneficiaire_phone:   'x_studio_beneficiaire_phone',
 }
 
 export const HELPDESK_FIELDS = {
@@ -176,6 +179,7 @@ export async function createHelpdeskTicket(params: {
   tagIds?:         number[]  // tags multiples (compagnie + type)
   noteEtiquette?:  string
   stageId?:        number    // ID de l'étape helpdesk.stage (4 = Résolu)
+  namePrefix?:     string    // ex: '[TEST] ' — préfixé au name du ticket
 }): Promise<{ ticketId: number; ticketUrl: string }> {
 
   // Chercher/créer le véhicule et mettre à jour son statut
@@ -209,17 +213,17 @@ export async function createHelpdeskTicket(params: {
   const noteEtiquette = params.noteEtiquette || 'Généré par VDBot by HOOS'
 
   const ticketData: any = {
-    name:        'Etiquette automatique',
+    name:        (params.namePrefix || '') + 'Etiquette automatique',
     x_studio_note_sur_etiquette: noteEtiquette,
     team_id:     params.teamId || 12,
     description: params.description || '',
   }
 
   // Champs Studio production
-  // x_studio_id_supabase non disponible en production — désactivé
   if (params.supabaseId)       ticketData[HELPDESK_FIELDS.supabase_id]    = params.supabaseId
   if (params.dossierNumber)    ticketData[HELPDESK_FIELDS.dossier_number] = params.dossierNumber
-  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree] = params.dateIntervention.split('-').reverse().join('-')
+  if (params.source)           ticketData[HELPDESK_FIELDS.source]         = params.source.toUpperCase()
+  if (params.dateIntervention) ticketData[HELPDESK_FIELDS.date_entree]    = params.dateIntervention.split('-').reverse().join('-')
   if (vehicleId)               ticketData[HELPDESK_FIELDS.vehicule]       = vehicleId
   if (partnerId)               ticketData.partner_id                      = partnerId
   if (params.stageId)          ticketData.stage_id                        = params.stageId
@@ -269,6 +273,9 @@ export async function createFsmTask(params: {
   incidentAddress?:    string
   destinationAddress?: string
   description?:        string
+  beneficiaryName?:    string  // client physiquement dépanné (≠ partner_id qui est le payeur)
+  beneficiaryPhone?:   string
+  namePrefix?:         string  // ex: '[TEST] ' — préfixé au name de la task
 }): Promise<{ taskId: number; taskUrl: string } | null> {
 
   // Trouver le projet FSM (premier projet FSM disponible)
@@ -302,7 +309,7 @@ export async function createFsmTask(params: {
   }
 
   const vehiclePlate = params.vehicleInfo?.split(' ')[0] || ''
-  const taskName = [
+  const taskName = (params.namePrefix || '') + [
     vehiclePlate || params.vehicleInfo,
     params.dossierNumber,
     params.incidentAddress?.split(',').pop()?.trim() || '',
@@ -330,11 +337,13 @@ export async function createFsmTask(params: {
     [FSM_FIELDS.chauffeur_id]:         params.chauffeurSupabaseId,
   }
 
-  if (params.depotDepart)       taskData[FSM_FIELDS.depot_depart]              = params.depotDepart
-  if (params.partnerId)         taskData.partner_id                              = params.partnerId
-  if (params.vehicleId)         taskData['x_studio_vehicule']                   = params.vehicleId
-  if (params.incidentAddress)   taskData['x_studio_adresse_dintervention']      = params.incidentAddress
-  if (params.destinationAddress) taskData['x_studio_adresse_de_destination']   = params.destinationAddress
+  if (params.depotDepart)        taskData[FSM_FIELDS.depot_depart]         = params.depotDepart
+  if (params.partnerId)          taskData.partner_id                       = params.partnerId
+  // Véhicule : pas écrit ici — affiché via le related x_studio_vehicule_fleet1 qui pointe vers le ticket helpdesk parent
+  if (params.incidentAddress)    taskData[FSM_FIELDS.adresse_intervention] = params.incidentAddress
+  if (params.destinationAddress) taskData[FSM_FIELDS.adresse_destination]  = params.destinationAddress
+  if (params.beneficiaryName)    taskData[FSM_FIELDS.beneficiaire_name]    = params.beneficiaryName
+  if (params.beneficiaryPhone)   taskData[FSM_FIELDS.beneficiaire_phone]   = params.beneficiaryPhone
 
   // Filtrage défensif : retirer les x_studio_* qui n'existent pas (encore) côté Odoo
   const filteredTaskData = await filterCustomFields('project.task', taskData)
@@ -355,17 +364,8 @@ export async function updateFsmStage(taskId: number, stageName: string): Promise
 }
 
 // ============================================================
-// FSM TASK — Mettre à jour la zone de parc
-// ============================================================
-export async function updateFsmParcZone(taskId: number, zoneId: number): Promise<void> {
-  await rpcFsm('project.task', 'write', [[taskId], {
-    [FSM_FIELDS.zone_parc]: zoneId,
-  }])
-  console.log(`[FSM] Tâche #${taskId} → zone parc #${zoneId}`)
-}
-
-// ============================================================
 // FLEET — Mettre à jour le statut du véhicule client
+// (= seule source de vérité pour la zone de parc, lue côté task FSM via related)
 // ============================================================
 export async function updateVehicleState(vehicleId: number, stateId: number): Promise<void> {
   await rpcFsm('fleet.vehicle', 'write', [[vehicleId], { state_id: stateId }])

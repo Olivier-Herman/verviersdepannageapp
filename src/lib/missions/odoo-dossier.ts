@@ -119,6 +119,16 @@ export async function createOdooDossierForMission(
 
   const enrichedDescription = beneficiaryLine + (mission.incident_description || '')
 
+  // ── Détection mode TEST : si [TEST] dans description ou notes, on préfixe partout ──
+  // Permet de filtrer/nettoyer facilement les missions de test côté Odoo prod.
+  const rawTextForTestDetect = [
+    mission.incident_description || '',
+    mission.notes || '',
+    mission.parsed_data?.notes || '',
+  ].join(' ')
+  const isTest = /\[TEST\]/i.test(rawTextForTestDetect)
+  const testPrefix = isTest ? '[TEST] ' : ''
+
   // ── Helpdesk ticket (dossier chapeau) ─────────────────────────────────────
   const { ticketId, ticketUrl } = await createHelpdeskTicket({
     supabaseId:    mission.id,
@@ -130,6 +140,7 @@ export async function createOdooDossierForMission(
     teamId:        HELPDESK_TEAM_ID,
     vehiclePlate:  mission.vehicle_plate || '',
     city:          mission.incident_city || '',
+    namePrefix:    testPrefix,
   })
 
   // ── Véhicule Parc Auto Odoo ──────────────────────────────────────────────
@@ -166,6 +177,9 @@ export async function createOdooDossierForMission(
     incidentAddress:     incidentFull,
     destinationAddress:  mission.destination_address || '',
     description:         mission.incident_description || '',
+    beneficiaryName:     mission.client_name  || '',
+    beneficiaryPhone:    mission.client_phone || '',
+    namePrefix:          testPrefix,
   })
 
   const taskId  = fsmResult?.taskId  || null
