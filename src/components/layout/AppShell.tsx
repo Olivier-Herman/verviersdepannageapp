@@ -5,10 +5,13 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 
-const NAV_ITEMS = [
+// moduleId : permission par module (granted dans /admin/users)
+// role     : permission par role utilisateur (alternative au moduleId)
+const NAV_ITEMS: Array<{ href: string; label: string; icon: string; moduleId: string | null; role?: 'dispatcher_or_admin' }> = [
   { href: '/dashboard',     label: 'Dashboard',        icon: '🏠', moduleId: null },
   { href: '/dispatch',      label: 'Dispatch',          icon: '📡', moduleId: 'missions' },
   { href: '/mission',       label: 'Mes Missions',      icon: '🚗', moduleId: 'driver_missions' },
+  { href: '/garde',         label: 'Garde',             icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/encaissement',  label: 'Encaissement',      icon: '💳', moduleId: 'encaissement' },
   { href: '/finance',       label: 'Finance',           icon: '💰', moduleId: 'finance' },
   { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄', moduleId: 'avance_fonds' },
@@ -40,7 +43,10 @@ export default function AppShell({
   const isAdmin  = ['admin', 'superadmin'].includes(userRole)
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
+  const isDispatcher = ['dispatcher', 'admin', 'superadmin'].includes(userRole)
+
   const visibleNav = NAV_ITEMS.filter(item => {
+    if (item.role === 'dispatcher_or_admin') return isDispatcher
     if (item.moduleId === null) return true       // dashboard + profil toujours visibles
     if (item.moduleId === 'admin') return isAdmin
     if (item.moduleId === 'finance') {
