@@ -35,7 +35,7 @@ export default async function MissionListPage() {
     .from('incoming_missions')
     .select('id, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at')
     .eq('assigned_to', user.id)
-    .in('status', ['assigned', 'accepted', 'in_progress', 'delivering', 'parked'])
+    .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .order('assigned_at', { ascending: false })
     .limit(20)
 
