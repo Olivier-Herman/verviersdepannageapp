@@ -1,22 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { isInDaySchedule, isInNightSchedule } from '@/lib/schedule'
 
 const PING_INTERVAL_MS    = 30_000
 const SCHEDULE_CHECK_MS   = 60_000  // Re-evaluer l'horaire toutes les minutes
 const STORAGE_KEY         = 'on-duty'
-
-// Plages d'horaires fixes (heures locales Belgique).
-// Jour : 07:00 - 20:00 (meme jour)
-// Nuit : 17:00 - 09:00 (cross-midnight)
-function isInDaySchedule(now: Date): boolean {
-  const h = now.getHours()
-  return h >= 7 && h < 20
-}
-function isInNightSchedule(now: Date): boolean {
-  const h = now.getHours()
-  return h >= 17 || h < 9
-}
 
 /**
  * Hook qui gère l'état "En service" :

@@ -10,17 +10,9 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { isInDaySchedule, isInNightSchedule } from '@/lib/schedule'
 
 const FRESH_PING_MIN = 30
-
-function isInDaySchedule(now: Date): boolean {
-  const h = now.getHours()
-  return h >= 7 && h < 20
-}
-function isInNightSchedule(now: Date): boolean {
-  const h = now.getHours()
-  return h >= 17 || h < 9
-}
 
 export async function GET() {
   const session = await getServerSession(authOptions)
