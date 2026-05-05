@@ -968,7 +968,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // VUE PRINCIPALE
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-[#0F0F0F] pb-28">
+    <div className="min-h-screen bg-[#0F0F0F] pb-48">
 
       {/* Header */}
       <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 sticky top-0 z-20">
@@ -1132,7 +1132,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
       {/* Boutons de pointage */}
       {!isReadOnly && (
-        <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 backdrop-blur border-t border-[#2a2a2a] px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
 
           {M.status === 'assigned' && (
             <>

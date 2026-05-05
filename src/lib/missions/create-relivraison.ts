@@ -124,10 +124,12 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
     metadata:   { rel_mission_id: rel.id },
   })
 
-  // Passer aussi le stage FSM Odoo de la mission parente à "Terminé"
+  // Stage FSM Odoo de la mission parente → "A facturer"
+  // (le remorquage vers parc est fini, prêt à être facturé séparément ;
+  //  la suite du flow est sur la nouvelle mission REL)
   if (parent.odoo_task_id) {
     try {
-      const stageId = await getFsmStageId('Terminé')
+      const stageId = await getFsmStageId('A facturer')
       if (stageId) {
         await rpcFsm('project.task', 'write', [[parent.odoo_task_id], { stage_id: stageId }])
       }
