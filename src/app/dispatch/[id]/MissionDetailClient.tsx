@@ -418,6 +418,46 @@ function AddressReviewModal({
   )
 }
 
+function MissionKmInfo({ missionId, refreshKey }: { missionId: string; refreshKey: string }) {
+  const [data, setData]   = useState<{ total_km: number; segments: Array<{ label: string; km: number | null }>; error: string | null } | null>(null)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/missions/${missionId}/km`).then(r => r.json()).then(d => {
+      if (d.error && !d.segments) setData({ total_km: 0, segments: [], error: d.error })
+      else setData(d)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [missionId, refreshKey])
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-zinc-500 text-xs uppercase tracking-wide font-medium">📏 Kilométrage</p>
+        {data?.total_km != null && data.segments.length > 0 && (
+          <span className="text-white font-semibold text-sm">{data.total_km} km</span>
+        )}
+      </div>
+      {loading && <p className="text-zinc-600 text-xs">Calcul…</p>}
+      {!loading && data?.error && data.segments.length === 0 && (
+        <p className="text-zinc-600 text-xs">⚠ {data.error}</p>
+      )}
+      {!loading && data?.segments && data.segments.length > 0 && (
+        <ul className="space-y-1">
+          {data.segments.map((s, i) => (
+            <li key={i} className="flex items-center justify-between text-xs">
+              <span className="text-zinc-400 truncate flex-1 min-w-0">{s.label}</span>
+              <span className={`flex-shrink-0 ml-2 ${s.km == null ? 'text-zinc-600' : 'text-zinc-300'}`}>
+                {s.km != null ? `${s.km} km` : '—'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function GeoStatusBanner({ status, onReview }: {
   status:   { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
   onReview: () => void
@@ -804,6 +844,7 @@ export default function MissionDetailClient({
 
   const [M, setM] = useState<Mission>(initialMission)
   const [saveOk, setSaveOk] = useState(false)
+  const [kmRefresh, setKmRefresh] = useState(0)  // incrémenté à chaque save → force le re-calcul des KM
 
   // Realtime — mise à jour automatique depuis le chauffeur
   useEffect(() => {
@@ -902,7 +943,7 @@ export default function MissionDetailClient({
   const handleSave = async () => {
     setLoadingSave(true)
     setSaveOk(false)
-    const payload = { ...form, billed_to_id: billedPartnerId, depot_depart_id: depotId || null }
+    const payload = { ...form, billed_to_id: billedPartnerId, depot_depart_id: depotId || null, _notify_driver: true }
     const res = await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -910,6 +951,7 @@ export default function MissionDetailClient({
     })
     if (res.ok) {
       setSaveOk(true)
+      setKmRefresh(k => k + 1)  // force le recalcul des KM avec les nouvelles données DB
       setTimeout(() => setSaveOk(false), 3000)
     }
     setLoadingSave(false)
@@ -1466,7 +1508,7 @@ export default function MissionDetailClient({
             <div className="space-y-5">
 
               {/* Actions */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3 sticky top-[89px]">
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 space-y-3">
 
                 {/* Statut new → Confirmer / Refuser */}
                 {status === 'new' && (
@@ -1497,13 +1539,20 @@ export default function MissionDetailClient({
                   </>
                 )}
 
-                {/* Statut dispatching → indication + Annuler. L'assignation se fait via le modal "Choisir un chauffeur" plus haut. */}
+                {/* Statut dispatching → save (modif possible) + indication + Annuler */}
                 {status === 'dispatching' && (
                   <>
                     <div className="text-center py-2">
                       <span className="text-blue-400 font-semibold text-sm">📡 En attente d'assignation</span>
                       <p className="text-zinc-500 text-xs mt-1">Clique « Choisir un chauffeur » plus haut pour assigner</p>
                     </div>
+                    <button
+                      onClick={handleSave}
+                      disabled={loadingSave}
+                      className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
+                    >
+                      {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder les modifications'}
+                    </button>
                     <button
                       onClick={handleRefuse}
                       disabled={loadingRefuse}
@@ -1524,9 +1573,9 @@ export default function MissionDetailClient({
                       <button
                         onClick={handleSave}
                         disabled={loadingSave}
-                        className="w-full py-2.5 bg-[#111] hover:bg-[#2a2a2a] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-sm transition disabled:opacity-50"
+                        className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                       >
-                        {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder'}
+                        {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé — chauffeur notifié' : '💾 Sauvegarder les modifications'}
                       </button>
                     )}
                   </>
@@ -1601,6 +1650,7 @@ export default function MissionDetailClient({
                     extra_addresses: (M as any).extra_addresses,
                     assigned_user:   M.assigned_user || initialMission.assigned_user,
                   }} />
+                  <MissionKmInfo missionId={initialMission.id} refreshKey={`save-${kmRefresh}`} />
                 </div>
               )}
 

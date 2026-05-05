@@ -4,6 +4,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendPushToUser }    from '@/lib/push'
 
 export async function GET(
   req: Request,
@@ -80,5 +81,17 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notification push au chauffeur si demandé (modifications dispatcher après assignation).
+  // Ne pas spammer pour les changements automatiques (ping silencieux d'adresse, etc).
+  if (body._notify_driver && data.assigned_to) {
+    sendPushToUser(data.assigned_to, {
+      title: '✏️ Mission modifiée',
+      body:  `${data.client_name || 'Mission'} — vérifie les nouvelles infos`,
+      url:   `/mission/${params.id}`,
+      tag:   `mission-updated-${params.id}`,
+    }).catch(() => {})
+  }
+
   return NextResponse.json({ ok: true, mission: data })
 }

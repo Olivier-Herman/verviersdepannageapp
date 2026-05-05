@@ -39,7 +39,12 @@ self.addEventListener('notificationclick', function(event) {
           return
         }
       }
-      if (clients.openWindow) return clients.openWindow(url)
+      // Aucune fenêtre ouverte : iOS PWA ignore openWindow(url) et lance start_url.
+      // On passe l'URL en query param que le Dashboard lira pour rediriger.
+      if (clients.openWindow) {
+        const fallback = `/dashboard?redirect=${encodeURIComponent(url)}`
+        return clients.openWindow(fallback)
+      }
     })
   )
 })

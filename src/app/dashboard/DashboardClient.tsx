@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect }    from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { signOut }      from 'next-auth/react'
 import DutyIndicator    from '@/components/DutyIndicator'
 import Link from 'next/link'
@@ -43,6 +45,17 @@ export default function DashboardClient({
   const userModules = (session.user as any).modules || []
   const isAdmin     = ['admin', 'superadmin'].includes((session.user as any).role)
   const initials    = session.user.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??'
+
+  // Si on arrive ici via une notification push (service worker fallback iOS PWA),
+  // un query param ?redirect=/mission/abc nous indique où aller vraiment.
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const redirect = searchParams.get('redirect')
+    if (redirect && redirect.startsWith('/')) {
+      router.replace(redirect)
+    }
+  }, [searchParams, router])
 
   const getPhone = (moduleId: string) => {
     const label = CALL_MODULE_MAP[moduleId]
