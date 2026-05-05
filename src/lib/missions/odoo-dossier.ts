@@ -157,8 +157,11 @@ export async function createOdooDossierForMission(
     try {
       const vId = await findOrCreateFsmVehicle({
         licensePlate: mission.vehicle_plate,
-        brandName:    mission.vehicle_brand || '',
-        modelName:    mission.vehicle_model || '',
+        brandName:    mission.vehicle_brand   || '',
+        modelName:    mission.vehicle_model   || '',
+        vin:          mission.vehicle_vin     || '',
+        fuel:         mission.vehicle_fuel    || '',
+        gearbox:      mission.vehicle_gearbox || '',
       })
       if (vId) vehicleId = vId
     } catch (e: any) {

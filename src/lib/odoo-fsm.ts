@@ -201,7 +201,9 @@ export async function createHelpdeskTicket(params: {
     // - autres cas → "Intervention en cours" (mission engagée, véhicule pas encore chez nous).
     //   Les transitions ultérieures (Chargé sur camion → parc final → Terminé) seront
     //   déclenchées par l'app chauffeur quand elle existera.
-    if (vehicleId && params.missionType) {
+    // ⚠ Pas conditionné sur missionType : odoo-dossier ne le passe pas, et tout dossier
+    // (assistance ou police) doit toujours sortir le véhicule de "Terminé".
+    if (vehicleId) {
       const stateId = params.missionType === 'mal_garee'
         ? FLEET_STATES.mal_garee
         : FLEET_STATES.intervention_en_cours
@@ -439,9 +441,31 @@ export async function findOrCreateFsmVehicle(data: {
   modelName?:   string
   vin?:         string
   fuel?:        string
+  gearbox?:     string
 }): Promise<number | null> {
   if (!data.licensePlate) return null
   const plate = data.licensePlate.toUpperCase().replace(/[-.\s]/g, '')
+
+  // Helper : compléter les champs absents (VIN, carburant, boîte) sur un véhicule existant
+  // sans jamais écraser une valeur déjà saisie côté Odoo.
+  const fillMissingFields = async (vehicleId: number) => {
+    if (!data.vin && !data.fuel && !data.gearbox) return
+    try {
+      const [current] = await rpcFsm<any[]>('fleet.vehicle', 'read', [[vehicleId]],
+        { fields: ['vin_sn', 'fuel_type', 'transmission'] })
+      if (!current) return
+      const updates: Record<string, any> = {}
+      if (data.vin?.trim()     && !current.vin_sn)       updates.vin_sn       = data.vin.trim()
+      if (data.fuel?.trim()    && !current.fuel_type)    updates.fuel_type    = data.fuel
+      if (data.gearbox?.trim() && !current.transmission) updates.transmission = data.gearbox
+      if (Object.keys(updates).length > 0) {
+        await rpcFsm('fleet.vehicle', 'write', [[vehicleId], updates])
+        console.log(`[FSM Fleet] Champs complétés sur #${vehicleId}: ${Object.keys(updates).join(', ')}`)
+      }
+    } catch (e: any) {
+      console.warn(`[FSM Fleet] Impossible de compléter le véhicule #${vehicleId}: ${e.message}`)
+    }
+  }
 
   // Chercher par plaque
   const existing = await rpcFsm<any[]>('fleet.vehicle', 'search_read',
@@ -456,6 +480,7 @@ export async function findOrCreateFsmVehicle(data: {
     // Si on n'a pas marque+modèle entrants, fallback historique : premier match plaque
     if (!data.brandName || !data.modelName) {
       console.log(`[FSM Fleet] Véhicule trouvé (sans comparaison marque/modèle): ${plate} (ID: ${platesMatch[0].id})`)
+      await fillMissingFields(platesMatch[0].id)
       return platesMatch[0].id
     }
 
@@ -489,6 +514,7 @@ export async function findOrCreateFsmVehicle(data: {
       const existingModel = m.name || ''
       if (fuzzyMatch(existingBrand, data.brandName) && fuzzyMatch(existingModel, data.modelName)) {
         console.log(`[FSM Fleet] Véhicule existant compatible: ${plate} (ID: ${candidate.id}) — "${existingBrand} ${existingModel}" ≈ "${data.brandName} ${data.modelName}"`)
+        await fillMissingFields(candidate.id)
         return candidate.id
       }
     }
