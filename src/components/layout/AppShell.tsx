@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
+import { useState } from 'react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import { filterNavItems } from './nav-items'
+import MobileNavDrawer from './MobileNavDrawer'
 
 interface AppShellProps {
   children:     React.ReactNode
@@ -28,6 +30,7 @@ export default function AppShell({
   const pathname = usePathname()
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
   const visibleNav = filterNavItems({ userModules, userRole })
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex">
@@ -84,20 +87,33 @@ export default function AppShell({
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
 
         {/* Header mobile */}
-        <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
-          <div className="flex items-center gap-3 mb-3">
+        <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-3 safe-top sticky top-0 z-20">
+          <div className="flex items-center gap-3 mb-2">
+            <button onClick={() => setDrawerOpen(true)}
+              aria-label="Ouvrir le menu"
+              className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-xl flex-shrink-0 active:bg-[#333]">
+              ☰
+            </button>
+            <Link href="/dashboard" className="flex-1 flex justify-center">
+              <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
+            </Link>
             <Link href={backHref}
               className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg flex-shrink-0">
               ←
             </Link>
-            <Link href="/dashboard" className="flex-1 flex justify-center">
-              <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
-            </Link>
-            <div className="w-10 flex-shrink-0" />
           </div>
           <h1 className="text-white font-bold text-lg">{title}</h1>
           {headerExtra}
         </div>
+
+        {/* Drawer mobile (shared) */}
+        <MobileNavDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          userName={userName}
+          userRole={userRole}
+          userModules={userModules}
+        />
 
         {/* Header desktop */}
         <div className="hidden lg:block bg-[#1A1A1A] border-b border-[#2a2a2a] px-8 py-5 sticky top-0 z-20">

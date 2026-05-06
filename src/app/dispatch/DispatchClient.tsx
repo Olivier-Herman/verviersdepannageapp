@@ -121,6 +121,7 @@ const TABS = [
 const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','vab','police','prive','garage']
 
 import { filterNavItems } from '@/components/layout/nav-items'
+import MobileNavDrawer from '@/components/layout/MobileNavDrawer'
 
 function getDelai(received_at: string): { label: string; color: string; urgency: 'ok'|'warn'|'alert'|'critical' } {
   const mins  = Math.floor((Date.now() - new Date(received_at).getTime()) / 60000)
@@ -223,7 +224,7 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 px-8 py-3 bg-[#111] border-b border-[#2a2a2a]">
+      <div className="flex flex-wrap items-center gap-2 px-3 lg:px-8 py-2 lg:py-3 bg-[#111] border-b border-[#2a2a2a]">
         {actifs.map(d => {
           const isOnSchedule = d.on_schedule
           return (
@@ -508,6 +509,7 @@ export default function DispatchClient({
 
   const [activeTab,      setActiveTab]      = useState('new')
   const [sourceFilter,   setSourceFilter]   = useState('')
+  const [drawerOpen,     setDrawerOpen]     = useState(false)
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
   // Tick toutes les 60s — force le re-render des cards pour que les delais
@@ -650,26 +652,40 @@ export default function DispatchClient({
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex">
       <Sidebar userName={userName} userRole={userRole} userModules={userModules} />
+      <MobileNavDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        userName={userName}
+        userRole={userRole}
+        userModules={userModules}
+      />
 
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
 
         {/* ── Barre de contrôle ────────────────────────────────────────── */}
-        <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-6 py-4 sticky top-0 z-20">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-white font-bold text-xl mr-2">Dispatch</h1>
+        <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-3 lg:px-6 pt-12 lg:pt-4 pb-3 lg:pb-4 sticky top-0 z-20 safe-top">
+          <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
+            {/* Burger mobile */}
+            <button onClick={() => setDrawerOpen(true)}
+              aria-label="Ouvrir le menu"
+              className="lg:hidden w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-xl flex-shrink-0 active:bg-[#333]">
+              ☰
+            </button>
+
+            <h1 className="text-white font-bold text-lg lg:text-xl mr-1 lg:mr-2">Dispatch</h1>
 
             <input
               type="text"
-              placeholder="Recherche client, plaque, dossier…"
+              placeholder="Recherche…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="flex-1 min-w-[180px] max-w-xs bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600"
+              className="flex-1 min-w-[120px] lg:min-w-[180px] max-w-xs bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600"
             />
 
             <select
               value={sourceFilter}
               onChange={e => setSourceFilter(e.target.value)}
-              className="bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand"
+              className="hidden sm:block bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand"
             >
               <option value="">Toutes sources</option>
               {SOURCES.map(s => (
@@ -678,13 +694,13 @@ export default function DispatchClient({
             </select>
 
             <button onClick={load}
-              className="p-2 bg-[#111] border border-[#2a2a2a] rounded-xl text-zinc-400 hover:text-white transition"
+              className="hidden sm:block p-2 bg-[#111] border border-[#2a2a2a] rounded-xl text-zinc-400 hover:text-white transition"
               title="Actualiser">
               ↻
             </button>
 
-            {/* Toggle vue liste / cartes / carte géographique */}
-            <div className="flex items-center bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden">
+            {/* Toggle vue liste / cartes / carte géographique — masqué sur mobile (cartes forcées) */}
+            <div className="hidden lg:flex items-center bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden">
               <button
                 onClick={() => switchView('list')}
                 className={`px-3 py-2 text-sm font-medium transition ${
@@ -708,13 +724,16 @@ export default function DispatchClient({
               </button>
             </div>
 
+            {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"
-              className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-medium transition">
-              + Nouvelle mission
+              title="Nouvelle mission"
+              className="flex items-center justify-center gap-2 w-10 h-10 lg:w-auto lg:h-auto lg:px-4 lg:py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-medium transition flex-shrink-0">
+              <span className="text-lg lg:hidden">+</span>
+              <span className="hidden lg:inline">+ Nouvelle mission</span>
             </Link>
 
-            {/* Switch Manuel / Auto */}
-            <div className="flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2"
+            {/* Switch Manuel / Auto — masqué sur mobile */}
+            <div className="hidden md:flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2"
               title={dispatchMode === 'auto'
                 ? 'Mode Auto activé : le système réceptionne et assigne les missions automatiquement (utile la nuit, selon les chauffeurs en garde).'
                 : 'Mode Manuel : toutes les nouvelles missions doivent être confirmées et assignées manuellement par un dispatcher.'}>
@@ -777,7 +796,7 @@ export default function DispatchClient({
         <DriverStatusPanel statuses={driverStatuses} onRefresh={load} />
 
         {/* ── Contenu ─────────────────────────────────────────────────── */}
-        <main className="flex-1 overflow-auto px-6 py-6">
+        <main className="flex-1 overflow-auto px-3 lg:px-6 py-4 lg:py-6">
           {loading ? (
             <div className="flex items-center justify-center h-64 text-zinc-500">Chargement…</div>
           ) : filtered.length === 0 ? (
@@ -788,7 +807,7 @@ export default function DispatchClient({
           ) : viewMode === 'map' ? (
 
             /* ── VUE CARTE GÉOGRAPHIQUE ─────────────────────────── */
-            <div className="h-[calc(100vh-280px)] min-h-[500px] rounded-2xl overflow-hidden border border-[#2a2a2a] relative">
+            <div className="h-[calc(100vh-360px)] lg:h-[calc(100vh-280px)] min-h-[400px] lg:min-h-[500px] rounded-2xl overflow-hidden border border-[#2a2a2a] relative">
               <DispatchMap
                 missions={mapMissions as unknown as MapMission[]}
                 drivers={driverStatuses as unknown as MapDriver[]}
@@ -831,7 +850,23 @@ export default function DispatchClient({
           ) : (
 
             /* ── VUE LISTE ──────────────────────────────────────── */
-            <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+            <>
+              {/* Mobile : cards (la table ne tient pas) */}
+              <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {filtered.map(m => (
+                  <MissionCard
+                    key={m.id}
+                    mission={m}
+                    drivers={drivers}
+                    driverStatuses={driverStatuses}
+                    onRefresh={load}
+                    onModalChange={onModalChange}
+                  />
+                ))}
+              </div>
+
+              {/* Desktop : table */}
+              <div className="hidden lg:block bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#2a2a2a] text-zinc-400 text-xs uppercase tracking-wide">
@@ -906,7 +941,8 @@ export default function DispatchClient({
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </main>
       </div>
