@@ -36,8 +36,9 @@ function expiryStatus(days: number) {
 }
 
 export default function ProfileClient({ user }: { user: any }) {
-  const userRole = user?.role ?? 'driver'
-  const userName = user?.name ?? ''
+  const userRole    = user?.role ?? 'driver'
+  const userName    = user?.name ?? ''
+  const userModules = (user?.modules ?? []) as string[]
 
   // ── PIN ──────────────────────────────────────────────────
   const [pin1,       setPin1]       = useState('')
@@ -270,7 +271,7 @@ export default function ProfileClient({ user }: { user: any }) {
   }
 
   return (
-    <AppShell title="Mon Profil" userRole={userRole} userName={userName}>
+    <AppShell title="Mon Profil" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="px-4 lg:px-8 py-6 max-w-lg mx-auto lg:mx-0 flex flex-col gap-4">
 
         {/* Infos */}

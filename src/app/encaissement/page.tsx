@@ -30,11 +30,16 @@ export default async function EncaissementPage({
     return_to:  searchParams.return_to          || '/mission',
   } : undefined
 
+  const sessionUser = session.user as any
+
   return (
     <EncaissementClient
       motifs={motifs || []}
       paymentModes={paymentModes || []}
       prefill={prefill}
+      userRole={sessionUser.role || ''}
+      userName={session.user.name || ''}
+      userModules={sessionUser.modules || []}
     />
   )
 }

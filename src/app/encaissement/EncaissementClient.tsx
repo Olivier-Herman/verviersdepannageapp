@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import AppShell from '@/components/layout/AppShell'
 
 interface ListItem { value: string; label: string }
 interface Brand { id: number; name: string }
@@ -24,31 +25,54 @@ declare global {
 const normalizePlate = (v: string) => v.replace(/[-.\s]/g, '').toUpperCase()
 
 // ── Composants UI définis HORS du composant principal ──────
-function Shell({ children, title, page, totalPages, onBack }: {
-  children: React.ReactNode; title: string; page: number; totalPages: number; onBack?: () => void
+function BaseShell({
+  children, title, page, totalPages, onBack,
+  userRole = '', userName = '', userModules = [],
+}: {
+  children:     React.ReactNode
+  title:        string
+  page:         number
+  totalPages:   number
+  onBack?:      () => void
+  userRole?:    string
+  userName?:    string
+  userModules?: string[]
 }) {
+  // Barre de progression — utilisée à la fois en mobile (entête) et en desktop (headerExtra)
+  const progressBar = (
+    <div className="flex gap-1">
+      {Array.from({ length: totalPages }).map((_, i) => (
+        <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
+      ))}
+    </div>
+  )
+
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col max-w-md mx-auto">
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4">
+    <AppShell title={title} userRole={userRole} userName={userName} userModules={userModules} headerExtra={progressBar}>
+      {/* Entête mobile spécifique au wizard (back + logo + progress bar) */}
+      <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-3 pb-4">
         <div className="flex items-center gap-3 mb-3">
           {onBack
             ? <button onClick={onBack} className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</button>
             : <Link href="/dashboard" className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</Link>
           }
-          <Link href="/dashboard" className="flex-1 flex justify-center">
-            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-8 w-auto object-contain" />
-          </Link>
+          <span className="flex-1 text-zinc-500 text-xs">{title}</span>
           <div className="w-10" />
         </div>
-        <div className="flex gap-1">
-          {Array.from({ length: totalPages }).map((_, i) => (
-            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
-          ))}
-        </div>
-        <p className="text-zinc-500 text-xs mt-2">{title}</p>
+        {progressBar}
       </div>
-      <div className="flex-1 px-5 py-6 overflow-y-auto">{children}</div>
-    </div>
+
+      {/* Bouton retour desktop dans le contenu */}
+      {onBack && (
+        <div className="hidden lg:block px-8 pt-4">
+          <button onClick={onBack} className="text-zinc-400 hover:text-white text-sm flex items-center gap-2">
+            ← Retour
+          </button>
+        </div>
+      )}
+
+      <div className="flex-1 px-5 lg:px-8 py-6 overflow-y-auto max-w-md lg:max-w-2xl mx-auto w-full">{children}</div>
+    </AppShell>
   )
 }
 
@@ -82,10 +106,16 @@ interface Prefill {
   return_to?:  string
 }
 
-export default function EncaissementClient({ motifs, paymentModes, prefill }: {
-  motifs:       ListItem[]
-  paymentModes: ListItem[]
-  prefill?:     Prefill
+export default function EncaissementClient({
+  motifs, paymentModes, prefill,
+  userRole = '', userName = '', userModules = [],
+}: {
+  motifs:        ListItem[]
+  paymentModes:  ListItem[]
+  prefill?:      Prefill
+  userRole?:     string
+  userName?:     string
+  userModules?:  string[]
 }) {
   const router = useRouter()
 
@@ -94,6 +124,16 @@ export default function EncaissementClient({ motifs, paymentModes, prefill }: {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const TOTAL = 9
+  // Wrapper local stable : injecte les props utilisateur dans BaseShell
+  // Mémoisé pour garder la même identité de composant entre rendus (sinon les
+  // enfants — inputs du wizard — seraient remontés à chaque render et perdraient le focus).
+  const Shell = useMemo(() => {
+    return function Shell(props: {
+      children: React.ReactNode; title: string; page: number; totalPages: number; onBack?: () => void
+    }) {
+      return <BaseShell {...props} userRole={userRole} userName={userName} userModules={userModules} />
+    }
+  }, [userRole, userName, userModules])
 
   // Auto-redirect après sauvegarde — vers return_to si défini, sinon dashboard
   useEffect(() => {

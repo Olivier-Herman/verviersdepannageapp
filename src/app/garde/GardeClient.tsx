@@ -1,7 +1,7 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import AppShell from '@/components/layout/AppShell'
 
 interface Driver {
   id:              string
@@ -11,7 +11,15 @@ interface Driver {
   schedule_night:  boolean
 }
 
-export default function GardeClient({ userName, userRole }: { userName: string; userRole: string }) {
+export default function GardeClient({
+  userName,
+  userRole,
+  userModules = [],
+}: {
+  userName:     string
+  userRole:     string
+  userModules?: string[]
+}) {
   const [drivers, setDrivers]   = useState<Driver[]>([])
   const [loading, setLoading]   = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -49,13 +57,8 @@ export default function GardeClient({ userName, userRole }: { userName: string; 
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] text-white">
+    <AppShell title="🛡️ Garde — Planning chauffeurs" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="px-4 lg:px-8 py-5 lg:py-6 max-w-4xl mx-auto">
-        <div className="flex items-center gap-3 mb-5">
-          <Link href="/dashboard" className="text-zinc-400 hover:text-white text-2xl">←</Link>
-          <h1 className="text-xl lg:text-2xl font-bold">🛡️ Garde — Planning chauffeurs</h1>
-        </div>
-
         <p className="text-zinc-400 text-sm mb-6">
           Active les plages pendant lesquelles chaque chauffeur est forcé en service.
           Pendant ces heures, ils ne pourront pas se mettre hors service depuis leur dashboard.
@@ -116,6 +119,6 @@ export default function GardeClient({ userName, userRole }: { userName: string; 
           ))}
         </div>
       </div>
-    </div>
+    </AppShell>
   )
 }

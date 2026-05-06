@@ -6,5 +6,13 @@ import EncaissementsClient from './EncaissementsClient'
 export default async function EncaissementsPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
-  return <EncaissementsClient userRole={session.user.role} userId={(session.user as any).id} />
+  const sessionUser = session.user as any
+  return (
+    <EncaissementsClient
+      userRole={session.user.role}
+      userId={sessionUser.id}
+      userName={session.user.name || ''}
+      userModules={sessionUser.modules || []}
+    />
+  )
 }

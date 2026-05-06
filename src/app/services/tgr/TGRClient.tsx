@@ -67,9 +67,10 @@ function initPlacesAutocomplete(
 // ── Composant principal ────────────────────────────────────
 export default function TGRClient({ user }: { user: any }) {
   const router   = useRouter()
-  const userRole = (user as any)?.role ?? 'partner'
-  const userName = user?.name ?? ''
-  const isAdmin  = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
+  const userRole    = (user as any)?.role ?? 'partner'
+  const userName    = user?.name ?? ''
+  const userModules = ((user as any)?.modules ?? []) as string[]
+  const isAdmin     = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
 
   const [view,       setView]      = useState<TGRView>('list')
   const [missions,   setMissions]  = useState<any[]>([])
@@ -216,7 +217,7 @@ export default function TGRClient({ user }: { user: any }) {
 
   // ── LISTE ─────────────────────────────────────────────────
   if (view === 'list') return (
-    <AppShell title="TGR Touring" userRole={userRole} userName={userName}>
+    <AppShell title="TGR Touring" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="px-4 lg:px-8 py-6 max-w-4xl">
 
         {/* Header Touring */}
@@ -289,7 +290,7 @@ export default function TGRClient({ user }: { user: any }) {
 
   // ── SUCCÈS ─────────────────────────────────────────────────
   if (success) return (
-    <AppShell title="Mission soumise" userRole={userRole} userName={userName}>
+    <AppShell title="Mission soumise" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center gap-6 max-w-md mx-auto">
         <div className="text-7xl">✅</div>
         <img src="/logo-touring.png" alt="Touring" className="h-6 w-auto opacity-60" />
@@ -310,7 +311,7 @@ export default function TGRClient({ user }: { user: any }) {
 
   // ── FORMULAIRE ─────────────────────────────────────────────
   return (
-    <AppShell title="Nouvelle mission TGR" userRole={userRole} userName={userName}>
+    <AppShell title="Nouvelle mission TGR" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="lg:hidden px-4 pt-3 pb-1">
         <button onClick={() => setView('list')} className="text-zinc-400 hover:text-white text-sm">← Retour</button>
       </div>

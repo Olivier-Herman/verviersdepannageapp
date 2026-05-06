@@ -45,9 +45,13 @@ interface Entry {
 export default function EncaissementsClient({
   userRole,
   userId,
+  userName    = '',
+  userModules = [],
 }: {
-  userRole: string
-  userId:   string
+  userRole:     string
+  userId:       string
+  userName?:    string
+  userModules?: string[]
 }) {
   const [entries,      setEntries]      = useState<Entry[]>([])
   const [loading,      setLoading]      = useState(true)
@@ -129,7 +133,7 @@ export default function EncaissementsClient({
   )
 
   return (
-    <AppShell title="Mouvements" userRole={userRole} headerExtra={Filters}>
+    <AppShell title="Mouvements" userRole={userRole} userName={userName} userModules={userModules} headerExtra={Filters}>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 px-4 lg:px-8 py-4">

@@ -12,5 +12,14 @@ export default async function CashPage() {
   const { data: user } = await supabase
     .from('users').select('id').eq('email', session.user.email).single()
 
-  return <CashClient userName={session.user.name || session.user.email || ''} driverId={user?.id || ''} />
+  const sessionUser = session.user as any
+
+  return (
+    <CashClient
+      userName={session.user.name || session.user.email || ''}
+      driverId={user?.id || ''}
+      userRole={sessionUser.role || 'driver'}
+      userModules={sessionUser.modules || []}
+    />
+  )
 }

@@ -20,5 +20,7 @@ export default async function ProfilePage() {
     ? await query.eq('id', userId).single()
     : await query.ilike('email', session.user.email!).single()
 
-  return <ProfileClient user={user} />
+  const modules = (session.user as any).modules ?? []
+
+  return <ProfileClient user={{ ...user, modules }} />
 }

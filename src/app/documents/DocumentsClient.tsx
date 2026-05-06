@@ -52,8 +52,9 @@ const STATUS_CONFIG = {
 
 // ── Composant principal ────────────────────────────────────
 export default function DocumentsClient({ user }: { user: any }) {
-  const userRole = user?.role ?? 'driver'
-  const userName = user?.name ?? ''
+  const userRole    = user?.role ?? 'driver'
+  const userName    = user?.name ?? ''
+  const userModules = (user?.modules ?? []) as string[]
 
   const [documents,  setDocuments]  = useState<DriverDocument[]>([])
   const [loading,    setLoading]    = useState(true)
@@ -164,7 +165,7 @@ export default function DocumentsClient({ user }: { user: any }) {
   }
 
   return (
-    <AppShell title="Mes Documents" userRole={userRole} userName={userName}>
+    <AppShell title="Mes Documents" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="px-4 lg:px-8 py-6 max-w-2xl">
 
         {success && (

@@ -39,10 +39,12 @@ export default function CashClient({
   userName,
   driverId,
   userRole = 'driver',
+  userModules = [],
 }: {
-  userName:  string
-  driverId:  string
-  userRole?: string
+  userName:     string
+  driverId:     string
+  userRole?:    string
+  userModules?: string[]
 }) {
   // Solde + historique
   const [balance, setBalance]     = useState(0)
@@ -225,7 +227,7 @@ export default function CashClient({
 
   // ── Render ───────────────────────────────────────────────
   return (
-    <AppShell title="Ma Caisse" userRole={userRole} userName={userName}>
+    <AppShell title="Ma Caisse" userRole={userRole} userName={userName} userModules={userModules}>
 
       <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto lg:mx-0">
 

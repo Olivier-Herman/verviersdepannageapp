@@ -47,7 +47,7 @@ export default async function MissionListPage() {
       title="Mes Missions"
       userRole={user.role ?? (session.user as any).role ?? ''}
       userName={user.name ?? ''}
-      userModules={user.roles ?? []}
+      userModules={(session.user as any).modules ?? []}
     >
       {/* Wrapper relatif pour positionner le FAB */}
       <div className="relative">

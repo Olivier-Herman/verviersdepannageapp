@@ -79,8 +79,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const fileRef   = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
 
-  const userRole = user?.role ?? 'driver'
-  const userName = user?.name ?? ''
+  const userRole    = user?.role ?? 'driver'
+  const userName    = user?.name ?? ''
+  const userModules = (user?.modules ?? []) as string[]
 
   const [step,          setStep]          = useState<Step>('photo')
   const [loading,       setLoading]       = useState(false)
@@ -209,7 +210,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : PHOTO ───────────────────────────────────────────
   if (step === 'photo') return (
-    <AppShell title="Avance de fonds" userRole={userRole} userName={userName}>
+    <AppShell title="Avance de fonds" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 gap-8 max-w-md mx-auto">
         <div className="text-center">
           <div className="text-6xl mb-3">📄</div>
@@ -236,7 +237,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : PLAQUE ───────────────────────────────────────────
   if (step === 'plate') return (
-    <AppShell title="Immatriculation" userRole={userRole} userName={userName}>
+    <AppShell title="Immatriculation" userRole={userRole} userName={userName} userModules={userModules}>
       <BackBtn onClick={() => goBack('photo')} />
       <div className="px-4 py-6 flex flex-col gap-5 max-w-md mx-auto">
         {form.photoPreview && (
@@ -268,7 +269,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : VÉHICULE CONFIRMÉ ────────────────────────────────
   if (step === 'vehicle_confirm') return (
-    <AppShell title="Véhicule trouvé" userRole={userRole} userName={userName}>
+    <AppShell title="Véhicule trouvé" userRole={userRole} userName={userName} userModules={userModules}>
       <BackBtn onClick={() => goBack('plate')} />
       <div className="px-4 py-6 flex flex-col gap-4 max-w-md mx-auto">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
@@ -302,7 +303,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   if (step === 'vehicle_create' && !form.brandName) {
     if (brands.length === 0 && !loadingBrands) loadBrands()
     return (
-      <AppShell title="Quelle est la marque ?" userRole={userRole} userName={userName}>
+      <AppShell title="Quelle est la marque ?" userRole={userRole} userName={userName} userModules={userModules}>
         <BackBtn onClick={() => goBack('plate')} />
         <div className="px-4 py-6 flex flex-col gap-3 max-w-md mx-auto overflow-y-auto pb-10">
           <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2">
@@ -331,7 +332,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : NOUVEAU VÉHICULE — MODÈLE ───────────────────────
   if (step === 'vehicle_create' && form.brandName) return (
-    <AppShell title="Quel est le modèle ?" userRole={userRole} userName={userName}>
+    <AppShell title="Quel est le modèle ?" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="px-4 py-6 flex flex-col gap-3 max-w-md mx-auto pb-10">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
           <div>
@@ -376,7 +377,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : DÉTAILS ─────────────────────────────────────────
   if (step === 'details') return (
-    <AppShell title="Détails de la facture" userRole={userRole} userName={userName}>
+    <AppShell title="Détails de la facture" userRole={userRole} userName={userName} userModules={userModules}>
       <BackBtn onClick={() => goBack(form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create')} />
       <div className="px-4 py-6 flex flex-col gap-5 max-w-md mx-auto pb-10">
         {/* Recap véhicule */}
@@ -452,7 +453,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : CONFIRMATION ────────────────────────────────────
   if (step === 'confirm') return (
-    <AppShell title="Confirmation" userRole={userRole} userName={userName}>
+    <AppShell title="Confirmation" userRole={userRole} userName={userName} userModules={userModules}>
       <BackBtn onClick={() => goBack('details')} />
       <div className="px-4 py-6 flex flex-col gap-4 max-w-md mx-auto pb-10">
         <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
@@ -495,7 +496,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   // ── STEP : SUCCÈS ──────────────────────────────────────────
   return (
-    <AppShell title="Avance enregistrée" userRole={userRole} userName={userName}>
+    <AppShell title="Avance enregistrée" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center gap-7 max-w-md mx-auto">
         <div className="text-8xl">✅</div>
         <div>

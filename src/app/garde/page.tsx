@@ -13,5 +13,5 @@ export default async function GardePage() {
   const allowed   = ['dispatcher', 'admin', 'superadmin'].some(r => userRoles.includes(r))
   if (!allowed) redirect('/dashboard?error=access_denied')
 
-  return <GardeClient userName={user.name || ''} userRole={user.role || ''} />
+  return <GardeClient userName={user.name || ''} userRole={user.role || ''} userModules={user.modules || []} />
 }
