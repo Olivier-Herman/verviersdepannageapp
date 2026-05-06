@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="fr" class="theme-light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verviers Dépannage — Mockup UX v3</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            red: '#E11D2E',
+            'red-hover': '#C8102E',
+            'red-soft': '#FFE5E8',
+          },
+        },
+      },
+    },
+  }
+</script>
+<style>
+  :root {
+    --font-display: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Menlo', monospace;
+  }
+  * { -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font-body); font-size: 14px; }
+  .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+  .font-mono { font-family: var(--font-mono); }
+
+  /* ---- LIGHT THEME ---- chaleureux, doux ---- */
+  .theme-light {
+    --bg-page: #FAF8F6; /* off-white chaud, pas blanc clinique */
+    --bg-page-gradient: linear-gradient(180deg, #FAF8F6 0%, #F5F2EE 100%);
+    --bg-surface: #FFFFFF;
+    --bg-surface-2: #FBFAF8;
+    --bg-surface-hover: #F5F1EC;
+    --bg-input: #FFFFFF;
+    --border: #EAE5DF;
+    --border-strong: #D6CFC7;
+    --text-primary: #1F1A17; /* presque noir mais pas pur */
+    --text-secondary: #4A413C;
+    --text-muted: #7A6F65;
+    --text-faint: #A89E92;
+    --header-bg: #F5F1EC;
+    --row-stripe: #FBFAF8;
+    --row-hover: #F5F1EC;
+    --shadow-sm: 0 1px 2px rgba(31, 26, 23, 0.06), 0 1px 3px rgba(31, 26, 23, 0.04);
+    --shadow-md: 0 4px 12px rgba(31, 26, 23, 0.08);
+    --shadow-card: 0 1px 0 rgba(255,255,255,0.5) inset, 0 1px 3px rgba(31, 26, 23, 0.06);
+  }
+
+  /* ---- DARK THEME ---- chaud, pas bleuté ---- */
+  .theme-dark {
+    --bg-page: #1A1614;
+    --bg-page-gradient: linear-gradient(180deg, #1A1614 0%, #161311 100%);
+    --bg-surface: #24201D;
+    --bg-surface-2: #1F1B19;
+    --bg-surface-hover: #2D2925;
+    --bg-input: #24201D;
+    --border: #3A3530;
+    --border-strong: #4A443D;
+    --text-primary: #F2EEEA;
+    --text-secondary: #C8C0B7;
+    --text-muted: #968E84;
+    --text-faint: #6E665D;
+    --header-bg: #1F1B19;
+    --row-stripe: #1F1B19;
+    --row-hover: #2D2925;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  body { background: var(--bg-page-gradient); color: var(--text-primary); min-height: 100vh; }
+  .surface { background: var(--bg-surface); }
+  .surface-2 { background: var(--bg-surface-2); }
+  .surface-hover:hover { background: var(--bg-surface-hover); }
+  .input-bg { background: var(--bg-input); }
+  .header-bg { background: var(--header-bg); }
+  .border-default { border-color: var(--border); }
+  .border-strong { border-color: var(--border-strong); }
+  .text-pri { color: var(--text-primary); }
+  .text-sec { color: var(--text-secondary); }
+  .text-muted-c { color: var(--text-muted); }
+  .text-faint { color: var(--text-faint); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+
+  /* Couleurs sémantiques — un peu plus vivantes */
+  .text-success { color: #15803D; } .theme-dark .text-success { color: #4ADE80; }
+  .bg-success-soft { background: #DCFCE7; } .theme-dark .bg-success-soft { background: rgba(74, 222, 128, 0.15); }
+  .border-success { border-color: #15803D; }
+  .bg-success-fill { background: #16A34A; }
+
+  .text-warning { color: #A16207; } .theme-dark .text-warning { color: #FACC15; }
+  .bg-warning-soft { background: #FEF3C7; } .theme-dark .bg-warning-soft { background: rgba(250, 204, 21, 0.15); }
+  .bg-warning-fill { background: #EAB308; }
+
+  .text-alert { color: #C2410C; } .theme-dark .text-alert { color: #FB923C; }
+  .bg-alert-soft { background: #FFEDD5; } .theme-dark .bg-alert-soft { background: rgba(251, 146, 60, 0.15); }
+  .bg-alert-fill { background: #F97316; }
+
+  .text-critical { color: #B91C1C; } .theme-dark .text-critical { color: #F87171; }
+  .bg-critical-soft { background: #FEE2E2; } .theme-dark .bg-critical-soft { background: rgba(248, 113, 113, 0.15); }
+  .bg-critical-fill { background: #DC2626; }
+
+  .text-info { color: #1D4ED8; } .theme-dark .text-info { color: #60A5FA; }
+  .bg-info-soft { background: #DBEAFE; } .theme-dark .bg-info-soft { background: rgba(96, 165, 250, 0.15); }
+  .bg-info-fill { background: #2563EB; }
+
+  .text-purple { color: #7C3AED; } .theme-dark .text-purple { color: #A78BFA; }
+  .bg-purple-soft { background: #EDE9FE; } .theme-dark .bg-purple-soft { background: rgba(167, 139, 250, 0.15); }
+
+  /* Badges arrondis mais pas pill — léger */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    letter-spacing: 0.01em;
+  }
+  .badge-soft { background: var(--bg-surface-hover); color: var(--text-secondary); }
+
+  /* Boutons — coins plus arrondis */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 150ms ease;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    font-family: var(--font-body);
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: #E11D2E; color: white; box-shadow: 0 1px 2px rgba(225, 29, 46, 0.2), inset 0 1px 0 rgba(255,255,255,0.15); }
+  .btn-primary:hover { background: #C8102E; box-shadow: 0 2px 6px rgba(225, 29, 46, 0.3); transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border); box-shadow: var(--shadow-sm); }
+  .btn-secondary:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); }
+  .btn-ghost { color: var(--text-secondary); }
+  .btn-ghost:hover { background: var(--bg-surface-hover); }
+  .btn-danger { background: var(--bg-surface); color: #B91C1C; border-color: var(--border); }
+  .btn-danger:hover { background: #FEE2E2; border-color: #B91C1C; }
+  .theme-dark .btn-danger { color: #F87171; }
+  .theme-dark .btn-danger:hover { background: rgba(248, 113, 113, 0.1); }
+  .btn-sm { height: 30px; padding: 0 11px; font-size: 12px; border-radius: 6px; }
+  .btn-icon { width: 36px; padding: 0; }
+
+  /* Tabs avec petit underline animé */
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    color: var(--text-muted);
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 150ms ease;
+    position: relative;
+    font-family: var(--font-body);
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab-active { color: #E11D2E; font-weight: 600; }
+  .tab-active::after {
+    content: '';
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: -1px;
+    height: 2px;
+    background: #E11D2E;
+    border-radius: 2px;
+  }
+  .tab-count {
+    background: var(--bg-surface-hover);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 22px;
+    text-align: center;
+  }
+  .tab-active .tab-count { background: #E11D2E; color: white; }
+
+  /* Tables — avec un peu plus de respiration */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table thead th {
+    background: var(--header-bg);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .data-table thead th:first-child { border-top-left-radius: 12px; }
+  .data-table thead th:last-child { border-top-right-radius: 12px; }
+  .data-table tbody td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+  .data-table tbody tr { transition: background 100ms ease; }
+  .data-table tbody tr:hover { background: var(--row-hover); cursor: pointer; }
+  .data-table tbody tr.row-critical { background: rgba(220, 38, 38, 0.04); }
+  .theme-dark .data-table tbody tr.row-critical { background: rgba(248, 113, 113, 0.08); }
+  .data-table tbody tr:last-child td:first-child { border-bottom-left-radius: 12px; }
+  .data-table tbody tr:last-child td:last-child { border-bottom-right-radius: 12px; }
+
+  /* Inputs */
+  .form-input, .form-select {
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-body);
+    width: 100%;
+    transition: all 150ms ease;
+  }
+  .form-input:focus, .form-select:focus {
+    outline: none;
+    border-color: #E11D2E;
+    box-shadow: 0 0 0 3px rgba(225, 29, 46, 0.12);
+  }
+  .form-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  /* Panel = card avec coins ronds */
+  .panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-display);
+  }
+  .panel-body { padding: 16px; }
+
+  /* Sidebar nav */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    margin: 2px 8px;
+    transition: all 100ms ease;
+  }
+  .nav-item:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .nav-item-active {
+    background: linear-gradient(180deg, #E11D2E 0%, #C8102E 100%);
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(225, 29, 46, 0.25);
+  }
+  .nav-item-active:hover { background: linear-gradient(180deg, #E11D2E 0%, #C8102E 100%); color: white; }
+
+  /* Avatar avec couleur perso pour chaque chauffeur */
+  .avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: white;
+    font-weight: 700;
+    font-family: var(--font-display);
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .avatar-mobi { background: linear-gradient(135deg, #E11D2E, #B91C1C); }
+  .avatar-jonathan { background: linear-gradient(135deg, #2563EB, #1D4ED8); }
+  .avatar-bovy { background: linear-gradient(135deg, #F97316, #EA580C); }
+  .avatar-palm { background: linear-gradient(135deg, #16A34A, #15803D); }
+  .avatar-momo { background: linear-gradient(135deg, #A89E92, #7A6F65); }
+
+  /* Pulse for critical — plus organique */
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.05); }
+  }
+  .pulse-critical { animation: pulse-soft 1.6s ease-in-out infinite; }
+
+  /* Map — plus joyeuse */
+  .map-bg {
+    background: linear-gradient(135deg, #E0EDDC 0%, #D5E7E0 100%);
+    position: relative;
+  }
+  .theme-dark .map-bg { background: linear-gradient(135deg, #2A3431 0%, #232C2A 100%); }
+  .map-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(74, 124, 89, 0.15), transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(56, 142, 198, 0.12), transparent 50%);
+    pointer-events: none;
+  }
+  .theme-dark .map-bg::before {
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(74, 124, 89, 0.2), transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(56, 142, 198, 0.18), transparent 50%);
+  }
+  .map-road-h { position: absolute; height: 5px; background: rgba(255,255,255,0.6); border-radius: 2px; }
+  .theme-dark .map-road-h { background: rgba(74, 68, 61, 0.6); }
+  .map-road-v { position: absolute; width: 5px; background: rgba(255,255,255,0.6); border-radius: 2px; }
+  .theme-dark .map-road-v { background: rgba(74, 68, 61, 0.6); }
+
+  /* KPI counter sur tabs — gros chiffre ! */
+  .kpi-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 14px 18px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 150ms ease;
+    min-width: 130px;
+  }
+  .kpi-tab:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .kpi-tab-active {
+    background: linear-gradient(135deg, #E11D2E 0%, #C8102E 100%);
+    color: white;
+    border-color: #C8102E;
+    box-shadow: 0 4px 14px rgba(225, 29, 46, 0.25);
+  }
+  .kpi-tab-active .kpi-label { color: rgba(255,255,255,0.85); }
+  .kpi-tab-active .kpi-number { color: white; }
+  .kpi-tab-active .kpi-sub { color: rgba(255,255,255,0.75); }
+
+  .kpi-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .kpi-number { font-family: var(--font-display); font-size: 28px; font-weight: 800; color: var(--text-primary); line-height: 1; letter-spacing: -0.02em; }
+  .kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Mobile frame */
+  .mobile-frame {
+    width: 390px;
+    height: 844px;
+    border: 12px solid #1a1a1a;
+    border-radius: 48px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.3);
+    position: relative;
+    background: var(--bg-page);
+  }
+  .mobile-frame::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 130px;
+    height: 30px;
+    background: #1a1a1a;
+    border-radius: 0 0 18px 18px;
+    z-index: 50;
+  }
+  .mobile-content { height: 100%; overflow-y: auto; overflow-x: hidden; background: var(--bg-page-gradient); }
+
+  /* Views */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Scrollbars discrets */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; border: 2px solid var(--bg-page); }
+  .scroll-x-no-bar::-webkit-scrollbar { display: none; }
+  .scroll-x-no-bar { scrollbar-width: none; }
+
+  /* Driver row dot */
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px var(--bg-surface);
+  }
+  .status-active { background: #16A34A; }
+  .status-busy { background: #EAB308; }
+  .status-off { background: #A89E92; }
+
+  /* Pin marker on map */
+  .map-pin {
+    position: relative;
+    cursor: pointer;
+    transition: transform 200ms ease;
+  }
+  .map-pin:hover { transform: scale(1.15); z-index: 20; }
+
+  /* Card item — style "ticket" légèrement décollé */
+  .mission-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    transition: all 200ms ease;
+    overflow: hidden;
+    position: relative;
+  }
+  .mission-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .mission-card-stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+
+  /* Empty state hint */
+  .empty-hint {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+
+  /* Section heading w/ emoji */
+  .section-emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  /* Subtle shine on primary buttons */
+  .btn-primary {
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.08), transparent), linear-gradient(180deg, #E11D2E, #C8102E);
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ============================================ -->
+<!-- TOP CONTROL BAR -->
+<!-- ============================================ -->
+<div class="surface border-b border-default sticky top-0 z-50" style="backdrop-filter: blur(8px);">
+  <div class="max-w-[1800px] mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #E11D2E, #B91C1C); box-shadow: 0 2px 6px rgba(225, 29, 46, 0.3);">
+        <span class="text-white text-xs font-bold font-display">VD</span>
+      </div>
+      <div>
+        <div class="text-pri text-sm font-bold font-display leading-none">Verviers Dépannage</div>
+        <div class="text-faint text-[10px] mt-1">Mockup UX v3 · sérieux mais vivant</div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1 surface-2 rounded-lg p-1 border border-default">
+      <button onclick="switchView('pipeline')" data-view-btn="pipeline" class="px-3 py-1.5 rounded-md text-xs font-semibold view-btn-active">Pipeline</button>
+      <button onclick="switchView('fiche')" data-view-btn="fiche" class="px-3 py-1.5 rounded-md text-xs font-semibold text-sec">Fiche mission</button>
+      <button onclick="switchView('carte')" data-view-btn="carte" class="px-3 py-1.5 rounded-md text-xs font-semibold text-sec">Carte</button>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 surface-2 rounded-lg p-1 border border-default">
+        <button onclick="switchDevice('desktop')" data-device-btn="desktop" class="px-2.5 py-1 rounded-md text-xs font-semibold device-btn-active flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          Desktop
+        </button>
+        <button onclick="switchDevice('mobile')" data-device-btn="mobile" class="px-2.5 py-1 rounded-md text-xs font-semibold text-sec flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          Mobile
+        </button>
+      </div>
+      <button onclick="toggleTheme()" class="w-9 h-9 rounded-lg surface-2 border border-default flex items-center justify-center text-sec surface-hover">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="theme-icon-dark"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        <svg class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="theme-icon-light"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .view-btn-active { background: linear-gradient(135deg, #E11D2E, #C8102E); color: white !important; box-shadow: 0 2px 6px rgba(225, 29, 46, 0.25); }
+  .device-btn-active { background: var(--bg-surface-hover); color: var(--text-primary) !important; }
+</style>
+
+<!-- ============================================ -->
+<!-- DESKTOP CONTAINER -->
+<!-- ============================================ -->
+<div id="desktop-container" class="flex" style="min-height: calc(100vh - 60px);">
+
+  <!-- Sidebar gauche -->
+  <aside class="w-60 surface border-r border-default flex flex-col flex-shrink-0">
+    <div class="px-5 py-4 border-b border-default">
+      <div class="text-faint text-[10px] uppercase tracking-wider font-bold">Navigation</div>
+    </div>
+    <nav class="py-3 flex-1">
+      <a class="nav-item nav-item-active">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+        Dispatch
+      </a>
+      <a class="nav-item">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+        Mes missions
+      </a>
+      <a class="nav-item">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Garde
+        <span class="ml-auto badge bg-success-soft text-success text-[10px]">2 actifs</span>
+      </a>
+      <a class="nav-item">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+        Encaissement
+      </a>
+      <a class="nav-item">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Mouvements
+      </a>
+      <a class="nav-item">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Ma caisse
+        <span class="ml-auto text-faint text-[10px] font-mono">142,50 €</span>
+      </a>
+      <div class="border-t border-default my-3 mx-3"></div>
+      <a class="nav-item">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Administration
+      </a>
+    </nav>
+    <div class="border-t border-default p-3">
+      <div class="flex items-center gap-3 p-2 rounded-lg surface-hover cursor-pointer">
+        <div class="avatar avatar-mobi w-9 h-9 text-xs">M</div>
+        <div class="min-w-0 flex-1">
+          <div class="text-pri text-sm font-semibold truncate font-display">Mobi</div>
+          <div class="text-faint text-[10px]">Superadmin</div>
+        </div>
+        <div class="status-dot status-active"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Content area -->
+  <main class="flex-1 overflow-x-auto">
+
+    <!-- ====================== PIPELINE DESKTOP ====================== -->
+    <div class="view active" data-view="pipeline">
+      <!-- Header -->
+      <div class="px-8 py-6">
+        <div class="flex items-center justify-between flex-wrap gap-4 mb-6">
+          <div>
+            <h1 class="text-2xl font-bold text-pri font-display">👋 Salut Mobi !</h1>
+            <p class="text-muted-c text-sm mt-1">Voici tes missions du jour. <span class="text-success font-semibold">3 dispatchers</span> sont avec toi en ce moment.</p>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2 px-3 py-1.5 surface rounded-lg border border-default text-xs text-muted-c">
+              <span class="w-2 h-2 rounded-full bg-success-fill animate-pulse"></span>
+              <span class="font-semibold">Live</span>
+            </div>
+            <button class="btn btn-secondary">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              Actualiser
+            </button>
+            <button class="btn btn-primary">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+              Nouvelle mission
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Tabs (compteurs en gros) -->
+        <div class="flex items-stretch gap-3 overflow-x-auto pb-2 scroll-x-no-bar">
+          <button class="kpi-tab kpi-tab-active flex-shrink-0">
+            <div class="kpi-label">🆕 Nouveau</div>
+            <div class="kpi-number">3</div>
+            <div class="kpi-sub">missions à confirmer</div>
+          </button>
+          <button class="kpi-tab flex-shrink-0">
+            <div class="kpi-label">🎯 À assigner</div>
+            <div class="kpi-number">2</div>
+            <div class="kpi-sub">sans chauffeur</div>
+          </button>
+          <button class="kpi-tab flex-shrink-0">
+            <div class="kpi-label">🚐 En cours</div>
+            <div class="kpi-number">10</div>
+            <div class="kpi-sub">terrain actif</div>
+          </button>
+          <button class="kpi-tab flex-shrink-0">
+            <div class="kpi-label">🅿️ En parc</div>
+            <div class="kpi-number">45</div>
+            <div class="kpi-sub">stockés</div>
+          </button>
+          <button class="kpi-tab flex-shrink-0">
+            <div class="kpi-label">💰 À facturer</div>
+            <div class="kpi-number">8</div>
+            <div class="kpi-sub">devis prêts</div>
+          </button>
+          <button class="kpi-tab flex-shrink-0" style="opacity: 0.65;">
+            <div class="kpi-label">✅ Terminé</div>
+            <div class="kpi-number">142</div>
+            <div class="kpi-sub">archives</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filtres + tableau -->
+      <div class="px-8 pb-8">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <div class="relative flex-1 min-w-[280px] max-w-md">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" placeholder="Rechercher une mission, plaque, client..." class="form-input pl-9">
+          </div>
+          <select class="form-select" style="width: 160px;">
+            <option>🌐 Toutes les sources</option>
+            <option>Touring</option>
+          </select>
+          <select class="form-select" style="width: 150px;">
+            <option>👥 Tous chauffeurs</option>
+          </select>
+          <select class="form-select" style="width: 130px;">
+            <option>📅 Aujourd'hui</option>
+          </select>
+          <div class="flex-1"></div>
+          <span class="text-xs text-muted-c font-medium">3 missions</span>
+        </div>
+
+        <div class="panel">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 110px;">Source</th>
+                <th>N° Mission</th>
+                <th>Type</th>
+                <th>Véhicule</th>
+                <th>Trajet</th>
+                <th>Plafond</th>
+                <th>Chauffeur</th>
+                <th>Statut</th>
+                <th style="width: 80px;">Âge</th>
+                <th style="width: 130px;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge bg-info-soft text-info">🛡️ TOURING</span></td>
+                <td>
+                  <div class="font-mono text-xs font-bold text-pri">2026274712MA</div>
+                  <div class="font-mono text-[10px] text-faint mt-0.5">2026BE186641</div>
+                </td>
+                <td><span class="text-pri text-xs font-semibold">REM Direct</span></td>
+                <td>
+                  <div class="font-mono text-xs font-bold text-pri">1XBC456</div>
+                  <div class="text-[11px] text-muted-c mt-0.5">Audi A3</div>
+                </td>
+                <td>
+                  <div class="text-xs text-pri font-medium">Liège</div>
+                  <div class="text-[11px] text-muted-c mt-0.5">→ Liège</div>
+                </td>
+                <td><span class="text-success font-bold text-sm font-mono">200,00 €</span></td>
+                <td><span class="text-faint text-xs italic">— non assigné —</span></td>
+                <td><span class="badge bg-info-soft text-info">✨ Nouveau</span></td>
+                <td><span class="text-success text-sm font-bold">5 min</span></td>
+                <td><button class="btn btn-sm btn-primary">Confirmer</button></td>
+              </tr>
+              <tr>
+                <td><span class="badge bg-info-soft text-info">🛡️ TOURING</span></td>
+                <td>
+                  <div class="font-mono text-xs font-bold text-pri">2026274711MA</div>
+                  <div class="font-mono text-[10px] text-faint mt-0.5">2026BE186640</div>
+                </td>
+                <td><span class="text-pri text-xs font-semibold">REM + Parc</span></td>
+                <td>
+                  <div class="font-mono text-xs font-bold text-pri">1CTQ676</div>
+                  <div class="text-[11px] text-muted-c mt-0.5">Renault Kangoo</div>
+                </td>
+                <td>
+                  <div class="text-xs text-pri font-medium">Sprimont</div>
+                  <div class="text-[11px] text-muted-c mt-0.5">→ Pepinster</div>
+                </td>
+                <td><span class="text-pri text-xs">—</span></td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <div class="avatar avatar-jonathan w-6 h-6 text-[10px]">JT</div>
+                    <span class="text-xs text-pri font-semibold">Jonathan</span>
+                  </div>
+                </td>
+                <td><span class="badge bg-warning-soft text-warning">📍 Sur place</span></td>
+                <td><span class="text-warning text-sm font-bold">23 min</span></td>
+                <td><button class="btn btn-sm btn-secondary">Ouvrir</button></td>
+              </tr>
+              <tr class="row-critical">
+                <td><span class="badge bg-critical-soft text-critical">🚨 POLICE</span></td>
+                <td>
+                  <div class="font-mono text-xs font-bold text-pri">2026274708MA</div>
+                  <div class="font-mono text-[10px] text-faint mt-0.5">2026BE186637</div>
+                </td>
+                <td><span class="text-pri text-xs font-semibold">REM Accident</span></td>
+                <td>
+                  <div class="font-mono text-xs font-bold text-pri">2FXL221</div>
+                  <div class="text-[11px] text-muted-c mt-0.5">Renault Master</div>
+                </td>
+                <td>
+                  <div class="text-xs text-pri font-medium">Verviers</div>
+                  <div class="text-[11px] text-muted-c mt-0.5">→ Pepinster</div>
+                </td>
+                <td><span class="text-pri text-xs">—</span></td>
+                <td><span class="text-faint text-xs italic">— non assigné —</span></td>
+                <td><span class="badge bg-warning-soft text-warning">🎯 À assigner</span></td>
+                <td>
+                  <span class="flex items-center gap-1 text-critical text-sm font-bold pulse-critical">
+                    ⚠️ 1h12
+                  </span>
+                </td>
+                <td><button class="btn btn-sm btn-primary">⚡ Assigner</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Légende -->
+        <div class="mt-4 text-xs text-muted-c flex items-center gap-5 flex-wrap">
+          <span class="font-semibold">Code couleur âge :</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-success-fill"></span> &lt; 15 min</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-warning-fill"></span> 15–30 min</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-alert-fill"></span> 30–60 min</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-critical-fill pulse-critical"></span> &gt; 60 min · alerte</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================== FICHE MISSION DESKTOP ====================== -->
+    <div class="view" data-view="fiche">
+      <!-- Header -->
+      <div class="px-8 py-5 border-b border-default surface">
+        <div class="flex items-center gap-2 text-xs text-muted-c mb-2.5">
+          <a class="hover:underline cursor-pointer">Dispatch</a>
+          <span class="text-faint">›</span>
+          <a class="hover:underline cursor-pointer">En cours</a>
+          <span class="text-faint">›</span>
+          <span class="text-pri font-semibold">Mission 2026274711MA</span>
+        </div>
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div class="flex items-center gap-3">
+            <button class="btn btn-secondary btn-sm">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+              Retour
+            </button>
+            <div>
+              <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span class="badge bg-info-soft text-info">🛡️ TOURING</span>
+                <span class="badge bg-warning-soft text-warning">📍 EN COURS · Sur place</span>
+                <span class="badge bg-purple-soft text-purple">🤖 IA 90%</span>
+              </div>
+              <h1 class="text-xl font-bold text-pri font-display">Mission 2026274711MA</h1>
+              <div class="text-xs text-muted-c mt-1 flex items-center gap-2">
+                <span class="font-mono">2026BE186640</span>
+                <span class="text-faint">·</span>
+                <span>Reçu le 05/05/2026 à 21:53</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-secondary">🖨️ Imprimer</button>
+            <button class="btn btn-primary">💾 Sauvegarder</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bandeau présence -->
+      <div class="px-8 py-2.5 border-b border-default" style="background: linear-gradient(90deg, rgba(251, 146, 60, 0.1), rgba(251, 146, 60, 0.05));">
+        <div class="flex items-center gap-2.5 text-xs">
+          <div class="avatar avatar-jonathan w-6 h-6 text-[10px]">JT</div>
+          <span class="text-sec"><span class="font-bold text-alert">Jonathan</span> consulte aussi cette fiche en ce moment</span>
+        </div>
+      </div>
+
+      <!-- Layout principal -->
+      <div class="px-8 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+
+          <!-- COLONNE GAUCHE -->
+          <div class="space-y-5">
+
+            <!-- 7 infos critiques -->
+            <div class="panel">
+              <div class="panel-header">
+                <span class="flex items-center gap-2"><span class="section-emoji bg-info-soft">📋</span>Informations principales</span>
+                <span class="text-xs text-muted-c font-normal">7 infos critiques · au-dessus du fold</span>
+              </div>
+              <div class="panel-body grid grid-cols-2 lg:grid-cols-4 gap-5">
+                <div>
+                  <div class="form-label">① Type</div>
+                  <div class="text-base font-bold text-pri font-display">REM + Parc</div>
+                </div>
+                <div>
+                  <div class="form-label">② Plafond</div>
+                  <div class="text-lg font-bold text-success font-display">200,00 €</div>
+                </div>
+                <div>
+                  <div class="form-label">③ Plaque</div>
+                  <div class="text-base font-mono font-bold text-pri">1CTQ676</div>
+                </div>
+                <div>
+                  <div class="form-label">⑥ Source</div>
+                  <span class="badge bg-info-soft text-info text-sm" style="padding: 5px 12px;">🛡️ TOURING</span>
+                </div>
+                <div class="col-span-2">
+                  <div class="form-label">④ Lieu d'incident <span class="text-success text-[10px]">✓ confirmé</span></div>
+                  <div class="text-sm text-pri font-medium">📍 Pl. du Village 10, 4141 Sprimont</div>
+                </div>
+                <div class="col-span-2">
+                  <div class="form-label">⑤ Destination <span class="text-success text-[10px]">✓ confirmé</span></div>
+                  <div class="text-sm text-pri font-medium">🎯 Rue Lefin 12, 4860 Pepinster</div>
+                </div>
+                <div class="col-span-4 pt-4 border-t border-default">
+                  <div class="form-label">⑦ Type de panne</div>
+                  <div class="text-sm text-pri">⚙️ Transmission · Levier vitesse bloqué/manuel · Réparation sur route impossible</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Devis Odoo intégré -->
+            <div class="panel">
+              <div class="panel-header">
+                <span class="flex items-center gap-2"><span class="section-emoji bg-success-soft">💰</span>Frais et charges
+                  <span class="badge bg-success-soft text-success ml-2">⚡ Auto</span>
+                </span>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-ghost btn-sm">+ Ajouter</button>
+                  <button class="btn btn-ghost btn-sm">↻ Sync Odoo</button>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Description</th>
+                      <th class="text-right">Quantité</th>
+                      <th class="text-right">Unitaire</th>
+                      <th class="text-right">Total HTVA</th>
+                      <th style="width: 40px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="badge badge-soft font-mono text-[10px]">TOUREM</span></td>
+                      <td class="font-medium">Remorquage forfait</td>
+                      <td class="text-right font-mono font-semibold">1</td>
+                      <td class="text-right font-mono">66,30 €</td>
+                      <td class="text-right font-mono font-bold">66,30 €</td>
+                      <td><button class="btn btn-ghost btn-sm">⋯</button></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge-soft font-mono text-[10px]">TOUKMSREM</span></td>
+                      <td class="font-medium">Km supplémentaires <span class="text-faint">(20 inclus)</span></td>
+                      <td class="text-right font-mono font-semibold">64</td>
+                      <td class="text-right font-mono">1,32 €</td>
+                      <td class="text-right font-mono font-bold">84,48 €</td>
+                      <td><button class="btn btn-ghost btn-sm">⋯</button></td>
+                    </tr>
+                    <tr style="opacity: 0.5;">
+                      <td><span class="badge badge-soft font-mono text-[10px]">TOUMAJ1907</span></td>
+                      <td class="font-medium">Majoration 19h-7h <span class="text-faint">(35%)</span></td>
+                      <td class="text-right font-mono">0</td>
+                      <td class="text-right font-mono text-muted-c">—</td>
+                      <td class="text-right font-mono text-muted-c">0,00 €</td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                  <tfoot style="background: var(--header-bg);">
+                    <tr><td colspan="4" class="text-right text-sec text-xs font-semibold" style="padding: 10px 16px;">Sous-total HTVA</td><td class="text-right font-mono font-bold" style="padding: 10px 16px;">150,78 €</td><td></td></tr>
+                    <tr><td colspan="4" class="text-right text-muted-c text-xs" style="padding: 6px 16px;">TVA 21%</td><td class="text-right font-mono" style="padding: 6px 16px;">31,66 €</td><td></td></tr>
+                    <tr><td colspan="4" class="text-right text-pri font-bold font-display text-base" style="padding: 12px 16px;">TOTAL TTC</td><td class="text-right font-mono font-bold text-success font-display text-xl" style="padding: 12px 16px;">182,44 €</td><td></td></tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <!-- Photos chauffeur -->
+            <div class="panel">
+              <div class="panel-header">
+                <span class="flex items-center gap-2"><span class="section-emoji bg-purple-soft">📸</span>Compte rendu chauffeur</span>
+                <span class="text-xs text-muted-c font-normal">3 photos</span>
+              </div>
+              <div class="panel-body">
+                <div class="grid grid-cols-3 gap-3">
+                  <div class="aspect-[4/3] rounded-lg border border-default overflow-hidden cursor-pointer hover:scale-105 transition-transform" style="background: linear-gradient(135deg, #FB923C, #DC2626);">
+                    <div class="h-full flex items-end p-2">
+                      <span class="text-white text-xs font-mono bg-black/40 px-2 py-1 rounded backdrop-blur-sm">VIN</span>
+                    </div>
+                  </div>
+                  <div class="aspect-[4/3] rounded-lg border border-default overflow-hidden cursor-pointer hover:scale-105 transition-transform" style="background: linear-gradient(135deg, #FBBF24, #F97316);">
+                    <div class="h-full flex items-end p-2">
+                      <span class="text-white text-xs font-mono bg-black/40 px-2 py-1 rounded backdrop-blur-sm">KM</span>
+                    </div>
+                  </div>
+                  <div class="aspect-[4/3] rounded-lg border border-default overflow-hidden cursor-pointer hover:scale-105 transition-transform" style="background: linear-gradient(135deg, #F87171, #BE123C);">
+                    <div class="h-full flex items-end p-2">
+                      <span class="text-white text-xs font-mono bg-black/40 px-2 py-1 rounded backdrop-blur-sm">VÉHICULE</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- COLONNE DROITE -->
+          <div class="space-y-5">
+
+            <!-- Statut + Chauffeur -->
+            <div class="panel">
+              <div class="panel-body">
+                <div class="form-label mb-2">Statut courant</div>
+                <div class="flex items-center gap-2 mb-4">
+                  <span class="badge bg-warning-soft text-warning text-sm" style="padding: 5px 12px;">📍 EN COURS · Sur place</span>
+                </div>
+
+                <div class="form-label">Dépôt de départ</div>
+                <select class="form-select mb-4">
+                  <option>🏠 Pepinster (défaut) — Lefin 12</option>
+                </select>
+
+                <div class="form-label">Chauffeur assigné</div>
+                <div class="flex items-center gap-3 p-3 surface-2 rounded-lg border border-default">
+                  <div class="avatar avatar-jonathan w-10 h-10 text-sm">JT</div>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-bold text-pri font-display">Jonathan</div>
+                    <div class="text-[11px] text-muted-c">🚛 Mercedes Atego · 2ECA631</div>
+                  </div>
+                  <div class="status-dot status-busy"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Suivi chauffeur -->
+            <div class="panel">
+              <div class="panel-header">
+                <span class="flex items-center gap-2"><span class="section-emoji bg-info-soft">⏱️</span>Suivi chauffeur</span>
+              </div>
+              <div class="panel-body">
+                <div class="space-y-3 text-xs">
+                  <div class="flex items-center gap-3">
+                    <div class="w-2.5 h-2.5 rounded-full bg-success-fill flex-shrink-0"></div>
+                    <span class="text-pri flex-1 font-medium">Assignée</span>
+                    <span class="text-faint font-mono text-[11px]">22:48</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-2.5 h-2.5 rounded-full bg-success-fill flex-shrink-0"></div>
+                    <span class="text-pri flex-1 font-medium">Acceptée</span>
+                    <span class="text-faint font-mono text-[11px]">22:48</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-2.5 h-2.5 rounded-full bg-success-fill flex-shrink-0"></div>
+                    <span class="text-pri flex-1 font-medium">En route</span>
+                    <span class="text-faint font-mono text-[11px]">22:49</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-warning-fill flex-shrink-0 pulse-critical" style="box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.2);"></div>
+                    <span class="text-warning font-bold flex-1">📍 Sur place — En cours</span>
+                    <span class="text-faint font-mono text-[11px]">22:49</span>
+                  </div>
+                  <div class="flex items-center gap-3 opacity-40">
+                    <div class="w-2.5 h-2.5 rounded-full border-2 border-strong flex-shrink-0"></div>
+                    <span class="text-muted-c flex-1">Mise en parc</span>
+                    <span class="text-faint font-mono text-[11px]">—</span>
+                  </div>
+                  <div class="flex items-center gap-3 opacity-40">
+                    <div class="w-2.5 h-2.5 rounded-full border-2 border-strong flex-shrink-0"></div>
+                    <span class="text-muted-c flex-1">Terminée</span>
+                    <span class="text-faint font-mono text-[11px]">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="panel">
+              <div class="panel-header">
+                <span class="flex items-center gap-2"><span class="section-emoji bg-alert-soft">⚡</span>Actions</span>
+              </div>
+              <div class="panel-body space-y-2">
+                <button class="btn btn-secondary w-full justify-start">🅿️ Mise en parc</button>
+                <button class="btn btn-secondary w-full justify-start">🔄 Transformer DSP → REM</button>
+                <button class="btn btn-secondary w-full justify-start">👤 Changer le chauffeur</button>
+                <button class="btn btn-secondary w-full justify-start">✏️ Modifier la destination</button>
+                <button class="btn btn-secondary w-full justify-start">🚐 Créer une relivraison</button>
+                <button class="btn btn-secondary w-full justify-start">🔗 Lier à une autre mission</button>
+                <button class="btn btn-secondary w-full justify-start">🖨️ Imprimer / Envoyer</button>
+                <div class="border-t border-default pt-2 mt-2">
+                  <button class="btn btn-danger w-full justify-start">❌ Annuler la mission</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Référence -->
+            <div class="panel">
+              <div class="panel-header">
+                <span class="flex items-center gap-2"><span class="section-emoji bg-purple-soft">🔖</span>Référence</span>
+              </div>
+              <div class="panel-body space-y-2.5 text-xs">
+                <div class="flex justify-between"><span class="text-muted-c">N° Mission</span><span class="font-mono font-semibold text-pri">2026274711MA</span></div>
+                <div class="flex justify-between"><span class="text-muted-c">N° Dossier</span><span class="font-mono font-semibold text-pri">2026BE186640</span></div>
+                <div class="flex justify-between items-center"><span class="text-muted-c">Source</span><span class="badge bg-info-soft text-info">🛡️ TOURING</span></div>
+                <div class="flex justify-between"><span class="text-muted-c">Reçu</span><span class="font-mono text-pri">05/05 21:53</span></div>
+                <div class="border-t border-default pt-3 mt-1">
+                  <button class="btn btn-secondary w-full btn-sm">🔗 Ouvrir le dossier Odoo</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================== CARTE DESKTOP ====================== -->
+    <div class="view" data-view="carte">
+      <div class="px-8 py-5 border-b border-default surface flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 class="text-xl font-bold text-pri font-display">🗺️ Carte temps réel</h1>
+          <p class="text-muted-c text-xs mt-1">Position des chauffeurs et missions actives</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <select class="form-select" style="width: 200px;">
+            <option>🌐 Toutes les missions</option>
+            <option>En cours uniquement</option>
+          </select>
+          <button class="btn btn-secondary btn-sm">↻</button>
+        </div>
+      </div>
+
+      <div class="px-8 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+
+          <!-- Carte -->
+          <div class="panel" style="height: 600px; padding: 0;">
+            <div class="map-bg w-full h-full rounded-xl relative overflow-hidden">
+              <div class="map-road-h" style="top: 30%; left: 0; right: 0;"></div>
+              <div class="map-road-h" style="top: 65%; left: 0; right: 0;"></div>
+              <div class="map-road-v" style="top: 0; bottom: 0; left: 25%;"></div>
+              <div class="map-road-v" style="top: 0; bottom: 0; left: 55%;"></div>
+              <div class="map-road-v" style="top: 0; bottom: 0; left: 80%;"></div>
+
+              <!-- Légende -->
+              <div class="absolute top-4 left-4 panel z-10" style="font-size: 11px;">
+                <div class="panel-body" style="padding: 10px 12px;">
+                  <div class="text-faint text-[10px] uppercase font-bold tracking-wider mb-2">Légende</div>
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-success-fill"></span><span class="text-pri">Chauffeur libre</span></div>
+                    <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-warning-fill"></span><span class="text-pri">En mission</span></div>
+                    <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-critical-fill"></span><span class="text-pri">Alerte</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Zoom -->
+              <div class="absolute top-4 right-4 panel z-10">
+                <button class="block w-9 h-9 hover:bg-surface-hover surface-hover border-b border-default text-pri font-bold">+</button>
+                <button class="block w-9 h-9 hover:bg-surface-hover surface-hover text-pri font-bold">−</button>
+              </div>
+
+              <!-- Pin Jonathan -->
+              <div class="absolute map-pin" style="top: 35%; left: 28%;">
+                <div class="avatar avatar-jonathan w-11 h-11 text-sm" style="border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">JT</div>
+              </div>
+              <!-- Pin F.Bovy -->
+              <div class="absolute map-pin" style="top: 60%; left: 60%;">
+                <div class="avatar avatar-bovy w-11 h-11 text-sm" style="border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">FB</div>
+              </div>
+              <!-- Pin F.Palm -->
+              <div class="absolute map-pin" style="top: 28%; left: 78%;">
+                <div class="avatar avatar-palm w-11 h-11 text-sm" style="border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">FP</div>
+              </div>
+
+              <!-- Mission warning -->
+              <div class="absolute map-pin" style="top: 40%; left: 38%;">
+                <div class="rounded-lg shadow-lg p-2 border-2 border-white bg-warning-fill">
+                  <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h2v3h2v-3h10v3h2v-3h2V8c0-1.1-.9-2-2-2h-1V3.5c0-.83-.67-1.5-1.5-1.5h-9C7.67 2 7 2.67 7 3.5V6H6c-1.1 0-2 .9-2 2v5z"/></svg>
+                </div>
+              </div>
+              <!-- Mission critical -->
+              <div class="absolute map-pin" style="top: 65%; left: 35%;">
+                <div class="rounded-lg shadow-lg p-2 border-2 border-white bg-critical-fill pulse-critical">
+                  <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h2v3h2v-3h10v3h2v-3h2V8c0-1.1-.9-2-2-2h-1V3.5c0-.83-.67-1.5-1.5-1.5h-9C7.67 2 7 2.67 7 3.5V6H6c-1.1 0-2 .9-2 2v5z"/></svg>
+                </div>
+              </div>
+              <!-- Mission new -->
+              <div class="absolute map-pin" style="top: 32%; left: 65%;">
+                <div class="rounded-lg shadow-lg p-2 border-2 border-white bg-info-fill">
+                  <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h2v3h2v-3h10v3h2v-3h2V8c0-1.1-.9-2-2-2h-1V3.5c0-.83-.67-1.5-1.5-1.5h-9C7.67 2 7 2.67 7 3.5V6H6c-1.1 0-2 .9-2 2v5z"/></svg>
+                </div>
+              </div>
+
+              <!-- Dépôt Pepinster -->
+              <div class="absolute" style="top: 22%; left: 76%;">
+                <div class="text-white rounded-lg px-3 py-1.5 text-xs font-bold shadow-lg flex items-center gap-1.5" style="background: linear-gradient(135deg, #E11D2E, #B91C1C);">
+                  🏠 PEPINSTER
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Liste chauffeurs -->
+          <div class="panel">
+            <div class="panel-header">
+              <span class="flex items-center gap-2"><span class="section-emoji bg-info-soft">👥</span>Équipes en service</span>
+              <span class="text-xs text-muted-c font-normal">3 / 5</span>
+            </div>
+            <div class="panel-body p-0">
+              <div class="border-b border-default px-4 py-3 surface-hover cursor-pointer flex items-center gap-3">
+                <div class="avatar avatar-mobi w-9 h-9 text-xs">M</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-semibold text-pri font-display">Mobi</div>
+                  <div class="text-[11px] text-muted-c">✅ Disponible</div>
+                </div>
+                <div class="status-dot status-active"></div>
+              </div>
+              <div class="border-b border-default px-4 py-3 surface-hover cursor-pointer flex items-center gap-3">
+                <div class="avatar avatar-jonathan w-9 h-9 text-xs">JT</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-semibold text-pri font-display">Jonathan</div>
+                  <div class="text-[11px] text-muted-c">🚐 Mission · 1CTQ676</div>
+                </div>
+                <div class="status-dot status-busy"></div>
+              </div>
+              <div class="border-b border-default px-4 py-3 surface-hover cursor-pointer flex items-center gap-3">
+                <div class="avatar avatar-bovy w-9 h-9 text-xs">FB</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-semibold text-pri font-display">Frédéric Bovy</div>
+                  <div class="text-[11px] text-muted-c">🚐 En mission</div>
+                </div>
+                <div class="status-dot status-busy"></div>
+              </div>
+              <div class="border-b border-default px-4 py-3 surface-hover cursor-pointer flex items-center gap-3">
+                <div class="avatar avatar-palm w-9 h-9 text-xs">FP</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-semibold text-pri font-display">Frédéric Palm</div>
+                  <div class="text-[11px] text-muted-c">✅ Disponible · Pepinster</div>
+                </div>
+                <div class="status-dot status-active"></div>
+              </div>
+              <div class="px-4 py-3 opacity-50 flex items-center gap-3">
+                <div class="avatar avatar-momo w-9 h-9 text-xs">MO</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-semibold text-pri font-display">Momo</div>
+                  <div class="text-[11px] text-muted-c">😴 Hors service</div>
+                </div>
+                <div class="status-dot status-off"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================ -->
+<!-- MOBILE CONTAINER -->
+<!-- ============================================ -->
+<div id="mobile-container" class="hidden py-12 flex justify-center items-start" style="background: #2a2520; min-height: calc(100vh - 60px);">
+  <div class="mobile-frame">
+    <div class="mobile-content">
+
+      <!-- ====================== PIPELINE MOBILE ====================== -->
+      <div class="view active" data-view="pipeline">
+        <!-- Header -->
+        <div class="surface border-b border-default px-4 pt-10 pb-3 sticky top-0 z-30">
+          <div class="flex items-center justify-between mb-3">
+            <button class="w-9 h-9 rounded-lg surface-hover flex items-center justify-center">
+              <svg class="w-4 h-4 text-pri" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <div class="flex items-center gap-1.5">
+              <div class="w-7 h-7 rounded-md flex items-center justify-center" style="background: linear-gradient(135deg, #E11D2E, #B91C1C);">
+                <span class="text-white text-[10px] font-bold font-display">VD</span>
+              </div>
+            </div>
+            <button class="w-9 h-9 rounded-lg flex items-center justify-center text-white" style="background: linear-gradient(135deg, #E11D2E, #C8102E); box-shadow: 0 2px 6px rgba(225, 29, 46, 0.25);">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            </button>
+          </div>
+          <h1 class="text-base font-bold text-pri font-display">👋 Salut Mobi !</h1>
+          <p class="text-muted-c text-[11px] mt-0.5">3 dispatchers connectés</p>
+        </div>
+
+        <!-- KPI tabs scroll horizontal -->
+        <div class="px-3 py-3 surface border-b border-default">
+          <div class="flex gap-2 overflow-x-auto scroll-x-no-bar">
+            <button class="kpi-tab kpi-tab-active flex-shrink-0" style="min-width: 100px; padding: 10px 14px;">
+              <div class="kpi-label" style="font-size: 10px;">🆕 Nouveau</div>
+              <div class="kpi-number" style="font-size: 22px;">3</div>
+            </button>
+            <button class="kpi-tab flex-shrink-0" style="min-width: 100px; padding: 10px 14px;">
+              <div class="kpi-label" style="font-size: 10px;">🎯 À assigner</div>
+              <div class="kpi-number" style="font-size: 22px;">2</div>
+            </button>
+            <button class="kpi-tab flex-shrink-0" style="min-width: 100px; padding: 10px 14px;">
+              <div class="kpi-label" style="font-size: 10px;">🚐 En cours</div>
+              <div class="kpi-number" style="font-size: 22px;">10</div>
+            </button>
+            <button class="kpi-tab flex-shrink-0" style="min-width: 100px; padding: 10px 14px;">
+              <div class="kpi-label" style="font-size: 10px;">🅿️ Parc</div>
+              <div class="kpi-number" style="font-size: 22px;">45</div>
+            </button>
+            <button class="kpi-tab flex-shrink-0" style="min-width: 100px; padding: 10px 14px;">
+              <div class="kpi-label" style="font-size: 10px;">💰 Facturer</div>
+              <div class="kpi-number" style="font-size: 22px;">8</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Search -->
+        <div class="px-3 py-2.5 surface border-b border-default">
+          <input type="text" placeholder="🔍 Rechercher..." class="form-input">
+        </div>
+
+        <!-- Cards -->
+        <div class="px-3 py-3 space-y-3">
+          <!-- Card 1 fresh -->
+          <div class="mission-card">
+            <div class="mission-card-stripe bg-success-fill"></div>
+            <div class="p-4 pl-5">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="badge bg-info-soft text-info" style="font-size: 10px;">🛡️ TOURING</span>
+                  <span class="badge bg-purple-soft text-purple" style="font-size: 10px;">🤖 IA 95%</span>
+                </div>
+                <div class="text-success text-sm font-bold font-display">5 min</div>
+              </div>
+              <div class="font-mono text-[11px] text-faint mb-3">2026274712MA</div>
+              <div class="space-y-1.5 mb-3">
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Type</span><span class="text-pri font-semibold">REM Direct</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Plaque</span><span class="text-pri font-mono font-bold">1XBC456</span><span class="text-faint">Audi A3</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Plafond</span><span class="text-success font-bold font-mono">200,00 €</span></div>
+                <div class="flex items-start gap-2 text-xs"><span class="text-muted-c w-16">Trajet</span><span class="text-pri">📍 Liège → Liège</span></div>
+              </div>
+              <button class="btn btn-primary w-full">Confirmer la mission</button>
+            </div>
+          </div>
+
+          <!-- Card 2 mid -->
+          <div class="mission-card">
+            <div class="mission-card-stripe bg-warning-fill"></div>
+            <div class="p-4 pl-5">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="badge bg-info-soft text-info" style="font-size: 10px;">🛡️ TOURING</span>
+                  <span class="badge bg-warning-soft text-warning" style="font-size: 10px;">📍 SUR PLACE</span>
+                </div>
+                <div class="text-warning text-sm font-bold font-display">23 min</div>
+              </div>
+              <div class="font-mono text-[11px] text-faint mb-3">2026274711MA</div>
+              <div class="space-y-1.5 mb-3">
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Type</span><span class="text-pri font-semibold">REM + Parc</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Plaque</span><span class="text-pri font-mono font-bold">1CTQ676</span><span class="text-faint">R. Kangoo</span></div>
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="text-muted-c w-16">Chauffeur</span>
+                  <div class="avatar avatar-jonathan w-5 h-5 text-[9px]">JT</div>
+                  <span class="text-pri font-semibold">Jonathan</span>
+                </div>
+                <div class="flex items-start gap-2 text-xs"><span class="text-muted-c w-16">Trajet</span><span class="text-pri">📍 Sprimont → Pepinster</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3 critical -->
+          <div class="mission-card">
+            <div class="mission-card-stripe bg-critical-fill pulse-critical"></div>
+            <div class="p-4 pl-5">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="badge bg-critical-soft text-critical pulse-critical" style="font-size: 10px;">⚠️ &gt;1H</span>
+                  <span class="badge bg-critical-soft text-critical" style="font-size: 10px;">🚨 POLICE</span>
+                </div>
+                <div class="text-critical text-sm font-bold font-display">1h12</div>
+              </div>
+              <div class="font-mono text-[11px] text-faint mb-3">2026274708MA</div>
+              <div class="space-y-1.5 mb-3">
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Type</span><span class="text-pri font-semibold">REM Accident</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Plaque</span><span class="text-pri font-mono font-bold">2FXL221</span><span class="text-faint">R. Master</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="text-muted-c w-16">Source</span><span class="text-pri">Police Vesdre</span></div>
+                <div class="flex items-start gap-2 text-xs"><span class="text-muted-c w-16">Trajet</span><span class="text-pri">📍 Verviers → Pepinster</span></div>
+              </div>
+              <button class="btn btn-primary w-full">⚡ Assigner d'urgence</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================== FICHE MOBILE ====================== -->
+      <div class="view" data-view="fiche">
+        <div class="surface border-b border-default px-4 pt-10 pb-3 sticky top-0 z-30">
+          <div class="flex items-center justify-between mb-3">
+            <button class="btn btn-secondary btn-sm">← Retour</button>
+            <div class="flex items-center gap-1.5">
+              <span class="badge bg-info-soft text-info" style="font-size: 10px;">🛡️ TOURING</span>
+            </div>
+          </div>
+          <div class="text-base font-bold text-pri font-display leading-tight">Mission 2026274711MA</div>
+          <div class="flex items-center gap-2 mt-1.5 text-xs">
+            <span class="font-mono text-faint">2026BE186640</span>
+            <span class="badge bg-warning-soft text-warning" style="font-size: 10px;">📍 SUR PLACE</span>
+          </div>
+        </div>
+
+        <!-- Bandeau présence -->
+        <div class="px-4 py-2 border-b border-default flex items-center gap-2 text-xs" style="background: linear-gradient(90deg, rgba(251, 146, 60, 0.12), rgba(251, 146, 60, 0.06));">
+          <div class="avatar avatar-jonathan w-5 h-5 text-[9px]">JT</div>
+          <span class="text-sec"><span class="font-bold text-alert">Jonathan</span> consulte aussi cette fiche</span>
+        </div>
+
+        <!-- 7 infos -->
+        <div class="px-3 pt-3">
+          <div class="panel">
+            <div class="panel-header" style="padding: 10px 14px; font-size: 13px;">
+              <span class="flex items-center gap-2"><span class="section-emoji bg-info-soft" style="width: 22px; height: 22px; font-size: 12px;">📋</span>Infos principales</span>
+            </div>
+            <div class="panel-body" style="padding: 14px;">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <div class="form-label" style="font-size: 9px;">① Type</div>
+                  <div class="text-sm font-bold text-pri font-display">REM + Parc</div>
+                </div>
+                <div>
+                  <div class="form-label" style="font-size: 9px;">② Plafond</div>
+                  <div class="text-sm font-bold text-success font-display">200,00 €</div>
+                </div>
+                <div>
+                  <div class="form-label" style="font-size: 9px;">③ Plaque</div>
+                  <div class="text-sm font-mono font-bold text-pri">1CTQ676</div>
+                </div>
+                <div>
+                  <div class="form-label" style="font-size: 9px;">⑥ Source</div>
+                  <span class="badge bg-info-soft text-info" style="font-size: 10px;">🛡️ TOURING</span>
+                </div>
+                <div class="col-span-2 pt-2 border-t border-default">
+                  <div class="form-label" style="font-size: 9px;">④ Incident ✓</div>
+                  <div class="text-xs text-pri font-medium">📍 Pl. du Village 10, 4141 Sprimont</div>
+                </div>
+                <div class="col-span-2">
+                  <div class="form-label" style="font-size: 9px;">⑤ Destination ✓</div>
+                  <div class="text-xs text-pri font-medium">🎯 Rue Lefin 12, 4860 Pepinster</div>
+                </div>
+                <div class="col-span-2 pt-2 border-t border-default">
+                  <div class="form-label" style="font-size: 9px;">⑦ Panne</div>
+                  <div class="text-xs text-pri">⚙️ Transmission · Levier bloqué</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Suivi -->
+        <div class="px-3 pt-3">
+          <div class="panel">
+            <div class="panel-header" style="padding: 10px 14px; font-size: 13px;">
+              <span class="flex items-center gap-2"><span class="section-emoji bg-info-soft" style="width: 22px; height: 22px; font-size: 12px;">⏱️</span>Suivi chauffeur</span>
+            </div>
+            <div class="panel-body" style="padding: 14px;">
+              <div class="flex items-center gap-3 mb-3 pb-3 border-b border-default">
+                <div class="avatar avatar-jonathan w-9 h-9 text-xs">JT</div>
+                <div class="flex-1">
+                  <div class="text-sm font-bold text-pri font-display">Jonathan</div>
+                  <div class="text-[10px] text-muted-c">🚛 Mercedes Atego · 2ECA631</div>
+                </div>
+                <span class="badge bg-warning-soft text-warning" style="font-size: 10px;">📍 SUR PLACE</span>
+              </div>
+              <div class="space-y-2 text-xs">
+                <div class="flex items-center gap-2.5"><div class="w-2 h-2 rounded-full bg-success-fill"></div><span class="flex-1 text-pri">Assignée</span><span class="text-faint font-mono text-[10px]">22:48</span></div>
+                <div class="flex items-center gap-2.5"><div class="w-2 h-2 rounded-full bg-success-fill"></div><span class="flex-1 text-pri">Acceptée</span><span class="text-faint font-mono text-[10px]">22:48</span></div>
+                <div class="flex items-center gap-2.5"><div class="w-2 h-2 rounded-full bg-success-fill"></div><span class="flex-1 text-pri">En route</span><span class="text-faint font-mono text-[10px]">22:49</span></div>
+                <div class="flex items-center gap-2.5"><div class="w-2.5 h-2.5 rounded-full bg-warning-fill pulse-critical"></div><span class="flex-1 text-warning font-bold">📍 Sur place</span><span class="text-faint font-mono text-[10px]">22:49</span></div>
+                <div class="flex items-center gap-2.5 opacity-40"><div class="w-2 h-2 rounded-full border-2 border-strong"></div><span class="flex-1 text-muted-c">Mise en parc</span><span class="text-faint font-mono text-[10px]">—</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Devis -->
+        <div class="px-3 pt-3">
+          <div class="panel">
+            <div class="panel-header" style="padding: 10px 14px; font-size: 13px;">
+              <span class="flex items-center gap-2"><span class="section-emoji bg-success-soft" style="width: 22px; height: 22px; font-size: 12px;">💰</span>Devis</span>
+              <span class="text-success font-bold font-display">182,44 €</span>
+            </div>
+            <div class="panel-body" style="padding: 0;">
+              <div class="px-4 py-2 border-b border-default flex justify-between text-xs"><span class="text-pri font-medium">Remorquage forfait</span><span class="font-mono font-semibold">66,30 €</span></div>
+              <div class="px-4 py-2 border-b border-default flex justify-between text-xs"><span class="text-pri font-medium">Km supp. (×64)</span><span class="font-mono font-semibold">84,48 €</span></div>
+              <div class="px-4 py-2 border-b border-default flex justify-between text-xs"><span class="text-muted-c">TVA 21%</span><span class="font-mono text-muted-c">31,66 €</span></div>
+              <div class="px-4 py-3 flex justify-between text-sm" style="background: var(--header-bg);"><span class="font-bold text-pri font-display">TOTAL TTC</span><span class="font-mono font-bold text-success font-display">182,44 €</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Photos -->
+        <div class="px-3 pt-3">
+          <div class="panel">
+            <div class="panel-header" style="padding: 10px 14px; font-size: 13px;">
+              <span class="flex items-center gap-2"><span class="section-emoji bg-purple-soft" style="width: 22px; height: 22px; font-size: 12px;">📸</span>Photos · 3</span>
+            </div>
+            <div class="panel-body" style="padding: 14px;">
+              <div class="grid grid-cols-3 gap-2">
+                <div class="aspect-square rounded-lg border border-default" style="background: linear-gradient(135deg, #FB923C, #DC2626);"></div>
+                <div class="aspect-square rounded-lg border border-default" style="background: linear-gradient(135deg, #FBBF24, #F97316);"></div>
+                <div class="aspect-square rounded-lg border border-default" style="background: linear-gradient(135deg, #F87171, #BE123C);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="px-3 pt-3 pb-3">
+          <div class="panel">
+            <div class="panel-header" style="padding: 10px 14px; font-size: 13px;">
+              <span class="flex items-center gap-2"><span class="section-emoji bg-alert-soft" style="width: 22px; height: 22px; font-size: 12px;">⚡</span>Actions</span>
+            </div>
+            <div class="panel-body" style="padding: 10px;">
+              <div class="grid grid-cols-2 gap-2">
+                <button class="btn btn-secondary btn-sm">🅿️ Mise en parc</button>
+                <button class="btn btn-secondary btn-sm">🔄 → REM</button>
+                <button class="btn btn-secondary btn-sm">👤 Chauffeur</button>
+                <button class="btn btn-secondary btn-sm">✏️ Destination</button>
+                <button class="btn btn-secondary btn-sm">🚐 Créer REL</button>
+                <button class="btn btn-secondary btn-sm">🖨️ Imprimer</button>
+              </div>
+              <button class="btn btn-danger w-full mt-2">❌ Annuler la mission</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save sticky -->
+        <div class="surface border-t border-default px-3 py-2.5 sticky bottom-0">
+          <button class="btn btn-primary w-full" style="height: 44px;">💾 Sauvegarder</button>
+        </div>
+      </div>
+
+      <!-- ====================== CARTE MOBILE ====================== -->
+      <div class="view" data-view="carte">
+        <div class="surface border-b border-default px-4 pt-10 pb-3 sticky top-0 z-30">
+          <div class="flex items-center justify-between">
+            <button class="btn btn-secondary btn-sm">← Retour</button>
+            <div class="text-sm font-bold text-pri font-display">🗺️ Carte temps réel</div>
+            <button class="btn btn-secondary btn-sm">Filtres</button>
+          </div>
+        </div>
+
+        <!-- Pills chauffeurs -->
+        <div class="surface border-b border-default px-3 py-2.5">
+          <div class="flex gap-2 overflow-x-auto scroll-x-no-bar">
+            <div class="flex-shrink-0 surface-2 border border-default rounded-full pl-1 pr-3 py-1 flex items-center gap-2">
+              <div class="avatar avatar-mobi w-5 h-5 text-[10px]">M</div>
+              <span class="text-xs text-pri font-semibold">Mobi</span>
+            </div>
+            <div class="flex-shrink-0 surface-2 border border-default rounded-full pl-1 pr-3 py-1 flex items-center gap-2">
+              <div class="avatar avatar-jonathan w-5 h-5 text-[10px]">JT</div>
+              <span class="text-xs text-pri font-semibold">Jonathan</span>
+            </div>
+            <div class="flex-shrink-0 surface-2 border border-default rounded-full pl-1 pr-3 py-1 flex items-center gap-2">
+              <div class="avatar avatar-bovy w-5 h-5 text-[10px]">FB</div>
+              <span class="text-xs text-pri font-semibold">F. Bovy</span>
+            </div>
+            <div class="flex-shrink-0 surface-2 border border-default rounded-full pl-1 pr-3 py-1 flex items-center gap-2">
+              <div class="avatar avatar-palm w-5 h-5 text-[10px]">FP</div>
+              <span class="text-xs text-pri font-semibold">F. Palm</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Carte -->
+        <div class="map-bg" style="height: 460px; position: relative;">
+          <div class="map-road-h" style="top: 30%; left: 0; right: 0;"></div>
+          <div class="map-road-h" style="top: 65%; left: 0; right: 0;"></div>
+          <div class="map-road-v" style="top: 0; bottom: 0; left: 30%;"></div>
+          <div class="map-road-v" style="top: 0; bottom: 0; left: 65%;"></div>
+
+          <div class="absolute" style="top: 35%; left: 30%;">
+            <div class="avatar avatar-jonathan w-9 h-9 text-[11px]" style="border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">JT</div>
+          </div>
+          <div class="absolute" style="top: 60%; left: 55%;">
+            <div class="avatar avatar-bovy w-9 h-9 text-[11px]" style="border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">FB</div>
+          </div>
+          <div class="absolute" style="top: 42%; left: 40%;">
+            <div class="rounded-md shadow p-1.5 border-2 border-white bg-warning-fill">
+              <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h2v3h2v-3h10v3h2v-3h2V8c0-1.1-.9-2-2-2h-1V3.5c0-.83-.67-1.5-1.5-1.5h-9C7.67 2 7 2.67 7 3.5V6H6c-1.1 0-2 .9-2 2v5z"/></svg>
+            </div>
+          </div>
+          <div class="absolute" style="top: 65%; left: 30%;">
+            <div class="rounded-md shadow p-1.5 border-2 border-white bg-critical-fill pulse-critical">
+              <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h2v3h2v-3h10v3h2v-3h2V8c0-1.1-.9-2-2-2h-1V3.5c0-.83-.67-1.5-1.5-1.5h-9C7.67 2 7 2.67 7 3.5V6H6c-1.1 0-2 .9-2 2v5z"/></svg>
+            </div>
+          </div>
+          <div class="absolute" style="top: 22%; right: 6%;">
+            <div class="text-white rounded-md px-2 py-1 text-[10px] font-bold shadow-lg" style="background: linear-gradient(135deg, #E11D2E, #B91C1C);">🏠 PEPINSTER</div>
+          </div>
+        </div>
+
+        <!-- Bottom sheet -->
+        <div class="surface border-t border-default px-3 py-3 -mt-3 relative z-10" style="border-top-left-radius: 20px; border-top-right-radius: 20px;">
+          <div class="w-12 h-1 rounded-full mx-auto mb-3" style="background: var(--border-strong);"></div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-pri text-sm font-display">3 missions visibles</h3>
+            <button class="text-xs text-muted-c">Voir tout ↓</button>
+          </div>
+          <div class="space-y-2">
+            <div class="mission-card">
+              <div class="mission-card-stripe bg-warning-fill"></div>
+              <div class="px-3 py-2.5 pl-4">
+                <div class="flex items-center justify-between text-xs">
+                  <div>
+                    <div class="font-mono font-bold text-pri">1CTQ676</div>
+                    <div class="text-[10px] text-muted-c mt-0.5">📍 Sprimont → Pepinster</div>
+                  </div>
+                  <span class="badge bg-warning-soft text-warning" style="font-size: 10px;">📍 SUR PLACE</span>
+                </div>
+              </div>
+            </div>
+            <div class="mission-card">
+              <div class="mission-card-stripe bg-critical-fill"></div>
+              <div class="px-3 py-2.5 pl-4">
+                <div class="flex items-center justify-between text-xs">
+                  <div>
+                    <div class="font-mono font-bold text-critical">2FXL221 ⚠️</div>
+                    <div class="text-[10px] text-muted-c mt-0.5">📍 Verviers → Pepinster</div>
+                  </div>
+                  <span class="badge bg-critical-soft text-critical pulse-critical" style="font-size: 10px;">1H12</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentView = 'pipeline';
+  let currentDevice = 'desktop';
+  let currentTheme = 'light';
+
+  function switchView(view) {
+    currentView = view;
+    document.querySelectorAll('[data-view-btn]').forEach(btn => {
+      if (btn.dataset.viewBtn === view) { btn.classList.add('view-btn-active'); btn.classList.remove('text-sec'); }
+      else { btn.classList.remove('view-btn-active'); btn.classList.add('text-sec'); }
+    });
+    document.querySelectorAll('[data-view]').forEach(v => { v.classList.toggle('active', v.dataset.view === view); });
+    const mobileContent = document.querySelector('.mobile-content');
+    if (mobileContent) mobileContent.scrollTop = 0;
+  }
+
+  function switchDevice(device) {
+    currentDevice = device;
+    document.querySelectorAll('[data-device-btn]').forEach(btn => {
+      if (btn.dataset.deviceBtn === device) { btn.classList.add('device-btn-active'); btn.classList.remove('text-sec'); }
+      else { btn.classList.remove('device-btn-active'); btn.classList.add('text-sec'); }
+    });
+    document.getElementById('desktop-container').classList.toggle('hidden', device !== 'desktop');
+    document.getElementById('mobile-container').classList.toggle('hidden', device !== 'mobile');
+  }
+
+  function toggleTheme() {
+    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+    document.documentElement.classList.toggle('theme-light', currentTheme === 'light');
+    document.documentElement.classList.toggle('theme-dark', currentTheme === 'dark');
+    document.getElementById('theme-icon-dark').classList.toggle('hidden', currentTheme === 'dark');
+    document.getElementById('theme-icon-light').classList.toggle('hidden', currentTheme === 'light');
+  }
+</script>
+
+</body>
+</html>
