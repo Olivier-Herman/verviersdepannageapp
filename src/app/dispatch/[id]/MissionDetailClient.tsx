@@ -537,12 +537,17 @@ export default function MissionDetailClient({
 
   // Persistance silencieuse partielle — pour que d'autres opérations (driver-eta,
   // calcul KM…) puissent lire les champs depuis la DB sans attendre un save manuel.
+  // Incrémente automatiquement kmRefresh pour rafraîchir le calcul KM live.
   const silentPatch = (fields: Record<string, any>) => {
     fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(fields),
     }).catch(() => {})
+    // Si une donnée KM-relevant change → trigger refresh
+    if (Object.keys(fields).some(k => /lat|lng|depot_depart_id|extra_addresses|destination_address|incident_address/.test(k))) {
+      setKmRefresh(k => k + 1)
+    }
   }
 
   // Au chargement : vérifier les 2 adresses et appliquer silencieusement la version
@@ -639,6 +644,17 @@ export default function MissionDetailClient({
   const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(initialMission.odoo_task_url || null)
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
   const [odooError,      setOdooError]        = useState<string | null>(null)
+
+  // ── Auto-save silent des stops (debounced) — pour que le KM live se base sur la DB à jour ──
+  const stopsHydrated = useRef(false)
+  useEffect(() => {
+    if (!stopsHydrated.current) { stopsHydrated.current = true; return }
+    const timer = setTimeout(() => {
+      silentPatch({ extra_addresses: stops.length > 0 ? stops : null })
+      setKmRefresh(k => k + 1)
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [stops])
 
   // ── Helpers stops ────────────────────────────────────────────────────────────
   const addStop = () => {
@@ -1607,7 +1623,12 @@ export default function MissionDetailClient({
                 {/* Dépôt de départ — sert au calcul KM aller/retour */}
                 <div className="border-t border-[#2a2a2a] pt-4">
                   <label className="block text-zinc-500 text-xs mb-2">Dépôt de départ</label>
-                  <select value={depotId} onChange={e => setDepotId(e.target.value)}
+                  <select value={depotId} onChange={e => {
+                    const newId = e.target.value
+                    setDepotId(newId)
+                    silentPatch({ depot_depart_id: newId || null })
+                    setKmRefresh(k => k + 1)
+                  }}
                     className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
                     <option value="">— Choisir —</option>
                     {depots.map(d => (
@@ -1673,7 +1694,6 @@ export default function MissionDetailClient({
                     extra_addresses: (M as any).extra_addresses,
                     assigned_user:   M.assigned_user || initialMission.assigned_user,
                   }} />
-                  <MissionKmInfo missionId={initialMission.id} refreshKey={`save-${kmRefresh}`} />
                 </div>
               )}
 
@@ -1693,6 +1713,11 @@ export default function MissionDetailClient({
                   </div>
                 </div>
               )}
+
+              {/* Kilométrage estimé (Google Directions, recalculé sur chaque modif d'adresse/stop/dépôt) */}
+              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+                <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />
+              </div>
 
               {/* Récap numéros */}
               <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
