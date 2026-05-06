@@ -3,28 +3,36 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
+import { Moon, Sun, LogOut } from 'lucide-react'
 import { filterNavItems } from '@/components/layout/nav-items'
+import { useTheme } from '@/components/theme/ThemeProvider'
+import { Avatar } from '@/components/ui/Avatar'
+import { Button } from '@/components/ui/Button'
 
 export default function AdminLayoutClient({
   children,
   userName,
   userRole,
+  userEmail,
+  userId,
   userModules = [],
 }: {
   children:     React.ReactNode
   userName:     string
   userRole:     string
+  userEmail?:   string
+  userId?:      string
   userModules?: string[]
 }) {
   const pathname = usePathname()
-  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+  const { theme, toggleTheme, mounted } = useTheme()
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex">
+    <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] flex-shrink-0 fixed top-0 left-0 h-full z-30">
-        <div className="px-6 py-5 border-b border-[#2a2a2a]">
+      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full z-30">
+        <div className="px-6 py-5 border-b">
           <Link href="/dashboard">
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
           </Link>
@@ -35,10 +43,10 @@ export default function AdminLayoutClient({
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link key={item.href} href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
                   active
-                    ? 'bg-brand/10 text-white border border-brand/20'
-                    : 'text-zinc-400 hover:text-white hover:bg-[#2a2a2a]'
+                    ? 'bg-brand-soft text-brand'
+                    : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
                 }`}
               >
                 <span className="text-base">{item.icon}</span>
@@ -48,23 +56,32 @@ export default function AdminLayoutClient({
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-[#2a2a2a]">
-          <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
-            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{userName}</p>
-              <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
-            </div>
+        <div className="px-3 py-4 border-t">
+          <div className="flex items-center gap-1 mb-1">
+            <Link href="/profil"
+              className="flex-1 flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors min-w-0">
+              <Avatar name={userName} userId={userId} email={userEmail} size="sm" />
+              <div className="flex-1 min-w-0">
+                <p className="text-ink text-sm font-medium truncate">{userName}</p>
+                <p className="text-ink-faint text-xs capitalize">{userRole}</p>
+              </div>
+            </Link>
+            <button
+              onClick={toggleTheme}
+              aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              className="w-9 h-9 flex items-center justify-center rounded-md text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors flex-shrink-0">
+              {mounted && (theme === 'light' ? <Moon size={16} /> : <Sun size={16} />)}
+            </button>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            fullWidth
+            iconLeft={<LogOut size={14} />}
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"
           >
-            <span className="text-base">🚪</span>
             Déconnexion
-          </button>
+          </Button>
         </div>
       </aside>
 
@@ -72,23 +89,28 @@ export default function AdminLayoutClient({
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen w-full overflow-x-hidden">
 
         {/* Header mobile */}
-        <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
+        <div className="lg:hidden bg-surface border-b px-5 pt-12 pb-4 safe-top sticky top-0 z-20">
           <div className="flex items-center gap-3 mb-3">
             <Link href="/dashboard"
-              className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg flex-shrink-0">
+              className="w-10 h-10 flex items-center justify-center rounded-md bg-surface-hover text-ink text-lg flex-shrink-0">
               ←
             </Link>
             <Link href="/dashboard" className="flex-1 flex justify-center">
               <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
             </Link>
-            <div className="w-10 flex-shrink-0" />
+            <button
+              onClick={toggleTheme}
+              aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              className="w-10 h-10 flex items-center justify-center rounded-md bg-surface-hover text-ink-secondary flex-shrink-0">
+              {mounted && (theme === 'light' ? <Moon size={16} /> : <Sun size={16} />)}
+            </button>
           </div>
-          <h1 className="text-white font-bold text-lg">Administration</h1>
+          <h1 className="font-display text-ink font-bold text-lg">Administration</h1>
         </div>
 
         {/* Header desktop */}
-        <div className="hidden lg:block bg-[#1A1A1A] border-b border-[#2a2a2a] px-8 py-5 sticky top-0 z-20">
-          <h1 className="text-white font-bold text-2xl">Administration</h1>
+        <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
+          <h1 className="font-display text-ink font-bold text-2xl">Administration</h1>
         </div>
 
         {/* AdminNav + contenu — chaque client gère son propre padding */}

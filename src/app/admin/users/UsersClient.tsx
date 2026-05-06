@@ -1,22 +1,76 @@
 'use client'
+// src/app/admin/users/UsersClient.tsx
+//
+// POC Phase 1 — proof-of-concept du système d'avatars colorés multi-users.
+// Mobi → rouge, Jonathan → bleu, Bovy → orange, Palm → vert, Momo → gris.
+// Les autres users tombent sur le hash fallback (8 gradients harmonieux).
+//
+// Aucune modif fonctionnelle vs version précédente — uniquement migration
+// visuelle. La logique CRUD (POST/PATCH /api/admin/users, /reset-password,
+// /welcome, /roles, gestion modules) est intacte.
 
 import { useState } from 'react'
+import { Plus, X, Mail, Key, ArrowLeft } from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
+import { Badge, type BadgeVariant } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 
 const ROLES = ['driver', 'dispatcher', 'admin', 'superadmin', 'partner']
-const ROLE_COLORS: Record<string, string> = {
-  driver:     'bg-zinc-700 text-zinc-200',
-  dispatcher: 'bg-blue-900 text-blue-200',
-  admin:      'bg-purple-900 text-purple-200',
-  superadmin: 'bg-red-900 text-red-200',
-  partner:    'bg-teal-900 text-teal-200',
+
+// Mapping rôle → variant <Badge>
+// - superadmin = brand (pouvoir maximal, identité de marque)
+// - admin      = purple (administratif)
+// - dispatcher = info (info bleue)
+// - driver     = neutral (défaut)
+// - partner    = success (couleur vert/teal proche du teal historique)
+const ROLE_BADGE_VARIANT: Record<string, BadgeVariant> = {
+  driver:     'neutral',
+  dispatcher: 'info',
+  admin:      'purple',
+  superadmin: 'brand',
+  partner:    'success',
 }
+
+// Classes communes pour les inputs HTML — pas de composant <Input> atomique en phase 1.
+const inputCls =
+  'w-full bg-surface border rounded-md px-3 py-2.5 text-sm text-ink ' +
+  'focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft ' +
+  'placeholder:text-ink-muted transition-colors'
+
+const labelCls = 'block text-ink-muted text-xs font-semibold mb-1.5 uppercase tracking-wider'
 
 function Toggle({ value, onChange }: { value: boolean; onChange: () => void }) {
   return (
-    <button onClick={onChange}
-      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${value ? 'bg-brand' : 'bg-zinc-700'}`}>
-      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    <button
+      type="button"
+      onClick={onChange}
+      aria-pressed={value}
+      className={`relative inline-flex items-center w-11 h-6 rounded-full overflow-hidden transition-colors flex-shrink-0 ${
+        value ? 'bg-brand' : 'bg-ink-faint'
+      }`}
+    >
+      {/* Pastille : block + transform — pas d'absolute (évite tout débord
+          géométrique sur les bords arrondis du capsule). overflow-hidden du
+          parent garantit qu'aucun pixel ne sort. Translation symétrique :
+          off = 2px depuis la gauche, on = 22px → mouvement de 20px exactement. */}
+      <span
+        className={`block w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+          value ? 'translate-x-[22px]' : 'translate-x-0.5'
+        }`}
+      />
     </button>
+  )
+}
+
+function RoleBadges({ roles, size = 'sm' }: { roles: string[]; size?: 'sm' | 'md' }) {
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {roles.map(r => (
+        <Badge key={r} variant={ROLE_BADGE_VARIANT[r] || 'neutral'} size={size} className="capitalize">
+          {r}
+        </Badge>
+      ))}
+    </div>
   )
 }
 
@@ -61,7 +115,6 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     setSelectedUser(user)
     setUserEmail(user.email || '')
     setUserPersonalEmail(user.personal_email || '')
-    // Rôles : priorité à roles[], fallback sur role string
     const r = Array.isArray(user.roles) && user.roles.length > 0
       ? user.roles
       : user.role ? [user.role] : ['driver']
@@ -74,15 +127,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     setUserTowsoftName(user.towsoft_name || '')
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
     setResetSuccess('')
-  }
-
-  // ── Toggle rôle ────────────────────────────────────────
-  const toggleRole = (r: string) => {
-    setUserRoles(prev => {
-      const has  = prev.includes(r)
-      if (has && prev.length === 1) return prev // garder au moins 1
-      return has ? prev.filter(x => x !== r) : [...prev, r]
-    })
+    setWelcomeSuccess('')
   }
 
   // ── Modal rôles ────────────────────────────────────────
@@ -111,7 +156,6 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
       })
       const data = await res.json()
       if (!res.ok) { setRoleError(data.error || 'Erreur'); return }
-      // Mettre à jour localement
       setUserRoles(roleModalRoles)
       setShowRoleModal(false)
     } finally {
@@ -164,19 +208,18 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     if (res.ok) setResetSuccess('✅ Mot de passe réinitialisé à !Verviers4800')
   }
 
-
   // ── Envoyer mail de bienvenue ──────────────────────────
   const sendWelcome = async () => {
     if (!selectedUser) return
-    setWelcomeLoading(true); setWelcomeSuccess("")
-    const res = await fetch("/api/admin/users/welcome", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    setWelcomeLoading(true); setWelcomeSuccess('')
+    const res = await fetch('/api/admin/users/welcome', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: selectedUser.id }),
     })
     setWelcomeLoading(false)
-    if (res.ok) setWelcomeSuccess("✅ Mail de bienvenue envoyé")
-    else { const d = await res.json(); setWelcomeSuccess("❌ " + (d.error || "Erreur")) }
+    if (res.ok) setWelcomeSuccess('✅ Mail de bienvenue envoyé')
+    else { const d = await res.json(); setWelcomeSuccess('❌ ' + (d.error || 'Erreur')) }
   }
 
   // ── Créer utilisateur ──────────────────────────────────
@@ -212,166 +255,223 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   // ── Panel édition ──────────────────────────────────────
   const renderEditPanel = () => (
     <div className="px-4 py-5 lg:px-0">
-      <button onClick={() => setSelectedUser(null)}
-        className="text-zinc-500 hover:text-white text-sm mb-5 flex items-center gap-1 lg:hidden">
-        ← Retour
-      </button>
+      {/* Mobile : back */}
+      <Button
+        variant="ghost"
+        size="sm"
+        iconLeft={<ArrowLeft size={14} />}
+        className="mb-4 lg:hidden"
+        onClick={() => setSelectedUser(null)}
+      >
+        Retour
+      </Button>
+
+      {/* Desktop : titre + avatar lg + close */}
       <div className="hidden lg:flex items-center justify-between mb-5">
-        <h2 className="text-white font-bold text-lg">{selectedUser?.name}</h2>
-        <button onClick={() => setSelectedUser(null)} className="text-zinc-500 hover:text-white text-2xl">×</button>
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar
+            name={selectedUser?.name || '?'}
+            userId={selectedUser?.id}
+            email={selectedUser?.email}
+            size="lg"
+            className={!selectedUser?.active ? 'opacity-60' : ''}
+          />
+          <div className="min-w-0">
+            <h2 className="font-display text-ink font-bold text-lg truncate">{selectedUser?.name || 'Sans nom'}</h2>
+            <p className="text-ink-muted text-xs truncate">{selectedUser?.email}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setSelectedUser(null)}
+          aria-label="Fermer"
+          className="inline-flex items-center justify-center w-8 h-8 rounded-md text-ink-muted hover:text-ink hover:bg-surface-hover transition-colors flex-shrink-0">
+          <X size={16} />
+        </button>
       </div>
 
       {/* ── Infos générales ── */}
-      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
-        <div className="flex items-center gap-3 mb-3 lg:hidden">
-          <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-            {selectedUser?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'}
-          </div>
-          <div>
-            <p className="text-white font-semibold">{selectedUser?.name || 'Sans nom'}</p>
-            <p className="text-zinc-500 text-xs">{selectedUser?.email}</p>
+      <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
+        {/* Mobile : avatar md + nom (le header desktop a déjà l'avatar) */}
+        <div className="flex items-center gap-3 mb-4 lg:hidden">
+          <Avatar
+            name={selectedUser?.name || '?'}
+            userId={selectedUser?.id}
+            email={selectedUser?.email}
+            size="md"
+            className={!selectedUser?.active ? 'opacity-60' : ''}
+          />
+          <div className="min-w-0">
+            <p className="font-display text-ink font-semibold truncate">{selectedUser?.name || 'Sans nom'}</p>
+            <p className="text-ink-muted text-xs truncate">{selectedUser?.email}</p>
           </div>
         </div>
 
         {/* Email */}
         <div className="mb-3">
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Email professionnel</label>
-          <input type="email" value={userEmail} onChange={e => setUserEmail(e.target.value)}
-            className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-3 py-2.5 text-white text-sm outline-none" />
+          <label className={labelCls}>Email professionnel</label>
+          <input
+            type="email"
+            value={userEmail}
+            onChange={e => setUserEmail(e.target.value)}
+            className={inputCls}
+          />
         </div>
 
         {/* Rôle(s) — lecture seule + bouton modal */}
         <div className="mb-3">
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Rôle(s)</label>
-          <div className="flex items-center justify-between bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5">
-            <div className="flex gap-1.5 flex-wrap">
-              {userRoles.map(r => (
-                <span key={r} className={`text-xs font-semibold px-2 py-0.5 rounded-lg capitalize ${ROLE_COLORS[r] || 'bg-zinc-700 text-zinc-300'}`}>
-                  {r}
-                </span>
-              ))}
-            </div>
-            <button onClick={openRoleModal}
-              className="text-brand text-xs font-medium ml-3 hover:text-white transition-colors flex-shrink-0">
+          <label className={labelCls}>Rôle(s)</label>
+          <div className="flex items-center justify-between bg-surface border rounded-md px-3 py-2">
+            <RoleBadges roles={userRoles} size="sm" />
+            <button
+              onClick={openRoleModal}
+              className="text-brand text-xs font-semibold ml-3 hover:underline transition flex-shrink-0">
               Modifier
             </button>
           </div>
         </div>
 
         {/* Compte actif */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-zinc-500 text-xs font-medium">Compte actif</span>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <span className="flex-1 min-w-0 text-ink-muted text-xs font-semibold uppercase tracking-wider">Compte actif</span>
           <Toggle value={userActive} onChange={() => setUserActive(!userActive)} />
         </div>
 
         {/* Méthode connexion */}
         <div className="mb-3">
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Méthode de connexion</label>
+          <label className={labelCls}>Méthode de connexion</label>
           <div className="flex flex-col gap-1.5">
             {[
               { value: 'email_password', label: '✉️ Email & mot de passe', sub: 'Connexion avec email + mdp' },
               { value: 'microsoft',      label: '🏢 Microsoft professionnel', sub: 'Compte M365 du tenant VD' },
               { value: 'google',         label: '🔵 Google', sub: 'Compte Gmail personnel' },
-            ].map(opt => (
-              <button key={opt.value} onClick={() => setUserAuthProvider(opt.value)}
-                className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
-                  userAuthProvider === opt.value ? 'border-brand bg-brand/10' : 'border-[#2a2a2a] hover:border-zinc-500'
-                }`}>
-                <div className="flex-1">
-                  <p className={`text-xs font-semibold ${userAuthProvider === opt.value ? 'text-white' : 'text-zinc-400'}`}>{opt.label}</p>
-                  <p className="text-zinc-600 text-xs">{opt.sub}</p>
-                </div>
-                {userAuthProvider === opt.value && <span className="text-brand text-xs mt-0.5">✓</span>}
-              </button>
-            ))}
+            ].map(opt => {
+              const active = userAuthProvider === opt.value
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setUserAuthProvider(opt.value)}
+                  className={`flex items-start gap-3 px-3 py-2.5 rounded-md border text-left transition-colors ${
+                    active ? 'border-brand bg-brand-soft' : 'hover:bg-surface-hover'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <p className={`text-xs font-semibold ${active ? 'text-brand' : 'text-ink-secondary'}`}>{opt.label}</p>
+                    <p className="text-ink-faint text-xs">{opt.sub}</p>
+                  </div>
+                  {active && <span className="text-brand text-xs mt-0.5" aria-hidden="true">✓</span>}
+                </button>
+              )
+            })}
           </div>
         </div>
 
         {/* Reset password */}
         <div className="mb-3">
-          {resetSuccess && <p className="text-green-400 text-xs mb-2">{resetSuccess}</p>}
-          <button onClick={resetPassword} disabled={resetLoading}
-            className="w-full bg-[#2a2a2a] border border-[#333] text-zinc-400 text-xs rounded-xl py-2.5 hover:border-zinc-500 transition-all disabled:opacity-50">
-            {resetLoading ? 'Réinitialisation…' : '🔑 Réinitialiser le mot de passe'}
-          </button>
+          {resetSuccess && <p className="text-success text-xs mb-2">{resetSuccess}</p>}
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            iconLeft={<Key size={14} />}
+            loading={resetLoading}
+            onClick={resetPassword}
+          >
+            Réinitialiser le mot de passe
+          </Button>
         </div>
 
         {/* Mail de bienvenue */}
         <div className="mb-3">
-          {welcomeSuccess && <p className="text-green-400 text-xs mb-2">{welcomeSuccess}</p>}
-          <button onClick={sendWelcome} disabled={welcomeLoading}
-            className="w-full bg-[#2a2a2a] border border-[#333] text-zinc-400 text-xs rounded-xl py-2.5 hover:border-zinc-500 transition-all disabled:opacity-50">
-            {welcomeLoading ? 'Envoi en cours…' : '✉️ Envoyer le mail de bienvenue'}
-          </button>
+          {welcomeSuccess && <p className="text-success text-xs mb-2">{welcomeSuccess}</p>}
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            iconLeft={<Mail size={14} />}
+            loading={welcomeLoading}
+            onClick={sendWelcome}
+          >
+            Envoyer le mail de bienvenue
+          </Button>
         </div>
 
         {/* Peut valider caisse */}
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-zinc-500 text-xs font-medium">Peut valider les transferts espèces</span>
-            <p className="text-zinc-700 text-xs">Accès au PIN de validation caisse</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <span className="block text-ink-muted text-xs font-semibold uppercase tracking-wider">Peut valider les transferts espèces</span>
+            <p className="text-ink-faint text-xs mt-0.5">Accès au PIN de validation caisse</p>
           </div>
           <Toggle value={userCanVerify} onChange={() => setUserCanVerify(!userCanVerify)} />
         </div>
       </div>
 
       {/* ── TGR Touring ── */}
-      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
-        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">TGR Touring</p>
+      <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
+        <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">TGR Touring</p>
 
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <span className="text-zinc-500 text-xs font-medium">Notifications push</span>
-            <p className="text-zinc-700 text-xs">Reçoit les alertes nouvelles missions TGR</p>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            <span className="block text-ink-muted text-xs font-semibold uppercase tracking-wider">Notifications push</span>
+            <p className="text-ink-faint text-xs mt-0.5">Reçoit les alertes nouvelles missions TGR</p>
           </div>
           <Toggle value={userTgrPush} onChange={() => setUserTgrPush(!userTgrPush)} />
         </div>
 
-        <div>
-          <label className="text-zinc-500 text-xs font-medium mb-1.5 block">ID Partenaire Odoo</label>
-          <input type="number" placeholder="Ex: 1251" value={userOdooId}
+        <div className="mb-3">
+          <label className={labelCls}>ID Partenaire Odoo</label>
+          <input
+            type="number"
+            placeholder="Ex: 1251"
+            value={userOdooId}
             onChange={e => setUserOdooId(e.target.value)}
-            className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
-                       text-white text-sm outline-none focus:border-brand" />
-          <p className="text-zinc-700 text-xs mt-1">ID partenaire Odoo pour les devis TGR</p>
+            className={inputCls}
+          />
+          <p className="text-ink-faint text-xs mt-1">ID partenaire Odoo pour les devis TGR</p>
         </div>
 
         {isSuperAdmin && (
           <div>
-            <label className="text-zinc-500 text-xs font-medium mb-1.5 block">Nom TowSoft</label>
-            <input type="text" placeholder="Ex: Mobi, FPalm, MLoslever..." value={userTowsoftName}
+            <label className={labelCls}>Nom TowSoft</label>
+            <input
+              type="text"
+              placeholder="Ex: Mobi, FPalm, MLoslever…"
+              value={userTowsoftName}
               onChange={e => setUserTowsoftName(e.target.value)}
-              className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-2.5
-                         text-white text-sm outline-none focus:border-brand" />
-            <p className="text-zinc-700 text-xs mt-1">Nom exact dans la liste conducteurs TowSoft</p>
+              className={inputCls}
+            />
+            <p className="text-ink-faint text-xs mt-1">Nom exact dans la liste conducteurs TowSoft</p>
           </div>
         )}
       </div>
 
-
       {/* ── Modules ── */}
-      <p className="text-zinc-500 text-xs font-semibold uppercase tracking-widest mb-3">Modules accessibles</p>
+      <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Modules accessibles</p>
       <div className="grid grid-cols-2 gap-2 mb-6">
         {modules.map((mod: any) => {
           const active = userModules.includes(mod.id)
           return (
-            <button key={mod.id}
+            <button
+              key={mod.id}
+              type="button"
               onClick={() => setUserModules(prev => prev.includes(mod.id) ? prev.filter(m => m !== mod.id) : [...prev, mod.id])}
-              className={`flex items-center gap-2 p-3 rounded-xl border text-left transition-all ${
-                active ? 'border-brand bg-brand/10 text-white' : 'border-[#2a2a2a] text-zinc-500 hover:border-zinc-600'
-              }`}>
-              <span className="text-lg">{mod.icon}</span>
-              <span className="text-xs font-medium leading-tight">{mod.label}</span>
-              {active && <span className="ml-auto text-brand text-xs">✓</span>}
+              className={`flex items-center gap-2 p-3 rounded-md border text-left transition-colors ${
+                active ? 'border-brand bg-brand-soft' : 'hover:bg-surface-hover'
+              }`}
+            >
+              <span className="text-lg" aria-hidden="true">{mod.icon}</span>
+              <span className={`text-xs font-medium leading-tight ${active ? 'text-brand' : 'text-ink-secondary'}`}>
+                {mod.label}
+              </span>
+              {active && <span className="ml-auto text-brand text-xs" aria-hidden="true">✓</span>}
             </button>
           )
         })}
       </div>
 
-      <button onClick={saveUser} disabled={saving}
-        className="w-full bg-brand text-white font-bold rounded-xl py-3.5 transition-colors disabled:opacity-50 hover:bg-red-700">
-        {saving ? 'Enregistrement...' : '✓ Sauvegarder'}
-      </button>
+      <Button variant="primary" size="lg" fullWidth loading={saving} onClick={saveUser}>
+        ✓ Sauvegarder
+      </Button>
     </div>
   )
 
@@ -382,62 +482,94 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
 
         <div className="hidden lg:flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-white text-2xl font-bold">Utilisateurs</h1>
-            <p className="text-zinc-500 text-sm mt-1">{users.length} utilisateurs · {users.filter(u => u.active).length} actifs</p>
+            <h1 className="font-display text-ink text-2xl font-bold">Utilisateurs</h1>
+            <p className="text-ink-muted text-sm mt-1">{users.length} utilisateurs · {users.filter(u => u.active).length} actifs</p>
           </div>
-          <button onClick={() => setShowNewUser(!showNewUser)}
-            className="bg-brand text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-red-700 transition-all">
-            + Ajouter un utilisateur
-          </button>
+          <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setShowNewUser(!showNewUser)}>
+            Ajouter un utilisateur
+          </Button>
         </div>
 
+        {/* Mobile : recherche + ajouter */}
         <div className="flex gap-2 mb-4 lg:hidden">
-          <input type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
-            className="flex-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand" />
-          <button onClick={() => setShowNewUser(!showNewUser)} className="bg-brand text-white rounded-xl px-4 py-2.5 text-sm font-bold">+ Ajouter</button>
+          <input
+            type="text"
+            placeholder="Rechercher…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className={inputCls}
+          />
+          <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setShowNewUser(!showNewUser)}>
+            Ajouter
+          </Button>
         </div>
 
+        {/* Desktop : recherche */}
         <div className="hidden lg:block mb-4">
-          <input type="text" placeholder="Rechercher par nom, email, rôle…" value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand" />
+          <input
+            type="text"
+            placeholder="Rechercher par nom, email, rôle…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className={inputCls}
+          />
         </div>
 
+        {/* Mobile : stats compactes */}
         <div className="flex gap-2 mb-4 lg:hidden">
-          <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
-            <p className="text-white font-bold text-xl">{users.length}</p>
-            <p className="text-zinc-500 text-xs">Total</p>
+          <div className="flex-1 bg-surface border rounded-card p-3 text-center">
+            <p className="font-display text-ink font-bold text-xl">{users.length}</p>
+            <p className="text-ink-muted text-xs">Total</p>
           </div>
-          <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
-            <p className="text-white font-bold text-xl">{users.filter(u => u.active).length}</p>
-            <p className="text-zinc-500 text-xs">Actifs</p>
+          <div className="flex-1 bg-surface border rounded-card p-3 text-center">
+            <p className="font-display text-ink font-bold text-xl">{users.filter(u => u.active).length}</p>
+            <p className="text-ink-muted text-xs">Actifs</p>
           </div>
-          <div className="flex-1 bg-[#1e1e1e] rounded-xl p-3 text-center">
-            <p className="text-white font-bold text-xl">{users.filter(u => u.role === 'driver').length}</p>
-            <p className="text-zinc-500 text-xs">Chauffeurs</p>
+          <div className="flex-1 bg-surface border rounded-card p-3 text-center">
+            <p className="font-display text-ink font-bold text-xl">{users.filter(u => u.role === 'driver').length}</p>
+            <p className="text-ink-muted text-xs">Chauffeurs</p>
           </div>
         </div>
 
-        {/* Nouveau utilisateur */}
+        {/* Form inline : nouvel utilisateur (accordion expandable) */}
         {showNewUser && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
-            <p className="text-white font-semibold mb-3">Nouvel utilisateur</p>
+          <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
+            <p className="font-display text-ink font-semibold mb-3">Nouvel utilisateur</p>
             <div className="flex flex-col gap-2">
-              <input type="email" placeholder="Email professionnel *" value={newEmail}
+              <input
+                type="email"
+                placeholder="Email professionnel *"
+                value={newEmail}
                 onChange={e => setNewEmail(e.target.value)}
-                className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-brand" />
-              <input type="text" placeholder="Nom complet" value={newName}
+                className={inputCls}
+              />
+              <input
+                type="text"
+                placeholder="Nom complet"
+                value={newName}
                 onChange={e => setNewName(e.target.value)}
-                className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-brand" />
-              <select value={newRole} onChange={e => setNewRole(e.target.value)}
-                className="bg-[#0F0F0F] border border-[#333] rounded-xl px-3 py-2.5 text-white text-sm outline-none appearance-none">
+                className={inputCls}
+              />
+              <select
+                value={newRole}
+                onChange={e => setNewRole(e.target.value)}
+                className={`${inputCls} appearance-none capitalize`}
+              >
                 {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
               <div className="flex gap-2 mt-1">
-                <button onClick={() => setShowNewUser(false)} className="flex-1 bg-[#2a2a2a] text-zinc-400 rounded-xl py-2.5 text-sm">Annuler</button>
-                <button onClick={createUser} disabled={creating || !newEmail}
-                  className="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
-                  {creating ? '…' : 'Créer'}
-                </button>
+                <Button variant="ghost" fullWidth onClick={() => setShowNewUser(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  variant="primary"
+                  fullWidth
+                  disabled={!newEmail}
+                  loading={creating}
+                  onClick={createUser}
+                >
+                  Créer
+                </Button>
               </div>
             </div>
           </div>
@@ -447,32 +579,34 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         <div className="flex flex-col gap-2 lg:hidden">
           {filtered.map(user => {
             const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
-            const initials    = user.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'
             const roles       = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role]
             return (
-              <button key={user.id} onClick={() => openUser(user)}
-                className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 flex items-center gap-3 text-left hover:border-zinc-600 transition-all">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${user.active ? 'bg-brand text-white' : 'bg-zinc-700 text-zinc-400'}`}>
-                  {initials}
-                </div>
+              <button
+                key={user.id}
+                onClick={() => openUser(user)}
+                className="bg-surface border rounded-card shadow-card p-4 flex items-center gap-3 text-left hover:shadow-md transition-all"
+              >
+                <Avatar
+                  name={user.name || '?'}
+                  userId={user.id}
+                  email={user.email}
+                  size="md"
+                  className={user.active ? '' : 'opacity-60'}
+                />
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm truncate">{user.name || 'Sans nom'}</p>
-                  <p className="text-zinc-500 text-xs truncate">{user.email}</p>
+                  <p className="text-ink font-medium text-sm truncate">{user.name || 'Sans nom'}</p>
+                  <p className="text-ink-muted text-xs truncate">{user.email}</p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex gap-1 flex-wrap justify-end">
-                    {roles.map((r: string) => (
-                      <span key={r} className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${ROLE_COLORS[r] || 'bg-zinc-700 text-zinc-300'}`}>{r}</span>
-                    ))}
-                  </div>
-                  <span className="text-zinc-600 text-xs">{moduleCount} modules</span>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <RoleBadges roles={roles} size="sm" />
+                  <span className="text-ink-faint text-xs">{moduleCount} modules</span>
                 </div>
               </button>
             )
           })}
           {filtered.length === 0 && (
-            <div className="text-center py-10 text-zinc-600">
-              <p className="text-3xl mb-2">👥</p>
+            <div className="text-center py-10 text-ink-muted">
+              <p className="text-3xl mb-2" aria-hidden="true">👥</p>
               <p>Aucun utilisateur trouvé</p>
             </div>
           )}
@@ -482,52 +616,57 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         <div className="hidden lg:block">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b border-[#2a2a2a]">
+              <tr className="border-b">
                 {['Utilisateur', 'Email', 'Rôle(s)', 'Statut', 'Modules', 'Méthode', ''].map(h => (
-                  <th key={h} className="text-left text-zinc-500 text-xs font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
+                  <th key={h} className="text-left text-ink-muted text-xs font-semibold uppercase tracking-wider pb-3 pr-4">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map(user => {
                 const moduleCount = user.user_modules?.filter((m: any) => m.granted).length || 0
-                const initials    = user.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'
                 const roles       = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role]
                 return (
-                  <tr key={user.id} className="border-b border-[#1e1e1e] hover:bg-[#1A1A1A] transition-colors cursor-pointer" onClick={() => openUser(user)}>
+                  <tr
+                    key={user.id}
+                    onClick={() => openUser(user)}
+                    className="border-b hover:bg-surface-hover transition-colors cursor-pointer"
+                  >
                     <td className="py-3 pr-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${user.active ? 'bg-brand text-white' : 'bg-zinc-700 text-zinc-400'}`}>
-                          {initials}
-                        </div>
-                        <span className="text-white text-sm font-medium">{user.name || 'Sans nom'}</span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar
+                          name={user.name || '?'}
+                          userId={user.id}
+                          email={user.email}
+                          size="sm"
+                          className={user.active ? '' : 'opacity-60'}
+                        />
+                        <span className="text-ink text-sm font-medium truncate">{user.name || 'Sans nom'}</span>
                       </div>
                     </td>
-                    <td className="py-3 pr-4 text-zinc-400 text-sm">{user.email}</td>
+                    <td className="py-3 pr-4 text-ink-secondary text-sm">{user.email}</td>
                     <td className="py-3 pr-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {roles.map((r: string) => (
-                          <span key={r} className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${ROLE_COLORS[r] || 'bg-zinc-700 text-zinc-300'}`}>{r}</span>
-                        ))}
-                      </div>
+                      <RoleBadges roles={roles} size="sm" />
                     </td>
                     <td className="py-3 pr-4">
-                      <span className={`text-xs px-2 py-1 rounded-lg ${user.active ? 'bg-green-900/40 text-green-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                      <Badge variant={user.active ? 'success' : 'neutral'} size="sm">
                         {user.active ? 'Actif' : 'Inactif'}
-                      </span>
+                      </Badge>
                     </td>
-                    <td className="py-3 pr-4 text-zinc-500 text-sm">{moduleCount}</td>
-                    <td className="py-3 pr-4 text-zinc-500 text-sm">
+                    <td className="py-3 pr-4 text-ink-muted text-sm">{moduleCount}</td>
+                    <td className="py-3 pr-4 text-ink-muted text-sm">
                       {user.auth_provider === 'google' ? '🔵 Google' : user.auth_provider === 'microsoft' ? '🏢 Microsoft' : '✉️ Email/mdp'}
                     </td>
                     <td className="py-3">
-                      <span className="text-brand text-xs font-medium">Modifier →</span>
+                      <span className="text-brand text-xs font-semibold">Modifier →</span>
                     </td>
                   </tr>
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="py-12 text-center text-zinc-600">Aucun utilisateur trouvé</td></tr>
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-ink-muted">Aucun utilisateur trouvé</td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -536,73 +675,90 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
 
       {/* ─── Panel édition ─── */}
       {selectedUser && (
-        <div className="lg:w-96 lg:flex-shrink-0 lg:border-l lg:border-[#2a2a2a] lg:pl-6">
+        <div className="lg:w-96 lg:flex-shrink-0 lg:border-l lg:pl-6">
           {renderEditPanel()}
         </div>
       )}
 
       {/* ─── Modal rôles ─── */}
       {showRoleModal && selectedUser && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowRoleModal(false)}>
-          <div className="bg-[#1A1A1A] rounded-2xl p-6 w-full max-w-sm"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-white font-bold">Modifier les rôles</h2>
-                <p className="text-zinc-500 text-xs mt-0.5">{selectedUser.name}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={roleSaving ? undefined : () => setShowRoleModal(false)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="roles-modal-title"
+            className="relative w-full max-w-sm bg-surface border rounded-card shadow-md"
+          >
+            <div className="px-5 pt-5 pb-2 flex items-center justify-between">
+              <div className="min-w-0">
+                <h2 id="roles-modal-title" className="font-display text-ink font-bold text-base">Modifier les rôles</h2>
+                <p className="text-ink-muted text-xs mt-0.5 truncate">{selectedUser.name}</p>
               </div>
-              <button onClick={() => setShowRoleModal(false)} className="text-zinc-500 text-2xl">×</button>
+              <button
+                onClick={() => setShowRoleModal(false)}
+                aria-label="Fermer"
+                disabled={roleSaving}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md text-ink-muted hover:text-ink hover:bg-surface-hover transition-colors disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            <div className="flex flex-col gap-2 mb-5">
+            <div className="px-5 py-3 flex flex-col gap-2">
               {ROLES.map(r => {
                 const active = roleModalRoles.includes(r)
+                const isPrimary = roleModalRoles[0] === r
                 return (
-                  <button key={r} onClick={() => toggleRoleModal(r)}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                      active
-                        ? 'border-brand bg-brand/10 text-white'
-                        : 'border-[#2a2a2a] text-zinc-400 hover:border-zinc-500'
-                    }`}>
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => toggleRoleModal(r)}
+                    className={`flex items-center justify-between px-4 py-3 rounded-md border transition-colors ${
+                      active ? 'border-brand bg-brand-soft' : 'hover:bg-surface-hover'
+                    }`}
+                  >
                     <div className="flex items-center gap-3">
-                      <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs ${
-                        active ? 'bg-brand border-brand' : 'border-zinc-600'
-                      }`}>
-                        {active && '✓'}
+                      <span
+                        className={`w-4 h-4 rounded border flex items-center justify-center text-xs flex-shrink-0 ${
+                          active ? 'bg-brand border-brand text-white' : ''
+                        }`}
+                      >
+                        {active && <span aria-hidden="true">✓</span>}
                       </span>
-                      <span className={`text-sm font-medium capitalize ${
-                        active ? (ROLE_COLORS[r]?.split(' ')[1] || 'text-white') : ''
-                      }`}>{r}</span>
+                      <Badge variant={ROLE_BADGE_VARIANT[r] || 'neutral'} size="sm" className="capitalize">{r}</Badge>
                     </div>
-                    {roleModalRoles[0] === r && (
-                      <span className="text-zinc-500 text-xs">primaire</span>
+                    {isPrimary && (
+                      <span className="text-ink-muted text-xs">primaire</span>
                     )}
                   </button>
                 )
               })}
             </div>
 
-            <p className="text-zinc-600 text-xs mb-4">
-              Rôle primaire : <span className="text-white capitalize">{roleModalRoles[0] || '—'}</span>
-              {' '}· {roleModalRoles.length} rôle{roleModalRoles.length > 1 ? 's' : ''} sélectionné{roleModalRoles.length > 1 ? 's' : ''}
+            <p className="px-5 pb-2 text-ink-faint text-xs">
+              Rôle primaire : <span className="text-ink capitalize font-medium">{roleModalRoles[0] || '—'}</span>
+              {' · '}
+              {roleModalRoles.length} rôle{roleModalRoles.length > 1 ? 's' : ''} sélectionné{roleModalRoles.length > 1 ? 's' : ''}
             </p>
 
             {roleError && (
-              <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl px-3 py-2 text-xs mb-3">
+              <div className="mx-5 mb-3 bg-critical-soft text-critical rounded-md px-3 py-2 text-xs">
                 {roleError}
               </div>
             )}
 
-            <div className="flex gap-2">
-              <button onClick={() => setShowRoleModal(false)}
-                className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm font-medium">
+            <div className="px-5 py-4 border-t flex items-center justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowRoleModal(false)} disabled={roleSaving}>
                 Annuler
-              </button>
-              <button onClick={saveRoles} disabled={roleSaving}
-                className="flex-1 py-3 bg-brand text-white rounded-xl text-sm font-bold disabled:opacity-50">
-                {roleSaving ? '⏳ Sauvegarde…' : '✅ Confirmer'}
-              </button>
+              </Button>
+              <Button variant="primary" loading={roleSaving} onClick={saveRoles}>
+                Confirmer
+              </Button>
             </div>
           </div>
         </div>

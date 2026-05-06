@@ -2,11 +2,125 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --brand: #CC2222;
-  --brand-dark: #991818;
+/* ─────────────────────────────────────────────────────────
+   THÈME LIGHT — chaud, off-white, doux
+   Valeurs reprises de docs/mockup/ux-mockup-dispatch-v3.html
+   ───────────────────────────────────────────────────────── */
+:root,
+.theme-light {
+  /* Marque (vestigial, source de vérité = tailwind.config.ts) */
+  --brand:      #E11D2E;
+  --brand-dark: #C8102E;
+
+  /* Structurels */
+  --bg-page:           #FAF8F6;
+  --bg-page-gradient:  linear-gradient(180deg, #FAF8F6 0%, #F5F2EE 100%);
+  --bg-surface:        #FFFFFF;
+  --bg-surface-2:      #FBFAF8;
+  --bg-surface-hover:  #F5F1EC;
+  --bg-input:          #FFFFFF;
+  --header-bg:         #F5F1EC;
+  --row-stripe:        #FBFAF8;
+  --row-hover:         #F5F1EC;
+
+  /* Bordures */
+  --border:        #EAE5DF;
+  --border-strong: #D6CFC7;
+
+  /* Texte */
+  --text-primary:   #1F1A17; /* presque noir, pas pur */
+  --text-secondary: #4A413C;
+  --text-muted:     #7A6F65;
+  --text-faint:     #A89E92;
+
+  /* Ombres (chaudes, pas bleutées) */
+  --shadow-sm:   0 1px 2px rgba(31, 26, 23, 0.06), 0 1px 3px rgba(31, 26, 23, 0.04);
+  --shadow-md:   0 4px 12px rgba(31, 26, 23, 0.08);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 1px 3px rgba(31, 26, 23, 0.06);
+
+  /* Sémantiques — DEFAULT = teinte texte/icône, soft = fond fade, fill = fond solide */
+  --color-success:       #15803D;
+  --color-success-soft:  #DCFCE7;
+  --color-success-fill:  #16A34A;
+
+  --color-warning:       #A16207;
+  --color-warning-soft:  #FEF3C7;
+  --color-warning-fill:  #EAB308;
+
+  --color-alert:         #C2410C;
+  --color-alert-soft:    #FFEDD5;
+  --color-alert-fill:    #F97316;
+
+  --color-critical:      #B91C1C;
+  --color-critical-soft: #FEE2E2;
+  --color-critical-fill: #DC2626;
+
+  --color-info:          #1D4ED8;
+  --color-info-soft:     #DBEAFE;
+  --color-info-fill:     #2563EB;
+
+  --color-purple:        #7C3AED;
+  --color-purple-soft:   #EDE9FE;
 }
 
+/* ─────────────────────────────────────────────────────────
+   THÈME DARK — chaud, sépia, pas bleuté
+   ───────────────────────────────────────────────────────── */
+.theme-dark {
+  /* Structurels */
+  --bg-page:           #1A1614;
+  --bg-page-gradient:  linear-gradient(180deg, #1A1614 0%, #161311 100%);
+  --bg-surface:        #24201D;
+  --bg-surface-2:      #1F1B19;
+  --bg-surface-hover:  #2D2925;
+  --bg-input:          #24201D;
+  --header-bg:         #1F1B19;
+  --row-stripe:        #1F1B19;
+  --row-hover:         #2D2925;
+
+  /* Bordures */
+  --border:        #3A3530;
+  --border-strong: #4A443D;
+
+  /* Texte */
+  --text-primary:   #F2EEEA;
+  --text-secondary: #C8C0B7;
+  --text-muted:     #968E84;
+  --text-faint:     #6E665D;
+
+  /* Ombres */
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+
+  /* Sémantiques (texte plus clair pour contraste sur fond sombre) */
+  --color-success:       #4ADE80;
+  --color-success-soft:  rgba(74, 222, 128, 0.15);
+  --color-success-fill:  #16A34A;
+
+  --color-warning:       #FACC15;
+  --color-warning-soft:  rgba(250, 204, 21, 0.15);
+  --color-warning-fill:  #EAB308;
+
+  --color-alert:         #FB923C;
+  --color-alert-soft:    rgba(251, 146, 60, 0.15);
+  --color-alert-fill:    #F97316;
+
+  --color-critical:      #F87171;
+  --color-critical-soft: rgba(248, 113, 113, 0.15);
+  --color-critical-fill: #DC2626;
+
+  --color-info:          #60A5FA;
+  --color-info-soft:     rgba(96, 165, 250, 0.15);
+  --color-info-fill:     #2563EB;
+
+  --color-purple:        #A78BFA;
+  --color-purple-soft:   rgba(167, 139, 250, 0.15);
+}
+
+/* ─────────────────────────────────────────────────────────
+   GLOBAL
+   ───────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -18,17 +132,20 @@ html, body {
 }
 
 body {
-  background: #0F0F0F;
-  color: #ffffff;
-  font-family: 'Inter', sans-serif;
+  /* Couleurs pilotées par le thème (light/dark via classe sur <html>).
+     La police est appliquée via la classe `font-sans` sur <body> dans layout.tsx
+     (qui résout vers var(--font-body) = Inter via next/font). */
+  background: var(--bg-page-gradient);
+  color: var(--text-primary);
+  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Scrollbar discrète */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
 /* Safe area pour iPhone */
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-top    { padding-top:    env(safe-area-inset-top); }

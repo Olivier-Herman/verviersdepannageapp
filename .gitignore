@@ -37,6 +37,9 @@ Thumbs.db
 *.njsproj
 *.sln
 
+# Claude Code (settings + scheduled tasks lock — local uniquement)
+.claude/
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts

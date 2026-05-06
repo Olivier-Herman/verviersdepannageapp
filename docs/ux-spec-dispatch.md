@@ -538,11 +538,15 @@ Cette spec ne s'applique pas en un jour. Voici l'ordre suggéré pour migrer l'a
 Voici la liste des composants UI atomiques à créer/refactorer pour appliquer cette spec :
 
 ### Composants atomiques (Atoms)
-- `<Badge variant="success|warning|danger|info|neutral|brand">` — pour les badges sémantiques
-- `<StatusPill status="nouveau|assigné|en_route|sur_place|en_parc|terminé">` — pill avec icône+label
-- `<ActionButton intent="primary|secondary|destructive">` — bouton avec hiérarchie
-- `<KpiCounter value={42} label="Nouveau" />` — compteur des onglets pipeline
-- `<ConfirmModal title="..." onConfirm={...}>` — modal de confirmation pour actions destructives
+- ✅ `<Badge variant="neutral|info|success|warning|alert|critical|brand|purple">` — badges sémantiques (Phase 1, créé `src/components/ui/Badge/`)
+- ✅ `<StatusPill status="nouveau|a_assigner|en_cours|en_route|sur_place|en_parc|a_facturer|termine|annule">` — pill avec icône+label, mapping centralisé (Phase 1, créé `src/components/ui/StatusPill/`)
+- ✅ `<Button variant="primary|secondary|ghost|danger|success">` — bouton avec hiérarchie + loading + icon slots (Phase 1, créé `src/components/ui/Button/`). Renommé d'ActionButton.
+- ✅ `<KpiCard label value sub icon active onClick>` — compteur des onglets pipeline (Phase 1, créé `src/components/ui/KpiCard/`). Renommé de KpiCounter.
+- ✅ `<ConfirmModal open title description variant onConfirm onCancel>` — modal de confirmation pour actions destructives (Phase 1, créé `src/components/ui/ConfirmModal/`)
+- ✅ `<Avatar name email userId size status>` — avatar circulaire avec couleur déterministe + status dot (Phase 1, créé `src/components/ui/Avatar/`)
+- ✅ `<Panel title icon iconBg actions noPadding>` — carte avec entête optionnel (Phase 1, créé `src/components/ui/Panel/`)
+
+> Documentation détaillée des 7 composants Phase 1 : voir [docs/components-phase1.md](./components-phase1.md).
 
 ### Composants moléculaires (Molecules)
 - `<MissionCard mission={...}>` — card pipeline, avec couleur âge, actions rapides

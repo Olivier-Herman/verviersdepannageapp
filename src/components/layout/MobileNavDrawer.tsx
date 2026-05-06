@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { useEffect } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import { filterNavItems } from './nav-items'
+import { useTheme } from '@/components/theme/ThemeProvider'
 
 interface Props {
   open:        boolean
@@ -18,6 +20,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
   const pathname = usePathname()
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
   const items = filterNavItems({ userModules, userRole })
+  const { theme, toggleTheme, mounted } = useTheme()
 
   // Bloque le scroll du body quand le drawer est ouvert
   useEffect(() => {
@@ -78,16 +81,25 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
 
         {/* Footer */}
         <div className="px-3 py-3 border-t border-[#2a2a2a]">
-          <Link href="/profil" onClick={onClose}
-            className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-xl hover:bg-[#2a2a2a] transition-all">
-            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{userName}</p>
-              <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
-            </div>
-          </Link>
+          <div className="flex items-center gap-1 mb-1">
+            <Link href="/profil" onClick={onClose}
+              className="flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#2a2a2a] transition-all min-w-0">
+              <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate">{userName}</p>
+                <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
+              </div>
+            </Link>
+            <button
+              onClick={toggleTheme}
+              aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-[#2a2a2a] transition-all flex-shrink-0">
+              {mounted && (theme === 'light' ? <Moon size={16} /> : <Sun size={16} />)}
+            </button>
+          </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-all w-full">

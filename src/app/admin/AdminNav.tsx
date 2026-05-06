@@ -19,15 +19,15 @@ export default function AdminNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="flex overflow-x-auto gap-1 px-4 py-2 bg-[#111111] border-b border-border scrollbar-hide">
+    <nav className="flex overflow-x-auto gap-1 px-4 py-2 bg-surface-2 border-b scrollbar-hide">
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = pathname.startsWith(href)
         return (
           <Link key={href} href={href}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition flex-shrink-0 ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
               active
                 ? 'bg-brand text-white'
-                : 'text-zinc-400 hover:text-white hover:bg-surface-2'
+                : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
             }`}
           >
             <Icon size={15} />

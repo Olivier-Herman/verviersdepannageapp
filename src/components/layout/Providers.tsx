@@ -2,6 +2,7 @@
 
 import { SessionProvider } from 'next-auth/react'
 import { useEffect }       from 'react'
+import { ThemeProvider }   from '@/components/theme/ThemeProvider'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
 
@@ -18,5 +19,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       .catch(err => console.error('[SW Custom] Erreur:', err))
   }, [])
 
-  return <SessionProvider>{children}</SessionProvider>
+  return (
+    <ThemeProvider>
+      <SessionProvider>{children}</SessionProvider>
+    </ThemeProvider>
+  )
 }

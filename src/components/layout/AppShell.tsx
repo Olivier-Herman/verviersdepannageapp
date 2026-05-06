@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { useState } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
+import { useTheme } from '@/components/theme/ThemeProvider'
 
 interface AppShellProps {
   children:     React.ReactNode
@@ -31,6 +33,7 @@ export default function AppShell({
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
   const visibleNav = filterNavItems({ userModules, userRole })
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const { theme, toggleTheme, mounted } = useTheme()
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex">
@@ -62,17 +65,25 @@ export default function AppShell({
         </nav>
 
         <div className="px-3 py-4 border-t border-[#2a2a2a]">
-          <Link href="/profil"
-            className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-xl hover:bg-[#2a2a2a] transition-all group">
-            <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate group-hover:text-brand transition-colors">{userName}</p>
-              <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
-            </div>
-            <span className="text-zinc-600 group-hover:text-zinc-400 text-xs">→</span>
-          </Link>
+          <div className="flex items-center gap-1 mb-1">
+            <Link href="/profil"
+              className="flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#2a2a2a] transition-all group min-w-0">
+              <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate group-hover:text-brand transition-colors">{userName}</p>
+                <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
+              </div>
+            </Link>
+            <button
+              onClick={toggleTheme}
+              aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-[#2a2a2a] transition-all flex-shrink-0">
+              {mounted && (theme === 'light' ? <Moon size={16} /> : <Sun size={16} />)}
+            </button>
+          </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full"

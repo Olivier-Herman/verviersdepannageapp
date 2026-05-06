@@ -1,8 +1,19 @@
 'use client'
 // src/app/admin/depots/DepotsAdminClient.tsx
+//
+// POC Phase 1 — proof-of-concept d'intégration des composants atomiques
+// (Button, Badge, ConfirmModal) et des tokens thème (bg-surface / border /
+// text-ink / etc.) sur l'écran le plus simple côté admin.
+//
+// Aucune modif fonctionnelle vs version précédente — uniquement migration
+// visuelle. La logique CRUD (POST/PUT/DELETE /api/depots) est intacte.
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { ArrowLeft, MapPin, Plus, X } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
 interface Depot {
   id: string
@@ -19,6 +30,15 @@ const EMPTY: Omit<Depot, 'id' | 'created_at'> = {
   name: '', address: '', lat: null, lng: null,
   is_default: false, active: true, sort_order: 0,
 }
+
+// Classes communes pour les inputs HTML — pas de composant <Input> atomique en
+// phase 1. À factoriser en Phase 2 si la duplication devient pénible.
+const inputCls =
+  'w-full bg-surface border rounded-md px-3 py-2.5 text-sm text-ink ' +
+  'focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft ' +
+  'placeholder:text-ink-muted transition-colors'
+
+const labelCls = 'block text-ink-muted text-xs font-semibold mb-1.5 uppercase tracking-wider'
 
 function AddressInput({ value, onChange, onSelect }: {
   value: string
@@ -69,25 +89,37 @@ function AddressInput({ value, onChange, onSelect }: {
 
   return (
     <div className="space-y-1.5">
-      <button onClick={handleGPS} disabled={gpsLoading} type="button"
-        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/15 border border-blue-500/30 hover:bg-blue-600/25 disabled:opacity-50 text-blue-300 rounded-lg text-xs transition">
-        {gpsLoading ? '⏳ Localisation…' : '📍 Ma position'}
-      </button>
-      <input ref={ref} value={value} onChange={e => onChange(e.target.value)}
+      <Button
+        variant="ghost"
+        size="sm"
+        type="button"
+        loading={gpsLoading}
+        iconLeft={!gpsLoading ? <MapPin size={14} /> : undefined}
+        onClick={handleGPS}
+      >
+        {gpsLoading ? 'Localisation…' : 'Ma position'}
+      </Button>
+      <input
+        ref={ref}
+        value={value}
+        onChange={e => onChange(e.target.value)}
         placeholder="Rue, numéro, ville…"
-        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
+        className={inputCls}
+      />
     </div>
   )
 }
 
 export default function DepotsAdminClient({ initialDepots }: { initialDepots: Depot[] }) {
-  const [depots,  setDepots]  = useState<Depot[]>(initialDepots)
-  const [editing, setEditing] = useState<Partial<Depot> | null>(null)
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState('')
+  const [depots,           setDepots]           = useState<Depot[]>(initialDepots)
+  const [editing,          setEditing]          = useState<Partial<Depot> | null>(null)
+  const [saving,           setSaving]           = useState(false)
+  const [error,            setError]            = useState('')
+  const [confirmDeleteId,  setConfirmDeleteId]  = useState<string | null>(null)
+  const [deleting,         setDeleting]         = useState(false)
 
-  const openNew  = () => setEditing({ ...EMPTY })
-  const openEdit = (d: Depot) => setEditing({ ...d })
+  const openNew  = () => { setError(''); setEditing({ ...EMPTY }) }
+  const openEdit = (d: Depot) => { setError(''); setEditing({ ...d }) }
 
   const handleSave = async () => {
     if (!editing?.name || !editing?.address) { setError('Nom et adresse requis'); return }
@@ -110,115 +142,178 @@ export default function DepotsAdminClient({ initialDepots }: { initialDepots: De
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer ce dépôt ?')) return
-    await fetch(`/api/depots?id=${id}`, { method: 'DELETE' })
-    setDepots(ds => ds.filter(d => d.id !== id))
+  const handleDelete = async () => {
+    if (!confirmDeleteId) return
+    setDeleting(true)
+    try {
+      await fetch(`/api/depots?id=${confirmDeleteId}`, { method: 'DELETE' })
+      setDepots(ds => ds.filter(d => d.id !== confirmDeleteId))
+      setConfirmDeleteId(null)
+    } finally {
+      setDeleting(false)
+    }
   }
 
+  const activeDepots = depots.filter(d => d.active)
+
   return (
-    <div className="min-h-screen bg-[#0F0F0F] px-6 py-8 max-w-3xl mx-auto">
-      <div className="flex items-center gap-4 mb-8">
-        <Link href="/admin" className="w-9 h-9 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white">←</Link>
-        <h1 className="text-white font-bold text-2xl">Dépôts</h1>
-        <button onClick={openNew}
-          className="ml-auto px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">
-          + Nouveau dépôt
-        </button>
+    <div className="px-4 lg:px-6 py-6 max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <Link
+          href="/admin"
+          aria-label="Retour à l'administration"
+          className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ink-secondary hover:bg-surface-hover hover:text-ink transition-colors"
+        >
+          <ArrowLeft size={16} />
+        </Link>
+        <h1 className="font-display text-2xl font-bold text-ink">Dépôts</h1>
+        <div className="ml-auto">
+          <Button variant="primary" iconLeft={<Plus size={16} />} onClick={openNew}>
+            Nouveau dépôt
+          </Button>
+        </div>
       </div>
 
       {/* Liste */}
       <div className="space-y-3">
-        {depots.filter(d => d.active).map(d => (
-          <div key={d.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 flex items-center gap-4">
+        {activeDepots.map(d => (
+          <div
+            key={d.id}
+            className="bg-surface border rounded-card shadow-card p-4 flex items-center gap-4 transition-shadow hover:shadow-md"
+          >
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <p className="text-white font-semibold">{d.name}</p>
-                {d.is_default && (
-                  <span className="px-2 py-0.5 bg-brand/20 border border-brand/30 text-brand text-xs rounded-full">
-                    Par défaut
-                  </span>
-                )}
+              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                <p className="font-display font-semibold text-ink truncate">{d.name}</p>
+                {d.is_default && <Badge variant="brand" leading="★">Par défaut</Badge>}
               </div>
-              <p className="text-zinc-500 text-sm truncate">{d.address}</p>
-              {d.lat && <p className="text-zinc-700 text-xs">{d.lat.toFixed(5)}, {d.lng?.toFixed(5)}</p>}
+              <p className="text-ink-secondary text-sm truncate">{d.address}</p>
+              {d.lat != null && d.lng != null && (
+                <p className="text-ink-faint text-xs font-mono mt-0.5">
+                  {d.lat.toFixed(5)}, {d.lng.toFixed(5)}
+                </p>
+              )}
             </div>
             <div className="flex gap-2 flex-shrink-0">
-              <button onClick={() => openEdit(d)}
-                className="px-3 py-1.5 bg-[#2a2a2a] text-zinc-300 hover:text-white rounded-lg text-xs transition">
+              <Button variant="ghost" size="sm" onClick={() => openEdit(d)}>
                 Modifier
-              </button>
-              <button onClick={() => handleDelete(d.id)}
-                className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-xs transition">
+              </Button>
+              <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(d.id)}>
                 Supprimer
-              </button>
+              </Button>
             </div>
           </div>
         ))}
-        {depots.filter(d => d.active).length === 0 && (
-          <p className="text-zinc-600 text-center py-12">Aucun dépôt configuré</p>
+        {activeDepots.length === 0 && (
+          <div className="text-center py-12 border-2 border-dashed rounded-card text-ink-muted">
+            Aucun dépôt configuré
+          </div>
         )}
       </div>
 
-      {/* Modal édition */}
+      {/* Modal édition (pattern visuel équivalent à ConfirmModal mais avec form) */}
       {editing && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
-          onClick={() => setEditing(null)}>
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-6 w-full max-w-md space-y-4"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-white font-bold text-lg">{editing.id ? 'Modifier' : 'Nouveau dépôt'}</h2>
-              <button onClick={() => setEditing(null)} className="text-zinc-500 text-2xl">×</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={saving ? undefined : () => setEditing(null)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="depot-edit-title"
+            className="relative w-full max-w-lg bg-surface border rounded-card shadow-md"
+          >
+            <div className="px-5 pt-5 pb-2 flex items-center justify-between">
+              <h2 id="depot-edit-title" className="font-display text-lg font-bold text-ink">
+                {editing.id ? 'Modifier le dépôt' : 'Nouveau dépôt'}
+              </h2>
+              <button
+                onClick={() => setEditing(null)}
+                aria-label="Fermer"
+                disabled={saving}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md text-ink-muted hover:text-ink hover:bg-surface-hover transition-colors disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Nom *</label>
-              <input value={editing.name || ''} onChange={e => setEditing(v => ({ ...v!, name: e.target.value }))}
-                placeholder="Ex: Pepinster"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
-            </div>
+            <div className="px-5 py-3 space-y-4">
+              <div>
+                <label className={labelCls}>Nom *</label>
+                <input
+                  value={editing.name || ''}
+                  onChange={e => setEditing(v => ({ ...v!, name: e.target.value }))}
+                  placeholder="Ex: Pepinster"
+                  className={inputCls}
+                />
+              </div>
 
-            <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Adresse *</label>
-              <AddressInput
-                value={editing.address || ''}
-                onChange={v => setEditing(e => ({ ...e!, address: v }))}
-                onSelect={(addr, lat, lng) => setEditing(e => ({ ...e!, address: addr, lat, lng }))}
-              />
-              {editing.lat && (
-                <p className="text-green-400 text-xs mt-1">✓ Position GPS encodée</p>
+              <div>
+                <label className={labelCls}>Adresse *</label>
+                <AddressInput
+                  value={editing.address || ''}
+                  onChange={v => setEditing(e => ({ ...e!, address: v }))}
+                  onSelect={(addr, lat, lng) => setEditing(e => ({ ...e!, address: addr, lat, lng }))}
+                />
+                {editing.lat != null && (
+                  <p className="text-success text-xs mt-1.5 flex items-center gap-1">
+                    <span aria-hidden="true">✓</span> Position GPS encodée
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className={labelCls}>Ordre d&apos;affichage</label>
+                <input
+                  type="number"
+                  value={editing.sort_order ?? 0}
+                  onChange={e => setEditing(v => ({ ...v!, sort_order: parseInt(e.target.value) || 0 }))}
+                  className={`${inputCls} w-24`}
+                />
+              </div>
+
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={editing.is_default ?? false}
+                  onChange={e => setEditing(v => ({ ...v!, is_default: e.target.checked }))}
+                  className="w-4 h-4 accent-brand"
+                />
+                <span className="text-ink text-sm">Dépôt par défaut</span>
+              </label>
+
+              {error && (
+                <p className="text-critical text-sm flex items-center gap-1.5">
+                  <span aria-hidden="true">⚠️</span> {error}
+                </p>
               )}
             </div>
 
-            <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Ordre d&apos;affichage</label>
-              <input type="number" value={editing.sort_order ?? 0}
-                onChange={e => setEditing(v => ({ ...v!, sort_order: parseInt(e.target.value) || 0 }))}
-                className="w-24 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
-            </div>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={editing.is_default ?? false}
-                onChange={e => setEditing(v => ({ ...v!, is_default: e.target.checked }))}
-                className="w-4 h-4 accent-brand" />
-              <span className="text-zinc-300 text-sm">Dépôt par défaut</span>
-            </label>
-
-            {error && <p className="text-red-400 text-sm">⚠️ {error}</p>}
-
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setEditing(null)}
-                className="flex-1 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm">
+            <div className="px-5 py-4 border-t flex items-center justify-end gap-2">
+              <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
                 Annuler
-              </button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex-1 py-2.5 bg-brand disabled:opacity-50 text-white rounded-xl text-sm font-semibold">
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </button>
+              </Button>
+              <Button variant="primary" onClick={handleSave} loading={saving}>
+                {editing.id ? 'Enregistrer' : 'Créer'}
+              </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal de confirmation suppression */}
+      <ConfirmModal
+        open={!!confirmDeleteId}
+        title="Supprimer ce dépôt ?"
+        description="Cette action est irréversible. Les missions liées garderont leur référence mais le dépôt n'apparaîtra plus dans les listes."
+        variant="danger"
+        confirmLabel="Supprimer"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDeleteId(null)}
+        loading={deleting}
+      />
     </div>
   )
 }
