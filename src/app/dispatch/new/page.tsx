@@ -31,6 +31,7 @@ export default async function NewMissionPage() {
       warnings={warnings || []}
       userName={user.name || ''}
       userRole={user.role || ''}
+      userModules={user.modules || []}
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
     />
   )

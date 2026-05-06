@@ -11,11 +11,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isAdmin = ['admin', 'superadmin'].includes((session.user as any).role)
   if (!isAdmin) redirect('/dashboard')
 
-  const userName = session.user.name ?? ''
-  const userRole = (session.user as any).role ?? ''
+  const userName    = session.user.name ?? ''
+  const userRole    = (session.user as any).role ?? ''
+  const userModules = (session.user as any).modules ?? []
 
   return (
-    <AdminLayoutClient userName={userName} userRole={userRole}>
+    <AdminLayoutClient userName={userName} userRole={userRole} userModules={userModules}>
       <AdminNav />
       <div className="flex-1 overflow-y-auto">
         {children}

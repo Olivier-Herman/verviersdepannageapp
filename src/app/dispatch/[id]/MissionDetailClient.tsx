@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
+import { filterNavItems } from '@/components/layout/nav-items'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -158,15 +159,9 @@ const LOG_ICONS: Record<string, string> = {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { href: '/dispatch',  label: 'Dispatch',  icon: '📡' },
-  { href: '/admin',     label: 'Admin',     icon: '⚙️' },
-  { href: '/profil',    label: 'Mon Profil',icon: '👤' },
-]
-
-function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
+function Sidebar({ userName, userRole, userModules }: { userName: string; userRole: string; userModules: string[] }) {
   const pathname = usePathname()
+  const NAV_ITEMS = filterNavItems({ userModules, userRole })
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
   return (
     <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] fixed top-0 left-0 h-full z-30">
@@ -450,6 +445,7 @@ export default function MissionDetailClient({
   drivers,
   userName,
   userRole,
+  userModules = [],
   googleMapsKey,
 }: {
   mission:       Mission
@@ -457,6 +453,7 @@ export default function MissionDetailClient({
   drivers:       Driver[]
   userName:      string
   userRole:      string
+  userModules?:  string[]
   googleMapsKey: string
 }) {
   const router = useRouter()
@@ -1030,7 +1027,7 @@ export default function MissionDetailClient({
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex">
-      <Sidebar userName={userName} userRole={userRole} />
+      <Sidebar userName={userName} userRole={userRole} userModules={userModules} />
 
       <div className="flex-1 lg:ml-64 flex flex-col">
         {/* Header */}

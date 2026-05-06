@@ -120,12 +120,7 @@ const TABS = [
 
 const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','vab','police','prive','garage']
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { href: '/dispatch',  label: 'Dispatch',  icon: '📡' },
-  { href: '/admin',     label: 'Admin',     icon: '⚙️' },
-  { href: '/profil',    label: 'Mon Profil',icon: '👤' },
-]
+import { filterNavItems } from '@/components/layout/nav-items'
 
 function getDelai(received_at: string): { label: string; color: string; urgency: 'ok'|'warn'|'alert'|'critical' } {
   const mins  = Math.floor((Date.now() - new Date(received_at).getTime()) / 60000)
@@ -147,8 +142,9 @@ const URGENCY_BORDER: Record<string, string> = {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
+function Sidebar({ userName, userRole, userModules }: { userName: string; userRole: string; userModules: string[] }) {
   const pathname = usePathname()
+  const NAV_ITEMS = filterNavItems({ userModules, userRole })
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
   return (
     <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] fixed top-0 left-0 h-full z-30">
@@ -501,10 +497,12 @@ export default function DispatchClient({
   drivers,
   userName,
   userRole,
+  userModules = [],
 }: {
-  drivers:  Driver[]
-  userName: string
-  userRole: string
+  drivers:      Driver[]
+  userName:     string
+  userRole:     string
+  userModules?: string[]
 }) {
   const router = useRouter()
 
@@ -651,7 +649,7 @@ export default function DispatchClient({
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex">
-      <Sidebar userName={userName} userRole={userRole} />
+      <Sidebar userName={userName} userRole={userRole} userModules={userModules} />
 
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
 

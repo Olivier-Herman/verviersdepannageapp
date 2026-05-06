@@ -5,6 +5,7 @@ import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { signOut }     from 'next-auth/react'
 import { usePathname } from 'next/navigation'
+import { filterNavItems } from '@/components/layout/nav-items'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,17 +41,12 @@ const MISSION_TYPES = [
 ]
 const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
 const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { href: '/dispatch',  label: 'Dispatch',  icon: '📡' },
-  { href: '/admin',     label: 'Admin',     icon: '⚙️' },
-]
-
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
+function Sidebar({ userName, userRole, userModules }: { userName: string; userRole: string; userModules: string[] }) {
   const pathname = usePathname()
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) || '?'
+  const NAV_ITEMS = filterNavItems({ userModules, userRole })
   return (
     <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] fixed top-0 left-0 h-full z-30">
       <div className="px-6 py-5 border-b border-[#2a2a2a]">
@@ -310,9 +306,9 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function NewMissionClient({
-  drivers, warnings, userName, userRole, googleMapsKey
+  drivers, warnings, userName, userRole, userModules = [], googleMapsKey
 }: {
-  drivers: Driver[]; warnings: Warning[]; userName: string; userRole: string; googleMapsKey: string
+  drivers: Driver[]; warnings: Warning[]; userName: string; userRole: string; userModules?: string[]; googleMapsKey: string
 }) {
   const router = useRouter()
 
@@ -560,7 +556,7 @@ export default function NewMissionClient({
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] flex">
-      <Sidebar userName={userName} userRole={userRole} />
+      <Sidebar userName={userName} userRole={userRole} userModules={userModules} />
 
       <div className="flex-1 lg:ml-64 flex flex-col">
         {/* Header */}

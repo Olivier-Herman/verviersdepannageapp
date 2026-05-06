@@ -3,28 +3,18 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-
-const NAV_ITEMS = [
-  { href: '/dashboard',     label: 'Dashboard',        icon: '🏠' },
-  { href: '/encaissement',  label: 'Encaissement',      icon: '💳' },
-  { href: '/encaissements', label: 'Mouvements',        icon: '📊' },
-  { href: '/caisse',        label: 'Ma Caisse',         icon: '💰' },
-  { href: '/avance-fonds',  label: 'Avance de fonds',   icon: '📄' },
-  { href: '/documents',     label: 'Documents',         icon: '📁' },
-  { href: '/check-vehicule',label: 'Check Véhicule',    icon: '🔍' },
-  { href: '/services/tgr',  label: 'TGR Touring',       icon: '🛡️' },
-  { href: '/admin',         label: 'Administration',    icon: '⚙️' },
-  { href: '/profil',        label: 'Mon Profil',        icon: '👤' },
-]
+import { filterNavItems } from '@/components/layout/nav-items'
 
 export default function AdminLayoutClient({
   children,
   userName,
   userRole,
+  userModules = [],
 }: {
-  children: React.ReactNode
-  userName: string
-  userRole: string
+  children:     React.ReactNode
+  userName:     string
+  userRole:     string
+  userModules?: string[]
 }) {
   const pathname = usePathname()
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
@@ -41,7 +31,7 @@ export default function AdminLayoutClient({
         </div>
 
         <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
-          {NAV_ITEMS.map(item => {
+          {filterNavItems({ userModules, userRole }).map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link key={item.href} href={item.href}

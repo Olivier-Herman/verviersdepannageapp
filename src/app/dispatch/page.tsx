@@ -30,6 +30,7 @@ export default async function DispatchPage() {
       drivers={drivers || []}
       userName={user.name || ''}
       userRole={user.role || ''}
+      userModules={user.modules || []}
     />
   )
 }
