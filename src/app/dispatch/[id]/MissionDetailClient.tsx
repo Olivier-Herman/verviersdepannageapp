@@ -217,16 +217,16 @@ function AddressReviewModal({
             className="w-full text-left p-4 bg-surface hover:bg-surface-2 border hover:border-ink-faint rounded-xl transition">
             <p className="text-ink-muted text-xs font-medium uppercase mb-1">📥 Adresse reçue (parser)</p>
             <p className="text-ink text-sm">{parsedAddress || <span className="text-ink-faint">(vide)</span>}</p>
-            <p className="text-amber-500/80 text-xs mt-2">⚠ Sera envoyée sans coordonnées GPS — pas de calcul KM</p>
+            <p className="text-warning text-xs mt-2">⚠ Sera envoyée sans coordonnées GPS — pas de calcul KM</p>
           </button>
 
           {/* Suggestion Google */}
           {googleSuggestion && (
             <button type="button" onClick={() => onPick(googleSuggestion.addr, googleSuggestion.lat, googleSuggestion.lng)}
-              className="w-full text-left p-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-400 rounded-xl transition">
-              <p className="text-green-400 text-xs font-medium uppercase mb-1">🌐 Suggestion Google</p>
+              className="w-full text-left p-4 bg-success-soft hover:bg-success-soft border border-success hover:border-success rounded-xl transition">
+              <p className="text-success text-xs font-medium uppercase mb-1">🌐 Suggestion Google</p>
               <p className="text-ink text-sm">{googleSuggestion.addr}</p>
-              <p className="text-green-300/80 text-xs mt-2">✓ Géolocalisée ({googleSuggestion.lat.toFixed(5)}, {googleSuggestion.lng.toFixed(5)})</p>
+              <p className="text-success text-xs mt-2">✓ Géolocalisée ({googleSuggestion.lat.toFixed(5)}, {googleSuggestion.lng.toFixed(5)})</p>
             </button>
           )}
 
@@ -306,7 +306,7 @@ function RelivrerButton({ missionId }: { missionId: string }) {
         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
         {loading ? '⏳ Création…' : '🚛 Relivrer'}
       </button>
-      {error && <p className="text-red-400 text-xs mt-2">⚠ {error}</p>}
+      {error && <p className="text-critical text-xs mt-2">⚠ {error}</p>}
     </div>
   )
 }
@@ -357,10 +357,10 @@ function GeoStatusBanner({ status, onReview }: {
 }) {
   if (status.state === 'idle')      return null
   if (status.state === 'checking')  return <p className="text-ink-muted text-xs">⏳ Vérification Google…</p>
-  if (status.state === 'confirmed') return <p className="text-green-400 text-xs">✅ Adresse confirmée par Google</p>
+  if (status.state === 'confirmed') return <p className="text-success text-xs">✅ Adresse confirmée par Google</p>
   if (status.state === 'different') return (
-    <div className="px-3 py-2 bg-green-500/5 border border-green-500/20 rounded-xl flex items-center justify-between gap-2">
-      <p className="text-green-300 text-xs">✅ Normalisée par Google (lat/lng appliqués)</p>
+    <div className="px-3 py-2 bg-success-soft border border-success rounded-xl flex items-center justify-between gap-2">
+      <p className="text-success text-xs">✅ Normalisée par Google (lat/lng appliqués)</p>
       <button type="button" onClick={onReview}
         className="flex-shrink-0 px-2.5 py-1 bg-surface-hover hover:bg-surface-2 text-ink-secondary rounded-lg text-xs transition">
         Pas la bonne ?
@@ -369,10 +369,10 @@ function GeoStatusBanner({ status, onReview }: {
   )
   // not_found
   return (
-    <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-2">
-      <p className="text-red-400 text-xs">❌ Adresse non trouvée par Google — pas de calcul KM possible</p>
+    <div className="px-3 py-2 bg-critical-soft border border-critical rounded-xl flex items-center justify-between gap-2">
+      <p className="text-critical text-xs">❌ Adresse non trouvée par Google — pas de calcul KM possible</p>
       <button type="button" onClick={onReview}
-        className="flex-shrink-0 px-2.5 py-1 bg-red-500/30 hover:bg-red-500/50 text-white rounded-lg text-xs font-semibold transition">
+        className="flex-shrink-0 px-2.5 py-1 bg-critical-soft hover:bg-critical-fill text-white rounded-lg text-xs font-semibold transition">
         Corriger
       </button>
     </div>
@@ -1068,7 +1068,7 @@ export default function MissionDetailClient({
             </span>
             {initialMission.parse_confidence !== null && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
-                initialMission.parse_confidence >= 0.8 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                initialMission.parse_confidence >= 0.8 ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
               }`}>
                 IA {Math.round(initialMission.parse_confidence * 100)}%
               </span>
@@ -1158,11 +1158,11 @@ export default function MissionDetailClient({
 
                   {/* Badge lien Odoo */}
                   {billedPartnerId && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-3">
-                      <span className="text-green-400 text-xs">✓ Lié Odoo #{billedPartnerId}</span>
-                      <span className="text-green-300 text-xs font-medium">{form.billed_to_name}</span>
+                    <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success rounded-xl mb-3">
+                      <span className="text-success text-xs">✓ Lié Odoo #{billedPartnerId}</span>
+                      <span className="text-success text-xs font-medium">{form.billed_to_name}</span>
                       <button type="button" onClick={clearBilledClient}
-                        className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
+                        className="ml-auto text-ink-muted hover:text-critical text-xs">✕</button>
                     </div>
                   )}
 
@@ -1170,7 +1170,7 @@ export default function MissionDetailClient({
                     <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
                   </Field>
                   {!billedPartnerId && form.billed_to_name && (
-                    <p className="text-amber-400/80 text-xs mt-1.5">⚠ Pas de contact Odoo lié — un nouveau sera créé à la confirmation.</p>
+                    <p className="text-warning text-xs mt-1.5">⚠ Pas de contact Odoo lié — un nouveau sera créé à la confirmation.</p>
                   )}
                 </div>
 
@@ -1211,14 +1211,14 @@ export default function MissionDetailClient({
 
                   {/* Badge lien véhicule Odoo + lookup automatique par plaque */}
                   {odooVehicleId && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
-                      <span className="text-green-400 text-xs">✓ Lié Odoo véhicule #{odooVehicleId}</span>
+                    <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success rounded-xl mb-4">
+                      <span className="text-success text-xs">✓ Lié Odoo véhicule #{odooVehicleId}</span>
                       <button type="button" onClick={clearOdooVehicle}
-                        className="ml-auto text-ink-muted hover:text-red-400 text-xs">Délier ✕</button>
+                        className="ml-auto text-ink-muted hover:text-critical text-xs">Délier ✕</button>
                     </div>
                   )}
                   {!odooVehicleId && vehicleSearched && vehicleResults.length === 0 && form.vehicle_plate.trim().length >= 3 && (
-                    <p className="text-amber-400/80 text-xs mb-3">⚠ Aucun véhicule Odoo avec cette plaque — un nouveau sera créé à la confirmation.</p>
+                    <p className="text-warning text-xs mb-3">⚠ Aucun véhicule Odoo avec cette plaque — un nouveau sera créé à la confirmation.</p>
                   )}
                   {!odooVehicleId && vehicleResults.length > 0 && (
                     <div className="mb-4 bg-surface border border-brand/30 rounded-xl p-3">
@@ -1229,8 +1229,8 @@ export default function MissionDetailClient({
                           return (
                             <button key={v.id} type="button" onClick={() => selectOdooVehicle(v)}
                               className={`w-full text-left px-3 py-2 border rounded-lg transition ${
-                                sim === 'match'    ? 'bg-green-500/10 hover:bg-green-500/20 border-green-500/30'    :
-                                sim === 'mismatch' ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'    :
+                                sim === 'match'    ? 'bg-success-soft hover:bg-success-soft border-success'    :
+                                sim === 'mismatch' ? 'bg-warning-soft hover:bg-warning-soft border-warning'    :
                                                       'bg-surface hover:bg-surface-2 border'
                               }`}>
                               <div className="flex items-center justify-between gap-2">
@@ -1238,8 +1238,8 @@ export default function MissionDetailClient({
                                   <span className="font-mono font-semibold">{v.plate}</span>
                                   <span className="text-ink-secondary ml-2">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
                                 </p>
-                                {sim === 'match'    && <span className="text-green-400 text-xs">✓ correspond</span>}
-                                {sim === 'mismatch' && <span className="text-amber-400 text-xs">⚠ marque/modèle ≠</span>}
+                                {sim === 'match'    && <span className="text-success text-xs">✓ correspond</span>}
+                                {sim === 'mismatch' && <span className="text-warning text-xs">⚠ marque/modèle ≠</span>}
                               </div>
                               {v.vin && <p className="text-ink-muted text-xs">VIN: {v.vin}</p>}
                             </button>
@@ -1367,8 +1367,8 @@ export default function MissionDetailClient({
                       <p className="text-ink-faint text-xs">📥 Reçu : <span className="text-ink-muted">{initialMission.incident_address}</span></p>
                     )}
                     {isHighway(form.incident_address) && (
-                      <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-                        <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-warning-soft border border-warning rounded-xl">
+                        <div className="col-span-2 flex items-center gap-2 text-warning text-xs font-medium">
                           🛣️ Autoroute détectée
                         </div>
                         <Field label="Borne kilométrique">
@@ -1403,8 +1403,8 @@ export default function MissionDetailClient({
                     />
                     <GeoStatusBanner status={destinationGeo} onReview={() => reopenReview('destination')} />
                     {isHighway(form.destination_address) && (
-                      <div className="grid grid-cols-2 gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-                        <div className="col-span-2 flex items-center gap-2 text-amber-400 text-xs font-medium">
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-warning-soft border border-warning rounded-xl">
+                        <div className="col-span-2 flex items-center gap-2 text-warning text-xs font-medium">
                           🛣️ Autoroute détectée
                         </div>
                         <Field label="Borne kilométrique">
@@ -1452,7 +1452,7 @@ export default function MissionDetailClient({
                           </div>
                           <div className="flex-1 min-w-0 space-y-1.5">
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs font-bold ${idx === stops.length - 1 ? 'text-blue-400' : 'text-ink-muted'}`}>
+                              <span className={`text-xs font-bold ${idx === stops.length - 1 ? 'text-info' : 'text-ink-muted'}`}>
                                 {idx === stops.length - 1 ? '🏁 Arrivée' : `Stop ${idx + 1}`}
                               </span>
                               <input value={s.label}
@@ -1468,7 +1468,7 @@ export default function MissionDetailClient({
                               placeholder="Adresse — tape et choisis Google..." />
                           </div>
                           <button type="button" onClick={() => removeStop(s.id)}
-                            className="w-7 h-7 flex items-center justify-center rounded bg-red-500/10 hover:bg-red-500/30 text-red-400 text-sm">✕</button>
+                            className="w-7 h-7 flex items-center justify-center rounded bg-critical-soft hover:bg-critical-soft text-critical text-sm">✕</button>
                         </div>
                       ))}
                     </div>
@@ -1493,7 +1493,7 @@ export default function MissionDetailClient({
 
               {/* Compte rendu clôture */}
               {initialMission.status === 'completed' && (
-                <div className="bg-surface border border-green-500/20 rounded-2xl p-5">
+                <div className="bg-surface border border-success rounded-2xl p-5">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>🏁</span> Compte rendu de mission
                   </h2>
@@ -1507,9 +1507,9 @@ export default function MissionDetailClient({
                         <p className="text-ink text-sm whitespace-pre-wrap">{initialMission.closing_notes}</p></div>
                     )}
                     {initialMission.amount_collected && (
-                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
+                      <div className="bg-success-soft border border-success rounded-xl p-3">
                         <p className="text-ink-muted text-xs">Encaissement</p>
-                        <p className="text-green-400 font-bold text-lg">{initialMission.amount_collected} €</p>
+                        <p className="text-success font-bold text-lg">{initialMission.amount_collected} €</p>
                         {initialMission.payment_method && <p className="text-ink-secondary text-xs capitalize">{initialMission.payment_method}</p>}
                       </div>
                     )}
@@ -1548,15 +1548,15 @@ export default function MissionDetailClient({
                             <a
                               href={`/api/missions/${initialMission.id}/discharge-pdf`}
                               target="_blank" rel="noreferrer"
-                              className="text-xs px-3 py-1 bg-blue-600/20 border border-blue-600/40 text-blue-400 rounded-lg hover:bg-blue-600/30 transition"
+                              className="text-xs px-3 py-1 bg-info-soft border border-info text-info rounded-lg hover:bg-info-soft transition"
                             >
                               📄 Télécharger PDF
                             </a>
                           </div>
                           <div className="space-y-2">
                             {discharges.map((d, i) => (
-                              <div key={i} className="bg-surface border border-amber-600/20 rounded-xl p-3 space-y-2">
-                                <p className="text-amber-400 text-xs font-medium">Décharge {discharges.length > 1 ? i + 1 : ''}</p>
+                              <div key={i} className="bg-surface border border-warning rounded-xl p-3 space-y-2">
+                                <p className="text-warning text-xs font-medium">Décharge {discharges.length > 1 ? i + 1 : ''}</p>
                                 <p className="text-ink-secondary text-xs whitespace-pre-wrap">{d.motif}</p>
                                 {d.name && <p className="text-ink-muted text-xs">Signataire : <span className="text-ink-secondary">{d.name}</span></p>}
                                 {d.sig && (
@@ -1602,9 +1602,9 @@ export default function MissionDetailClient({
 
                 {/* Avertissement véhicule en attente de décision — bloque save/confirm */}
                 {vehicleDecisionPending && (
-                  <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-2.5">
-                    <p className="text-amber-400 text-xs font-semibold mb-1">⚠ Véhicule à valider</p>
-                    <p className="text-amber-200/80 text-xs">
+                  <div className="bg-warning-soft border border-warning rounded-xl px-3 py-2.5">
+                    <p className="text-warning text-xs font-semibold mb-1">⚠ Véhicule à valider</p>
+                    <p className="text-warning text-xs">
                       Choisis « Lier » sur un véhicule existant ou clique « Aucun ne correspond — créer un nouveau véhicule » pour pouvoir sauvegarder.
                     </p>
                   </div>
@@ -1623,7 +1623,7 @@ export default function MissionDetailClient({
                     <button
                       onClick={handleRefuse}
                       disabled={loadingRefuse}
-                      className="w-full py-3 bg-surface hover:bg-red-600/20 border hover:border-red-600/50 text-ink-secondary hover:text-red-400 rounded-xl font-medium text-sm transition disabled:opacity-50"
+                      className="w-full py-3 bg-surface hover:bg-critical-soft border hover:border-critical text-ink-secondary hover:text-critical rounded-xl font-medium text-sm transition disabled:opacity-50"
                     >
                       {loadingRefuse ? 'Refus...' : '❌ Refuser'}
                     </button>
@@ -1643,7 +1643,7 @@ export default function MissionDetailClient({
                 {status === 'dispatching' && (
                   <>
                     <div className="text-center py-2">
-                      <span className="text-blue-400 font-semibold text-sm">📡 En attente d'assignation</span>
+                      <span className="text-info font-semibold text-sm">📡 En attente d'assignation</span>
                       <p className="text-ink-muted text-xs mt-1">Clique « Choisir un chauffeur » plus haut pour assigner</p>
                     </div>
                     <button
@@ -1656,7 +1656,7 @@ export default function MissionDetailClient({
                     <button
                       onClick={handleRefuse}
                       disabled={loadingRefuse}
-                      className="w-full py-2.5 bg-surface hover:bg-red-600/20 border hover:border-red-600/50 text-ink-secondary hover:text-red-400 rounded-xl font-medium text-sm transition disabled:opacity-50"
+                      className="w-full py-2.5 bg-surface hover:bg-critical-soft border hover:border-critical text-ink-secondary hover:text-critical rounded-xl font-medium text-sm transition disabled:opacity-50"
                     >
                       {loadingRefuse ? 'Annulation...' : '🚫 Annuler la mission'}
                     </button>
@@ -1721,7 +1721,7 @@ export default function MissionDetailClient({
                             {drivers.find(d => d.id === selectedDriver)?.name || '— inconnu —'}
                           </span>
                           <button type="button" onClick={() => setSelectedDriver('')}
-                            className="text-ink-muted hover:text-red-400 text-xs">Délier ✕</button>
+                            className="text-ink-muted hover:text-critical text-xs">Délier ✕</button>
                         </div>
                       ) : (
                         <button type="button" onClick={() => setShowDriverModal(true)}
@@ -1733,7 +1733,7 @@ export default function MissionDetailClient({
                   )}
                   {initialMission.assigned_user && (
                     <p className="text-xs text-ink-muted mt-1">
-                      Assigné à <span className="text-green-400 font-medium">{initialMission.assigned_user.name}</span>
+                      Assigné à <span className="text-success font-medium">{initialMission.assigned_user.name}</span>
                     </p>
                   )}
                 </div>
@@ -1832,9 +1832,9 @@ export default function MissionDetailClient({
                   <div className="text-ink-muted text-sm text-center py-2">⏳ Création dossier Odoo...</div>
                 ) : odooError ? (
                   <div className="space-y-2">
-                    <p className="text-red-400 text-xs">{odooError}</p>
+                    <p className="text-critical text-xs">{odooError}</p>
                     <button onClick={createOdooFsmDossier}
-                      className="w-full py-2 bg-purple-600/20 border border-purple-600/30 text-purple-400 rounded-xl text-xs">
+                      className="w-full py-2 bg-purple-soft border border-purple text-purple rounded-xl text-xs">
                       🔄 Réessayer
                     </button>
                   </div>
@@ -1851,7 +1851,7 @@ export default function MissionDetailClient({
                 <div className="bg-surface border rounded-2xl p-5">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Portail IMA</h3>
                   {imaSuccess ? (
-                    <div className="text-green-400 text-sm text-center py-2">✅ Données enrichies !</div>
+                    <div className="text-success text-sm text-center py-2">✅ Données enrichies !</div>
                   ) : (
                     <>
                       <button
