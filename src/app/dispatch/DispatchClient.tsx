@@ -36,6 +36,7 @@ interface Mission {
   destination_name: string | null
   destination_address: string | null
   received_at: string
+  intervention_date: string | null
   incident_at: string | null
   status: string
   assigned_to: string | null
@@ -120,22 +121,81 @@ const TABS = [
 const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','vab','police','prive','garage']
 
 
-function getDelai(received_at: string): { label: string; color: string; urgency: 'ok'|'warn'|'alert'|'critical' } {
-  const mins  = Math.floor((Date.now() - new Date(received_at).getTime()) / 60000)
-  const label = mins < 60
-    ? `${mins}min`
-    : `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`
-  if (mins < 15) return { label, color: 'text-success', urgency: 'ok'       }
-  if (mins < 30) return { label, color: 'text-warning', urgency: 'warn'     }
-  if (mins < 60) return { label, color: 'text-alert',   urgency: 'alert'    }
-  return             { label, color: 'text-critical', urgency: 'critical' }
+type SortMode = 'intervention_date' | 'received_at'
+
+type DelaiUrgency = 'muted' | 'future' | 'ok' | 'warn' | 'alert' | 'critical'
+type DelaiResult = {
+  label:   string
+  color:   string  // text-* token
+  bgColor: string  // bg-*-soft token
+  urgency: DelaiUrgency
+  pulse:   boolean
 }
 
-const URGENCY_BORDER: Record<string, string> = {
-  ok:       'border-success',                  // 0-15 min : fraiche
-  warn:     'border-warning',                  // 15-30 min : attention
-  alert:    'border-alert',                    // 30-60 min : urgent
-  critical: 'border-critical animate-pulse',   // > 60 min : critique, clignote
+const FR_DAYS_LOWER = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+
+function formatPlannedTime(d: Date, now: Date): string {
+  const time = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+  const startOfToday    = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfTarget   = new Date(d.getFullYear(),   d.getMonth(),   d.getDate())
+  const diffDays = Math.round((startOfTarget.getTime() - startOfToday.getTime()) / (24*60*60*1000))
+  if (diffDays === 0) return `à ${time}`
+  if (diffDays === 1) return `demain à ${time}`
+  if (diffDays > 1 && diffDays < 7) return `${FR_DAYS_LOWER[d.getDay()]} à ${time}`
+  return `le ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} à ${time}`
+}
+
+function formatLateLabel(lateMs: number): string {
+  const oneMin  = 60 * 1000
+  const oneHour = 60 * oneMin
+  const oneDay  = 24 * oneHour
+  const lateMin = Math.floor(lateMs / oneMin)
+  if (lateMin < 60) return `il y a ${lateMin}min`
+  if (lateMs < oneDay) {
+    const hours = Math.floor(lateMs / oneHour)
+    const remMin = Math.floor((lateMs % oneHour) / oneMin)
+    return remMin === 0 ? `il y a ${hours}h` : `il y a ${hours}h${String(remMin).padStart(2,'0')}`
+  }
+  const days = Math.floor(lateMs / oneDay)
+  if (days === 1) return 'hier'
+  return `il y a ${days} jours`
+}
+
+function getDelai(dateStr: string | null): DelaiResult {
+  if (!dateStr) {
+    return { label: '—', color: 'text-ink-muted', bgColor: 'bg-surface-2', urgency: 'muted', pulse: false }
+  }
+  const d   = new Date(dateStr)
+  const now = new Date()
+  const deltaMs = d.getTime() - now.getTime()  // > 0 = futur, < 0 = retard
+
+  if (deltaMs > 0) {
+    return {
+      label:   `Prévue ${formatPlannedTime(d, now)}`,
+      color:   'text-info',
+      bgColor: 'bg-info-soft',
+      urgency: 'future',
+      pulse:   false,
+    }
+  }
+
+  const lateMs  = -deltaMs
+  const lateMin = Math.floor(lateMs / 60000)
+  const label   = formatLateLabel(lateMs)
+
+  if (lateMin < 15) return { label, color: 'text-success',  bgColor: 'bg-success-soft',  urgency: 'ok',       pulse: false }
+  if (lateMin < 30) return { label, color: 'text-warning',  bgColor: 'bg-warning-soft',  urgency: 'warn',     pulse: false }
+  if (lateMin < 45) return { label, color: 'text-alert',    bgColor: 'bg-alert-soft',    urgency: 'alert',    pulse: true  }
+  return              { label, color: 'text-critical', bgColor: 'bg-critical-soft', urgency: 'critical', pulse: true  }
+}
+
+const URGENCY_BORDER: Record<DelaiUrgency, string> = {
+  muted:    'border',
+  future:   'border-info',
+  ok:       'border-success',
+  warn:     'border-warning',
+  alert:    'border-alert',
+  critical: 'border-critical animate-pulse',
 }
 
 // ── Panel statut chauffeurs ───────────────────────────────────────────────────
@@ -357,7 +417,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
   onModalChange?: (open: boolean) => void
 }) {
   const router  = useRouter()
-  const delai   = getDelai(mission.received_at)
+  const delai   = getDelai(mission.intervention_date)
   const srcInfo = SOURCE_LABELS[mission.source] || { label: '?', color: 'bg-zinc-600' }
 
   return (
@@ -375,7 +435,9 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
             </span>
           )}
         </div>
-        <span className={`text-xs font-bold ${delai.color} flex-shrink-0`}>⏱ {delai.label}</span>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
+          {delai.label}
+        </span>
       </div>
 
       {/* Client */}
@@ -482,12 +544,15 @@ export default function DispatchClient({
   const [modeLoading,    setModeLoading]    = useState(false)
   const [viewMode,       setViewMode]       = useState<ViewMode>('list')
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
+  const [sortMode,       setSortMode]       = useState<SortMode>('intervention_date')
 
-  // Charge la préférence de vue sauvegardée
+  // Charge la préférence de vue + tri sauvegardées
   useEffect(() => {
     try {
       const saved = localStorage.getItem('vd_dispatch_view') as ViewMode | null
       if (saved === 'list' || saved === 'card' || saved === 'map') setViewMode(saved)
+      const sortSaved = localStorage.getItem('dispatch-sort-mode')
+      if (sortSaved === 'received_at') setSortMode('received_at')
     } catch { /* SSR / private browsing */ }
   }, [])
 
@@ -496,12 +561,17 @@ export default function DispatchClient({
     try { localStorage.setItem('vd_dispatch_view', v) } catch { /* ignore */ }
   }
 
+  const handleSortChange = (mode: SortMode) => {
+    setSortMode(mode)
+    try { localStorage.setItem('dispatch-sort-mode', mode) } catch { /* ignore */ }
+  }
+
   // ── Chargement missions + statuts chauffeurs ──────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ status: activeTab })
+      const params = new URLSearchParams({ status: activeTab, sort: sortMode })
       if (sourceFilter) params.set('source', sourceFilter)
       if (search)       params.set('q', search)
 
@@ -511,7 +581,7 @@ export default function DispatchClient({
         fetch('/api/users/driver-status'),
       ]
       if (viewMode === 'map') {
-        const mapParams = new URLSearchParams({ view: 'map' })
+        const mapParams = new URLSearchParams({ view: 'map', sort: sortMode })
         if (sourceFilter) mapParams.set('source', sourceFilter)
         requests.push(fetch(`/api/missions/list?${mapParams}`))
       }
@@ -531,7 +601,7 @@ export default function DispatchClient({
     } finally {
       setLoading(false)
     }
-  }, [activeTab, sourceFilter, search, viewMode])
+  }, [activeTab, sourceFilter, search, viewMode, sortMode])
 
   useEffect(() => { load() }, [load])
 
@@ -704,8 +774,37 @@ export default function DispatchClient({
             </div>
           )}
 
+          {/* Toggle de tri — segmented control discret (paramètre d'affichage,
+              à différencier visuellement des KPI tabs statut qui sont des filtres) */}
+          <div className="mt-4">
+            <div className="bg-surface-2 border rounded-lg p-1 inline-flex gap-1">
+              <button
+                type="button"
+                onClick={() => handleSortChange('intervention_date')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
+                  sortMode === 'intervention_date'
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                }`}
+              >
+                Date intervention
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSortChange('received_at')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
+                  sortMode === 'received_at'
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                }`}
+              >
+                Date réception
+              </button>
+            </div>
+          </div>
+
           {/* Onglets — l'onglet "En commande" est mis en valeur si > 0 (action requise) */}
-          <div className="flex gap-1 mt-4 overflow-x-auto">
+          <div className="flex gap-1 mt-3 overflow-x-auto">
             {TABS.map(tab => {
               const count  = tab.countKey ? counters[tab.countKey] : null
               const active = activeTab === tab.key
@@ -828,7 +927,7 @@ export default function DispatchClient({
                 </thead>
                 <tbody className="divide-y divide-[#222]">
                   {filtered.map(m => {
-                    const delai   = getDelai(m.received_at)
+                    const delai   = getDelai(m.intervention_date)
                     const srcInfo = SOURCE_LABELS[m.source] || { label: '?', color: 'bg-zinc-600' }
                     return (
                       <tr key={m.id}
@@ -853,7 +952,9 @@ export default function DispatchClient({
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs font-bold ${delai.color}`}>{delai.label}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
+                            {delai.label}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-ink-secondary text-xs">
                           {m.mission_type ? (TYPE_LABELS[m.mission_type] || m.mission_type) : '—'}

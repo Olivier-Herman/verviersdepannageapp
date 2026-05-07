@@ -16,6 +16,10 @@ export async function GET(req: Request) {
   // in_progress + parked) indépendamment de l'onglet, avec une limite plus haute.
   const mapMode = searchParams.get('view') === 'map'
 
+  const sortParam = searchParams.get('sort')
+  const sortField: 'intervention_date' | 'received_at' =
+    sortParam === 'received_at' ? 'received_at' : 'intervention_date'
+
   const supabase = createAdminClient()
 
   // Récupérer les missions
@@ -29,13 +33,13 @@ export async function GET(req: Request) {
       incident_address, incident_city, incident_country,
       incident_lat, incident_lng,
       destination_name, destination_address,
-      amount_guaranteed, incident_at, received_at,
+      amount_guaranteed, incident_at, received_at, intervention_date,
       status, dispatch_mode,
       assigned_to, assigned_at, accepted_at,
       parse_confidence,
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
-    .order('received_at', { ascending: false })
+    .order(sortField, { ascending: false, nullsFirst: false })
     .limit(mapMode ? 500 : 100)
 
   // Filtrer les entrées parasites (corps vides, PROCESSING, etc.)
