@@ -1115,205 +1115,218 @@ export default function MissionDetailClient({
         </div>
 
         <div className="flex-1 px-8 py-6">
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_288px] gap-6">
 
-            {/* ── Colonne gauche : formulaire ───────────────────────── */}
-            <div className="col-span-2 space-y-5">
+            {/* ── Colonne main : formulaire ──────────────────────────
+                Sub-phase C : 2 lignes en 2-cols (Clients / Véhicule+Intervention)
+                + 1 ligne pleine largeur (Adresses), puis sections en-dessous
+                inchangées (Montants / Compte rendu / Contenu brut). */}
+            <div className="space-y-5 min-w-0">
 
-              {/* Intervention */}
-              <div className="bg-surface border rounded-2xl p-5">
-                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>📋</span> Intervention
-                </h2>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Type de mission">
-                    <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
-                  </Field>
-                  <Field label="Type d'incident">
-                    <Input value={form.incident_type} onChange={f('incident_type')} placeholder="Ex: pneu crevé, batterie..." />
-                  </Field>
-                  <div className="col-span-2">
-                    <Field label="Description de l'incident">
-                      <textarea
-                        value={form.incident_description}
-                        onChange={e => f('incident_description')(e.target.value)}
-                        rows={3}
-                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint"
-                        placeholder="Description complète..."
-                      />
-                    </Field>
+              {/* Ligne 1 : Client facturé + Client assisté */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+
+                {/* Client facturé */}
+                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                  <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
+                    <span>🧾</span> Client facturé
+                  </h2>
+
+                  {/* Recherche Odoo */}
+                  <div className="relative mb-3">
+                    <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans Odoo</label>
+                    <input
+                      value={clientQuery}
+                      onChange={e => { setClientQuery(e.target.value); setShowClientDrop(true) }}
+                      onFocus={() => setShowClientDrop(true)}
+                      onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
+                      placeholder="Min. 3 caractères — nom ou téléphone..."
+                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
+                    />
+                    {showClientDrop && clientResults.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+                        {clientResults.map(c => (
+                          <button key={c.id} type="button" onMouseDown={() => selectBilledClient(c)}
+                            className="w-full text-left px-4 py-3 hover:bg-surface-hover transition border-b border last:border-0">
+                            <p className="text-ink text-sm font-medium">{c.name}</p>
+                            <p className="text-ink-muted text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </div>
 
-              {/* Client facturé */}
-              <div className="bg-surface border rounded-2xl p-5">
-                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>🧾</span> Client facturé
-                </h2>
-
-                {/* Recherche Odoo */}
-                <div className="relative mb-3">
-                  <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans Odoo</label>
-                  <input
-                    value={clientQuery}
-                    onChange={e => { setClientQuery(e.target.value); setShowClientDrop(true) }}
-                    onFocus={() => setShowClientDrop(true)}
-                    onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
-                    placeholder="Min. 3 caractères — nom ou téléphone..."
-                    className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
-                  />
-                  {showClientDrop && clientResults.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
-                      {clientResults.map(c => (
-                        <button key={c.id} type="button" onMouseDown={() => selectBilledClient(c)}
-                          className="w-full text-left px-4 py-3 hover:bg-surface-hover transition border-b border last:border-0">
-                          <p className="text-ink text-sm font-medium">{c.name}</p>
-                          <p className="text-ink-muted text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
-                        </button>
-                      ))}
+                  {/* Badge lien Odoo */}
+                  {billedPartnerId && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-3">
+                      <span className="text-green-400 text-xs">✓ Lié Odoo #{billedPartnerId}</span>
+                      <span className="text-green-300 text-xs font-medium">{form.billed_to_name}</span>
+                      <button type="button" onClick={clearBilledClient}
+                        className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
                     </div>
+                  )}
+
+                  <Field label="Nom / Raison sociale">
+                    <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
+                  </Field>
+                  {!billedPartnerId && form.billed_to_name && (
+                    <p className="text-amber-400/80 text-xs mt-1.5">⚠ Pas de contact Odoo lié — un nouveau sera créé à la confirmation.</p>
                   )}
                 </div>
 
-                {/* Badge lien Odoo */}
-                {billedPartnerId && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-3">
-                    <span className="text-green-400 text-xs">✓ Lié Odoo #{billedPartnerId}</span>
-                    <span className="text-green-300 text-xs font-medium">{form.billed_to_name}</span>
-                    <button type="button" onClick={clearBilledClient}
-                      className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
-                  </div>
-                )}
-
-                <Field label="Nom / Raison sociale">
-                  <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
-                </Field>
-                {!billedPartnerId && form.billed_to_name && (
-                  <p className="text-amber-400/80 text-xs mt-1.5">⚠ Pas de contact Odoo lié — un nouveau sera créé à la confirmation.</p>
-                )}
-              </div>
-
-              {/* Client assisté */}
-              <div className="bg-surface border rounded-2xl p-5">
-                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>👤</span> Client assisté (personne en panne)
-                </h2>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Nom complet">
-                    <Input value={form.client_name} onChange={f('client_name')} placeholder="Prénom Nom" />
-                  </Field>
-                  <Field label="Téléphone">
-                    <Input value={form.client_phone} onChange={f('client_phone')} placeholder="+32..." />
-                  </Field>
-                  <div className="col-span-2">
-                    <AddressField
-                      label="Adresse domicile"
-                      value={form.client_address}
-                      onChange={f('client_address')}
-                      gmKey={googleMapsKey}
-                      placeholder="Rue, numéro, ville..."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Véhicule */}
-              <div className="bg-surface border rounded-2xl p-5">
-                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>🚗</span> Véhicule
-                </h2>
-
-                {/* Badge lien véhicule Odoo + lookup automatique par plaque */}
-                {odooVehicleId && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
-                    <span className="text-green-400 text-xs">✓ Lié Odoo véhicule #{odooVehicleId}</span>
-                    <button type="button" onClick={clearOdooVehicle}
-                      className="ml-auto text-ink-muted hover:text-red-400 text-xs">Délier ✕</button>
-                  </div>
-                )}
-                {!odooVehicleId && vehicleSearched && vehicleResults.length === 0 && form.vehicle_plate.trim().length >= 3 && (
-                  <p className="text-amber-400/80 text-xs mb-3">⚠ Aucun véhicule Odoo avec cette plaque — un nouveau sera créé à la confirmation.</p>
-                )}
-                {!odooVehicleId && vehicleResults.length > 0 && (
-                  <div className="mb-4 bg-surface border border-brand/30 rounded-xl p-3">
-                    <p className="text-ink-secondary text-xs mb-2">{vehicleResults.length} véhicule(s) trouvé(s) dans Odoo — clique pour lier (évite le doublon) :</p>
-                    <div className="space-y-1">
-                      {vehicleResults.map(v => {
-                        const sim = vehicleSimilarity(v)
-                        return (
-                          <button key={v.id} type="button" onClick={() => selectOdooVehicle(v)}
-                            className={`w-full text-left px-3 py-2 border rounded-lg transition ${
-                              sim === 'match'    ? 'bg-green-500/10 hover:bg-green-500/20 border-green-500/30'    :
-                              sim === 'mismatch' ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'    :
-                                                    'bg-surface hover:bg-surface-2 border'
-                            }`}>
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-ink text-sm">
-                                <span className="font-mono font-semibold">{v.plate}</span>
-                                <span className="text-ink-secondary ml-2">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
-                              </p>
-                              {sim === 'match'    && <span className="text-green-400 text-xs">✓ correspond</span>}
-                              {sim === 'mismatch' && <span className="text-amber-400 text-xs">⚠ marque/modèle ≠</span>}
-                            </div>
-                            {v.vin && <p className="text-ink-muted text-xs">VIN: {v.vin}</p>}
-                          </button>
-                        )
-                      })}
+                {/* Client assisté */}
+                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                  <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
+                    <span>👤</span> Client assisté (personne en panne)
+                  </h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Nom complet">
+                      <Input value={form.client_name} onChange={f('client_name')} placeholder="Prénom Nom" />
+                    </Field>
+                    <Field label="Téléphone">
+                      <Input value={form.client_phone} onChange={f('client_phone')} placeholder="+32..." />
+                    </Field>
+                    <div className="col-span-2">
+                      <AddressField
+                        label="Adresse domicile"
+                        value={form.client_address}
+                        onChange={f('client_address')}
+                        gmKey={googleMapsKey}
+                        placeholder="Rue, numéro, ville..."
+                      />
                     </div>
-                    {/* Forcer la création d'un nouveau si l'utilisateur juge qu'aucun résultat ne correspond */}
-                    {form.vehicle_plate.trim().length >= 3 && (
-                      <button type="button" onClick={() => { setVehicleResults([]); setVehicleSearched(true) }}
-                        className="mt-2 w-full text-center px-3 py-2 bg-surface hover:bg-surface-2 border border-dashed rounded-lg text-ink-secondary hover:text-ink text-xs transition">
-                        ➕ Aucun ne correspond — créer un nouveau véhicule
-                      </button>
-                    )}
                   </div>
-                )}
-
-                <div className="grid grid-cols-3 gap-4">
-                  <Field label="Plaque">
-                    <Input value={form.vehicle_plate} onChange={f('vehicle_plate')} placeholder="1ABC234" />
-                  </Field>
-                  <Field label="Marque">
-                    <select
-                      value={form.vehicle_brand}
-                      onFocus={loadBrands}
-                      onChange={e => {
-                        const b = brands.find(b => b.name === e.target.value)
-                        f('vehicle_brand')(e.target.value)
-                        f('vehicle_model')('')
-                        setModels([])
-                        if (b) loadModels(b.id)
-                      }}
-                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
-                    >
-                      <option value="">{loadingBrands ? 'Chargement...' : '— Sélectionner —'}</option>
-                      {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Modèle">
-                    {models.length > 0 ? (
-                      <select value={form.vehicle_model} onChange={e => f('vehicle_model')(e.target.value)}
-                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
-                        <option value="">— Sélectionner —</option>
-                        {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                        <option value="_custom">Autre (saisie libre)</option>
-                      </select>
-                    ) : (
-                      <Input value={form.vehicle_model} onChange={f('vehicle_model')} placeholder={form.vehicle_brand ? 'Saisie libre...' : "Choisir une marque d'abord"} />
-                    )}
-                  </Field>
-                  <Field label="Carburant">
-                    <Select value={form.vehicle_fuel} onChange={f('vehicle_fuel')} options={FUEL_TYPES} />
-                  </Field>
-                  <Field label="Boîte de vitesses">
-                    <Select value={form.vehicle_gearbox} onChange={f('vehicle_gearbox')} options={GEARBOX_TYPES} />
-                  </Field>
-                  <Field label="N° Châssis (VIN)">
-                    <Input value={form.vehicle_vin} onChange={f('vehicle_vin')} placeholder="VIN..." />
-                  </Field>
                 </div>
+
+              </div>
+
+              {/* Ligne 2 : Véhicule + Intervention */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+
+                {/* Véhicule */}
+                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                  <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
+                    <span>🚗</span> Véhicule
+                  </h2>
+
+                  {/* Badge lien véhicule Odoo + lookup automatique par plaque */}
+                  {odooVehicleId && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
+                      <span className="text-green-400 text-xs">✓ Lié Odoo véhicule #{odooVehicleId}</span>
+                      <button type="button" onClick={clearOdooVehicle}
+                        className="ml-auto text-ink-muted hover:text-red-400 text-xs">Délier ✕</button>
+                    </div>
+                  )}
+                  {!odooVehicleId && vehicleSearched && vehicleResults.length === 0 && form.vehicle_plate.trim().length >= 3 && (
+                    <p className="text-amber-400/80 text-xs mb-3">⚠ Aucun véhicule Odoo avec cette plaque — un nouveau sera créé à la confirmation.</p>
+                  )}
+                  {!odooVehicleId && vehicleResults.length > 0 && (
+                    <div className="mb-4 bg-surface border border-brand/30 rounded-xl p-3">
+                      <p className="text-ink-secondary text-xs mb-2">{vehicleResults.length} véhicule(s) trouvé(s) dans Odoo — clique pour lier (évite le doublon) :</p>
+                      <div className="space-y-1">
+                        {vehicleResults.map(v => {
+                          const sim = vehicleSimilarity(v)
+                          return (
+                            <button key={v.id} type="button" onClick={() => selectOdooVehicle(v)}
+                              className={`w-full text-left px-3 py-2 border rounded-lg transition ${
+                                sim === 'match'    ? 'bg-green-500/10 hover:bg-green-500/20 border-green-500/30'    :
+                                sim === 'mismatch' ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'    :
+                                                      'bg-surface hover:bg-surface-2 border'
+                              }`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-ink text-sm">
+                                  <span className="font-mono font-semibold">{v.plate}</span>
+                                  <span className="text-ink-secondary ml-2">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
+                                </p>
+                                {sim === 'match'    && <span className="text-green-400 text-xs">✓ correspond</span>}
+                                {sim === 'mismatch' && <span className="text-amber-400 text-xs">⚠ marque/modèle ≠</span>}
+                              </div>
+                              {v.vin && <p className="text-ink-muted text-xs">VIN: {v.vin}</p>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {/* Forcer la création d'un nouveau si l'utilisateur juge qu'aucun résultat ne correspond */}
+                      {form.vehicle_plate.trim().length >= 3 && (
+                        <button type="button" onClick={() => { setVehicleResults([]); setVehicleSearched(true) }}
+                          className="mt-2 w-full text-center px-3 py-2 bg-surface hover:bg-surface-2 border border-dashed rounded-lg text-ink-secondary hover:text-ink text-xs transition">
+                          ➕ Aucun ne correspond — créer un nouveau véhicule
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <Field label="Plaque">
+                      <Input value={form.vehicle_plate} onChange={f('vehicle_plate')} placeholder="1ABC234" />
+                    </Field>
+                    <Field label="Marque">
+                      <select
+                        value={form.vehicle_brand}
+                        onFocus={loadBrands}
+                        onChange={e => {
+                          const b = brands.find(b => b.name === e.target.value)
+                          f('vehicle_brand')(e.target.value)
+                          f('vehicle_model')('')
+                          setModels([])
+                          if (b) loadModels(b.id)
+                        }}
+                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                      >
+                        <option value="">{loadingBrands ? 'Chargement...' : '— Sélectionner —'}</option>
+                        {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Modèle">
+                      {models.length > 0 ? (
+                        <select value={form.vehicle_model} onChange={e => f('vehicle_model')(e.target.value)}
+                          className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
+                          <option value="">— Sélectionner —</option>
+                          {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                          <option value="_custom">Autre (saisie libre)</option>
+                        </select>
+                      ) : (
+                        <Input value={form.vehicle_model} onChange={f('vehicle_model')} placeholder={form.vehicle_brand ? 'Saisie libre...' : "Choisir une marque d'abord"} />
+                      )}
+                    </Field>
+                    <Field label="Carburant">
+                      <Select value={form.vehicle_fuel} onChange={f('vehicle_fuel')} options={FUEL_TYPES} />
+                    </Field>
+                    <Field label="Boîte de vitesses">
+                      <Select value={form.vehicle_gearbox} onChange={f('vehicle_gearbox')} options={GEARBOX_TYPES} />
+                    </Field>
+                    <Field label="N° Châssis (VIN)">
+                      <Input value={form.vehicle_vin} onChange={f('vehicle_vin')} placeholder="VIN..." />
+                    </Field>
+                  </div>
+                </div>
+
+                {/* Intervention */}
+                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                  <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
+                    <span>📋</span> Intervention
+                  </h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Type de mission">
+                      <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
+                    </Field>
+                    <Field label="Type d'incident">
+                      <Input value={form.incident_type} onChange={f('incident_type')} placeholder="Ex: pneu crevé, batterie..." />
+                    </Field>
+                    <div className="col-span-2">
+                      <Field label="Description de l'incident">
+                        <textarea
+                          value={form.incident_description}
+                          onChange={e => f('incident_description')(e.target.value)}
+                          rows={3}
+                          className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint"
+                          placeholder="Description complète..."
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               {/* Lieu d'intervention / Destination */}
