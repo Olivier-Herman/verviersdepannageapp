@@ -4,13 +4,20 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { useState } from 'react'
-import { Moon, Sun, LogOut, Menu, ChevronRight } from 'lucide-react'
+import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
+import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
+
+const TOOLTIP_CLS =
+  'absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-1.5 rounded-md ' +
+  'bg-ink text-surface text-xs font-medium shadow-md whitespace-nowrap ' +
+  'opacity-0 group-hover:opacity-100 transition-opacity duration-150 ' +
+  'pointer-events-none z-[100]'
 
 interface AppShellProps {
   children:     React.ReactNode
@@ -40,55 +47,78 @@ export default function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed()
 
   return (
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full z-30">
-        <div className="px-6 py-5 border-b">
+      <aside
+        className={`hidden lg:flex flex-col min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full z-30 transition-[width] duration-200 ease-in-out ${
+          collapsed ? 'w-16' : 'w-64'
+        }`}
+      >
+        <div className={`flex items-center border-b ${collapsed ? 'px-2 py-3 gap-1 justify-between' : 'px-6 py-5 justify-between'}`}>
           <Link
             href="/dashboard"
             title="Retour au dashboard"
-            className="inline-block hover:opacity-80 transition-opacity"
+            className="inline-block hover:opacity-80 transition-opacity flex-shrink-0"
           >
-            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
+            <img
+              src="/logo.jpg"
+              alt="Verviers Dépannage"
+              className={`object-contain transition-all duration-200 ${collapsed ? 'h-7 w-7' : 'h-10 w-auto'}`}
+            />
           </Link>
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? 'Déployer la sidebar' : 'Réduire la sidebar'}
+            title={collapsed ? 'Déployer' : 'Réduire'}
+            className={`flex items-center justify-center rounded-md text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors flex-shrink-0 ${
+              collapsed ? 'w-6 h-6' : 'w-7 h-7'
+            }`}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
-        <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
+        <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link key={item.href} href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                className={`group relative flex items-center rounded-md text-sm font-medium transition-colors ${
+                  collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                } ${
                   active
                     ? 'bg-brand-soft text-brand'
                     : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
                 }`}
               >
                 <span className="text-base">{item.icon}</span>
-                {item.label}
+                {!collapsed && item.label}
+                {collapsed && <span className={TOOLTIP_CLS}>{item.label}</span>}
               </Link>
             )
           })}
         </nav>
 
         {/* ── FOOTER 3 ZONES ── */}
-        <div className="px-2 py-2 border-t space-y-1">
+        <div className={`py-2 border-t space-y-1 ${collapsed ? 'px-1.5' : 'px-2'}`}>
           {/* Zone 1 — User block (clic vers /profil) */}
-          <UserBlock userName={userName} userRole={userRole} userId={userId} userEmail={userEmail} />
+          <UserBlock userName={userName} userRole={userRole} userId={userId} userEmail={userEmail} collapsed={collapsed} />
 
           {/* Zone 2 — Status toggle */}
-          <StatusToggle onDuty={onDuty} setOnDuty={setOnDuty} isLockedByDuty={isLockedByDuty} />
+          <StatusToggle onDuty={onDuty} setOnDuty={setOnDuty} isLockedByDuty={isLockedByDuty} collapsed={collapsed} />
 
           {/* Zone 3 — Footer actions (Thème + Déconnexion) */}
-          <FooterActions theme={theme} toggleTheme={toggleTheme} mounted={mounted} />
+          <FooterActions theme={theme} toggleTheme={toggleTheme} mounted={mounted} collapsed={collapsed} />
         </div>
       </aside>
 
       {/* ── CONTENU PRINCIPAL ────────────────────────────── */}
-      <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
+      <div className={`flex-1 flex flex-col min-h-screen transition-[margin] duration-200 ease-in-out ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
 
         {/* Header mobile — burger à gauche, logo centré.
             Note (sub-phase 2.3.A bis) : le bouton retour à droite a été retiré
@@ -151,57 +181,67 @@ export default function AppShell({
 // ─────────────────────────────────────────────────────────
 
 export function UserBlock({
-  userName, userRole, userId, userEmail, onClick,
+  userName, userRole, userId, userEmail, onClick, collapsed = false,
 }: {
   userName: string
   userRole: string
   userId?: string
   userEmail?: string
   onClick?: () => void
+  collapsed?: boolean
 }) {
   return (
     <Link
       href="/profil"
       onClick={onClick}
-      className="group flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors min-w-0"
+      className={`group relative rounded-md hover:bg-surface-hover transition-colors min-w-0 ${
+        collapsed ? 'flex justify-center p-1.5' : 'flex items-center gap-3 px-3 py-2'
+      }`}
     >
       <Avatar name={userName || '?'} userId={userId} email={userEmail} size="sm" />
-      <div className="flex-1 min-w-0">
-        <p className="text-ink text-[13px] font-semibold truncate">{userName || 'Utilisateur'}</p>
-        <p className="text-ink-muted text-[11px] truncate capitalize">{userRole}</p>
-      </div>
-      <ChevronRight
-        size={14}
-        className="text-ink-faint group-hover:text-ink-secondary group-hover:translate-x-0.5 transition-all flex-shrink-0"
-      />
+      {!collapsed && (
+        <>
+          <div className="flex-1 min-w-0">
+            <p className="text-ink text-[13px] font-semibold truncate">{userName || 'Utilisateur'}</p>
+            <p className="text-ink-muted text-[11px] truncate capitalize">{userRole}</p>
+          </div>
+          <ChevronRight
+            size={14}
+            className="text-ink-faint group-hover:text-ink-secondary group-hover:translate-x-0.5 transition-all flex-shrink-0"
+          />
+        </>
+      )}
+      {collapsed && <span className={TOOLTIP_CLS}>{userName || 'Mon profil'}</span>}
     </Link>
   )
 }
 
 export function StatusToggle({
-  onDuty, setOnDuty, isLockedByDuty,
+  onDuty, setOnDuty, isLockedByDuty, collapsed = false,
 }: {
   onDuty: boolean
   setOnDuty: (v: boolean) => void
   isLockedByDuty: boolean
+  collapsed?: boolean
 }) {
   // Verrouillé si planning forcé (schedule_day/night actif sur l'horaire courant)
   // → on bloque le passage off, mais on peut toujours cliquer pour passer on.
   const lockedOff = isLockedByDuty && onDuty
-  const tooltip = isLockedByDuty
+  const titleAttr = isLockedByDuty
     ? 'Statut verrouillé par votre planning de travail'
     : (onDuty ? 'Cliquer pour passer hors service' : 'Cliquer pour passer en service')
+  const label = onDuty ? 'En service' : 'Hors service'
 
   return (
     <button
       type="button"
       onClick={() => setOnDuty(!onDuty)}
       disabled={lockedOff}
-      title={tooltip}
+      title={collapsed ? '' : titleAttr}
       aria-pressed={onDuty}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-colors ${
+      className={`group relative w-full rounded-md text-left transition-colors ${
         lockedOff ? 'cursor-help' : 'hover:bg-surface-hover'
-      }`}
+      } ${collapsed ? 'flex items-center justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'}`}
     >
       <span
         className={`w-2 h-2 rounded-full flex-shrink-0 ${onDuty ? 'bg-success-fill' : 'bg-ink-faint'}`}
@@ -211,47 +251,63 @@ export function StatusToggle({
             : '0 0 0 3px var(--bg-surface-hover)',
         }}
       />
-      <span className={`text-xs font-semibold flex-1 ${onDuty ? 'text-success' : 'text-ink-muted'}`}>
-        {onDuty ? 'En service' : 'Hors service'}
-      </span>
-      {isLockedByDuty && (
-        <span className="text-[10px] opacity-60" aria-hidden="true">🔒</span>
+      {!collapsed && (
+        <>
+          <span className={`text-xs font-semibold flex-1 ${onDuty ? 'text-success' : 'text-ink-muted'}`}>
+            {label}
+          </span>
+          {isLockedByDuty && (
+            <span className="text-[10px] opacity-60" aria-hidden="true">🔒</span>
+          )}
+        </>
+      )}
+      {collapsed && (
+        <span className={TOOLTIP_CLS}>
+          {label}{isLockedByDuty ? ' 🔒' : ''}
+        </span>
       )}
     </button>
   )
 }
 
 export function FooterActions({
-  theme, toggleTheme, mounted, onClose,
+  theme, toggleTheme, mounted, onClose, collapsed = false,
 }: {
   theme: 'light' | 'dark'
   toggleTheme: () => void
   mounted: boolean
   onClose?: () => void
+  collapsed?: boolean
 }) {
-  const btnCls =
-    'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium ' +
-    'text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors'
+  const btnCls = collapsed
+    ? 'group relative w-full flex items-center justify-center p-2 rounded-md text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors'
+    : 'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors'
+
+  const themeLabel = theme === 'light' ? 'Mode sombre' : 'Mode clair'
 
   return (
-    <div className="flex gap-1">
+    <div className={collapsed ? 'flex flex-col gap-1' : 'flex gap-1'}>
       <button
         type="button"
         onClick={() => { toggleTheme(); onClose?.() }}
         aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
-        title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+        title={collapsed ? '' : themeLabel}
         className={btnCls}
       >
         {mounted && (theme === 'light' ? <Moon size={14} /> : <Sun size={14} />)}
-        <span>Thème</span>
+        {!collapsed && <span>Thème</span>}
+        {collapsed && <span className={TOOLTIP_CLS}>{themeLabel}</span>}
       </button>
       <button
         type="button"
         onClick={() => signOut({ callbackUrl: '/login' })}
+        title={collapsed ? '' : 'Déconnexion'}
+        aria-label="Déconnexion"
         className={btnCls}
       >
         <LogOut size={14} />
-        <span>Déconnexion</span>
+        {!collapsed && <span>Déconnexion</span>}
+        {collapsed && <span className={TOOLTIP_CLS}>Déconnexion</span>}
       </button>
     </div>
   )
