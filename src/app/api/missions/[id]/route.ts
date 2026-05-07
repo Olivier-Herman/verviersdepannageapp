@@ -60,7 +60,7 @@ export async function PATCH(
     'depot_depart_id',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency',
-    'incident_at', 'remarks_general',
+    'incident_at', 'intervention_date', 'remarks_general',
   ]
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }

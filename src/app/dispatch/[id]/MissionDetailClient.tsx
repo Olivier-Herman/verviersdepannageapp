@@ -4,6 +4,7 @@ import { useState, useEffect, useRef }    from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import { createClient } from '@supabase/supabase-js'
+import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
@@ -67,6 +68,7 @@ interface Mission {
   amount_collected: number | null
   incident_at: string | null
   received_at: string
+  intervention_date: string | null
   status: string
   dispatch_mode: string
   assigned_to: string | null
@@ -153,6 +155,30 @@ const LOG_ICONS: Record<string, string> = {
   completed:  '🏁',
   cancelled:  '🚫',
   error:      '⚠️',
+}
+
+// ── Date helpers (intervention_date) ──────────────────────────────────────────
+
+// <input type="datetime-local"> attend YYYY-MM-DDTHH:mm en HEURE LOCALE.
+function toDateTimeLocalString(d: Date): string {
+  const yyyy = d.getFullYear()
+  const mm   = String(d.getMonth() + 1).padStart(2, '0')
+  const dd   = String(d.getDate()).padStart(2, '0')
+  const hh   = String(d.getHours()).padStart(2, '0')
+  const min  = String(d.getMinutes()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+}
+
+const FR_DAYS   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']
+const FR_MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+
+function formatInterventionDate(local: string): string {
+  if (!local) return 'Non définie — cliquez pour ajouter'
+  const d = new Date(local)
+  if (isNaN(d.getTime())) return 'Date invalide'
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${FR_DAYS[d.getDay()]} ${d.getDate()} ${FR_MONTHS[d.getMonth()]} ${d.getFullYear()} à ${hh}:${mm}`
 }
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
@@ -599,6 +625,37 @@ export default function MissionDetailClient({
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
   const [odooError,      setOdooError]        = useState<string | null>(null)
 
+  // ── Date d'intervention (modifiable inline via picker datetime-local) ──
+  const dateInputRef = useRef<HTMLInputElement>(null)
+  const [interventionDate, setInterventionDate] = useState<string>(
+    initialMission.intervention_date
+      ? toDateTimeLocalString(new Date(initialMission.intervention_date))
+      : ''
+  )
+  const [isSavingDate, setIsSavingDate] = useState(false)
+
+  const handleInterventionDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value
+    const previousValue = interventionDate
+    setInterventionDate(newValue)
+    setIsSavingDate(true)
+    try {
+      const isoToSave = newValue ? new Date(newValue).toISOString() : null
+      const res = await fetch(`/api/missions/${initialMission.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intervention_date: isoToSave }),
+      })
+      if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
+    } catch (err) {
+      console.error('Erreur save intervention_date:', err)
+      setInterventionDate(previousValue)
+      alert("Erreur lors de l'enregistrement de la date d'intervention. Réessayez.")
+    } finally {
+      setIsSavingDate(false)
+    }
+  }
+
   // ── Auto-save silent des stops (debounced) — pour que le KM live se base sur la DB à jour ──
   const stopsHydrated = useRef(false)
   useEffect(() => {
@@ -1019,6 +1076,43 @@ export default function MissionDetailClient({
           </div>
         </div>
       </div>
+
+        {/* ── Barre Date d'intervention ─────────────────────────── */}
+        <div className="px-4 lg:px-8 pt-6">
+          <div
+            onClick={() => {
+              const el = dateInputRef.current
+              if (!el) return
+              if (typeof (el as any).showPicker === 'function') (el as any).showPicker()
+              else { el.focus(); el.click() }
+            }}
+            className="relative bg-brand-soft border-2 border-brand rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-all duration-150 hover:bg-brand hover:-translate-y-0.5 hover:shadow-lg group"
+          >
+            <div className="w-11 h-11 rounded-lg bg-brand/15 flex items-center justify-center flex-shrink-0 group-hover:bg-white/20 transition-colors">
+              <span className="text-2xl">📅</span>
+            </div>
+            <div className="flex flex-col flex-1 min-w-0">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-brand group-hover:text-white transition-colors">
+                Date d'intervention
+              </span>
+              <span className="text-lg font-bold text-brand group-hover:text-white transition-colors tabular-nums truncate">
+                {formatInterventionDate(interventionDate)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3.5 py-2 bg-brand/10 group-hover:bg-white/20 rounded-lg text-brand group-hover:text-white text-xs font-semibold transition-all flex-shrink-0">
+              <Pencil className="w-3.5 h-3.5" />
+              <span>{isSavingDate ? 'Enregistrement…' : 'Modifier'}</span>
+            </div>
+            <input
+              ref={dateInputRef}
+              type="datetime-local"
+              value={interventionDate}
+              onChange={handleInterventionDateChange}
+              className="absolute opacity-0 pointer-events-none w-0 h-0"
+              aria-label="Modifier la date et l'heure d'intervention"
+            />
+          </div>
+        </div>
 
         <div className="flex-1 px-8 py-6">
           <div className="grid grid-cols-3 gap-6">

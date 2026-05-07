@@ -300,6 +300,7 @@ export interface IncomingMission {
 
   incident_at: string | null
   received_at: string
+  intervention_date: string | null
 
   status: MissionStatus
   dispatch_mode: DispatchMode
