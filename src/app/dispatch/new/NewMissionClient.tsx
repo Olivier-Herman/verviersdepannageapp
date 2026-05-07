@@ -130,13 +130,13 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
 
   return (
     <div>
-      <label className="block text-zinc-500 text-xs mb-1.5">{label}</label>
+      <label className="block text-ink-muted text-xs mb-1.5">{label}</label>
       <div className="relative">
         <input ref={ref} value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600 pr-8" />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 text-xs">📍</span>
+          className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint pr-8" />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint text-xs">📍</span>
       </div>
     </div>
   )
@@ -210,22 +210,22 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
   return (
     <div className="space-y-4">
       {destinations.map((dest, i) => (
-        <div key={dest.id} className="bg-[#111] border border-[#2a2a2a] rounded-xl p-4 space-y-3">
+        <div key={dest.id} className="bg-surface borderrounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-zinc-400 text-xs font-medium uppercase tracking-wide">
+            <span className="text-ink-secondary text-xs font-medium uppercase tracking-wide">
               {i === 0 ? '📍 Lieu d\'incident' : `🏁 Destination ${i}`}
             </span>
             {i > 0 && (
               <button onClick={() => removeDest(dest.id)}
-                className="text-zinc-600 hover:text-red-400 text-xs transition">✕ Supprimer</button>
+                className="text-ink-faint hover:text-red-400 text-xs transition">✕ Supprimer</button>
             )}
           </div>
           {i > 0 && (
             <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Libellé (ex: Garage Dupont)</label>
+              <label className="block text-ink-muted text-xs mb-1.5">Libellé (ex: Garage Dupont)</label>
               <input value={dest.label} onChange={e => updateDest(dest.id, 'label', e.target.value)}
                 placeholder="Nom du lieu..."
-                className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
             </div>
           )}
           {i === 0 && (
@@ -253,7 +253,7 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
         </div>
       ))}
       <button onClick={addDest}
-        className="w-full py-2.5 border border-dashed border-[#2a2a2a] rounded-xl text-zinc-500 hover:text-white hover:border-zinc-500 text-sm transition">
+        className="w-full py-2.5 border border-dashedrounded-xl text-ink-muted hover:text-ink hover:border-strong text-sm transition">
         + Ajouter une destination
       </button>
     </div>
@@ -522,9 +522,9 @@ export default function NewMissionClient({
     >
       {/* Top-bar contenu — ← retour vers liste dispatch + CTA création (hex hardcodés
           conservés pour étape E ; uniquement le shell global est uniformisé ici). */}
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 lg:px-8 py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b border px-4 lg:px-8 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <Link href="/dispatch" className="text-zinc-400 hover:text-white text-lg" title="Retour à la liste dispatch">←</Link>
+          <Link href="/dispatch" className="text-ink-secondary hover:text-ink text-lg" title="Retour à la liste dispatch">←</Link>
           <span className="flex-1" />
           <button onClick={handleSubmit} disabled={saving}
             className="hidden lg:block px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-medium text-sm transition disabled:opacity-50">
@@ -540,40 +540,40 @@ export default function NewMissionClient({
             <div className="lg:col-span-2 space-y-5">
 
               {/* 1. Date / Heure RDV */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">🕐 Date / Heure de rendez-vous</h2>
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4">🕐 Date / Heure de rendez-vous</h2>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Date</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Date</label>
                     <input type="date" value={rdvDate} onChange={e => setRdvDate(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
                   </div>
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Heure</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Heure</label>
                     <input type="time" value={rdvTime} onChange={e => setRdvTime(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
                   </div>
                 </div>
               </div>
 
               {/* 2. Client facturé */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">🧾 Client facturé</h2>
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
                 <div className="relative mb-3">
-                  <label className="block text-zinc-500 text-xs mb-1.5">Rechercher dans Odoo</label>
+                  <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans Odoo</label>
                   <input value={clientSearch.query}
                     onChange={e => { clientSearch.setQuery(e.target.value); setShowClientDrop(true) }}
                     onFocus={() => setShowClientDrop(true)}
                     onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
                     placeholder="Min. 3 caractères — nom ou téléphone..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                    className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
                   {showClientDrop && clientSearch.results.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface borderrounded-xl shadow-xl overflow-hidden">
                       {clientSearch.results.map(c => (
                         <button key={c.id} onMouseDown={() => selectClient(c)}
-                          className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] transition border-b border-[#222] last:border-0">
-                          <p className="text-white text-sm font-medium">{c.name}</p>
-                          <p className="text-zinc-500 text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
+                          className="w-full text-left px-4 py-3 hover:bg-surface-hover transition border-b border last:border-0">
+                          <p className="text-ink text-sm font-medium">{c.name}</p>
+                          <p className="text-ink-muted text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
                         </button>
                       ))}
                     </div>
@@ -585,32 +585,32 @@ export default function NewMissionClient({
                     <span className="text-green-400 text-xs">✓ Lié Odoo #{selectedClient.id}</span>
                     <span className="text-green-300 text-xs font-medium">{selectedClient.name}</span>
                     <button onClick={() => { setSelectedClient(null); setOdooPartnerId(null); clientSearch.setQuery(''); setBilledName('') }}
-                      className="ml-auto text-zinc-500 hover:text-red-400 text-xs">✕</button>
+                      className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-zinc-500 text-xs mb-1.5">Nom / Raison sociale</label>
+                  <label className="block text-ink-muted text-xs mb-1.5">Nom / Raison sociale</label>
                   <input value={billedName} onChange={e => setBilledName(e.target.value)}
                     placeholder="Ex: Touring SA, Police Zone Vesdre..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                    className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
                 </div>
 
                 {/* Source déduite */}
                 <div className="mt-3 flex items-center gap-3">
                   <div className="flex-1">
-                    <label className="block text-zinc-500 text-xs mb-1.5">
+                    <label className="block text-ink-muted text-xs mb-1.5">
                       Source {sourceFromOdoo ? '(depuis fiche client)' : ''}
                     </label>
                     <select value={source} onChange={e => { setSource(e.target.value); setShowSaveSource(true) }}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
                       {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                   </div>
                   {showSaveSource && odooPartnerId && (
                     <div className="flex-shrink-0 mt-5">
                       <button onClick={saveSource} disabled={savingSource}
-                        className="px-3 py-2.5 bg-[#111] border border-brand/50 rounded-xl text-brand text-xs hover:bg-brand/10 transition disabled:opacity-50">
+                        className="px-3 py-2.5 bg-surface border border-brand/50 rounded-xl text-brand text-xs hover:bg-brand/10 transition disabled:opacity-50">
                         {savingSource ? '...' : '💾 Mémoriser'}
                       </button>
                     </div>
@@ -619,9 +619,9 @@ export default function NewMissionClient({
               </div>
 
               {/* 3. Client assisté */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+              <div className="bg-surface borderrounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-white font-semibold text-sm">👤 Client assisté (personne en panne)</h2>
+                  <h2 className="text-ink font-semibold text-sm">👤 Client assisté (personne en panne)</h2>
                   <button onClick={copyBilledToAssisted}
                     className="text-xs text-brand hover:underline">
                     = Copier client facturé
@@ -629,30 +629,30 @@ export default function NewMissionClient({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Nom complet</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Nom complet</label>
                     <input value={assistedName} onChange={e => setAssistedName(e.target.value)}
                       placeholder="Prénom Nom"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
                   </div>
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Téléphone</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Téléphone</label>
                     <input value={assistedPhone} onChange={e => setAssistedPhone(e.target.value)}
                       placeholder="+32..."
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600" />
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
                   </div>
                 </div>
               </div>
 
               {/* 4. Type d'intervention */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">📋 Type d'intervention</h2>
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                   {MISSION_TYPES.map(t => (
                     <button key={t.value} onClick={() => setMissionType(t.value)}
                       className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
                         missionType === t.value
                           ? 'bg-brand border-brand text-white'
-                          : 'bg-[#111] border-[#2a2a2a] text-zinc-400 hover:text-white hover:border-zinc-500'
+                          : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
                       }`}>
                       <div>{t.label.split(' ')[0]}</div>
                       <div className="text-xs font-bold mt-0.5">{t.value}</div>
@@ -660,50 +660,50 @@ export default function NewMissionClient({
                   ))}
                 </div>
                 <div className="mt-4">
-                  <label className="block text-zinc-500 text-xs mb-1.5">Description / Détails</label>
+                  <label className="block text-ink-muted text-xs mb-1.5">Description / Détails</label>
                   <textarea value={description} onChange={e => setDescription(e.target.value)}
                     rows={2} placeholder="Détails de l'intervention..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none placeholder:text-zinc-600" />
+                    className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint" />
                 </div>
               </div>
 
               {/* 5. Adresses multiples */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">📍 Adresses</h2>
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4">📍 Adresses</h2>
                 <DestinationsBlock
                   destinations={destinations}
                   onChange={setDestinations}
                   gmKey={googleMapsKey}
                 />
                 {distanceKm !== null && (
-                  <div className="mt-4 flex items-center gap-3 px-4 py-3 bg-[#111] border border-[#2a2a2a] rounded-xl">
-                    <span className="text-zinc-400 text-sm">🛣️</span>
-                    <span className="text-white font-semibold">{distanceKm} km</span>
-                    <span className="text-zinc-500">·</span>
-                    <span className="text-white font-semibold">~{durationMin} min</span>
-                    <span className="text-zinc-500 text-xs">(voiture — camion +15-20%)</span>
+                  <div className="mt-4 flex items-center gap-3 px-4 py-3 bg-surface borderrounded-xl">
+                    <span className="text-ink-secondary text-sm">🛣️</span>
+                    <span className="text-ink font-semibold">{distanceKm} km</span>
+                    <span className="text-ink-muted">·</span>
+                    <span className="text-ink font-semibold">~{durationMin} min</span>
+                    <span className="text-ink-muted text-xs">(voiture — camion +15-20%)</span>
                   </div>
                 )}
               </div>
 
               {/* 6. Véhicule */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">🚗 Véhicule</h2>
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4">🚗 Véhicule</h2>
                 <div className="relative mb-4">
-                  <label className="block text-zinc-500 text-xs mb-1.5">Rechercher dans le parc (plaque ou VIN)</label>
+                  <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans le parc (plaque ou VIN)</label>
                   <input value={vehicleSearch.query}
                     onChange={e => { vehicleSearch.setQuery(e.target.value.toUpperCase()); setShowVehicleDrop(true) }}
                     onFocus={() => setShowVehicleDrop(true)}
                     onBlur={() => setTimeout(() => setShowVehicleDrop(false), 150)}
                     placeholder="Min. 3 caractères..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand placeholder:normal-case placeholder:text-zinc-600" />
+                    className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand placeholder:normal-case placeholder:text-ink-faint" />
                   {showVehicleDrop && vehicleSearch.results.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface borderrounded-xl shadow-xl overflow-hidden">
                       {vehicleSearch.results.map(v => (
                         <button key={v.id} onMouseDown={() => selectVehicle(v)}
-                          className="w-full text-left px-4 py-3 hover:bg-[#2a2a2a] transition border-b border-[#222] last:border-0">
-                          <p className="text-white text-sm font-bold font-mono">{v.plate}</p>
-                          <p className="text-zinc-400 text-xs">{[v.brand, v.model].filter(Boolean).join(' ')} {v.partner_name ? `· ${v.partner_name}` : ''}</p>
+                          className="w-full text-left px-4 py-3 hover:bg-surface-hover transition border-b border last:border-0">
+                          <p className="text-ink text-sm font-bold font-mono">{v.plate}</p>
+                          <p className="text-ink-secondary text-xs">{[v.brand, v.model].filter(Boolean).join(' ')} {v.partner_name ? `· ${v.partner_name}` : ''}</p>
                         </button>
                       ))}
                     </div>
@@ -714,20 +714,20 @@ export default function NewMissionClient({
                     <span className="text-green-400 text-xs">✓ Véhicule Odoo lié</span>
                     <span className="text-green-300 text-xs font-mono font-medium">{selectedVehicle.plate}</span>
                     <button onClick={() => { setSelectedVehicle(null); setOdooVehicleId(null); vehicleSearch.setQuery('') }}
-                      className="ml-auto text-zinc-500 hover:text-red-400 text-xs">✕</button>
+                      className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
                   </div>
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {/* Plaque */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Plaque</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Plaque</label>
                     <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand" />
                   </div>
 
                   {/* Marque */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Marque</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Marque</label>
                     <select
                       value={brand}
                       onFocus={loadBrands}
@@ -738,7 +738,7 @@ export default function NewMissionClient({
                         setModels([])
                         if (b) loadModels(b.id)
                       }}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
                     >
                       <option value="">{loadingBrands ? 'Chargement...' : '— Sélectionner —'}</option>
                       {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
@@ -747,10 +747,10 @@ export default function NewMissionClient({
 
                   {/* Modèle */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Modèle</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Modèle</label>
                     {models.length > 0 ? (
                       <select value={model} onChange={e => setModel(e.target.value)}
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                        className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
                         <option value="">— Sélectionner —</option>
                         {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                         <option value="_custom">Autre (saisie libre)</option>
@@ -759,28 +759,28 @@ export default function NewMissionClient({
                       <input value={model} onChange={e => setModel(e.target.value)}
                         placeholder={brand ? 'Saisie libre...' : "Choisir une marque d'abord"}
                         disabled={!brand}
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand disabled:opacity-40" />
+                        className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand disabled:opacity-40" />
                     )}
                   </div>
 
                   {/* VIN */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">VIN / Châssis</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">VIN / Châssis</label>
                     <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand" />
                   </div>
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Carburant</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Carburant</label>
                     <select value={fuel} onChange={e => setFuel(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
                       <option value="">—</option>
                       {FUEL_TYPES.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Boîte</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Boîte</label>
                     <select value={gearbox} onChange={e => setGearbox(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand">
+                      className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
                       <option value="">—</option>
                       {GEARBOX_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
@@ -790,8 +790,8 @@ export default function NewMissionClient({
 
               {/* 7. Avertissements */}
               {warnings.length > 0 && (
-                <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                  <h2 className="text-white font-semibold text-sm mb-4">⚠️ Avertissements</h2>
+                <div className="bg-surface borderrounded-2xl p-5">
+                  <h2 className="text-ink font-semibold text-sm mb-4">⚠️ Avertissements</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {warnings.map(w => {
                       const selected = selectedWarnings.includes(w.id)
@@ -799,7 +799,7 @@ export default function NewMissionClient({
                       return (
                         <button key={w.id} onClick={() => toggleWarning(w.id)}
                           className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition ${
-                            selected ? colors : 'border-[#2a2a2a] bg-[#111] text-zinc-500 hover:text-white'
+                            selected ? colors : 'border bg-surface text-ink-muted hover:text-ink'
                           }`}>
                           <span>{w.icon}</span>
                           <span className="text-xs text-left leading-tight">{w.label}</span>
@@ -811,11 +811,11 @@ export default function NewMissionClient({
               )}
 
               {/* 8. Paiement à réclamer */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>💳</span> Paiement à réclamer au client
                 </h2>
-                <p className="text-zinc-500 text-xs mb-3">Laisser vide si facturation directe à l'assurance</p>
+                <p className="text-ink-muted text-xs mb-3">Laisser vide si facturation directe à l'assurance</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -823,25 +823,25 @@ export default function NewMissionClient({
                     value={amountToCollect}
                     onChange={e => setAmountToCollect(e.target.value)}
                     placeholder="0.00"
-                    className="w-40 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand"
+                    className="w-40 bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
                   />
-                  <span className="text-zinc-500 text-sm">€</span>
+                  <span className="text-ink-muted text-sm">€</span>
                 </div>
               </div>
 
               {/* 9. Remarques */}
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-                <h2 className="text-white font-semibold text-sm mb-4">📝 Remarques</h2>
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4">📝 Remarques</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Remarques générales (visible bureau + chauffeur)</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Remarques générales (visible bureau + chauffeur)</label>
                     <textarea value={remarksGeneral} onChange={e => setRemarksGeneral(e.target.value)}
-                      rows={3} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none" />
+                      rows={3} className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
                   </div>
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Remarques de facturation (visible bureau + facture)</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Remarques de facturation (visible bureau + facture)</label>
                     <textarea value={remarksBilling} onChange={e => setRemarksBilling(e.target.value)}
-                      rows={2} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand resize-none" />
+                      rows={2} className="w-full bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
                   </div>
                 </div>
               </div>
@@ -849,7 +849,7 @@ export default function NewMissionClient({
 
             {/* ── Colonne droite : résumé + action ────────────────────────── */}
             <div className="space-y-4">
-              <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5 sticky top-[89px] space-y-4">
+              <div className="bg-surface borderrounded-2xl p-5 sticky top-[89px] space-y-4">
 
                 {error && (
                   <div className="px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
@@ -863,13 +863,13 @@ export default function NewMissionClient({
                 </button>
 
                 <Link href="/dispatch"
-                  className="block w-full py-2.5 bg-[#111] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-xl text-sm text-center transition">
+                  className="block w-full py-2.5 bg-surface bordertext-ink-secondary hover:text-ink rounded-xl text-sm text-center transition">
                   Annuler
                 </Link>
 
                 {/* Résumé */}
-                <div className="border-t border-[#2a2a2a] pt-4 space-y-2">
-                  <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-3">Résumé</p>
+                <div className="border-t border pt-4 space-y-2">
+                  <p className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Résumé</p>
                   {[
                     { label: 'RDV',      value: rdvDate && rdvTime ? `${rdvDate} ${rdvTime}` : '—' },
                     { label: 'Source',   value: ALL_SOURCES.find(s => s.value === source)?.label || source },
@@ -879,8 +879,8 @@ export default function NewMissionClient({
                     { label: 'Véhicule', value: plate || '—' },
                   ].map(r => (
                     <div key={r.label} className="flex justify-between gap-2">
-                      <span className="text-zinc-500 text-xs flex-shrink-0">{r.label}</span>
-                      <span className="text-white text-xs text-right truncate">{r.value}</span>
+                      <span className="text-ink-muted text-xs flex-shrink-0">{r.label}</span>
+                      <span className="text-ink text-xs text-right truncate">{r.value}</span>
                     </div>
                   ))}
 
@@ -892,13 +892,13 @@ export default function NewMissionClient({
                   )}
                   {distanceKm !== null && (
                     <div className="flex justify-between">
-                      <span className="text-zinc-500 text-xs">Distance</span>
-                      <span className="text-white text-xs">{distanceKm} km · ~{durationMin} min</span>
+                      <span className="text-ink-muted text-xs">Distance</span>
+                      <span className="text-ink text-xs">{distanceKm} km · ~{durationMin} min</span>
                     </div>
                   )}
                   {selectedWarnings.length > 0 && (
                     <div>
-                      <span className="text-zinc-500 text-xs">Avertissements</span>
+                      <span className="text-ink-muted text-xs">Avertissements</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {warnings.filter(w => selectedWarnings.includes(w.id)).map(w => (
                           <span key={w.id} className="text-xs">{w.icon} {w.label}</span>

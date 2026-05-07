@@ -2,6 +2,27 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { loadGoogleMaps } from '@/components/AddressField'
+import { useTheme } from '@/components/theme/ThemeProvider'
+
+// Style sombre pour la carte Google Maps (matche le thème dark de l'app).
+// Les couleurs sont alignées sur les tokens dark : bg-page #1A1614, surface
+// #24201D, etc. — mais doivent être en hex direct (l'API Google Maps ne lit
+// pas les CSS vars).
+const DARK_MAP_STYLES: any[] =[
+  { elementType: 'geometry',          stylers: [{ color: '#1A1A1A' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0F0F0F' }] },
+  { elementType: 'labels.text.fill',   stylers: [{ color: '#9ca3af' }] },
+  { featureType: 'water',                                stylers: [{ color: '#0a2540' }] },
+  { featureType: 'road',         elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#374151' }] },
+  { featureType: 'poi',                                   stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit',                               stylers: [{ visibility: 'off' }] },
+]
+
+// Style clair = défaut Google Maps (palette naturelle). Quickfix simple ;
+// le polish (saturation réduite, teinte chaude pour matcher #FAF8F5) sera
+// fait dans une session UX dédiée plus tard.
+const LIGHT_MAP_STYLES: any[] =[]
 
 // Couleurs pins missions par état
 const MISSION_PIN_COLOR: Record<string, string> = {
@@ -61,8 +82,10 @@ export default function DispatchMap({ missions, drivers, gmKey, onMissionClick, 
   const markersRef      = useRef<any[]>([])
   const infoWindowRef   = useRef<any>(null)
   const [ready, setReady] = useState(false)
+  const { theme } = useTheme()
 
-  // Initialise la carte
+  // Initialise la carte (au mount uniquement — le thème est appliqué à l'init
+  // depuis le state actuel et ré-appliqué via setOptions dans l'effect ci-dessous).
   useEffect(() => {
     if (!mapContainerRef.current || !gmKey) return
     let cancelled = false
@@ -72,16 +95,7 @@ export default function DispatchMap({ missions, drivers, gmKey, onMissionClick, 
       mapRef.current = new google.maps.Map(mapContainerRef.current, {
         center: DEFAULT_CENTER,
         zoom:   DEFAULT_ZOOM,
-        styles: [  // Style sombre simplifié
-          { elementType: 'geometry', stylers: [{ color: '#1A1A1A' }] },
-          { elementType: 'labels.text.stroke', stylers: [{ color: '#0F0F0F' }] },
-          { elementType: 'labels.text.fill', stylers: [{ color: '#9ca3af' }] },
-          { featureType: 'water', stylers: [{ color: '#0a2540' }] },
-          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
-          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#374151' }] },
-          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-        ],
+        styles: theme === 'dark' ? DARK_MAP_STYLES : LIGHT_MAP_STYLES,
         disableDefaultUI: false,
         mapTypeControl:   false,
         streetViewControl: false,
@@ -90,7 +104,18 @@ export default function DispatchMap({ missions, drivers, gmKey, onMissionClick, 
       setReady(true)
     }).catch(() => {})
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmKey])
+
+  // Re-render live du style quand le thème toggle (sans remount). Google Maps
+  // supporte setOptions({ styles }) à chaud — pas de flash visible, le style
+  // est ré-appliqué instantanément.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return
+    mapRef.current.setOptions({
+      styles: theme === 'dark' ? DARK_MAP_STYLES : LIGHT_MAP_STYLES,
+    })
+  }, [theme, ready])
 
   // Re-render markers à chaque changement
   useEffect(() => {
@@ -230,23 +255,23 @@ export default function DispatchMap({ missions, drivers, gmKey, onMissionClick, 
   }, [ready, missions, drivers, onMissionClick, onDriverClick])
 
   return (
-    <div className="relative w-full h-full bg-[#0F0F0F]">
+    <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
       {!ready && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0F0F0F]">
-          <p className="text-zinc-500 text-sm">⏳ Chargement de la carte…</p>
+        <div className="absolute inset-0 flex items-center justify-center bg-page">
+          <p className="text-ink-muted text-sm">⏳ Chargement de la carte…</p>
         </div>
       )}
-      {/* Légende */}
-      <div className="absolute bottom-4 left-4 bg-[#1A1A1A]/95 backdrop-blur border border-[#2a2a2a] rounded-xl p-3 text-xs space-y-1.5">
-        <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-1">Missions</p>
-        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-600"></span><span className="text-zinc-300">En commande</span></div>
-        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500"></span><span className="text-zinc-300">En attente</span></div>
-        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span><span className="text-zinc-300">Assignée</span></div>
-        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500"></span><span className="text-zinc-300">En cours</span></div>
-        <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mt-2 mb-1">Chauffeurs</p>
-        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span><span className="text-zinc-300">En service</span></div>
-        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500"></span><span className="text-zinc-300">En mission</span></div>
+      {/* Légende — fond suit le thème, puces colorées = palette métier des pins. */}
+      <div className="absolute bottom-4 left-4 bg-surface/95 backdrop-blur border rounded-xl p-3 text-xs space-y-1.5 shadow-md">
+        <p className="text-ink-muted font-semibold uppercase tracking-wide text-[10px] mb-1">Missions</p>
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-600"></span><span className="text-ink-secondary">En commande</span></div>
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500"></span><span className="text-ink-secondary">En attente</span></div>
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span><span className="text-ink-secondary">Assignée</span></div>
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500"></span><span className="text-ink-secondary">En cours</span></div>
+        <p className="text-ink-muted font-semibold uppercase tracking-wide text-[10px] mt-2 mb-1">Chauffeurs</p>
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span><span className="text-ink-secondary">En service</span></div>
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500"></span><span className="text-ink-secondary">En mission</span></div>
       </div>
     </div>
   )

@@ -125,17 +125,17 @@ function getDelai(received_at: string): { label: string; color: string; urgency:
   const label = mins < 60
     ? `${mins}min`
     : `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`
-  if (mins < 15) return { label, color: 'text-green-400',  urgency: 'ok'       }
-  if (mins < 30) return { label, color: 'text-yellow-400', urgency: 'warn'     }
-  if (mins < 60) return { label, color: 'text-orange-400', urgency: 'alert'    }
-  return             { label, color: 'text-red-400',    urgency: 'critical' }
+  if (mins < 15) return { label, color: 'text-success', urgency: 'ok'       }
+  if (mins < 30) return { label, color: 'text-warning', urgency: 'warn'     }
+  if (mins < 60) return { label, color: 'text-alert',   urgency: 'alert'    }
+  return             { label, color: 'text-critical', urgency: 'critical' }
 }
 
 const URGENCY_BORDER: Record<string, string> = {
-  ok:       'border-green-500/40',                  // 0-15 min : fraiche
-  warn:     'border-yellow-500/40',                 // 15-30 min : attention
-  alert:    'border-orange-500/50',                 // 30-60 min : urgent
-  critical: 'border-red-500/70 animate-pulse',      // > 60 min : critique, clignote
+  ok:       'border-success',                  // 0-15 min : fraiche
+  warn:     'border-warning',                  // 15-30 min : attention
+  alert:    'border-alert',                    // 30-60 min : urgent
+  critical: 'border-critical animate-pulse',   // > 60 min : critique, clignote
 }
 
 // ── Panel statut chauffeurs ───────────────────────────────────────────────────
@@ -145,14 +145,14 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
   if (statuses.length === 0) return null
 
   const styleByStatus = {
-    en_mission:   'bg-orange-500/10 border-orange-500/30 text-orange-300',
-    en_service:   'bg-green-500/10 border-green-500/20 text-green-400',
-    hors_service: 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-500',
+    en_mission:   'bg-alert-soft border-alert text-alert',
+    en_service:   'bg-success-soft border-success text-success',
+    hors_service: 'bg-surface border text-ink-muted',
   } as const
   const dotByStatus = {
-    en_mission:   'bg-orange-400',
-    en_service:   'bg-green-400',
-    hors_service: 'bg-zinc-600',
+    en_mission:   'bg-alert-fill',
+    en_service:   'bg-success-fill',
+    hors_service: 'bg-ink-faint',
   } as const
 
   const toggleSchedule = async (driverId: string, field: 'schedule_day' | 'schedule_night', current: boolean) => {
@@ -174,7 +174,7 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 px-3 lg:px-8 py-2 lg:py-3 bg-[#111] border-b border-[#2a2a2a]">
+      <div className="flex flex-wrap items-center gap-2 px-3 lg:px-8 py-2 lg:py-3 bg-surface border-b border">
         {actifs.map(d => {
           const isOnSchedule = d.on_schedule
           return (
@@ -191,7 +191,7 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
           )
         })}
         {inactifs.length > 0 && actifs.length > 0 && (
-          <div className="w-px h-5 bg-[#2a2a2a] mx-1" />
+          <div className="w-px h-5 bg-surface-hover mx-1" />
         )}
         {inactifs.map(d => (
           <button key={d.id} type="button" onClick={() => setEditing(d)}
@@ -207,40 +207,40 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setEditing(null)}>
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl max-w-sm w-full p-5"
+          <div className="bg-surface border border rounded-2xl max-w-sm w-full p-5"
             onClick={e => e.stopPropagation()}>
-            <h3 className="text-white font-bold text-base mb-1">{editing.name}</h3>
-            <p className="text-zinc-500 text-xs mb-4">Activer/désactiver la garde — le statut sera forcé pendant les heures.</p>
+            <h3 className="text-ink font-bold text-base mb-1">{editing.name}</h3>
+            <p className="text-ink-muted text-xs mb-4">Activer/désactiver la garde — le statut sera forcé pendant les heures.</p>
             <div className="grid grid-cols-2 gap-2">
               <button type="button"
                 onClick={() => { toggleSchedule(editing.id, 'schedule_day', !!editing.schedule_day); setEditing(null) }}
                 className={`px-4 py-3 rounded-xl border text-left transition ${
                   editing.schedule_day
                     ? 'bg-green-500/10 border-green-500/40'
-                    : 'bg-[#0F0F0F] border-[#2a2a2a] hover:border-zinc-600'
+                    : 'bg-surface border hover:border-zinc-600'
                 }`}>
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-white text-sm font-semibold">☀️ Jour</span>
-                  <span className={`w-2 h-2 rounded-full ${editing.schedule_day ? 'bg-green-400' : 'bg-zinc-600'}`} />
+                  <span className="text-ink text-sm font-semibold">☀️ Jour</span>
+                  <span className={`w-2 h-2 rounded-full ${editing.schedule_day ? 'bg-green-400' : 'bg-ink-faint'}`} />
                 </div>
-                <p className="text-zinc-500 text-xs">07h → 20h</p>
+                <p className="text-ink-muted text-xs">07h → 20h</p>
               </button>
               <button type="button"
                 onClick={() => { toggleSchedule(editing.id, 'schedule_night', !!editing.schedule_night); setEditing(null) }}
                 className={`px-4 py-3 rounded-xl border text-left transition ${
                   editing.schedule_night
                     ? 'bg-indigo-500/10 border-indigo-500/40'
-                    : 'bg-[#0F0F0F] border-[#2a2a2a] hover:border-zinc-600'
+                    : 'bg-surface border hover:border-zinc-600'
                 }`}>
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-white text-sm font-semibold">🌙 Nuit</span>
-                  <span className={`w-2 h-2 rounded-full ${editing.schedule_night ? 'bg-indigo-400' : 'bg-zinc-600'}`} />
+                  <span className="text-ink text-sm font-semibold">🌙 Nuit</span>
+                  <span className={`w-2 h-2 rounded-full ${editing.schedule_night ? 'bg-indigo-400' : 'bg-ink-faint'}`} />
                 </div>
-                <p className="text-zinc-500 text-xs">17h → 09h</p>
+                <p className="text-ink-muted text-xs">17h → 09h</p>
               </button>
             </div>
             <button type="button" onClick={() => setEditing(null)}
-              className="w-full mt-4 py-2.5 text-zinc-500 hover:text-white text-xs transition">Fermer</button>
+              className="w-full mt-4 py-2.5 text-ink-muted hover:text-ink text-xs transition">Fermer</button>
           </div>
         </div>
       )}
@@ -277,7 +277,7 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
       disabled={loading}
       onChange={e => e.target.value && assign(e.target.value)}
       onClick={e => e.stopPropagation()}
-      className="bg-[#111] border border-[#2a2a2a] rounded-lg px-2 py-1.5 text-zinc-300 text-xs focus:outline-none focus:border-brand cursor-pointer disabled:opacity-50"
+      className="bg-surface border border rounded-lg px-2 py-1.5 text-ink-secondary text-xs focus:outline-none focus:border-brand cursor-pointer disabled:opacity-50"
     >
       <option value="" disabled>
         {loading ? 'Assignation…' : (mission.assigned_user ? mission.assigned_user.name : '— Assigner —')}
@@ -325,7 +325,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
     return <span className="text-green-400 text-xs font-medium">{mission.assigned_user?.name || '—'}</span>
   }
   if (mission.status === 'new') {
-    return <span className="text-zinc-600 text-xs">À confirmer</span>
+    return <span className="text-ink-faint text-xs">À confirmer</span>
   }
   if (isAwaitingDispatch) {
     return (
@@ -363,14 +363,14 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
   return (
     <div
       onClick={() => router.push(`/dispatch/${mission.id}`)}
-      className={`bg-[#1A1A1A] border-2 rounded-2xl p-4 cursor-pointer hover:bg-[#222] transition-all ${URGENCY_BORDER[delai.urgency]}`}
+      className={`bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all ${URGENCY_BORDER[delai.urgency]}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
           {mission.mission_type && (
-            <span className="px-2 py-0.5 rounded text-xs font-medium bg-[#2a2a2a] text-zinc-300">
+            <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-ink-secondary">
               {TYPE_LABELS[mission.mission_type] || mission.mission_type}
             </span>
           )}
@@ -379,8 +379,8 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
       </div>
 
       {/* Client */}
-      <p className="text-white font-semibold text-sm mb-1 leading-tight">
-        {mission.client_name || <span className="text-zinc-500">Client inconnu</span>}
+      <p className="text-ink font-semibold text-sm mb-1 leading-tight">
+        {mission.client_name || <span className="text-ink-muted">Client inconnu</span>}
       </p>
       {mission.client_phone && (
         <a href={`tel:${mission.client_phone}`} onClick={e => e.stopPropagation()}
@@ -392,24 +392,24 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
       {/* Véhicule */}
       {(mission.vehicle_plate || mission.vehicle_brand) && (
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-zinc-500 text-xs">🚘</span>
-          {mission.vehicle_plate && <span className="text-white font-bold font-mono text-xs">{mission.vehicle_plate}</span>}
+          <span className="text-ink-muted text-xs">🚘</span>
+          {mission.vehicle_plate && <span className="text-ink font-bold font-mono text-xs">{mission.vehicle_plate}</span>}
           {(mission.vehicle_brand || mission.vehicle_model) && (
-            <span className="text-zinc-400 text-xs">{[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')}</span>
+            <span className="text-ink-secondary text-xs">{[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')}</span>
           )}
         </div>
       )}
 
       {/* Lieu */}
       {(mission.incident_address || mission.incident_city) && (
-        <p className="text-zinc-400 text-xs mb-1 truncate">
+        <p className="text-ink-secondary text-xs mb-1 truncate">
           📍 {mission.incident_address}{mission.incident_city ? `, ${mission.incident_city}` : ''}
         </p>
       )}
 
       {/* Destination */}
       {(mission.destination_address || mission.destination_name) && (
-        <p className="text-zinc-500 text-xs mb-2 truncate">
+        <p className="text-ink-muted text-xs mb-2 truncate">
           🏁 {mission.destination_name || mission.destination_address}
         </p>
       )}
@@ -426,7 +426,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[#2a2a2a]">
+      <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border">
         <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-1 min-w-0">
           <AssignAction mission={mission} drivers={drivers} driverStatuses={driverStatuses} onRefresh={onRefresh} onModalChange={onModalChange} />
           {mission.assigned_user && mission.status !== 'completed' && (
@@ -434,7 +434,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
           )}
         </div>
         <Link href={`/dispatch/${mission.id}`} onClick={e => e.stopPropagation()}
-          className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition flex-shrink-0">
+          className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition flex-shrink-0">
           VOIR →
         </Link>
       </div>
@@ -615,7 +615,7 @@ export default function DispatchClient({
           Conservée hex hardcodée pour l'instant — sera refondue en étape E
           (intégration <KpiCard>, <MissionCard>, etc.). Burger mobile et h1
           "Dispatch" retirés (gérés par AppShell). */}
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-3 lg:px-6 py-3 lg:py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b border px-3 lg:px-6 py-3 lg:py-4 sticky top-0 z-10">
         <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
 
             <input
@@ -623,13 +623,13 @@ export default function DispatchClient({
               placeholder="Recherche…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="flex-1 min-w-[120px] lg:min-w-[180px] max-w-xs bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600"
+              className="flex-1 min-w-[120px] lg:min-w-[180px] max-w-xs bg-surface border border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
             />
 
             <select
               value={sourceFilter}
               onChange={e => setSourceFilter(e.target.value)}
-              className="hidden sm:block bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-brand"
+              className="hidden sm:block bg-surface border border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
             >
               <option value="">Toutes sources</option>
               {SOURCES.map(s => (
@@ -638,31 +638,31 @@ export default function DispatchClient({
             </select>
 
             <button onClick={load}
-              className="hidden sm:block p-2 bg-[#111] border border-[#2a2a2a] rounded-xl text-zinc-400 hover:text-white transition"
+              className="hidden sm:block p-2 bg-surface border border rounded-xl text-ink-secondary hover:text-ink transition"
               title="Actualiser">
               ↻
             </button>
 
             {/* Toggle vue liste / cartes / carte géographique — masqué sur mobile (cartes forcées) */}
-            <div className="hidden lg:flex items-center bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden">
+            <div className="hidden lg:flex items-center bg-surface border border rounded-xl overflow-hidden">
               <button
                 onClick={() => switchView('list')}
                 className={`px-3 py-2 text-sm font-medium transition ${
-                  viewMode === 'list' ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white'
+                  viewMode === 'list' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'
                 }`}>
                 ≡ Liste
               </button>
               <button
                 onClick={() => switchView('card')}
                 className={`px-3 py-2 text-sm font-medium transition ${
-                  viewMode === 'card' ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white'
+                  viewMode === 'card' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'
                 }`}>
                 ⊞ Cartes
               </button>
               <button
                 onClick={() => switchView('map')}
                 className={`px-3 py-2 text-sm font-medium transition ${
-                  viewMode === 'map' ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white'
+                  viewMode === 'map' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'
                 }`}>
                 🗺️ Carte
               </button>
@@ -671,31 +671,31 @@ export default function DispatchClient({
             {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"
               title="Nouvelle mission"
-              className="flex items-center justify-center gap-2 w-10 h-10 lg:w-auto lg:h-auto lg:px-4 lg:py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-medium transition flex-shrink-0">
+              className="flex items-center justify-center gap-2 w-10 h-10 lg:w-auto lg:h-auto lg:px-4 lg:py-2 bg-brand hover:bg-brand-dark text-ink rounded-xl text-sm font-medium transition flex-shrink-0">
               <span className="text-lg lg:hidden">+</span>
               <span className="hidden lg:inline">+ Nouvelle mission</span>
             </Link>
 
             {/* Switch Manuel / Auto — masqué sur mobile */}
-            <div className="hidden md:flex items-center gap-2 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2"
+            <div className="hidden md:flex items-center gap-2 bg-surface border border rounded-xl px-3 py-2"
               title={dispatchMode === 'auto'
                 ? 'Mode Auto activé : le système réceptionne et assigne les missions automatiquement (utile la nuit, selon les chauffeurs en garde).'
                 : 'Mode Manuel : toutes les nouvelles missions doivent être confirmées et assignées manuellement par un dispatcher.'}>
-              <span className="text-zinc-500 text-xs">Dispatch</span>
+              <span className="text-ink-muted text-xs">Dispatch</span>
               <button
                 onClick={toggleMode}
                 disabled={modeLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
-                  dispatchMode === 'auto' ? 'bg-brand' : 'bg-zinc-700'
+                  dispatchMode === 'auto' ? 'bg-brand' : 'bg-surface-hover'
                 }`}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                   dispatchMode === 'auto' ? 'translate-x-6' : 'translate-x-1'
                 }`} />
               </button>
-              <span className={`text-xs font-medium ${dispatchMode === 'auto' ? 'text-brand' : 'text-zinc-400'}`}>
+              <span className={`text-xs font-medium ${dispatchMode === 'auto' ? 'text-brand' : 'text-ink-secondary'}`}>
                 {dispatchMode === 'auto' ? 'Auto' : 'Manuel'}
               </span>
-              <span className="text-zinc-600 text-xs cursor-help">ⓘ</span>
+              <span className="text-ink-faint text-xs cursor-help">ⓘ</span>
             </div>
           </div>
           {dispatchMode === 'auto' && (
@@ -717,7 +717,7 @@ export default function DispatchClient({
                       ? (isUrgent ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'bg-brand text-white')
                       : isUrgent
                         ? 'bg-red-600/15 text-red-300 hover:bg-red-600/25 border border-red-600/40'
-                        : 'text-zinc-400 hover:text-white hover:bg-[#2a2a2a]'
+                        : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
                   }`}>
                   {isUrgent && !active && <span className="animate-pulse">●</span>}
                   {tab.label}
@@ -727,7 +727,7 @@ export default function DispatchClient({
                         ? 'bg-white/20 text-white'
                         : isUrgent
                           ? 'bg-red-500 text-white'
-                          : 'bg-[#2a2a2a] text-zinc-300'
+                          : 'bg-surface-hover text-ink-secondary'
                     }`}>{count}</span>
                   )}
                 </button>
@@ -742,16 +742,16 @@ export default function DispatchClient({
         {/* ── Contenu ─────────────────────────────────────────────────── */}
         <main className="flex-1 overflow-auto px-3 lg:px-6 py-4 lg:py-6">
           {loading ? (
-            <div className="flex items-center justify-center h-64 text-zinc-500">Chargement…</div>
+            <div className="flex items-center justify-center h-64 text-ink-muted">Chargement…</div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-zinc-500">
+            <div className="flex flex-col items-center justify-center h-64 text-ink-muted">
               <p className="text-4xl mb-4">📋</p>
               <p>Aucune mission dans cette catégorie</p>
             </div>
           ) : viewMode === 'map' ? (
 
             /* ── VUE CARTE GÉOGRAPHIQUE ─────────────────────────── */
-            <div className="h-[calc(100vh-360px)] lg:h-[calc(100vh-280px)] min-h-[400px] lg:min-h-[500px] rounded-2xl overflow-hidden border border-[#2a2a2a] relative">
+            <div className="h-[calc(100vh-360px)] lg:h-[calc(100vh-280px)] min-h-[400px] lg:min-h-[500px] rounded-2xl overflow-hidden border border relative">
               <DispatchMap
                 missions={mapMissions as unknown as MapMission[]}
                 drivers={driverStatuses as unknown as MapDriver[]}
@@ -765,8 +765,8 @@ export default function DispatchClient({
                 const withCoords = mapMissions.filter(m => m.incident_lat != null && m.incident_lng != null).length
                 const withoutCoords = total - withCoords
                 return (
-                  <div className="absolute top-4 right-4 bg-[#1A1A1A]/95 backdrop-blur border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs">
-                    <p className="text-white font-semibold">{withCoords} pin{withCoords > 1 ? 's' : ''} · {total} mission{total > 1 ? 's' : ''} active{total > 1 ? 's' : ''}</p>
+                  <div className="absolute top-4 right-4 bg-surface/95 backdrop-blur border border rounded-xl px-3 py-2 text-xs">
+                    <p className="text-ink font-semibold">{withCoords} pin{withCoords > 1 ? 's' : ''} · {total} mission{total > 1 ? 's' : ''} active{total > 1 ? 's' : ''}</p>
                     {withoutCoords > 0 && (
                       <p className="text-amber-400 mt-0.5">⚠ {withoutCoords} sans coords GPS (ouvre la fiche pour valider l'adresse)</p>
                     )}
@@ -810,10 +810,10 @@ export default function DispatchClient({
               </div>
 
               {/* Desktop : table */}
-              <div className="hidden lg:block bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+              <div className="hidden lg:block bg-surface border border rounded-2xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[#2a2a2a] text-zinc-400 text-xs uppercase tracking-wide">
+                  <tr className="border-b border text-ink-secondary text-xs uppercase tracking-wide">
                     <th className="px-4 py-3 text-left font-medium">Source</th>
                     <th className="px-4 py-3 text-left font-medium">Dossier</th>
                     <th className="px-4 py-3 text-left font-medium">Client</th>
@@ -832,7 +832,7 @@ export default function DispatchClient({
                     const srcInfo = SOURCE_LABELS[m.source] || { label: '?', color: 'bg-zinc-600' }
                     return (
                       <tr key={m.id}
-                        className={`transition hover:bg-[#222] cursor-pointer ${
+                        className={`transition hover:bg-surface-2 cursor-pointer ${
                           delai.urgency === 'critical' ? 'bg-red-500/5' : ''
                         }`}
                         onClick={() => router.push(`/dispatch/${m.id}`)}>
@@ -842,33 +842,33 @@ export default function DispatchClient({
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-white font-mono text-xs">{m.dossier_number || m.external_id}</p>
-                          <p className="text-zinc-500 text-xs">{m.external_id}</p>
+                          <p className="text-ink font-mono text-xs">{m.dossier_number || m.external_id}</p>
+                          <p className="text-ink-muted text-xs">{m.external_id}</p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-white">{m.client_name || '—'}</p>
+                          <p className="text-ink">{m.client_name || '—'}</p>
                           {m.client_phone && (
                             <a href={`tel:${m.client_phone}`} onClick={e => e.stopPropagation()}
-                              className="text-zinc-400 text-xs hover:text-brand">{m.client_phone}</a>
+                              className="text-ink-secondary text-xs hover:text-brand">{m.client_phone}</a>
                           )}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs font-bold ${delai.color}`}>{delai.label}</span>
                         </td>
-                        <td className="px-4 py-3 text-zinc-300 text-xs">
+                        <td className="px-4 py-3 text-ink-secondary text-xs">
                           {m.mission_type ? (TYPE_LABELS[m.mission_type] || m.mission_type) : '—'}
                         </td>
                         <td className="px-4 py-3">
-                          {m.vehicle_plate && <p className="text-white font-bold font-mono text-xs">{m.vehicle_plate}</p>}
-                          <p className="text-zinc-400 text-xs">
+                          {m.vehicle_plate && <p className="text-ink font-bold font-mono text-xs">{m.vehicle_plate}</p>}
+                          <p className="text-ink-secondary text-xs">
                             {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}
                           </p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-white text-xs">{m.incident_address || '—'}</p>
-                          {m.incident_city && <p className="text-zinc-500 text-xs">{m.incident_city}</p>}
+                          <p className="text-ink text-xs">{m.incident_address || '—'}</p>
+                          {m.incident_city && <p className="text-ink-muted text-xs">{m.incident_city}</p>}
                         </td>
-                        <td className="px-4 py-3 text-zinc-400 text-xs">
+                        <td className="px-4 py-3 text-ink-secondary text-xs">
                           {m.destination_name || m.destination_address || '—'}
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
@@ -876,7 +876,7 @@ export default function DispatchClient({
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <Link href={`/dispatch/${m.id}`}
-                            className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition inline-block">
+                            className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition inline-block">
                             VOIR
                           </Link>
                         </td>
