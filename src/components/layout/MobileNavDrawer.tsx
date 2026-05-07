@@ -2,13 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
 import { useEffect } from 'react'
-import { Moon, Sun, LogOut, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { filterNavItems } from './nav-items'
 import { useTheme } from '@/components/theme/ThemeProvider'
-import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
+import { useOnDutyPing } from '@/hooks/useOnDutyPing'
+import { UserBlock, StatusToggle, FooterActions } from './AppShell'
 
 interface Props {
   open:         boolean
@@ -24,6 +23,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
   const pathname = usePathname()
   const items = filterNavItems({ userModules, userRole })
   const { theme, toggleTheme, mounted } = useTheme()
+  const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
 
   // Bloque le scroll du body quand le drawer est ouvert
   useEffect(() => {
@@ -56,7 +56,12 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
       <aside className="relative flex flex-col w-72 max-w-[85vw] bg-surface border-r h-full">
         {/* Header */}
         <div className="px-5 py-4 border-b flex items-center justify-between">
-          <Link href="/dashboard" onClick={onClose}>
+          <Link
+            href="/dashboard"
+            onClick={onClose}
+            title="Retour au dashboard"
+            className="inline-block hover:opacity-80 transition-opacity"
+          >
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-9 w-auto object-contain" />
           </Link>
           <button
@@ -86,33 +91,17 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="px-3 py-3 border-t">
-          <div className="flex items-center gap-1 mb-1">
-            <Link href="/profil" onClick={onClose}
-              className="flex-1 flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors min-w-0">
-              <Avatar name={userName || '?'} userId={userId} email={userEmail} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="text-ink text-sm font-medium truncate">{userName}</p>
-                <p className="text-ink-faint text-xs capitalize">{userRole}</p>
-              </div>
-            </Link>
-            <button
-              onClick={toggleTheme}
-              aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
-              title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
-              className="w-9 h-9 flex items-center justify-center rounded-md text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors flex-shrink-0">
-              {mounted && (theme === 'light' ? <Moon size={16} /> : <Sun size={16} />)}
-            </button>
-          </div>
-          <Button
-            variant="ghost"
-            fullWidth
-            iconLeft={<LogOut size={14} />}
-            onClick={() => signOut({ callbackUrl: '/login' })}
-          >
-            Déconnexion
-          </Button>
+        {/* Footer 3 zones — sous-composants partagés avec AppShell */}
+        <div className="px-2 py-2 border-t space-y-1">
+          <UserBlock
+            userName={userName}
+            userRole={userRole}
+            userId={userId}
+            userEmail={userEmail}
+            onClick={onClose}
+          />
+          <StatusToggle onDuty={onDuty} setOnDuty={setOnDuty} isLockedByDuty={isLockedByDuty} />
+          <FooterActions theme={theme} toggleTheme={toggleTheme} mounted={mounted} onClose={onClose} />
         </div>
       </aside>
     </div>

@@ -29,6 +29,8 @@ export default async function DispatchPage() {
     <DispatchClient
       drivers={drivers || []}
       userName={user.name || ''}
+      userEmail={user.email || undefined}
+      userId={user.id || undefined}
       userRole={user.role || ''}
       userModules={user.modules || []}
     />

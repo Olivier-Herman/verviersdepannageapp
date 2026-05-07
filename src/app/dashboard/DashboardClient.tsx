@@ -1,26 +1,63 @@
 'use client'
 
-import { useEffect }    from 'react'
+import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signOut }      from 'next-auth/react'
-import DutyIndicator    from '@/components/DutyIndicator'
 import Link from 'next/link'
 import type { Session } from 'next-auth'
 import AppShell from '@/components/layout/AppShell'
 
-const NAV_MODULES = [
-  { id: 'missions',      label: 'Dispatch Missions',      icon: '📡', href: '/dispatch',        color: 'bg-blue-900',   size: 'large' },
-  { id: 'driver_missions', label: 'Mes Missions',           icon: '🚗', href: '/mission',          color: 'bg-orange-800', size: 'large' },
-  { id: 'encaissement',  label: 'Encaissement Chauffeur', icon: '💳', href: '/encaissement',   color: 'bg-brand',      size: 'large' },
-  { id: 'avance_fonds',  label: 'Avance de Fonds',        icon: '📄', href: '/avance-fonds',   color: 'bg-surface',    size: 'large' },
-  { id: 'finance',       label: 'Finance',                icon: '💰', href: '/finance',         color: 'bg-surface',    size: 'small' },
-  { id: 'check_vehicle', label: 'Check Véhicule',         icon: '🔍', href: '/check-vehicule', color: 'bg-surface',    size: 'small' },
-  { id: 'tgr',           label: 'TGR Touring',            icon: '🛡️', href: '/services/tgr',   color: 'bg-surface',    size: 'small' },
-  { id: 'depose',        label: 'Dépose Véhicule',        icon: '🗺️', href: '/depose',         color: 'bg-green-700',  size: 'small' },
-  { id: 'profil',        label: 'Mon Profil',             icon: '👤', href: '/profil',         color: 'bg-surface',    size: 'small' },
-  { id: 'admin',         label: 'Administration',         icon: '⚙️', href: '/admin',          color: 'bg-purple-900', size: 'large' },
+// ─────────────────────────────────────────────────────────
+// CONFIGURATION DES SECTIONS
+// ─────────────────────────────────────────────────────────
+
+type IconColor = 'brand' | 'success' | 'info' | 'warning' | 'purple' | 'alert'
+
+const ICON_COLOR_CLASSES: Record<IconColor, string> = {
+  brand:   'bg-brand-soft text-brand',
+  success: 'bg-success-soft text-success',
+  info:    'bg-info-soft text-info',
+  warning: 'bg-warning-soft text-warning',
+  purple:  'bg-purple-soft text-purple',
+  alert:   'bg-alert-soft text-alert',
+}
+
+interface ActionItem {
+  id:       string
+  label:    string
+  subtitle: string
+  href:     string
+  icon:     string
+  color:    IconColor
+}
+
+interface ModuleItem {
+  id:    string
+  label: string
+  href:  string
+  icon:  string
+  color: IconColor
+}
+
+// Section 1 — actions principales (mises en avant, grandes cards)
+// `police_mission` est conditionnel sur hasTowsoft (1ère position si présent)
+const MAIN_ACTIONS: ActionItem[] = [
+  { id: 'police_mission',  label: 'Créer une mission',      subtitle: 'Police · Saisie · Mal Garée · SNC', href: '/mission/police', icon: '🚨', color: 'brand'   },
+  { id: 'encaissement',    label: 'Encaissement Chauffeur', subtitle: 'Espèces · Carte · Virement',         href: '/encaissement',   icon: '💳', color: 'success' },
+  { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info'    },
+  { id: 'driver_missions', label: 'Mes Missions',           subtitle: 'Mes interventions du jour',          href: '/mission',        icon: '🚗', color: 'warning' },
+  { id: 'avance_fonds',    label: 'Avance de Fonds',        subtitle: 'Demander une avance',                href: '/avance-fonds',   icon: '💰', color: 'success' },
 ]
 
+// Section 2 — modules secondaires (cards compactes)
+const MODULES: ModuleItem[] = [
+  { id: 'check_vehicle', label: 'Check Véhicule',  href: '/check-vehicule', icon: '🔍', color: 'info'    },
+  { id: 'tgr',           label: 'TGR Touring',     href: '/services/tgr',   icon: '🛡️', color: 'purple'  },
+  { id: 'finance',       label: 'Finance',         href: '/finance',        icon: '💵', color: 'success' },
+  { id: 'admin',         label: 'Administration',  href: '/admin',          icon: '⚙️', color: 'alert'   },
+  { id: 'depose',        label: 'Dépose Véhicule', href: '/depose',         icon: '🗺️', color: 'warning' },
+]
+
+// Section 3 — appels rapides
 const CALL_MODULE_MAP: Record<string, string> = {
   depannage: 'Service Dépannage',
   fourriere: 'Service Fourrière',
@@ -29,9 +66,13 @@ const CALL_MODULE_MAP: Record<string, string> = {
 
 const CALL_MODULES = [
   { id: 'depannage', label: 'Dépannage',  icon: '🚗' },
-  { id: 'fourriere', label: 'Fourrière',  icon: '🚔' },
+  { id: 'fourriere', label: 'Fourrière',  icon: '🚓' },
   { id: 'rentacar',  label: 'Rent A Car', icon: '🔑' },
 ]
+
+// ─────────────────────────────────────────────────────────
+// COMPOSANT PRINCIPAL
+// ─────────────────────────────────────────────────────────
 
 export default function DashboardClient({
   session,
@@ -42,9 +83,10 @@ export default function DashboardClient({
   callShortcuts: any[]
   hasTowsoft?: boolean
 }) {
-  const userModules = (session.user as any).modules || []
-  const isAdmin     = ['admin', 'superadmin'].includes((session.user as any).role)
-  const initials    = session.user.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??'
+  const sessionUser = session.user as any
+  const userModules: string[] = sessionUser.modules || []
+  const userRole: string      = sessionUser.role || ''
+  const isAdmin               = ['admin', 'superadmin'].includes(userRole)
 
   // Si on arrive ici via une notification push (service worker fallback iOS PWA),
   // un query param ?redirect=/mission/abc nous indique où aller vraiment.
@@ -57,184 +99,165 @@ export default function DashboardClient({
     }
   }, [searchParams, router])
 
-  const getPhone = (moduleId: string) => {
-    const label = CALL_MODULE_MAP[moduleId]
-    return callShortcuts.find(s => s.label === label)?.phone
-  }
-
-  const isModuleVisible = (id: string): boolean => {
-    if (id === 'profil') return true
-    if (id === 'admin')  return isAdmin && userModules.includes('admin')
-    if (id === 'finance') return userModules.includes('encaissements') || userModules.includes('caisse')
+  // ── Filtrage selon les modules accordés ──
+  const isVisible = (id: string): boolean => {
+    if (id === 'police_mission') return hasTowsoft
+    if (id === 'admin')          return isAdmin && userModules.includes('admin')
+    if (id === 'finance')        return userModules.includes('encaissements') || userModules.includes('caisse')
     return userModules.includes(id)
   }
 
-  const visibleNav   = NAV_MODULES.filter(m => isModuleVisible(m.id))
-  const visibleCalls = CALL_MODULES.filter(m => userModules.includes(m.id))
+  const visibleActions = MAIN_ACTIONS.filter(a => isVisible(a.id))
+  const visibleModules = MODULES.filter(m => isVisible(m.id))
+  const visibleCalls   = CALL_MODULES.filter(c => userModules.includes(c.id))
+
+  const getPhone = (id: string): string | undefined => {
+    const label = CALL_MODULE_MAP[id]
+    return callShortcuts.find(s => s.label === label)?.phone
+  }
+
+  const isEmpty = visibleActions.length === 0 && visibleModules.length === 0 && visibleCalls.length === 0
 
   return (
     <AppShell
       title="Dashboard"
       backHref="/dashboard"
-      userRole={(session.user as any).role}
-      userName={session.user.name ?? ''}
+      userRole={userRole}
+      userName={session.user?.name ?? ''}
+      userEmail={session.user?.email ?? undefined}
+      userId={sessionUser.id}
       userModules={userModules}
     >
-      {/* ── MOBILE ───────────────────────────────────────── */}
-      <div className="lg:hidden px-4 py-5">
-        <div className="flex items-center gap-3 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-3 py-2.5 mb-5">
-          <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{session.user.name}</p>
-            <p className="text-zinc-500 text-xs capitalize">{(session.user as any).role}</p>
-          </div>
-          <DutyIndicator compact />
-        </div>
-        <ModuleGrid visibleNav={visibleNav} visibleCalls={visibleCalls} getPhone={getPhone} hasTowsoft={hasTowsoft} />
-      </div>
+      <div className="px-4 lg:px-8 py-5 lg:py-6 max-w-5xl mx-auto">
 
-      {/* ── DESKTOP ──────────────────────────────────────── */}
-      <div className="hidden lg:block px-8 py-6">
-        <div className="flex items-center gap-4 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-5 py-4 mb-6 max-w-2xl">
-          <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-            {initials}
-          </div>
-          <div className="flex-1">
-            <p className="text-white font-semibold">{session.user.name}</p>
-            <p className="text-zinc-500 text-sm capitalize">{(session.user as any).role}</p>
-          </div>
-          <DutyIndicator />
-          <button onClick={() => signOut({ callbackUrl: '/login' })}
-            className="text-zinc-500 hover:text-red-400 text-sm transition-colors ml-4">
-            Déconnexion
-          </button>
+        {/* Titre + sous-titre — desktop seulement (le titre mobile est dans le header sticky) */}
+        <div className="hidden lg:block mb-6">
+          <h1 className="font-display text-ink text-2xl font-bold">Dashboard</h1>
+          <p className="text-ink-muted text-sm mt-1">
+            Bienvenue {session.user?.name?.split(' ')[0] || ''}, voici tes actions du jour.
+          </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 max-w-5xl">
-          {hasTowsoft && (
-            <Link href="/mission/police"
-              className="col-span-3 bg-red-900 border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80">
-              <div>
-                <p className="text-white font-semibold text-base leading-tight">Créer une mission</p>
-                <p className="text-white/50 text-xs mt-1">Police · Saisie · Mal Garée · SNC</p>
-              </div>
-              <span className="text-3xl">🚔</span>
-            </Link>
-          )}
-          {visibleNav.map(mod => (
-            <Link key={mod.id} href={mod.href}
-              className={`${mod.color} ${mod.size === 'large' ? 'col-span-3' : ''} border border-[#2a2a2a] rounded-2xl p-5 flex items-center justify-between gap-3 hover:border-brand/50 transition-all active:opacity-80`}
-            >
-              <div>
-                <p className="text-white font-semibold text-base leading-tight">{mod.label}</p>
-                <p className="text-white/50 text-xs mt-1">Ouvrir →</p>
-              </div>
-              <span className="text-3xl">{mod.icon}</span>
-            </Link>
-          ))}
-        </div>
-
-        {visibleCalls.length > 0 && (
-          <>
-            <p className="text-zinc-600 text-xs font-semibold uppercase tracking-widest mt-8 mb-3 max-w-5xl">
-              Appels directs
-            </p>
-            <div className="flex gap-3 max-w-5xl">
-              {visibleCalls.map(mod => {
-                const phone = getPhone(mod.id)
-                return (
-                  <a key={mod.id} href={phone ? `tel:${phone}` : '#'}
-                    className={`bg-[#1A1A1A] border rounded-2xl px-6 py-4 flex items-center gap-3 transition-all ${
-                      phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'
-                    }`}
-                  >
-                    <span className="text-2xl">{mod.icon}</span>
-                    <p className="text-white font-semibold text-sm">{mod.label}</p>
-                  </a>
-                )
-              })}
+        {/* Section 1 — Actions principales */}
+        {visibleActions.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+              Actions principales
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {visibleActions.map(item => <ActionCard key={item.id} item={item} />)}
             </div>
-          </>
+          </section>
+        )}
+
+        {/* Section 2 — Modules */}
+        {visibleModules.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+              Modules
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {visibleModules.map(item => <ModuleCard key={item.id} item={item} />)}
+            </div>
+          </section>
+        )}
+
+        {/* Section 3 — Appels rapides */}
+        {visibleCalls.length > 0 && (
+          <section className="mb-4">
+            <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+              Appels rapides
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {visibleCalls.map(c => (
+                <QuickCall key={c.id} item={c} phone={getPhone(c.id)} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Empty state */}
+        {isEmpty && (
+          <div className="text-center py-16 border-2 border-dashed rounded-card text-ink-muted">
+            <p className="text-4xl mb-3" aria-hidden="true">🔒</p>
+            <p className="font-display font-semibold text-ink mb-1">Aucun module activé</p>
+            <p className="text-sm">Contacte un administrateur pour t&apos;attribuer des accès.</p>
+          </div>
         )}
       </div>
     </AppShell>
   )
 }
 
-function ModuleGrid({
-  visibleNav, visibleCalls, getPhone, hasTowsoft,
-}: {
-  visibleNav:   typeof NAV_MODULES
-  visibleCalls: typeof CALL_MODULES
-  getPhone:     (id: string) => string | undefined
-  hasTowsoft?:  boolean
-}) {
-  if (visibleNav.length === 0 && visibleCalls.length === 0) {
-    return (
-      <div className="text-center py-16 text-zinc-600">
-        <p className="text-4xl mb-4">🔒</p>
-        <p className="font-medium text-white mb-1">Aucun module activé</p>
-        <p className="text-sm">Contacte un administrateur.</p>
+// ─────────────────────────────────────────────────────────
+// SOUS-COMPOSANTS
+// ─────────────────────────────────────────────────────────
+
+function ActionCard({ item }: { item: ActionItem }) {
+  return (
+    <Link
+      href={item.href}
+      className="group bg-surface border rounded-card shadow-card p-5 flex items-start gap-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-strong"
+    >
+      <div
+        aria-hidden="true"
+        className={`w-10 h-10 rounded-md flex items-center justify-center text-lg flex-shrink-0 ${ICON_COLOR_CLASSES[item.color]}`}
+      >
+        {item.icon}
       </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-display text-ink font-bold text-[15px] leading-tight">{item.label}</p>
+        <p className="text-ink-muted text-xs mt-1">{item.subtitle}</p>
+        <p className="text-ink-secondary text-xs font-semibold mt-3 group-hover:text-brand transition-colors">
+          Ouvrir →
+        </p>
+      </div>
+    </Link>
+  )
+}
+
+function ModuleCard({ item }: { item: ModuleItem }) {
+  return (
+    <Link
+      href={item.href}
+      className="bg-surface border rounded-md shadow-card p-4 flex items-center gap-3 transition-all duration-150 hover:-translate-y-px hover:shadow-md hover:border-strong"
+    >
+      <div
+        aria-hidden="true"
+        className={`w-8 h-8 rounded-md flex items-center justify-center text-base flex-shrink-0 ${ICON_COLOR_CLASSES[item.color]}`}
+      >
+        {item.icon}
+      </div>
+      <span className="text-ink text-sm font-medium truncate">{item.label}</span>
+    </Link>
+  )
+}
+
+function QuickCall({
+  item,
+  phone,
+}: {
+  item: { id: string; label: string; icon: string }
+  phone?: string
+}) {
+  if (!phone) {
+    return (
+      <span
+        title="Numéro non configuré"
+        className="inline-flex items-center gap-2 bg-surface border rounded-md px-3.5 py-2 text-sm font-medium text-ink-faint opacity-50 cursor-not-allowed"
+      >
+        <span aria-hidden="true">{item.icon}</span>
+        <span>{item.label}</span>
+      </span>
     )
   }
-
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3">
-        {hasTowsoft && (
-          <Link href="/mission/police"
-            className="col-span-2 bg-red-900 border border-[#2a2a2a] rounded-2xl p-4 flex items-center justify-between gap-3 active:opacity-80 transition-opacity">
-            <div>
-              <p className="text-white font-semibold text-sm leading-tight">Créer une mission</p>
-              <p className="text-white/60 text-xs mt-1">Police · Saisie · Mal Garée · SNC</p>
-            </div>
-            <span className="text-2xl">🚔</span>
-          </Link>
-        )}
-        {visibleNav.map(mod => (
-          <Link key={mod.id} href={mod.href}
-            className={`
-              ${mod.size === 'large' ? 'col-span-2' : ''}
-              ${mod.color}
-              border border-[#2a2a2a] rounded-2xl p-4
-              flex ${mod.size === 'large' ? 'items-center justify-between' : 'flex-col'}
-              gap-3 active:opacity-80 transition-opacity
-            `}
-          >
-            <div>
-              <p className="text-white font-semibold text-sm leading-tight">{mod.label}</p>
-              {mod.size === 'large' && <p className="text-white/60 text-xs mt-1">Appuyer pour ouvrir</p>}
-            </div>
-            <span className="text-2xl">{mod.icon}</span>
-          </Link>
-        ))}
-      </div>
-
-      {visibleCalls.length > 0 && (
-        <>
-          <p className="text-zinc-600 text-xs font-semibold uppercase tracking-widest mt-5 mb-3">
-            Appels directs
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {visibleCalls.map(mod => {
-              const phone = getPhone(mod.id)
-              return (
-                <a key={mod.id} href={phone ? `tel:${phone}` : '#'}
-                  className={`bg-[#1A1A1A] border rounded-2xl p-3 flex flex-col items-center gap-2 active:opacity-80 transition-all text-center ${
-                    phone ? 'border-[#2a2a2a] hover:border-brand' : 'border-[#1e1e1e] opacity-40'
-                  }`}
-                >
-                  <span className="text-2xl">{mod.icon}</span>
-                  <p className="text-white font-semibold text-xs leading-tight">{mod.label}</p>
-                </a>
-              )
-            })}
-          </div>
-        </>
-      )}
-    </>
+    <a
+      href={`tel:${phone}`}
+      className="inline-flex items-center gap-2 bg-surface border rounded-md px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface-hover hover:border-strong transition-colors"
+    >
+      <span aria-hidden="true">{item.icon}</span>
+      <span>{item.label}</span>
+    </a>
   )
 }

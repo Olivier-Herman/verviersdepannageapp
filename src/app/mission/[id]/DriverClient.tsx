@@ -42,9 +42,9 @@ const gUrl  = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`
 }
 const TYPE_BADGE: Record<string, [string, string]> = {
-  DSP: ['DSP', 'bg-[#CC0000]'], REM: ['REM', 'bg-blue-600'], DPR: ['DPR', 'bg-zinc-600'],
-  depannage: ['DSP', 'bg-[#CC0000]'], remorquage: ['REM', 'bg-blue-600'],
-  reparation_place: ['DSP', 'bg-[#CC0000]'], transport: ['REM', 'bg-blue-600'],
+  DSP: ['DSP', 'bg-brand'], REM: ['REM', 'bg-blue-600'], DPR: ['DPR', 'bg-ink-faint'],
+  depannage: ['DSP', 'bg-brand'], remorquage: ['REM', 'bg-blue-600'],
+  reparation_place: ['DSP', 'bg-brand'], transport: ['REM', 'bg-blue-600'],
 }
 const STATUS_BADGE: Record<string, [string, string]> = {
   assigned:    ['À accepter',  'bg-blue-600'],
@@ -95,18 +95,18 @@ function Stepper({ status, onSite, loaded, isRem }: {
           <div key={i} className="flex-1 flex items-center gap-1">
             <div className={`flex-1 flex flex-col items-center gap-1 ${current ? 'opacity-100' : done ? 'opacity-90' : 'opacity-40'}`}>
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                done    ? 'bg-green-600 text-white' :
+                done    ? 'bg-green-600 text-ink' :
                 current ? 'bg-brand text-white ring-2 ring-brand/40' :
-                          'bg-[#2a2a2a] text-zinc-500'
+                          'bg-surface-hover text-ink-muted'
               }`}>
                 {done ? '✓' : i + 1}
               </div>
               <p className={`text-[9px] font-medium leading-tight text-center ${
-                current ? 'text-white' : done ? 'text-green-400' : 'text-zinc-500'
+                current ? 'text-ink' : done ? 'text-green-400' : 'text-ink-muted'
               }`}>{label}</p>
             </div>
             {i < labels.length - 1 && (
-              <div className={`h-0.5 flex-shrink-0 w-2 -mt-3 ${done ? 'bg-green-600' : 'bg-[#2a2a2a]'}`} />
+              <div className={`h-0.5 flex-shrink-0 w-2 -mt-3 ${done ? 'bg-green-600' : 'bg-surface-hover'}`} />
             )}
           </div>
         )
@@ -134,15 +134,15 @@ function SigPad({ onSave }: { onSave: (d: string) => void }) {
   const clear = () => { ref.current?.getContext('2d')!.clearRect(0, 0, 340, 130); setDrawn(false) }
   return (
     <div>
-      <div className="border border-[#2a2a2a] rounded-xl overflow-hidden bg-[#111] mb-3">
+      <div className="border border rounded-xl overflow-hidden bg-surface mb-3">
         <canvas ref={ref} width={340} height={130} className="w-full touch-none"
           onMouseDown={down} onMouseMove={move} onMouseUp={() => { pen.current = false }}
           onTouchStart={down} onTouchMove={move} onTouchEnd={() => { pen.current = false }} />
       </div>
       <div className="flex gap-2">
-        <button onClick={clear} className="flex-1 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm">Effacer</button>
+        <button onClick={clear} className="flex-1 py-2.5 bg-surface-hover text-ink-secondary rounded-xl text-sm">Effacer</button>
         <button onClick={() => ref.current && onSave(ref.current.toDataURL())} disabled={!drawn}
-          className="flex-1 py-2.5 bg-green-600 disabled:opacity-40 text-white rounded-xl text-sm font-medium">✅ Valider</button>
+          className="flex-1 py-2.5 bg-green-600 disabled:opacity-40 text-ink rounded-xl text-sm font-medium">✅ Valider</button>
       </div>
     </div>
   )
@@ -169,7 +169,7 @@ function AddrInput({ value, onChange, onPick, placeholder }: {
   }, [])
   return (
     <input ref={ref} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || 'Adresse ou établissement…'}
-      className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none placeholder:text-zinc-600" />
+      className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none placeholder:text-ink-faint" />
   )
 }
 
@@ -179,16 +179,16 @@ function VehSheet({ m, onSave, onClose }: { m: Mission; onSave: (p: string, b: s
   const [mo, setMo] = useState(m.vehicle_model || ''); const [v, setV] = useState(m.vehicle_vin || '')
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
-      <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between"><h2 className="text-white font-semibold text-lg">Modifier le véhicule</h2><button onClick={onClose} className="text-zinc-500 text-2xl">×</button></div>
+      <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between"><h2 className="text-ink font-semibold text-lg">Modifier le véhicule</h2><button onClick={onClose} className="text-ink-muted text-2xl">×</button></div>
         {([['Plaque', p, setP], ['Marque', b, setB], ['Modèle', mo, setMo], ['VIN (optionnel)', v, setV]] as [string, string, (v: string) => void][]).map(([l, val, set]) => (
-          <div key={l}><p className="text-zinc-500 text-xs mb-1.5">{l}</p>
+          <div key={l}><p className="text-ink-muted text-xs mb-1.5">{l}</p>
             <input value={val} onChange={e => set(e.target.value)}
-              className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none" /></div>
+              className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" /></div>
         ))}
         <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">Annuler</button>
-          <button onClick={() => onSave(plate(p), b, mo, v)} className="flex-1 py-3 bg-[#CC0000] text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
+          <button onClick={onClose} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+          <button onClick={() => onSave(plate(p), b, mo, v)} className="flex-1 py-3 bg-brand text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
         </div>
       </div>
     </div>
@@ -199,11 +199,11 @@ function VehSheet({ m, onSave, onClose }: { m: Mission; onSave: (p: string, b: s
 function NavModal({ onPick }: { onPick: (a: NavApp) => void }) {
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end">
-      <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-2">
-        <p className="text-white font-semibold text-base mb-4">App de navigation</p>
+      <div className="bg-surface w-full rounded-t-3xl p-6 space-y-2">
+        <p className="text-ink font-semibold text-base mb-4">App de navigation</p>
         {([['gmaps', '🗺️', 'Google Maps'], ['waze', '🧭', 'Waze'], ['apple', '📍', 'Plans']] as [NavApp, string, string][]).map(([id, ic, lb]) => (
-          <button key={id} onClick={() => onPick(id)} className="w-full flex items-center gap-4 px-4 py-3.5 bg-[#111] border border-[#2a2a2a] rounded-2xl">
-            <span className="text-2xl">{ic}</span><span className="text-white font-medium">{lb}</span>
+          <button key={id} onClick={() => onPick(id)} className="w-full flex items-center gap-4 px-4 py-3.5 bg-surface border border rounded-2xl">
+            <span className="text-2xl">{ic}</span><span className="text-ink font-medium">{lb}</span>
           </button>
         ))}
       </div>
@@ -217,13 +217,13 @@ function AddrActionModal({ title, address, onNavigate, onModify, onClose }: {
 }) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
-      <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start">
-          <div><p className="text-zinc-500 text-xs">{title}</p><p className="text-white font-medium text-sm mt-0.5">{address}</p></div>
-          <button onClick={onClose} className="text-zinc-500 text-2xl ml-4">×</button>
+          <div><p className="text-ink-muted text-xs">{title}</p><p className="text-ink font-medium text-sm mt-0.5">{address}</p></div>
+          <button onClick={onClose} className="text-ink-muted text-2xl ml-4">×</button>
         </div>
-        <button onClick={onNavigate} className="w-full py-3.5 bg-blue-600 text-white font-semibold rounded-2xl text-sm">🗺️ Naviguer</button>
-        <button onClick={onModify} className="w-full py-3.5 bg-[#2a2a2a] text-zinc-300 font-medium rounded-2xl text-sm">✏️ Modifier l'adresse</button>
+        <button onClick={onNavigate} className="w-full py-3.5 bg-blue-600 text-ink font-semibold rounded-2xl text-sm">🗺️ Naviguer</button>
+        <button onClick={onModify} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-medium rounded-2xl text-sm">✏️ Modifier l'adresse</button>
       </div>
     </div>
   )
@@ -232,12 +232,12 @@ function AddrActionModal({ title, address, onNavigate, onModify, onClose }: {
 // ─── Screen wrapper ───────────────────────────────────────────────────────────
 function ScreenWrap({ title, sub, back, children }: { title: string; sub?: string; back: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 bg-[#0F0F0F] z-40 flex flex-col">
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 flex-shrink-0">
+    <div className="fixed inset-0 bg-surface z-40 flex flex-col">
+      <div className="bg-surface border-b border px-4 pt-12 pb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={back} className="w-9 h-9 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white">←</button>
-          <div className="flex-1 min-w-0"><p className="text-white font-semibold truncate">{title}</p>
-            {sub && <p className="text-zinc-500 text-xs truncate">{sub}</p>}</div>
+          <button onClick={back} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
+          <div className="flex-1 min-w-0"><p className="text-ink font-semibold truncate">{title}</p>
+            {sub && <p className="text-ink-muted text-xs truncate">{sub}</p>}</div>
         </div>
       </div>
       {children}
@@ -361,11 +361,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     }))
     apiSilent('update_stops', { stops: newStops })
   }
-  const [tbl, tbg] = TYPE_BADGE[mType] || ['AUT', 'bg-zinc-600']
+  const [tbl, tbg] = TYPE_BADGE[mType] || ['AUT', 'bg-ink-faint']
   const statusStr  = M.status === 'parked' ? 'En dépôt' : M.on_site_at ? 'Sur place'
     : M.on_way_at && M.status === 'in_progress' ? 'En route' : STATUS_BADGE[M.status]?.[0] || M.status
   const statusBg   = M.status === 'parked' ? 'bg-amber-600' : M.on_site_at ? 'bg-orange-500'
-    : M.on_way_at && M.status === 'in_progress' ? 'bg-amber-500' : STATUS_BADGE[M.status]?.[1] || 'bg-zinc-600'
+    : M.on_way_at && M.status === 'in_progress' ? 'bg-amber-500' : STATUS_BADGE[M.status]?.[1] || 'bg-ink-faint'
 
   // Google Maps
   useEffect(() => {
@@ -583,10 +583,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const closeLabels: Record<string, [string, string]> = {
     dsp:  ['bg-green-600', 'DSP Réussi'],
     rem:  ['bg-blue-600',  'REM Confirmé'],
-    dpr:  ['bg-zinc-600',  'DPR — Déplacement pour rien'],
+    dpr:  ['bg-ink-faint',  'DPR — Déplacement pour rien'],
     park: ['bg-amber-500', '🅿️ Mise en parc'],
   }
-  const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-zinc-600', closeType.toUpperCase()]
+  const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-ink-faint', closeType.toUpperCase()]
 
   // ══════════════════════════════════════════════════════════════════════════
   // ÉCRANS FULLSCREEN
@@ -663,7 +663,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               {photoUrls.map((url, i) => (
                 <div key={`u${i}`} className="relative aspect-square rounded-xl overflow-hidden">
                   <img src={url} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-xs text-center">✓</div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-ink text-xs text-center">✓</div>
                   <button onClick={async () => {
                     const newUrls = photoUrls.filter((_, j) => j !== i)
                     setPhotoUrls(newUrls); setPreviews(p => p.filter((_, j) => j !== i))
@@ -672,22 +672,22 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                       method: 'POST', headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: newUrls }),
                     }).catch(() => {})
-                  }} className="absolute top-1 right-1 w-6 h-6 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
+                  }} className="absolute top-1 right-1 w-6 h-6 bg-black/70 rounded-full text-ink text-xs flex items-center justify-center">✕</button>
                 </div>
               ))}
               {previews.slice(photoUrls.length).map((src, i) => (
                 <div key={`f${i}`} className="relative aspect-square rounded-xl overflow-hidden">
                   <img src={src} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-white text-xs text-center">non sauv.</div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-ink text-xs text-center">non sauv.</div>
                   <button onClick={() => { setPhotos(p => p.filter((_, j) => j !== i)); setPreviews(p => p.filter((_, j) => j !== i + photoUrls.length)) }}
-                    className="absolute top-1 right-1 w-5 h-5 bg-black/70 rounded-full text-white text-xs flex items-center justify-center">✕</button>
+                    className="absolute top-1 right-1 w-5 h-5 bg-black/70 rounded-full text-ink text-xs flex items-center justify-center">✕</button>
                 </div>
               ))}
             </div>
           )}
 
           {/* Wizard : carte par catégorie */}
-          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Que photographier ?</p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Que photographier ?</p>
           <div className="grid grid-cols-2 gap-2">
             {PHOTO_CATS.map(cat => {
               const done = coveredCats.includes(cat.id)
@@ -700,15 +700,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   className={`relative p-3 rounded-2xl border text-left transition active:scale-95 ${
                     done ? 'bg-green-500/10 border-green-500/40' :
                     cat.required ? 'bg-red-500/5 border-red-500/30 hover:border-red-500/60'
-                                 : 'bg-[#1A1A1A] border-[#2a2a2a] hover:border-zinc-600'
+                                 : 'bg-surface border hover:border-zinc-600'
                   }`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xl">{cat.icon}</span>
                     {done && <span className="text-green-400 text-xs">✓</span>}
                     {!done && cat.required && <span className="text-red-400 text-[10px] font-bold">REQUIS</span>}
                   </div>
-                  <p className={`font-semibold text-sm ${done ? 'text-green-300' : 'text-white'}`}>{cat.label}</p>
-                  <p className="text-zinc-500 text-[11px] mt-0.5 leading-tight">{cat.hint}</p>
+                  <p className={`font-semibold text-sm ${done ? 'text-green-300' : 'text-ink'}`}>{cat.label}</p>
+                  <p className="text-ink-muted text-[11px] mt-0.5 leading-tight">{cat.hint}</p>
                 </button>
               )
             })}
@@ -719,7 +719,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               if (photoRef.current) (photoRef.current as any).dataset.cat = 'autre'
               photoRef.current?.click()
             }}
-            className="w-full mt-3 py-3 border-2 border-dashed border-[#2a2a2a] hover:border-zinc-500 rounded-2xl text-zinc-400 text-sm">
+            className="w-full mt-3 py-3 border-2 border-dashed border hover:border-zinc-500 rounded-2xl text-ink-secondary text-sm">
             + Autre photo (libre)
           </button>
 
@@ -730,15 +730,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           )}
           {err && <p className="text-red-400 text-sm mt-3">⚠️ {err}</p>}
         </div>
-        <div className="px-4 py-4 border-t border-[#2a2a2a] space-y-2">
+        <div className="px-4 py-4 border-t border space-y-2">
           {photos.length > 0 && (
             <button onClick={savePhotos} disabled={loading}
-              className="w-full py-3.5 bg-green-600 disabled:opacity-50 text-white font-bold rounded-2xl">
+              className="w-full py-3.5 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl">
               {loading ? '⏳ Sauvegarde…' : `💾 Enregistrer ${photos.length} nouvelle${photos.length > 1 ? 's' : ''}`}
             </button>
           )}
           {photos.length === 0 && (
-            <button onClick={() => setScreen('main')} className="w-full py-3.5 bg-[#2a2a2a] text-zinc-400 font-semibold rounded-2xl">← Retour</button>
+            <button onClick={() => setScreen('main')} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-semibold rounded-2xl">← Retour</button>
           )}
         </div>
       </ScreenWrap>
@@ -750,26 +750,26 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     <ScreenWrap title="Décharge client" back={() => setScreen(dischFrom)}>
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Motif *</p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Motif *</p>
           <textarea rows={3} value={dMotif} onChange={e => setDMotif(e.target.value)} placeholder="Client refuse le remorquage…"
-            className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none resize-none" />
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
         </div>
         <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Nom du signataire</p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Nom du signataire</p>
           <input value={dName} onChange={e => setDName(e.target.value)} placeholder="Prénom Nom"
-            className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none" />
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" />
         </div>
         <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Signature</p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Signature</p>
           {!dSig ? (showDSig
             ? <SigPad onSave={d => { setDSig(d); setShowDSig(false) }} />
-            : <button onClick={() => setShowDSig(true)} className="w-full py-3 border border-dashed border-[#2a2a2a] rounded-xl text-zinc-400 text-sm">✍️ Faire signer</button>)
-            : <div><div className="border border-green-500/30 rounded-xl overflow-hidden bg-[#111] mb-2"><img src={dSig} className="w-full max-h-20 object-contain" /></div>
-                <button onClick={() => setDSig('')} className="text-zinc-500 text-xs">Refaire</button></div>}
+            : <button onClick={() => setShowDSig(true)} className="w-full py-3 border border-dashed border rounded-xl text-ink-secondary text-sm">✍️ Faire signer</button>)
+            : <div><div className="border border-green-500/30 rounded-xl overflow-hidden bg-surface mb-2"><img src={dSig} className="w-full max-h-20 object-contain" /></div>
+                <button onClick={() => setDSig('')} className="text-ink-muted text-xs">Refaire</button></div>}
         </div>
       </div>
-      <div className="px-4 py-4 border-t border-[#2a2a2a] flex gap-3">
-        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">Annuler</button>
+      <div className="px-4 py-4 border-t border flex gap-3">
+        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
         <button onClick={() => {
             if (!dMotif) return
             const d = { motif: dMotif, name: dName, sig: dSig }
@@ -777,7 +777,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             setDMotif(''); setDName(''); setDSig('')
             setScreen(dischFrom)
           }}
-          disabled={!dMotif} className="flex-1 py-3 bg-amber-600 disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
+          disabled={!dMotif} className="flex-1 py-3 bg-amber-600 disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">Enregistrer</button>
       </div>
     </ScreenWrap>
   )
@@ -788,14 +788,14 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       <div className="flex-1 px-4 py-4">
         {sig ? (
           <div>
-            <div className="border border-green-500/30 rounded-xl overflow-hidden bg-[#111] mb-3"><img src={sig} className="w-full max-h-36 object-contain" /></div>
+            <div className="border border-green-500/30 rounded-xl overflow-hidden bg-surface mb-3"><img src={sig} className="w-full max-h-36 object-contain" /></div>
             <p className="text-green-400 text-sm text-center mb-4">✅ Signature enregistrée</p>
-            <button onClick={() => setSig('')} className="w-full py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm">Refaire</button>
+            <button onClick={() => setSig('')} className="w-full py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm">Refaire</button>
           </div>
         ) : <SigPad onSave={d => { setSig(d); saveDraft({ sig: d }) }} />}
       </div>
-      {sig && <div className="px-4 py-4 border-t border-[#2a2a2a]">
-        <button onClick={() => setScreen('close')} className="w-full py-3.5 bg-[#CC0000] text-white font-semibold rounded-2xl">← Retour</button>
+      {sig && <div className="px-4 py-4 border-t border">
+        <button onClick={() => setScreen('close')} className="w-full py-3.5 bg-brand text-white font-semibold rounded-2xl">← Retour</button>
       </div>}
     </ScreenWrap>
   )
@@ -804,16 +804,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   if (screen === 'encaissement') return (
     <ScreenWrap title="Encaisser le paiement" back={() => setScreen('main')}>
       <div className="flex-1 px-4 py-4 space-y-4">
-        <div className="bg-[#CC0000] rounded-2xl p-6 text-center">
-          <p className="text-white/70 text-sm mb-1">Montant à encaisser</p>
-          <p className="text-white text-4xl font-semibold">{(M.amount_to_collect || 0).toFixed(2)} €</p>
+        <div className="bg-brand rounded-2xl p-6 text-center">
+          <p className="text-ink/70 text-sm mb-1">Montant à encaisser</p>
+          <p className="text-ink text-4xl font-semibold">{(M.amount_to_collect || 0).toFixed(2)} €</p>
         </div>
         {paid
           ? <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Paiement encaissé</p></div>
-          : <a href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${M.amount_to_collect || 0}&return_to=/mission/${M.id}`} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-[#CC0000] text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
+          : <a href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${M.amount_to_collect || 0}&return_to=/mission/${M.id}`} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-brand text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
       </div>
-      <div className="px-4 py-4 border-t border-[#2a2a2a]">
-        <button onClick={() => setScreen('main')} className="w-full py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">← Retour</button>
+      <div className="px-4 py-4 border-t border">
+        <button onClick={() => setScreen('main')} className="w-full py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">← Retour</button>
       </div>
     </ScreenWrap>
   )
@@ -823,19 +823,19 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     <ScreenWrap title="Ajouter un stop" back={() => setScreen('main')}>
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Label <span className="text-zinc-700 normal-case">(optionnel)</span></p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Label <span className="text-ink-faint normal-case">(optionnel)</span></p>
           <input value={newStopLabel} onChange={e => setNewStopLabel(e.target.value)} placeholder="Garage, domicile client…"
-            className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none" />
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" />
         </div>
         <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Adresse *</p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Adresse *</p>
           <AddrInput value={newStopAddr} onChange={setNewStopAddr} onPick={(a, lat, lng) => { setNewStopAddr(a); setNewStopLat(lat); setNewStopLng(lng) }} />
         </div>
         {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
       </div>
-      <div className="px-4 py-4 border-t border-[#2a2a2a] flex gap-3">
-        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">Annuler</button>
-        <button onClick={addStop} disabled={!newStopAddr || loading} className="flex-1 py-3 bg-[#CC0000] disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
+      <div className="px-4 py-4 border-t border flex gap-3">
+        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+        <button onClick={addStop} disabled={!newStopAddr || loading} className="flex-1 py-3 bg-brand disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">
           {loading ? '⏳…' : '+ Ajouter'}
         </button>
       </div>
@@ -849,9 +849,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         <AddrInput value={modVal} onChange={setModVal} onPick={(a, lat, lng) => { setModVal(a); setModLat(lat); setModLng(lng) }} />
         {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
       </div>
-      <div className="px-4 py-4 border-t border-[#2a2a2a] flex gap-3">
-        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">Annuler</button>
-        <button onClick={saveAddr} disabled={!modVal || loading} className="flex-1 py-3 bg-[#CC0000] disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
+      <div className="px-4 py-4 border-t border flex gap-3">
+        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+        <button onClick={saveAddr} disabled={!modVal || loading} className="flex-1 py-3 bg-brand disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">
           {loading ? '⏳…' : 'Enregistrer'}
         </button>
       </div>
@@ -865,27 +865,27 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
           {/* Type de clôture — informatif, non modifiable ici */}
           <div className={`${closeBg} rounded-2xl px-4 py-3 flex items-center gap-3`}>
-            <span className="text-white font-bold text-sm">{closeLabel}</span>
+            <span className="text-ink font-bold text-sm">{closeLabel}</span>
           </div>
 
           {/* Sélection dépôt — uniquement pour Mise en parc */}
           {closeType === 'park' && (
-            <div className="bg-[#1A1A1A] border border-amber-500/30 rounded-2xl p-4">
+            <div className="bg-surface border border-amber-500/30 rounded-2xl p-4">
               <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">Dépôt de dépose</p>
               <div className="space-y-2">
                 {vrLocs.length === 0
-                  ? <p className="text-zinc-600 text-sm">Aucun dépôt configuré — vois /admin/depots</p>
+                  ? <p className="text-ink-faint text-sm">Aucun dépôt configuré — vois /admin/depots</p>
                   : vrLocs.map(vr => {
                       const selected = parkDepot?.id === vr.id
                       return (
                         <button key={vr.id} onClick={() => setParkDepot(vr)}
                           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition active:scale-95 ${
-                            selected ? 'bg-amber-500/15 border border-amber-500/60' : 'bg-[#111] border border-[#2a2a2a] hover:border-zinc-600'
+                            selected ? 'bg-amber-500/15 border border-amber-500/60' : 'bg-surface border border hover:border-zinc-600'
                           }`}>
                           <span className="text-lg">{selected ? '🅿️' : '◯'}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm font-medium">{vr.name}{(vr as any).is_default ? ' (défaut)' : ''}</p>
-                            <p className="text-zinc-500 text-xs truncate">{vr.address}</p>
+                            <p className="text-ink text-sm font-medium">{vr.name}{(vr as any).is_default ? ' (défaut)' : ''}</p>
+                            <p className="text-ink-muted text-xs truncate">{vr.address}</p>
                           </div>
                         </button>
                       )
@@ -898,17 +898,17 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           )}
 
           {/* Récap éditable — chaque ligne cliquable mène à l'écran correspondant */}
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl divide-y divide-[#2a2a2a]">
+          <div className="bg-surface border border rounded-2xl divide-y divide-[#2a2a2a]">
             <div className="px-4 py-3">
-              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Récapitulatif (cliquer pour modifier)</p>
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Récapitulatif (cliquer pour modifier)</p>
             </div>
 
             {/* Véhicule — éditable */}
             <button onClick={() => setShowVeh(true)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
               <div className="flex-1 min-w-0">
-                <p className="text-zinc-500 text-xs">Véhicule</p>
-                <p className="text-white text-sm font-medium truncate">
+                <p className="text-ink-muted text-xs">Véhicule</p>
+                <p className="text-ink text-sm font-medium truncate">
                   {[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || '—'} · {plate(M.vehicle_plate)}
                 </p>
               </div>
@@ -917,18 +917,18 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
             {/* Itinéraire complet : prise en charge → stops → destination (dernière) */}
             <div className="px-4 py-3 space-y-1.5">
-              <p className="text-zinc-500 text-xs">📍 Itinéraire</p>
-              <p className="text-white text-sm flex items-start gap-1.5">
+              <p className="text-ink-muted text-xs">📍 Itinéraire</p>
+              <p className="text-ink text-sm flex items-start gap-1.5">
                 <span className="text-amber-400 flex-shrink-0">⏺</span>
                 <span>{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</span>
               </p>
               {rem && allPoints.map((p, idx) => {
                 const isLast = idx === allPoints.length - 1
                 return (
-                  <p key={p.id} className="text-white text-sm flex items-start gap-1.5">
-                    <span className={`flex-shrink-0 ${isLast ? 'text-blue-400' : 'text-zinc-500'}`}>{isLast ? '🏁' : '▸'}</span>
+                  <p key={p.id} className="text-ink text-sm flex items-start gap-1.5">
+                    <span className={`flex-shrink-0 ${isLast ? 'text-blue-400' : 'text-ink-muted'}`}>{isLast ? '🏁' : '▸'}</span>
                     <span>
-                      {p.label && p.label !== p.address ? <span className="text-zinc-400">{p.label} — </span> : null}
+                      {p.label && p.label !== p.address ? <span className="text-ink-secondary">{p.label} — </span> : null}
                       {p.address}
                       {isLast && <span className="text-blue-400 text-xs ml-1">(destination)</span>}
                     </span>
@@ -939,10 +939,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
             {/* Photos */}
             <button onClick={() => setScreen('photos')}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
-              <span className="text-zinc-400 text-sm">📷 Photos</span>
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
+              <span className="text-ink-secondary text-sm">📷 Photos</span>
               <span className="flex items-center gap-2">
-                <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-zinc-500' : 'text-red-400'}`}>
+                <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-ink-muted' : 'text-red-400'}`}>
                   {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? '(opt.)' : '/ 3 min.'}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
@@ -951,10 +951,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
             {/* Décharge */}
             <button onClick={() => { setDischFrom('close'); setDMotif(''); setDName(''); setDSig(''); setScreen('decharge') }}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
-              <span className="text-zinc-400 text-sm">🛡️ Décharge{disch.length > 1 ? 's' : ''}</span>
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
+              <span className="text-ink-secondary text-sm">🛡️ Décharge{disch.length > 1 ? 's' : ''}</span>
               <span className="flex items-center gap-2">
-                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-ink-muted'}`}>
                   {disch.length > 0 ? `✓ ${disch.length}` : '+ ajouter'}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
@@ -963,15 +963,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
             {/* Signature (signée pendant la décharge généralement) */}
             <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-zinc-400 text-sm">✍️ Signature client</span>
-              <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-zinc-500'}`}>{sig ? '✓ Signée' : '—'}</span>
+              <span className="text-ink-secondary text-sm">✍️ Signature client</span>
+              <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-ink-muted'}`}>{sig ? '✓ Signée' : '—'}</span>
             </div>
 
             {/* Encaissement */}
             {M.amount_to_collect != null && M.amount_to_collect > 0 && (
               <button onClick={() => setScreen('encaissement')}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#222] transition text-left">
-                <span className="text-zinc-400 text-sm">💶 Encaissement</span>
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
+                <span className="text-ink-secondary text-sm">💶 Encaissement</span>
                 <span className="flex items-center gap-2">
                   <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-red-400'}`}>
                     {paid ? '✓ Encaissé' : `${M.amount_to_collect.toFixed(2)} ${M.amount_currency || 'EUR'}`}
@@ -987,11 +987,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               setDMotif("Je soussigné(e) reconnais que l'intervention du dépanneur s'est déroulée correctement et que ce dernier n'a causé aucun dégât supplémentaire à mon véhicule.")
               setDName(''); setDSig('')
               setDischFrom('close'); setScreen('decharge')
-            }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#1A1A1A] border border-dashed border-[#2a2a2a] hover:border-zinc-600 rounded-2xl text-left transition">
+            }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-surface border border-dashed border hover:border-zinc-600 rounded-2xl text-left transition">
             <span className="text-xl">🛡️</span>
             <div className="flex-1">
-              <p className="text-zinc-300 text-sm font-medium">+ Ajouter une décharge</p>
-              <p className="text-zinc-600 text-xs">Sans dégâts ou motif personnalisé</p>
+              <p className="text-ink-secondary text-sm font-medium">+ Ajouter une décharge</p>
+              <p className="text-ink-faint text-xs">Sans dégâts ou motif personnalisé</p>
             </div>
           </button>
           {disch.map((d, i) => (
@@ -999,18 +999,18 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               <span className="text-xl">🛡️</span>
               <div className="flex-1 min-w-0">
                 <p className="text-amber-400 text-sm font-medium">✓ Décharge {i + 1}</p>
-                <p className="text-zinc-500 text-xs truncate">{d.motif.slice(0, 60)}{d.motif.length > 60 ? '…' : ''}</p>
+                <p className="text-ink-muted text-xs truncate">{d.motif.slice(0, 60)}{d.motif.length > 60 ? '…' : ''}</p>
               </div>
-              <button onClick={() => { const u = disch.filter((_, j) => j !== i); setDisch(u); saveDraft({ disch: u }) }} className="text-zinc-600 text-xs flex-shrink-0">✕</button>
+              <button onClick={() => { const u = disch.filter((_, j) => j !== i); setDisch(u); saveDraft({ disch: u }) }} className="text-ink-faint text-xs flex-shrink-0">✕</button>
             </div>
           ))}
 
           {/* Remarques */}
           <div>
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Remarques <span className="text-zinc-700 normal-case tracking-normal">(optionnel)</span></p>
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Remarques <span className="text-ink-faint normal-case tracking-normal">(optionnel)</span></p>
             <textarea rows={3} value={closeNote} onChange={e => setCloseNote(e.target.value)}
               placeholder="Observations, état du véhicule…"
-              className="w-full bg-[#111] border border-[#2a2a2a] focus:border-[#CC0000] rounded-xl px-3 py-3 text-white text-sm outline-none resize-none" />
+              className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
           </div>
 
           {closeType !== 'dpr' && totPh < 3 && (
@@ -1023,16 +1023,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
         </div>
 
-        <div className="px-4 py-4 border-t border-[#2a2a2a]">
+        <div className="px-4 py-4 border-t border">
           {closeType === 'park' ? (
             <button onClick={() => parkDepot && doPark(parkDepot)}
               disabled={loading || !parkDepot || totPh < 3}
-              className="w-full py-4 bg-amber-500 disabled:opacity-40 text-white font-semibold rounded-2xl">
+              className="w-full py-4 bg-amber-500 disabled:opacity-40 text-ink font-semibold rounded-2xl">
               {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
             </button>
           ) : (
             <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && totPh < 3)}
-              className="w-full py-4 bg-green-600 disabled:opacity-40 text-white font-semibold rounded-2xl">
+              className="w-full py-4 bg-green-600 disabled:opacity-40 text-ink font-semibold rounded-2xl">
               {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
             </button>
           )}
@@ -1042,11 +1042,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // ── Mission terminée ──────────────────────────────────────────────────────
   if (M.status === 'completed') return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center gap-4 px-4">
+    <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4 px-4">
       <div className="w-16 h-16 bg-green-600/20 border border-green-500/30 rounded-full flex items-center justify-center text-3xl">✅</div>
-      <h1 className="text-white font-semibold text-xl">Mission terminée</h1>
-      <p className="text-zinc-500 text-sm">{M.client_name} · {plate(M.vehicle_plate)}</p>
-      <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-400 rounded-2xl text-sm">← Mes missions</button>
+      <h1 className="text-ink font-semibold text-xl">Mission terminée</h1>
+      <p className="text-ink-muted text-sm">{M.client_name} · {plate(M.vehicle_plate)}</p>
+      <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
     </div>
   )
 
@@ -1054,18 +1054,18 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // VUE PRINCIPALE
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-[#0F0F0F] pb-48">
+    <div className="min-h-screen bg-surface pb-48">
 
       {/* Header */}
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 sticky top-0 z-20">
+      <div className="bg-surface border-b border px-4 pt-12 pb-4 sticky top-0 z-20">
         <div className="flex items-center justify-between mb-1">
-          <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white">←</button>
+          <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-1 rounded-md text-xs font-bold text-white ${tbg}`}>{tbl}</span>
-            <span className={`px-2.5 py-1 rounded-md text-xs font-medium text-white ${statusBg}`}>{statusStr}</span>
+            <span className={`px-2.5 py-1 rounded-md text-xs font-bold text-ink ${tbg}`}>{tbl}</span>
+            <span className={`px-2.5 py-1 rounded-md text-xs font-medium text-ink ${statusBg}`}>{statusStr}</span>
           </div>
         </div>
-        <h1 className="text-white font-semibold text-lg truncate mt-1">{M.client_name || 'Client inconnu'}</h1>
+        <h1 className="text-ink font-semibold text-lg truncate mt-1">{M.client_name || 'Client inconnu'}</h1>
         {M.client_phone && (
           <a href={`tel:${M.client_phone}`} className="inline-flex items-center gap-1.5 mt-1 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1 text-red-400 text-sm font-medium">
             📞 {M.client_phone}
@@ -1081,8 +1081,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           <div className="flex items-center gap-2">
             <span className="text-2xl">💶</span>
             <div>
-              <p className="text-white font-bold text-sm uppercase tracking-wide">À encaisser</p>
-              <p className="text-white text-xl font-bold">{M.amount_to_collect.toFixed(2)} {M.amount_currency || 'EUR'}</p>
+              <p className="text-ink font-bold text-sm uppercase tracking-wide">À encaisser</p>
+              <p className="text-ink text-xl font-bold">{M.amount_to_collect.toFixed(2)} {M.amount_currency || 'EUR'}</p>
             </div>
           </div>
           <button onClick={() => setScreen('encaissement')}
@@ -1102,61 +1102,61 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
         {/* Facturé à + Dossier */}
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-3">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Facturé à</p>
-            <p className="text-white text-sm font-medium truncate">{M.billed_to_name || M.source || '—'}</p>
+          <div className="bg-surface border border rounded-2xl p-3">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Facturé à</p>
+            <p className="text-ink text-sm font-medium truncate">{M.billed_to_name || M.source || '—'}</p>
           </div>
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-3">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Dossier</p>
-            <p className="text-white text-xs font-mono truncate">{M.dossier_number || M.external_id || '—'}</p>
+          <div className="bg-surface border border rounded-2xl p-3">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Dossier</p>
+            <p className="text-ink text-xs font-mono truncate">{M.dossier_number || M.external_id || '—'}</p>
           </div>
         </div>
 
         {/* Description */}
         {M.incident_description && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-2">Description</p>
-            <p className="text-white text-sm">{M.incident_description}</p>
+          <div className="bg-surface border border rounded-2xl p-4">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Description</p>
+            <p className="text-ink text-sm">{M.incident_description}</p>
           </div>
         )}
 
         {/* Véhicule */}
-        <button onClick={() => setShowVeh(true)} className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 text-left hover:border-zinc-600 transition">
+        <button onClick={() => setShowVeh(true)} className="w-full bg-surface border border rounded-2xl p-4 text-left hover:border-zinc-600 transition">
           <div className="flex justify-between mb-1">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Véhicule</p>
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Véhicule</p>
             <span className="text-red-400 text-xs">✏️ Modifier</span>
           </div>
-          <p className="text-white font-semibold">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
-          {M.vehicle_plate && <p className="text-zinc-400 text-xs font-mono uppercase tracking-widest mt-1">{plate(M.vehicle_plate)}</p>}
+          <p className="text-ink font-semibold">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
+          {M.vehicle_plate && <p className="text-ink-secondary text-xs font-mono uppercase tracking-widest mt-1">{plate(M.vehicle_plate)}</p>}
         </button>
 
         {/* DSP : adresse unique */}
         {!rem && (
           <button onClick={() => setAddrModal({ title: "Lieu d'intervention", address: `${M.incident_address || '—'}${M.incident_city ? `, ${M.incident_city}` : ''}`, lat: M.incident_lat, lng: M.incident_lng, field: 'incident' })}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 text-left hover:border-zinc-600 transition">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Lieu d'intervention</p>
-            <p className="text-white text-sm">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
+            className="w-full bg-surface border border rounded-2xl p-4 text-left hover:border-zinc-600 transition">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Lieu d'intervention</p>
+            <p className="text-ink text-sm">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
             <p className="text-blue-400 text-xs mt-1">🗺️ Tap → Naviguer ou Modifier</p>
           </button>
         )}
 
         {/* REM : itinéraire complet */}
         {rem && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a2a]">
-              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium">Itinéraire</p>
+          <div className="bg-surface border border rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border">
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Itinéraire</p>
               {!isReadOnly && (M.status === 'in_progress' || M.status === 'delivering') && (
-                <button onClick={() => setScreen('add-stop')} className="text-xs px-3 py-1.5 bg-[#CC0000] text-white rounded-lg font-medium">+ Stop</button>
+                <button onClick={() => setScreen('add-stop')} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg font-medium">+ Stop</button>
               )}
             </div>
 
             {/* Prise en charge */}
             <button onClick={() => setAddrModal({ title: 'Prise en charge', address: `${M.incident_address || '—'}${M.incident_city ? `, ${M.incident_city}` : ''}`, lat: M.incident_lat, lng: M.incident_lng, field: 'incident' })}
-              className="w-full flex items-center gap-3 px-4 py-3 border-b border-[#1f1f1f] hover:bg-[#222] text-left">
+              className="w-full flex items-center gap-3 px-4 py-3 border-b border hover:bg-surface-2 text-left">
               <div className="w-3 h-3 rounded-full bg-amber-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-zinc-500 text-xs">Prise en charge</p>
-                <p className="text-white text-sm truncate">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
+                <p className="text-ink-muted text-xs">Prise en charge</p>
+                <p className="text-ink text-sm truncate">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
               </div>
               <span className="text-blue-400 text-xs flex-shrink-0">→</span>
             </button>
@@ -1167,15 +1167,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             {(() => {
               const canReorder = !isReadOnly && (M.status === 'in_progress' || M.status === 'delivering')
               return allPoints.map((point, idx) => (
-                <div key={point.id} className="flex items-center gap-2 px-3 py-3 border-b border-[#1f1f1f] last:border-none">
+                <div key={point.id} className="flex items-center gap-2 px-3 py-3 border-b border last:border-none">
                   {/* Poignée drag + flèches */}
                   {canReorder && !point.arrived_at && (
                     <div className="flex flex-col items-center gap-1 flex-shrink-0 pr-1">
                       <button disabled={idx === 0} onClick={() => movePoint(idx, idx - 1)}
-                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-zinc-400 disabled:opacity-20 active:scale-95 text-xs">▲</button>
-                      <div className="text-zinc-700 text-xs leading-none select-none">⠿</div>
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-surface-hover text-ink-secondary disabled:opacity-20 active:scale-95 text-xs">▲</button>
+                      <div className="text-ink-faint text-xs leading-none select-none">⠿</div>
                       <button disabled={idx === allPoints.length - 1} onClick={() => movePoint(idx, idx + 1)}
-                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-zinc-400 disabled:opacity-20 active:scale-95 text-xs">▼</button>
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-surface-hover text-ink-secondary disabled:opacity-20 active:scale-95 text-xs">▼</button>
                     </div>
                   )}
                   <div className="w-3 h-3 rounded-full flex-shrink-0"
@@ -1183,13 +1183,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   <button className="flex-1 min-w-0 text-left py-1" onClick={() => {
                     if (point.id === '__dest__') setAddrModal({ title: point.label, address: point.address, field: 'destination' })
                   }}>
-                    <p className="text-zinc-500 text-xs">{point.label}</p>
-                    <p className="text-white text-sm truncate">{point.address}</p>
+                    <p className="text-ink-muted text-xs">{point.label}</p>
+                    <p className="text-ink text-sm truncate">{point.address}</p>
                     {point.id === '__dest__' && <p className="text-blue-400 text-xs mt-0.5">Tap → Naviguer ou Modifier</p>}
                   </button>
                   {canReorder && !point.arrived_at && point.id !== '__dest__' && (
                     <button onClick={() => api('arrive_stop', { stop_id: point.id })} disabled={loading}
-                      className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg flex-shrink-0 disabled:opacity-50">
+                      className="text-xs px-3 py-1.5 bg-blue-600 text-ink rounded-lg flex-shrink-0 disabled:opacity-50">
                       → {idx + 1}
                     </button>
                   )}
@@ -1205,9 +1205,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
         {/* Remarques */}
         {M.remarks_general && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Remarques</p>
-            <p className="text-white text-sm">{M.remarks_general}</p>
+          <div className="bg-surface border border rounded-2xl p-4">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Remarques</p>
+            <p className="text-ink text-sm">{M.remarks_general}</p>
           </div>
         )}
 
@@ -1218,28 +1218,28 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
       {/* Boutons de pointage */}
       {!isReadOnly && (
-        <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 backdrop-blur border-t border-[#2a2a2a] px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
+        <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
 
           {M.status === 'assigned' && (
             <>
-              <p className="text-zinc-400 text-xs text-center px-2">
+              <p className="text-ink-secondary text-xs text-center px-2">
                 Vérifie les infos avant d'accepter. Une fois acceptée, le dispatch est notifié.
               </p>
               <button onClick={() => api('accept')} disabled={loading}
-                className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
                 {loading ? '⏳…' : '✅ Accepter la mission'}
               </button>
             </>
           )}
           {M.status === 'accepted' && (
             <button onClick={() => initNav ? api('on_way') : setShowNav(true)} disabled={loading}
-              className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+              className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
               {loading ? '⏳…' : '🚗 En route'}
             </button>
           )}
           {M.status === 'in_progress' && !onSite && (
             <button onClick={() => api('on_site')} disabled={loading}
-              className="w-full py-4 bg-orange-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+              className="w-full py-4 bg-orange-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
               {loading ? '⏳…' : '📍 Sur place'}
             </button>
           )}
@@ -1247,7 +1247,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" */}
           {rem && M.status === 'in_progress' && onSite && !loaded && (
             <button onClick={() => api('load_vehicle')} disabled={loading}
-              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
               {loading ? '⏳…' : '🚛 Véhicule chargé sur le camion'}
             </button>
           )}
@@ -1257,7 +1257,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             <>
               {M.destination_address && (
                 <button onClick={() => { setCloseType('rem'); setScreen('close') }} disabled={loading}
-                  className="w-full py-4 bg-green-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                   📍 Arrivé à destination
                   <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
                 </button>
@@ -1271,7 +1271,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   setCloseType('park')
                   setScreen('close')
                 }} disabled={loading}
-                className="w-full py-4 bg-amber-500 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
                 🅿️ Mise en parc
               </button>
             </>
@@ -1282,13 +1282,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             <>
               {totPh < 3 && (
                 <button onClick={() => setScreen('photos')}
-                  className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                  className="w-full py-4 bg-orange-500 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                   📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
                 </button>
               )}
               {totPh >= 3 && (
                 <button onClick={() => { setCloseType('dsp'); setScreen('close') }}
-                  className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-base">
+                  className="w-full py-4 bg-green-600 text-ink font-bold rounded-2xl text-base">
                   🏁 Terminer
                 </button>
               )}
@@ -1307,7 +1307,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {/* Bouton secondaire — Actions (DPR, photos, etc.) toujours accessible quand on est sur place ou plus avancé */}
           {(onSite || M.status === 'parked' || M.status === 'delivering' || loaded) && (
             <button onClick={() => setShowGrid(true)}
-              className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 text-zinc-400 hover:text-white font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
+              className="w-full py-3 bg-surface border border hover:border-zinc-600 text-ink-secondary hover:text-ink font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
               ☰ Autres actions
             </button>
           )}
@@ -1317,37 +1317,37 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       {/* ── Modal Actions ☰ ─────────────────────────────────────────────── */}
       {showGrid && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowGrid(false)}>
-          <div className="bg-[#1A1A1A] w-full rounded-t-3xl pb-8" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-zinc-700 rounded-full" /></div>
-            <div className="px-5 pb-3 border-b border-[#2a2a2a] flex items-center justify-between">
+          <div className="bg-surface w-full rounded-t-3xl pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-surface-hover rounded-full" /></div>
+            <div className="px-5 pb-3 border-b border flex items-center justify-between">
               <div>
-                <p className="text-white font-semibold">{M.client_name}</p>
-                <p className="text-zinc-500 text-xs">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ')} · {plate(M.vehicle_plate)}</p>
+                <p className="text-ink font-semibold">{M.client_name}</p>
+                <p className="text-ink-muted text-xs">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ')} · {plate(M.vehicle_plate)}</p>
               </div>
-              <button onClick={() => setShowGrid(false)} className="text-zinc-500 text-2xl">×</button>
+              <button onClick={() => setShowGrid(false)} className="text-ink-muted text-2xl">×</button>
             </div>
             <div className="grid grid-cols-2 gap-3 p-4">
               {/* Photos */}
               <button onClick={() => { setShowGrid(false); setScreen('photos') }}
-                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${totPh > 0 ? 'bg-green-600/20 border-green-600/40' : 'bg-[#111] border-[#2a2a2a]'}`}>
+                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${totPh > 0 ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
                 <span className="text-2xl">📷</span>
-                <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-zinc-300'}`}>Photos</span>
-                {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-white">{totPh}</span>}
+                <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-ink-secondary'}`}>Photos</span>
+                {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">{totPh}</span>}
               </button>
               {/* Décharge */}
               <button onClick={() => { setShowGrid(false); setDischFrom('main'); setDMotif(''); setDName(''); setDSig(''); setScreen('decharge') }}
-                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch.length > 0 ? 'bg-amber-600/20 border-amber-600/40' : 'bg-[#111] border-[#2a2a2a]'}`}>
+                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch.length > 0 ? 'bg-amber-600/20 border-amber-600/40' : 'bg-surface border'}`}>
                 <span className="text-2xl">📋</span>
-                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-zinc-300'}`}>Décharge</span>
-                {disch.length > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white">{disch.length}</span>}
+                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-ink-secondary'}`}>Décharge</span>
+                {disch.length > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-ink">{disch.length}</span>}
               </button>
               {/* Encaisser */}
               {M.amount_to_collect != null && M.amount_to_collect > 0 && (
                 <button onClick={() => { setShowGrid(false); setScreen('encaissement') }}
-                  className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${paid ? 'bg-green-600/20 border-green-600/40' : 'bg-[#111] border-[#2a2a2a]'}`}>
+                  className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${paid ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
                   <span className="text-2xl">💳</span>
-                  <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-zinc-300'}`}>Encaisser</span>
-                  {paid && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-white">✓</span>}
+                  <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-ink-secondary'}`}>Encaisser</span>
+                  {paid && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">✓</span>}
                 </button>
               )}
               {/* DSP↔REM */}
@@ -1366,15 +1366,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               )}
               {/* DPR */}
               <button onClick={() => { setShowGrid(false); setCloseType('dpr'); setScreen('close') }}
-                className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-[#111] border-[#2a2a2a] transition active:scale-95">
+                className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-surface border transition active:scale-95">
                 <span className="text-2xl">❌</span>
-                <span className="text-sm font-medium text-zinc-300">DPR</span>
+                <span className="text-sm font-medium text-ink-secondary">DPR</span>
               </button>
               {/* Terminer */}
               <button onClick={() => { setShowGrid(false); setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
-                className={`${rem ? '' : 'col-span-2'} rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-[#CC0000] border-[#CC0000] transition active:scale-95`}>
+                className={`${rem ? '' : 'col-span-2'} rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-brand border-brand transition active:scale-95`}>
                 <span className="text-2xl">🏁</span>
-                <span className="text-sm font-bold text-white">Terminer</span>
+                <span className="text-sm font-bold text-ink">Terminer</span>
               </button>
             </div>
           </div>
@@ -1384,31 +1384,31 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       {/* ── Modal Mise en parc ───────────────────────────────────────────── */}
       {showPark && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowPark(false)}>
-          <div className="bg-[#1A1A1A] w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-              <h2 className="text-white font-semibold text-lg">🅿️ Choisir le dépôt</h2>
-              <button onClick={() => setShowPark(false)} className="text-zinc-500 text-2xl">×</button>
+              <h2 className="text-ink font-semibold text-lg">🅿️ Choisir le dépôt</h2>
+              <button onClick={() => setShowPark(false)} className="text-ink-muted text-2xl">×</button>
             </div>
             {M.destination_address && (
               <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl px-3 py-2.5">
                 <p className="text-blue-300 text-xs font-medium">📍 Adresse de relivraison à enregistrer</p>
-                <p className="text-white text-sm">{M.destination_address}</p>
+                <p className="text-ink text-sm">{M.destination_address}</p>
               </div>
             )}
             {vrLocs.length === 0
-              ? <p className="text-zinc-600 text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
+              ? <p className="text-ink-faint text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
               : vrLocs.map(vr => (
                 <button key={vr.id} onClick={() => doPark(vr)} disabled={loading}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 bg-[#111] border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
-                    vr.is_default ? 'border-amber-500/40' : 'border-[#2a2a2a]'
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 bg-surface border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
+                    vr.is_default ? 'border-amber-500/40' : 'border'
                   }`}>
                   <span className="text-xl">🅿️</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm flex items-center gap-2">
+                    <p className="text-ink font-medium text-sm flex items-center gap-2">
                       {vr.name}
                       {vr.is_default && <span className="text-amber-400 text-xs font-normal">défaut</span>}
                     </p>
-                    <p className="text-zinc-500 text-xs truncate">{vr.address}</p>
+                    <p className="text-ink-muted text-xs truncate">{vr.address}</p>
                   </div>
                 </button>
               ))}

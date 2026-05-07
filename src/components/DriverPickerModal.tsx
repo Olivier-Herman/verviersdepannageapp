@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
 
 interface DriverEta {
   id: string
@@ -58,6 +60,20 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
     })()
   }, [missionId, incidentLat, incidentLng])
 
+  // Escape ferme la modal
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Lock body scroll
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
   const fmtAge = (sec: number | null) => {
     if (sec == null) return ''
     if (sec < 60)    return `il y a ${sec}s`
@@ -70,24 +86,43 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
   // si le modal est instancié depuis une card avec transform/overflow.
   if (typeof window === 'undefined') return null
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-      onClick={onClose}>
-      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
-        onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-[#2a2a2a] flex items-center justify-between sticky top-0 bg-[#1A1A1A]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="driver-picker-title"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface border rounded-card w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-md"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b flex items-center justify-between sticky top-0 bg-surface z-10">
           <div>
-            <h2 className="text-white font-bold text-lg">🚛 Choisir un chauffeur</h2>
-            <p className="text-zinc-400 text-xs mt-1">ETA camion (90 km/h max sur autoroute)</p>
+            <h2 id="driver-picker-title" className="font-display text-ink font-bold text-lg">
+              🚛 Choisir un chauffeur
+            </h2>
+            <p className="text-ink-muted text-xs mt-0.5">ETA camion (90 km/h max sur autoroute)</p>
           </div>
-          <button type="button" onClick={onClose}
-            className="text-zinc-500 hover:text-white text-2xl leading-none">×</button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-ink-muted hover:text-ink hover:bg-surface-hover transition-colors"
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <div className="p-4 space-y-2">
-          {loading && <p className="text-zinc-500 text-sm text-center py-8">⏳ Calcul des temps de trajet…</p>}
-          {error && <p className="text-red-400 text-sm text-center py-8">❌ {error}</p>}
+          {loading && (
+            <p className="text-ink-muted text-sm text-center py-8">⏳ Calcul des temps de trajet…</p>
+          )}
+          {error && (
+            <p className="text-critical text-sm text-center py-8">❌ {error}</p>
+          )}
           {!loading && !error && drivers.length === 0 && (
-            <p className="text-zinc-500 text-sm text-center py-8">Aucun chauffeur en service actuellement.</p>
+            <p className="text-ink-muted text-sm text-center py-8">Aucun chauffeur en service actuellement.</p>
           )}
           {drivers.map(d => {
             const free = d.status === 'free'
@@ -96,24 +131,36 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
               ? (cm.eta_to_destination_min || 0) + (cm.eta_destination_to_incident_min || 0)
               : d.eta_to_incident_min
 
+            // Couleur de bordure et fond selon disponibilité — variants thème.
+            // Hover : élévation par shadow + bordure renforcée (les modificateurs
+            // d'opacité Tailwind ne fonctionnent pas avec les couleurs en var()).
+            const skinCls = free
+              ? 'bg-success-soft border-success'
+              : 'bg-warning-soft border-warning'
+
             return (
-              <button key={d.id} type="button" onClick={() => onPick(d.id)}
-                className={`w-full text-left p-4 rounded-xl border transition ${
-                  free
-                    ? 'bg-green-500/5 hover:bg-green-500/10 border-green-500/30'
-                    : 'bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/30'
-                }`}>
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => onPick(d.id)}
+                className={`w-full text-left p-4 rounded-card border transition-all hover:shadow-md hover:-translate-y-px ${skinCls}`}
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <span className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${free ? 'bg-green-400' : 'bg-amber-400'}`}></span>
+                    <Avatar
+                      name={d.name}
+                      userId={d.id}
+                      size="md"
+                      status={free ? 'available' : 'busy'}
+                    />
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-semibold">{d.name}</p>
+                      <p className="text-ink text-sm font-semibold truncate">{d.name}</p>
                       {free ? (
-                        <p className="text-green-300 text-xs">
+                        <p className="text-success text-xs">
                           Libre {d.has_position && d.location_age_seconds != null && `· position ${fmtAge(d.location_age_seconds)}`}
                         </p>
                       ) : (
-                        <p className="text-amber-300 text-xs truncate">
+                        <p className="text-warning text-xs truncate">
                           En mission → {cm?.destination_address || '(destination inconnue)'}
                         </p>
                       )}
@@ -121,31 +168,31 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
                   </div>
                   <div className="flex-shrink-0 text-right">
                     {totalEta != null ? (
-                      <p className="text-white text-lg font-bold tabular-nums">{totalEta} min</p>
+                      <p className="text-ink text-lg font-bold tabular-nums font-display">{totalEta} min</p>
                     ) : (
-                      <p className="text-zinc-500 text-xs">ETA indispo</p>
+                      <p className="text-ink-muted text-xs">ETA indispo</p>
                     )}
-                    <p className="text-zinc-500 text-xs">vers incident</p>
+                    <p className="text-ink-muted text-xs">vers incident</p>
                   </div>
                 </div>
                 {!free && cm && (
-                  <div className="mt-3 pt-3 border-t border-amber-500/20 grid grid-cols-2 gap-3 text-xs">
+                  <div className="mt-3 pt-3 border-t border-warning grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <p className="text-zinc-500">Arrive à destination dans</p>
-                      <p className="text-white font-semibold">
+                      <p className="text-ink-muted">Arrive à destination dans</p>
+                      <p className="text-ink font-semibold">
                         {cm.eta_to_destination_min != null ? `${cm.eta_to_destination_min} min` : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-zinc-500">Puis trajet vers incident</p>
-                      <p className="text-white font-semibold">
+                      <p className="text-ink-muted">Puis trajet vers incident</p>
+                      <p className="text-ink font-semibold">
                         {cm.eta_destination_to_incident_min != null ? `${cm.eta_destination_to_incident_min} min` : '—'}
                       </p>
                     </div>
                   </div>
                 )}
                 {!d.has_position && (
-                  <p className="text-zinc-500 text-xs mt-2">⚠ Position non disponible</p>
+                  <p className="text-ink-muted text-xs mt-2">⚠ Position non disponible</p>
                 )}
               </button>
             )

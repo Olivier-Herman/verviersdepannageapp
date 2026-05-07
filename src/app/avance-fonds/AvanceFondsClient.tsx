@@ -48,8 +48,8 @@ function normalizePlate(p: string): string {
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex justify-between items-start gap-3">
-      <span className="text-zinc-500 text-sm flex-shrink-0">{label}</span>
-      <span className={`text-white text-sm text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className="text-ink-muted text-sm flex-shrink-0">{label}</span>
+      <span className={`text-ink text-sm text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   )
 }
@@ -66,7 +66,7 @@ function ErrorBox({ message }: { message: string }) {
 function BackBtn({ onClick }: { onClick: () => void }) {
   return (
     <div className="lg:hidden px-4 pt-3 pb-1">
-      <button onClick={onClick} className="text-zinc-400 hover:text-white text-sm transition-colors">
+      <button onClick={onClick} className="text-ink-secondary hover:text-ink text-sm transition-colors">
         ← Retour
       </button>
     </div>
@@ -214,18 +214,18 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 gap-8 max-w-md mx-auto">
         <div className="text-center">
           <div className="text-6xl mb-3">📄</div>
-          <p className="text-white font-semibold text-lg">Photographiez la facture</p>
-          <p className="text-zinc-500 text-sm mt-1">Photo de la facture reçue chez le garage</p>
+          <p className="text-ink font-semibold text-lg">Photographiez la facture</p>
+          <p className="text-ink-muted text-sm mt-1">Photo de la facture reçue chez le garage</p>
         </div>
         <div className="w-full flex flex-col gap-3">
           <button onClick={() => cameraRef.current?.click()}
-            className="w-full py-5 bg-brand hover:bg-brand/90 text-white rounded-2xl font-semibold text-lg flex items-center justify-center gap-3">
+            className="w-full py-5 bg-brand hover:bg-brand/90 text-ink rounded-2xl font-semibold text-lg flex items-center justify-center gap-3">
             <span className="text-2xl">📷</span> Prendre une photo
           </button>
           <input ref={cameraRef} type="file" accept="image/*" capture="environment"
             className="hidden" onChange={handlePhoto} />
           <button onClick={() => fileRef.current?.click()}
-            className="w-full py-4 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-2xl font-medium flex items-center justify-center gap-3">
+            className="w-full py-4 bg-surface border border text-ink-secondary rounded-2xl font-medium flex items-center justify-center gap-3">
             <span className="text-xl">🗂️</span> Galerie / PDF
           </button>
           <input ref={fileRef} type="file" accept="image/*,application/pdf"
@@ -241,24 +241,24 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       <BackBtn onClick={() => goBack('photo')} />
       <div className="px-4 py-6 flex flex-col gap-5 max-w-md mx-auto">
         {form.photoPreview && (
-          <div className="rounded-2xl overflow-hidden border border-[#2a2a2a]">
+          <div className="rounded-2xl overflow-hidden border border">
             <img src={form.photoPreview} alt="Facture" className="w-full max-h-40 object-cover" />
           </div>
         )}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-2">Immatriculation *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-2">Immatriculation *</label>
           <input type="text" inputMode="text" autoCapitalize="characters"
             placeholder="1ABC234 ou 1-ABC-234" value={form.plate}
             onChange={e => setForm(f => ({ ...f, plate: e.target.value.toUpperCase() }))}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-4
-                       text-white text-2xl font-mono tracking-widest placeholder-zinc-700
+            className="w-full bg-surface border border rounded-xl px-4 py-4
+                       text-ink text-2xl font-mono tracking-widest placeholder-zinc-700
                        focus:outline-none focus:border-brand" />
-          <p className="text-zinc-600 text-xs mt-1.5">Les tirets et points sont ignorés automatiquement</p>
+          <p className="text-ink-faint text-xs mt-1.5">Les tirets et points sont ignorés automatiquement</p>
         </div>
         {error && <ErrorBox message={error} />}
         <button onClick={handlePlateLookup} disabled={searching || !form.plate.trim()}
-          className="w-full py-4 bg-brand hover:bg-brand/90 disabled:bg-zinc-800 disabled:text-zinc-600
-                     text-white rounded-2xl font-bold text-lg transition-colors">
+          className="w-full py-4 bg-brand hover:bg-brand/90 disabled:bg-surface-2 disabled:text-ink-faint
+                     text-ink rounded-2xl font-bold text-lg transition-colors">
           {searching
             ? <span className="flex items-center justify-center gap-2"><span className="animate-spin">⏳</span> Recherche…</span>
             : 'Rechercher →'}
@@ -272,26 +272,26 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     <AppShell title="Véhicule trouvé" userRole={userRole} userName={userName} userModules={userModules}>
       <BackBtn onClick={() => goBack('plate')} />
       <div className="px-4 py-6 flex flex-col gap-4 max-w-md mx-auto">
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-          <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">Véhicule identifié</p>
+        <div className="bg-surface border border rounded-2xl p-5">
+          <p className="text-ink-secondary text-xs font-semibold uppercase tracking-widest mb-3">Véhicule identifié</p>
           <div className="flex items-center gap-4">
             <div className="text-4xl">🚗</div>
             <div>
-              <p className="text-white text-xl font-mono font-bold">{form.vehicleMatch?.plate}</p>
+              <p className="text-ink text-xl font-mono font-bold">{form.vehicleMatch?.plate}</p>
               {form.vehicleMatch?.model && (
-                <p className="text-zinc-400 text-sm mt-0.5">{form.vehicleMatch.model}</p>
+                <p className="text-ink-secondary text-sm mt-0.5">{form.vehicleMatch.model}</p>
               )}
             </div>
           </div>
         </div>
-        <p className="text-zinc-300 text-sm text-center mt-2">S'agit-il bien de ce véhicule ?</p>
+        <p className="text-ink-secondary text-sm text-center mt-2">S'agit-il bien de ce véhicule ?</p>
         <div className="flex flex-col gap-3 mt-2">
           <button onClick={() => setStep('details')}
-            className="w-full py-4 bg-green-700 hover:bg-green-600 text-white rounded-2xl font-bold text-lg">
+            className="w-full py-4 bg-green-700 hover:bg-green-600 text-ink rounded-2xl font-bold text-lg">
             ✅ Oui, c'est ce véhicule
           </button>
           <button onClick={() => { setForm(f => ({ ...f, vehicleMatch: null })); setStep('vehicle_create') }}
-            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-2xl font-medium">
+            className="w-full py-3 bg-surface border border text-ink-secondary rounded-2xl font-medium">
             Non, saisir manuellement
           </button>
         </div>
@@ -306,19 +306,19 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       <AppShell title="Quelle est la marque ?" userRole={userRole} userName={userName} userModules={userModules}>
         <BackBtn onClick={() => goBack('plate')} />
         <div className="px-4 py-6 flex flex-col gap-3 max-w-md mx-auto overflow-y-auto pb-10">
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2">
-            <p className="text-zinc-400 text-xs mb-1">Immatriculation</p>
-            <p className="text-white font-mono text-xl font-bold">{normalizePlate(form.plate)}</p>
+          <div className="bg-surface border border rounded-xl px-4 py-3 mb-2">
+            <p className="text-ink-secondary text-xs mb-1">Immatriculation</p>
+            <p className="text-ink font-mono text-xl font-bold">{normalizePlate(form.plate)}</p>
           </div>
           {loadingBrands ? (
-            <p className="text-zinc-500 text-sm text-center py-8">Chargement…</p>
+            <p className="text-ink-muted text-sm text-center py-8">Chargement…</p>
           ) : (
             <div className="flex flex-col gap-2">
               {brands.map(b => (
                 <button key={b.id}
                   onClick={() => { setForm(f => ({ ...f, brandName: b.name, modelName: '' })); loadModels(b.id) }}
-                  className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A]
-                             text-white font-medium hover:border-brand transition-all active:scale-95">
+                  className="w-full text-left px-5 py-4 rounded-2xl border border bg-surface
+                             text-ink font-medium hover:border-brand transition-all active:scale-95">
                   {b.name}
                 </button>
               ))}
@@ -334,20 +334,20 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   if (step === 'vehicle_create' && form.brandName) return (
     <AppShell title="Quel est le modèle ?" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="px-4 py-6 flex flex-col gap-3 max-w-md mx-auto pb-10">
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
+        <div className="bg-surface border border rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
           <div>
-            <p className="text-zinc-400 text-xs mb-0.5">Marque sélectionnée</p>
-            <p className="text-white font-bold">{form.brandName}</p>
+            <p className="text-ink-secondary text-xs mb-0.5">Marque sélectionnée</p>
+            <p className="text-ink font-bold">{form.brandName}</p>
           </div>
           <button onClick={() => setForm(f => ({ ...f, brandName: '', modelName: '' }))}
-            className="text-zinc-500 hover:text-white text-sm">Changer</button>
+            className="text-ink-muted hover:text-ink text-sm">Changer</button>
         </div>
         <div className="flex flex-col gap-2">
           {models.map(m => (
             <button key={m.id}
               onClick={() => { setForm(f => ({ ...f, modelName: m.name })); setError(null); setStep('details') }}
-              className="w-full text-left px-5 py-4 rounded-2xl border border-[#2a2a2a] bg-[#1A1A1A]
-                         text-white font-medium hover:border-brand transition-all active:scale-95">
+              className="w-full text-left px-5 py-4 rounded-2xl border border bg-surface
+                         text-ink font-medium hover:border-brand transition-all active:scale-95">
               {m.name}
             </button>
           ))}
@@ -355,8 +355,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             <input type="text" placeholder="Autre modèle…"
               value={form.modelName.startsWith('_custom:') ? form.modelName.replace('_custom:', '') : ''}
               onChange={e => setForm(f => ({ ...f, modelName: `_custom:${e.target.value}` }))}
-              className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl px-5 py-4
-                         text-white placeholder-zinc-600 focus:outline-none focus:border-brand text-xl font-bold text-center" />
+              className="w-full bg-surface border border rounded-2xl px-5 py-4
+                         text-ink placeholder-zinc-600 focus:outline-none focus:border-brand text-xl font-bold text-center" />
           </div>
         </div>
         {error && <ErrorBox message={error} />}
@@ -368,7 +368,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             if (!modelVal) { setError('Veuillez choisir ou saisir un modèle'); return }
             setForm(f => ({ ...f, modelName: modelVal })); setError(null); setStep('details')
           }}
-          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg mt-2">
+          className="w-full py-4 bg-brand hover:bg-brand/90 text-ink rounded-2xl font-bold text-lg mt-2">
           Continuer →
         </button>
       </div>
@@ -381,12 +381,12 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       <BackBtn onClick={() => goBack(form.vehicleMatch ? 'vehicle_confirm' : 'vehicle_create')} />
       <div className="px-4 py-6 flex flex-col gap-5 max-w-md mx-auto pb-10">
         {/* Recap véhicule */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 flex items-center gap-3">
+        <div className="bg-surface border border rounded-xl px-4 py-3 flex items-center gap-3">
           <span className="text-xl">🚗</span>
           <div>
-            <p className="text-white font-mono font-bold">{normalizePlate(form.plate)}</p>
+            <p className="text-ink font-mono font-bold">{normalizePlate(form.plate)}</p>
             {(form.vehicleMatch?.model || form.modelName) && (
-              <p className="text-zinc-500 text-xs">
+              <p className="text-ink-muted text-xs">
                 {form.vehicleMatch?.model ?? `${form.brandName} ${form.modelName}`}
               </p>
             )}
@@ -395,21 +395,21 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
         {/* Montant HTVA */}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-1.5">Montant HTVA *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1.5">Montant HTVA *</label>
           <div className="relative">
             <input type="number" inputMode="decimal" step="0.01" min="0"
               placeholder="0.00" value={form.amountHtva}
               onChange={e => setForm(f => ({ ...f, amountHtva: e.target.value }))}
-              className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                         text-white text-2xl font-semibold pr-14 placeholder-zinc-700
+              className="w-full bg-surface border border rounded-xl px-4 py-3
+                         text-ink text-2xl font-semibold pr-14 placeholder-zinc-700
                          focus:outline-none focus:border-brand" />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 text-lg font-medium">€</span>
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-muted text-lg font-medium">€</span>
           </div>
         </div>
 
         {/* Mode de paiement */}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-2">Mode de paiement *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-2">Mode de paiement *</label>
           <div className="grid grid-cols-2 gap-2">
             {PAYMENT_METHODS.map(pm => (
               <button key={pm.value}
@@ -417,7 +417,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
                 className={`py-3 rounded-xl font-medium transition-all ${
                   form.paymentMethod === pm.value
                     ? 'bg-brand text-white ring-2 ring-brand/50'
-                    : 'bg-[#1A1A1A] text-zinc-300 border border-[#2a2a2a] hover:border-zinc-500'
+                    : 'bg-surface text-ink-secondary border border hover:border-zinc-500'
                 }`}>
                 {pm.label}
               </button>
@@ -427,13 +427,13 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
         {/* Notes */}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-1.5">
-            Notes <span className="text-zinc-600">(optionnel)</span>
+          <label className="block text-sm font-medium text-ink-secondary mb-1.5">
+            Notes <span className="text-ink-faint">(optionnel)</span>
           </label>
           <textarea rows={2} placeholder="Nom du garage, remarques…" value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                       text-white placeholder-zinc-700 focus:outline-none focus:border-brand resize-none" />
+            className="w-full bg-surface border border rounded-xl px-4 py-3
+                       text-ink placeholder-zinc-700 focus:outline-none focus:border-brand resize-none" />
         </div>
 
         {error && <ErrorBox message={error} />}
@@ -444,7 +444,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             if (err) { setError(err); return }
             setError(null); setStep('confirm')
           }}
-          className="w-full py-4 bg-brand hover:bg-brand/90 text-white rounded-2xl font-bold text-lg">
+          className="w-full py-4 bg-brand hover:bg-brand/90 text-ink rounded-2xl font-bold text-lg">
           Vérifier →
         </button>
       </div>
@@ -456,10 +456,10 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     <AppShell title="Confirmation" userRole={userRole} userName={userName} userModules={userModules}>
       <BackBtn onClick={() => goBack('details')} />
       <div className="px-4 py-6 flex flex-col gap-4 max-w-md mx-auto pb-10">
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+        <div className="bg-surface border border rounded-2xl overflow-hidden">
           {form.photoPreview && (
             <img src={form.photoPreview} alt="Facture"
-              className="w-full max-h-56 object-cover border-b border-[#2a2a2a]" />
+              className="w-full max-h-56 object-cover border-b border" />
           )}
           <div className="p-4 space-y-3">
             <Row label="Immatriculation" value={normalizePlate(form.plate)} mono />
@@ -484,8 +484,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
         {error && <ErrorBox message={error} />}
 
         <button onClick={handleSubmit} disabled={loading}
-          className="w-full py-4 bg-green-700 hover:bg-green-600 disabled:bg-zinc-800
-                     disabled:text-zinc-600 text-white rounded-2xl font-bold text-lg transition-colors">
+          className="w-full py-4 bg-green-700 hover:bg-green-600 disabled:bg-surface-2
+                     disabled:text-ink-faint text-ink rounded-2xl font-bold text-lg transition-colors">
           {loading
             ? <span className="flex items-center justify-center gap-2"><span className="animate-spin">⏳</span> Envoi…</span>
             : '✅ Confirmer et envoyer'}
@@ -500,23 +500,23 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center gap-7 max-w-md mx-auto">
         <div className="text-8xl">✅</div>
         <div>
-          <h2 className="text-2xl font-bold text-white">Avance enregistrée</h2>
-          <p className="text-zinc-500 mt-2 text-sm max-w-xs mx-auto">
+          <h2 className="text-2xl font-bold text-ink">Avance enregistrée</h2>
+          <p className="text-ink-muted mt-2 text-sm max-w-xs mx-auto">
             La facture a été transmise au service comptable et le dossier véhicule mis à jour.
           </p>
         </div>
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 w-full max-w-xs text-left space-y-3">
+        <div className="bg-surface border border rounded-2xl p-4 w-full max-w-xs text-left space-y-3">
           <Row label="Plaque"   value={normalizePlate(form.plate)} mono />
           <Row label="Montant"  value={`${parseFloat(form.amountHtva).toFixed(2)} € HTVA`} />
           <Row label="Paiement" value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
         </div>
         <div className="flex flex-col w-full max-w-xs gap-3">
           <button onClick={() => router.push('/dashboard')}
-            className="w-full py-3 bg-brand hover:bg-brand/90 text-white rounded-xl font-semibold">
+            className="w-full py-3 bg-brand hover:bg-brand/90 text-ink rounded-xl font-semibold">
             Tableau de bord
           </button>
           <button onClick={() => { setForm(EMPTY_FORM); setError(null); setStep('photo') }}
-            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-300 rounded-xl font-medium">
+            className="w-full py-3 bg-surface border border text-ink-secondary rounded-xl font-medium">
             Nouvelle avance
           </button>
         </div>

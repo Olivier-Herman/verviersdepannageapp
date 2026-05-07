@@ -234,30 +234,30 @@ export default function CashClient({
         {/* Solde */}
         <div className={`rounded-2xl p-6 text-center mb-6 ${balance > 0
           ? 'bg-brand/10 border border-brand/30'
-          : 'bg-[#1A1A1A] border border-[#2a2a2a]'}`}>
-          <p className="text-zinc-400 text-sm mb-1">Solde en caisse</p>
-          <p className={`text-5xl font-bold ${balance < 0 ? 'text-red-400' : (balance > 0 ? 'text-brand' : 'text-white')}`}>
+          : 'bg-surface border border'}`}>
+          <p className="text-ink-secondary text-sm mb-1">Solde en caisse</p>
+          <p className={`text-5xl font-bold ${balance < 0 ? 'text-red-400' : (balance > 0 ? 'text-brand' : 'text-ink')}`}>
             {balance.toFixed(2)} €
           </p>
-          <p className="text-zinc-600 text-xs mt-2">{userName}</p>
-          <button onClick={() => { loadData(); loadTransferData() }} className="text-zinc-600 text-xs mt-2 hover:text-zinc-400">↻ Rafraîchir</button>
+          <p className="text-ink-faint text-xs mt-2">{userName}</p>
+          <button onClick={() => { loadData(); loadTransferData() }} className="text-ink-faint text-xs mt-2 hover:text-ink-secondary">↻ Rafraîchir</button>
         </div>
 
         {/* ── Bandeau transferts entrants à valider ──────── */}
         {incomingPending.map(t => (
           <div key={t.id} className="bg-blue-500/10 border border-blue-500/40 rounded-2xl p-4 mb-3">
             <p className="text-blue-300 text-sm mb-1">📥 Demande de transfert</p>
-            <p className="text-white text-base">
+            <p className="text-ink text-base">
               <b>{t.sender?.name || 'Un collègue'}</b> souhaite vous remettre <b>{Number(t.amount).toFixed(2)} €</b>
             </p>
-            {t.notes && <p className="text-zinc-400 text-xs mt-1 italic">« {t.notes} »</p>}
+            {t.notes && <p className="text-ink-secondary text-xs mt-1 italic">« {t.notes} »</p>}
             <div className="flex gap-2 mt-3">
               <button onClick={() => handleRefuseIncoming(t)} disabled={incomingLoadingId === t.id}
-                className="flex-1 bg-[#2a2a2a] text-zinc-300 rounded-xl py-2.5 text-sm font-medium disabled:opacity-50">
+                className="flex-1 bg-surface-hover text-ink-secondary rounded-xl py-2.5 text-sm font-medium disabled:opacity-50">
                 Refuser
               </button>
               <button onClick={() => handleValidateIncoming(t)} disabled={incomingLoadingId === t.id}
-                className="flex-1 bg-blue-500 text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
+                className="flex-1 bg-blue-500 text-ink rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
                 {incomingLoadingId === t.id ? '…' : 'Valider'}
               </button>
             </div>
@@ -278,17 +278,17 @@ export default function CashClient({
 
         {/* ── Écran d'attente bloquant côté sender ────────── */}
         {outgoingPending && (
-          <div className="bg-[#1A1A1A] border border-yellow-500/40 rounded-2xl p-5 mb-6 text-center">
+          <div className="bg-surface border border-yellow-500/40 rounded-2xl p-5 mb-6 text-center">
             <p className="text-3xl mb-2">⏳</p>
-            <p className="text-white font-semibold">
+            <p className="text-ink font-semibold">
               En attente de validation par {outgoingPending.receiver?.name || 'le receveur'}
             </p>
-            <p className="text-zinc-400 text-sm mt-1">
+            <p className="text-ink-secondary text-sm mt-1">
               {Number(outgoingPending.amount).toFixed(2)} €
               {outgoingPending.notes && <span className="block text-xs italic mt-1">« {outgoingPending.notes} »</span>}
             </p>
             <button onClick={handleCancelOutgoing}
-              className="mt-4 bg-[#2a2a2a] text-zinc-300 rounded-xl py-2.5 px-6 text-sm font-medium">
+              className="mt-4 bg-surface-hover text-ink-secondary rounded-xl py-2.5 px-6 text-sm font-medium">
               Annuler la demande
             </button>
           </div>
@@ -304,25 +304,25 @@ export default function CashClient({
 
         {odooUserId !== null && !outgoingPending && !showTransferForm && !showMisc && (
           <button onClick={() => { setShowMisc(true); setMiscError('') }}
-            className="w-full bg-[#1A1A1A] border border-brand/40 text-brand font-bold rounded-2xl py-4 mb-6 active:scale-95 transition-all">
+            className="w-full bg-surface border border-brand/40 text-brand font-bold rounded-2xl py-4 mb-6 active:scale-95 transition-all">
             ➕ Recevoir un paiement divers
           </button>
         )}
 
         {/* ── Formulaire transfert ─────────────────────────── */}
         {showTransferForm && (
-          <div className="bg-[#1A1A1A] border border-brand/30 rounded-2xl p-5 mb-6">
-            <h3 className="text-white font-bold mb-1">Transfert vers un collègue</h3>
-            <p className="text-zinc-400 text-xs mb-4">
+          <div className="bg-surface border border-brand/30 rounded-2xl p-5 mb-6">
+            <h3 className="text-ink font-bold mb-1">Transfert vers un collègue</h3>
+            <p className="text-ink-secondary text-xs mb-4">
               Le receveur recevra une notification et devra valider depuis son téléphone.
             </p>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Receveur</label>
+              <label className="text-ink-secondary text-xs mb-1.5 block">Receveur</label>
               <select value={transferReceiver}
                 onChange={e => { setTransferReceiver(e.target.value); setTransferError('') }}
-                className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3
-                           text-white text-sm outline-none appearance-none">
+                className="w-full bg-surface border border-strong focus:border-brand rounded-xl px-4 py-3
+                           text-ink text-sm outline-none appearance-none">
                 <option value="">Sélectionner…</option>
                 {recipients.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
@@ -331,20 +331,20 @@ export default function CashClient({
             </div>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Montant</label>
+              <label className="text-ink-secondary text-xs mb-1.5 block">Montant</label>
               <div className="relative">
                 <input type="text" inputMode="decimal" value={transferAmount}
                   onChange={e => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                   placeholder="0.00"
-                  className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
-                             text-white text-2xl font-bold text-center outline-none focus:border-brand" />
-                <span className="absolute right-4 top-3 text-zinc-400">€</span>
+                  className="w-full bg-surface border border-strong rounded-xl px-4 py-3
+                             text-ink text-2xl font-bold text-center outline-none focus:border-brand" />
+                <span className="absolute right-4 top-3 text-ink-secondary">€</span>
               </div>
               {projectedBalance !== null && (
-                <p className="text-xs text-zinc-500 mt-2">
-                  Solde actuel : <span className="text-white">{balance.toFixed(2)} €</span>
+                <p className="text-xs text-ink-muted mt-2">
+                  Solde actuel : <span className="text-ink">{balance.toFixed(2)} €</span>
                   {' — '}
-                  Solde après transfert : <span className={projectedBalance < 0 ? 'text-orange-400 font-semibold' : 'text-white'}>
+                  Solde après transfert : <span className={projectedBalance < 0 ? 'text-orange-400 font-semibold' : 'text-ink'}>
                     {projectedBalance.toFixed(2)} €
                   </span>
                 </p>
@@ -358,13 +358,13 @@ export default function CashClient({
             </div>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Notes (optionnel)</label>
+              <label className="text-ink-secondary text-xs mb-1.5 block">Notes (optionnel)</label>
               <textarea value={transferNotes}
                 onChange={e => setTransferNotes(e.target.value.slice(0, 500))}
                 placeholder="Ex : Caisse de fin de journée"
                 rows={2}
-                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
-                           text-white text-sm outline-none focus:border-brand resize-none" />
+                className="w-full bg-surface border border-strong rounded-xl px-4 py-3
+                           text-ink text-sm outline-none focus:border-brand resize-none" />
             </div>
 
             {transferError && (
@@ -375,7 +375,7 @@ export default function CashClient({
 
             <div className="flex gap-2">
               <button onClick={() => { setShowTransferForm(false); setTransferError(''); setTransferReceiver(''); setTransferAmount(''); setTransferNotes('') }}
-                className="flex-1 bg-[#2a2a2a] text-zinc-400 rounded-xl py-3 font-medium">
+                className="flex-1 bg-surface-hover text-ink-secondary rounded-xl py-3 font-medium">
                 Annuler
               </button>
               <button onClick={handleSendTransfer} disabled={transferLoading}
@@ -388,32 +388,32 @@ export default function CashClient({
 
         {/* ── Formulaire paiement divers ──────────────────── */}
         {showMisc && (
-          <div className="bg-[#1A1A1A] border border-brand/30 rounded-2xl p-5 mb-6">
-            <h3 className="text-white font-bold mb-1">Paiement divers</h3>
-            <p className="text-zinc-400 text-xs mb-4">
+          <div className="bg-surface border border-brand/30 rounded-2xl p-5 mb-6">
+            <h3 className="text-ink font-bold mb-1">Paiement divers</h3>
+            <p className="text-ink-secondary text-xs mb-4">
               Ex : Rent a car, divers. Pour les paiements liés à une intervention, utilisez le module Encaissement.
             </p>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Montant reçu</label>
+              <label className="text-ink-secondary text-xs mb-1.5 block">Montant reçu</label>
               <div className="relative">
                 <input type="text" inputMode="decimal" value={miscAmount}
                   onChange={e => setMiscAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                   placeholder="0.00"
-                  className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
-                             text-white text-2xl font-bold text-center outline-none focus:border-brand" />
-                <span className="absolute right-4 top-3 text-zinc-400">€</span>
+                  className="w-full bg-surface border border-strong rounded-xl px-4 py-3
+                             text-ink text-2xl font-bold text-center outline-none focus:border-brand" />
+                <span className="absolute right-4 top-3 text-ink-secondary">€</span>
               </div>
             </div>
 
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs mb-1.5 block">Motif</label>
+              <label className="text-ink-secondary text-xs mb-1.5 block">Motif</label>
               <textarea value={miscMotif} onChange={e => setMiscMotif(e.target.value.slice(0, 500))}
                 placeholder="Ex : Rent a car — location véhicule M. Dupont"
                 rows={3}
-                className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-3
-                           text-white text-sm outline-none focus:border-brand resize-none" />
-              <p className="text-zinc-600 text-[10px] mt-1 text-right">{miscMotif.length} / 500</p>
+                className="w-full bg-surface border border-strong rounded-xl px-4 py-3
+                           text-ink text-sm outline-none focus:border-brand resize-none" />
+              <p className="text-ink-faint text-[10px] mt-1 text-right">{miscMotif.length} / 500</p>
             </div>
 
             {miscError && (
@@ -424,7 +424,7 @@ export default function CashClient({
 
             <div className="flex gap-2">
               <button onClick={() => { setShowMisc(false); setMiscError(''); setMiscAmount(''); setMiscMotif('') }}
-                className="flex-1 bg-[#2a2a2a] text-zinc-400 rounded-xl py-3 font-medium">
+                className="flex-1 bg-surface-hover text-ink-secondary rounded-xl py-3 font-medium">
                 Annuler
               </button>
               <button onClick={handleMiscIncome} disabled={miscLoading}
@@ -436,11 +436,11 @@ export default function CashClient({
         )}
 
         {/* ── Historique ───────────────────────────────────── */}
-        <h3 className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-3">Historique</h3>
-        {loading && <p className="text-zinc-600 text-sm text-center py-4">Chargement…</p>}
+        <h3 className="text-ink-secondary text-xs font-medium uppercase tracking-wider mb-3">Historique</h3>
+        {loading && <p className="text-ink-faint text-sm text-center py-4">Chargement…</p>}
         {entries.map(e => (
-          <div key={e.id} className={`bg-[#1A1A1A] border rounded-xl p-3 mb-2 ${
-            e.odoo_status === 'pending' ? 'border-yellow-500/40' : 'border-[#2a2a2a]'
+          <div key={e.id} className={`bg-surface border rounded-xl p-3 mb-2 ${
+            e.odoo_status === 'pending' ? 'border-yellow-500/40' : 'border'
           }`}>
             <div className="flex items-start justify-between mb-1">
               {(() => {
@@ -467,18 +467,18 @@ export default function CashClient({
               </span>
             )}
             {e.type !== 'encaissement' && e.notes && (
-              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
+              <p className="text-ink-muted text-xs leading-relaxed">{e.notes}</p>
             )}
             {e.type === 'encaissement' && e.odoo_payment_id && e.notes && (
-              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
+              <p className="text-ink-muted text-xs leading-relaxed">{e.notes}</p>
             )}
             {e.type === 'encaissement' && !e.odoo_payment_id && e.intervention?.reference && (
-              <p className="text-zinc-600 text-xs">{e.intervention.reference}</p>
+              <p className="text-ink-faint text-xs">{e.intervention.reference}</p>
             )}
             {e.type === 'encaissement' && !e.odoo_payment_id && !e.intervention?.reference && e.notes && (
-              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
+              <p className="text-ink-muted text-xs leading-relaxed">{e.notes}</p>
             )}
-            <p className="text-zinc-700 text-xs mt-1">{new Date(e.created_at).toLocaleDateString('fr-BE')}</p>
+            <p className="text-ink-faint text-xs mt-1">{new Date(e.created_at).toLocaleDateString('fr-BE')}</p>
           </div>
         ))}
       </div>

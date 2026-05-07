@@ -100,9 +100,9 @@ export default function MissionListClient({
       <div className="px-4 py-4 space-y-2">
 
         {active.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
+          <div className="flex flex-col items-center justify-center py-20 text-ink-muted">
             <p className="text-5xl mb-4">🚗</p>
-            <p className="text-lg font-semibold text-white mb-1">Aucune mission</p>
+            <p className="text-lg font-semibold text-ink mb-1">Aucune mission</p>
             <p className="text-sm mb-6">Vous n&apos;avez pas de mission assignée</p>
             <Link href="/mission/new"
               className="flex items-center gap-2 px-5 py-3 bg-brand text-white rounded-2xl font-semibold">
@@ -113,7 +113,7 @@ export default function MissionListClient({
 
         {active.length > 0 && (
           <>
-            <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wide px-1 mb-3">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide px-1 mb-3">
               En cours · {active.length}
             </p>
             {active.map(m => <MissionRow key={m.id} mission={m} router={router} />)}
@@ -124,7 +124,7 @@ export default function MissionListClient({
       {/* ── FAB Nouvelle intervention ────────────────────────────────────── */}
       <Link
         href="/mission/new"
-        className="fixed bottom-6 right-5 w-16 h-16 bg-brand rounded-full shadow-2xl flex items-center justify-center text-white text-3xl font-bold transition active:scale-95 z-20"
+        className="fixed bottom-6 right-5 w-16 h-16 bg-brand rounded-full shadow-2xl flex items-center justify-center text-ink text-3xl font-bold transition active:scale-95 z-20"
         title="Nouvelle intervention">
         +
       </Link>
@@ -140,7 +140,7 @@ function MissionRow({ mission, router }: { mission: Mission; router: ReturnType<
   return (
     <div
       onClick={() => router.push(`/mission/${mission.id}`)}
-      className={`bg-[#1A1A1A] border border-[#2a2a2a] border-l-4 rounded-2xl p-4 cursor-pointer hover:bg-[#222] transition active:scale-[0.99] ${cfg.row}`}
+      className={`bg-surface border border border-l-4 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition active:scale-[0.99] ${cfg.row}`}
     >
       <div className="flex items-start justify-between gap-3">
 
@@ -148,30 +148,30 @@ function MissionRow({ mission, router }: { mission: Mission; router: ReturnType<
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-            <span className="text-zinc-400 text-xs font-medium">{cfg.label}</span>
+            <span className="text-ink-secondary text-xs font-medium">{cfg.label}</span>
             {mission.mission_type && (
-              <span className="bg-[#2a2a2a] text-zinc-300 text-xs px-1.5 py-0.5 rounded font-medium">
+              <span className="bg-surface-hover text-ink-secondary text-xs px-1.5 py-0.5 rounded font-medium">
                 {TYPE_SHORT[mission.mission_type] || mission.mission_type}
               </span>
             )}
-            <span className="text-zinc-600 text-xs">{SOURCE_LABELS[mission.source] || mission.source}</span>
+            <span className="text-ink-faint text-xs">{SOURCE_LABELS[mission.source] || mission.source}</span>
           </div>
 
-          <p className="text-white font-bold text-base leading-tight truncate">
+          <p className="text-ink font-bold text-base leading-tight truncate">
             {mission.client_name || 'Client inconnu'}
           </p>
 
           {(mission.vehicle_plate || mission.vehicle_brand) && (
-            <p className="text-zinc-400 text-sm mt-0.5">
+            <p className="text-ink-secondary text-sm mt-0.5">
               {mission.vehicle_plate && (
-                <span className="font-mono font-bold text-zinc-300">{mission.vehicle_plate} · </span>
+                <span className="font-mono font-bold text-ink-secondary">{mission.vehicle_plate} · </span>
               )}
               {[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')}
             </p>
           )}
 
           {(mission.incident_address || mission.incident_city) && (
-            <p className="text-zinc-500 text-xs mt-1 truncate">
+            <p className="text-ink-muted text-xs mt-1 truncate">
               📍 {mission.incident_address}{mission.incident_city ? `, ${mission.incident_city}` : ''}
             </p>
           )}
@@ -179,23 +179,23 @@ function MissionRow({ mission, router }: { mission: Mission; router: ReturnType<
 
         {/* Heure + flèche */}
         <div className="text-right flex-shrink-0">
-          <p className="text-zinc-500 text-xs">{fmt(mission.received_at)}</p>
-          <p className="text-zinc-700 text-xl mt-2">›</p>
+          <p className="text-ink-muted text-xs">{fmt(mission.received_at)}</p>
+          <p className="text-ink-faint text-xl mt-2">›</p>
         </div>
       </div>
 
       {/* Timeline compacte pour missions actives */}
       {mission.status !== 'completed' && (
-        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[#2a2a2a] overflow-x-auto">
+        <div className="flex items-center gap-3 mt-3 pt-3 border-t border overflow-x-auto">
           {[
             { label: 'Acceptée',  ts: mission.accepted_at,  dot: 'bg-indigo-400' },
             { label: 'En route',  ts: mission.on_way_at,    dot: 'bg-amber-400'  },
             { label: 'Sur place', ts: mission.on_site_at,   dot: 'bg-orange-400' },
           ].map(step => (
             <div key={step.label} className={`flex items-center gap-1.5 flex-shrink-0 ${step.ts ? 'opacity-100' : 'opacity-30'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${step.ts ? step.dot : 'bg-zinc-600'}`} />
-              <span className="text-xs text-zinc-500">{step.label}</span>
-              {step.ts && <span className="text-xs text-zinc-400">{fmt(step.ts)}</span>}
+              <span className={`w-1.5 h-1.5 rounded-full ${step.ts ? step.dot : 'bg-ink-faint'}`} />
+              <span className="text-xs text-ink-muted">{step.label}</span>
+              {step.ts && <span className="text-xs text-ink-secondary">{fmt(step.ts)}</span>}
             </div>
           ))}
         </div>

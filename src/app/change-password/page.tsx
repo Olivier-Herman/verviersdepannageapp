@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 
 export default function ChangePasswordPage() {
   const router = useRouter()
@@ -35,49 +37,32 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6">
       <div className="mb-8 text-center">
-        <div className="bg-white rounded-2xl px-6 py-4 inline-block mb-4">
+        <div className="bg-white rounded-2xl px-6 py-4 inline-block mb-4 shadow-card">
           <Image src="/logo.jpg" alt="VD" width={160} height={160} style={{ width: '160px', height: 'auto' }} />
         </div>
       </div>
 
-      <div className="w-full max-w-sm bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-8">
-        <h1 className="text-white text-xl font-semibold mb-2">Changer le mot de passe</h1>
-        <p className="text-zinc-500 text-sm mb-6">
-          C'est ta première connexion. Tu dois définir un nouveau mot de passe personnel.
+      <div className="w-full max-w-sm bg-surface border rounded-card shadow-card p-8">
+        <h1 className="font-display text-ink text-xl font-bold mb-2">Changer le mot de passe</h1>
+        <p className="text-ink-muted text-sm mb-6">
+          C&apos;est ta première connexion. Tu dois définir un nouveau mot de passe personnel.
         </p>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">
+          <div className="bg-critical-soft text-critical text-sm rounded-md px-4 py-3 mb-4">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div>
-            <label className="text-zinc-400 text-xs mb-1.5 block">Mot de passe actuel</label>
-            <input type="password" value={current} onChange={e => setCurrent(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-sm outline-none" />
-          </div>
-          <div>
-            <label className="text-zinc-400 text-xs mb-1.5 block">Nouveau mot de passe</label>
-            <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
-              placeholder="Min. 8 caractères"
-              className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-sm outline-none" />
-          </div>
-          <div>
-            <label className="text-zinc-400 text-xs mb-1.5 block">Confirmer le nouveau mot de passe</label>
-            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-sm outline-none" />
-          </div>
-
-          <button type="submit" disabled={loading || !current || !newPwd || !confirm}
-            className="w-full bg-brand text-white font-bold rounded-xl py-3.5 mt-2 disabled:opacity-40 active:scale-95 transition-all">
-            {loading ? 'Enregistrement…' : 'Définir mon mot de passe'}
-          </button>
+          <Input label="Mot de passe actuel" type="password" value={current} onChange={setCurrent} placeholder="••••••••" />
+          <Input label="Nouveau mot de passe" type="password" value={newPwd} onChange={setNewPwd} placeholder="Min. 8 caractères" />
+          <Input label="Confirmer le nouveau mot de passe" type="password" value={confirm} onChange={setConfirm} placeholder="••••••••" />
+          <Button type="submit" variant="primary" size="lg" fullWidth loading={loading} disabled={!current || !newPwd || !confirm} className="mt-2">
+            Définir mon mot de passe
+          </Button>
         </form>
       </div>
     </div>

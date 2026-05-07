@@ -51,6 +51,8 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       logs={logs || []}
       drivers={drivers || []}
       userName={user.name || ''}
+      userEmail={user.email || undefined}
+      userId={user.id || undefined}
       userRole={user.role || ''}
       userModules={user.modules || []}
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}

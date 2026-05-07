@@ -33,9 +33,9 @@ function LInput({ label, value, onChange, placeholder, type = 'text', required }
 }) {
   return (
     <div>
-      <label className="block text-gray-600 text-xs font-medium mb-1">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+      <label className="block text-ink-secondary text-xs font-medium mb-1">{label}{required && <span className="text-critical ml-0.5">*</span>}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+        className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
     </div>
   )
 }
@@ -45,9 +45,9 @@ function LSelect({ label, value, onChange, options }: {
 }) {
   return (
     <div>
-      <label className="block text-gray-600 text-xs font-medium mb-1">{label}</label>
+      <label className="block text-ink-secondary text-xs font-medium mb-1">{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500">
+        className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-blue-500">
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
@@ -56,8 +56,8 @@ function LSelect({ label, value, onChange, options }: {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
-      <p className="text-gray-400 text-xs uppercase tracking-widest font-semibold">{title}</p>
+    <div className="bg-surface border border rounded-2xl p-4 shadow-sm space-y-3">
+      <p className="text-ink-faint text-xs uppercase tracking-widest font-semibold">{title}</p>
       {children}
     </div>
   )
@@ -300,12 +300,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
 
   // ── Écran succès ──────────────────────────────────────────────────────────
   if (done) return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
-      <div className="bg-white rounded-3xl shadow-lg p-10 text-center max-w-sm w-full">
+    <div className="min-h-screen bg-page flex flex-col items-center justify-center px-4">
+      <div className="bg-surface rounded-3xl shadow-lg p-10 text-center max-w-sm w-full">
         <div className="text-6xl mb-4">✅</div>
-        <h1 className="text-gray-900 text-2xl font-bold mb-2">Mission créée</h1>
-        <p className="text-gray-500 text-sm">Email envoyé — TowSoft en cours de mise à jour</p>
-        <div className="mt-6 w-full bg-gray-200 rounded-full h-1">
+        <h1 className="text-ink text-2xl font-bold mb-2">Mission créée</h1>
+        <p className="text-ink-muted text-sm">Email envoyé — TowSoft en cours de mise à jour</p>
+        <div className="mt-6 w-full bg-surface-hover rounded-full h-1">
           <div className="bg-green-500 h-1 rounded-full animate-[width_2s_ease-in-out]" style={{width:'100%',transition:'width 2s'}} />
         </div>
       </div>
@@ -314,12 +314,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
 
   // ── Écran sélection type ──────────────────────────────────────────────────
   if (!selectedType) return (
-    <div className="min-h-screen bg-gray-50 px-4 pt-12 pb-8">
-      <button onClick={() => router.push('/dashboard')} className="mb-6 text-gray-500 text-sm flex items-center gap-1">
+    <div className="min-h-screen bg-page px-4 pt-12 pb-8">
+      <button onClick={() => router.push('/dashboard')} className="mb-6 text-ink-muted text-sm flex items-center gap-1">
         ← Retour
       </button>
-      <h1 className="text-gray-900 text-2xl font-bold mb-1">Créer une mission</h1>
-      <p className="text-gray-500 text-sm mb-8">Sélectionne le type d&apos;intervention</p>
+      <h1 className="text-ink text-2xl font-bold mb-1">Créer une mission</h1>
+      <p className="text-ink-muted text-sm mb-8">Sélectionne le type d&apos;intervention</p>
       <div className="space-y-3">
         {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).map(([type, conf]) => (
           <button key={type} onClick={() => setSelectedType(type)}
@@ -335,7 +335,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
 
   // ── Formulaire ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
+    <div className="min-h-screen bg-page pb-32">
       {/* Header */}
       <div className={`${cfg!.color} px-4 pt-12 pb-5 shadow-md`}>
         <button onClick={() => setSelectedType(null)} className="mb-3 text-white/80 text-sm">← Changer de type</button>
@@ -356,8 +356,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         <Section title="Véhicule">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-gray-600 text-xs font-medium mb-1">
-                Plaque<span className="text-red-500 ml-0.5">*</span>
+              <label className="block text-ink-secondary text-xs font-medium mb-1">
+                Plaque<span className="text-critical ml-0.5">*</span>
                 {searchingPlate && <span className="ml-2 text-blue-500 text-[10px]">recherche…</span>}
               </label>
               <input type="text" value={plate}
@@ -367,29 +367,29 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 }}
                 onBlur={searchVehicleByPlate}
                 placeholder="1ABC234"
-                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
             </div>
             <LInput label="VIN" value={vin} onChange={v => setVin(v.toUpperCase())} placeholder="Optionnel" />
           </div>
 
           {/* Marque */}
           <div>
-            <label className="block text-gray-600 text-xs font-medium mb-1">Marque</label>
+            <label className="block text-ink-secondary text-xs font-medium mb-1">Marque</label>
             <button onClick={() => { setShowBrands(true); setBrandSearch('') }}
-              className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-left text-sm text-gray-900 flex items-center justify-between">
-              <span className={brand ? 'text-gray-900' : 'text-gray-400'}>{brand || 'Sélectionner une marque'}</span>
-              <span className="text-gray-400">▼</span>
+              className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-left text-sm text-ink flex items-center justify-between">
+              <span className={brand ? 'text-ink' : 'text-ink-faint'}>{brand || 'Sélectionner une marque'}</span>
+              <span className="text-ink-faint">▼</span>
             </button>
           </div>
 
           {/* Modèle */}
           {brand && (
             <div>
-              <label className="block text-gray-600 text-xs font-medium mb-1">Modèle</label>
+              <label className="block text-ink-secondary text-xs font-medium mb-1">Modèle</label>
               <button onClick={() => { setShowModels(true); setModelSearch('') }}
-                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-left text-sm text-gray-900 flex items-center justify-between">
-                <span className={model ? 'text-gray-900' : 'text-gray-400'}>{model || 'Sélectionner un modèle'}</span>
-                <span className="text-gray-400">▼</span>
+                className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-left text-sm text-ink flex items-center justify-between">
+                <span className={model ? 'text-ink' : 'text-ink-faint'}>{model || 'Sélectionner un modèle'}</span>
+                <span className="text-ink-faint">▼</span>
               </button>
             </div>
           )}
@@ -404,11 +404,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {/* Intervention */}
         <Section title="Intervention">
           <div>
-            <label className="block text-gray-600 text-xs font-medium mb-1">Lieu d&apos;intervention <span className="text-red-500">*</span></label>
+            <label className="block text-ink-secondary text-xs font-medium mb-1">Lieu d&apos;intervention <span className="text-critical">*</span></label>
             <div className="flex gap-2">
               <input ref={locationRef} value={location} onChange={e => setLocation(e.target.value)}
                 placeholder="Rue, autoroute..."
-                className="flex-1 bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 text-sm outline-none focus:border-blue-500" />
+                className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-blue-500" />
               <button onClick={getGPS}
                 className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-600 text-sm font-medium">
                 🎯
@@ -432,7 +432,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         <Section title="Remarques">
           <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
             placeholder="Observations..."
-            className="w-full bg-white border border-gray-300 rounded-xl px-3 py-3 text-gray-900 text-sm outline-none resize-none focus:border-blue-500" />
+            className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none focus:border-blue-500" />
         </Section>
 
         {/* Photos */}
@@ -452,16 +452,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           )}
           <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addPhotos(e.target.files)} />
           <button onClick={() => photoRef.current?.click()}
-            className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 text-sm hover:border-gray-400">
+            className="w-full py-3 border-2 border-dashed border-strong rounded-xl text-ink-faint text-sm hover:border-gray-400">
             📷 Ajouter des photos
           </button>
         </Section>
 
-        {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">{err}</div>}
+        {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-critical text-sm">{err}</div>}
       </div>
 
       {/* Bottom button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 border-t border-gray-200 px-4 py-4 shadow-lg">
+      <div className="fixed bottom-0 left-0 right-0 bg-surface/95 border-t border px-4 py-4 shadow-lg">
         <button onClick={handleSubmit} disabled={loading}
           className={`w-full py-4 ${cfg!.color} disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-md`}>
           {loading ? '⏳ Création en cours...' : `${cfg!.icon} Créer la mission`}
@@ -471,21 +471,21 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       {/* Modal Marques */}
       {showBrands && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl max-h-[80vh] flex flex-col">
+          <div className="bg-surface w-full rounded-t-3xl max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-bold text-gray-900">Sélectionner une marque</h2>
-              <button onClick={() => setShowBrands(false)} className="text-gray-400 text-xl">✕</button>
+              <h2 className="font-bold text-ink">Sélectionner une marque</h2>
+              <button onClick={() => setShowBrands(false)} className="text-ink-faint text-xl">✕</button>
             </div>
             <div className="px-4 py-2">
               <input value={brandSearch} onChange={e => setBrandSearch(e.target.value)}
                 placeholder="Rechercher..."
-                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm text-gray-900 outline-none" autoFocus />
+                className="w-full bg-surface-hover rounded-xl px-3 py-2.5 text-sm text-ink outline-none" autoFocus />
             </div>
             <div className="overflow-y-auto flex-1 px-4 pb-4">
               {filteredBrands.map(b => (
                 <button key={b.id} onClick={() => {
                   setBrand(b.name); setSelectedBrandId(b.id); setModel(''); setShowBrands(false)
-                }} className="w-full text-left py-3 border-b border-gray-100 text-gray-900 text-sm">
+                }} className="w-full text-left py-3 border-b border-gray-100 text-ink text-sm">
                   {b.name}
                 </button>
               ))}
@@ -504,21 +504,21 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       {/* Modal Modèles */}
       {showModels && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl max-h-[80vh] flex flex-col">
+          <div className="bg-surface w-full rounded-t-3xl max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-bold text-gray-900">{brand}</h2>
-              <button onClick={() => setShowModels(false)} className="text-gray-400 text-xl">✕</button>
+              <h2 className="font-bold text-ink">{brand}</h2>
+              <button onClick={() => setShowModels(false)} className="text-ink-faint text-xl">✕</button>
             </div>
             <div className="px-4 py-2">
               <input value={modelSearch} onChange={e => setModelSearch(e.target.value)}
                 placeholder="Rechercher..."
-                className="w-full bg-gray-100 rounded-xl px-3 py-2.5 text-sm text-gray-900 outline-none" autoFocus />
+                className="w-full bg-surface-hover rounded-xl px-3 py-2.5 text-sm text-ink outline-none" autoFocus />
             </div>
             <div className="overflow-y-auto flex-1 px-4 pb-4">
               {filteredModels.map(m => (
                 <button key={m.id} onClick={() => {
                   setModel(m.name); setShowModels(false)
-                }} className="w-full text-left py-3 border-b border-gray-100 text-gray-900 text-sm">
+                }} className="w-full text-left py-3 border-b border-gray-100 text-ink text-sm">
                   {m.name}
                 </button>
               ))}
@@ -530,7 +530,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 </button>
               )}
               {filteredModels.length === 0 && !modelSearch && (
-                <p className="text-gray-400 text-sm py-3">Tapez un modèle dans la recherche</p>
+                <p className="text-ink-faint text-sm py-3">Tapez un modèle dans la recherche</p>
               )}
             </div>
           </div>
@@ -540,19 +540,19 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       {/* Modal — véhicule trouvé dans Odoo par la plaque */}
       {vehicleMatches && vehicleMatches.length > 0 && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl">
-            <h3 className="font-bold text-gray-900 text-base mb-1">Véhicule existant trouvé</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="bg-surface rounded-2xl w-full max-w-md p-5 shadow-xl">
+            <h3 className="font-bold text-ink text-base mb-1">Véhicule existant trouvé</h3>
+            <p className="text-sm text-ink-secondary mb-4">
               {vehicleMatches.length === 1 ? 'Un véhicule' : `${vehicleMatches.length} véhicules`} avec la plaque <b>{plate}</b> {vehicleMatches.length === 1 ? 'existe' : 'existent'} dans Odoo. C&apos;est bien ce véhicule ?
             </p>
             <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
               {vehicleMatches.map((v: any) => (
                 <button key={v.id} onClick={() => acceptVehicleMatch(v)}
-                  className="w-full text-left p-3 border border-gray-300 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-colors">
-                  <div className="font-semibold text-gray-900">{[v.brand, v.model].filter(Boolean).join(' ') || 'Sans marque/modèle'}</div>
-                  {v.vin && <div className="text-xs text-gray-500 mt-0.5">VIN : {v.vin}</div>}
+                  className="w-full text-left p-3 border border-strong rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-colors">
+                  <div className="font-semibold text-ink">{[v.brand, v.model].filter(Boolean).join(' ') || 'Sans marque/modèle'}</div>
+                  {v.vin && <div className="text-xs text-ink-muted mt-0.5">VIN : {v.vin}</div>}
                   {(v.fuel || v.gearbox || v.color) && (
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-ink-muted mt-0.5">
                       {[v.fuel, v.gearbox, v.color].filter(Boolean).join(' · ')}
                     </div>
                   )}
@@ -560,7 +560,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
               ))}
             </div>
             <button onClick={rejectVehicleMatch}
-              className="w-full bg-gray-100 text-gray-700 rounded-xl py-2.5 font-medium text-sm hover:bg-gray-200">
+              className="w-full bg-surface-hover text-ink-secondary rounded-xl py-2.5 font-medium text-sm hover:bg-surface-hover">
               Non, c&apos;est un autre véhicule
             </button>
           </div>

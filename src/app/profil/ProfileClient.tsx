@@ -28,11 +28,11 @@ function daysUntilExpiry(expiresAt: string): number {
 }
 
 function expiryStatus(days: number) {
-  if (days < 0)    return { color: 'text-red-500',    bg: 'bg-red-500/10 border-red-500/30',       label: 'Expiré'   }
-  if (days <= 30)  return { color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/30',       label: '< 1 mois' }
-  if (days <= 90)  return { color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30', label: '< 3 mois' }
-  if (days <= 180) return { color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/30', label: '< 6 mois' }
-  return              { color: 'text-green-400',   bg: 'bg-green-500/10 border-green-500/30',   label: 'Valide'   }
+  if (days < 0)    return { color: 'text-critical', bg: 'bg-critical-soft border-critical', label: 'Expiré'   }
+  if (days <= 30)  return { color: 'text-critical', bg: 'bg-critical-soft border-critical', label: '< 1 mois' }
+  if (days <= 90)  return { color: 'text-alert',    bg: 'bg-alert-soft border-alert',       label: '< 3 mois' }
+  if (days <= 180) return { color: 'text-warning',  bg: 'bg-warning-soft border-warning',   label: '< 6 mois' }
+  return              { color: 'text-success', bg: 'bg-success-soft border-success',   label: 'Valide'   }
 }
 
 export default function ProfileClient({ user }: { user: any }) {
@@ -275,12 +275,12 @@ export default function ProfileClient({ user }: { user: any }) {
       <div className="px-4 lg:px-8 py-6 max-w-lg mx-auto lg:mx-0 flex flex-col gap-4">
 
         {/* Infos */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
+        <div className="bg-surface border border rounded-2xl p-5">
           <div className="w-16 h-16 rounded-full bg-brand flex items-center justify-center text-white text-2xl font-bold mb-4 mx-auto lg:mx-0">
             {user?.name?.[0]?.toUpperCase() || '?'}
           </div>
-          <p className="text-white font-bold text-lg text-center lg:text-left">{user?.name}</p>
-          <p className="text-zinc-500 text-sm text-center lg:text-left">{user?.email}</p>
+          <p className="text-ink font-bold text-lg text-center lg:text-left">{user?.name}</p>
+          <p className="text-ink-muted text-sm text-center lg:text-left">{user?.email}</p>
           <div className="flex justify-center lg:justify-start mt-2">
             <span className="text-xs bg-brand/20 text-brand px-3 py-1 rounded-full font-medium capitalize">
               {user?.role}
@@ -290,9 +290,9 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* PIN */}
         {user?.can_verify && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-            <h2 className="text-white font-bold mb-1">PIN de validation caisse</h2>
-            <p className="text-zinc-500 text-xs mb-4">
+          <div className="bg-surface border border rounded-2xl p-5">
+            <h2 className="text-ink font-bold mb-1">PIN de validation caisse</h2>
+            <p className="text-ink-muted text-xs mb-4">
               {hasPin ? 'Ton PIN est défini. Tu peux le modifier ci-dessous.'
                       : "Aucun PIN défini. Crée-en un pour valider les remises d'espèces."}
             </p>
@@ -300,18 +300,18 @@ export default function ProfileClient({ user }: { user: any }) {
             {pinError   && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">{pinError}</div>}
             <div className="flex flex-col gap-3">
               <div>
-                <label className="text-zinc-400 text-xs mb-1.5 block">{hasPin ? 'Nouveau PIN' : 'PIN (4 chiffres)'}</label>
+                <label className="text-ink-secondary text-xs mb-1.5 block">{hasPin ? 'Nouveau PIN' : 'PIN (4 chiffres)'}</label>
                 <input type="password" inputMode="numeric" maxLength={4} value={pin1}
                   onChange={e => { setPin1(e.target.value.replace(/[^0-9]/g, '')); setPinError('') }}
                   placeholder="••••"
-                  className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-2xl font-bold text-center outline-none tracking-widest" />
+                  className="w-full bg-surface border border-strong focus:border-brand rounded-xl px-4 py-3 text-ink text-2xl font-bold text-center outline-none tracking-widest" />
               </div>
               <div>
-                <label className="text-zinc-400 text-xs mb-1.5 block">Confirmer le PIN</label>
+                <label className="text-ink-secondary text-xs mb-1.5 block">Confirmer le PIN</label>
                 <input type="password" inputMode="numeric" maxLength={4} value={pin2}
                   onChange={e => { setPin2(e.target.value.replace(/[^0-9]/g, '')); setPinError('') }}
                   placeholder="••••"
-                  className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-2xl font-bold text-center outline-none tracking-widest" />
+                  className="w-full bg-surface border border-strong focus:border-brand rounded-xl px-4 py-3 text-ink text-2xl font-bold text-center outline-none tracking-widest" />
               </div>
               <button onClick={handleSetPin} disabled={pinLoading || pin1.length !== 4 || pin2.length !== 4}
                 className="w-full bg-brand text-white font-bold rounded-xl py-3 disabled:opacity-40 transition-all">
@@ -323,15 +323,15 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* Push */}
         {pushSupported && (
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-            <h2 className="text-white font-bold mb-1">Notifications push</h2>
-            <p className="text-zinc-500 text-xs mb-4">
+          <div className="bg-surface border border rounded-2xl p-5">
+            <h2 className="text-ink font-bold mb-1">Notifications push</h2>
+            <p className="text-ink-muted text-xs mb-4">
               Recevez des alertes pour les documents expirants et les checks véhicules.
             </p>
-            {pushStatus && <p className="text-zinc-400 text-xs mb-3">{pushStatus}</p>}
+            {pushStatus && <p className="text-ink-secondary text-xs mb-3">{pushStatus}</p>}
             <button onClick={handlePushToggle} disabled={pushLoading}
               className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
-                pushSubscribed ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600' : 'bg-brand text-white hover:bg-brand/90'
+                pushSubscribed ? 'bg-surface-hover text-ink-secondary hover:bg-surface-2' : 'bg-brand text-white hover:bg-brand-hover'
               }`}>
               {pushLoading ? '⏳ En cours…' : pushSubscribed ? '🔕 Désactiver les notifications' : '🔔 Activer les notifications'}
             </button>
@@ -339,9 +339,9 @@ export default function ProfileClient({ user }: { user: any }) {
         )}
 
         {/* Documents */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-5">
-          <h2 className="text-white font-bold mb-1">Mes Documents</h2>
-          <p className="text-zinc-500 text-xs mb-4">Carte d'identité, permis, carte chauffeur, sélection médicale.</p>
+        <div className="bg-surface border border rounded-2xl p-5">
+          <h2 className="text-ink font-bold mb-1">Mes Documents</h2>
+          <p className="text-ink-muted text-xs mb-4">Carte d'identité, permis, carte chauffeur, sélection médicale.</p>
 
           {docSuccess && (
             <div className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-xl px-4 py-3 mb-4 text-sm">
@@ -350,7 +350,7 @@ export default function ProfileClient({ user }: { user: any }) {
           )}
 
           {docsLoading ? (
-            <p className="text-zinc-500 text-sm text-center py-4">Chargement…</p>
+            <p className="text-ink-muted text-sm text-center py-4">Chargement…</p>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {DOC_TYPES.map(dt => {
@@ -361,12 +361,12 @@ export default function ProfileClient({ user }: { user: any }) {
                 return (
                   <div key={dt.value}
                     className={`rounded-xl border p-3 flex flex-col gap-2 ${
-                      cfg ? cfg.bg : 'bg-[#0F0F0F] border-[#2a2a2a]'
+                      cfg ? cfg.bg : 'bg-surface border'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{dt.icon}</span>
-                      <p className="text-white text-xs font-semibold leading-tight">{dt.label}</p>
+                      <p className="text-ink text-xs font-semibold leading-tight">{dt.label}</p>
                     </div>
 
                     {doc ? (
@@ -376,7 +376,7 @@ export default function ProfileClient({ user }: { user: any }) {
                         </p>
                         <div className="flex gap-1.5 mt-auto">
                           <button onClick={() => setViewDoc(doc)}
-                            className="flex-1 py-1.5 bg-[#2a2a2a] text-zinc-300 rounded-lg text-xs font-medium hover:bg-[#333] transition-colors">
+                            className="flex-1 py-1.5 bg-surface-hover text-ink-secondary rounded-lg text-xs font-medium hover:bg-surface-2 transition-colors">
                             👁 Voir
                           </button>
                           <button onClick={() => openEdit(dt.value)}
@@ -387,7 +387,7 @@ export default function ProfileClient({ user }: { user: any }) {
                       </>
                     ) : (
                       <>
-                        <p className="text-zinc-600 text-xs">Non enregistré</p>
+                        <p className="text-ink-faint text-xs">Non enregistré</p>
                         <button onClick={() => openEdit(dt.value)}
                           className="w-full py-1.5 bg-brand text-white rounded-lg text-xs font-semibold hover:bg-brand/90 transition-colors mt-auto">
                           + Ajouter
@@ -403,7 +403,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* Déconnexion */}
         <button onClick={() => signOut({ callbackUrl: '/login' })}
-          className="w-full bg-[#1A1A1A] border border-[#333] text-red-400 font-medium rounded-2xl py-4 transition-all">
+          className="w-full bg-surface border border-strong text-red-400 font-medium rounded-2xl py-4 transition-all">
           Se déconnecter
         </button>
 
@@ -412,26 +412,26 @@ export default function ProfileClient({ user }: { user: any }) {
       {/* Modal voir document */}
       {viewDoc && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setViewDoc(null)}>
-          <div className="bg-[#1A1A1A] rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-bold">{DOC_TYPES.find(d => d.value === viewDoc.doc_type)?.label}</h2>
-              <button onClick={() => setViewDoc(null)} className="text-zinc-500 text-2xl">×</button>
+              <h2 className="text-ink font-bold">{DOC_TYPES.find(d => d.value === viewDoc.doc_type)?.label}</h2>
+              <button onClick={() => setViewDoc(null)} className="text-ink-muted text-2xl">×</button>
             </div>
-            <img src={viewDoc.file_url} alt="Document" className="w-full rounded-xl border border-[#2a2a2a] mb-4 object-contain max-h-96 bg-[#0F0F0F]" />
+            <img src={viewDoc.file_url} alt="Document" className="w-full rounded-xl border border mb-4 object-contain max-h-96 bg-surface" />
             <div className="space-y-2">
-              <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
-                <span className="text-zinc-500 text-sm">Expiration</span>
-                <span className="text-white text-sm">{new Date(viewDoc.expires_at).toLocaleDateString('fr-BE', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+              <div className="flex justify-between py-2 border-b border">
+                <span className="text-ink-muted text-sm">Expiration</span>
+                <span className="text-ink text-sm">{new Date(viewDoc.expires_at).toLocaleDateString('fr-BE', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
               </div>
               {viewDoc.notes && (
-                <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
-                  <span className="text-zinc-500 text-sm">Notes</span>
-                  <span className="text-white text-sm text-right max-w-[60%]">{viewDoc.notes}</span>
+                <div className="flex justify-between py-2 border-b border">
+                  <span className="text-ink-muted text-sm">Notes</span>
+                  <span className="text-ink text-sm text-right max-w-[60%]">{viewDoc.notes}</span>
                 </div>
               )}
               <div className="flex justify-between py-2">
-                <span className="text-zinc-500 text-sm">Mis à jour</span>
-                <span className="text-zinc-400 text-sm">{new Date(viewDoc.updated_at).toLocaleDateString('fr-BE')}</span>
+                <span className="text-ink-muted text-sm">Mis à jour</span>
+                <span className="text-ink-secondary text-sm">{new Date(viewDoc.updated_at).toLocaleDateString('fr-BE')}</span>
               </div>
             </div>
           </div>
@@ -441,50 +441,50 @@ export default function ProfileClient({ user }: { user: any }) {
       {/* Modal éditer document */}
       {editDoc && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center" onClick={() => setEditDoc(null)}>
-          <div className="bg-[#1A1A1A] w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-white font-bold text-lg">
+              <h2 className="text-ink font-bold text-lg">
                 {getDoc(editDoc) ? 'Modifier' : 'Ajouter'} — {DOC_TYPES.find(d => d.value === editDoc)?.label}
               </h2>
-              <button onClick={() => setEditDoc(null)} className="text-zinc-500 text-2xl">×</button>
+              <button onClick={() => setEditDoc(null)} className="text-ink-muted text-2xl">×</button>
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Photo du document {!getDoc(editDoc) && '*'}</label>
+              <label className="block text-sm font-medium text-ink-secondary mb-2">Photo du document {!getDoc(editDoc) && '*'}</label>
               {formPreview ? (
-                <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
-                  <img src={formPreview} alt="Aperçu" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                <div className="rounded-xl overflow-hidden border border mb-2">
+                  <img src={formPreview} alt="Aperçu" className="w-full max-h-48 object-contain bg-surface" />
                 </div>
               ) : getDoc(editDoc)?.file_url ? (
-                <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
-                  <img src={getDoc(editDoc)!.file_url} alt="Document actuel" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
-                  <p className="text-zinc-600 text-xs text-center py-1">Document actuel</p>
+                <div className="rounded-xl overflow-hidden border border mb-2">
+                  <img src={getDoc(editDoc)!.file_url} alt="Document actuel" className="w-full max-h-48 object-contain bg-surface" />
+                  <p className="text-ink-faint text-xs text-center py-1">Document actuel</p>
                 </div>
               ) : null}
               <div className="flex gap-2">
-                <button onClick={() => cameraRef.current?.click()} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">📷 Photo</button>
-                <button onClick={() => fileRef.current?.click()}   className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">🗂️ Galerie</button>
+                <button onClick={() => cameraRef.current?.click()} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">📷 Photo</button>
+                <button onClick={() => fileRef.current?.click()}   className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">🗂️ Galerie</button>
               </div>
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
               <input ref={fileRef}   type="file" accept="image/*,application/pdf"       className="hidden" onChange={handleFile} />
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-zinc-400 mb-1.5">Date d'expiration *</label>
+              <label className="block text-sm font-medium text-ink-secondary mb-1.5">Date d'expiration *</label>
               <input type="date" value={formExpiry} onChange={e => setFormExpiry(normalizeDate(e.target.value))}
-                className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand" />
+                className="w-full bg-surface border border rounded-xl px-4 py-3 text-ink focus:outline-none focus:border-brand" />
             </div>
 
             <div className="mb-5">
-              <label className="block text-sm font-medium text-zinc-400 mb-1.5">Notes <span className="text-zinc-600">(optionnel)</span></label>
+              <label className="block text-sm font-medium text-ink-secondary mb-1.5">Notes <span className="text-ink-faint">(optionnel)</span></label>
               <input type="text" placeholder="Numéro de document, remarques…" value={formNotes} onChange={e => setFormNotes(e.target.value)}
-                className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-brand" />
+                className="w-full bg-surface border border rounded-xl px-4 py-3 text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand" />
             </div>
 
             {docError && <div className="bg-red-950/50 border border-red-900 text-red-300 rounded-xl p-3 text-sm mb-4">{docError}</div>}
 
             <div className="flex gap-2">
-              <button onClick={() => setEditDoc(null)} className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl font-medium">Annuler</button>
+              <button onClick={() => setEditDoc(null)} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl font-medium">Annuler</button>
               <button onClick={handleSave} disabled={uploading} className="flex-1 py-3 bg-brand text-white rounded-xl font-bold disabled:opacity-50">
                 {uploading ? '⏳ Enregistrement…' : '✅ Enregistrer'}
               </button>

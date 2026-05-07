@@ -3,7 +3,32 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
+
+// ─────────────────────────────────────────────────────────
+// CLASSES PARTAGÉES — pattern aligné avec /admin/depots et /admin/users.
+// À promouvoir en composant atomique <Input> en sub-phase 2.3.B.
+// ─────────────────────────────────────────────────────────
+
+const inputCls =
+  'w-full bg-surface border rounded-md px-3 py-2.5 text-sm text-ink ' +
+  'focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft ' +
+  'placeholder:text-ink-muted transition-colors'
+
+const inputXLCls =
+  'w-full bg-surface border rounded-md px-4 py-4 text-2xl font-bold text-ink ' +
+  'text-center tracking-widest uppercase ' +
+  'focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft ' +
+  'placeholder:text-ink-muted transition-colors'
+
+const inputMontantCls =
+  'w-full bg-surface border rounded-md px-4 py-4 text-3xl font-bold text-ink ' +
+  'text-center ' +
+  'focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft ' +
+  'placeholder:text-ink-muted transition-colors'
+
+const labelCls = 'block text-xs font-semibold text-ink-secondary uppercase tracking-wider mb-1.5'
 
 interface ListItem { value: string; label: string }
 interface Brand { id: number; name: string }
@@ -38,35 +63,29 @@ function BaseShell({
   userName?:    string
   userModules?: string[]
 }) {
-  // Barre de progression — utilisée à la fois en mobile (entête) et en desktop (headerExtra)
+  // Barre de progression — passée à AppShell via headerExtra (mobile + desktop)
   const progressBar = (
     <div className="flex gap-1">
       {Array.from({ length: totalPages }).map((_, i) => (
-        <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-[#2a2a2a]'}`} />
+        <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= page ? 'bg-brand' : 'bg-surface-hover'}`} />
       ))}
     </div>
   )
 
   return (
     <AppShell title={title} userRole={userRole} userName={userName} userModules={userModules} headerExtra={progressBar}>
-      {/* Entête mobile spécifique au wizard (back + logo + progress bar) */}
-      <div className="lg:hidden bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-3 pb-4">
-        <div className="flex items-center gap-3 mb-3">
-          {onBack
-            ? <button onClick={onBack} className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</button>
-            : <Link href="/dashboard" className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg active:bg-[#333]">←</Link>
-          }
-          <span className="flex-1 text-zinc-500 text-xs">{title}</span>
-          <div className="w-10" />
-        </div>
-        {progressBar}
-      </div>
-
-      {/* Bouton retour desktop dans le contenu */}
+      {/* Bouton "Retour étape" — visible mobile et desktop, juste au-dessus du contenu wizard.
+          Sub-phase 2.3.A : on a supprimé le sous-header mobile dupliqué (qui re-rendait
+          back + title + progressBar par-dessus l'AppShell). L'AppShell mobile gère déjà
+          le burger, le logo, le titre et la progress bar via headerExtra. Ce bouton-ci
+          ne sert qu'au "retour d'étape" du wizard, distinct du ← global qui revient au
+          dashboard. */}
       {onBack && (
-        <div className="hidden lg:block px-8 pt-4">
-          <button onClick={onBack} className="text-zinc-400 hover:text-white text-sm flex items-center gap-2">
-            ← Retour
+        <div className="px-5 lg:px-8 pt-4">
+          <button onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink text-sm font-medium transition-colors">
+            <ArrowLeft size={14} />
+            Retour
           </button>
         </div>
       )}
@@ -80,8 +99,16 @@ function BigBtn({ label, onClick, disabled, secondary }: {
   label: string; onClick: () => void; disabled?: boolean; secondary?: boolean
 }) {
   return (
-    <button onClick={onClick} disabled={disabled}
-      className={`w-full rounded-2xl py-4 text-base font-bold transition-all active:scale-95 disabled:opacity-40 ${secondary ? 'bg-[#1e1e1e] border border-[#333] text-zinc-300' : 'bg-brand text-white'}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full rounded-2xl py-4 text-base font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+        secondary
+          ? 'bg-surface border text-ink-secondary hover:bg-surface-hover hover:border-strong'
+          : 'bg-brand text-white shadow-brand hover:bg-brand-hover hover:shadow-brand-hover'
+      }`}
+    >
       {label}
     </button>
   )
@@ -89,8 +116,15 @@ function BigBtn({ label, onClick, disabled, secondary }: {
 
 function ChoiceBtn({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick}
-      className={`w-full text-left px-5 py-4 rounded-2xl border text-white font-medium transition-all active:scale-95 ${selected ? 'bg-brand/20 border-brand' : 'bg-[#1e1e1e] border-[#2a2a2a] hover:border-zinc-500'}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left px-5 py-4 rounded-2xl border font-medium transition-all active:scale-95 ${
+        selected
+          ? 'bg-brand-soft border-brand text-brand'
+          : 'bg-surface text-ink hover:bg-surface-hover hover:border-strong'
+      }`}
+    >
       {label}
     </button>
   )
@@ -411,15 +445,16 @@ export default function EncaissementClient({
   }
 
   if (saved) return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6 text-center">
-      <div className="text-6xl mb-6">✅</div>
-      <h2 className="text-white text-2xl font-bold mb-2">Enregistré !</h2>
-      <p className="text-zinc-500 text-sm mb-2">Intervention sauvegardée avec succès.</p>
-      <p className="text-zinc-600 text-xs mb-8">Retour au dashboard dans 5 secondes…</p>
-      <button onClick={resetForm} className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+      <div className="text-6xl mb-6" aria-hidden="true">✅</div>
+      <h2 className="font-display text-ink text-2xl font-bold mb-2">Enregistré !</h2>
+      <p className="text-ink-muted text-sm mb-2">Intervention sauvegardée avec succès.</p>
+      <p className="text-ink-faint text-xs mb-8">Retour au dashboard dans 5 secondes…</p>
+      <button onClick={resetForm}
+        className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3 shadow-brand hover:bg-brand-hover hover:shadow-brand-hover transition-all">
         + Nouvelle intervention
       </button>
-      <Link href="/dashboard" className="text-zinc-500 text-sm">← Dashboard</Link>
+      <Link href="/dashboard" className="text-ink-muted hover:text-ink text-sm transition-colors">← Dashboard</Link>
     </div>
   )
 
@@ -434,7 +469,7 @@ export default function EncaissementClient({
           placeholder="1ABC123"
           autoComplete="off"
           autoFocus
-          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-2xl font-bold text-center outline-none tracking-widest uppercase mb-2"
+          className={`${inputXLCls} mb-2`}
         />
         <p className="text-zinc-600 text-xs text-center mb-8">Sans tirets ni espaces</p>
         <BigBtn
@@ -451,11 +486,11 @@ export default function EncaissementClient({
   if (page === 1 && odooVehicle) return (
     <Shell title="Identification du véhicule" page={1} totalPages={TOTAL} onBack={() => setPage(0)}>
       <div className="mt-4">
-        <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-2xl p-6 text-center mb-8">
-          <p className="text-zinc-400 text-sm mb-3">Le véhicule est-il un :</p>
-          <p className="text-white text-2xl font-bold">{odooVehicle.brandName}</p>
-          <p className="text-zinc-400 text-lg">{odooVehicle.modelName}</p>
-          <p className="text-zinc-600 text-sm mt-2">{plate}</p>
+        <div className="bg-surface border rounded-card shadow-card p-6 text-center mb-8">
+          <p className="text-ink-muted text-xs uppercase tracking-wider mb-3">Le véhicule est-il un :</p>
+          <p className="font-display text-ink text-3xl font-bold">{odooVehicle.brandName}</p>
+          <p className="text-ink-secondary text-2xl mt-1">{odooVehicle.modelName}</p>
+          <p className="text-ink-muted text-xs uppercase tracking-widest mt-3 font-mono">{plate}</p>
         </div>
         <div className="flex flex-col gap-3">
           <BigBtn label="✓ Oui" onClick={() => { setVehicleConfirmed(true); setPage(2) }} />
@@ -506,7 +541,7 @@ export default function EncaissementClient({
           onChange={e => setModelOther(e.target.value)}
           placeholder="Ex: 308 SW, Clio V…"
           autoFocus
-          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-2"
+          className={`${inputCls} text-base text-center font-semibold mb-2`}
         />
         <p className="text-zinc-600 text-xs text-center mb-8">Optionnel — laisse vide si inconnu</p>
         <BigBtn label="Continuer →" onClick={() => setPage(2)} />
@@ -541,7 +576,7 @@ export default function EncaissementClient({
           onChange={e => setMotifPrecision(e.target.value)}
           placeholder="Décris l'intervention…"
           autoFocus
-          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-lg text-center outline-none mb-2"
+          className={`${inputCls} text-base mb-2`}
         />
         <p className="text-zinc-600 text-xs text-center mb-8">Apparaîtra sur le devis</p>
         <BigBtn label="Continuer →" onClick={() => setPage(3)} disabled={!motifPrecision.trim()} />
@@ -559,10 +594,10 @@ export default function EncaissementClient({
             value={location}
             onChange={e => setLocation(e.target.value)}
             placeholder="Adresse du lieu…"
-            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-base outline-none pr-14"
+            className={`${inputCls} text-base pr-14`}
           />
           <button onClick={getMyLocation} disabled={locationLoading}
-            className="absolute right-3 top-2.5 bg-[#2a2a2a] rounded-xl px-3 py-2 text-sm disabled:opacity-40">
+            className="absolute right-2 top-1/2 -translate-y-1/2 bg-surface-hover hover:bg-surface-2 rounded-md px-3 py-2 text-sm transition-colors disabled:opacity-40">
             {locationLoading ? '⏳' : '🎯'}
           </button>
         </div>
@@ -646,9 +681,9 @@ export default function EncaissementClient({
             inputMode="decimal"
             data-lpignore="true"
             data-form-type="other"
-            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-3xl font-bold text-center outline-none"
+            className={inputMontantCls}
           />
-          <span className="absolute right-5 top-4 text-zinc-400 text-xl">€</span>
+          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-ink-muted text-xl">€</span>
         </div>
 
         {/* Statut SumUp */}
@@ -774,7 +809,7 @@ export default function EncaissementClient({
           placeholder="BE0460759205"
           autoComplete="off"
           autoFocus
-          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none uppercase mb-2"
+          className={`${inputCls} text-base font-semibold text-center uppercase mb-2`}
         />
         {viesResult && (
           <div className={`rounded-xl px-4 py-3 text-sm border mb-4 ${viesResult.valid ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
@@ -866,7 +901,7 @@ export default function EncaissementClient({
           placeholder="Nom et prénom ou société"
           autoComplete="off"
           autoFocus
-          className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-5 py-4 text-white text-xl font-bold text-center outline-none mb-8"
+          className={`${inputCls} text-base font-semibold mb-8`}
         />
         <BigBtn
           label={nameSearchLoading ? 'Recherche…' : 'Continuer →'}
@@ -930,33 +965,33 @@ export default function EncaissementClient({
     <Shell title="Coordonnées du client" page={8} totalPages={TOTAL} onBack={() => setPage(7)}>
       <div className="mt-4 flex flex-col gap-4">
         <div>
-          <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Adresse</label>
+          <label className={labelCls}>Adresse</label>
           <input
             ref={clientAddressInputRef}
             value={clientAddress}
             onChange={e => setClientAddress(e.target.value)}
             placeholder="Rue, numéro, code postal, ville"
-            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-4 py-3 text-white text-sm outline-none"
+            className={inputCls}
           />
         </div>
         <div>
-          <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Téléphone <span className="text-brand">*</span></label>
+          <label className={labelCls}>Téléphone <span className="text-brand">*</span></label>
           <input
             value={clientPhone}
             onChange={e => setClientPhone(e.target.value)}
             type="tel" placeholder="+32 4xx xxx xxx"
             autoComplete="tel"
-            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-4 py-3 text-white text-sm outline-none"
+            className={inputCls}
           />
         </div>
         <div>
-          <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Email</label>
+          <label className={labelCls}>Email</label>
           <input
             value={clientEmail}
             onChange={e => setClientEmail(e.target.value)}
             type="email" placeholder="client@email.com"
             autoComplete="email"
-            className="w-full bg-[#1e1e1e] border border-[#333] focus:border-brand rounded-2xl px-4 py-3 text-white text-sm outline-none"
+            className={inputCls}
           />
         </div>
         <BigBtn label="Continuer →" onClick={async () => {
@@ -1001,13 +1036,13 @@ export default function EncaissementClient({
           ))}
 
           <div className="mt-5">
-            <label className="text-zinc-400 text-xs font-medium mb-1.5 block">Remarques (optionnel)</label>
+            <label className={labelCls}>Remarques (optionnel)</label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Notes internes…"
               rows={2}
-              className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-brand resize-none mb-5"
+              className={`${inputCls} resize-none mb-5`}
             />
             <BigBtn label={saving ? 'Enregistrement…' : '✓ Enregistrer'} onClick={handleSubmit} disabled={saving} />
             {error && <p className="text-red-400 text-sm text-center mt-3">{error}</p>}

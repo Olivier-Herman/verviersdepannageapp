@@ -3,9 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
-import { signOut }     from 'next-auth/react'
-import { usePathname } from 'next/navigation'
-import { filterNavItems } from '@/components/layout/nav-items'
+import AppShell from '@/components/layout/AppShell'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,47 +39,6 @@ const MISSION_TYPES = [
 ]
 const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
 const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
-// ── Sidebar ───────────────────────────────────────────────────────────────────
-
-function Sidebar({ userName, userRole, userModules }: { userName: string; userRole: string; userModules: string[] }) {
-  const pathname = usePathname()
-  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) || '?'
-  const NAV_ITEMS = filterNavItems({ userModules, userRole })
-  return (
-    <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] fixed top-0 left-0 h-full z-30">
-      <div className="px-6 py-5 border-b border-[#2a2a2a]">
-        <Link href="/dashboard"><img src="/logo.jpg" alt="VD" className="h-10 w-auto object-contain" /></Link>
-      </div>
-      <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
-        {NAV_ITEMS.map(item => {
-          const active = pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')
-          return (
-            <Link key={item.href} href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                active ? 'bg-brand/10 text-white border border-brand/20' : 'text-zinc-400 hover:text-white hover:bg-[#2a2a2a]'
-              }`}>
-              <span>{item.icon}</span>{item.label}
-            </Link>
-          )
-        })}
-      </nav>
-      <div className="px-3 py-4 border-t border-[#2a2a2a]">
-        <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
-          <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs">{initials}</div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{userName}</p>
-            <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
-          </div>
-        </div>
-        <button onClick={() => signOut({ callbackUrl: '/login' })}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full">
-          <span>🚪</span> Déconnexion
-        </button>
-      </div>
-    </aside>
-  )
-}
-
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
 function useClientSearch() {
@@ -306,9 +263,9 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function NewMissionClient({
-  drivers, warnings, userName, userRole, userModules = [], googleMapsKey
+  drivers, warnings, userName, userRole, userModules = [], userEmail, userId, googleMapsKey
 }: {
-  drivers: Driver[]; warnings: Warning[]; userName: string; userRole: string; userModules?: string[]; googleMapsKey: string
+  drivers: Driver[]; warnings: Warning[]; userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
 }) {
   const router = useRouter()
 
@@ -555,21 +512,26 @@ export default function NewMissionClient({
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex">
-      <Sidebar userName={userName} userRole={userRole} userModules={userModules} />
-
-      <div className="flex-1 lg:ml-64 flex flex-col">
-        {/* Header */}
-        <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 lg:px-8 py-5 sticky top-0 z-20">
-          <div className="flex items-center gap-4">
-            <Link href="/dispatch" className="text-zinc-400 hover:text-white text-lg">←</Link>
-            <h1 className="text-white font-bold text-xl flex-1">Nouvelle mission</h1>
-            <button onClick={handleSubmit} disabled={saving}
-              className="hidden lg:block px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-medium text-sm transition disabled:opacity-50">
-              {saving ? 'Création...' : '✅ Créer la mission'}
-            </button>
-          </div>
+    <AppShell
+      title="Nouvelle mission"
+      userName={userName}
+      userEmail={userEmail}
+      userId={userId}
+      userRole={userRole}
+      userModules={userModules}
+    >
+      {/* Top-bar contenu — ← retour vers liste dispatch + CTA création (hex hardcodés
+          conservés pour étape E ; uniquement le shell global est uniformisé ici). */}
+      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 lg:px-8 py-4 sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Link href="/dispatch" className="text-zinc-400 hover:text-white text-lg" title="Retour à la liste dispatch">←</Link>
+          <span className="flex-1" />
+          <button onClick={handleSubmit} disabled={saving}
+            className="hidden lg:block px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-medium text-sm transition disabled:opacity-50">
+            {saving ? 'Création...' : '✅ Créer la mission'}
+          </button>
         </div>
+      </div>
 
         <div className="flex-1 px-4 lg:px-8 py-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl">
@@ -949,7 +911,6 @@ export default function NewMissionClient({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </AppShell>
   )
 }

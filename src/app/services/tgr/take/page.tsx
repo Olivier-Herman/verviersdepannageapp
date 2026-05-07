@@ -38,7 +38,7 @@ function TGRTakeContent() {
 
   if (!missionId || !token) return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <p className="text-red-400">Lien invalide</p>
+      <p className="text-critical">Lien invalide</p>
     </div>
   )
 
@@ -48,18 +48,18 @@ function TGRTakeContent() {
         <>
           <div className="text-6xl">🤝</div>
           <div>
-            <h2 className="text-white font-bold text-xl mb-2">Prendre cette mission ?</h2>
-            <p className="text-zinc-400 text-sm">
+            <h2 className="text-ink font-bold text-xl mb-2">Prendre cette mission ?</h2>
+            <p className="text-ink-secondary text-sm">
               En confirmant, vous vous engagez à prendre en charge cette mission TGR.
               Le demandeur sera notifié immédiatement.
             </p>
           </div>
           <button onClick={handleTake} disabled={taking}
-            className="w-full py-4 bg-green-700 hover:bg-green-600 text-white rounded-2xl font-bold text-lg disabled:opacity-50">
+            className="w-full py-4 bg-success-fill hover:opacity-90 text-white rounded-2xl font-bold text-lg disabled:opacity-50">
             {taking ? '⏳ En cours…' : '✅ Je prends la mission'}
           </button>
           <button onClick={() => router.push('/services/tgr')}
-            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-400 rounded-xl text-sm">
+            className="w-full py-3 bg-surface border border text-ink-secondary rounded-xl text-sm">
             Annuler
           </button>
         </>
@@ -68,8 +68,8 @@ function TGRTakeContent() {
         <>
           <div className="text-7xl">✅</div>
           <div>
-            <h2 className="text-white font-bold text-xl mb-2">Mission prise en charge !</h2>
-            <p className="text-zinc-400 text-sm">Le demandeur a été notifié. Prenez contact avec lui pour coordonner.</p>
+            <h2 className="text-ink font-bold text-xl mb-2">Mission prise en charge !</h2>
+            <p className="text-ink-secondary text-sm">Le demandeur a été notifié. Prenez contact avec lui pour coordonner.</p>
           </div>
           <button onClick={() => router.push('/services/tgr')}
             className="w-full py-3 bg-brand text-white rounded-xl font-semibold">
@@ -81,11 +81,11 @@ function TGRTakeContent() {
         <>
           <div className="text-7xl">⚠️</div>
           <div>
-            <h2 className="text-white font-bold text-xl mb-2">Mission déjà prise</h2>
-            <p className="text-zinc-400 text-sm">Un autre partenaire a été plus rapide.</p>
+            <h2 className="text-ink font-bold text-xl mb-2">Mission déjà prise</h2>
+            <p className="text-ink-secondary text-sm">Un autre partenaire a été plus rapide.</p>
           </div>
           <button onClick={() => router.push('/services/tgr')}
-            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-400 rounded-xl text-sm">
+            className="w-full py-3 bg-surface border border text-ink-secondary rounded-xl text-sm">
             Retour
           </button>
         </>
@@ -93,9 +93,9 @@ function TGRTakeContent() {
       {status === 'error' && (
         <>
           <div className="text-7xl">❌</div>
-          <p className="text-red-400 text-sm">{message}</p>
+          <p className="text-critical text-sm">{message}</p>
           <button onClick={() => router.push('/services/tgr')}
-            className="w-full py-3 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-400 rounded-xl text-sm">
+            className="w-full py-3 bg-surface border border text-ink-secondary rounded-xl text-sm">
             Retour
           </button>
         </>
@@ -109,7 +109,7 @@ export default function TGRTakePage() {
     <AppShell title="Prise de mission TGR">
       <Suspense fallback={
         <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-zinc-500">Chargement…</p>
+          <p className="text-ink-muted">Chargement…</p>
         </div>
       }>
         <TGRTakeContent />

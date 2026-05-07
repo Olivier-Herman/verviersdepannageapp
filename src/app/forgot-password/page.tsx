@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -35,50 +37,51 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6">
       <div className="mb-8 text-center">
-        <div className="bg-white rounded-2xl px-6 py-4 inline-block mb-4">
+        <div className="bg-white rounded-2xl px-6 py-4 inline-block mb-4 shadow-card">
           <Image src="/logo.jpg" alt="VD" width={160} height={160} style={{ width: '160px', height: 'auto' }} />
         </div>
       </div>
 
-      <div className="w-full max-w-sm bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-8">
-        <h1 className="text-white text-xl font-semibold mb-2">Mot de passe oublié</h1>
+      <div className="w-full max-w-sm bg-surface border rounded-card shadow-card p-8">
+        <h1 className="font-display text-ink text-xl font-bold mb-2">Mot de passe oublié</h1>
 
         {sent ? (
           <div>
-            <div className="bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl px-4 py-3 mb-4">
+            <div className="bg-success-soft text-success text-sm rounded-md px-4 py-3 mb-4">
               ✅ Un lien de réinitialisation a été envoyé à ton adresse email personnelle.
             </div>
-            <Link href="/login" className="text-brand text-sm">← Retour à la connexion</Link>
+            <Link href="/login" className="text-brand hover:underline text-sm">← Retour à la connexion</Link>
           </div>
         ) : (
           <>
-            <p className="text-zinc-500 text-sm mb-6">
+            <p className="text-ink-muted text-sm mb-6">
               Saisis ton adresse email professionnelle — un lien sera envoyé à ton email personnel.
             </p>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">
+              <div className="bg-critical-soft text-critical text-sm rounded-md px-4 py-3 mb-4">
                 {error}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              <div>
-                <label className="text-zinc-400 text-xs mb-1.5 block">Email professionnel</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="prenom@verviersdepannage.be"
-                  className="w-full bg-[#0F0F0F] border border-[#333] focus:border-brand rounded-xl px-4 py-3 text-white text-sm outline-none" />
-              </div>
-              <button type="submit" disabled={loading || !email}
-                className="w-full bg-brand text-white font-bold rounded-xl py-3.5 mt-2 disabled:opacity-40">
-                {loading ? 'Envoi…' : 'Envoyer le lien'}
-              </button>
+              <Input
+                label="Email professionnel"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                placeholder="prenom@verviersdepannage.be"
+                required
+              />
+              <Button type="submit" variant="primary" size="lg" fullWidth loading={loading} disabled={!email} className="mt-2">
+                Envoyer le lien
+              </Button>
             </form>
 
             <div className="text-center mt-4">
-              <Link href="/login" className="text-zinc-600 text-xs hover:text-zinc-400">← Retour</Link>
+              <Link href="/login" className="text-ink-faint hover:text-ink-secondary text-xs transition-colors">← Retour</Link>
             </div>
           </>
         )}

@@ -177,7 +177,7 @@ export default function DocumentsClient({ user }: { user: any }) {
 
         {/* Grille des 4 documents */}
         {loading ? (
-          <p className="text-zinc-500 text-sm text-center py-8">Chargement…</p>
+          <p className="text-ink-muted text-sm text-center py-8">Chargement…</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {DOC_TYPES.map(dt => {
@@ -188,13 +188,13 @@ export default function DocumentsClient({ user }: { user: any }) {
 
               return (
                 <div key={dt.value}
-                  className={`bg-[#1A1A1A] border rounded-2xl p-4 ${
-                    cfg ? cfg.bg : 'border-[#2a2a2a]'
+                  className={`bg-surface border rounded-2xl p-4 ${
+                    cfg ? cfg.bg : 'border'
                   }`}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span className="text-2xl">{dt.icon}</span>
-                      <p className="text-white font-semibold text-sm">{dt.label}</p>
+                      <p className="text-ink font-semibold text-sm">{dt.label}</p>
                     </div>
                     {cfg && (
                       <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
@@ -204,16 +204,16 @@ export default function DocumentsClient({ user }: { user: any }) {
                   {doc ? (
                     <>
                       <div className="space-y-1 mb-3">
-                        <p className="text-zinc-400 text-xs">
+                        <p className="text-ink-secondary text-xs">
                           Expire le{' '}
-                          <span className={`font-semibold ${cfg?.color ?? 'text-white'}`}>
+                          <span className={`font-semibold ${cfg?.color ?? 'text-ink'}`}>
                             {new Date(doc.expires_at).toLocaleDateString('fr-BE', {
                               day: '2-digit', month: 'long', year: 'numeric'
                             })}
                           </span>
                         </p>
                         {days !== null && days >= 0 && (
-                          <p className="text-zinc-600 text-xs">
+                          <p className="text-ink-faint text-xs">
                             Dans {days} jour{days > 1 ? 's' : ''}
                           </p>
                         )}
@@ -225,8 +225,8 @@ export default function DocumentsClient({ user }: { user: any }) {
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => setViewDoc(doc)}
-                          className="flex-1 py-2 bg-[#2a2a2a] text-zinc-300 rounded-xl text-xs font-medium
-                                     hover:bg-[#333] transition-colors">
+                          className="flex-1 py-2 bg-surface-hover text-ink-secondary rounded-xl text-xs font-medium
+                                     hover:bg-surface-2 transition-colors">
                           👁 Voir
                         </button>
                         <button onClick={() => openEdit(dt.value)}
@@ -238,7 +238,7 @@ export default function DocumentsClient({ user }: { user: any }) {
                     </>
                   ) : (
                     <>
-                      <p className="text-zinc-600 text-xs mb-3">Aucun document enregistré</p>
+                      <p className="text-ink-faint text-xs mb-3">Aucun document enregistré</p>
                       <button onClick={() => openEdit(dt.value)}
                         className="w-full py-2 bg-brand text-white rounded-xl text-xs font-semibold
                                    hover:bg-brand/90 transition-colors">
@@ -256,41 +256,41 @@ export default function DocumentsClient({ user }: { user: any }) {
         {viewDoc && (
           <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
             onClick={() => setViewDoc(null)}>
-            <div className="bg-[#1A1A1A] rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto"
+            <div className="bg-surface rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto"
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white font-bold">
+                <h2 className="text-ink font-bold">
                   {DOC_TYPES.find(d => d.value === viewDoc.doc_type)?.label}
                 </h2>
-                <button onClick={() => setViewDoc(null)} className="text-zinc-500 text-2xl">×</button>
+                <button onClick={() => setViewDoc(null)} className="text-ink-muted text-2xl">×</button>
               </div>
               <img src={viewDoc.file_url} alt="Recto"
-                className="w-full rounded-xl border border-[#2a2a2a] mb-2 object-contain max-h-96 bg-[#0F0F0F]" />
+                className="w-full rounded-xl border border mb-2 object-contain max-h-96 bg-surface" />
               {viewDoc.file_url_verso && (
                 <>
-                  <p className="text-zinc-600 text-xs text-center mb-2">Verso</p>
+                  <p className="text-ink-faint text-xs text-center mb-2">Verso</p>
                   <img src={viewDoc.file_url_verso} alt="Verso"
-                    className="w-full rounded-xl border border-[#2a2a2a] mb-4 object-contain max-h-96 bg-[#0F0F0F]" />
+                    className="w-full rounded-xl border border mb-4 object-contain max-h-96 bg-surface" />
                 </>
               )}
               <div className="space-y-2">
-                <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
-                  <span className="text-zinc-500 text-sm">Expiration</span>
-                  <span className="text-white text-sm">
+                <div className="flex justify-between py-2 border-b border">
+                  <span className="text-ink-muted text-sm">Expiration</span>
+                  <span className="text-ink text-sm">
                     {new Date(viewDoc.expires_at).toLocaleDateString('fr-BE', {
                       day: '2-digit', month: 'long', year: 'numeric'
                     })}
                   </span>
                 </div>
                 {viewDoc.notes && (
-                  <div className="flex justify-between py-2 border-b border-[#2a2a2a]">
-                    <span className="text-zinc-500 text-sm">Notes</span>
-                    <span className="text-white text-sm text-right max-w-[60%]">{viewDoc.notes}</span>
+                  <div className="flex justify-between py-2 border-b border">
+                    <span className="text-ink-muted text-sm">Notes</span>
+                    <span className="text-ink text-sm text-right max-w-[60%]">{viewDoc.notes}</span>
                   </div>
                 )}
                 <div className="flex justify-between py-2">
-                  <span className="text-zinc-500 text-sm">Mis à jour</span>
-                  <span className="text-zinc-400 text-sm">
+                  <span className="text-ink-muted text-sm">Mis à jour</span>
+                  <span className="text-ink-secondary text-sm">
                     {new Date(viewDoc.updated_at).toLocaleDateString('fr-BE')}
                   </span>
                 </div>
@@ -303,40 +303,40 @@ export default function DocumentsClient({ user }: { user: any }) {
         {editDoc && (
           <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center"
             onClick={() => setEditDoc(null)}>
-            <div className="bg-[#1A1A1A] w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6
+            <div className="bg-surface w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6
                             max-h-[90vh] overflow-y-auto"
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-5">
-                <h2 className="text-white font-bold text-lg">
+                <h2 className="text-ink font-bold text-lg">
                   {getDoc(editDoc) ? 'Modifier' : 'Ajouter'} —{' '}
                   {DOC_TYPES.find(d => d.value === editDoc)?.label}
                 </h2>
-                <button onClick={() => setEditDoc(null)} className="text-zinc-500 text-2xl">×</button>
+                <button onClick={() => setEditDoc(null)} className="text-ink-muted text-2xl">×</button>
               </div>
 
               {/* Photo recto */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                <label className="block text-sm font-medium text-ink-secondary mb-2">
                   {!!(editDoc && DUAL_PHOTO_TYPES.includes(editDoc)) ? 'Photo recto *' : 'Photo du document'}{!getDoc(editDoc) && ' *'}
                 </label>
                 {formPreview ? (
-                  <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
-                    <img src={formPreview} alt="Aperçu recto" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                  <div className="rounded-xl overflow-hidden border border mb-2">
+                    <img src={formPreview} alt="Aperçu recto" className="w-full max-h-48 object-contain bg-surface" />
                   </div>
                 ) : getDoc(editDoc)?.file_url ? (
-                  <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
+                  <div className="rounded-xl overflow-hidden border border mb-2">
                     <img src={getDoc(editDoc)!.file_url} alt="Recto actuel"
-                      className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
-                    <p className="text-zinc-600 text-xs text-center py-1">Recto actuel</p>
+                      className="w-full max-h-48 object-contain bg-surface" />
+                    <p className="text-ink-faint text-xs text-center py-1">Recto actuel</p>
                   </div>
                 ) : null}
                 <div className="flex gap-2">
                   <button onClick={() => cameraRef.current?.click()}
-                    className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
+                    className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">
                     📷 Photo
                   </button>
                   <button onClick={() => fileRef.current?.click()}
-                    className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
+                    className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">
                     🗂️ Galerie
                   </button>
                 </div>
@@ -349,25 +349,25 @@ export default function DocumentsClient({ user }: { user: any }) {
               {/* Photo verso (uniquement pour id_card, driving_license, driver_card) */}
               {!!(editDoc && DUAL_PHOTO_TYPES.includes(editDoc)) && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">Photo verso *</label>
+                  <label className="block text-sm font-medium text-ink-secondary mb-2">Photo verso *</label>
                   {formPreviewVerso ? (
-                    <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
-                      <img src={formPreviewVerso} alt="Aperçu verso" className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
+                    <div className="rounded-xl overflow-hidden border border mb-2">
+                      <img src={formPreviewVerso} alt="Aperçu verso" className="w-full max-h-48 object-contain bg-surface" />
                     </div>
                   ) : getDoc(editDoc)?.file_url_verso ? (
-                    <div className="rounded-xl overflow-hidden border border-[#2a2a2a] mb-2">
+                    <div className="rounded-xl overflow-hidden border border mb-2">
                       <img src={getDoc(editDoc)!.file_url_verso} alt="Verso actuel"
-                        className="w-full max-h-48 object-contain bg-[#0F0F0F]" />
-                      <p className="text-zinc-600 text-xs text-center py-1">Verso actuel</p>
+                        className="w-full max-h-48 object-contain bg-surface" />
+                      <p className="text-ink-faint text-xs text-center py-1">Verso actuel</p>
                     </div>
                   ) : null}
                   <div className="flex gap-2">
                     <button onClick={() => cameraVersoRef.current?.click()}
-                      className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
+                      className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">
                       📷 Photo
                     </button>
                     <button onClick={() => fileVersoRef.current?.click()}
-                      className="flex-1 py-3 bg-[#2a2a2a] text-zinc-300 rounded-xl text-sm font-medium hover:bg-[#333] transition-colors">
+                      className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">
                       🗂️ Galerie
                     </button>
                   </div>
@@ -380,24 +380,24 @@ export default function DocumentsClient({ user }: { user: any }) {
 
               {/* Date d'expiration */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-zinc-400 mb-1.5">
+                <label className="block text-sm font-medium text-ink-secondary mb-1.5">
                   Date d'expiration *
                 </label>
                 <input type="date" value={formExpiry}
                   onChange={e => setFormExpiry(e.target.value)}
-                  className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3
-                             text-white focus:outline-none focus:border-brand" />
+                  className="w-full bg-surface border border rounded-xl px-4 py-3
+                             text-ink focus:outline-none focus:border-brand" />
               </div>
 
               {/* Notes */}
               <div className="mb-5">
-                <label className="block text-sm font-medium text-zinc-400 mb-1.5">
-                  Notes <span className="text-zinc-600">(optionnel)</span>
+                <label className="block text-sm font-medium text-ink-secondary mb-1.5">
+                  Notes <span className="text-ink-faint">(optionnel)</span>
                 </label>
                 <input type="text" placeholder="Numéro de document, remarques…"
                   value={formNotes} onChange={e => setFormNotes(e.target.value)}
-                  className="w-full bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-4 py-3
-                             text-white placeholder-zinc-600 focus:outline-none focus:border-brand" />
+                  className="w-full bg-surface border border rounded-xl px-4 py-3
+                             text-ink placeholder-zinc-600 focus:outline-none focus:border-brand" />
               </div>
 
               {error && (
@@ -408,7 +408,7 @@ export default function DocumentsClient({ user }: { user: any }) {
 
               <div className="flex gap-2">
                 <button onClick={() => setEditDoc(null)}
-                  className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl font-medium">
+                  className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl font-medium">
                   Annuler
                 </button>
                 <button onClick={handleSave} disabled={uploading}

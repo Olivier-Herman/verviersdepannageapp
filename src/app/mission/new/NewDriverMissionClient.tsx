@@ -24,9 +24,9 @@ interface Model { id: number; name: string; brand_id: number }
 
 const SOURCES = [
   { value: 'police', label: 'Police',  icon: '🚔', color: 'border-blue-700  bg-blue-900/40'  },
-  { value: 'prive',  label: 'Privé',   icon: '👤', color: 'border-zinc-600  bg-zinc-800/40'  },
+  { value: 'prive',  label: 'Privé',   icon: '👤', color: 'border-zinc-600  bg-surface-2/40'  },
   { value: 'garage', label: 'Garage',  icon: '🔧', color: 'border-amber-700 bg-amber-900/40' },
-  { value: 'autre',  label: 'Autre',   icon: '📋', color: 'border-zinc-600  bg-zinc-800/40'  },
+  { value: 'autre',  label: 'Autre',   icon: '📋', color: 'border-zinc-600  bg-surface-2/40'  },
 ]
 
 const TYPES = [
@@ -75,7 +75,7 @@ function AddressInput({ value, onChange, onSelect, mapsReady }: {
       onChange={e => onChange(e.target.value)}
       placeholder="Ex: Rue de la Paix 12, Liège"
       autoFocus
-      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-4 text-white text-base focus:outline-none focus:border-brand placeholder:text-zinc-600"
+      className="w-full bg-surface border border rounded-xl px-4 py-4 text-ink text-base focus:outline-none focus:border-brand placeholder:text-ink-faint"
     />
   )
 }
@@ -282,22 +282,22 @@ export default function NewDriverMissionClient() {
         onReady={() => setMapsReady(true)}
       />
 
-      <div className="min-h-screen bg-[#0F0F0F] pb-32">
+      <div className="min-h-screen bg-surface pb-32">
 
         {/* Header sticky */}
-        <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-4 pt-12 pb-4 sticky top-0 z-20">
+        <div className="bg-surface border-b border px-4 pt-12 pb-4 sticky top-0 z-20">
           <div className="flex items-center gap-3 mb-3">
             <button
               onClick={() => step > 1 ? setStep((step - 1) as 1|2|3|4) : router.push('/mission')}
-              className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg flex-shrink-0">
+              className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg flex-shrink-0">
               ←
             </button>
             <div>
-              <h1 className="text-white font-bold text-lg">Nouvelle intervention</h1>
-              <p className="text-zinc-500 text-xs">Étape {step} sur 4</p>
+              <h1 className="text-ink font-bold text-lg">Nouvelle intervention</h1>
+              <p className="text-ink-muted text-xs">Étape {step} sur 4</p>
             </div>
           </div>
-          <div className="h-1 bg-[#2a2a2a] rounded-full overflow-hidden">
+          <div className="h-1 bg-surface-hover rounded-full overflow-hidden">
             <div className="h-full bg-brand rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
         </div>
@@ -307,13 +307,13 @@ export default function NewDriverMissionClient() {
           {/* ── Étape 1 : Source ────────────────────────────────────────── */}
           {step === 1 && (
             <>
-              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Qui fait appel à vous ?</p>
+              <p className="text-ink-secondary text-xs font-semibold uppercase tracking-widest">Qui fait appel à vous ?</p>
               <div className="grid grid-cols-2 gap-3">
                 {SOURCES.map(s => (
                   <button key={s.value}
                     onClick={() => { setSource(s.value); setStep(2) }}
-                    className={`flex flex-col items-center justify-center py-7 rounded-2xl border-2 text-white font-bold transition active:scale-95 ${
-                      source === s.value ? s.color : 'bg-[#1A1A1A] border-[#2a2a2a]'
+                    className={`flex flex-col items-center justify-center py-7 rounded-2xl border-2 text-ink font-bold transition active:scale-95 ${
+                      source === s.value ? s.color : 'bg-surface border'
                     }`}>
                     <span className="text-4xl mb-2">{s.icon}</span>
                     <span className="text-base">{s.label}</span>
@@ -326,7 +326,7 @@ export default function NewDriverMissionClient() {
           {/* ── Étape 2 : Adresse ───────────────────────────────────────── */}
           {step === 2 && (
             <>
-              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Où se trouve la panne ?</p>
+              <p className="text-ink-secondary text-xs font-semibold uppercase tracking-widest">Où se trouve la panne ?</p>
 
               {/* Bouton position actuelle */}
               <button
@@ -342,9 +342,9 @@ export default function NewDriverMissionClient() {
               </button>
 
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-[#2a2a2a]" />
-                <span className="text-zinc-600 text-xs">ou saisir manuellement</span>
-                <div className="flex-1 h-px bg-[#2a2a2a]" />
+                <div className="flex-1 h-px bg-surface-hover" />
+                <span className="text-ink-faint text-xs">ou saisir manuellement</span>
+                <div className="flex-1 h-px bg-surface-hover" />
               </div>
 
               <AddressInput
@@ -356,7 +356,7 @@ export default function NewDriverMissionClient() {
                 }}
               />
               {!mapsReady && (
-                <p className="text-zinc-600 text-xs">⏳ Chargement de la recherche d&apos;adresse…</p>
+                <p className="text-ink-faint text-xs">⏳ Chargement de la recherche d&apos;adresse…</p>
               )}
               {address && addrLat && (
                 <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 text-green-400 text-sm">
@@ -370,19 +370,19 @@ export default function NewDriverMissionClient() {
           {/* ── Étape 3 : Type ──────────────────────────────────────────── */}
           {step === 3 && (
             <>
-              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Type d&apos;intervention</p>
+              <p className="text-ink-secondary text-xs font-semibold uppercase tracking-widest">Type d&apos;intervention</p>
               <div className="space-y-3">
                 {TYPES.map(t => (
                   <button key={t.value}
                     onClick={() => { setMissionType(t.value); setStep(4) }}
                     className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition active:scale-[0.98] ${
-                      missionType === t.value ? t.color : 'bg-[#1A1A1A] border-[#2a2a2a]'
+                      missionType === t.value ? t.color : 'bg-surface border'
                     }`}>
                     <div className="flex-1">
-                      <p className="text-white font-bold text-xl">{t.label}</p>
-                      <p className="text-zinc-400 text-sm">{t.sub}</p>
+                      <p className="text-ink font-bold text-xl">{t.label}</p>
+                      <p className="text-ink-secondary text-sm">{t.sub}</p>
                     </div>
-                    <span className="text-zinc-600 text-2xl">→</span>
+                    <span className="text-ink-faint text-2xl">→</span>
                   </button>
                 ))}
               </div>
@@ -392,19 +392,19 @@ export default function NewDriverMissionClient() {
           {/* ── Étape 4 : Véhicule ──────────────────────────────────────── */}
           {step === 4 && (
             <div className="space-y-4">
-              <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Véhicule à prendre en charge</p>
+              <p className="text-ink-secondary text-xs font-semibold uppercase tracking-widest">Véhicule à prendre en charge</p>
 
               {/* Recherche plaque */}
               {vehicleState === 'idle' && (
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Recherche par plaque</label>
+                  <label className="block text-ink text-sm font-medium mb-2">Recherche par plaque</label>
                   <div className="flex gap-2">
                     <input
                       value={plateQuery}
                       onChange={e => setPlateQuery(e.target.value.toUpperCase())}
                       onKeyDown={e => e.key === 'Enter' && searchVehicle()}
                       placeholder="Ex: 1-ABC-123"
-                      className="flex-1 bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3.5 text-white font-mono text-base uppercase focus:outline-none focus:border-brand placeholder:text-zinc-600 placeholder:normal-case"
+                      className="flex-1 bg-surface border border rounded-xl px-4 py-3.5 text-ink font-mono text-base uppercase focus:outline-none focus:border-brand placeholder:text-ink-faint placeholder:normal-case"
                     />
                     <button onClick={searchVehicle} disabled={searching || plateQuery.length < 3}
                       className="px-4 py-3.5 bg-brand disabled:opacity-40 text-white rounded-xl font-medium text-sm transition">
@@ -417,24 +417,24 @@ export default function NewDriverMissionClient() {
               {/* Véhicule trouvé — demande confirmation */}
               {vehicleState === 'found' && vehicleFound && (
                 <div className="space-y-3">
-                  <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-                    <p className="text-zinc-400 text-xs mb-3">Véhicule trouvé pour la plaque <span className="font-mono text-white">{plateQuery}</span> :</p>
+                  <div className="bg-surface border border rounded-2xl p-4">
+                    <p className="text-ink-secondary text-xs mb-3">Véhicule trouvé pour la plaque <span className="font-mono text-ink">{plateQuery}</span> :</p>
                     <div className="flex items-start gap-3 mb-4">
                       <span className="text-2xl">🚘</span>
                       <div>
-                        <p className="text-white font-bold text-lg">{vehicleFound.brand} {vehicleFound.model}</p>
-                        <p className="text-zinc-400 font-mono text-sm">{vehicleFound.plate}</p>
-                        {vehicleFound.vin && <p className="text-zinc-500 text-xs mt-0.5">VIN : {vehicleFound.vin}</p>}
+                        <p className="text-ink font-bold text-lg">{vehicleFound.brand} {vehicleFound.model}</p>
+                        <p className="text-ink-secondary font-mono text-sm">{vehicleFound.plate}</p>
+                        {vehicleFound.vin && <p className="text-ink-muted text-xs mt-0.5">VIN : {vehicleFound.vin}</p>}
                       </div>
                     </div>
-                    <p className="text-zinc-400 text-sm font-medium mb-3">C&apos;est bien ce véhicule ?</p>
+                    <p className="text-ink-secondary text-sm font-medium mb-3">C&apos;est bien ce véhicule ?</p>
                     <div className="flex gap-2">
                       <button onClick={confirmVehicle}
-                        className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm transition">
+                        className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-ink font-bold rounded-xl text-sm transition">
                         ✅ Oui, c&apos;est le bon
                       </button>
                       <button onClick={rejectVehicle}
-                        className="flex-1 py-3 bg-[#2a2a2a] hover:bg-[#333] text-zinc-300 font-medium rounded-xl text-sm transition">
+                        className="flex-1 py-3 bg-surface-hover hover:bg-surface-2 text-ink-secondary font-medium rounded-xl text-sm transition">
                         ❌ Non, autre véhicule
                       </button>
                     </div>
@@ -447,12 +447,12 @@ export default function NewDriverMissionClient() {
                 <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 flex items-start gap-3">
                   <span className="text-green-400 text-xl">✓</span>
                   <div className="flex-1">
-                    <p className="text-white font-bold">{vehicleFound.brand} {vehicleFound.model}</p>
+                    <p className="text-ink font-bold">{vehicleFound.brand} {vehicleFound.model}</p>
                     <p className="text-green-400 font-mono text-sm">{vehicleFound.plate}</p>
-                    {vehicleFound.vin && <p className="text-zinc-500 text-xs mt-0.5">VIN : {vehicleFound.vin}</p>}
+                    {vehicleFound.vin && <p className="text-ink-muted text-xs mt-0.5">VIN : {vehicleFound.vin}</p>}
                   </div>
                   <button onClick={() => { setVehicleState('idle'); setVehicleFound(null) }}
-                    className="text-zinc-500 text-xs hover:text-white">Changer</button>
+                    className="text-ink-muted text-xs hover:text-ink">Changer</button>
                 </div>
               )}
 
@@ -460,18 +460,18 @@ export default function NewDriverMissionClient() {
               {(vehicleState === 'rejected' || vehicleState === 'not_found') && (
                 <div className="space-y-3">
                   {vehicleState === 'not_found' ? (
-                    <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 text-zinc-400 text-sm">
-                      Plaque <span className="font-mono text-white">{plateQuery}</span> non connue dans notre base de données — remplis les informations manuellement.
+                    <div className="bg-surface border border rounded-xl px-4 py-3 text-ink-secondary text-sm">
+                      Plaque <span className="font-mono text-ink">{plateQuery}</span> non connue dans notre base de données — remplis les informations manuellement.
                     </div>
                   ) : (
-                    <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3 text-zinc-400 text-sm">
+                    <div className="bg-surface border border rounded-xl px-4 py-3 text-ink-secondary text-sm">
                       Remplis les informations du véhicule réel.
                     </div>
                   )}
 
                   {/* Marque */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Marque *</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Marque *</label>
                     {brands.length > 0 ? (
                       <select
                         value={manualBrandId ?? ''}
@@ -482,64 +482,64 @@ export default function NewDriverMissionClient() {
                           setManualBrand(brand?.name || '')
                           setManualModel('')
                         }}
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:border-brand">
+                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand">
                         <option value="">— Choisir une marque —</option>
                         {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                       </select>
                     ) : (
                       <input value={manualBrand} onChange={e => setManualBrand(e.target.value)}
                         placeholder="BMW, Renault…"
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:border-brand" />
+                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand" />
                     )}
                   </div>
 
                   {/* Modèle */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Modèle *</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Modèle *</label>
                     {filteredModels.length > 0 ? (
                       <select
                         value={manualModel}
                         onChange={e => setManualModel(e.target.value)}
                         disabled={!manualBrandId}
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:border-brand disabled:opacity-40">
+                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand disabled:opacity-40">
                         <option value="">— Choisir un modèle —</option>
                         {filteredModels.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                       </select>
                     ) : (
                       <input value={manualModel} onChange={e => setManualModel(e.target.value)}
                         placeholder="320d, Clio…"
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:border-brand" />
+                        className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand" />
                     )}
                   </div>
 
                   {/* Plaque */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">Plaque *</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Plaque *</label>
                     <input value={manualPlate} onChange={e => setManualPlate(e.target.value.toUpperCase())}
                       placeholder="1-ABC-123"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white font-mono text-sm uppercase focus:outline-none focus:border-brand" />
+                      className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink font-mono text-sm uppercase focus:outline-none focus:border-brand" />
                   </div>
 
                   {/* VIN */}
                   <div>
-                    <label className="block text-zinc-500 text-xs mb-1.5">
-                      VIN / Châssis <span className="text-zinc-600">(souhaité)</span>
+                    <label className="block text-ink-muted text-xs mb-1.5">
+                      VIN / Châssis <span className="text-ink-faint">(souhaité)</span>
                     </label>
                     <input value={manualVin} onChange={e => setManualVin(e.target.value.toUpperCase())}
                       placeholder="WBA3A5C55DF..."
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white font-mono text-xs uppercase focus:outline-none focus:border-brand" />
+                      className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink font-mono text-xs uppercase focus:outline-none focus:border-brand" />
                   </div>
                 </div>
               )}
 
               {/* Note */}
               <div>
-                <label className="block text-zinc-500 text-xs mb-1.5">
-                  Note rapide <span className="text-zinc-600">(optionnel)</span>
+                <label className="block text-ink-muted text-xs mb-1.5">
+                  Note rapide <span className="text-ink-faint">(optionnel)</span>
                 </label>
                 <input value={note} onChange={e => setNote(e.target.value)}
                   placeholder="Voie rapide, conducteur seul, clés dans le véhicule…"
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:border-brand" />
+                  className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink text-sm focus:outline-none focus:border-brand" />
               </div>
             </div>
           )}
@@ -552,7 +552,7 @@ export default function NewDriverMissionClient() {
         </div>
 
         {/* ── Boutons fixes ────────────────────────────────────────────────── */}
-        <div className="fixed bottom-0 left-0 right-0 bg-[#0F0F0F]/95 border-t border-[#2a2a2a] px-4 py-4 space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 bg-surface/95 border-t border px-4 py-4 space-y-2">
 
           {step === 2 && (
             <button onClick={() => { if (address) setStep(3) }} disabled={!address}
@@ -565,12 +565,12 @@ export default function NewDriverMissionClient() {
             <>
               {canSubmit && (
                 <button onClick={() => handleSubmit(false)} disabled={saving}
-                  className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
+                  className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-ink font-bold rounded-2xl text-base transition">
                   {saving ? '⏳ Création en cours…' : '✅ Créer et démarrer'}
                 </button>
               )}
               <button onClick={() => handleSubmit(true)} disabled={saving}
-                className="w-full py-2.5 bg-[#1A1A1A] border border-[#2a2a2a] text-zinc-400 hover:text-white rounded-2xl text-sm transition">
+                className="w-full py-2.5 bg-surface border border text-ink-secondary hover:text-ink rounded-2xl text-sm transition">
                 Continuer sans véhicule
               </button>
             </>

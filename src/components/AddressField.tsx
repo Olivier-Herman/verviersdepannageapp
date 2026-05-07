@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { Input } from '@/components/ui/Input'
 
 // Charge le script Google Maps + Places (idempotent, partagé avec AddressField)
 export function loadGoogleMaps(gmKey: string): Promise<void> {
@@ -125,15 +126,14 @@ export default function AddressField({
   }, [gmKey])
 
   return (
-    <div className={className}>
-      {label && <label className="block text-zinc-500 text-xs mb-1.5">{label}</label>}
-      <div className="relative">
-        <input ref={ref} value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand placeholder:text-zinc-600 pr-8" />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 text-xs pointer-events-none">📍</span>
-      </div>
-    </div>
+    <Input
+      ref={ref}
+      label={label}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={className}
+      iconTrailing={<span aria-hidden="true">📍</span>}
+    />
   )
 }

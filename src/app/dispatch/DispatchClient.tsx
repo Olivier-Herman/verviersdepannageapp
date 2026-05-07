@@ -5,11 +5,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link        from 'next/link'
 import { useRouter }   from 'next/navigation'
-import { signOut }     from 'next-auth/react'
-import { usePathname } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import DispatchMap, { type MapMission, type MapDriver } from '@/components/dispatch/DispatchMap'
+import AppShell from '@/components/layout/AppShell'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -120,8 +119,6 @@ const TABS = [
 
 const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','vab','police','prive','garage']
 
-import { filterNavItems } from '@/components/layout/nav-items'
-import MobileNavDrawer from '@/components/layout/MobileNavDrawer'
 
 function getDelai(received_at: string): { label: string; color: string; urgency: 'ok'|'warn'|'alert'|'critical' } {
   const mins  = Math.floor((Date.now() - new Date(received_at).getTime()) / 60000)
@@ -139,53 +136,6 @@ const URGENCY_BORDER: Record<string, string> = {
   warn:     'border-yellow-500/40',                 // 15-30 min : attention
   alert:    'border-orange-500/50',                 // 30-60 min : urgent
   critical: 'border-red-500/70 animate-pulse',      // > 60 min : critique, clignote
-}
-
-// ── Sidebar ───────────────────────────────────────────────────────────────────
-
-function Sidebar({ userName, userRole, userModules }: { userName: string; userRole: string; userModules: string[] }) {
-  const pathname = usePathname()
-  const NAV_ITEMS = filterNavItems({ userModules, userRole })
-  const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
-  return (
-    <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-[#1A1A1A] border-r border-[#2a2a2a] fixed top-0 left-0 h-full z-30">
-      <div className="px-6 py-5 border-b border-[#2a2a2a]">
-        <Link href="/dashboard">
-          <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
-        </Link>
-      </div>
-      <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(item => {
-          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
-          return (
-            <Link key={item.href} href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                active ? 'bg-brand/10 text-white border border-brand/20' : 'text-zinc-400 hover:text-white hover:bg-[#2a2a2a]'
-              }`}>
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </Link>
-          )
-        })}
-      </nav>
-      <div className="px-3 py-4 border-t border-[#2a2a2a]">
-        <div className="flex items-center gap-3 px-3 py-2.5 mb-1">
-          <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{userName}</p>
-            <p className="text-zinc-500 text-xs capitalize">{userRole}</p>
-          </div>
-        </div>
-        <button onClick={() => signOut({ callbackUrl: '/login' })}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all w-full">
-          <span className="text-base">🚪</span>
-          Déconnexion
-        </button>
-      </div>
-    </aside>
-  )
 }
 
 // ── Panel statut chauffeurs ───────────────────────────────────────────────────
@@ -498,18 +448,21 @@ export default function DispatchClient({
   drivers,
   userName,
   userRole,
+  userEmail,
+  userId,
   userModules = [],
 }: {
   drivers:      Driver[]
   userName:     string
   userRole:     string
+  userEmail?:   string
+  userId?:      string
   userModules?: string[]
 }) {
   const router = useRouter()
 
   const [activeTab,      setActiveTab]      = useState('new')
   const [sourceFilter,   setSourceFilter]   = useState('')
-  const [drawerOpen,     setDrawerOpen]     = useState(false)
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
   // Tick toutes les 60s — force le re-render des cards pour que les delais
@@ -650,29 +603,20 @@ export default function DispatchClient({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex">
-      <Sidebar userName={userName} userRole={userRole} userModules={userModules} />
-      <MobileNavDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        userName={userName}
-        userRole={userRole}
-        userModules={userModules}
-      />
-
-      <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
-
-        {/* ── Barre de contrôle ────────────────────────────────────────── */}
-        <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-3 lg:px-6 pt-12 lg:pt-4 pb-3 lg:pb-4 sticky top-0 z-20 safe-top">
-          <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
-            {/* Burger mobile */}
-            <button onClick={() => setDrawerOpen(true)}
-              aria-label="Ouvrir le menu"
-              className="lg:hidden w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-xl flex-shrink-0 active:bg-[#333]">
-              ☰
-            </button>
-
-            <h1 className="text-white font-bold text-lg lg:text-xl mr-1 lg:mr-2">Dispatch</h1>
+    <AppShell
+      title="Dispatch"
+      userName={userName}
+      userEmail={userEmail}
+      userId={userId}
+      userRole={userRole}
+      userModules={userModules}
+    >
+      {/* ── Barre de contrôle ──────────────────────────────────────────────
+          Conservée hex hardcodée pour l'instant — sera refondue en étape E
+          (intégration <KpiCard>, <MissionCard>, etc.). Burger mobile et h1
+          "Dispatch" retirés (gérés par AppShell). */}
+      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-3 lg:px-6 py-3 lg:py-4 sticky top-0 z-10">
+        <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
 
             <input
               type="text"
@@ -945,7 +889,6 @@ export default function DispatchClient({
             </>
           )}
         </main>
-      </div>
-    </div>
+    </AppShell>
   )
 }

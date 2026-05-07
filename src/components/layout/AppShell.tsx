@@ -4,13 +4,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { useState } from 'react'
-import { Moon, Sun, LogOut, ArrowLeft, Menu } from 'lucide-react'
+import { Moon, Sun, LogOut, Menu, ChevronRight } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
 import { useTheme } from '@/components/theme/ThemeProvider'
+import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
 
 interface AppShellProps {
   children:     React.ReactNode
@@ -39,6 +39,7 @@ export default function AppShell({
   const visibleNav = filterNavItems({ userModules, userRole })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { theme, toggleTheme, mounted } = useTheme()
+  const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
 
   return (
     <div className="min-h-screen flex">
@@ -46,7 +47,11 @@ export default function AppShell({
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
       <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full z-30">
         <div className="px-6 py-5 border-b">
-          <Link href="/dashboard">
+          <Link
+            href="/dashboard"
+            title="Retour au dashboard"
+            className="inline-block hover:opacity-80 transition-opacity"
+          >
             <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
           </Link>
         </div>
@@ -69,39 +74,28 @@ export default function AppShell({
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t">
-          <div className="flex items-center gap-1 mb-1">
-            <Link href="/profil"
-              className="flex-1 flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors min-w-0">
-              <Avatar name={userName || '?'} userId={userId} email={userEmail} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="text-ink text-sm font-medium truncate">{userName}</p>
-                <p className="text-ink-faint text-xs capitalize">{userRole}</p>
-              </div>
-            </Link>
-            <button
-              onClick={toggleTheme}
-              aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
-              title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
-              className="w-9 h-9 flex items-center justify-center rounded-md text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors flex-shrink-0">
-              {mounted && (theme === 'light' ? <Moon size={16} /> : <Sun size={16} />)}
-            </button>
-          </div>
-          <Button
-            variant="ghost"
-            fullWidth
-            iconLeft={<LogOut size={14} />}
-            onClick={() => signOut({ callbackUrl: '/login' })}
-          >
-            Déconnexion
-          </Button>
+        {/* ── FOOTER 3 ZONES ── */}
+        <div className="px-2 py-2 border-t space-y-1">
+          {/* Zone 1 — User block (clic vers /profil) */}
+          <UserBlock userName={userName} userRole={userRole} userId={userId} userEmail={userEmail} />
+
+          {/* Zone 2 — Status toggle */}
+          <StatusToggle onDuty={onDuty} setOnDuty={setOnDuty} isLockedByDuty={isLockedByDuty} />
+
+          {/* Zone 3 — Footer actions (Thème + Déconnexion) */}
+          <FooterActions theme={theme} toggleTheme={toggleTheme} mounted={mounted} />
         </div>
       </aside>
 
       {/* ── CONTENU PRINCIPAL ────────────────────────────── */}
       <div className="flex-1 flex flex-col lg:ml-64 min-h-screen">
 
-        {/* Header mobile */}
+        {/* Header mobile — burger à gauche, logo centré.
+            Note (sub-phase 2.3.A bis) : le bouton retour à droite a été retiré
+            (anti-pattern UX — le retour appartient au contenu via Link/router.back,
+            pas au shell). La prop `backHref` reste dans la signature pour
+            rétrocompatibilité avec les pages qui la passent encore. Le menu
+            (Dashboard inclus) est accessible via le burger. */}
         <div className="lg:hidden bg-surface border-b px-4 pt-12 pb-3 safe-top sticky top-0 z-20">
           <div className="flex items-center gap-3 mb-2">
             <button onClick={() => setDrawerOpen(true)}
@@ -109,13 +103,12 @@ export default function AppShell({
               className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-md text-ink flex-shrink-0">
               <Menu size={18} />
             </button>
-            <Link href="/dashboard" className="flex-1 flex justify-center">
+            <Link
+              href="/dashboard"
+              title="Retour au dashboard"
+              className="flex-1 flex justify-center pr-10 hover:opacity-80 transition-opacity"
+            >
               <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
-            </Link>
-            <Link href={backHref}
-              aria-label="Retour"
-              className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-md text-ink flex-shrink-0">
-              <ArrowLeft size={16} />
             </Link>
           </div>
           <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
@@ -149,6 +142,117 @@ export default function AppShell({
           {children}
         </main>
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────
+// SOUS-COMPOSANTS DU FOOTER (réutilisés dans MobileNavDrawer)
+// ─────────────────────────────────────────────────────────
+
+export function UserBlock({
+  userName, userRole, userId, userEmail, onClick,
+}: {
+  userName: string
+  userRole: string
+  userId?: string
+  userEmail?: string
+  onClick?: () => void
+}) {
+  return (
+    <Link
+      href="/profil"
+      onClick={onClick}
+      className="group flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors min-w-0"
+    >
+      <Avatar name={userName || '?'} userId={userId} email={userEmail} size="sm" />
+      <div className="flex-1 min-w-0">
+        <p className="text-ink text-[13px] font-semibold truncate">{userName || 'Utilisateur'}</p>
+        <p className="text-ink-muted text-[11px] truncate capitalize">{userRole}</p>
+      </div>
+      <ChevronRight
+        size={14}
+        className="text-ink-faint group-hover:text-ink-secondary group-hover:translate-x-0.5 transition-all flex-shrink-0"
+      />
+    </Link>
+  )
+}
+
+export function StatusToggle({
+  onDuty, setOnDuty, isLockedByDuty,
+}: {
+  onDuty: boolean
+  setOnDuty: (v: boolean) => void
+  isLockedByDuty: boolean
+}) {
+  // Verrouillé si planning forcé (schedule_day/night actif sur l'horaire courant)
+  // → on bloque le passage off, mais on peut toujours cliquer pour passer on.
+  const lockedOff = isLockedByDuty && onDuty
+  const tooltip = isLockedByDuty
+    ? 'Statut verrouillé par votre planning de travail'
+    : (onDuty ? 'Cliquer pour passer hors service' : 'Cliquer pour passer en service')
+
+  return (
+    <button
+      type="button"
+      onClick={() => setOnDuty(!onDuty)}
+      disabled={lockedOff}
+      title={tooltip}
+      aria-pressed={onDuty}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-colors ${
+        lockedOff ? 'cursor-help' : 'hover:bg-surface-hover'
+      }`}
+    >
+      <span
+        className={`w-2 h-2 rounded-full flex-shrink-0 ${onDuty ? 'bg-success-fill' : 'bg-ink-faint'}`}
+        style={{
+          boxShadow: onDuty
+            ? '0 0 0 3px var(--color-success-soft)'
+            : '0 0 0 3px var(--bg-surface-hover)',
+        }}
+      />
+      <span className={`text-xs font-semibold flex-1 ${onDuty ? 'text-success' : 'text-ink-muted'}`}>
+        {onDuty ? 'En service' : 'Hors service'}
+      </span>
+      {isLockedByDuty && (
+        <span className="text-[10px] opacity-60" aria-hidden="true">🔒</span>
+      )}
+    </button>
+  )
+}
+
+export function FooterActions({
+  theme, toggleTheme, mounted, onClose,
+}: {
+  theme: 'light' | 'dark'
+  toggleTheme: () => void
+  mounted: boolean
+  onClose?: () => void
+}) {
+  const btnCls =
+    'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium ' +
+    'text-ink-secondary hover:text-ink hover:bg-surface-hover transition-colors'
+
+  return (
+    <div className="flex gap-1">
+      <button
+        type="button"
+        onClick={() => { toggleTheme(); onClose?.() }}
+        aria-label={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+        title={theme === 'light' ? 'Basculer en mode sombre' : 'Basculer en mode clair'}
+        className={btnCls}
+      >
+        {mounted && (theme === 'light' ? <Moon size={14} /> : <Sun size={14} />)}
+        <span>Thème</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => signOut({ callbackUrl: '/login' })}
+        className={btnCls}
+      >
+        <LogOut size={14} />
+        <span>Déconnexion</span>
+      </button>
     </div>
   )
 }

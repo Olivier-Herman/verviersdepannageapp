@@ -21,7 +21,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   accepted:  { label: '✅ Acceptée',    color: 'text-green-400',  bg: 'bg-green-500/10 border-green-500/30'  },
   refused:   { label: '❌ Refusée',     color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/30'      },
   taken:     { label: '🤝 Reprise',     color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/30'    },
-  completed: { label: '✔️ Terminée',    color: 'text-zinc-400',   bg: 'bg-zinc-500/10 border-zinc-500/30'    },
+  completed: { label: '✔️ Terminée',    color: 'text-ink-secondary',   bg: 'bg-ink-faint/10 border-zinc-500/30'    },
 }
 
 type TGRView = 'list' | 'new'
@@ -224,10 +224,10 @@ export default function TGRClient({ user }: { user: any }) {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <img src="/logo-touring.png" alt="Touring" className="h-8 w-auto object-contain" />
-            <div className="w-px h-8 bg-[#2a2a2a]" />
+            <div className="w-px h-8 bg-surface-hover" />
             <div>
-              <p className="text-white font-semibold text-sm">Transport & Remorquage</p>
-              <p className="text-zinc-500 text-xs">{missions.length} mission{missions.length > 1 ? 's' : ''}</p>
+              <p className="text-ink font-semibold text-sm">Transport & Remorquage</p>
+              <p className="text-ink-muted text-xs">{missions.length} mission{missions.length > 1 ? 's' : ''}</p>
             </div>
           </div>
           <button onClick={() => setView('new')}
@@ -237,12 +237,12 @@ export default function TGRClient({ user }: { user: any }) {
         </div>
 
         {loading ? (
-          <p className="text-zinc-500 text-sm text-center py-8">Chargement…</p>
+          <p className="text-ink-muted text-sm text-center py-8">Chargement…</p>
         ) : missions.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-4xl mb-3">🚗</p>
-            <p className="text-white font-medium mb-1">Aucune mission</p>
-            <p className="text-zinc-600 text-sm">Cliquez sur + pour soumettre une nouvelle mission TGR</p>
+            <p className="text-ink font-medium mb-1">Aucune mission</p>
+            <p className="text-ink-faint text-sm">Cliquez sur + pour soumettre une nouvelle mission TGR</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -251,26 +251,26 @@ export default function TGRClient({ user }: { user: any }) {
               const pri = PRIORITY_OPTIONS.find(p => p.value === m.priority)
               return (
                 <button key={m.id} onClick={() => setSelected(m)}
-                  className={`w-full bg-[#1A1A1A] border rounded-2xl p-4 text-left
+                  className={`w-full bg-surface border rounded-2xl p-4 text-left
                                hover:border-brand transition-all ${cfg.bg}`}>
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <p className="text-white font-bold font-mono">{m.reference}</p>
-                      <p className="text-zinc-400 text-sm">{m.plate} — {m.brand} {m.model}</p>
+                      <p className="text-ink font-bold font-mono">{m.reference}</p>
+                      <p className="text-ink-secondary text-sm">{m.plate} — {m.brand} {m.model}</p>
                     </div>
                     <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-zinc-600 mt-1">
+                  <div className="flex items-center justify-between text-xs text-ink-faint mt-1">
                     <span className="truncate max-w-[70%]">{m.pickup_address?.split(',')[0]} → {m.delivery_address?.split(',')[0]}</span>
                     <span className={pri?.color}>{pri?.label}</span>
                   </div>
                   {isAdmin && m.partner && (
-                    <p className="text-zinc-600 text-xs mt-1">Demandeur : {m.partner.name}</p>
+                    <p className="text-ink-faint text-xs mt-1">Demandeur : {m.partner.name}</p>
                   )}
                   {m.distance_km && (
-                    <p className="text-zinc-600 text-xs mt-0.5">{m.distance_km} km</p>
+                    <p className="text-ink-faint text-xs mt-0.5">{m.distance_km} km</p>
                   )}
-                  <p className="text-zinc-700 text-xs mt-1">
+                  <p className="text-ink-faint text-xs mt-1">
                     {new Date(m.created_at).toLocaleDateString('fr-BE')}
                   </p>
                 </button>
@@ -295,8 +295,8 @@ export default function TGRClient({ user }: { user: any }) {
         <div className="text-7xl">✅</div>
         <img src="/logo-touring.png" alt="Touring" className="h-6 w-auto opacity-60" />
         <div>
-          <h2 className="text-white font-bold text-xl mb-2">Mission soumise !</h2>
-          <p className="text-zinc-400 text-sm">
+          <h2 className="text-ink font-bold text-xl mb-2">Mission soumise !</h2>
+          <p className="text-ink-secondary text-sm">
             Votre demande TGR a été transmise à Verviers Dépannage.
             Vous serez notifié dès qu'elle sera traitée.
           </p>
@@ -313,48 +313,48 @@ export default function TGRClient({ user }: { user: any }) {
   return (
     <AppShell title="Nouvelle mission TGR" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="lg:hidden px-4 pt-3 pb-1">
-        <button onClick={() => setView('list')} className="text-zinc-400 hover:text-white text-sm">← Retour</button>
+        <button onClick={() => setView('list')} className="text-ink-secondary hover:text-ink text-sm">← Retour</button>
       </div>
       <div className="px-4 lg:px-8 py-4 max-w-xl flex flex-col gap-5 pb-10">
 
         {/* Logo Touring */}
-        <div className="flex items-center gap-3 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3">
+        <div className="flex items-center gap-3 bg-surface border border rounded-xl px-4 py-3">
           <img src="/logo-touring.png" alt="Touring" className="h-7 w-auto object-contain" />
-          <div className="w-px h-6 bg-[#2a2a2a]" />
-          <p className="text-zinc-400 text-xs">Transport & Remorquage — Nouvelle mission</p>
+          <div className="w-px h-6 bg-surface-hover" />
+          <p className="text-ink-secondary text-xs">Transport & Remorquage — Nouvelle mission</p>
         </div>
 
         {/* Référence dossier */}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-1.5">
+          <label className="block text-sm font-medium text-ink-secondary mb-1.5">
             Référence dossier Touring{' '}
-            <span className="text-zinc-600">(ex: 2026BE131221 — optionnel)</span>
+            <span className="text-ink-faint">(ex: 2026BE131221 — optionnel)</span>
           </label>
           <input type="text" placeholder="2026BE131221" value={reference}
             onChange={e => setReference(e.target.value.toUpperCase())}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                       text-white font-mono placeholder-zinc-700 focus:outline-none focus:border-brand" />
-          <p className="text-zinc-600 text-xs mt-1">
+            className="w-full bg-surface border border rounded-xl px-4 py-3
+                       text-ink font-mono placeholder-zinc-700 focus:outline-none focus:border-brand" />
+          <p className="text-ink-faint text-xs mt-1">
             Si vide, l'immatriculation sera utilisée comme référence sur le devis
           </p>
         </div>
 
         {/* Véhicule */}
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 flex flex-col gap-3">
-          <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">Véhicule</p>
+        <div className="bg-surface border border rounded-2xl p-4 flex flex-col gap-3">
+          <p className="text-ink-secondary text-xs font-semibold uppercase tracking-widest">Véhicule</p>
 
           {/* Plaque + lookup */}
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Immatriculation *</label>
+            <label className="block text-xs text-ink-muted mb-1">Immatriculation *</label>
             <div className="flex gap-2">
               <input type="text" autoCapitalize="characters" placeholder="1ABC234"
                 value={plate} onChange={e => { setPlate(e.target.value.toUpperCase()); setVehicleMatch(null); setVehicleConfirmed(false); setBrand(''); setModel('') }}
                 onBlur={handlePlateLookup}
-                className="flex-1 bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                           text-white font-mono tracking-widest placeholder-zinc-700
+                className="flex-1 bg-surface border border-strong rounded-xl px-4 py-2.5
+                           text-ink font-mono tracking-widest placeholder-zinc-700
                            focus:outline-none focus:border-brand" />
               <button onClick={handlePlateLookup} disabled={plateSearching || !plate.trim()}
-                className="px-3 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm hover:bg-[#333] disabled:opacity-40">
+                className="px-3 py-2.5 bg-surface-hover text-ink-secondary rounded-xl text-sm hover:bg-surface-2 disabled:opacity-40">
                 {plateSearching ? '⏳' : '🔍'}
               </button>
             </div>
@@ -362,30 +362,30 @@ export default function TGRClient({ user }: { user: any }) {
 
           {/* Véhicule trouvé — confirmation */}
           {vehicleMatch && !vehicleConfirmed && (
-            <div className="bg-[#0F0F0F] border border-brand/30 rounded-xl p-3">
+            <div className="bg-surface border border-brand/30 rounded-xl p-3">
               <p className="text-brand text-xs font-semibold mb-2">🚗 Véhicule identifié dans notre base</p>
-              <p className="text-white font-mono font-bold text-lg">{vehicleMatch.plate}</p>
+              <p className="text-ink font-mono font-bold text-lg">{vehicleMatch.plate}</p>
               {(vehicleMatch.brand_text || vehicleMatch.model_text) ? (
-                <p className="text-zinc-300 text-sm mt-0.5">
+                <p className="text-ink-secondary text-sm mt-0.5">
                   {vehicleMatch.brand_text} {vehicleMatch.model_text}
                 </p>
               ) : (
-                <p className="text-zinc-600 text-xs mt-1 italic">
+                <p className="text-ink-faint text-xs mt-1 italic">
                   Marque et modèle non renseignés — vous pourrez les saisir après confirmation
                 </p>
               )}
-              <p className="text-zinc-500 text-xs mt-2">S'agit-il bien de ce véhicule ?</p>
+              <p className="text-ink-muted text-xs mt-2">S'agit-il bien de ce véhicule ?</p>
               <div className="flex gap-2 mt-2">
                 <button onClick={() => {
                   setVehicleConfirmed(true)
                   if (vehicleMatch.brand_text) setBrand(vehicleMatch.brand_text)
                   if (vehicleMatch.model_text) setModel(vehicleMatch.model_text)
                 }}
-                  className="flex-1 py-2.5 bg-green-700 text-white rounded-xl text-sm font-bold">
+                  className="flex-1 py-2.5 bg-green-700 text-ink rounded-xl text-sm font-bold">
                   ✅ Oui, c'est ce véhicule
                 </button>
                 <button onClick={() => { setVehicleMatch(null); setVehicleConfirmed(false) }}
-                  className="flex-1 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm font-medium">
+                  className="flex-1 py-2.5 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium">
                   Non, saisir manuellement
                 </button>
               </div>
@@ -405,7 +405,7 @@ export default function TGRClient({ user }: { user: any }) {
                 </div>
               </div>
               <button onClick={() => { setVehicleMatch(null); setVehicleConfirmed(false); setBrand(''); setModel('') }}
-                className="text-zinc-600 hover:text-zinc-400 text-xs">Changer</button>
+                className="text-ink-faint hover:text-ink-secondary text-xs">Changer</button>
             </div>
           )}
 
@@ -413,9 +413,9 @@ export default function TGRClient({ user }: { user: any }) {
           {(!vehicleMatch || !vehicleConfirmed || true) && (
             <>
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">Marque *</label>
+                <label className="block text-xs text-ink-muted mb-1">Marque *</label>
                 {loadingBrands ? (
-                  <p className="text-zinc-600 text-xs">Chargement…</p>
+                  <p className="text-ink-faint text-xs">Chargement…</p>
                 ) : (
                   <div className="flex gap-2">
                     <select value={brand}
@@ -426,14 +426,14 @@ export default function TGRClient({ user }: { user: any }) {
                         if (b) loadModels(b.id)
                       }}
                       onFocus={loadBrands}
-                      className="flex-1 bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                                 text-white text-sm outline-none appearance-none focus:border-brand">
+                      className="flex-1 bg-surface border border-strong rounded-xl px-4 py-2.5
+                                 text-ink text-sm outline-none appearance-none focus:border-brand">
                       <option value="">Sélectionner une marque…</option>
                       {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
                     </select>
                     {!brands.length && (
                       <button onClick={loadBrands}
-                        className="px-3 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-xs hover:bg-[#333]">
+                        className="px-3 py-2.5 bg-surface-hover text-ink-secondary rounded-xl text-xs hover:bg-surface-2">
                         Charger
                       </button>
                     )}
@@ -442,19 +442,19 @@ export default function TGRClient({ user }: { user: any }) {
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-500 mb-1">Modèle *</label>
+                <label className="block text-xs text-ink-muted mb-1">Modèle *</label>
                 {models.length > 0 ? (
                   <select value={model} onChange={e => setModel(e.target.value)}
-                    className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                               text-white text-sm outline-none appearance-none focus:border-brand">
+                    className="w-full bg-surface border border-strong rounded-xl px-4 py-2.5
+                               text-ink text-sm outline-none appearance-none focus:border-brand">
                     <option value="">Sélectionner un modèle…</option>
                     {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                   </select>
                 ) : (
                   <input type="text" placeholder="Ex: Série 5 / Classe C"
                     value={model} onChange={e => setModel(e.target.value)}
-                    className="w-full bg-[#0F0F0F] border border-[#333] rounded-xl px-4 py-2.5
-                               text-white placeholder-zinc-700 focus:outline-none focus:border-brand" />
+                    className="w-full bg-surface border border-strong rounded-xl px-4 py-2.5
+                               text-ink placeholder-zinc-700 focus:outline-none focus:border-brand" />
                 )}
               </div>
             </>
@@ -462,17 +462,17 @@ export default function TGRClient({ user }: { user: any }) {
 
           {/* Roulant */}
           <div>
-            <label className="block text-xs text-zinc-500 mb-2">État du véhicule *</label>
+            <label className="block text-xs text-ink-muted mb-2">État du véhicule *</label>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setIsRolling(true)}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isRolling ? 'bg-green-700 text-white' : 'bg-[#0F0F0F] border border-[#333] text-zinc-400'
+                  isRolling ? 'bg-green-700 text-ink' : 'bg-surface border border-strong text-ink-secondary'
                 }`}>
                 🟢 Roulant
               </button>
               <button onClick={() => setIsRolling(false)}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  !isRolling ? 'bg-red-900 text-white' : 'bg-[#0F0F0F] border border-[#333] text-zinc-400'
+                  !isRolling ? 'bg-red-900 text-ink' : 'bg-surface border border-strong text-ink-secondary'
                 }`}>
                 🔴 Non roulant
               </button>
@@ -483,38 +483,38 @@ export default function TGRClient({ user }: { user: any }) {
         {/* Adresses avec Google Places */}
         <div className="flex flex-col gap-3">
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1.5">Adresse de pick-up *</label>
+            <label className="block text-sm font-medium text-ink-secondary mb-1.5">Adresse de pick-up *</label>
             <input ref={pickupRef} type="text" placeholder="Rue, ville, pays"
               value={pickupAddress}
               onChange={e => setPickupAddress(e.target.value)}
-              className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                         text-white placeholder-zinc-700 focus:outline-none focus:border-brand" />
+              className="w-full bg-surface border border rounded-xl px-4 py-3
+                         text-ink placeholder-zinc-700 focus:outline-none focus:border-brand" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1.5">Adresse de livraison *</label>
+            <label className="block text-sm font-medium text-ink-secondary mb-1.5">Adresse de livraison *</label>
             <input ref={deliveryRef} type="text" placeholder="Rue, ville, pays"
               value={deliveryAddress}
               onChange={e => setDeliveryAddress(e.target.value)}
-              className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                         text-white placeholder-zinc-700 focus:outline-none focus:border-brand" />
+              className="w-full bg-surface border border rounded-xl px-4 py-3
+                         text-ink placeholder-zinc-700 focus:outline-none focus:border-brand" />
           </div>
         </div>
 
         {/* Priorité */}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-2">Priorité *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-2">Priorité *</label>
           <div className="flex flex-col gap-2">
             {PRIORITY_OPTIONS.map(p => (
               <button key={p.value} onClick={() => setPriority(p.value as 1|2|3)}
                 className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
                   priority === p.value
-                    ? 'bg-brand/10 border-brand text-white'
-                    : 'bg-[#1A1A1A] border-[#2a2a2a] text-zinc-300 hover:border-zinc-500'
+                    ? 'bg-brand/10 border-brand text-ink'
+                    : 'bg-surface border text-ink-secondary hover:border-zinc-500'
                 }`}>
-                <p className={`font-semibold text-sm ${priority === p.value ? 'text-white' : p.color}`}>
+                <p className={`font-semibold text-sm ${priority === p.value ? 'text-ink' : p.color}`}>
                   {p.label}
                 </p>
-                <p className="text-zinc-500 text-xs mt-0.5">{p.sub}</p>
+                <p className="text-ink-muted text-xs mt-0.5">{p.sub}</p>
               </button>
             ))}
           </div>
@@ -522,14 +522,14 @@ export default function TGRClient({ user }: { user: any }) {
 
         {/* Remarques */}
         <div>
-          <label className="block text-sm font-medium text-zinc-400 mb-1.5">
-            Remarques <span className="text-zinc-600">(optionnel)</span>
+          <label className="block text-sm font-medium text-ink-secondary mb-1.5">
+            Remarques <span className="text-ink-faint">(optionnel)</span>
           </label>
           <textarea rows={3}
             placeholder="Spécificités, clés dans le véhicule, code portail, accès particulier…"
             value={remarks} onChange={e => setRemarks(e.target.value)}
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl px-4 py-3
-                       text-white placeholder-zinc-700 focus:outline-none focus:border-brand resize-none" />
+            className="w-full bg-surface border border rounded-xl px-4 py-3
+                       text-ink placeholder-zinc-700 focus:outline-none focus:border-brand resize-none" />
         </div>
 
         {error && (
@@ -539,8 +539,8 @@ export default function TGRClient({ user }: { user: any }) {
         )}
 
         <button onClick={handleSubmit} disabled={submitting}
-          className="w-full py-4 bg-brand hover:bg-brand/90 disabled:bg-zinc-800
-                     text-white rounded-2xl font-bold text-lg transition-colors">
+          className="w-full py-4 bg-brand hover:bg-brand/90 disabled:bg-surface-2
+                     text-ink rounded-2xl font-bold text-lg transition-colors">
           {submitting
             ? <span className="flex items-center justify-center gap-2"><span className="animate-spin">⏳</span> Envoi…</span>
             : '📤 Soumettre la mission TGR'}
@@ -589,17 +589,17 @@ function MissionModal({
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center"
       onClick={onClose}>
-      <div className="bg-[#1A1A1A] w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+      <div className="bg-surface w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <img src="/logo-touring.png" alt="Touring" className="h-4 w-auto opacity-70" />
             </div>
-            <h2 className="text-white font-bold text-lg font-mono">{mission.reference}</h2>
+            <h2 className="text-ink font-bold text-lg font-mono">{mission.reference}</h2>
             <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
           </div>
-          <button onClick={onClose} className="text-zinc-500 text-2xl">×</button>
+          <button onClick={onClose} className="text-ink-muted text-2xl">×</button>
         </div>
 
         <div className="space-y-2 mb-5">
@@ -618,9 +618,9 @@ function MissionModal({
             ['Remarques',   mission.remarks],
             ['Date',        new Date(mission.created_at).toLocaleString('fr-BE')],
           ].filter(r => r[1]).map(([label, value]) => (
-            <div key={label as string} className="flex justify-between py-2 border-b border-[#2a2a2a]">
-              <span className="text-zinc-500 text-sm flex-shrink-0">{label}</span>
-              <span className="text-white text-sm text-right max-w-[60%]">{value}</span>
+            <div key={label as string} className="flex justify-between py-2 border-b border">
+              <span className="text-ink-muted text-sm flex-shrink-0">{label}</span>
+              <span className="text-ink text-sm text-right max-w-[60%]">{value}</span>
             </div>
           ))}
         </div>
@@ -636,7 +636,7 @@ function MissionModal({
               {acting ? '…' : '❌ Refuser'}
             </button>
             <button onClick={() => doAction('accept')} disabled={acting}
-              className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+              className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-ink rounded-xl font-bold text-sm disabled:opacity-50">
               {acting ? '…' : '✅ Accepter'}
             </button>
           </div>
