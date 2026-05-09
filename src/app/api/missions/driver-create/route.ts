@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       accepted_at:      now,
       on_way_at:        now,
       received_at:      now,
+      intervention_date: now,
       created_at:       now,
       updated_at:       now,
     })

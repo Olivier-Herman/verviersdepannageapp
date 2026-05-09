@@ -67,6 +67,7 @@ export async function POST(req: Request) {
       rdv_at:               body.rdv_at               || null,
       incident_at:          body.rdv_at               || now,
       received_at:          now,
+      intervention_date:    body.rdv_at               || now,
       status:               'new',
       dispatch_mode:        'manual',
       parse_confidence:     1.0,

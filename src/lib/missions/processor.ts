@@ -472,22 +472,28 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
   const supabase   = createAdminClient()
   let placeholderId: string | undefined
 
-  // ── Outer try/catch (Patch D) — protège l'INSERT placeholder + SELECT id ──
+  // ── Outer try/catch (hotfix webhook) — protège l'INSERT placeholder + SELECT id ──
   // Si l'INSERT lui-même crashe (réseau Supabase, RLS), le catch ligne ~683
   // ne pourrait rien update faute de placeholderId. On retourne tôt avec
   // un status error pour que le caller (webhook ou poll-missions) le sache.
   try {
     // 0. Anti-doublon atomique
+    // Placeholder créé avant lecture du message Graph : on utilise now() comme
+    // valeur initiale pour received_at + intervention_date (sub-phase D).
+    // Le vrai receivedDateTime du message remplacera ces valeurs à l'UPDATE
+    // final (ou parse_error / unknown sender).
     console.log(`[Processor] step=insert_placeholder messageId=${msgIdShort}`)
+    const placeholderTs = new Date().toISOString()
     const { error: lockError } = await supabase
       .from('incoming_missions')
       .insert({
-        external_id:     `PROCESSING_${messageId.slice(-16)}`,
-        source:          'unknown',
-        source_format:   'unknown',
-        source_email_id: messageId,
-        status:          'new',
-        received_at:     new Date().toISOString(),
+        external_id:       `PROCESSING_${messageId.slice(-16)}`,
+        source:            'unknown',
+        source_format:     'unknown',
+        source_email_id:   messageId,
+        status:            'new',
+        received_at:       placeholderTs,
+        intervention_date: placeholderTs,
       })
 
     if (lockError) {
@@ -561,12 +567,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       console.warn(`[Processor] Source inconnue: ${fromEmail}`)
       if (placeholderId) {
         await supabase.from('incoming_missions').update({
-          external_id:   `UNKNOWN_SENDER_${Date.now()}`,
-          source:        'unknown',
-          source_format: content.sourceFormat,
-          status:        'new',
-          raw_content:   content.rawContent.slice(0, 10000),
-          received_at:   receivedAt,
+          external_id:       `UNKNOWN_SENDER_${Date.now()}`,
+          source:            'unknown',
+          source_format:     content.sourceFormat,
+          status:            'new',
+          raw_content:       content.rawContent.slice(0, 10000),
+          received_at:       receivedAt,
+          intervention_date: receivedAt,
         }).eq('id', placeholderId)
       }
       await sendPushToRole(['admin', 'superadmin'], {
@@ -597,12 +604,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       console.error(`[Processor] Erreur parsing:`, parseErr.message)
       if (placeholderId) {
         await supabase.from('incoming_missions').update({
-          external_id:   `ERR_${Date.now()}_${messageId.slice(-8)}`,
+          external_id:       `ERR_${Date.now()}_${messageId.slice(-8)}`,
           source,
-          source_format: content.sourceFormat,
-          status:        'parse_error',
-          raw_content:   content.rawContent.slice(0, 10000),
-          received_at:   receivedAt,
+          source_format:     content.sourceFormat,
+          status:            'parse_error',
+          raw_content:       content.rawContent.slice(0, 10000),
+          received_at:       receivedAt,
+          intervention_date: receivedAt,
         }).eq('id', placeholderId)
         await supabase.from('mission_logs').insert({
           mission_id: placeholderId,
@@ -668,9 +676,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       await triggerAllianzFlow(content.rawContent, placeholderId)
     }
 
-    // Mettre à jour la mission (existante ou nouveau placeholder)
+    // Mettre à jour la mission (existante ou nouveau placeholder).
+    // intervention_date = received_at à l'insert (sub-phase D) — le dispatcher
+    // peut l'ajuster manuellement via la barre rouge MissionDetailClient (B1).
+    // Sur une mise à jour de dossier existant, on préserve la valeur
+    // intervention_date déjà en base si le dispatcher l'a modifiée.
     console.log(`[Processor] step=update_final messageId=${msgIdShort} source=${source} targetId=${targetId}`)
-    await supabase.from('incoming_missions').update({
+    const updatePayload: Record<string, unknown> = {
       external_id:          parsed.external_id,
       dossier_number:       parsed.dossier_number,
       source,
@@ -700,7 +712,14 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       raw_content:          content.rawContent.slice(0, 10000),
       parsed_data:          parsed,
       parse_confidence:     parsed.confidence,
-    }).eq('id', targetId)
+    }
+    // Nouvelle mission (placeholder) → init intervention_date = receivedAt.
+    // Mise à jour d'un dossier existant → ne pas écraser la valeur saisie
+    // par le dispatcher.
+    if (!existingMissionId) {
+      updatePayload.intervention_date = receivedAt
+    }
+    await supabase.from('incoming_missions').update(updatePayload).eq('id', targetId)
 
     // Supprimer le placeholder si on a mis à jour une mission existante
     if (existingMissionId && placeholderId && existingMissionId !== placeholderId) {

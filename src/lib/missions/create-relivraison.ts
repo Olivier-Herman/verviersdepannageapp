@@ -57,6 +57,7 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
   }
 
   // Insertion de la nouvelle mission REL
+  const relTs = new Date().toISOString()
   const { data: rel, error: insErr } = await sb
     .from('incoming_missions')
     .insert({
@@ -93,7 +94,8 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
       // Statuts
       status:                'dispatching',     // confirmée mais à assigner par le dispatcher
       dispatch_mode:         'manual',
-      received_at:           new Date().toISOString(),
+      received_at:           relTs,
+      intervention_date:     relTs,
       // Lien vers parent
       parent_mission_id:     input.parentMissionId,
       // Confiance maximale (info dérivée fiable, pas de parsing)
