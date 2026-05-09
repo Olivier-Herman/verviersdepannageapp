@@ -1,4 +1,6 @@
 // src/app/api/cron/poll-missions/route.ts
+// maxDuration 60s : poll boucle sur jusqu'à 25 messages, chacun pouvant prendre
+// 15-30s en parsing IA. Si fanout important, traite seulement N premiers.
 export const maxDuration = 60
 export const dynamic    = 'force-dynamic'
 

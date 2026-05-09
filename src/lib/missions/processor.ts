@@ -427,37 +427,51 @@ export type ProcessResult =
 // ── Traitement d'un email ─────────────────────────────────────────────────────
 
 export async function processEmailMessage(messageId: string): Promise<ProcessResult> {
-  const supabase = createAdminClient()
+  const t0         = Date.now()
+  const msgIdShort = messageId.slice(-12)
+  const supabase   = createAdminClient()
+  let placeholderId: string | undefined
 
-  // 0. Anti-doublon atomique
-  const { error: lockError } = await supabase
-    .from('incoming_missions')
-    .insert({
-      external_id:     `PROCESSING_${messageId.slice(-16)}`,
-      source:          'unknown',
-      source_format:   'unknown',
-      source_email_id: messageId,
-      status:          'new',
-      received_at:     new Date().toISOString(),
-    })
+  // ── Outer try/catch (Patch D) — protège l'INSERT placeholder + SELECT id ──
+  // Si l'INSERT lui-même crashe (réseau Supabase, RLS), le catch ligne ~683
+  // ne pourrait rien update faute de placeholderId. On retourne tôt avec
+  // un status error pour que le caller (webhook ou poll-missions) le sache.
+  try {
+    // 0. Anti-doublon atomique
+    console.log(`[Processor] step=insert_placeholder messageId=${msgIdShort}`)
+    const { error: lockError } = await supabase
+      .from('incoming_missions')
+      .insert({
+        external_id:     `PROCESSING_${messageId.slice(-16)}`,
+        source:          'unknown',
+        source_format:   'unknown',
+        source_email_id: messageId,
+        status:          'new',
+        received_at:     new Date().toISOString(),
+      })
 
-  if (lockError) {
-    if (lockError.code === '23505') {
-      console.log(`[Processor] Doublon ignoré: ${messageId.slice(-8)}`)
-      return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
+    if (lockError) {
+      if (lockError.code === '23505') {
+        console.log(`[Processor] Doublon ignoré: ${msgIdShort}`)
+        return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
+      }
+      console.warn('[Processor] Lock warning:', lockError.message)
     }
-    console.warn('[Processor] Lock warning:', lockError.message)
+
+    const { data: placeholder } = await supabase
+      .from('incoming_missions')
+      .select('id')
+      .eq('source_email_id', messageId)
+      .maybeSingle()
+
+    placeholderId = placeholder?.id
+  } catch (outerErr: any) {
+    console.error(`[Processor] step=insert_placeholder FAILED messageId=${msgIdShort}:`, outerErr.message)
+    return { status: 'error', error: `INSERT placeholder: ${outerErr.message}` }
   }
 
-  const { data: placeholder } = await supabase
-    .from('incoming_missions')
-    .select('id')
-    .eq('source_email_id', messageId)
-    .maybeSingle()
-
-  const placeholderId = placeholder?.id
-
   try {
+    console.log(`[Processor] step=graph_get_message messageId=${msgIdShort}`)
     const token   = await getGraphToken()
     const message = await graphGet(
       token,
@@ -471,7 +485,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     console.log(`[Processor] Email: from="${fromEmail}" subject="${subject}" hasAttachments=${message.hasAttachments}`)
 
+    console.log(`[Processor] step=detect_source messageId=${msgIdShort}`)
     const source = await detectSource(fromEmail, subject)
+    console.log(`[Processor] step=detect_source messageId=${msgIdShort} source=${source}`)
 
     // ── Détection OTP Allianz (intercepté depuis la boîte assistance@) ──────
     // Le sujet contient "One Time Password" — c'est un OTP pour le login Hexalite
@@ -496,8 +512,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       }
     }
 
+    console.log(`[Processor] step=extract_content messageId=${msgIdShort}`)
     const content = await extractContent(message, attachments, source)
-    console.log(`[Processor] Contenu: format=${content.sourceFormat} longueur=${content.textContent.length}`)
+    console.log(`[Processor] step=extract_content messageId=${msgIdShort} format=${content.sourceFormat} length=${content.textContent.length}`)
 
     // Source inconnue → stocker + notifier
     if (source === 'unknown') {
@@ -532,6 +549,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     }
 
     // Parser avec Claude
+    console.log(`[Processor] step=parse_mission messageId=${msgIdShort} contentBytes=${content.pdfBase64?.length || content.textContent.length}`)
     let parsed
     try {
       parsed = await parseMissionContent(source, content, subject)
@@ -558,6 +576,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     }
 
     // Enrichissement automatique depuis le portail IMA
+    console.log(`[Processor] step=ima_enrich messageId=${msgIdShort}`)
     const imaEnrichment = await enrichFromIMAPortal(content.rawContent, source, parsed)
     if (Object.keys(imaEnrichment).length > 0) {
       Object.assign(parsed, imaEnrichment)
@@ -605,11 +624,12 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     // Déclenchement flow Allianz si email de mission Allianz (pas OTP)
     if (source === 'mondial' && content.rawContent.includes('allianzpartners-providerplatform.com')) {
-      console.log('[Processor] Mission Allianz détectée — démarrage flow OTP')
+      console.log(`[Processor] step=allianz_flow messageId=${msgIdShort}`)
       await triggerAllianzFlow(content.rawContent, placeholderId)
     }
 
     // Mettre à jour la mission (existante ou nouveau placeholder)
+    console.log(`[Processor] step=update_final messageId=${msgIdShort} source=${source} targetId=${targetId}`)
     await supabase.from('incoming_missions').update({
       external_id:          parsed.external_id,
       dossier_number:       parsed.dossier_number,
@@ -673,11 +693,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       icon:  '/icons/apple-touch-icon.png'
     })
 
-    console.log(`[Processor] ✓ ${source}/${parsed.external_id} (conf: ${parsed.confidence}) ${existingMissionId ? '→ mise à jour dossier existant' : '→ nouveau'}`)
+    const durationMs = Date.now() - t0
+    console.log(`[Processor] step=done messageId=${msgIdShort} durationMs=${durationMs} ${source}/${parsed.external_id} (conf: ${parsed.confidence}) ${existingMissionId ? '→ mise à jour dossier existant' : '→ nouveau'}`)
     return { status: existingMissionId ? 'duplicate' : 'inserted', missionId: targetId, externalId: parsed.external_id, source }
 
   } catch (err: any) {
-    console.error('[Processor] Erreur inattendue:', err.message)
+    const durationMs = Date.now() - t0
+    console.error(`[Processor] step=error messageId=${msgIdShort} durationMs=${durationMs}:`, err.message)
     if (placeholderId) {
       await supabase.from('incoming_missions').update({
         status:      'parse_error',

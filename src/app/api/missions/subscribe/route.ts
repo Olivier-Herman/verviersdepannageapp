@@ -1,6 +1,9 @@
 // src/app/api/missions/subscribe/route.ts
 // Crée ou renouvelle la subscription Microsoft Graph sur la boîte assistance@verviersdepannage.be
 
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60
+
 import { NextResponse }      from 'next/server'
 import { getGraphToken }     from '@/lib/missions/processor'
 import { createAdminClient } from '@/lib/supabase'
@@ -95,11 +98,15 @@ export async function GET(req: Request) {
 
 async function createSubscription(token: string): Promise<string> {
   const body = {
-    changeType:         'created',
-    notificationUrl:    WEBHOOK_ENDPOINT,
-    resource:           `users/${MISSIONS_EMAIL}/mailFolders/inbox/messages`,
-    expirationDateTime: getExpiryDateTime(),
-    clientState:        WEBHOOK_SECRET,
+    changeType:               'created',
+    notificationUrl:          WEBHOOK_ENDPOINT,
+    // Microsoft Graph envoie les events lifecycle (subscriptionRemoved,
+    // reauthorizationRequired, missed) sur cet endpoint. Permet d'auto-recréer
+    // la sub quand MS la désactive (ex: après timeouts répétés du webhook).
+    lifecycleNotificationUrl: WEBHOOK_ENDPOINT,
+    resource:                 `users/${MISSIONS_EMAIL}/mailFolders/inbox/messages`,
+    expirationDateTime:       getExpiryDateTime(),
+    clientState:              WEBHOOK_SECRET,
   }
 
   const res = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
