@@ -8,8 +8,22 @@ import { sendPushToRole }               from '@/lib/push'
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 
 // ── Graph helpers ─────────────────────────────────────────────────────────────
+//
+// Cache token Microsoft Graph (incident 10/05/2026) :
+// - Tokens client_credentials valent 1h. Sans cache module-level, chaque appel
+//   re-fetch — coût + risque d'erreur 401 quand Next.js cache la réponse OAuth.
+// - Avec cache : on stocke { token, expiresAt } et on refresh -60s avant
+//   l'expiration réelle (marge pour clock skew + temps de propagation).
+// - Promise sharing (`inFlight`) : si plusieurs callers concurrents demandent
+//   un token expiré simultanément, ils partagent la même promesse au lieu
+//   d'envoyer N requêtes OAuth parallèles.
+// - `cache: 'no-store'` sur le fetch : bypass explicite du cache Next.js qui
+//   peut persister la réponse OAuth même pour des POST sur instances warm.
 
-export async function getGraphToken(): Promise<string> {
+let tokenCache: { token: string; expiresAt: number } | null = null
+let inFlightToken: Promise<string> | null = null
+
+async function fetchNewGraphToken(): Promise<string> {
   const res = await fetch(
     `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
     {
@@ -20,12 +34,38 @@ export async function getGraphToken(): Promise<string> {
         client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
         grant_type:    'client_credentials',
         scope:         'https://graph.microsoft.com/.default',
-      })
+      }),
+      // Bypass le cache fetch de Next.js — on veut TOUJOURS la réponse fraîche
+      // d'Azure (sinon le token cached côté Next.js peut être expiré).
+      cache: 'no-store',
     }
   )
   const data = await res.json()
   if (!res.ok) throw new Error(`Graph token: ${data.error_description || data.error}`)
+
+  // Microsoft renvoie expires_in en secondes (typiquement 3599 = ~1h).
+  // Marge de sécurité -60s pour éviter les races de fin de validité.
+  const expiresInMs = ((data.expires_in as number) || 3600) * 1000
+  const expiresAt   = Date.now() + expiresInMs - 60_000
+
+  tokenCache = { token: data.access_token, expiresAt }
+  console.log(`[Graph] token refreshed, expires in ${Math.floor(expiresInMs / 1000)}s`)
   return data.access_token
+}
+
+export async function getGraphToken(): Promise<string> {
+  // Réutilise le token caché s'il est encore valide
+  if (tokenCache && Date.now() < tokenCache.expiresAt) {
+    return tokenCache.token
+  }
+
+  // Si une requête OAuth est déjà en cours, on partage sa promesse pour éviter
+  // d'envoyer N appels Azure en parallèle quand plusieurs callers arrivent
+  // simultanément après une expiration.
+  if (inFlightToken) return inFlightToken
+
+  inFlightToken = fetchNewGraphToken().finally(() => { inFlightToken = null })
+  return inFlightToken
 }
 
 async function graphGet(token: string, path: string): Promise<any> {
