@@ -582,8 +582,11 @@ export default function RelancesClient({ session }: { session: Session }) {
             <label className="flex items-center gap-2 text-sm">
               <span className="text-ink-muted">Niveau :</span>
               <select
-                value={sendLevel}
-                onChange={e => setSendLevel(e.target.value as SendLevel)}
+                value={String(sendLevel)}
+                onChange={e => {
+                  const v = e.target.value
+                  setSendLevel(v === 'AUTO' ? 'AUTO' : (parseInt(v, 10) as ReminderLevel))
+                }}
                 className="bg-surface-2 border rounded px-2 py-1.5 text-sm text-ink"
               >
                 <option value="AUTO">AUTO (selon retard)</option>

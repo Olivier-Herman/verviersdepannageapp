@@ -86,8 +86,16 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(partnerIds) || partnerIds.length === 0) {
     return NextResponse.json({ error: 'partnerIds (number[]) requis' }, { status: 400 })
   }
-  if (levelRaw !== 'AUTO' && levelRaw !== 1 && levelRaw !== 2 && levelRaw !== 3) {
-    return NextResponse.json({ error: 'level doit etre AUTO, 1, 2 ou 3' }, { status: 400 })
+  // Parsing tolerant : le select HTML cote UI retourne des strings.
+  // On accepte "AUTO" / "1" / "2" / "3" ou les nombres correspondants.
+  let levelParsed: 1 | 2 | 3 | 'AUTO' = 'AUTO'
+  if (levelRaw !== 'AUTO') {
+    const n = parseInt(String(levelRaw), 10)
+    if (n === 1 || n === 2 || n === 3) {
+      levelParsed = n as 1 | 2 | 3
+    } else {
+      return NextResponse.json({ error: 'level doit etre AUTO, 1, 2 ou 3' }, { status: 400 })
+    }
   }
   if (typeof dryRun !== 'boolean') {
     return NextResponse.json({ error: 'dryRun (boolean) requis' }, { status: 400 })
@@ -119,9 +127,9 @@ export async function POST(req: NextRequest) {
       result.partnerName = group.partnerName
 
       // Niveau effectif : AUTO = celui calcule, sinon force
-      const effectiveLevel: ReminderLevel = levelRaw === 'AUTO'
+      const effectiveLevel: ReminderLevel = levelParsed === 'AUTO'
         ? (computeLevel(group.maxDaysOverdue) || 1)
-        : levelRaw
+        : levelParsed
       result.level = effectiveLevel
 
       const ref       = buildReminderReference({ partnerId, level: effectiveLevel, date: today })
