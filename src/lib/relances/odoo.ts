@@ -83,14 +83,75 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
 }
 
 /**
- * Recupere le PDF d une facture client depuis Odoo via _render_qweb_pdf.
- * Essaie plusieurs noms de rapport (variabilite selon version Odoo).
+ * Recupere le PDF d une facture client depuis Odoo. 2 strategies en cascade :
+ *
+ * 1. ir.attachment : si la facture a deja ete imprimee/envoyee au moins une
+ *    fois, son PDF est stocke en attachment. C est le cas de la quasi-totalite
+ *    des factures clients (envoyees automatiquement a la validation).
+ *
+ * 2. HTTP login + render : si pas d attachment, on simule un login web
+ *    Odoo (POST /web/session/authenticate avec login + api_key as password,
+ *    fonctionne sur Odoo 18+) puis GET /report/pdf/<report_name>/<id> avec
+ *    le cookie session_id obtenu. Plus lent mais universel.
  *
  * Retourne un Buffer du PDF.
  */
 export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer> {
-  // Liste de noms de rapport a essayer en cascade. Le premier qui repond
-  // sans erreur est utilise.
+  // ── Strategy 1 : ir.attachment ──
+  try {
+    const attachments = await rpc<any[]>(
+      'ir.attachment',
+      'search_read',
+      [[
+        ['res_model', '=', 'account.move'],
+        ['res_id',    '=', invoiceId],
+        ['mimetype',  '=', 'application/pdf'],
+      ]],
+      { fields: ['id', 'name', 'datas'], limit: 1, order: 'create_date desc' }
+    )
+    if (attachments.length > 0 && attachments[0].datas) {
+      return Buffer.from(attachments[0].datas, 'base64')
+    }
+  } catch (e: any) {
+    console.warn(`[relances/odoo] ir.attachment lookup failed for invoice ${invoiceId}:`, e.message)
+  }
+
+  // ── Strategy 2 : HTTP login + render ──
+  // 1. Login : POST /web/session/authenticate
+  //    Sur Odoo 18+, l api_key peut etre utilisee comme password.
+  //    Le login est l email du user Odoo (UID 8 chez VD).
+  const odooLogin = process.env.ODOO_USER || process.env.ODOO_LOGIN
+  if (!odooLogin) {
+    throw new Error(
+      `Impossible de generer PDF pour facture ${invoiceId} : aucun attachment PDF en base, et ODOO_USER/ODOO_LOGIN non configure pour fallback HTTP.`
+    )
+  }
+
+  let sessionId: string | null = null
+  try {
+    const loginRes = await fetch(`${ODOO_URL}/web/session/authenticate`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        jsonrpc: '2.0',
+        params:  { db: ODOO_DB, login: odooLogin, password: ODOO_API_KEY },
+      }),
+      cache: 'no-store',
+    })
+    const setCookie = loginRes.headers.get('set-cookie') || ''
+    const match     = setCookie.match(/session_id=([^;]+)/)
+    sessionId = match ? match[1] : null
+    if (!sessionId) {
+      const body = await loginRes.text().catch(() => '')
+      throw new Error(`Login Odoo HTTP echec (status ${loginRes.status}): ${body.slice(0, 200)}`)
+    }
+  } catch (e: any) {
+    throw new Error(
+      `Impossible de generer PDF pour facture ${invoiceId} : login Odoo echec — ${e.message}`
+    )
+  }
+
+  // 2. GET le rapport avec cookie session_id, fallback sur 3 noms de rapport
   const reportNames = [
     'account.report_invoice_with_payments',
     'account.account_invoices',
@@ -99,22 +160,31 @@ export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer
   let lastError: any
   for (const reportName of reportNames) {
     try {
-      // _render_qweb_pdf retourne [pdf_b64_string, 'pdf']
-      const result = await rpc<[string, string]>(
-        'ir.actions.report',
-        '_render_qweb_pdf',
-        [reportName, [invoiceId]],
+      const reportRes = await fetch(
+        `${ODOO_URL}/report/pdf/${reportName}/${invoiceId}`,
+        {
+          headers: { Cookie: `session_id=${sessionId}` },
+          cache:   'no-store',
+        }
       )
-      if (Array.isArray(result) && typeof result[0] === 'string' && result[0].length > 0) {
-        return Buffer.from(result[0], 'base64')
+      if (!reportRes.ok) {
+        lastError = new Error(`HTTP ${reportRes.status} sur ${reportName}`)
+        continue
       }
+      const contentType = reportRes.headers.get('content-type') || ''
+      if (!contentType.includes('pdf')) {
+        // Odoo a retourne une page HTML d erreur, pas un PDF
+        lastError = new Error(`Reponse non-PDF pour ${reportName} (content-type: ${contentType})`)
+        continue
+      }
+      const buf = await reportRes.arrayBuffer()
+      return Buffer.from(buf)
     } catch (e: any) {
       lastError = e
-      // Continue avec le rapport suivant
     }
   }
   throw new Error(
-    `Impossible de generer PDF pour facture ${invoiceId} (rapports essayes: ${reportNames.join(', ')}). Last error: ${lastError?.message || 'unknown'}`
+    `Impossible de generer PDF pour facture ${invoiceId} (rapports HTTP essayes: ${reportNames.join(', ')}). Last error: ${lastError?.message || 'unknown'}`
   )
 }
 
