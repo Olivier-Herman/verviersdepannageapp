@@ -166,10 +166,14 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   // Si pas trouvee, on log mais on continue sans filtre company.
   const vdCompanyId = await getVdCompanyId()
 
+  // Filtre payment_state : on EXCLUE 'paid' et 'reversed' (annulee par avoir),
+  // on INCLUT not_paid, partial, in_payment (paiement en cours non reconcilie),
+  // et toute valeur future. Plus robuste qu un IN strict qui pourrait rater
+  // des states custom Odoo. amount_residual > 0 fait le filtre final.
   const domain: any[] = [
     ['move_type',         '=',  'out_invoice'],
     ['state',             '=',  'posted'],
-    ['payment_state',     'in', ['not_paid', 'partial']],
+    ['payment_state',     'not in', ['paid', 'reversed']],
     ['invoice_date_due',  '!=', false],
     ['invoice_date_due',  '<=', cutoffStr],
     ['amount_residual',   '>',  0],
@@ -177,6 +181,7 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   if (vdCompanyId !== null) {
     domain.push(['company_id', '=', vdCompanyId])
   }
+  console.info(`[relances/odoo] domain:`, JSON.stringify(domain), 'cutoffStr:', cutoffStr)
 
   // Champ custom sale.order qui pointe vers fleet.vehicle (cf src/lib/odoo.ts).
   const FIELD_PLAQUE = 'x_studio_many2one_field_78n_1j6fmmeom'
@@ -204,6 +209,8 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
       break
     }
   }
+
+  console.info(`[relances/odoo] ${moves.length} factures echues recuperees (truncated: ${truncated})`)
 
   if (moves.length === 0) return { groups: [], truncated, fetched: 0 }
 
@@ -396,6 +403,8 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
     if (b.maxDaysOverdue !== a.maxDaysOverdue) return b.maxDaysOverdue - a.maxDaysOverdue
     return a.partnerName.localeCompare(b.partnerName)
   })
+
+  console.info(`[relances/odoo] ${result.length} partner(s) avec factures echues (apres filtre tag exclusion: ${excludedPartnerIds.size})`)
 
   return { groups: result, truncated, fetched: moves.length }
 }
