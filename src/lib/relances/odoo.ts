@@ -12,6 +12,13 @@
 // Source factures = Odoo account.move (move_type = out_invoice, state = posted,
 // payment_state in [not_paid, partial]). Le tracking des envois reste en
 // Supabase (table invoice_reminders) pour ne pas polluer le chatter Odoo.
+//
+// Exclusion : un partner est ignore si ses res.partner.category_id (tags
+// Odoo) contiennent un tag dont le name matche RELANCE_EXCLUDED_TAG_NAME
+// ('Exclure relances'). Olivier l applique sur le Parquet et autres
+// partners en contentieux pour les sortir des relances email.
+
+import { RELANCE_EXCLUDED_TAG_NAME } from './constants'
 
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
@@ -211,13 +218,53 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   // NB: 'mobile' n'existe pas sur res.partner dans cette base Odoo
   // (selon la version/config — chez VD seul 'phone' est dispo).
   // 'ref' = reference interne client (visible Odoo dans la fiche client).
+  // 'category_id' = tags Odoo (many2many) -> sert pour l'exclusion via tag.
   const partners = await rpc<any[]>(
     'res.partner',
     'read',
     [partnerIds],
-    { fields: ['id', 'name', 'ref', 'email', 'vat', 'phone'] }
+    { fields: ['id', 'name', 'ref', 'email', 'vat', 'phone', 'category_id'] }
   )
+
+  // Resolution des noms de tags : 1 read batch sur res.partner.category
+  // pour tous les category_ids distincts, puis match par NAME (et non ID)
+  // pour ne pas dependre de l id Odoo (multi-tenant proof).
+  const allTagIds = Array.from(new Set(
+    partners.flatMap(p => Array.isArray(p.category_id) ? p.category_id as number[] : [])
+  ))
+  let excludedTagIds = new Set<number>()
+  if (allTagIds.length > 0) {
+    try {
+      const tags = await rpc<any[]>(
+        'res.partner.category',
+        'read',
+        [allTagIds],
+        { fields: ['id', 'name'] }
+      )
+      excludedTagIds = new Set(
+        tags.filter(t => (t.name as string)?.trim() === RELANCE_EXCLUDED_TAG_NAME)
+            .map(t => t.id as number)
+      )
+    } catch (e: any) {
+      console.error('[relances/odoo] tag lookup failed:', e.message)
+    }
+  }
+
   const partnerById = new Map<number, any>(partners.map(p => [p.id, p]))
+
+  // Filtrer les partners exclus (Parquet & co.)
+  const excludedPartnerIds = new Set<number>()
+  if (excludedTagIds.size > 0) {
+    for (const p of partners) {
+      const tags = Array.isArray(p.category_id) ? (p.category_id as number[]) : []
+      if (tags.some(tagId => excludedTagIds.has(tagId))) {
+        excludedPartnerIds.add(p.id)
+      }
+    }
+  }
+  if (excludedPartnerIds.size > 0) {
+    console.info(`[relances/odoo] ${excludedPartnerIds.size} partner(s) exclu(s) via tag '${RELANCE_EXCLUDED_TAG_NAME}'`)
+  }
 
   // 3. Regrouper par partenaire + calcul niveau
   const groups = new Map<number, PartnerOverdueGroup>()
@@ -225,6 +272,7 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   for (const m of moves) {
     const partnerId = Array.isArray(m.partner_id) ? m.partner_id[0] : m.partner_id
     if (typeof partnerId !== 'number') continue
+    if (excludedPartnerIds.has(partnerId)) continue
     const partner = partnerById.get(partnerId)
     if (!partner) continue
 
