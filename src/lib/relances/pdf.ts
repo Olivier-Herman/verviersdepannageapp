@@ -85,11 +85,14 @@ const APP_URL      = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdep
 const LOGO_URL     = `${APP_URL}/logo.jpg`
 
 const styles = StyleSheet.create({
+  // Padding 36pt sur les 4 cotes : protege les pages 2+ contre le contenu
+  // colle au top. Le bandeau est etendu en plein largeur via marges
+  // negatives (marginHorizontal/Top -36) pour deborder sur page 1.
   page: {
-    paddingTop:    0,         // bandeau colle au top
-    paddingBottom: 50,        // place pour footer fixed
-    paddingLeft:   0,
-    paddingRight:  0,
+    paddingTop:    36,
+    paddingBottom: 56,        // place pour footer fixed
+    paddingLeft:   36,
+    paddingRight:  36,
     fontFamily:    'Helvetica',
     fontSize:      10,
     color:         INK,
@@ -97,66 +100,39 @@ const styles = StyleSheet.create({
   },
 
   // ── BANDEAU ROUGE FULL-WIDTH ──
+  // marges negatives = "full bleed" sur page 1, sans affecter pages 2+
   banner: {
     flexDirection:   'row',
     alignItems:      'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 36,
-    marginBottom:    0,
+    marginTop:       -36,
+    marginLeft:      -36,
+    marginRight:     -36,
+    marginBottom:    24,
   },
   bannerLogo: {
-    width:        56,
-    height:       56,
+    width:        50,
+    height:       50,
     marginRight:  14,
     objectFit:    'contain',
   },
-  bannerText: {
-    flexDirection: 'column',
-  },
   bannerName: {
-    fontSize:    20,
+    fontSize:    22,
     fontFamily:  'Helvetica-Bold',
     color:       'white',
     letterSpacing: 0.5,
   },
-  bannerTagline: {
-    fontSize:    9,
-    color:       'white',
-    opacity:     0.92,
-    marginTop:   2,
-    letterSpacing: 0.6,
-  },
 
-  // ── BODY (avec padding standard) ──
-  body: {
-    paddingTop:    20,
-    paddingHorizontal: 36,
-    paddingBottom: 8,
-  },
-
-  // Coordonnees societe + destinataire
+  // Bloc destinataire seul (l'emetteur apparait deja en footer)
   headerRow: {
     flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'flex-start',
-    marginBottom:   20,
-  },
-  company: {
-    width:     230,
-    fontSize:  9,
-    lineHeight: 1.5,
-    color:     INK_MUTED,
-  },
-  companyLabel: {
-    fontSize:    8,
-    color:       INK_SUBTLE,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 3,
+    justifyContent: 'flex-end',
+    marginBottom:   18,
   },
 
   recipient: {
-    width:           250,
+    width:           260,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth:     0.5,
@@ -243,31 +219,31 @@ const styles = StyleSheet.create({
   cellTotal:    { width: '14%', paddingRight: 4, textAlign: 'right' },
   cellResidual: { width: '16%', textAlign: 'right', fontFamily: 'Helvetica-Bold' },
 
-  // ── Total dans encadre ──
+  // ── Total dans encadre (largeur fixe 320pt aligne a droite) ──
   totalBox: {
     flexDirection:   'row',
     justifyContent:  'flex-end',
-    alignItems:      'center',
     marginTop:       16,
-    marginBottom:    20,
+    marginBottom:    18,
   },
   totalInner: {
+    width:            320,
     flexDirection:    'row',
+    justifyContent:   'space-between',
     alignItems:       'center',
-    paddingVertical:  10,
-    paddingHorizontal: 16,
-    borderRadius:     3,
+    paddingVertical:  12,
+    paddingHorizontal: 18,
+    borderRadius:     4,
   },
   totalLabel: {
     color:       INK,
     fontSize:    11,
     fontFamily:  'Helvetica-Bold',
-    marginRight: 12,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   totalAmount: {
-    fontSize:    20,
+    fontSize:    22,
     fontFamily:  'Helvetica-Bold',
   },
 
@@ -325,21 +301,7 @@ const styles = StyleSheet.create({
 function Banner({ accent }: { accent: string }): React.ReactElement {
   return React.createElement(View, { style: { ...styles.banner, backgroundColor: accent } },
     React.createElement(Image, { src: LOGO_URL, style: styles.bannerLogo }),
-    React.createElement(View, { style: styles.bannerText },
-      React.createElement(Text, { style: styles.bannerName }, COMPANY.name),
-      React.createElement(Text, { style: styles.bannerTagline },
-        `Dépannage · Fourrière · Rent A Car · ${COMPANY.phone}`),
-    ),
-  )
-}
-
-function CompanyBlock(): React.ReactElement {
-  return React.createElement(View, { style: styles.company },
-    React.createElement(Text, { style: styles.companyLabel }, 'Émetteur'),
-    React.createElement(Text, { style: { fontFamily: 'Helvetica-Bold', color: INK, fontSize: 10 } }, COMPANY.name),
-    React.createElement(Text, null, COMPANY.address),
-    React.createElement(Text, null, `TVA ${COMPANY.vat}`),
-    React.createElement(Text, null, COMPANY.email),
+    React.createElement(Text, { style: styles.bannerName }, COMPANY.name),
   )
 }
 
@@ -416,59 +378,55 @@ function ReminderDocument({ data }: { data: PdfData }): React.ReactElement {
 
   return React.createElement(Document, null,
     React.createElement(Page, { size: 'A4', style: styles.page },
-      // ── BANDEAU plein largeur (logo + nom + tagline) ──
+      // ── BANDEAU plein largeur (logo + nom uniquement) ──
       React.createElement(Banner, { accent }),
 
-      // ── BODY (avec marges standard) ──
-      React.createElement(View, { style: styles.body },
-        // Header (company + recipient)
-        React.createElement(View, { style: styles.headerRow },
-          React.createElement(CompanyBlock),
-          React.createElement(RecipientBlock, { partner }),
+      // Bloc destinataire seul (emetteur disponible en footer)
+      React.createElement(View, { style: styles.headerRow },
+        React.createElement(RecipientBlock, { partner }),
+      ),
+      // Meta (référence + date)
+      React.createElement(View, { style: styles.metaRow },
+        React.createElement(Text, null,
+          React.createElement(Text, null, 'Référence : '),
+          React.createElement(Text, { style: { fontFamily: 'Helvetica-Bold', color: INK } }, reference),
         ),
-        // Meta (référence + date)
-        React.createElement(View, { style: styles.metaRow },
-          React.createElement(Text, null,
-            React.createElement(Text, null, 'Référence : '),
-            React.createElement(Text, { style: { fontFamily: 'Helvetica-Bold', color: INK } }, reference),
-          ),
-          React.createElement(Text, null, `Pepinster, le ${formatDate(sentDate)}`),
+        React.createElement(Text, null, `Pepinster, le ${formatDate(sentDate)}`),
+      ),
+      // Titre
+      React.createElement(Text, { style: titleStyle }, LEVEL_TITLES[level]),
+      // Intro
+      React.createElement(Text, { style: styles.intro }, LEVEL_INTROS[level]),
+      // Tableau
+      React.createElement(View, { style: styles.table },
+        React.createElement(View, { style: styles.thead },
+          React.createElement(Text, { style: styles.cellInvoice  }, 'N° facture'),
+          React.createElement(Text, { style: styles.cellDate     }, 'Date'),
+          React.createElement(Text, { style: styles.cellDue      }, 'Échéance'),
+          React.createElement(Text, { style: styles.cellDays     }, 'Jours'),
+          React.createElement(Text, { style: styles.cellPlate    }, 'Véhicule'),
+          React.createElement(Text, { style: styles.cellTotal    }, 'Mt TVAC'),
+          React.createElement(Text, { style: styles.cellResidual }, 'Reste dû'),
         ),
-        // Titre
-        React.createElement(Text, { style: titleStyle }, LEVEL_TITLES[level]),
-        // Intro
-        React.createElement(Text, { style: styles.intro }, LEVEL_INTROS[level]),
-        // Tableau
-        React.createElement(View, { style: styles.table },
-          React.createElement(View, { style: styles.thead },
-            React.createElement(Text, { style: styles.cellInvoice  }, 'N° facture'),
-            React.createElement(Text, { style: styles.cellDate     }, 'Date'),
-            React.createElement(Text, { style: styles.cellDue      }, 'Échéance'),
-            React.createElement(Text, { style: styles.cellDays     }, 'Jours'),
-            React.createElement(Text, { style: styles.cellPlate    }, 'Véhicule'),
-            React.createElement(Text, { style: styles.cellTotal    }, 'Mt TVAC'),
-            React.createElement(Text, { style: styles.cellResidual }, 'Reste dû'),
-          ),
-          ...invoices.map((inv, i) =>
-            React.createElement(InvoiceRow, { key: inv.id, inv, zebra: i % 2 === 1 })
-          ),
+        ...invoices.map((inv, i) =>
+          React.createElement(InvoiceRow, { key: inv.id, inv, zebra: i % 2 === 1 })
         ),
-        // Total dans encadre
-        React.createElement(View, { style: styles.totalBox },
-          React.createElement(View, { style: totalInnerStyle },
-            React.createElement(Text, { style: styles.totalLabel }, 'Total à régler'),
-            React.createElement(Text, { style: totalAmountStyle }, formatEur(totalDue)),
-          ),
+      ),
+      // Total dans encadre
+      React.createElement(View, { style: styles.totalBox },
+        React.createElement(View, { style: totalInnerStyle },
+          React.createElement(Text, { style: styles.totalLabel }, 'Total à régler'),
+          React.createElement(Text, { style: totalAmountStyle }, formatEur(totalDue)),
         ),
-        // Modalites paiement (IBAN + communication)
-        React.createElement(PaymentBlock, { totalDue, reference }),
-        // Closing
-        React.createElement(View, { style: styles.closing },
-          React.createElement(Text, null, closingText),
-          React.createElement(View, { style: styles.signature },
-            React.createElement(Text, { style: { color: INK_MUTED } }, 'Le service Comptabilité'),
-            React.createElement(Text, { style: styles.signatureBold }, COMPANY.name),
-          ),
+      ),
+      // Modalites paiement (IBAN + communication)
+      React.createElement(PaymentBlock, { totalDue, reference }),
+      // Closing -- wrap=false pour eviter qu il deborde sur page 2
+      React.createElement(View, { style: styles.closing, wrap: false },
+        React.createElement(Text, null, closingText),
+        React.createElement(View, { style: styles.signature },
+          React.createElement(Text, { style: { color: INK_MUTED } }, 'Le service Comptabilité'),
+          React.createElement(Text, { style: styles.signatureBold }, COMPANY.name),
         ),
       ),
       // Footer fixe sur chaque page
