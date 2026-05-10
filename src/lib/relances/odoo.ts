@@ -77,6 +77,10 @@ export interface PartnerOverdueGroup {
   partnerEmail:    string | null   // res.partner.email — null = ne peut pas être relancé par email
   partnerVat:      string | null
   partnerPhone:    string | null
+  partnerStreet:   string | null
+  partnerZip:      string | null
+  partnerCity:     string | null
+  partnerCountry:  string | null   // libelle pays (ex "Belgique") resolu depuis country_id
   invoices:        OverdueInvoice[]
   totalResidual:   number          // somme amount_residual
   maxDaysOverdue:  number          // retard max sur le groupe
@@ -219,11 +223,13 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   // (selon la version/config — chez VD seul 'phone' est dispo).
   // 'ref' = reference interne client (visible Odoo dans la fiche client).
   // 'category_id' = tags Odoo (many2many) -> sert pour l'exclusion via tag.
+  // street/zip/city/country_id : adresse pour le bloc destinataire PDF.
   const partners = await rpc<any[]>(
     'res.partner',
     'read',
     [partnerIds],
-    { fields: ['id', 'name', 'ref', 'email', 'vat', 'phone', 'category_id'] }
+    { fields: ['id', 'name', 'ref', 'email', 'vat', 'phone', 'category_id',
+               'street', 'zip', 'city', 'country_id'] }
   )
 
   // Resolution des noms de tags : 1 read batch sur res.partner.category
@@ -299,6 +305,7 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
 
     let group = groups.get(partnerId)
     if (!group) {
+      const countryName = Array.isArray(partner.country_id) ? (partner.country_id[1] as string) : null
       group = {
         partnerId,
         partnerName:    partner.name || 'Inconnu',
@@ -306,6 +313,10 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
         partnerEmail:   partner.email || null,
         partnerVat:     partner.vat || null,
         partnerPhone:   partner.phone || null,
+        partnerStreet:  partner.street || null,
+        partnerZip:     partner.zip || null,
+        partnerCity:    partner.city || null,
+        partnerCountry: countryName,
         invoices:       [],
         totalResidual:  0,
         maxDaysOverdue: 0,

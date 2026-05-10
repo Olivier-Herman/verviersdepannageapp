@@ -2,12 +2,12 @@
 // VERVIERS DÉPANNAGE — Service emails centralisé
 // ============================================================
 
-const BRAND_RED = '#CC2222'
+export const BRAND_RED = '#CC2222'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 const ADMIN_EMAIL = 'mobi@verviersdepannage.be'
-const FROM_EMAIL = 'administration@verviersdepannage.com'
+export const FROM_EMAIL = 'administration@verviersdepannage.com'
 
-async function getAppToken(): Promise<string> {
+export async function getAppToken(): Promise<string> {
   const res = await fetch(
     `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
     {
@@ -47,7 +47,7 @@ export async function sendEmail(to: string, subject: string, html: string, toNam
 }
 
 // ─── Layout de base ───────────────────────────────────────
-function emailLayout(content: string, title: string) {
+export function emailLayout(content: string, title: string) {
   return `<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -87,19 +87,19 @@ function emailLayout(content: string, title: string) {
 </body></html>`
 }
 
-function badge(color: string, text: string) {
+export function badge(color: string, text: string) {
   return `<span style="display:inline-block;background:${color}15;color:${color};font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid ${color}30;">${text}</span>`
 }
 
-function button(href: string, text: string, color = BRAND_RED) {
+export function button(href: string, text: string, color = BRAND_RED) {
   return `<a href="${href}" style="display:inline-block;background:${color};color:white;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;text-decoration:none;">${text}</a>`
 }
 
-function divider() {
+export function divider() {
   return `<hr style="border:none;border-top:1px solid #ebebeb;margin:24px 0;">`
 }
 
-function infoRow(label: string, value: string) {
+export function infoRow(label: string, value: string) {
   return `<tr>
     <td style="padding:8px 0;font-size:13px;color:#888;white-space:nowrap;vertical-align:top;padding-right:20px;">${label}</td>
     <td style="padding:8px 0;font-size:13px;color:#222;font-weight:500;text-align:right;">${value}</td>
