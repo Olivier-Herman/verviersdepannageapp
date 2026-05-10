@@ -131,14 +131,16 @@ export interface OverdueResult {
   fetched:   number    // nombre de factures lues
 }
 
-// Limite haute par paginate. On pagine par chunks de 1000 pour grouper
-// le moins de round-trips possible tout en restant sous le timeout Vercel.
-// MAX_FETCH 20000 = tres large : meme avec multi-company exclu, VD ne
-// devrait jamais avoir autant de factures echues simultanement.
-// Note : avec le filtre company_id de Verviers Depannage, on coupe deja
-// drastiquement le volume (les factures Riga/DGJ VHU ne sont plus
-// remontees). Ce limit haut est un safety net, pas un usage normal.
-const PAGE_SIZE = 1000
+// Pagination Odoo XMLRPC : VD a un plafond serveur de ~80 par page (limite
+// implicite probable via ir.config_parameter ou config web_data_limit).
+// Du coup demander limit: 1000 retournait silencieusement 80, et notre
+// ancien check "page.length < PAGE_SIZE -> derniere page" coupait apres
+// 80 factures (52 partners). Bug detecte par Olivier en checkpoint 3.
+//
+// Fix : PAGE_SIZE 80 (= au plafond Odoo, on n a plus de fausse derniere
+// page) + condition d arret = page.length === 0 (vraiment fini) au lieu
+// de page.length < PAGE_SIZE.
+const PAGE_SIZE = 80
 const MAX_FETCH = 20000   // si on hit ca, on renvoie truncated=true a l UI
 
 /**
@@ -186,7 +188,10 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   // Champ custom sale.order qui pointe vers fleet.vehicle (cf src/lib/odoo.ts).
   const FIELD_PLAQUE = 'x_studio_many2one_field_78n_1j6fmmeom'
 
-  // 1. Fetch pagine de toutes les factures clients echues >= 15j non soldees
+  // 1. Fetch pagine de toutes les factures clients echues >= 15j non soldees.
+  // Loop tant que la page retournee n est pas vide (page.length === 0).
+  // Plus robuste si Odoo plafonne implicitement la taille de page : on ne
+  // se base plus sur (page.length < PAGE_SIZE) qui peut etre menteur.
   const moves: any[] = []
   let truncated = false
   for (let offset = 0; offset < MAX_FETCH; offset += PAGE_SIZE) {
@@ -202,10 +207,10 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
         offset,
       }
     )
+    if (page.length === 0) break   // vraiment fini
     moves.push(...page)
-    if (page.length < PAGE_SIZE) break  // derniere page atteinte
     if (offset + PAGE_SIZE >= MAX_FETCH) {
-      truncated = true   // on a hit le plafond, il y a probablement encore
+      truncated = true
       break
     }
   }
