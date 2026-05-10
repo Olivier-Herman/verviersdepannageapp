@@ -52,6 +52,22 @@ interface SendResultRow {
   dryRun:       boolean
 }
 
+interface HistoryItem {
+  id:               string
+  partner_id_odoo:  number
+  partner_name:     string
+  level:            ReminderLevel
+  sent_at:          string
+  sent_by_name:     string | null
+  email_to:         string
+  invoice_count:    number
+  total_amount:     number
+  graph_message_id: string | null
+  dry_run:          boolean
+  pdf_signed_url:   string | null
+  xlsx_signed_url:  string | null
+}
+
 const LEVEL_LABEL: Record<ReminderLevel, string> = {
   1: 'L1 — Amical',
   2: 'L2 — Ferme',
@@ -104,6 +120,12 @@ export default function RelancesClient({ session }: { session: Session }) {
   const [sendingProgress,   setSendingProgress] = useState<{ done: number; total: number } | null>(null)
   const [sendResults,       setSendResults]   = useState<SendResultRow[] | null>(null)
 
+  // Historique
+  const [historyOpen,    setHistoryOpen]    = useState(false)
+  const [historyItems,   setHistoryItems]   = useState<HistoryItem[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError,   setHistoryError]   = useState<string | null>(null)
+
   // Load list
   const loadList = async () => {
     setLoading(true)
@@ -125,6 +147,28 @@ export default function RelancesClient({ session }: { session: Session }) {
     }
   }
   useEffect(() => { loadList() }, [])
+
+  // Load history (lazy : seulement quand la section est ouverte)
+  const loadHistory = async () => {
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const res = await fetch('/api/relances/history?limit=50', { cache: 'no-store' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || `HTTP ${res.status}`)
+      }
+      const j = await res.json()
+      setHistoryItems(j.items || [])
+    } catch (e: any) {
+      setHistoryError(e.message)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+  useEffect(() => {
+    if (historyOpen && historyItems === null) loadHistory()
+  }, [historyOpen, historyItems])
 
   const filtered = groups
     ? (filter === 'all' ? groups : groups.filter(g => g.level === filter))
@@ -287,6 +331,21 @@ export default function RelancesClient({ session }: { session: Session }) {
           </div>
         )}
 
+        {/* Bouton ouverture historique (en-tete) */}
+        {!loading && !error && (
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                setHistoryOpen(o => !o)
+                if (!historyOpen && historyItems !== null) loadHistory()  // refresh si re-ouverture
+              }}
+              className="text-sm text-brand hover:underline"
+            >
+              {historyOpen ? '▲ Masquer l\'historique' : '📜 Voir l\'historique des relances envoyées'}
+            </button>
+          </div>
+        )}
+
         {!loading && !error && filtered.length > 0 && (
           <div className="space-y-3">
             {filtered.map(g => {
@@ -409,6 +468,101 @@ export default function RelancesClient({ session }: { session: Session }) {
               )
             })}
           </div>
+        )}
+
+        {/* ── Section Historique (collapsible) ── */}
+        {historyOpen && (
+          <section className="mt-6 rounded-lg border bg-surface-2">
+            <header className="px-4 py-3 border-b flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-ink">Historique des relances</h3>
+                <p className="text-xs text-ink-muted">
+                  Les 50 dernières relances envoyées (dry-run inclus)
+                </p>
+              </div>
+              <button
+                onClick={loadHistory}
+                disabled={historyLoading}
+                className="text-xs text-brand hover:underline disabled:text-ink-muted"
+              >
+                {historyLoading ? 'Chargement…' : '↻ Rafraîchir'}
+              </button>
+            </header>
+
+            {historyError && (
+              <div className="m-4 rounded bg-critical-soft text-critical p-3 text-sm">
+                ❌ {historyError}
+              </div>
+            )}
+
+            {historyItems && historyItems.length === 0 && !historyLoading && (
+              <div className="p-6 text-center text-sm text-ink-muted">
+                Aucune relance envoyée pour l'instant.
+              </div>
+            )}
+
+            {historyItems && historyItems.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface text-ink-muted text-xs uppercase">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-medium">Date</th>
+                      <th className="px-3 py-2 font-medium">Client</th>
+                      <th className="px-3 py-2 font-medium">Niveau</th>
+                      <th className="px-3 py-2 font-medium text-right">Factures</th>
+                      <th className="px-3 py-2 font-medium text-right">Montant</th>
+                      <th className="px-3 py-2 font-medium">Mode</th>
+                      <th className="px-3 py-2 font-medium">Par</th>
+                      <th className="px-3 py-2 font-medium text-right">Fichiers</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyItems.map(it => {
+                      const sentAt = new Date(it.sent_at)
+                      const sentAtStr = sentAt.toLocaleDateString('fr-BE', {
+                        day: '2-digit', month: '2-digit', year: '2-digit',
+                      }) + ' ' + sentAt.toLocaleTimeString('fr-BE', {
+                        hour: '2-digit', minute: '2-digit',
+                      })
+                      return (
+                        <tr key={it.id} className="border-t">
+                          <td className="px-3 py-2 text-ink-muted whitespace-nowrap">{sentAtStr}</td>
+                          <td className="px-3 py-2 text-ink">{it.partner_name}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${LEVEL_BADGE[it.level]}`}>
+                              L{it.level}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-ink-muted text-right">{it.invoice_count}</td>
+                          <td className="px-3 py-2 text-ink font-medium text-right whitespace-nowrap">
+                            {formatEur(it.total_amount)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {it.dry_run
+                              ? <span className="text-warning text-xs">🧪 simulation</span>
+                              : <span className="text-success text-xs">✉ envoyé</span>}
+                          </td>
+                          <td className="px-3 py-2 text-ink-muted text-xs whitespace-nowrap">
+                            {it.sent_by_name || '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">
+                            {it.pdf_signed_url && (
+                              <a href={it.pdf_signed_url} target="_blank" rel="noopener noreferrer"
+                                 className="text-xs text-brand hover:underline mr-2">PDF</a>
+                            )}
+                            {it.xlsx_signed_url && (
+                              <a href={it.xlsx_signed_url} target="_blank" rel="noopener noreferrer"
+                                 className="text-xs text-brand hover:underline">XLSX</a>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         )}
       </div>
 
