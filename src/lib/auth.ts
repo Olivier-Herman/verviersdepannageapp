@@ -173,9 +173,23 @@ export const authOptions: NextAuthOptions = {
         ;(session.user as any).id                = token.id
         ;(session.user as any).role              = token.role
         ;(session.user as any).roles             = token.roles || [token.role]
-        ;(session.user as any).modules           = token.modules || []
         ;(session.user as any).mustChangePassword= token.mustChangePassword
         ;(session.user as any).pending           = token.pending
+
+        // Refresh modules a chaque session check (sinon le JWT garde les
+        // modules au moment du login, et l user devrait se reconnecter
+        // pour voir un nouveau module active dans le menu).
+        // Cout : 1 query par page render -- negligeable pour Supabase.
+        if (token.id) {
+          try {
+            const fresh = await loadModules(token.id as string)
+            ;(session.user as any).modules = fresh
+          } catch {
+            ;(session.user as any).modules = token.modules || []
+          }
+        } else {
+          ;(session.user as any).modules = token.modules || []
+        }
       }
       return session
     },

@@ -82,6 +82,42 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
   return data.result
 }
 
+/**
+ * Recupere le PDF d une facture client depuis Odoo via _render_qweb_pdf.
+ * Essaie plusieurs noms de rapport (variabilite selon version Odoo).
+ *
+ * Retourne un Buffer du PDF.
+ */
+export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer> {
+  // Liste de noms de rapport a essayer en cascade. Le premier qui repond
+  // sans erreur est utilise.
+  const reportNames = [
+    'account.report_invoice_with_payments',
+    'account.account_invoices',
+    'account.report_invoice',
+  ]
+  let lastError: any
+  for (const reportName of reportNames) {
+    try {
+      // _render_qweb_pdf retourne [pdf_b64_string, 'pdf']
+      const result = await rpc<[string, string]>(
+        'ir.actions.report',
+        '_render_qweb_pdf',
+        [reportName, [invoiceId]],
+      )
+      if (Array.isArray(result) && typeof result[0] === 'string' && result[0].length > 0) {
+        return Buffer.from(result[0], 'base64')
+      }
+    } catch (e: any) {
+      lastError = e
+      // Continue avec le rapport suivant
+    }
+  }
+  throw new Error(
+    `Impossible de generer PDF pour facture ${invoiceId} (rapports essayes: ${reportNames.join(', ')}). Last error: ${lastError?.message || 'unknown'}`
+  )
+}
+
 export type ReminderLevel = 1 | 2 | 3
 
 /**

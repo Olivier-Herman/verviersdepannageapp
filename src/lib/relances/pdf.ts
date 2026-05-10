@@ -10,12 +10,13 @@
 // Le composant React rendu cote serveur via renderToBuffer().
 
 import {
-  Document, Page, View, Text, Image, StyleSheet,
+  Document, Page, View, Text, Image, Link, StyleSheet,
   renderToBuffer,
 } from '@react-pdf/renderer'
 import * as React              from 'react'
 import { COMPANY }             from '@/config/company'
 import type { OverdueInvoice, ReminderLevel } from './odoo'
+import { signInvoiceToken }    from './invoice-token'
 
 interface PartnerForPdf {
   name:    string
@@ -329,13 +330,37 @@ function RecipientBlock({ partner }: { partner: PartnerForPdf }): React.ReactEle
   return React.createElement(View, { style: styles.recipient }, ...children)
 }
 
+// Couleur du lien cliquable n facture : bleu standard PDF, lisible sur
+// fond blanc et zebra. PDF reader n affiche pas naturellement le souligne
+// donc on ajoute textDecoration: 'underline'.
+const LINK_BLUE = '#1F75D9'
+
+/**
+ * Construit l URL signee pour telecharger une facture Odoo via la route
+ * /api/relances/invoice/[id]?token=<HMAC>. URL absolue obligatoire pour
+ * que les liens fonctionnent depuis un PDF email envoye au client.
+ */
+function buildInvoiceUrl(invoiceId: number): string {
+  const token = signInvoiceToken(invoiceId)   // TTL 1 an par defaut
+  return `${APP_URL}/api/relances/invoice/${invoiceId}?token=${encodeURIComponent(token)}`
+}
+
 function InvoiceRow({ inv, zebra }: { inv: OverdueInvoice; zebra: boolean }): React.ReactElement {
   const plateText = inv.plate
     ? (inv.vehicleLabel ? `${inv.plate} · ${inv.vehicleLabel}` : inv.plate)
     : '—'
   const rowStyle = zebra ? { ...styles.tr, ...styles.trZebra } : styles.tr
+
+  // Le numero de facture est wrappe dans un Link cliquable avec underline
+  // bleu. Le clic ouvre la route /api/relances/invoice/<id> qui stream le
+  // PDF Odoo. Token HMAC TTL 1 an.
+  const invoiceLink = React.createElement(Link, {
+    src: buildInvoiceUrl(inv.id),
+    style: { color: LINK_BLUE, textDecoration: 'underline' },
+  }, inv.name)
+
   return React.createElement(View, { style: rowStyle },
-    React.createElement(Text, { style: styles.cellInvoice  }, inv.name),
+    React.createElement(Text, { style: styles.cellInvoice  }, invoiceLink),
     React.createElement(Text, { style: styles.cellDate     }, formatDate(inv.invoiceDate)),
     React.createElement(Text, { style: styles.cellDue      }, formatDate(inv.dueDate)),
     React.createElement(Text, { style: styles.cellDays     }, `${inv.daysOverdue} j`),
