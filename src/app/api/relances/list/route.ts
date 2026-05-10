@@ -60,8 +60,13 @@ export async function GET() {
 
   // Pull Odoo + enrichissement Supabase
   let groups: PartnerOverdueGroup[]
+  let truncated = false
+  let fetched = 0
   try {
-    groups = await getOverdueInvoicesGroupedByPartner()
+    const r = await getOverdueInvoicesGroupedByPartner()
+    groups    = r.groups
+    truncated = r.truncated
+    fetched   = r.fetched
   } catch (e: any) {
     console.error('[relances/list] Odoo error:', e.message)
     return NextResponse.json(
@@ -71,7 +76,7 @@ export async function GET() {
   }
 
   if (groups.length === 0) {
-    return NextResponse.json({ groups: [] })
+    return NextResponse.json({ groups: [], truncated, fetched })
   }
 
   // Pour chaque partner, récupérer la DERNIÈRE relance envoyée tous niveaux
@@ -109,5 +114,5 @@ export async function GET() {
     return { ...g, lastReminder }
   })
 
-  return NextResponse.json({ groups: enriched })
+  return NextResponse.json({ groups: enriched, truncated, fetched })
 }

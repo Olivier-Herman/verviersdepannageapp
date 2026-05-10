@@ -12,13 +12,17 @@ interface OverdueInvoice {
   invoiceDate:      string
   dueDate:          string
   daysOverdue:      number
+  level:            ReminderLevel
   amountTotal:      number
   amountResidual:   number
+  plate:            string | null
+  vehicleLabel:     string | null
 }
 
 interface PartnerGroup {
   partnerId:       number
   partnerName:     string
+  partnerRef:      string | null
   partnerEmail:    string | null
   partnerVat:      string | null
   partnerPhone:    string | null
@@ -59,10 +63,12 @@ function formatDate(iso: string): string {
 export default function RelancesClient({ session }: { session: Session }) {
   const sessionUser = session.user as any
 
-  const [groups,  setGroups]  = useState<PartnerGroup[] | null>(null)
-  const [error,   setError]   = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState<ReminderLevel | 'all'>('all')
+  const [groups,    setGroups]    = useState<PartnerGroup[] | null>(null)
+  const [truncated, setTruncated] = useState(false)
+  const [fetched,   setFetched]   = useState(0)
+  const [error,     setError]     = useState<string | null>(null)
+  const [loading,   setLoading]   = useState(true)
+  const [filter,    setFilter]    = useState<ReminderLevel | 'all'>('all')
 
   useEffect(() => {
     let cancelled = false
@@ -76,7 +82,11 @@ export default function RelancesClient({ session }: { session: Session }) {
           throw new Error(j.error || `HTTP ${res.status}`)
         }
         const j = await res.json()
-        if (!cancelled) setGroups(j.groups || [])
+        if (!cancelled) {
+          setGroups(j.groups || [])
+          setTruncated(!!j.truncated)
+          setFetched(j.fetched || 0)
+        }
       } catch (e: any) {
         if (!cancelled) setError(e.message)
       } finally {
@@ -159,6 +169,14 @@ export default function RelancesClient({ session }: { session: Session }) {
           </div>
         )}
 
+        {truncated && (
+          <div className="rounded-md bg-warning-soft text-warning p-3 text-sm">
+            ⚠ Plus de {fetched} factures échues — la liste est tronquée. Certains
+            clients peuvent manquer. (À gérer en Phase 2 : exclusion des partenaires
+            en contentieux ou limite ancienneté max.)
+          </div>
+        )}
+
         {!loading && !error && filtered.length === 0 && (
           <div className="rounded-md bg-surface-2 border p-6 text-center text-sm text-ink-muted">
             🎉 Aucune facture échue à ce niveau. Bravo.
@@ -176,6 +194,11 @@ export default function RelancesClient({ session }: { session: Session }) {
                   <div className="min-w-0">
                     <div className="font-semibold text-ink truncate">
                       {g.partnerName}
+                      {g.partnerRef && (
+                        <span className="ml-2 text-xs text-ink-muted font-normal">
+                          [{g.partnerRef}]
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-ink-muted truncate">
                       {g.partnerEmail || <span className="text-warning">⚠ pas d'email</span>}
@@ -210,16 +233,60 @@ export default function RelancesClient({ session }: { session: Session }) {
                   <summary className="cursor-pointer text-ink-muted hover:text-ink select-none">
                     Voir les factures ({g.invoices.length})
                   </summary>
-                  <ul className="mt-2 space-y-1">
-                    {g.invoices.map(inv => (
-                      <li key={inv.id} className="flex justify-between gap-3 text-xs">
-                        <span className="text-ink">{inv.name}</span>
-                        <span className="text-ink-muted">échéance {formatDate(inv.dueDate)}</span>
-                        <span className="text-ink-muted">{inv.daysOverdue}j</span>
-                        <span className="text-ink font-medium">{formatEur(inv.amountResidual)}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="text-ink-muted border-b">
+                        <tr className="text-left">
+                          <th className="py-1 pr-2 font-medium">Date facture</th>
+                          <th className="py-1 pr-2 font-medium">N° facture</th>
+                          <th className="py-1 pr-2 font-medium">Réf. client</th>
+                          <th className="py-1 pr-2 font-medium">Véhicule</th>
+                          <th className="py-1 pr-2 font-medium">Échéance</th>
+                          <th className="py-1 pr-2 font-medium text-right">Jours</th>
+                          <th className="py-1 pr-2 font-medium text-right">Montant TVAC</th>
+                          <th className="py-1 pr-2 font-medium text-right">Reste dû</th>
+                          <th className="py-1 font-medium">Niveau</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.invoices.map(inv => (
+                          <tr key={inv.id} className="border-b last:border-0">
+                            <td className="py-1 pr-2 text-ink whitespace-nowrap">
+                              {inv.invoiceDate ? formatDate(inv.invoiceDate) : '—'}
+                            </td>
+                            <td className="py-1 pr-2 text-ink font-mono whitespace-nowrap">
+                              {inv.name}
+                            </td>
+                            <td className="py-1 pr-2 text-ink-muted whitespace-nowrap">
+                              {g.partnerRef || '—'}
+                            </td>
+                            <td className="py-1 pr-2 text-ink-muted whitespace-nowrap">
+                              {inv.plate
+                                ? <>{inv.plate}{inv.vehicleLabel && <span className="text-ink-muted ml-1">· {inv.vehicleLabel}</span>}</>
+                                : '—'}
+                            </td>
+                            <td className="py-1 pr-2 text-ink-muted whitespace-nowrap">
+                              {formatDate(inv.dueDate)}
+                            </td>
+                            <td className="py-1 pr-2 text-ink-muted text-right whitespace-nowrap">
+                              {inv.daysOverdue}j
+                            </td>
+                            <td className="py-1 pr-2 text-ink-muted text-right whitespace-nowrap">
+                              {formatEur(inv.amountTotal)}
+                            </td>
+                            <td className="py-1 pr-2 text-ink font-medium text-right whitespace-nowrap">
+                              {formatEur(inv.amountResidual)}
+                            </td>
+                            <td className="py-1">
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${LEVEL_BADGE[inv.level]}`}>
+                                L{inv.level}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </details>
               </article>
             ))}
