@@ -131,10 +131,15 @@ export interface OverdueResult {
   fetched:   number    // nombre de factures lues
 }
 
-// Limite haute par paginate. 5000 = large pour VD, mais on pagine quand meme
-// par chunks de 500 pour eviter les payloads enormes en cas de purge tardive.
-const PAGE_SIZE = 500
-const MAX_FETCH = 5000   // si on hit ca, on renvoie truncated=true a l UI
+// Limite haute par paginate. On pagine par chunks de 1000 pour grouper
+// le moins de round-trips possible tout en restant sous le timeout Vercel.
+// MAX_FETCH 20000 = tres large : meme avec multi-company exclu, VD ne
+// devrait jamais avoir autant de factures echues simultanement.
+// Note : avec le filtre company_id de Verviers Depannage, on coupe deja
+// drastiquement le volume (les factures Riga/DGJ VHU ne sont plus
+// remontees). Ce limit haut est un safety net, pas un usage normal.
+const PAGE_SIZE = 1000
+const MAX_FETCH = 20000   // si on hit ca, on renvoie truncated=true a l UI
 
 /**
  * Récupère TOUTES les factures clients Odoo échues depuis >= 15 jours,
@@ -383,7 +388,14 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
     g.totalResidual = Math.round(g.totalResidual * 100) / 100
     result.push(g)
   }
-  result.sort((a, b) => b.maxDaysOverdue - a.maxDaysOverdue)
+  // Tri par defaut : montant total du desc (les plus gros enjeux d abord).
+  // Tie-break par maxDaysOverdue desc puis partner_name asc pour
+  // determinisme.
+  result.sort((a, b) => {
+    if (b.totalResidual !== a.totalResidual) return b.totalResidual - a.totalResidual
+    if (b.maxDaysOverdue !== a.maxDaysOverdue) return b.maxDaysOverdue - a.maxDaysOverdue
+    return a.partnerName.localeCompare(b.partnerName)
+  })
 
   return { groups: result, truncated, fetched: moves.length }
 }
