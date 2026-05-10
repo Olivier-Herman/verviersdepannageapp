@@ -98,19 +98,48 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
  */
 export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer> {
   // ── Strategy 1 : ir.attachment ──
+  // Recherche elargie : mimetype 'like' %pdf% OU name ilike %.pdf
+  // (certains attachments PDF ont mimetype octet-stream ou inconnu).
+  // On essaie d abord la recherche stricte, puis un fallback.
   try {
-    const attachments = await rpc<any[]>(
-      'ir.attachment',
-      'search_read',
-      [[
+    const tryQueries = [
+      // Query 1 : strict mimetype application/pdf
+      [
         ['res_model', '=', 'account.move'],
         ['res_id',    '=', invoiceId],
         ['mimetype',  '=', 'application/pdf'],
-      ]],
-      { fields: ['id', 'name', 'datas'], limit: 1, order: 'create_date desc' }
-    )
-    if (attachments.length > 0 && attachments[0].datas) {
-      return Buffer.from(attachments[0].datas, 'base64')
+      ],
+      // Query 2 : tout attachment avec name finissant en .pdf
+      [
+        ['res_model', '=', 'account.move'],
+        ['res_id',    '=', invoiceId],
+        ['name',      'ilike', '%.pdf'],
+      ],
+      // Query 3 : n importe quel attachment lie a la facture (dernier recours)
+      [
+        ['res_model', '=', 'account.move'],
+        ['res_id',    '=', invoiceId],
+      ],
+    ]
+    for (const domain of tryQueries) {
+      const attachments = await rpc<any[]>(
+        'ir.attachment',
+        'search_read',
+        [domain],
+        { fields: ['id', 'name', 'datas', 'mimetype'], limit: 5, order: 'create_date desc' }
+      )
+      if (attachments.length === 0) continue
+      // Filtre cote Node : on cherche le 1er attachment dont datas est non-vide
+      // ET (mimetype pdf OU name.endsWith('.pdf'))
+      const pdfAtt = attachments.find(a =>
+        a.datas
+        && (a.mimetype === 'application/pdf'
+            || (typeof a.name === 'string' && a.name.toLowerCase().endsWith('.pdf')))
+      )
+      if (pdfAtt) {
+        console.info(`[relances/odoo] PDF facture ${invoiceId} trouve via ir.attachment id=${pdfAtt.id} (${pdfAtt.name}, ${pdfAtt.mimetype})`)
+        return Buffer.from(pdfAtt.datas, 'base64')
+      }
     }
   } catch (e: any) {
     console.warn(`[relances/odoo] ir.attachment lookup failed for invoice ${invoiceId}:`, e.message)
@@ -120,10 +149,10 @@ export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer
   // 1. Login : POST /web/session/authenticate
   //    Sur Odoo 18+, l api_key peut etre utilisee comme password.
   //    Le login est l email du user Odoo (UID 8 chez VD).
-  const odooLogin = process.env.ODOO_USER || process.env.ODOO_LOGIN
+  const odooLogin = process.env.ODOO_EMAIL || process.env.ODOO_USER || process.env.ODOO_LOGIN
   if (!odooLogin) {
     throw new Error(
-      `Impossible de generer PDF pour facture ${invoiceId} : aucun attachment PDF en base, et ODOO_USER/ODOO_LOGIN non configure pour fallback HTTP.`
+      `Impossible de generer PDF pour facture ${invoiceId} : aucun attachment PDF en base, et ODOO_EMAIL non configure pour fallback HTTP.`
     )
   }
 
