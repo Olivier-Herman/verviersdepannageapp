@@ -10,14 +10,14 @@
 // Pas de fallback admin/superadmin (convention projet).
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60   // PDF cold start ~10s la 1ere fois (chromium)
+export const maxDuration = 30   // @react-pdf/renderer : cold ~1s, gen ~500ms
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { generateReminderPdf, buildMockPdfData } from '@/lib/relances/pdf'
-import { uploadReminderFile }        from '@/lib/relances/storage'
+import { uploadReminderFile, SIGNED_URL_TTL_24H } from '@/lib/relances/storage'
 import type { ReminderLevel }        from '@/lib/relances/odoo'
 
 export async function GET(req: NextRequest) {
@@ -51,12 +51,15 @@ export async function GET(req: NextRequest) {
 
   try {
     const pdfBuffer = await generateReminderPdf(data)
+    const ts        = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
     const { signedUrl, path } = await uploadReminderFile({
-      partnerId: 0,           // 0 = mock partner (pas un id Odoo reel)
+      partnerId: 0,           // ignore quand fileName fourni
       level,
       ext:       'pdf',
       buffer:    pdfBuffer,
       prefix:    'mock',
+      fileName:  `checkpoint2-${ts}-L${level}.pdf`,
+      ttlSec:    SIGNED_URL_TTL_24H,
     })
     return NextResponse.json({
       ok:        true,
@@ -64,6 +67,7 @@ export async function GET(req: NextRequest) {
       signedUrl,
       path,
       bytes:     pdfBuffer.length,
+      ttl:       '24h',
       message:   `PDF mock L${level} genere et uploade. Ouvre signedUrl dans le navigateur pour validation.`,
     })
   } catch (e: any) {

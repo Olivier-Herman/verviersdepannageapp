@@ -24,12 +24,6 @@ const nextConfig = {
   images: {
     domains: ["app.verviersdepannage.com"],
     unoptimized: true
-  },
-  // @sparticuz/chromium et puppeteer-core doivent etre exclus du bundling
-  // serverless Next.js sinon le path runtime du binaire Chromium est casse
-  // ("input directory .next/server/.../bin does not exist").
-  experimental: {
-    serverComponentsExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
   }
 };
 
