@@ -17,6 +17,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { generateReminderPdf, buildMockPdfData } from '@/lib/relances/pdf'
+import { generateReminderXlsx, buildMockXlsxData } from '@/lib/relances/xlsx'
 import { uploadReminderFile, SIGNED_URL_TTL_24H } from '@/lib/relances/storage'
 import type { ReminderLevel }        from '@/lib/relances/odoo'
 
@@ -50,25 +51,51 @@ export async function GET(req: NextRequest) {
   const data  = buildMockPdfData(level)
 
   try {
-    const pdfBuffer = await generateReminderPdf(data)
-    const ts        = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
-    const { signedUrl, path } = await uploadReminderFile({
-      partnerId: 0,           // ignore quand fileName fourni
-      level,
-      ext:       'pdf',
-      buffer:    pdfBuffer,
-      prefix:    'mock',
-      fileName:  `checkpoint2-${ts}-L${level}.pdf`,
-      ttlSec:    SIGNED_URL_TTL_24H,
-    })
+    // Generations en parallele : PDF + XLSX a partir des memes donnees mock.
+    const [pdfBuffer, xlsxBuffer] = await Promise.all([
+      generateReminderPdf(data),
+      Promise.resolve(generateReminderXlsx(buildMockXlsxData(level, data))),
+    ])
+
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
+
+    // Upload PDF + XLSX en parallele (2 round-trips Storage independants)
+    const [pdfUpload, xlsxUpload] = await Promise.all([
+      uploadReminderFile({
+        partnerId: 0,
+        level,
+        ext:       'pdf',
+        buffer:    pdfBuffer,
+        prefix:    'mock',
+        fileName:  `checkpoint2-${ts}-L${level}.pdf`,
+        ttlSec:    SIGNED_URL_TTL_24H,
+      }),
+      uploadReminderFile({
+        partnerId: 0,
+        level,
+        ext:       'xlsx',
+        buffer:    xlsxBuffer,
+        prefix:    'mock',
+        fileName:  `checkpoint2-${ts}-L${level}.xlsx`,
+        ttlSec:    SIGNED_URL_TTL_24H,
+      }),
+    ])
+
     return NextResponse.json({
-      ok:        true,
+      ok:    true,
       level,
-      signedUrl,
-      path,
-      bytes:     pdfBuffer.length,
-      ttl:       '24h',
-      message:   `PDF mock L${level} genere et uploade. Ouvre signedUrl dans le navigateur pour validation.`,
+      ttl:   '24h',
+      pdf: {
+        signedUrl: pdfUpload.signedUrl,
+        path:      pdfUpload.path,
+        bytes:     pdfBuffer.length,
+      },
+      xlsx: {
+        signedUrl: xlsxUpload.signedUrl,
+        path:      xlsxUpload.path,
+        bytes:     xlsxBuffer.length,
+      },
+      message: `PDF + XLSX mock L${level} generes et uploades. Ouvre les 2 signedUrl dans le navigateur pour validation.`,
     })
   } catch (e: any) {
     console.error('[relances/preview-mock]', e)
