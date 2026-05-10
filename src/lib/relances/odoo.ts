@@ -97,6 +97,38 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
  * Retourne un Buffer du PDF.
  */
 export async function fetchInvoicePdfFromOdoo(invoiceId: number): Promise<Buffer> {
+  // ── Strategy 0 : lire account.move.invoice_pdf_report_id ──
+  // Sur Odoo 18+, account.move expose 2 champs lies au PDF :
+  //   - invoice_pdf_report_id : Many2One vers ir.attachment (PDF officiel)
+  //   - invoice_pdf_report_file : Binary (computed, parfois vide)
+  // C est la voie la plus directe et publique.
+  try {
+    const moves = await rpc<any[]>(
+      'account.move',
+      'read',
+      [[invoiceId]],
+      { fields: ['invoice_pdf_report_id'] }
+    )
+    if (moves.length > 0 && moves[0].invoice_pdf_report_id) {
+      const reportRef = moves[0].invoice_pdf_report_id
+      const attId = Array.isArray(reportRef) ? reportRef[0] : reportRef
+      if (typeof attId === 'number' && attId > 0) {
+        const atts = await rpc<any[]>(
+          'ir.attachment',
+          'read',
+          [[attId]],
+          { fields: ['id', 'name', 'datas'] }
+        )
+        if (atts.length > 0 && atts[0].datas) {
+          console.info(`[relances/odoo] PDF facture ${invoiceId} via invoice_pdf_report_id (att ${attId})`)
+          return Buffer.from(atts[0].datas, 'base64')
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[relances/odoo] invoice_pdf_report_id lookup failed for ${invoiceId}:`, e.message)
+  }
+
   // ── Strategy 1 : ir.attachment ──
   // Recherche elargie : mimetype 'like' %pdf% OU name ilike %.pdf
   // (certains attachments PDF ont mimetype octet-stream ou inconnu).
