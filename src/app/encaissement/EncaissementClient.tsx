@@ -408,8 +408,13 @@ export default function EncaissementClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_type: 'encaissement', plate,
-          brand_id: selectedBrandId || null,
-          model_id: selectedModel === 'Autre' ? null : selectedModelId,
+          // brand_id / model_id sur interventions sont legacy (FK vers tables
+          // Supabase vehicle_brands/vehicle_models deprecated, alimentées par Odoo
+          // via /api/vehicles → IDs Odoo absents côté Supabase = FK violation).
+          // brand_text / model_text suffisent pour la sync Odoo et l'email récépissé.
+          // TODO: Sub-phase post-incident — DROP FK + colonnes mortes (Stratégie A).
+          brand_id: null,
+          model_id: null,
           brand_text: selectedBrand,
           model_text: selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel,
           motif_id: motif, motif_text: motifLabel,
