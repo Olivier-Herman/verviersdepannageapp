@@ -119,11 +119,13 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<PartnerOverd
     moves.map(m => Array.isArray(m.partner_id) ? m.partner_id[0] : m.partner_id)
          .filter((id): id is number => typeof id === 'number')
   ))
+  // NB: 'mobile' n'existe pas sur res.partner dans cette base Odoo
+  // (selon la version/config — chez VD seul 'phone' est dispo).
   const partners = await rpc<any[]>(
     'res.partner',
     'read',
     [partnerIds],
-    { fields: ['id', 'name', 'email', 'vat', 'phone', 'mobile'] }
+    { fields: ['id', 'name', 'email', 'vat', 'phone'] }
   )
   const partnerById = new Map<number, any>(partners.map(p => [p.id, p]))
 
@@ -158,7 +160,7 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<PartnerOverd
         partnerName:    partner.name || 'Inconnu',
         partnerEmail:   partner.email || null,
         partnerVat:     partner.vat || null,
-        partnerPhone:   partner.phone || partner.mobile || null,
+        partnerPhone:   partner.phone || null,
         invoices:       [],
         totalResidual:  0,
         maxDaysOverdue: 0,

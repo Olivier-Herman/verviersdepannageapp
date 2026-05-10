@@ -10,5 +10,5 @@ export const COMPANY = {
   iban: 'BE26 3401 4658 5529',
   phone: '+32 (0)87/35.18.20',
   email: 'administration@verviersdepannage.com',
-  website: 'verviersdepannage.com',
+  website: 'verviersdepannage.be',
 } as const
