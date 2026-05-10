@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
+import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import { normalizePlate } from '@/lib/plate'
+import type { VehicleMatch } from '@/types/vehicles'
 
 // ─────────────────────────────────────────────────────────
 // CLASSES PARTAGÉES — pattern aligné avec /admin/depots et /admin/users.
@@ -47,7 +50,6 @@ declare global {
   interface Window { google?: any; initGooglePlaces?: () => void }
 }
 
-const normalizePlate = (v: string) => v.replace(/[-.\s]/g, '').toUpperCase()
 
 // ── Composants UI définis HORS du composant principal ──────
 function BaseShell({
@@ -179,8 +181,9 @@ export default function EncaissementClient({
 
   // Page 0 — pré-rempli depuis mission si prefill fourni
   const [plate, setPlate] = useState(prefill?.plate || '')
-  const [plateChecking, setPlateChecking] = useState(false)
   const [odooVehicle, setOdooVehicle] = useState<OdooVehicle | null>(null)
+  /** Modal de lookup véhicule (Phase 1 multi-match Odoo) */
+  const [showLookup, setShowLookup] = useState(false)
 
   // Page 1
   const [vehicleConfirmed, setVehicleConfirmed] = useState<boolean | null>(null)
@@ -311,24 +314,39 @@ export default function EncaissementClient({
     fetch(`/api/vehicles?type=models&brandId=${selectedBrandId}`).then(r => r.json()).then(setModels)
   }, [selectedBrandId])
 
-  const checkPlate = async () => {
+  /**
+   * Ouvre la modal de lookup véhicule. La modal gère elle-même le fetch
+   * /api/vehicles/lookup-by-plate (multi-match supporté Phase 1) et appelle
+   * onSelect / onCreateNew selon le résultat.
+   */
+  const checkPlate = () => {
     if (plate.length < 3) { setError('Immatriculation trop courte'); return }
-    setPlateChecking(true); setError('')
-    try {
-      const res = await fetch(`/api/plates?plate=${encodeURIComponent(plate)}`)
-      const data = await res.json()
-      if (data.found) {
-        setOdooVehicle(data.vehicle)
-        setPreviousClients(data.previousClients || [])
-        setSelectedBrand(data.vehicle.brandName)
-        setSelectedModel(data.vehicle.modelName)
-        setPage(1)
-      } else {
-        setOdooVehicle(null)
-        setPage(10) // → saisie marque/modèle
-      }
-    } catch { setError('Erreur de connexion') }
-    finally { setPlateChecking(false) }
+    setError('')
+    setShowLookup(true)
+  }
+
+  /** Callback : un véhicule a été choisi (skip auto si 1 seul résultat exact). */
+  const handleVehicleSelect = (v: VehicleMatch) => {
+    setOdooVehicle({
+      id:          v.id,
+      licensePlate: v.plate,
+      brandName:   v.brand,
+      modelName:   v.model,
+      displayName: [v.brand, v.model].filter(Boolean).join('/') || v.plate,
+      vinSn:       v.vin || '',
+    })
+    setPreviousClients(v.previousClients || [])
+    setSelectedBrand(v.brand)
+    setSelectedModel(v.model)
+    setShowLookup(false)
+    setPage(1)
+  }
+
+  /** Callback : aucun véhicule existant ne correspond → saisie manuelle. */
+  const handleCreateNewVehicle = () => {
+    setShowLookup(false)
+    setOdooVehicle(null)
+    setPage(10)
   }
 
   const checkVies = async (): Promise<any> => {
@@ -478,12 +496,20 @@ export default function EncaissementClient({
         />
         <p className="text-ink-muted text-xs text-center mb-8">Sans tirets ni espaces</p>
         <BigBtn
-          label={plateChecking ? 'Recherche…' : 'Rechercher →'}
+          label="Rechercher →"
           onClick={checkPlate}
-          disabled={plateChecking || plate.length < 3}
+          disabled={plate.length < 3}
         />
         {error && <p className="text-critical text-sm text-center mt-3">{error}</p>}
       </div>
+      <VehiclePlateLookup
+        plate={plate}
+        open={showLookup}
+        withPreviousClients
+        onSelect={handleVehicleSelect}
+        onCreateNew={handleCreateNewVehicle}
+        onCancel={() => setShowLookup(false)}
+      />
     </Shell>
   )
 

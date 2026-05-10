@@ -6,14 +6,15 @@ import { useRouter }          from 'next/navigation'
 import Link                   from 'next/link'
 import Image                  from 'next/image'
 import AppShell               from '@/components/layout/AppShell'
+import VehiclePlateLookup     from '@/components/vehicles/VehiclePlateLookup'
+import { normalizePlate }     from '@/lib/plate'
+import type { VehicleMatch }  from '@/types/vehicles'
 
 // ── Types ──────────────────────────────────────────────────
 interface Brand { id: number; name: string }
 interface Model { id: number; name: string }
 
 type Step = 'photo' | 'plate' | 'vehicle_confirm' | 'vehicle_create' | 'details' | 'confirm' | 'success'
-
-interface VehicleMatch { id: number; plate: string; model: string | null }
 
 interface FormState {
   plate:         string
@@ -39,10 +40,6 @@ const PAYMENT_METHODS = [
   { value: 'card',       label: '💳 Carte'      },
   { value: 'virement',   label: '🏦 Virement'   },
 ]
-
-function normalizePlate(p: string): string {
-  return p.replace(/[-.\s]/g, '').toUpperCase().trim()
-}
 
 // ── Composants utilitaires ──────────────────────────────────
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -85,7 +82,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   const [step,          setStep]          = useState<Step>('photo')
   const [loading,       setLoading]       = useState(false)
-  const [searching,     setSearching]     = useState(false)
+  /** Modal de lookup véhicule (Phase 1 multi-match Odoo) */
+  const [showLookup,    setShowLookup]    = useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [form,          setForm]          = useState<FormState>(EMPTY_FORM)
   const [brands,        setBrands]        = useState<Brand[]>([])
@@ -119,25 +117,25 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     setModels(await res.json() || [])
   }
 
-  const handlePlateLookup = async () => {
+  /** Ouvre la modal lookup véhicule (Phase 1 multi-match via composant partagé). */
+  const handlePlateLookup = () => {
     const normalized = normalizePlate(form.plate)
     if (!normalized) { setError('Veuillez saisir une immatriculation'); return }
-    setSearching(true); setError(null)
-    try {
-      const res  = await fetch(`/api/advances/lookup?plate=${encodeURIComponent(normalized)}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erreur recherche')
-      if (data.found) {
-        setForm(f => ({ ...f, vehicleMatch: data }))
-        setStep('vehicle_confirm')
-      } else {
-        setStep('vehicle_create')
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue')
-    } finally {
-      setSearching(false)
-    }
+    setError(null)
+    setShowLookup(true)
+  }
+
+  /** Callback : véhicule existant choisi (skip auto si 1 seul résultat exact). */
+  const handleVehicleSelect = (v: VehicleMatch) => {
+    setForm(f => ({ ...f, vehicleMatch: v }))
+    setShowLookup(false)
+    setStep('vehicle_confirm')
+  }
+
+  /** Callback : "Aucun de ceux-là, créer nouveau" → step saisie marque/modèle. */
+  const handleCreateNewVehicle = () => {
+    setShowLookup(false)
+    setStep('vehicle_create')
   }
 
   const uploadPhoto = async (file: File): Promise<string> => {
@@ -256,14 +254,19 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           <p className="text-ink-faint text-xs mt-1.5">Les tirets et points sont ignorés automatiquement</p>
         </div>
         {error && <ErrorBox message={error} />}
-        <button onClick={handlePlateLookup} disabled={searching || !form.plate.trim()}
+        <button onClick={handlePlateLookup} disabled={!form.plate.trim()}
           className="w-full py-4 bg-brand hover:bg-brand/90 disabled:bg-surface-2 disabled:text-ink-faint
                      text-ink rounded-2xl font-bold text-lg transition-colors">
-          {searching
-            ? <span className="flex items-center justify-center gap-2"><span className="animate-spin">⏳</span> Recherche…</span>
-            : 'Rechercher →'}
+          Rechercher →
         </button>
       </div>
+      <VehiclePlateLookup
+        plate={form.plate}
+        open={showLookup}
+        onSelect={handleVehicleSelect}
+        onCreateNew={handleCreateNewVehicle}
+        onCancel={() => setShowLookup(false)}
+      />
     </AppShell>
   )
 
