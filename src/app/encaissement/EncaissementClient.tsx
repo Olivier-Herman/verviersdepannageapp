@@ -476,13 +476,13 @@ export default function EncaissementClient({
           autoFocus
           className={`${inputXLCls} mb-2`}
         />
-        <p className="text-zinc-600 text-xs text-center mb-8">Sans tirets ni espaces</p>
+        <p className="text-ink-muted text-xs text-center mb-8">Sans tirets ni espaces</p>
         <BigBtn
           label={plateChecking ? 'Recherche…' : 'Rechercher →'}
           onClick={checkPlate}
           disabled={plateChecking || plate.length < 3}
         />
-        {error && <p className="text-red-400 text-sm text-center mt-3">{error}</p>}
+        {error && <p className="text-critical text-sm text-center mt-3">{error}</p>}
       </div>
     </Shell>
   )
@@ -548,7 +548,7 @@ export default function EncaissementClient({
           autoFocus
           className={`${inputCls} text-base text-center font-semibold mb-2`}
         />
-        <p className="text-zinc-600 text-xs text-center mb-8">Optionnel — laisse vide si inconnu</p>
+        <p className="text-ink-muted text-xs text-center mb-8">Optionnel — laisse vide si inconnu</p>
         <BigBtn label="Continuer →" onClick={() => setPage(2)} />
       </div>
     </Shell>
@@ -583,7 +583,7 @@ export default function EncaissementClient({
           autoFocus
           className={`${inputCls} text-base mb-2`}
         />
-        <p className="text-zinc-600 text-xs text-center mb-8">Apparaîtra sur le devis</p>
+        <p className="text-ink-muted text-xs text-center mb-8">Apparaîtra sur le devis</p>
         <BigBtn label="Continuer →" onClick={() => setPage(3)} disabled={!motifPrecision.trim()} />
       </div>
     </Shell>
@@ -606,7 +606,7 @@ export default function EncaissementClient({
             {locationLoading ? '⏳' : '🎯'}
           </button>
         </div>
-        <p className="text-zinc-600 text-xs mb-8">Tape une adresse ou utilise ta position GPS</p>
+        <p className="text-ink-muted text-xs mb-8">Tape une adresse ou utilise ta position GPS</p>
         <BigBtn label="Continuer →" onClick={() => setPage(5)} disabled={!location.trim()} />
       </div>
     </Shell>
@@ -693,17 +693,17 @@ export default function EncaissementClient({
 
         {/* Statut SumUp */}
         {sumupStatus === 'PAID' && (
-          <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 text-green-400 text-sm text-center mb-4">
+          <div className="bg-success-soft border border-success rounded-xl px-4 py-3 text-success text-sm text-center mb-4">
             ✅ Paiement SumUp confirmé !
           </div>
         )}
         {sumupStatus === 'FAILED' && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm text-center mb-4">
+          <div className="bg-critical-soft border border-critical rounded-xl px-4 py-3 text-critical text-sm text-center mb-4">
             ❌ Paiement refusé — réessaie
           </div>
         )}
         {sumupPolling && !sumupStatus && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-amber-400 text-sm text-center mb-4">
+          <div className="bg-warning-soft border border-warning rounded-xl px-4 py-3 text-warning text-sm text-center mb-4">
             ⏳ En attente du paiement…
           </div>
         )}
@@ -711,20 +711,20 @@ export default function EncaissementClient({
         {/* QR Code SumUp */}
         {sumupData?.qrUrl && sumupMode === 'qr' && !sumupStatus && (
           <div className="bg-white rounded-2xl p-4 mb-4 text-center">
-            <p className="text-zinc-600 text-xs mb-2">Montrez ce QR au client — il paye sur son téléphone</p>
+            <p className="text-ink-muted text-xs mb-2">Montrez ce QR au client — il paye sur son téléphone</p>
             <img
               src={sumupData.qrUrl}
               alt="QR Code SumUp"
               className="mx-auto w-52 h-52 pointer-events-none"
               draggable={false}
             />
-            <p className="text-zinc-400 text-xs mt-2">Carte, Apple Pay, Google Pay acceptés</p>
+            <p className="text-ink-secondary text-xs mt-2">Carte, Apple Pay, Google Pay acceptés</p>
           </div>
         )}
 
         {/* Email envoyé */}
         {sumupData && sumupMode === 'email' && !sumupStatus && (
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3 text-blue-400 text-sm text-center mb-4">
+          <div className="bg-info-soft border border-info rounded-xl px-4 py-3 text-info text-sm text-center mb-4">
             📧 Lien de paiement envoyé à {clientEmail}
           </div>
         )}
@@ -763,15 +763,15 @@ export default function EncaissementClient({
                   paymentMode === btn.mode
                     ? 'bg-brand border-brand text-white'
                     : sumupMode === btn.mode && sumupPolling
-                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                    ? 'bg-warning-soft border-warning text-warning'
                     : btn.mode === 'unpaid'
-                    ? 'bg-[#1e1e1e] border-dashed border-[#444] text-zinc-500'
-                    : 'bg-[#1e1e1e] border-[#2a2a2a] text-white hover:border-brand'
+                    ? 'bg-surface-2 border-dashed border text-ink-muted'
+                    : 'bg-surface-2 border text-ink hover:border-brand'
                 }`}>
                 <span className="text-xl">{btn.icon}</span>
                 <span className="flex-1">{btn.label}</span>
-                {btn.mode === 'email' && !clientEmail && <span className="text-zinc-600 text-xs">Email requis</span>}
-                {btn.sumup && btn.mode !== 'email' && <span className="text-zinc-600 text-xs">SumUp</span>}
+                {btn.mode === 'email' && !clientEmail && <span className="text-ink-muted text-xs">Email requis</span>}
+                {btn.sumup && btn.mode !== 'email' && <span className="text-ink-muted text-xs">SumUp</span>}
               </button>
             ))}
           </div>
@@ -790,14 +790,14 @@ export default function EncaissementClient({
         {previousClients.map(client => (
           <button key={client.id}
             onClick={() => { setSelectedClient(client); setIsNewClient(false); setPage(4) }}
-            className="w-full text-left bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
-            <p className="text-white font-semibold">{client.name}</p>
-            {client.phone && <p className="text-zinc-500 text-sm mt-0.5">{client.phone}</p>}
-            {client.address && <p className="text-zinc-600 text-xs mt-0.5 truncate">{client.address}</p>}
+            className="w-full text-left bg-surface-2 border border hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
+            <p className="text-ink font-semibold">{client.name}</p>
+            {client.phone && <p className="text-ink-muted text-sm mt-0.5">{client.phone}</p>}
+            {client.address && <p className="text-ink-muted text-xs mt-0.5 truncate">{client.address}</p>}
           </button>
         ))}
         <button onClick={() => { setSelectedClient(null); setIsNewClient(true); setPage(6) }}
-          className="w-full bg-[#1e1e1e] border border-dashed border-[#444] rounded-2xl p-4 text-zinc-400 font-medium text-center hover:border-zinc-300 transition-all active:scale-95">
+          className="w-full bg-surface-2 border border-dashed border rounded-2xl p-4 text-ink-secondary font-medium text-center hover:border-ink-faint transition-all active:scale-95">
           Pas dans cette liste
         </button>
       </div>
@@ -817,7 +817,7 @@ export default function EncaissementClient({
           className={`${inputCls} text-base font-semibold text-center uppercase mb-2`}
         />
         {viesResult && (
-          <div className={`rounded-xl px-4 py-3 text-sm border mb-4 ${viesResult.valid ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+          <div className={`rounded-xl px-4 py-3 text-sm border mb-4 ${viesResult.valid ? 'bg-success-soft border-success text-success' : 'bg-critical-soft border-critical text-critical'}`}>
             {viesResult.valid
               ? viesResult.odooFound
                 ? `✓ ${viesResult.odooName} — client existant`
@@ -825,7 +825,7 @@ export default function EncaissementClient({
               : '✗ TVA invalide ou introuvable'}
           </div>
         )}
-        <p className="text-zinc-600 text-xs text-center mb-8">Pour un particulier, passe directement</p>
+        <p className="text-ink-muted text-xs text-center mb-8">Pour un particulier, passe directement</p>
         <div className="flex flex-col gap-3">
           <BigBtn
             label={viesLoading ? 'Vérification…' : 'Continuer →'}
@@ -932,7 +932,7 @@ export default function EncaissementClient({
   if (page === 14) return (
     <Shell title="Ce client est-il déjà connu ?" page={7} totalPages={TOTAL} onBack={() => setPage(7)}>
       <div className="mt-2 flex flex-col gap-3">
-        <p className="text-zinc-500 text-xs mb-2">
+        <p className="text-ink-muted text-xs mb-2">
           {odooNameMatches.length} correspondance{odooNameMatches.length > 1 ? 's' : ''} trouvée{odooNameMatches.length > 1 ? 's' : ''} pour "{clientName}"
         </p>
         {odooNameMatches.map(client => (
@@ -944,11 +944,11 @@ export default function EncaissementClient({
               setIsNewClient(false)
               setPage(4) // montant directement
             }}
-            className="w-full text-left bg-[#1e1e1e] border border-[#2a2a2a] hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
-            <p className="text-white font-semibold">{client.name}</p>
-            {client.phone && <p className="text-zinc-500 text-sm mt-0.5">{client.phone}</p>}
-            {client.address && <p className="text-zinc-600 text-xs mt-0.5 truncate">{client.address}</p>}
-            {client.vat && <p className="text-zinc-700 text-xs mt-0.5">{client.vat}</p>}
+            className="w-full text-left bg-surface-2 border border hover:border-brand rounded-2xl p-4 transition-all active:scale-95">
+            <p className="text-ink font-semibold">{client.name}</p>
+            {client.phone && <p className="text-ink-muted text-sm mt-0.5">{client.phone}</p>}
+            {client.address && <p className="text-ink-muted text-xs mt-0.5 truncate">{client.address}</p>}
+            {client.vat && <p className="text-ink-muted text-xs mt-0.5">{client.vat}</p>}
           </button>
         ))}
         <button
@@ -958,7 +958,7 @@ export default function EncaissementClient({
             setOdooNameMatches([])
             setPage(8) // coordonnées nouveau client
           }}
-          className="w-full bg-[#1e1e1e] border border-dashed border-[#444] rounded-2xl p-4 text-zinc-400 font-medium text-center hover:border-zinc-300 transition-all active:scale-95">
+          className="w-full bg-surface-2 border border-dashed border rounded-2xl p-4 text-ink-secondary font-medium text-center hover:border-ink-faint transition-all active:scale-95">
           Aucun de ces clients — créer un nouveau
         </button>
       </div>
@@ -1034,9 +1034,9 @@ export default function EncaissementClient({
             { label: 'Téléphone', value: client.phone },
             { label: 'Adresse', value: client.address },
           ].filter(r => r.value).map(row => (
-            <div key={row.label} className="flex justify-between items-start gap-3 py-2.5 border-b border-[#1e1e1e]">
-              <span className="text-zinc-500 text-sm flex-shrink-0">{row.label}</span>
-              <span className="text-white text-sm text-right">{row.value}</span>
+            <div key={row.label} className="flex justify-between items-start gap-3 py-2.5 border-b border">
+              <span className="text-ink-muted text-sm flex-shrink-0">{row.label}</span>
+              <span className="text-ink text-sm text-right">{row.value}</span>
             </div>
           ))}
 
@@ -1050,7 +1050,7 @@ export default function EncaissementClient({
               className={`${inputCls} resize-none mb-5`}
             />
             <BigBtn label={saving ? 'Enregistrement…' : '✓ Enregistrer'} onClick={handleSubmit} disabled={saving} />
-            {error && <p className="text-red-400 text-sm text-center mt-3">{error}</p>}
+            {error && <p className="text-critical text-sm text-center mt-3">{error}</p>}
           </div>
         </div>
       </Shell>
