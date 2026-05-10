@@ -28,6 +28,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔍', moduleId: 'check_vehicle' },
   { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
   { href: '/finance',       label: 'Finance',          icon: '💵', moduleId: 'finance' },
+  { href: '/relances',      label: 'Relance Client',   icon: '📨', moduleId: 'relances' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
   { href: '/profil',        label: 'Mon Profil',       icon: '👤', moduleId: null },
 ]
