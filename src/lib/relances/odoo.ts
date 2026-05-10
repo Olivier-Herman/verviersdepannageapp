@@ -25,6 +25,44 @@ const ODOO_DB      = process.env.ODOO_DB!
 const ODOO_UID     = parseInt(process.env.ODOO_UID || '8', 10)
 const ODOO_API_KEY = process.env.ODOO_API_KEY!
 
+// Multi-company Odoo : VD a plusieurs societes (Verviers Depannage,
+// Riga Depannage, DGJ VHU, ...). Les factures de relance ne doivent
+// remonter QUE pour "Verviers Depannage" - les autres societes ont leur
+// propre comptabilite. Match par name ilike, plus robuste que par id en
+// cas de copie de base entre instances. Override via env var.
+// NB: 'Riga Depannage' et 'DGJ VHU' ne matchent PAS le filtre.
+const COMPANY_NAME = process.env.RELANCES_ODOO_COMPANY_NAME || 'Verviers Dépannage'
+let cachedCompanyId: number | null = null
+
+async function getVdCompanyId(): Promise<number | null> {
+  if (cachedCompanyId !== null) return cachedCompanyId
+  try {
+    const r = await rpc<any[]>(
+      'res.company',
+      'search_read',
+      [[['name', 'ilike', COMPANY_NAME]]],
+      { fields: ['id', 'name'], limit: 5 }
+    )
+    if (r.length === 0) {
+      console.error(`[relances/odoo] Aucune res.company matchee pour "${COMPANY_NAME}"`)
+      return null
+    }
+    // Si plusieurs matches : prendre le plus court (= "Verviers Dépannage" plutot
+    // que "Verviers Dépannage SA Holding 2" eventuel).
+    const match = r.length === 1 ? r[0] :
+      r.sort((a, b) => (a.name as string).length - (b.name as string).length)[0]
+    cachedCompanyId = match.id
+    console.info(`[relances/odoo] Company VD : ID ${match.id} - "${match.name}"`)
+    if (r.length > 1) {
+      console.warn(`[relances/odoo] ${r.length} companies matchent "${COMPANY_NAME}", utilisation de "${match.name}"`)
+    }
+    return cachedCompanyId
+  } catch (e: any) {
+    console.error('[relances/odoo] getVdCompanyId failed:', e.message)
+    return null
+  }
+}
+
 async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
   const res = await fetch(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
@@ -119,7 +157,11 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   cutoff15.setDate(cutoff15.getDate() - 15)
   const cutoffStr = cutoff15.toISOString().slice(0, 10) // YYYY-MM-DD
 
-  const domain = [
+  // Filtre societe Verviers Depannage (multi-company Odoo).
+  // Si pas trouvee, on log mais on continue sans filtre company.
+  const vdCompanyId = await getVdCompanyId()
+
+  const domain: any[] = [
     ['move_type',         '=',  'out_invoice'],
     ['state',             '=',  'posted'],
     ['payment_state',     'in', ['not_paid', 'partial']],
@@ -127,6 +169,9 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
     ['invoice_date_due',  '<=', cutoffStr],
     ['amount_residual',   '>',  0],
   ]
+  if (vdCompanyId !== null) {
+    domain.push(['company_id', '=', vdCompanyId])
+  }
 
   // Champ custom sale.order qui pointe vers fleet.vehicle (cf src/lib/odoo.ts).
   const FIELD_PLAQUE = 'x_studio_many2one_field_78n_1j6fmmeom'
