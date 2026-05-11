@@ -22,6 +22,8 @@ interface CashEntry {
   odoo_status: 'pending' | 'confirmed' | null
   odoo_payment_id: number | null
   intervention: { reference: string; plate: string; amount: number; created_at: string } | null
+  /** Nom de l autre user pour les transferts (reception=sender, remise=receveur), enrichi cote /api/cash. */
+  other_user_name?: string
 }
 
 interface PendingTransfer {
@@ -503,11 +505,12 @@ export default function CashClient({
               {(() => {
                 const isAvance = e.type === 'remise' && e.notes?.startsWith('Avance de fonds')
                 const isOdoo   = !!e.odoo_payment_id
+                const other    = e.other_user_name
                 const label = e.type === 'encaissement'
                   ? (isOdoo ? '+ Encaissement Odoo' : '+ Encaissement espèces')
-                  : e.type === 'reception' ? '↓ Réception transfert'
+                  : e.type === 'reception' ? (other ? `↓ Réception de ${other}` : '↓ Réception transfert')
                   : isAvance               ? '↓ Avance de fonds'
-                  :                         '↑ Transfert'
+                  :                         (other ? `↑ Transfert vers ${other}` : '↑ Transfert')
                 const color = e.type === 'encaissement' ? 'text-green-400'
                   : e.type === 'reception' ? 'text-blue-400'
                   : isAvance               ? 'text-orange-400'

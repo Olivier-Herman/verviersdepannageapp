@@ -75,6 +75,44 @@ export async function GET(req: NextRequest) {
     .eq('driver_id', targetId)
     .order('created_at', { ascending: false })
 
+  // Enrichir les remises/receptions avec le nom de l autre user du transfert.
+  // Le RPC transfer_cash_atomic cree 2 entries cash_register (1 remise + 1 reception)
+  // depuis 1 cash_transfers row. On matche par amount + timestamp proche (<5s).
+  const transferEntries = (entries || []).filter(e => e.type === 'remise' || e.type === 'reception')
+  if (transferEntries.length > 0) {
+    const { data: transfers } = await supabase
+      .from('cash_transfers')
+      .select(`
+        id, sender_id, receiver_id, amount, created_at,
+        sender:users!cash_transfers_sender_id_fkey(name),
+        receiver:users!cash_transfers_receiver_id_fkey(name)
+      `)
+      .or(`sender_id.eq.${targetId},receiver_id.eq.${targetId}`)
+      .eq('status', 'confirmed')
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    for (const e of transferEntries) {
+      const eTs = new Date(e.created_at).getTime()
+      const eAmt = Number(e.amount)
+      const match = (transfers || []).find(t => {
+        const tTs = new Date(t.created_at).getTime()
+        if (Math.abs(tTs - eTs) > 5000) return false           // 5s de tolerance
+        if (Math.abs(Number(t.amount) - eAmt) > 0.01) return false
+        // remise = chauffeur est sender ; reception = chauffeur est receveur
+        if (e.type === 'remise'    && t.sender_id   !== targetId) return false
+        if (e.type === 'reception' && t.receiver_id !== targetId) return false
+        return true
+      })
+      if (match) {
+        const otherName = e.type === 'remise'
+          ? (match.receiver as any)?.name
+          : (match.sender   as any)?.name
+        if (otherName) (e as any).other_user_name = otherName
+      }
+    }
+  }
+
   const balance = (entries || []).reduce((sum, e) => {
     if (e.type === 'encaissement') return sum + e.amount
     if (e.type === 'reception') return sum + e.amount

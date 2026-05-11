@@ -17,7 +17,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   unpaid:       '📋 À facturer',
 }
 
-type EntryType = 'intervention' | 'advance' | 'odoo_payment'
+type EntryType = 'intervention' | 'advance' | 'odoo_payment' | 'transfer_out' | 'transfer_in'
 
 interface Entry {
   id:             string
@@ -59,7 +59,7 @@ export default function EncaissementsClient({
   const [search,       setSearch]       = useState('')
   const [filterMode,   setFilterMode]   = useState('')
   const [filterDriver, setFilterDriver] = useState('')
-  const [filterType,   setFilterType]   = useState<'' | 'intervention' | 'advance' | 'odoo_payment'>('')
+  const [filterType,   setFilterType]   = useState<'' | EntryType | 'transfer'>('')
   const [drivers,      setDrivers]      = useState<{ id: string; name: string }[]>([])
   const [selected,     setSelected]     = useState<Entry | null>(null)
 
@@ -89,14 +89,19 @@ export default function EncaissementsClient({
       || i.driver?.name?.toLowerCase().includes(q)
     const matchMode   = !filterMode   || i.payment_mode === filterMode
     const matchDriver = !filterDriver || i.driver?.name === filterDriver
-    const matchType   = !filterType   || i.type === filterType
+    // filterType 'transfer' = matche les 2 sens (out + in)
+    const matchType   = !filterType
+      || i.type === filterType
+      || (filterType === 'transfer' && (i.type === 'transfer_out' || i.type === 'transfer_in'))
     return matchSearch && matchMode && matchDriver && matchType
   })
 
   const totalEncaissements = filtered.filter(e => e.type === 'intervention').reduce((s, e) => s + e.amount, 0)
   const totalOdoo          = filtered.filter(e => e.type === 'odoo_payment').reduce((s, e) => s + e.amount, 0)
   const totalAvances       = filtered.filter(e => e.type === 'advance').reduce((s, e) => s + e.amount, 0)
-  const solde              = totalEncaissements + totalOdoo - totalAvances
+  const totalTransfersIn   = filtered.filter(e => e.type === 'transfer_in').reduce((s, e) => s + e.amount, 0)
+  const totalTransfersOut  = filtered.filter(e => e.type === 'transfer_out').reduce((s, e) => s + e.amount, 0)
+  const solde              = totalEncaissements + totalOdoo + totalTransfersIn - totalAvances - totalTransfersOut
 
   const Filters = (
     <div className="flex flex-col gap-2 mt-3 lg:mt-0">
@@ -114,6 +119,7 @@ export default function EncaissementsClient({
           <option value="intervention">Encaissements app</option>
           <option value="odoo_payment">Encaissements Odoo</option>
           <option value="advance">Avances de fonds</option>
+          <option value="transfer">Transferts</option>
         </select>
         <select value={filterMode} onChange={e => setFilterMode(e.target.value)}
           className="bg-surface border border rounded-xl px-3 py-2 text-ink-muted text-xs outline-none appearance-none">
@@ -198,6 +204,16 @@ export default function EncaissementsClient({
                                        px-2 py-0.5 rounded-full border border-info/30">
                         🏦 Odoo {entry.odoo_status === 'pending' ? '⏳' : ''}
                       </span>
+                    ) : entry.type === 'transfer_out' ? (
+                      <span className="text-critical text-xs font-semibold bg-critical-soft
+                                       px-2 py-0.5 rounded-full border border-critical/30">
+                        📤 Transfert sortant
+                      </span>
+                    ) : entry.type === 'transfer_in' ? (
+                      <span className="text-success text-xs font-semibold bg-success-soft
+                                       px-2 py-0.5 rounded-full border border-success/30">
+                        📥 Transfert entrant
+                      </span>
                     ) : (
                       <span className="text-brand text-xs font-mono">{entry.reference}</span>
                     )}
@@ -209,9 +225,10 @@ export default function EncaissementsClient({
                     )}
                   </td>
                   <td className="py-3 pr-4 text-ink-muted text-sm">
-                    {entry.type === 'advance'      ? (entry.notes || '—')
-                    : entry.type === 'odoo_payment' ? (entry.notes || 'Sans facture')
-                    :                                 (entry.client_name || '—')}
+                    {entry.type === 'advance'                         ? (entry.notes || '—')
+                    : entry.type === 'odoo_payment'                   ? (entry.notes || 'Sans facture')
+                    : entry.type === 'transfer_out' || entry.type === 'transfer_in' ? (entry.notes || '—')
+                    :                                                   (entry.client_name || '—')}
                   </td>
                   <td className="py-3 pr-4 text-ink-muted text-xs">
                     {PAYMENT_LABELS[entry.payment_mode] || entry.payment_mode}
@@ -221,9 +238,9 @@ export default function EncaissementsClient({
                     {new Date(entry.created_at).toLocaleDateString('fr-BE')}
                   </td>
                   <td className={`py-3 text-right font-bold ${
-                    entry.type === 'advance' ? 'text-critical' : 'text-success'
+                    (entry.type === 'advance' || entry.type === 'transfer_out') ? 'text-critical' : 'text-success'
                   }`}>
-                    {entry.type === 'advance' ? '-' : '+'}{formatEur(entry.amount || 0)}
+                    {(entry.type === 'advance' || entry.type === 'transfer_out') ? '-' : '+'}{formatEur(entry.amount || 0)}
                   </td>
                 </tr>
               ))}
@@ -257,19 +274,31 @@ export default function EncaissementsClient({
                                        px-2 py-0.5 rounded-full border border-info/30">
                         🏦 Odoo {entry.odoo_status === 'pending' ? '⏳' : ''}
                       </span>
+                    ) : entry.type === 'transfer_out' ? (
+                      <span className="text-critical text-xs font-semibold bg-critical-soft
+                                       px-2 py-0.5 rounded-full border border-critical/30">
+                        📤 Transfert
+                      </span>
+                    ) : entry.type === 'transfer_in' ? (
+                      <span className="text-success text-xs font-semibold bg-success-soft
+                                       px-2 py-0.5 rounded-full border border-success/30">
+                        📥 Transfert
+                      </span>
                     ) : (
                       <span className="text-brand text-xs font-mono">{entry.reference}</span>
                     )}
                   </div>
                   <p className="text-ink font-semibold text-sm truncate">
-                    {entry.plate || (entry.type === 'odoo_payment' ? (entry.notes || 'Sans facture') : '—')}
+                    {entry.type === 'transfer_out' || entry.type === 'transfer_in'
+                      ? (entry.notes || '—')
+                      : (entry.plate || (entry.type === 'odoo_payment' ? (entry.notes || 'Sans facture') : '—'))}
                     {(entry.brand_text || entry.model_text) && (
                       <span className="text-ink-muted font-normal"> — {entry.brand_text} {entry.model_text}</span>
                     )}
                   </p>
                 </div>
-                <p className={`font-bold ml-3 flex-shrink-0 ${entry.type === 'advance' ? 'text-critical' : 'text-success'}`}>
-                  {entry.type === 'advance' ? '-' : '+'}{formatEur(entry.amount || 0)}
+                <p className={`font-bold ml-3 flex-shrink-0 ${(entry.type === 'advance' || entry.type === 'transfer_out') ? 'text-critical' : 'text-success'}`}>
+                  {(entry.type === 'advance' || entry.type === 'transfer_out') ? '-' : '+'}{formatEur(entry.amount || 0)}
                 </p>
               </div>
               <div className="flex items-center justify-between">
@@ -299,12 +328,14 @@ export default function EncaissementsClient({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-ink font-bold text-lg">
-                  {selected.type === 'advance'      ? 'Avance de fonds'
-                  : selected.type === 'odoo_payment' ? `Paiement Odoo${selected.notes ? ' — ' + selected.notes : ''}`
-                  :                                    selected.reference}
+                  {selected.type === 'advance'                                ? 'Avance de fonds'
+                  : selected.type === 'odoo_payment'                          ? `Paiement Odoo${selected.notes ? ' — ' + selected.notes : ''}`
+                  : selected.type === 'transfer_out'                          ? '📤 Transfert sortant'
+                  : selected.type === 'transfer_in'                           ? '📥 Transfert entrant'
+                  :                                                             selected.reference}
                 </h2>
-                <p className={`font-bold text-xl ${selected.type === 'advance' ? 'text-critical' : 'text-success'}`}>
-                  {selected.type === 'advance' ? '-' : '+'}{formatEur(selected.amount || 0)}
+                <p className={`font-bold text-xl ${(selected.type === 'advance' || selected.type === 'transfer_out') ? 'text-critical' : 'text-success'}`}>
+                  {(selected.type === 'advance' || selected.type === 'transfer_out') ? '-' : '+'}{formatEur(selected.amount || 0)}
                 </p>
               </div>
               <button onClick={() => setSelected(null)} className="text-ink-muted text-2xl">×</button>
@@ -318,9 +349,12 @@ export default function EncaissementsClient({
             )}
 
             {[
-              ['Type',      selected.type === 'advance'      ? '📄 Avance de fonds'
-                          : selected.type === 'odoo_payment' ? `🏦 Encaissement Odoo${selected.odoo_status === 'pending' ? ' (en cours de traitement)' : ''}`
-                          :                                    '💳 Encaissement'],
+              ['Type',      selected.type === 'advance'                          ? '📄 Avance de fonds'
+                          : selected.type === 'odoo_payment'                     ? `🏦 Encaissement Odoo${selected.odoo_status === 'pending' ? ' (en cours de traitement)' : ''}`
+                          : selected.type === 'transfer_out'                     ? '📤 Transfert vers un collègue'
+                          : selected.type === 'transfer_in'                      ? '📥 Transfert reçu d\'un collègue'
+                          :                                                        '💳 Encaissement'],
+              ['Détails',   (selected.type === 'transfer_out' || selected.type === 'transfer_in') ? (selected.notes || null) : null],
               ['Référence Odoo', selected.type === 'odoo_payment' ? selected.notes : null],
               ['Véhicule',  selected.plate ? `${selected.plate}${selected.brand_text ? ` — ${selected.brand_text} ${selected.model_text}` : ''}` : null],
               ['Motif',     selected.motif_text],

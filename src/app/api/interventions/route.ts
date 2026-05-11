@@ -193,8 +193,59 @@ export async function GET(req: NextRequest) {
     odoo_status:      c.odoo_status,
   }))
 
+  // ── Transferts entre collegues (cash_transfers) ────────────────────────
+  // Confirmes uniquement. Genere 2 entries virtuelles par transfert :
+  //   - transfer_out : ligne negative cote sender
+  //   - transfer_in  : ligne positive cote receveur
+  // Pour un user non-admin, on ne retourne que les lignes qui le concernent.
+  let transferQuery = supabase
+    .from('cash_transfers')
+    .select(`
+      id, sender_id, receiver_id, amount, notes, created_at,
+      sender:users!cash_transfers_sender_id_fkey(name, email),
+      receiver:users!cash_transfers_receiver_id_fkey(name, email)
+    `)
+    .eq('status', 'confirmed')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (!isAdmin && me) {
+    transferQuery = transferQuery.or(`sender_id.eq.${me.id},receiver_id.eq.${me.id}`)
+  }
+  const { data: transfers } = await transferQuery
+
+  const transferEntries: any[] = []
+  for (const t of (transfers || [])) {
+    const senderName   = (t.sender   as any)?.name || '?'
+    const receiverName = (t.receiver as any)?.name || '?'
+    const noteSuffix   = t.notes ? ` — ${t.notes}` : ''
+    const senderEntry = {
+      id:           `${t.id}-out`,
+      type:         'transfer_out',
+      created_at:   t.created_at,
+      amount:       t.amount || 0,
+      payment_mode: 'transfer',
+      driver:       t.sender,
+      notes:        `Transfert vers ${receiverName}${noteSuffix}`,
+    }
+    const receiverEntry = {
+      id:           `${t.id}-in`,
+      type:         'transfer_in',
+      created_at:   t.created_at,
+      amount:       t.amount || 0,
+      payment_mode: 'transfer',
+      driver:       t.receiver,
+      notes:        `Transfert de ${senderName}${noteSuffix}`,
+    }
+    if (isAdmin) {
+      transferEntries.push(senderEntry, receiverEntry)
+    } else if (me) {
+      if (t.sender_id   === me.id) transferEntries.push(senderEntry)
+      if (t.receiver_id === me.id) transferEntries.push(receiverEntry)
+    }
+  }
+
   if (!includeAdv) {
-    const merged = [...intEntries, ...odooEntries]
+    const merged = [...intEntries, ...odooEntries, ...transferEntries]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     return NextResponse.json(merged)
   }
@@ -225,7 +276,7 @@ export async function GET(req: NextRequest) {
   }))
 
   // ── Fusion + tri par date ──────────────────────────────────
-  const all = [...intEntries, ...advEntries, ...odooEntries]
+  const all = [...intEntries, ...advEntries, ...odooEntries, ...transferEntries]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
   return NextResponse.json(all)
