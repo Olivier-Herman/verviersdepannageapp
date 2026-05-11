@@ -6,6 +6,7 @@ import { useRouter }          from 'next/navigation'
 import Link                   from 'next/link'
 import Image                  from 'next/image'
 import AppShell               from '@/components/layout/AppShell'
+import { formatEur }           from '@/lib/format'
 import VehiclePlateLookup     from '@/components/vehicles/VehiclePlateLookup'
 import { normalizePlate }     from '@/lib/plate'
 import type { VehicleMatch }  from '@/types/vehicles'
@@ -469,7 +470,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             {(form.vehicleMatch?.model || form.modelName) && (
               <Row label="Véhicule" value={form.vehicleMatch?.model ?? `${form.brandName} ${form.modelName}`} />
             )}
-            <Row label="Montant HTVA"    value={`${parseFloat(form.amountHtva).toFixed(2)} €`} />
+            <Row label="Montant HTVA"    value={formatEur(parseFloat(form.amountHtva))} />
             <Row label="Mode de paiement"
               value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
             {form.notes && <Row label="Notes" value={form.notes} />}
@@ -510,7 +511,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
         </div>
         <div className="bg-surface border border rounded-2xl p-4 w-full max-w-xs text-left space-y-3">
           <Row label="Plaque"   value={normalizePlate(form.plate)} mono />
-          <Row label="Montant"  value={`${parseFloat(form.amountHtva).toFixed(2)} € HTVA`} />
+          <Row label="Montant"  value={`${formatEur(parseFloat(form.amountHtva))} HTVA`} />
           <Row label="Paiement" value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
         </div>
         <div className="flex flex-col w-full max-w-xs gap-3">

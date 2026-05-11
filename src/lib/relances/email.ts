@@ -13,6 +13,7 @@ import {
   BRAND_RED, FROM_EMAIL, getAppToken,
   emailLayout, infoRow, badge, divider,
 } from '@/lib/emails'
+import { formatEur }          from '@/lib/format'
 import type { ReminderLevel } from './odoo'
 import { COMPANY }            from '@/config/company'
 
@@ -54,12 +55,7 @@ const LEVEL_CLOSINGS: Record<ReminderLevel, string> = {
   3: `À défaut de règlement dans le délai mentionné ci-dessus, le dossier sera transmis à notre conseil sans nouvel avis. Les frais et indemnités prévus aux conditions générales seront alors mis à votre charge.`,
 }
 
-function formatEur(n: number): string {
-  const fixed = Math.abs(n).toFixed(2)
-  const [intPart, decPart] = fixed.split('.')
-  const intGrouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${n < 0 ? '-' : ''}${intGrouped},${decPart} €`
-}
+// formatEur centralise dans @/lib/format
 
 function escapeHtml(s: string): string {
   return s.replace(/[<>&"']/g, c => ({

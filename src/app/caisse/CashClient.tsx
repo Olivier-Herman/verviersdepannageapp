@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import { formatEur } from '@/lib/format'
 // Pattern utilisé partout dans les Client Components du projet (MissionListClient, DriverClient...)
 // — éviter d'importer depuis @/lib/supabase qui embarque next/headers (serveur uniquement).
 import { createClient } from '@supabase/supabase-js'
@@ -198,7 +199,7 @@ export default function CashClient({
     setMiscLoading(false)
     if (!res.ok) { setMiscError(data.error || 'Erreur'); return }
 
-    setMiscSuccess(`Paiement enregistré : ${parseFloat(miscAmount).toFixed(2)} €`)
+    setMiscSuccess(`Paiement enregistré : ${formatEur(parseFloat(miscAmount))}`)
     setShowMisc(false); setMiscAmount(''); setMiscMotif('')
     loadData()
     setTimeout(() => setMiscSuccess(''), 4000)
@@ -272,7 +273,7 @@ export default function CashClient({
   }
 
   const handleRefuseIncoming = async (t: PendingTransfer) => {
-    if (!confirm(`Refuser le transfert de ${Number(t.amount).toFixed(2)} € de ${t.sender?.name} ?`)) return
+    if (!confirm(`Refuser le transfert de ${formatEur(Number(t.amount))} de ${t.sender?.name} ?`)) return
     setIncomingLoadingId(t.id)
     const res = await fetch(`/api/cash/transfer/${t.id}/refuse`, { method: 'POST' })
     const data = await res.json()
@@ -293,7 +294,7 @@ export default function CashClient({
           : 'bg-surface border border'}`}>
           <p className="text-ink-secondary text-sm mb-1">Solde en caisse</p>
           <p className={`text-5xl font-bold ${balance < 0 ? 'text-red-400' : (balance > 0 ? 'text-brand' : 'text-ink')}`}>
-            {balance.toFixed(2)} €
+            {formatEur(balance)}
           </p>
           <p className="text-ink-faint text-xs mt-2">{userName}</p>
           <button onClick={() => { loadData(); loadTransferData() }} className="text-ink-faint text-xs mt-2 hover:text-ink-secondary">↻ Rafraîchir</button>
@@ -304,7 +305,7 @@ export default function CashClient({
           <div key={t.id} className="bg-blue-500/10 border border-blue-500/40 rounded-2xl p-4 mb-3">
             <p className="text-blue-300 text-sm mb-1">📥 Demande de transfert</p>
             <p className="text-ink text-base">
-              <b>{t.sender?.name || 'Un collègue'}</b> souhaite vous remettre <b>{Number(t.amount).toFixed(2)} €</b>
+              <b>{t.sender?.name || 'Un collègue'}</b> souhaite vous remettre <b>{formatEur(Number(t.amount))}</b>
             </p>
             {t.notes && <p className="text-ink-secondary text-xs mt-1 italic">« {t.notes} »</p>}
             <div className="flex gap-2 mt-3">
@@ -340,7 +341,7 @@ export default function CashClient({
               En attente de validation par {outgoingPending.receiver?.name || 'le receveur'}
             </p>
             <p className="text-ink-secondary text-sm mt-1">
-              {Number(outgoingPending.amount).toFixed(2)} €
+              {formatEur(Number(outgoingPending.amount))}
               {outgoingPending.notes && <span className="block text-xs italic mt-1">« {outgoingPending.notes} »</span>}
             </p>
             <button onClick={handleCancelOutgoing}
@@ -398,10 +399,10 @@ export default function CashClient({
               </div>
               {projectedBalance !== null && (
                 <p className="text-xs text-ink-muted mt-2">
-                  Solde actuel : <span className="text-ink">{balance.toFixed(2)} €</span>
+                  Solde actuel : <span className="text-ink">{formatEur(balance)}</span>
                   {' — '}
                   Solde après transfert : <span className={projectedBalance < 0 ? 'text-orange-400 font-semibold' : 'text-ink'}>
-                    {projectedBalance.toFixed(2)} €
+                    {formatEur(projectedBalance)}
                   </span>
                 </p>
               )}
@@ -514,7 +515,7 @@ export default function CashClient({
                 return <p className={`text-sm font-semibold ${color}`}>{label}</p>
               })()}
               <p className={`font-bold ${e.type === 'remise' ? 'text-red-400' : 'text-green-400'}`}>
-                {e.type === 'remise' ? '-' : '+'}{e.amount.toFixed(2)} €
+                {e.type === 'remise' ? '-' : '+'}{formatEur(e.amount)}
               </p>
             </div>
             {e.odoo_status === 'pending' && (
@@ -548,7 +549,7 @@ export default function CashClient({
             <h2 className="text-ink font-bold text-lg mb-1">Confirmer le transfert</h2>
             <p className="text-ink-muted text-sm mb-4">
               <b>{pinModalTransfer.sender?.name || 'Un collègue'}</b> souhaite vous remettre{' '}
-              <b>{Number(pinModalTransfer.amount).toFixed(2)} €</b>.
+              <b>{formatEur(Number(pinModalTransfer.amount))}</b>.
               Saisis ton PIN pour confirmer la réception.
             </p>
 

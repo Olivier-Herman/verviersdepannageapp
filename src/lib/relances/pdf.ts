@@ -38,19 +38,8 @@ interface PdfData {
   sentDate:  string  // YYYY-MM-DD
 }
 
-// Helpers format.
-// Intl.NumberFormat('fr-BE') sur Vercel serverless retourne un format casse
-// (separateur milliers '/' au lieu de '.') car Node n a pas l ICU complet.
-// On formate a la main : 1234.5 -> "1.234,50 EUR".
-function formatEur(n: number): string {
-  const sign  = n < 0 ? '-' : ''
-  const abs   = Math.abs(n)
-  const fixed = abs.toFixed(2)             // "1234.50"
-  const [intPart, decPart] = fixed.split('.')
-  // Insertion separateur de milliers '.'
-  const intGrouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${sign}${intGrouped},${decPart} €`  // U+20AC = €
-}
+// formatEur centralise dans @/lib/format
+import { formatEur } from '@/lib/format'
 
 function formatDate(iso: string): string {
   if (!iso) return '—'

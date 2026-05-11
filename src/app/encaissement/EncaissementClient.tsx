@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import { normalizePlate } from '@/lib/plate'
+import { formatEur } from '@/lib/format'
 import type { VehicleMatch } from '@/types/vehicles'
 
 // ─────────────────────────────────────────────────────────
@@ -1054,7 +1055,7 @@ export default function EncaissementClient({
             { label: 'Véhicule', value: vehicleDisplay.trim() },
             { label: 'Motif', value: motifPrecision || motifLabel },
             { label: 'Lieu', value: location },
-            { label: 'Montant', value: `${parseFloat(amount || '0').toFixed(2)} € TVAC` },
+            { label: 'Montant', value: `${formatEur(parseFloat(amount || '0'))} TVAC` },
             { label: 'Paiement', value: paymentModes.find(p => p.value === paymentMode)?.label },
             { label: 'Client', value: client.name },
             { label: 'Téléphone', value: client.phone },

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { formatEur } from '@/lib/format'
 
 interface Entry {
   id: string
@@ -59,7 +60,7 @@ export default function AdminCashClient({ drivers, entries }: { drivers: Driver[
         {/* Total espèces en circulation */}
         <div className="bg-brand/10 border border-brand/30 rounded-2xl p-5 text-center mb-6">
           <p className="text-zinc-400 text-sm mb-1">Total espèces en circulation</p>
-          <p className="text-brand text-4xl font-bold">{totalCash.toFixed(2)} €</p>
+          <p className="text-brand text-4xl font-bold">{formatEur(totalCash)}</p>
         </div>
 
         {/* Soldes par personne */}
@@ -74,7 +75,7 @@ export default function AdminCashClient({ drivers, entries }: { drivers: Driver[
                 <p className="text-zinc-500 text-xs">{d.role}</p>
               </div>
               <p className={`font-bold text-lg ${d.balance > 0 ? 'text-green-400' : d.balance < 0 ? 'text-red-400' : 'text-zinc-600'}`}>
-                {d.balance > 0 ? '+' : ''}{d.balance.toFixed(2)} €
+                {d.balance > 0 ? '+' : ''}{formatEur(d.balance)}
               </p>
             </button>
           ))}
@@ -102,7 +103,7 @@ export default function AdminCashClient({ drivers, entries }: { drivers: Driver[
                 </p>
               </div>
               <p className={`font-bold ${e.type === 'encaissement' || e.type === 'reception' ? 'text-green-400' : 'text-red-400'}`}>
-                {e.type === 'remise' ? '-' : '+'}{e.amount.toFixed(2)} €
+                {e.type === 'remise' ? '-' : '+'}{formatEur(e.amount)}
               </p>
             </div>
             {e.notes && e.type !== 'encaissement' && (

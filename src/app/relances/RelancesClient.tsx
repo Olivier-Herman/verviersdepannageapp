@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Session }                 from 'next-auth'
 import AppShell                         from '@/components/layout/AppShell'
+import { formatEur }                    from '@/lib/format'
 
 type ReminderLevel = 1 | 2 | 3
 type SendLevel     = ReminderLevel | 'AUTO'
@@ -80,12 +81,7 @@ const LEVEL_BADGE: Record<ReminderLevel, string> = {
   3: 'bg-critical-soft text-critical',
 }
 
-function formatEur(n: number): string {
-  const fixed = Math.abs(n).toFixed(2)
-  const [intPart, decPart] = fixed.split('.')
-  const intGrouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${n < 0 ? '-' : ''}${intGrouped},${decPart} €`
-}
+// formatEur centralise dans @/lib/format
 
 function formatDate(iso: string): string {
   if (!iso) return '—'

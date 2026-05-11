@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
+import { formatEur } from '@/lib/format'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -806,7 +807,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       <div className="flex-1 px-4 py-4 space-y-4">
         <div className="bg-brand rounded-2xl p-6 text-center">
           <p className="text-ink/70 text-sm mb-1">Montant à encaisser</p>
-          <p className="text-ink text-4xl font-semibold">{(M.amount_to_collect || 0).toFixed(2)} €</p>
+          <p className="text-ink text-4xl font-semibold">{formatEur(M.amount_to_collect || 0)}</p>
         </div>
         {paid
           ? <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Paiement encaissé</p></div>
@@ -974,7 +975,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 <span className="text-ink-secondary text-sm">💶 Encaissement</span>
                 <span className="flex items-center gap-2">
                   <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-red-400'}`}>
-                    {paid ? '✓ Encaissé' : `${M.amount_to_collect.toFixed(2)} ${M.amount_currency || 'EUR'}`}
+                    {paid ? '✓ Encaissé' : `${formatEur(M.amount_to_collect, { suffix: false })} ${M.amount_currency || 'EUR'}`}
                   </span>
                   <span className="text-blue-400 text-xs">→</span>
                 </span>
@@ -1082,7 +1083,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             <span className="text-2xl">💶</span>
             <div>
               <p className="text-ink font-bold text-sm uppercase tracking-wide">À encaisser</p>
-              <p className="text-ink text-xl font-bold">{M.amount_to_collect.toFixed(2)} {M.amount_currency || 'EUR'}</p>
+              <p className="text-ink text-xl font-bold">{formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
             </div>
           </div>
           <button onClick={() => setScreen('encaissement')}
@@ -1094,7 +1095,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       {paid && M.amount_to_collect != null && M.amount_to_collect > 0 && (
         <div className="bg-green-600/15 border-b border-green-600/30 px-4 py-2 flex items-center gap-2">
           <span className="text-lg">✅</span>
-          <p className="text-green-400 text-sm font-medium">Encaissé : {M.amount_to_collect.toFixed(2)} {M.amount_currency || 'EUR'}</p>
+          <p className="text-green-400 text-sm font-medium">Encaissé : {formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
         </div>
       )}
 

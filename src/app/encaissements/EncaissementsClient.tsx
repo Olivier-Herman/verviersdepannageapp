@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import { formatEur } from '@/lib/format'
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash:         '💵 Espèces',
@@ -139,20 +140,20 @@ export default function EncaissementsClient({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 px-4 lg:px-8 py-4">
         <div className="bg-surface-2 rounded-xl p-3 border border">
           <p className="text-ink-muted text-xs">Encaissements app</p>
-          <p className="text-success text-lg font-bold">+{totalEncaissements.toFixed(2)} €</p>
+          <p className="text-success text-lg font-bold">+{formatEur(totalEncaissements)}</p>
         </div>
         <div className="bg-surface-2 rounded-xl p-3 border border">
           <p className="text-ink-muted text-xs">Encaissements Odoo</p>
-          <p className="text-success text-lg font-bold">+{totalOdoo.toFixed(2)} €</p>
+          <p className="text-success text-lg font-bold">+{formatEur(totalOdoo)}</p>
         </div>
         <div className="bg-surface-2 rounded-xl p-3 border border">
           <p className="text-ink-muted text-xs">Avances</p>
-          <p className="text-critical text-lg font-bold">-{totalAvances.toFixed(2)} €</p>
+          <p className="text-critical text-lg font-bold">-{formatEur(totalAvances)}</p>
         </div>
         <div className="bg-surface-2 rounded-xl p-3 border border">
           <p className="text-ink-muted text-xs">Solde</p>
           <p className={`text-lg font-bold ${solde >= 0 ? 'text-ink' : 'text-critical'}`}>
-            {solde >= 0 ? '+' : ''}{solde.toFixed(2)} €
+            {solde >= 0 ? '+' : ''}{formatEur(solde)}
           </p>
         </div>
       </div>
@@ -222,7 +223,7 @@ export default function EncaissementsClient({
                   <td className={`py-3 text-right font-bold ${
                     entry.type === 'advance' ? 'text-critical' : 'text-success'
                   }`}>
-                    {entry.type === 'advance' ? '-' : '+'}{entry.amount?.toFixed(2)} €
+                    {entry.type === 'advance' ? '-' : '+'}{formatEur(entry.amount || 0)}
                   </td>
                 </tr>
               ))}
@@ -268,7 +269,7 @@ export default function EncaissementsClient({
                   </p>
                 </div>
                 <p className={`font-bold ml-3 flex-shrink-0 ${entry.type === 'advance' ? 'text-critical' : 'text-success'}`}>
-                  {entry.type === 'advance' ? '-' : '+'}{entry.amount?.toFixed(2)} €
+                  {entry.type === 'advance' ? '-' : '+'}{formatEur(entry.amount || 0)}
                 </p>
               </div>
               <div className="flex items-center justify-between">
@@ -303,7 +304,7 @@ export default function EncaissementsClient({
                   :                                    selected.reference}
                 </h2>
                 <p className={`font-bold text-xl ${selected.type === 'advance' ? 'text-critical' : 'text-success'}`}>
-                  {selected.type === 'advance' ? '-' : '+'}{selected.amount?.toFixed(2)} €
+                  {selected.type === 'advance' ? '-' : '+'}{formatEur(selected.amount || 0)}
                 </p>
               </div>
               <button onClick={() => setSelected(null)} className="text-ink-muted text-2xl">×</button>
