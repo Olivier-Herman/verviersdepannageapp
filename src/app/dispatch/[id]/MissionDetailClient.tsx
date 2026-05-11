@@ -981,7 +981,9 @@ export default function MissionDetailClient({
     setLoadingConfirm(false)
     // Créer le dossier dans Odoo FSM (en arrière-plan, sans bloquer)
     createOdooFsmDossier().catch(console.error)
-    window.location.href = '/dispatch'
+    // On reste sur la fiche — reload pour avoir les boutons/champs adaptes
+    // au nouveau statut (badge Odoo task_id, etc.). UX request Olivier 11/05.
+    router.refresh()
   }
 
   // Créer Helpdesk ticket + FSM Task dans Odoo
@@ -1031,7 +1033,8 @@ export default function MissionDetailClient({
     })
     setStatus('ignored')
     setLoadingRefuse(false)
-    router.push('/dispatch')
+    // On reste sur la fiche pour voir le statut "ignored". UX Olivier 11/05.
+    router.refresh()
   }
 
 
@@ -1911,7 +1914,8 @@ export default function MissionDetailClient({
                 body:    JSON.stringify({ mission_id: initialMission.id, driver_id: driverId }),
               })
               setStatus('assigned')
-              router.push('/dispatch')
+              // On reste sur la fiche pour voir le chauffeur assigne. UX Olivier 11/05.
+              router.refresh()
             }
           }}
           onClose={() => setShowDriverModal(false)}
