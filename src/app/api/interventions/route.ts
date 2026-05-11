@@ -244,9 +244,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Tri par date desc avec tie-break : pour un meme created_at (cas typique
+  // des transferts, RPC atomic cree les 2 entries en meme temps), on affiche
+  // transfer_out (-) AVANT transfer_in (+) — narratif "sort caisse A, rentre
+  // caisse B" naturel a lire de haut en bas.
+  const TYPE_ORDER: Record<string, number> = { transfer_out: 0, transfer_in: 1 }
+  const sortByDateThenType = (a: any, b: any) => {
+    const t = new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    if (t !== 0) return t
+    return (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99)
+  }
+
   if (!includeAdv) {
-    const merged = [...intEntries, ...odooEntries, ...transferEntries]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    const merged = [...intEntries, ...odooEntries, ...transferEntries].sort(sortByDateThenType)
     return NextResponse.json(merged)
   }
 
@@ -275,9 +285,9 @@ export async function GET(req: NextRequest) {
     status:       a.status,
   }))
 
-  // ── Fusion + tri par date ──────────────────────────────────
+  // ── Fusion + tri par date avec tie-break transfer_out avant transfer_in ──
   const all = [...intEntries, ...advEntries, ...odooEntries, ...transferEntries]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort(sortByDateThenType)
 
   return NextResponse.json(all)
 }
