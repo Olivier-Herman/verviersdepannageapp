@@ -18,6 +18,8 @@ interface Stop {
 }
 interface Mission {
   id: string; status: string; mission_type?: string
+  incident_type?: string                                       // 'relivraison' = REL
+  parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
   client_name?: string; client_phone?: string
   billed_to_name?: string; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
@@ -36,6 +38,11 @@ interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const plate = (v = '') => v.replace(/[-.\s]/g, '').toUpperCase()
 const isREM = (t = '') => ['REM', 'remorquage', 'transport'].includes(t)
+// REL = mission de relivraison (vehicule en parc -> client). Detect via incident_type ou
+// parent_mission_id (auto-cree par createRelivraisonMission). C est techniquement une REM
+// mais avec un workflow legerement adapte (skip "Sur place", on demarre du parc charge).
+const isRELMission = (m: Mission) =>
+  m.incident_type === 'relivraison' || !!m.parent_mission_id
 const gUrl  = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
   const q = lat && lng ? `${lat},${lng}` : encodeURIComponent(addr || ''); if (!q) return null
   if (app === 'waze')  return `https://waze.com/ul?ll=${q}&navigate=yes`
@@ -44,6 +51,7 @@ const gUrl  = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
 }
 const TYPE_BADGE: Record<string, [string, string]> = {
   DSP: ['DSP', 'bg-brand'], REM: ['REM', 'bg-blue-600'], DPR: ['DPR', 'bg-ink-faint'],
+  REL: ['REL', 'bg-purple-600'],
   depannage: ['DSP', 'bg-brand'], remorquage: ['REM', 'bg-blue-600'],
   reparation_place: ['DSP', 'bg-brand'], transport: ['REM', 'bg-blue-600'],
 }
@@ -73,32 +81,44 @@ const DPR_MOTIFS = [
 type DprMotifId = typeof DPR_MOTIFS[number]['id']
 
 // ─── Stepper visuel : étapes du workflow chauffeur ────────────────────────────
-// Étapes différentes selon DSP (4) ou REM (6) :
-//   DSP : Accepter → En route → Sur place → Clôture
-//   REM : Accepter → En route → Sur place → Chargé → À destination → Clôture
-function Stepper({ status, onSite, loaded, isRem }: {
-  status: string; onSite: boolean; loaded: boolean; isRem: boolean
+// 3 variantes :
+//   DSP : Accepter → En route → Sur place → Clôture (4)
+//   REM : Accepter → En route → Sur place → Chargé → Destination → Clôture (6)
+//   REL : Accepter → En route → Chargé → Destination → Clôture (5)
+//         (skip Sur place, on demarre du parc directement charge)
+function Stepper({ status, onSite, loaded, isRem, isRel }: {
+  status: string; onSite: boolean; loaded: boolean; isRem: boolean; isRel?: boolean
 }) {
-  const labels = isRem
-    ? ['Accepter', 'En route', 'Sur place', 'Chargé', 'Destination', 'Clôture']
-    : ['Accepter', 'En route', 'Sur place', 'Clôture']
+  const labels = isRel
+    ? ['Accepter', 'En route', 'Chargé', 'Destination', 'Clôture']
+    : isRem
+      ? ['Accepter', 'En route', 'Sur place', 'Chargé', 'Destination', 'Clôture']
+      : ['Accepter', 'En route', 'Sur place', 'Clôture']
 
-  const step = isRem
+  const step = isRel
     ? (
         status === 'assigned'                                    ? 0 :
         status === 'accepted'                                    ? 1 :
-        (status === 'in_progress' && !onSite)                    ? 2 :
-        (onSite && !loaded && status !== 'delivering')           ? 3 :
-        (status === 'delivering' || (loaded && status !== 'completed' && status !== 'parked')) ? 4 :
-        (status === 'completed' || status === 'parked')          ? 5 : 0
+        (status === 'in_progress' && !loaded)                    ? 2 :  // En route / chargement au parc
+        (loaded && status !== 'completed' && status !== 'parked') ? 3 : // En cours de livraison
+        status === 'completed' || status === 'parked'            ? 4 : 0
       )
-    : (
-        status === 'assigned'                                    ? 0 :
-        status === 'accepted'                                    ? 1 :
-        (status === 'in_progress' && !onSite)                    ? 2 :
-        onSite                                                   ? 3 :
-        status === 'completed'                                   ? 4 : 0
-      )
+    : isRem
+      ? (
+          status === 'assigned'                                    ? 0 :
+          status === 'accepted'                                    ? 1 :
+          (status === 'in_progress' && !onSite)                    ? 2 :
+          (onSite && !loaded && status !== 'delivering')           ? 3 :
+          (status === 'delivering' || (loaded && status !== 'completed' && status !== 'parked')) ? 4 :
+          (status === 'completed' || status === 'parked')          ? 5 : 0
+        )
+      : (
+          status === 'assigned'                                    ? 0 :
+          status === 'accepted'                                    ? 1 :
+          (status === 'in_progress' && !onSite)                    ? 2 :
+          onSite                                                   ? 3 :
+          status === 'completed'                                   ? 4 : 0
+        )
 
   return (
     <div className="flex items-center gap-1 mt-3">
@@ -294,7 +314,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}[]>([])
   const [paid, setPaid]           = useState(false)
-  const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'|'park'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
+  const [closeType, setCloseType] = useState<'dsp'|'rem'|'rel'|'dpr'|'park'>(() => (
+    isRELMission(init) ? 'rel'
+    : isREM(init.mission_type || '') ? 'rem'
+    : 'dsp'
+  ))
   const [parkDepot, setParkDepot] = useState<VrLoc | null>(null)
   const [closeNote, setCloseNote] = useState('')
 
@@ -344,6 +368,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const totPh    = photos.length + photoUrls.length
   const mType    = M.mission_type || ''
   const rem      = isREM(mType)
+  const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
   const stops    = [...(M.extra_addresses || [])].sort((a, b) => a.sort_order - b.sort_order)
@@ -385,7 +410,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     }))
     apiSilent('update_stops', { stops: newStops })
   }
-  const [tbl, tbg] = TYPE_BADGE[mType] || ['AUT', 'bg-ink-faint']
+  // REL override : si c est une relivraison, on affiche le badge REL (violet)
+  // plutot que REM (bleu), meme si techniquement c est mission_type='remorquage'.
+  const [tbl, tbg] = rel ? TYPE_BADGE.REL : (TYPE_BADGE[mType] || ['AUT', 'bg-ink-faint'])
   const statusStr  = M.status === 'parked' ? 'En dépôt' : M.on_site_at ? 'Sur place'
     : M.on_way_at && M.status === 'in_progress' ? 'En route' : STATUS_BADGE[M.status]?.[0] || M.status
   const statusBg   = M.status === 'parked' ? 'bg-amber-600' : M.on_site_at ? 'bg-orange-500'
@@ -617,10 +644,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   // Clôture labels (doit être avant les early returns)
   const closeLabels: Record<string, [string, string]> = {
-    dsp:  ['bg-green-600', 'DSP Réussi'],
-    rem:  ['bg-blue-600',  'REM Confirmé'],
+    dsp:  ['bg-green-600',  'DSP Réussi'],
+    rem:  ['bg-blue-600',   'REM Confirmé'],
+    rel:  ['bg-purple-600', 'REL Livrée'],
     dpr:  ['bg-ink-faint',  'DPR — Déplacement pour rien'],
-    park: ['bg-amber-500', '🅿️ Mise en parc'],
+    park: ['bg-amber-500',  '🅿️ Mise en parc'],
   }
   const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-ink-faint', closeType.toUpperCase()]
 
@@ -1139,7 +1167,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </a>
         )}
         {/* Stepper visuel : étapes du workflow chauffeur */}
-        <Stepper status={M.status} onSite={onSite} loaded={loaded} isRem={rem} />
+        <Stepper status={M.status} onSite={onSite} loaded={loaded} isRem={rem} isRel={rel} />
       </div>
 
       {/* Banderole rouge : montant à encaisser */}
@@ -1166,6 +1194,25 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       )}
 
       <div className="px-4 py-4 space-y-3">
+
+        {/* Banderole REL — visible uniquement pour les missions de relivraison */}
+        {rel && (
+          <div className="bg-purple-600/10 border border-purple-500/40 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">🚛</span>
+              <p className="text-purple-300 text-sm font-bold uppercase tracking-wide">Mission de relivraison</p>
+            </div>
+            <p className="text-ink-secondary text-xs mb-3">
+              Le véhicule est déjà en parc chez nous (zone TRANSIT). Tu pars du parc avec le véhicule chargé et tu le livres à l'adresse client originale.
+            </p>
+            {M.parent_mission_id && (
+              <a href={`/mission/${M.parent_mission_id}`}
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-purple-300 font-medium">
+                📋 Voir la mission parente (remorquage initial) →
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Facturé à + Dossier */}
         <div className="grid grid-cols-2 gap-2">
@@ -1301,10 +1348,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {M.status === 'accepted' && (
             <button onClick={() => initNav ? api('on_way') : setShowNav(true)} disabled={loading}
               className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-              {loading ? '⏳…' : '🚗 En route'}
+              {loading ? '⏳…' : (rel ? '🚗 En route vers le parc' : '🚗 En route')}
             </button>
           )}
-          {M.status === 'in_progress' && !onSite && (
+          {/* "Sur place" : skip pour les REL (on demarre du parc, pas d arrivee a marquer) */}
+          {M.status === 'in_progress' && !onSite && !rel && (
             <button onClick={() => api('on_site')} disabled={loading}
               className="w-full py-4 bg-orange-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
               {loading ? '⏳…' : '📍 Sur place'}
@@ -1312,7 +1360,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           )}
 
           {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" + bouton "Refus" */}
-          {rem && M.status === 'in_progress' && onSite && !loaded && (
+          {rem && !rel && M.status === 'in_progress' && onSite && !loaded && (
             <>
               <button onClick={() => api('load_vehicle')} disabled={loading}
                 className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
@@ -1327,28 +1375,38 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </>
           )}
 
-          {/* REM : véhicule chargé → 2 choix : aller à destination OU mettre en parc */}
+          {/* REL : in_progress (peu importe onSite) + non chargé → bouton "Véhicule chargé au parc" */}
+          {rel && M.status === 'in_progress' && !loaded && (
+            <button onClick={() => api('load_vehicle')} disabled={loading}
+              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+              {loading ? '⏳…' : '🚛 Véhicule chargé au parc'}
+            </button>
+          )}
+
+          {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
           {rem && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
             <>
               {M.destination_address && (
-                <button onClick={() => { setCloseType('rem'); setScreen('close') }} disabled={loading}
+                <button onClick={() => { setCloseType(rel ? 'rel' : 'rem'); setScreen('close') }} disabled={loading}
                   className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                   📍 Arrivé à destination
                   <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
                 </button>
               )}
-              <button onClick={() => {
-                  // Pré-sélectionne le dépôt par défaut (Pépinster) si aucun choix
-                  if (!parkDepot) {
-                    const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
-                    if (def) setParkDepot(def)
-                  }
-                  setCloseType('park')
-                  setScreen('close')
-                }} disabled={loading}
-                className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-                🅿️ Mise en parc
-              </button>
+              {/* "Mise en parc" : pour REM seulement (une REL ramène DEPUIS le parc, pas vers) */}
+              {!rel && (
+                <button onClick={() => {
+                    if (!parkDepot) {
+                      const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
+                      if (def) setParkDepot(def)
+                    }
+                    setCloseType('park')
+                    setScreen('close')
+                  }} disabled={loading}
+                  className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+                  🅿️ Mise en parc
+                </button>
+              )}
             </>
           )}
 
