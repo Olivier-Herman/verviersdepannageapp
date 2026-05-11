@@ -5,6 +5,7 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
 import { createTGRQuote, setTGRVehicleTermine } from '@/lib/odoo'
+import { formatEur }                 from '@/lib/format'
 
 const APP_URL    = process.env.NEXT_PUBLIC_APP_URL    || 'https://app.verviersdepannage.com'
 const FROM_EMAIL = 'administration@verviersdepannage.com'
@@ -248,7 +249,7 @@ export async function POST(
     if (odooError) rows.push(['⚠️ Référence', `<span style="color:#f87171;">Non générée — ${odooError}</span>`])
     // Montant estimé HTVA = distance × prix produit (récupéré depuis Odoo)
     if (mission.distance_km && odooEstimatedAmount) {
-      rows.push(['Montant estimé HTVA', `<strong style="color:#4ade80;">${odooEstimatedAmount.toFixed(2)} €</strong>`])
+      rows.push(['Montant estimé HTVA', `<strong style="color:#4ade80;">${formatEur(odooEstimatedAmount)}</strong>`])
     }
 
     const html = emailWrapper(

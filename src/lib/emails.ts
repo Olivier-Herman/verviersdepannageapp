@@ -2,6 +2,8 @@
 // VERVIERS DÉPANNAGE — Service emails centralisé
 // ============================================================
 
+import { formatEur } from '@/lib/format'
+
 export const BRAND_RED = '#CC2222'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 const ADMIN_EMAIL = 'mobi@verviersdepannage.be'
@@ -139,9 +141,9 @@ export async function sendClientReceipt(data: {
   sumupTransactionRef?: string
 }) {
   const isPaid = data.paymentMode !== 'unpaid'
-  const amountTvac = data.amount.toFixed(2)
-  const amountHt = (data.amount / 1.21).toFixed(2)
-  const tva = (data.amount - data.amount / 1.21).toFixed(2)
+  const amountTvac = formatEur(data.amount)
+  const amountHt   = formatEur(data.amount / 1.21)
+  const tva        = formatEur(data.amount - data.amount / 1.21)
   const paymentLabel = PAYMENT_MODE_LABELS[data.paymentMode] || data.paymentMode
   const nextWorkDay = getNextWorkingDay()
 
@@ -171,15 +173,15 @@ export async function sendClientReceipt(data: {
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr style="background:#f8f8f8;">
           <td style="padding:10px 16px;font-size:13px;color:#888;">Montant HTVA</td>
-          <td style="padding:10px 16px;font-size:13px;color:#444;text-align:right;">${amountHt} €</td>
+          <td style="padding:10px 16px;font-size:13px;color:#444;text-align:right;">${amountHt}</td>
         </tr>
         <tr>
           <td style="padding:10px 16px;font-size:13px;color:#888;border-top:1px solid #f0f0f0;">TVA 21%</td>
-          <td style="padding:10px 16px;font-size:13px;color:#444;text-align:right;border-top:1px solid #f0f0f0;">${tva} €</td>
+          <td style="padding:10px 16px;font-size:13px;color:#444;text-align:right;border-top:1px solid #f0f0f0;">${tva}</td>
         </tr>
         <tr style="background:${BRAND_RED};">
           <td style="padding:14px 16px;font-size:15px;font-weight:700;color:white;">Total TVAC</td>
-          <td style="padding:14px 16px;font-size:18px;font-weight:700;color:white;text-align:right;">${amountTvac} €</td>
+          <td style="padding:14px 16px;font-size:18px;font-weight:700;color:white;text-align:right;">${amountTvac}</td>
         </tr>
       </table>
     </div>
@@ -206,7 +208,7 @@ export async function sendClientReceipt(data: {
   `
 
   const subject = isPaid
-    ? `Reçu — Intervention ${data.reference} · ${amountTvac} €`
+    ? `Reçu — Intervention ${data.reference} · ${amountTvac}`
     : `Confirmation d'intervention ${data.reference} — NON PAYÉE`
 
   await sendEmail(data.clientEmail, subject, emailLayout(content, subject), data.clientName)
@@ -379,7 +381,7 @@ export async function sendAdvancePurchaseEmail(params: {
     }
   }
 
-  const subject = `Avance de fonds — ${plate} — ${amountHtva.toFixed(2)} € HTVA`
+  const subject = `Avance de fonds — ${plate} — ${formatEur(amountHtva)} HTVA`
   const html = emailLayout(`
     <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111;">Avance de fonds</p>
     <p style="margin:0 0 24px;font-size:14px;color:#888;">
@@ -388,7 +390,7 @@ export async function sendAdvancePurchaseEmail(params: {
     <div style="background:#f8f8f8;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
       <table width="100%" cellpadding="0" cellspacing="0">
         ${infoRow('Immatriculation',  `<strong>${plate}</strong>`)}
-        ${infoRow('Montant HTVA',     `<strong>${amountHtva.toFixed(4)} €</strong>`)}
+        ${infoRow('Montant HTVA',     `<strong>${formatEur(amountHtva, { decimals: 4 })}</strong>`)}
         ${infoRow('Mode de paiement', paymentLabels[paymentMethod] ?? paymentMethod)}
         ${orderName ? infoRow('Référence devis', `<strong>${orderName}</strong>`) : ''}
       </table>

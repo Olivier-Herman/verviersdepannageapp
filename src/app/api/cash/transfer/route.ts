@@ -13,6 +13,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
+import { formatEur }                 from '@/lib/format'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
   try {
     await sendPushToUser(receiver.id, {
       title: 'Demande de transfert',
-      body:  `${sender.name || 'Un collègue'} souhaite vous remettre ${amt.toFixed(2)} €`,
+      body:  `${sender.name || 'Un collègue'} souhaite vous remettre ${formatEur(amt)}`,
       url:   '/caisse',
       tag:   `cash-transfer-${transfer.id}`,
     })

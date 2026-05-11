@@ -8,6 +8,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
+import { formatEur }                 from '@/lib/format'
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -37,7 +38,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   try {
     await sendPushToUser(transfer.sender_id, {
       title: 'Transfert refusé',
-      body:  `${me.name || 'Le receveur'} a refusé votre transfert de ${Number(transfer.amount).toFixed(2)} €`,
+      body:  `${me.name || 'Le receveur'} a refusé votre transfert de ${formatEur(Number(transfer.amount))}`,
       url:   '/caisse',
       tag:   `cash-transfer-${transfer.id}`,
     })

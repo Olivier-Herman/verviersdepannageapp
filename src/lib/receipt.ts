@@ -2,6 +2,8 @@
 // VERVIERS DÉPANNAGE — Service d'envoi de reçu client
 // ============================================================
 
+import { formatEur } from '@/lib/format'
+
 async function getAppToken(): Promise<string> {
   const res = await fetch(
     `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
@@ -61,11 +63,11 @@ export async function sendClientReceipt(data: {
   const paymentLabel = PAYMENT_MODE_LABELS[data.paymentMode] || data.paymentMode
   const nextWorkDay = getNextWorkingDay()
   const isPaid = data.paymentMode !== 'unpaid'
-  const amountTvac = data.amount.toFixed(2)
-  const amountHt = (data.amount / 1.21).toFixed(2)
-  const tva = (data.amount - data.amount / 1.21).toFixed(2)
+  const amountTvac = formatEur(data.amount)
+  const amountHt   = formatEur(data.amount / 1.21)
+  const tva        = formatEur(data.amount - data.amount / 1.21)
   const subject = isPaid
-    ? `Reçu intervention ${data.reference} — ${amountTvac} €`
+    ? `Reçu intervention ${data.reference} — ${amountTvac}`
     : `Confirmation d'intervention ${data.reference} — NON PAYÉE`
 
   const html = `
@@ -119,15 +121,15 @@ export async function sendClientReceipt(data: {
           <table width="100%" style="border-radius:6px;border:1px solid #eee;overflow:hidden;">
             <tr style="background:#f9f9f9;">
               <td style="font-size:13px;color:#666;padding:8px 15px;">Montant HT</td>
-              <td style="font-size:13px;color:#333;text-align:right;padding:8px 15px;">${amountHt} €</td>
+              <td style="font-size:13px;color:#333;text-align:right;padding:8px 15px;">${amountHt}</td>
             </tr>
             <tr>
               <td style="font-size:13px;color:#666;padding:8px 15px;">TVA 21%</td>
-              <td style="font-size:13px;color:#333;text-align:right;padding:8px 15px;">${tva} €</td>
+              <td style="font-size:13px;color:#333;text-align:right;padding:8px 15px;">${tva}</td>
             </tr>
             <tr style="background:${isPaid ? '#CC2222' : '#856404'};">
               <td style="font-size:15px;color:white;font-weight:bold;padding:12px 15px;">Total TVAC</td>
-              <td style="font-size:18px;color:white;font-weight:bold;text-align:right;padding:12px 15px;">${amountTvac} €</td>
+              <td style="font-size:18px;color:white;font-weight:bold;text-align:right;padding:12px 15px;">${amountTvac}</td>
             </tr>
           </table>
         </td></tr>

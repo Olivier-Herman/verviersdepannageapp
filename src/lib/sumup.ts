@@ -2,6 +2,8 @@
 // VERVIERS DÉPANNAGE — SumUp Integration
 // ============================================================
 
+import { formatEur } from '@/lib/format'
+
 const SUMUP_API_KEY      = process.env.SUMUP_API_KEY!
 const SUMUP_MERCHANT_CODE = process.env.SUMUP_MERCHANT_CODE!
 const APP_URL            = process.env.NEXT_PUBLIC_APP_URL!
@@ -127,7 +129,7 @@ export async function sendPaymentEmail(data: {
           <p style="font-size: 13px; color: #888; margin: 0;">Référence</p>
           <p style="font-size: 16px; font-weight: bold; color: #333; margin: 5px 0;">${data.reference}</p>
           <p style="font-size: 13px; color: #888; margin: 10px 0 0;">${data.description}</p>
-          <p style="font-size: 36px; font-weight: bold; color: #CC2222; margin: 10px 0;">${data.amount.toFixed(2)} €</p>
+          <p style="font-size: 36px; font-weight: bold; color: #CC2222; margin: 10px 0;">${formatEur(data.amount)}</p>
           <a href="${data.checkoutUrl}"
              style="display: inline-block; background: #CC2222; color: white; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px;">
             Payer maintenant
@@ -156,7 +158,7 @@ export async function sendPaymentEmail(data: {
       },
       body: JSON.stringify({
         message: {
-          subject: `Paiement ${data.reference} — ${data.amount.toFixed(2)} €`,
+          subject: `Paiement ${data.reference} — ${formatEur(data.amount)}`,
           body: { contentType: 'HTML', content: html },
           toRecipients: [{ emailAddress: { address: data.clientEmail, name: data.clientName || 'Client' } }],
         },

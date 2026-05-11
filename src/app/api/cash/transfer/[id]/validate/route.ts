@@ -13,6 +13,7 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
 import { sendEmail }                 from '@/lib/emails'
+import { formatEur }                 from '@/lib/format'
 import bcrypt                        from 'bcryptjs'
 
 const NOTIFY_EMAIL    = (process.env.TOWSOFT_ERROR_NOTIFY_EMAIL    || 'info@olivierherman.be').trim()
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   try {
     await sendPushToUser(transfer.sender_id, {
       title: 'Transfert validé',
-      body:  `${me.name || 'Le receveur'} a accepté votre transfert de ${Number(transfer.amount).toFixed(2)} €`,
+      body:  `${me.name || 'Le receveur'} a accepté votre transfert de ${formatEur(Number(transfer.amount))}`,
       url:   '/caisse',
       tag:   `cash-transfer-${transfer.id}`,
     })
@@ -95,10 +96,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           <table style="border-collapse:collapse;margin:16px 0">
             <tr><td style="padding:6px 12px;color:#666"><b>Donneur :</b></td><td style="padding:6px 12px">${senderRow?.name || '?'} (${senderRow?.email || '?'})</td></tr>
             <tr><td style="padding:6px 12px;color:#666"><b>Receveur :</b></td><td style="padding:6px 12px">${me.name || '?'} (${session.user.email})</td></tr>
-            <tr><td style="padding:6px 12px;color:#666"><b>Montant transféré :</b></td><td style="padding:6px 12px">${Number(transfer.amount).toFixed(2)} €</td></tr>
-            <tr><td style="padding:6px 12px;color:#666"><b>Solde avant :</b></td><td style="padding:6px 12px">${balanceBefore.toFixed(2)} €</td></tr>
-            <tr><td style="padding:6px 12px;color:#666"><b>Solde après :</b></td><td style="padding:6px 12px;color:#cc2222"><b>${balanceAfter.toFixed(2)} €</b></td></tr>
-            <tr><td style="padding:6px 12px;color:#666"><b>Écart probable :</b></td><td style="padding:6px 12px;color:#cc2222"><b>${ecart.toFixed(2)} €</b> non encodés en Odoo</td></tr>
+            <tr><td style="padding:6px 12px;color:#666"><b>Montant transféré :</b></td><td style="padding:6px 12px">${formatEur(Number(transfer.amount))}</td></tr>
+            <tr><td style="padding:6px 12px;color:#666"><b>Solde avant :</b></td><td style="padding:6px 12px">${formatEur(balanceBefore)}</td></tr>
+            <tr><td style="padding:6px 12px;color:#666"><b>Solde après :</b></td><td style="padding:6px 12px;color:#cc2222"><b>${formatEur(balanceAfter)}</b></td></tr>
+            <tr><td style="padding:6px 12px;color:#666"><b>Écart probable :</b></td><td style="padding:6px 12px;color:#cc2222"><b>${formatEur(ecart)}</b> non encodés en Odoo</td></tr>
           </table>
           <p style="font-size:13px;color:#666">Cause typique : un encaissement physique a été effectué par le donneur sans avoir été encodé en paiement Odoo (donc pas remonté par le cron sync).</p>
           <p><a href="${APP_URL}/admin/cash" style="color:#cc2222;font-weight:600">→ Vérifier dans l'admin Caisse</a></p>
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         if (pushUser?.id) {
           await sendPushToUser(pushUser.id, {
             title: '⚠️ Solde négatif détecté',
-            body:  `${senderRow?.name || 'Un user'} a transféré ${Number(transfer.amount).toFixed(2)}€ → solde ${balanceAfter.toFixed(2)}€. À investiguer.`,
+            body:  `${senderRow?.name || 'Un user'} a transféré ${formatEur(Number(transfer.amount))} → solde ${formatEur(balanceAfter)}. À investiguer.`,
             url:   '/admin/cash',
             tag:   'cash-negative-balance',
           })

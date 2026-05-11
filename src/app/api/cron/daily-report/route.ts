@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser } from '@/lib/push'
+import { formatEur } from '@/lib/format'
 
 // Cron déclenché tous les jours ouvrables à 8h (lun-ven)
 // Configuré dans vercel.json
@@ -155,7 +156,7 @@ export async function GET(req: NextRequest) {
       <td style="padding:8px 10px;font-size:12px;color:#333;">${i.plate || '-'}</td>
       <td style="padding:8px 10px;font-size:12px;color:#333;">${i.client_name || '-'}</td>
       <td style="padding:8px 10px;font-size:12px;color:#333;">${i.motif_text || '-'}</td>
-      <td style="padding:8px 10px;font-size:12px;color:#333;text-align:right;font-weight:bold;">${(i.amount || 0).toFixed(2)} €</td>
+      <td style="padding:8px 10px;font-size:12px;color:#333;text-align:right;font-weight:bold;">${formatEur(i.amount || 0)}</td>
       <td style="padding:8px 10px;font-size:12px;color:${i.payment_mode === 'unpaid' ? '#cc2222' : '#2e7d32'};">
         ${PAYMENT_LABELS[i.payment_mode] || i.payment_mode}
       </td>
@@ -188,7 +189,7 @@ export async function GET(req: NextRequest) {
               </td>
               <td width="5%"></td>
               <td width="25%" style="background:#f9f9f9;border-radius:6px;padding:15px;text-align:center;">
-                <p style="margin:0;font-size:24px;font-weight:bold;color:#2e7d32;">${totalAmount.toFixed(2)} €</p>
+                <p style="margin:0;font-size:24px;font-weight:bold;color:#2e7d32;">${formatEur(totalAmount)}</p>
                 <p style="margin:4px 0 0;font-size:12px;color:#666;">Total TVAC</p>
               </td>
               <td width="5%"></td>
@@ -224,7 +225,7 @@ export async function GET(req: NextRequest) {
             <tfoot>
               <tr style="background:#f9f9f9;">
                 <td colspan="6" style="padding:10px;font-size:13px;font-weight:bold;color:#333;">TOTAL</td>
-                <td style="padding:10px;font-size:13px;font-weight:bold;color:#CC2222;text-align:right;">${totalAmount.toFixed(2)} €</td>
+                <td style="padding:10px;font-size:13px;font-weight:bold;color:#CC2222;text-align:right;">${formatEur(totalAmount)}</td>
                 <td colspan="2"></td>
               </tr>
             </tfoot>
@@ -256,7 +257,7 @@ export async function GET(req: NextRequest) {
       },
       body: JSON.stringify({
         message: {
-          subject: `Rapport encaissements du ${today_str} — ${interventions.length} intervention(s) — ${totalAmount.toFixed(2)} €`,
+          subject: `Rapport encaissements du ${today_str} — ${interventions.length} intervention(s) — ${formatEur(totalAmount)}`,
           body: { contentType: 'HTML', content: html },
           toRecipients: [{ emailAddress: { address: TO_EMAIL } }],
         },
@@ -264,7 +265,7 @@ export async function GET(req: NextRequest) {
       })
     })
 
-    console.log(`[Cron] Rapport envoyé — ${interventions.length} interventions — ${totalAmount.toFixed(2)} €`)
+    console.log(`[Cron] Rapport envoyé — ${interventions.length} interventions — ${formatEur(totalAmount)}`)
 
     // Mettre à jour la date du dernier envoi
     await supabase.from('app_settings').upsert({
