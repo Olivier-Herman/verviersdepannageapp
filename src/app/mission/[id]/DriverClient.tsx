@@ -59,6 +59,19 @@ const STOP_COLORS: Record<string, string> = {
   client: '#7c3aed', vr: '#0f766e', dest: '#2563eb', depot: '#d97706', custom: '#64748b',
 }
 
+// Motifs de DPR (Déplacement Pour Rien) typés.
+// "Autre" requiert un texte libre. Stocké dans closing_data.dpr_motif côté API.
+const DPR_MOTIFS = [
+  { id: 'vehicule_absent',   icon: '🚫', label: 'Véhicule absent / introuvable' },
+  { id: 'refus_proprio',     icon: '🙅', label: 'Propriétaire refuse l\'intervention' },
+  { id: 'acces_impossible',  icon: '🚧', label: 'Accès impossible (terrain privé, fourrière)' },
+  { id: 'deja_deplace',      icon: '🚗', label: 'Véhicule déjà dépanné / déplacé' },
+  { id: 'pas_de_panne',      icon: '✅', label: 'Pas de panne constatée' },
+  { id: 'annulation_client', icon: '📞', label: 'Demande d\'annulation client' },
+  { id: 'autre',             icon: '✍️', label: 'Autre' },
+] as const
+type DprMotifId = typeof DPR_MOTIFS[number]['id']
+
 // ─── Stepper visuel : étapes du workflow chauffeur ────────────────────────────
 // Étapes différentes selon DSP (4) ou REM (6) :
 //   DSP : Accepter → En route → Sur place → Clôture
@@ -284,6 +297,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'dpr'|'park'>(() => isREM(init.mission_type || '') ? 'rem' : 'dsp')
   const [parkDepot, setParkDepot] = useState<VrLoc | null>(null)
   const [closeNote, setCloseNote] = useState('')
+
+  // Motif DPR (Deplacement Pour Rien)
+  const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
+  const [dprMotifAutre,   setDprMotifAutre]   = useState('')
+  const [showDprMotif,    setShowDprMotif]    = useState(false)
+  const [dprFromRem,      setDprFromRem]      = useState(false)  // true si conversion depuis refus REM
+
+  // Signature destinataire (REM uniquement, optionnelle)
+  const [destSig,         setDestSig]         = useState('')
+  const [showDestSigPad,  setShowDestSigPad]  = useState(false)
   const [mounted,   setMounted]   = useState(false)
 
   // Monter côté client seulement
@@ -557,16 +580,28 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       const newUrls = await uploadPhotos(photos)
       const allUrls = [...photoUrls, ...newUrls]
       if (closeType !== 'dpr' && allUrls.length < 1) { setErr('Ajoutez au moins une photo'); setLoading(false); return }
+      // DPR exige toujours un motif (modal ouverte avant le passage en closeType='dpr').
+      if (closeType === 'dpr' && !dprMotif) {
+        setErr('Motif DPR requis'); setLoading(false); return
+      }
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mission_id: M.id, action: 'completed',
           closing_data: {
-            final_mission_type: closeType.toUpperCase(),
-            photo_urls: allUrls.length ? allUrls : undefined,
-            closing_notes: closeNote || undefined,
-            signature: sig || undefined,
-            discharge_data: disch.length > 0 ? disch : undefined,
+            final_mission_type:    closeType.toUpperCase(),
+            photo_urls:            allUrls.length ? allUrls : undefined,
+            closing_notes:         closeNote || undefined,
+            signature:             sig || undefined,
+            recipient_signature:   destSig || undefined,            // REM : signature destinataire
+            discharge_data:        disch.length > 0 ? disch : undefined,
+            dpr_motif:             closeType === 'dpr' ? dprMotif : undefined,
+            dpr_motif_label:       closeType === 'dpr' ? (
+              dprMotif === 'autre'
+                ? dprMotifAutre.trim()
+                : DPR_MOTIFS.find(m => m.id === dprMotif)?.label
+            ) : undefined,
+            dpr_converted_from_rem: dprFromRem || undefined,
           },
         }),
       })
@@ -633,6 +668,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       { id: 'droite',    icon: '➡️', label: 'Côté droit',     hint: 'Vue latérale complète' },
       { id: 'interieur', icon: '🪑', label: 'Intérieur',      hint: 'Tableau de bord + état général' },
       { id: 'defauts',   icon: '⚠️', label: 'Défauts/dégâts', hint: 'Rayures, bosses, cassures (si applicable)' },
+      { id: 'vin',       icon: '🆔', label: 'VIN',            hint: 'Numéro de châssis (si visible)' },
+      { id: 'km',        icon: '🔢', label: 'Kilométrage',    hint: 'Compteur lisible (si accessible)' },
     ]
     // Quels catégories ont été ouvertes (= photos prises depuis cette cat)
     // Stocké dans localStorage pour persister entre rafraîchissements.
@@ -962,11 +999,40 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               </span>
             </button>
 
-            {/* Signature (signée pendant la décharge généralement) */}
+            {/* Signature client (signée pendant la décharge généralement) */}
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-ink-secondary text-sm">✍️ Signature client</span>
               <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-ink-muted'}`}>{sig ? '✓ Signée' : '—'}</span>
             </div>
+
+            {/* Signature destinataire — REM uniquement, optionnelle */}
+            {closeType === 'rem' && (
+              <div className="px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-ink-secondary text-sm">✍️ Signature destinataire <span className="text-ink-faint text-xs">(opt.)</span></span>
+                  <span className={`text-sm font-medium ${destSig ? 'text-green-400' : 'text-ink-muted'}`}>
+                    {destSig ? '✓ Signée' : '—'}
+                  </span>
+                </div>
+                {destSig ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="flex-1 border border-green-500/30 rounded-xl overflow-hidden bg-surface">
+                      <img src={destSig} className="w-full max-h-20 object-contain" />
+                    </div>
+                    <button onClick={() => setDestSig('')} className="text-ink-muted text-xs">Refaire</button>
+                  </div>
+                ) : showDestSigPad ? (
+                  <div className="mt-2">
+                    <SigPad onSave={d => { setDestSig(d); setShowDestSigPad(false) }} />
+                  </div>
+                ) : (
+                  <button onClick={() => setShowDestSigPad(true)}
+                    className="w-full mt-2 py-2.5 border border-dashed border rounded-xl text-ink-secondary text-sm">
+                    ✍️ Faire signer le destinataire
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Encaissement */}
             {M.amount_to_collect != null && M.amount_to_collect > 0 && (
@@ -1245,12 +1311,20 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </button>
           )}
 
-          {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" */}
+          {/* REM : Sur place + véhicule pas encore chargé → bouton "Véhicule chargé" + bouton "Refus" */}
           {rem && M.status === 'in_progress' && onSite && !loaded && (
-            <button onClick={() => api('load_vehicle')} disabled={loading}
-              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-              {loading ? '⏳…' : '🚛 Véhicule chargé sur le camion'}
-            </button>
+            <>
+              <button onClick={() => api('load_vehicle')} disabled={loading}
+                className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+                {loading ? '⏳…' : '🚛 Véhicule chargé sur le camion'}
+              </button>
+              <button
+                onClick={() => { setDprFromRem(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+                disabled={loading}
+                className="w-full py-3 bg-surface border border hover:border-red-500/60 text-ink-secondary hover:text-red-400 font-medium rounded-2xl text-sm">
+                ❌ Refus / Impossible — Convertir en DPR
+              </button>
+            </>
           )}
 
           {/* REM : véhicule chargé → 2 choix : aller à destination OU mettre en parc */}
@@ -1365,8 +1439,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   <span className="text-sm font-medium text-amber-400">Mise en parc</span>
                 </button>
               )}
-              {/* DPR */}
-              <button onClick={() => { setShowGrid(false); setCloseType('dpr'); setScreen('close') }}
+              {/* DPR — ouvre la modal motif avant de basculer */}
+              <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-surface border transition active:scale-95">
                 <span className="text-2xl">❌</span>
                 <span className="text-sm font-medium text-ink-secondary">DPR</span>
@@ -1413,6 +1487,64 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   </div>
                 </button>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal DPR motif (Deplacement Pour Rien typé) ───────────────── */}
+      {showDprMotif && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowDprMotif(false)}>
+          <div className="bg-surface w-full rounded-t-3xl pb-8 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-surface-hover rounded-full" /></div>
+            <div className="px-5 pb-3 border-b border flex items-center justify-between">
+              <div>
+                <h2 className="text-ink font-semibold text-lg">
+                  {dprFromRem ? '❌ Refus de prise en charge' : '❌ DPR — Déplacement pour rien'}
+                </h2>
+                <p className="text-ink-muted text-xs">Sélectionne le motif</p>
+              </div>
+              <button onClick={() => setShowDprMotif(false)} className="text-ink-muted text-2xl">×</button>
+            </div>
+            <div className="px-4 py-3 space-y-2">
+              {DPR_MOTIFS.map(m => {
+                const selected = dprMotif === m.id
+                return (
+                  <button key={m.id} onClick={() => setDprMotif(m.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl border text-left transition active:scale-95 ${
+                      selected ? 'bg-brand/15 border-brand' : 'bg-surface border hover:border-zinc-600'
+                    }`}>
+                    <span className="text-xl">{m.icon}</span>
+                    <span className={`flex-1 text-sm ${selected ? 'text-ink font-semibold' : 'text-ink-secondary'}`}>{m.label}</span>
+                    <span className={`w-5 h-5 rounded-full border-2 ${selected ? 'bg-brand border-brand' : 'border-zinc-600'}`}>
+                      {selected && <span className="block w-full h-full rounded-full bg-brand" />}
+                    </span>
+                  </button>
+                )
+              })}
+              {dprMotif === 'autre' && (
+                <textarea rows={3} value={dprMotifAutre} onChange={e => setDprMotifAutre(e.target.value.slice(0, 500))}
+                  placeholder="Précise le motif…" autoFocus
+                  className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none mt-2" />
+              )}
+            </div>
+            <div className="px-4 pt-2 pb-4 flex gap-3">
+              <button onClick={() => setShowDprMotif(false)} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">
+                Annuler
+              </button>
+              <button
+                onClick={() => {
+                  // Validation : motif requis ; "Autre" requiert un texte
+                  if (!dprMotif) return
+                  if (dprMotif === 'autre' && !dprMotifAutre.trim()) return
+                  setShowDprMotif(false)
+                  setCloseType('dpr')
+                  setScreen('close')
+                }}
+                disabled={!dprMotif || (dprMotif === 'autre' && !dprMotifAutre.trim())}
+                className="flex-1 py-3 bg-brand disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
+                Continuer
+              </button>
+            </div>
           </div>
         </div>
       )}
