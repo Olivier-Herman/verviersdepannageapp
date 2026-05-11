@@ -76,6 +76,12 @@ export default function CashClient({
   // Action en cours sur un incoming (validate/refuse) — pour disable les boutons
   const [incomingLoadingId, setIncomingLoadingId] = useState<string | null>(null)
 
+  // Modal PIN pour valider un transfert incoming
+  const [pinModalTransfer, setPinModalTransfer] = useState<PendingTransfer | null>(null)
+  const [pinValue,         setPinValue]         = useState('')
+  const [pinError,         setPinError]         = useState('')
+  const [pinSubmitting,    setPinSubmitting]    = useState(false)
+
   // ── Charger solde + historique ───────────────────────────
   const loadData = () => {
     setLoading(true)
@@ -110,8 +116,37 @@ export default function CashClient({
     loadData()
     loadTransferData()
     const interval = setInterval(() => { loadData(); loadTransferData() }, 30000)
-    return () => clearInterval(interval)
+
+    // Refresh quand l onglet/PWA redevient visible (l user revient sur la page).
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData()
+        loadTransferData()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
+
+  // Polling rapide 3s tant qu un transfert SORTANT est en attente.
+  // Fallback si Supabase Realtime (defini plus bas) n est pas active sur
+  // la table cash_transfers cote Supabase Database > Replication.
+  useEffect(() => {
+    if (!outgoingPending) return
+    const fast = setInterval(() => { loadData(); loadTransferData() }, 3000)
+    return () => clearInterval(fast)
+  }, [outgoingPending?.id])
+
+  // Polling rapide 3s aussi cote receveur quand il a un transfert ENTRANT en
+  // attente (refresh la card incoming + le solde si l autre cote a annule).
+  useEffect(() => {
+    if (incomingPending.length === 0) return
+    const fast = setInterval(() => { loadData(); loadTransferData() }, 3000)
+    return () => clearInterval(fast)
+  }, [incomingPending.length])
 
   // ── Realtime sur le transfert sortant : écran d'attente fermé dès résolution ──
   useEffect(() => {
@@ -205,12 +240,33 @@ export default function CashClient({
     loadTransferData()
   }
 
-  const handleValidateIncoming = async (t: PendingTransfer) => {
-    setIncomingLoadingId(t.id)
-    const res = await fetch(`/api/cash/transfer/${t.id}/validate`, { method: 'POST' })
+  // Validate ne POST plus directement — il ouvre la modal PIN.
+  // Le vrai POST est dans handleValidateWithPin.
+  const handleValidateIncoming = (t: PendingTransfer) => {
+    setPinModalTransfer(t)
+    setPinValue('')
+    setPinError('')
+  }
+
+  const handleValidateWithPin = async () => {
+    if (!pinModalTransfer) return
+    if (pinValue.length !== 4) { setPinError('PIN à 4 chiffres requis'); return }
+    setPinSubmitting(true)
+    setPinError('')
+    const res = await fetch(`/api/cash/transfer/${pinModalTransfer.id}/validate`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ pin: pinValue }),
+    })
     const data = await res.json()
-    setIncomingLoadingId(null)
-    if (!res.ok) { alert(data.error || 'Erreur'); return }
+    setPinSubmitting(false)
+    if (!res.ok) {
+      setPinError(data.error || 'Erreur')
+      return
+    }
+    // Succes : ferme la modal + refresh data
+    setPinModalTransfer(null)
+    setPinValue('')
     loadData()
     loadTransferData()
   }
@@ -482,6 +538,58 @@ export default function CashClient({
           </div>
         ))}
       </div>
+
+      {/* ── Modal PIN pour valider un transfert entrant ── */}
+      {pinModalTransfer && (
+        <div className="fixed inset-0 z-50 bg-ink/60 flex items-center justify-center p-4"
+             onClick={() => !pinSubmitting && setPinModalTransfer(null)}>
+          <div className="bg-surface rounded-2xl max-w-sm w-full p-5"
+               onClick={e => e.stopPropagation()}>
+            <h2 className="text-ink font-bold text-lg mb-1">Confirmer le transfert</h2>
+            <p className="text-ink-muted text-sm mb-4">
+              <b>{pinModalTransfer.sender?.name || 'Un collègue'}</b> souhaite vous remettre{' '}
+              <b>{Number(pinModalTransfer.amount).toFixed(2)} €</b>.
+              Saisis ton PIN pour confirmer la réception.
+            </p>
+
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              maxLength={4}
+              value={pinValue}
+              onChange={e => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              onKeyDown={e => { if (e.key === 'Enter' && pinValue.length === 4) handleValidateWithPin() }}
+              placeholder="••••"
+              className="w-full bg-surface-2 border border-strong focus:border-brand rounded-xl
+                         px-4 py-4 text-ink text-3xl font-bold text-center tracking-[0.5em]
+                         outline-none mb-3"
+            />
+
+            {pinError && (
+              <div className="bg-critical-soft border border-critical/30 text-critical text-sm
+                              rounded-xl px-3 py-2 mb-3">
+                {pinError}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPinModalTransfer(null)}
+                disabled={pinSubmitting}
+                className="flex-1 bg-surface-hover text-ink-secondary rounded-xl py-3 font-medium disabled:opacity-50">
+                Annuler
+              </button>
+              <button
+                onClick={handleValidateWithPin}
+                disabled={pinSubmitting || pinValue.length !== 4}
+                className="flex-1 bg-brand text-white rounded-xl py-3 font-bold disabled:opacity-50">
+                {pinSubmitting ? '…' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

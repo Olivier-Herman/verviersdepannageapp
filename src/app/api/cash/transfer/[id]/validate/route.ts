@@ -1,5 +1,6 @@
-// POST /api/cash/transfer/[id]/validate
+// POST /api/cash/transfer/[id]/validate { pin }
 // Validation par le RECEIVER, uniquement si pending.
+//   0. PIN du receveur (verify_pin_hash) bcrypt-verifie cote serveur.
 //   1. Appel RPC atomique transfer_cash_atomic (débit + crédit en transaction).
 //   2. Notif push au sender (validation OK).
 //   3. Si solde sender négatif APRÈS transfert → alerte mail (info@olivierherman.be) + push (mobi@verviersdepannage.be).
@@ -12,20 +13,36 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
 import { sendEmail }                 from '@/lib/emails'
+import bcrypt                        from 'bcryptjs'
 
 const NOTIFY_EMAIL    = (process.env.TOWSOFT_ERROR_NOTIFY_EMAIL    || 'info@olivierherman.be').trim()
 const PUSH_USER_EMAIL = (process.env.TOWSOFT_ERROR_PUSH_USER_EMAIL || NOTIFY_EMAIL).trim()
 const APP_URL         = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
+  const body = await req.json().catch(() => ({}))
+  const { pin } = body
+  if (!pin || pin.toString().length !== 4) {
+    return NextResponse.json({ error: 'PIN à 4 chiffres requis' }, { status: 400 })
+  }
+
   const supabase = createAdminClient()
 
+  // Receveur + son hash PIN (a verifier avant tout RPC pour fail-fast).
   const { data: me } = await supabase
-    .from('users').select('id, name').eq('email', session.user.email).single()
+    .from('users').select('id, name, verify_pin_hash').eq('email', session.user.email).single()
   if (!me?.id) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
+  if (!me.verify_pin_hash) {
+    return NextResponse.json(
+      { error: 'Aucun PIN configuré. Définis ton PIN dans Mon Profil avant de valider un transfert.' },
+      { status: 400 }
+    )
+  }
+  const pinOk = await bcrypt.compare(pin.toString(), me.verify_pin_hash)
+  if (!pinOk) return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
 
   const { data: transfer } = await supabase
     .from('cash_transfers')
