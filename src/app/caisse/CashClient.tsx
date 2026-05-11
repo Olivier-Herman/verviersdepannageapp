@@ -334,7 +334,7 @@ export default function CashClient({
               <label className="text-ink-secondary text-xs mb-1.5 block">Montant</label>
               <div className="relative">
                 <input type="text" inputMode="decimal" value={transferAmount}
-                  onChange={e => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                  onChange={e => setTransferAmount(e.target.value.replace(',', '.').replace(/[^0-9.]/g, ''))}
                   placeholder="0.00"
                   className="w-full bg-surface border border-strong rounded-xl px-4 py-3
                              text-ink text-2xl font-bold text-center outline-none focus:border-brand" />
@@ -398,7 +398,7 @@ export default function CashClient({
               <label className="text-ink-secondary text-xs mb-1.5 block">Montant reçu</label>
               <div className="relative">
                 <input type="text" inputMode="decimal" value={miscAmount}
-                  onChange={e => setMiscAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                  onChange={e => setMiscAmount(e.target.value.replace(',', '.').replace(/[^0-9.]/g, ''))}
                   placeholder="0.00"
                   className="w-full bg-surface border border-strong rounded-xl px-4 py-3
                              text-ink text-2xl font-bold text-center outline-none focus:border-brand" />
