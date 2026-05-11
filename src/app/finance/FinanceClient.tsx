@@ -6,6 +6,7 @@ export default function FinanceClient({ userModules }: { userModules: string[] }
   const isAdmin = false // hérité du layout, on affiche selon modules
   const hasEncaissements = userModules.includes('encaissements') || userModules.includes('admin')
   const hasCaisse        = userModules.includes('caisse')        || userModules.includes('admin')
+  const hasRelances      = userModules.includes('relances')      || userModules.includes('admin')
 
   const tiles = [
     {
@@ -23,6 +24,14 @@ export default function FinanceClient({ userModules }: { userModules: string[] }
       icon:  '💰',
       href:  '/caisse',
       show:  hasCaisse,
+    },
+    {
+      id:    'relances',
+      label: 'Relance Client',
+      desc:  'Factures échues à relancer',
+      icon:  '📨',
+      href:  '/relances',
+      show:  hasRelances,
     },
   ].filter(t => t.show)
 

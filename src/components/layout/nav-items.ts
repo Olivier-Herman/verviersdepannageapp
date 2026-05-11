@@ -28,7 +28,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔍', moduleId: 'check_vehicle' },
   { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
   { href: '/finance',       label: 'Finance',          icon: '💵', moduleId: 'finance' },
-  { href: '/relances',      label: 'Relance Client',   icon: '📨', moduleId: 'relances' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
   { href: '/profil',        label: 'Mon Profil',       icon: '👤', moduleId: null },
 ]
@@ -50,7 +49,9 @@ export function filterNavItems(opts: {
     if (item.moduleId === null) return true
     if (item.moduleId === 'admin') return isAdmin
     if (item.moduleId === 'finance') {
-      return userModules.includes('encaissements') || userModules.includes('caisse')
+      return userModules.includes('encaissements')
+          || userModules.includes('caisse')
+          || userModules.includes('relances')
     }
     return userModules.includes(item.moduleId)
   })
