@@ -70,23 +70,27 @@ export async function POST(req: Request) {
     lng?:          number | null
     stops?:        Stop[]
     closing_data?: {
-      final_mission_type?:  string
-      mileage?:             number
-      destination_address?: string
-      stops?:               Stop[]
-      photo_urls?:          string[]
-      signature?:           string
-      signature_data?:      string
-      signature_name?:      string
-      closing_notes?:       string
-      payment_method?:      string
-      amount_collected?:    number
-      closing_mode?:        string
-      depot?:               { id?: string; name?: string } | null
-      discharge_motif?:     string
-      discharge_name?:      string
-      discharge_sig?:       string
-      discharge_data?:      { motif: string; name: string; sig: string }[]
+      final_mission_type?:    string
+      mileage?:               number
+      destination_address?:   string
+      stops?:                 Stop[]
+      photo_urls?:            string[]
+      signature?:             string
+      signature_data?:        string
+      signature_name?:        string
+      recipient_signature?:   string         // REM : signature destinataire (optionnelle)
+      closing_notes?:         string
+      payment_method?:        string
+      amount_collected?:      number
+      closing_mode?:          string
+      depot?:                 { id?: string; name?: string } | null
+      discharge_motif?:       string
+      discharge_name?:        string
+      discharge_sig?:         string
+      discharge_data?:        { motif: string; name: string; sig: string }[]
+      dpr_motif?:             string         // DPR : id du motif typé
+      dpr_motif_label?:       string         // DPR : libellé human-readable (ou texte libre si "autre")
+      dpr_converted_from_rem?: boolean       // DPR issu d un refus REM (avant chargement)
     }
     park_data?: {
       stage_id?:   number
@@ -179,10 +183,14 @@ export async function POST(req: Request) {
       if (closing_data.photo_urls?.length) updatePayload.driver_photos   = closing_data.photo_urls
       if (closing_data.closing_notes)      updatePayload.closing_notes   = closing_data.closing_notes
       if (closing_data.signature)          updatePayload.client_signature = closing_data.signature
+      if (closing_data.recipient_signature) updatePayload.recipient_signature = closing_data.recipient_signature
       if (closing_data.discharge_data?.length) updatePayload.discharge_data = closing_data.discharge_data
       if (closing_data.discharge_motif)    updatePayload.discharge_motif = closing_data.discharge_motif
       if (closing_data.discharge_name)     updatePayload.discharge_name  = closing_data.discharge_name
       if (closing_data.discharge_sig)      updatePayload.discharge_sig   = closing_data.discharge_sig
+      if (closing_data.dpr_motif)          updatePayload.dpr_motif       = closing_data.dpr_motif
+      if (closing_data.dpr_motif_label)    updatePayload.dpr_motif_label = closing_data.dpr_motif_label
+      if (closing_data.dpr_converted_from_rem) updatePayload.dpr_converted_from_rem = closing_data.dpr_converted_from_rem
     }
   }
 
