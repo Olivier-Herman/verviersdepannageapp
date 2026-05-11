@@ -229,7 +229,7 @@ export default function CashClient({
   return (
     <AppShell title="Ma Caisse" userRole={userRole} userName={userName} userModules={userModules}>
 
-      <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto lg:mx-0">
+      <div className="px-4 lg:px-8 py-6 max-w-4xl mx-auto lg:mx-0">
 
         {/* Solde */}
         <div className={`rounded-2xl p-6 text-center mb-6 ${balance > 0

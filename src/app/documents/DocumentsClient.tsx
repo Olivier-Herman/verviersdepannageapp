@@ -166,7 +166,7 @@ export default function DocumentsClient({ user }: { user: any }) {
 
   return (
     <AppShell title="Mes Documents" userRole={userRole} userName={userName} userModules={userModules}>
-      <div className="px-4 lg:px-8 py-6 max-w-2xl">
+      <div className="px-4 lg:px-8 py-6 max-w-6xl">
 
         {success && (
           <div className="bg-green-500/10 border border-green-500/30 text-green-400
@@ -179,7 +179,7 @@ export default function DocumentsClient({ user }: { user: any }) {
         {loading ? (
           <p className="text-ink-muted text-sm text-center py-8">Chargement…</p>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {DOC_TYPES.map(dt => {
               const doc    = getDoc(dt.value)
               const days   = doc ? daysUntilExpiry(doc.expires_at) : null
