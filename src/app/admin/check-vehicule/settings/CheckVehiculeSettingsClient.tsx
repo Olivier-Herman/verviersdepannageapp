@@ -167,10 +167,10 @@ export default function CheckVehiculeSettingsClient() {
     <div className="max-w-2xl mx-auto p-4 space-y-5">
 
       <div className="flex items-center gap-3 mt-2">
-        <button onClick={() => router.back()} className="text-zinc-400 hover:text-white transition">
+        <button onClick={() => router.back()} className="text-ink-muted hover:text-ink transition">
           <ChevronLeft size={24} />
         </button>
-        <h1 className="text-xl font-bold text-white">Paramètres — Check Véhicule</h1>
+        <h1 className="text-xl font-bold text-ink">Paramètres — Check Véhicule</h1>
       </div>
 
       {msg && (
@@ -180,7 +180,7 @@ export default function CheckVehiculeSettingsClient() {
       )}
 
       {/* Onglets */}
-      <div className="flex bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-1 gap-1">
+      <div className="flex bg-surface-2 border border rounded-xl p-1 gap-1">
         {([
           { key: 'vehicles',     label: 'Flotte',        icon: Truck        },
           { key: 'checklist',    label: 'Checklist',     icon: ClipboardList},
@@ -188,7 +188,7 @@ export default function CheckVehiculeSettingsClient() {
         ] as const).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition ${
-              tab === key ? 'bg-brand text-white' : 'text-zinc-400 hover:text-white'
+              tab === key ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink'
             }`}
           >
             <Icon size={15} /> {label}
@@ -203,20 +203,20 @@ export default function CheckVehiculeSettingsClient() {
             <div key={v.id}>
               {editingVehicle === v.id ? (
                 /* Mode édition */
-                <div className="bg-[#1A1A1A] border border-brand/50 rounded-xl p-3 space-y-2">
+                <div className="bg-surface-2 border border-brand/50 rounded-xl p-3 space-y-2">
                   <input value={editVehicleData.name}
                     onChange={e => setEditVehicleData(p => ({ ...p, name: e.target.value }))}
                     placeholder="Nom"
-                    className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+                    className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2 text-sm border border focus:outline-none focus:border-brand"
                   />
                   <input value={editVehicleData.plate}
                     onChange={e => setEditVehicleData(p => ({ ...p, plate: e.target.value.toUpperCase() }))}
                     placeholder="Immatriculation"
-                    className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+                    className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2 text-sm border border focus:outline-none focus:border-brand"
                   />
                   <select value={editVehicleData.usual_driver_id}
                     onChange={e => setEditVehicleData(p => ({ ...p, usual_driver_id: e.target.value }))}
-                    className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+                    className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2 text-sm border border focus:outline-none focus:border-brand"
                   >
                     <option value="">— Conducteur habituel (optionnel)</option>
                     {allUsers.filter(u => ['driver', 'dispatcher'].includes(u.role)).map(u => (
@@ -225,11 +225,11 @@ export default function CheckVehiculeSettingsClient() {
                   </select>
                   <div className="flex gap-2 pt-1">
                     <button onClick={cancelEditVehicle}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white text-sm transition">
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 text-ink-muted hover:text-ink text-sm transition">
                       <X size={14} /> Annuler
                     </button>
                     <button onClick={() => saveEditVehicle(v.id)} disabled={savingEditVehicle}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-sm font-semibold transition disabled:opacity-50">
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-ink text-sm font-semibold transition disabled:opacity-50">
                       {savingEditVehicle ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
                       Enregistrer
                     </button>
@@ -237,23 +237,23 @@ export default function CheckVehiculeSettingsClient() {
                 </div>
               ) : (
                 /* Mode affichage */
-                <div className={`flex items-center gap-3 bg-[#1A1A1A] border rounded-xl p-3 ${v.active ? 'border-[#2a2a2a]' : 'border-zinc-700 opacity-50'}`}>
+                <div className={`flex items-center gap-3 bg-surface-2 border rounded-xl p-3 ${v.active ? 'border' : 'border-zinc-700 opacity-50'}`}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm">{v.name}</p>
-                    <p className="text-zinc-400 text-xs">
+                    <p className="text-ink font-medium text-sm">{v.name}</p>
+                    <p className="text-ink-muted text-xs">
                       {v.plate}
                       {v.driver && ` · ${v.driver.name}`}
                     </p>
                   </div>
                   <button onClick={() => startEditVehicle(v)}
-                    className="text-zinc-500 hover:text-white transition p-1">
+                    className="text-ink-muted hover:text-ink transition p-1">
                     <Pencil size={15} />
                   </button>
                   <button onClick={() => toggleVehicle(v.id, v.active)}
-                    className={`text-xs px-2 py-1 rounded transition ${v.active ? 'bg-green-900/40 text-green-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                    className={`text-xs px-2 py-1 rounded transition ${v.active ? 'bg-green-900/40 text-success' : 'bg-zinc-800 text-ink-muted'}`}>
                     {v.active ? 'Actif' : 'Inactif'}
                   </button>
-                  <button onClick={() => deleteVehicle(v.id)} className="text-zinc-600 hover:text-red-400 transition p-1">
+                  <button onClick={() => deleteVehicle(v.id)} className="text-ink-faint hover:text-critical transition p-1">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -262,21 +262,21 @@ export default function CheckVehiculeSettingsClient() {
           ))}
 
           {/* Formulaire ajout */}
-          <div className="bg-[#1A1A1A] border border-zinc-700 border-dashed rounded-xl p-4 space-y-3 mt-3">
-            <p className="text-zinc-400 text-sm font-medium">Ajouter un véhicule</p>
+          <div className="bg-surface-2 border border-zinc-700 border-dashed rounded-xl p-4 space-y-3 mt-3">
+            <p className="text-ink-muted text-sm font-medium">Ajouter un véhicule</p>
             <input value={newVehicle.name}
               onChange={e => setNewVehicle(p => ({ ...p, name: e.target.value }))}
               placeholder="Nom (ex : Camion 1)"
-              className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2.5 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+              className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2.5 text-sm border border focus:outline-none focus:border-brand"
             />
             <input value={newVehicle.plate}
               onChange={e => setNewVehicle(p => ({ ...p, plate: e.target.value.toUpperCase() }))}
               placeholder="Immatriculation (ex : 1-ABC-123)"
-              className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2.5 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+              className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2.5 text-sm border border focus:outline-none focus:border-brand"
             />
             <select value={newVehicle.usual_driver_id}
               onChange={e => setNewVehicle(p => ({ ...p, usual_driver_id: e.target.value }))}
-              className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2.5 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+              className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2.5 text-sm border border focus:outline-none focus:border-brand"
             >
               <option value="">— Conducteur habituel (optionnel)</option>
               {allUsers.filter(u => ['driver', 'dispatcher'].includes(u.role)).map(u => (
@@ -285,7 +285,7 @@ export default function CheckVehiculeSettingsClient() {
             </select>
             <button onClick={addVehicle}
               disabled={savingVehicle || !newVehicle.name || !newVehicle.plate}
-              className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50"
+              className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-ink text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50"
             >
               {savingVehicle ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
               Ajouter
@@ -306,14 +306,14 @@ export default function CheckVehiculeSettingsClient() {
                 <div className="space-y-1.5">
                   {catItems.map(item => (
                     <div key={item.id}
-                      className={`flex items-center gap-3 bg-[#1A1A1A] border rounded-xl p-3 ${item.active ? 'border-[#2a2a2a]' : 'border-zinc-700 opacity-50'}`}
+                      className={`flex items-center gap-3 bg-surface-2 border rounded-xl p-3 ${item.active ? 'border' : 'border-zinc-700 opacity-50'}`}
                     >
-                      <span className="flex-1 text-sm text-white">{item.label}</span>
+                      <span className="flex-1 text-sm text-ink">{item.label}</span>
                       <button onClick={() => toggleItem(item.id, item.active)}
-                        className={`text-xs px-2 py-1 rounded transition ${item.active ? 'bg-green-900/40 text-green-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                        className={`text-xs px-2 py-1 rounded transition ${item.active ? 'bg-green-900/40 text-success' : 'bg-zinc-800 text-ink-muted'}`}>
                         {item.active ? 'Actif' : 'Inactif'}
                       </button>
-                      <button onClick={() => deleteItem(item.id)} className="text-zinc-600 hover:text-red-400 transition p-1">
+                      <button onClick={() => deleteItem(item.id)} className="text-ink-faint hover:text-critical transition p-1">
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -323,22 +323,22 @@ export default function CheckVehiculeSettingsClient() {
             )
           })}
 
-          <div className="bg-[#1A1A1A] border border-zinc-700 border-dashed rounded-xl p-4 space-y-3 mt-2">
-            <p className="text-zinc-400 text-sm font-medium">Ajouter un point de contrôle</p>
+          <div className="bg-surface-2 border border-zinc-700 border-dashed rounded-xl p-4 space-y-3 mt-2">
+            <p className="text-ink-muted text-sm font-medium">Ajouter un point de contrôle</p>
             <input value={newItem.label}
               onChange={e => setNewItem(p => ({ ...p, label: e.target.value }))}
               placeholder="Libellé du point de contrôle"
-              className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2.5 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+              className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2.5 text-sm border border focus:outline-none focus:border-brand"
             />
             <select value={newItem.category}
               onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
-              className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2.5 text-sm border border-[#2a2a2a] focus:outline-none focus:border-brand"
+              className="w-full bg-zinc-800 text-ink rounded-lg px-3 py-2.5 text-sm border border focus:outline-none focus:border-brand"
             >
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <button onClick={addItem}
               disabled={savingItem || !newItem.label}
-              className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50"
+              className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-ink text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-50"
             >
               {savingItem ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
               Ajouter
@@ -350,14 +350,14 @@ export default function CheckVehiculeSettingsClient() {
       {/* ── RESPONSABLES ── */}
       {tab === 'responsables' && (
         <div className="space-y-3">
-          <p className="text-zinc-400 text-sm">
+          <p className="text-ink-muted text-sm">
             Ces personnes recevront les notifications push lors du déclenchement d'un contrôle.
           </p>
           {allUsers
             .filter(u => ['admin', 'superadmin', 'dispatcher'].includes(u.role))
             .map(u => (
               <label key={u.id}
-                className="flex items-center gap-3 bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 cursor-pointer hover:border-zinc-600 transition"
+                className="flex items-center gap-3 bg-surface-2 border border rounded-xl p-3 cursor-pointer hover:border-zinc-600 transition"
               >
                 <input type="checkbox"
                   checked={responsibleIds.includes(u.id)}
@@ -367,14 +367,14 @@ export default function CheckVehiculeSettingsClient() {
                   className="w-4 h-4 accent-brand"
                 />
                 <div className="flex-1">
-                  <p className="text-white text-sm font-medium">{u.name}</p>
-                  <p className="text-zinc-500 text-xs">{u.email} · {u.role}</p>
+                  <p className="text-ink text-sm font-medium">{u.name}</p>
+                  <p className="text-ink-muted text-xs">{u.email} · {u.role}</p>
                 </div>
               </label>
             ))
           }
           <button onClick={saveResponsables} disabled={savingResp}
-            className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-white font-semibold px-6 py-3 rounded-xl transition disabled:opacity-50 mt-2"
+            className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-ink font-semibold px-6 py-3 rounded-xl transition disabled:opacity-50 mt-2"
           >
             {savingResp ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
             Enregistrer

@@ -9,10 +9,10 @@ import {
 import type { VehicleCheck } from '@/types'
 
 const STATUS_CONFIG = {
-  scheduled:     { label: 'Planifié',    color: 'text-zinc-400',   icon: Clock          },
-  pending_claim: { label: 'En attente',  color: 'text-yellow-400', icon: AlertCircle    },
-  in_progress:   { label: 'En cours',    color: 'text-blue-400',   icon: ClipboardCheck },
-  completed:     { label: 'Terminé',     color: 'text-green-400',  icon: CheckCircle2   },
+  scheduled:     { label: 'Planifié',    color: 'text-ink-muted',   icon: Clock          },
+  pending_claim: { label: 'En attente',  color: 'text-warning', icon: AlertCircle    },
+  in_progress:   { label: 'En cours',    color: 'text-info',   icon: ClipboardCheck },
+  completed:     { label: 'Terminé',     color: 'text-success',  icon: CheckCircle2   },
 }
 
 export default function AdminCheckVehiculeClient() {
@@ -81,10 +81,10 @@ export default function AdminCheckVehiculeClient() {
       <div className="flex items-center justify-between mt-2">
         <div className="flex items-center gap-3">
           <ClipboardCheck className="text-brand" size={26} />
-          <h1 className="text-xl font-bold text-white">Contrôles Véhicule</h1>
+          <h1 className="text-xl font-bold text-ink">Contrôles Véhicule</h1>
         </div>
         <button onClick={() => router.push('/admin/check-vehicule/settings')}
-          className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-sm px-3 py-2 rounded-lg bg-[#1A1A1A] border border-[#2a2a2a]"
+          className="flex items-center gap-2 text-ink-muted hover:text-ink transition text-sm px-3 py-2 rounded-lg bg-surface-2 border border"
         >
           <Settings size={15} /> Paramètres
         </button>
@@ -93,24 +93,24 @@ export default function AdminCheckVehiculeClient() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'Total',    value: stats.total,     color: 'text-white'     },
-          { label: 'En cours', value: stats.pending,   color: 'text-blue-400'  },
-          { label: 'Terminés', value: stats.completed, color: 'text-green-400' },
-          { label: 'Avec N/C', value: stats.withNC,    color: 'text-red-400'   },
+          { label: 'Total',    value: stats.total,     color: 'text-ink'     },
+          { label: 'En cours', value: stats.pending,   color: 'text-info'  },
+          { label: 'Terminés', value: stats.completed, color: 'text-success' },
+          { label: 'Avec N/C', value: stats.withNC,    color: 'text-critical'   },
         ].map(s => (
-          <div key={s.label} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 text-center">
+          <div key={s.label} className="bg-surface-2 border border rounded-xl p-3 text-center">
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-zinc-500 text-xs mt-1">{s.label}</div>
+            <div className="text-ink-muted text-xs mt-1">{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Déclencher */}
-      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-5">
-        <h2 className="text-white font-semibold mb-2 flex items-center gap-2">
+      <div className="bg-surface-2 border border rounded-xl p-5">
+        <h2 className="text-ink font-semibold mb-2 flex items-center gap-2">
           <Play size={18} className="text-brand" /> Déclencher un contrôle
         </h2>
-        <p className="text-zinc-400 text-sm mb-4">
+        <p className="text-ink-muted text-sm mb-4">
           Sélectionne aléatoirement un véhicule (≠ dernier contrôle) et envoie immédiatement
           les notifications push aux responsables.
         </p>
@@ -123,14 +123,14 @@ export default function AdminCheckVehiculeClient() {
         {triggerResult && (
           <div className="bg-green-900/20 border border-green-700 rounded-lg p-3 mb-4">
             <p className="text-green-300 text-sm font-semibold">✅ Contrôle déclenché</p>
-            <p className="text-green-400 text-sm mt-1">
+            <p className="text-success text-sm mt-1">
               <strong>{triggerResult.vehicleName}</strong> · Les responsables ont été notifiés.
             </p>
           </div>
         )}
 
         <button onClick={handleTrigger} disabled={triggering}
-          className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-white font-semibold px-6 py-3 rounded-xl transition disabled:opacity-50"
+          className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-ink font-semibold px-6 py-3 rounded-xl transition disabled:opacity-50"
         >
           {triggering ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}
           Lancer le tirage au sort
@@ -139,13 +139,13 @@ export default function AdminCheckVehiculeClient() {
 
       {/* Historique */}
       <div>
-        <h2 className="text-zinc-400 text-sm font-medium mb-3">Historique complet</h2>
+        <h2 className="text-ink-muted text-sm font-medium mb-3">Historique complet</h2>
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="animate-spin text-brand" size={28} />
           </div>
         ) : checks.length === 0 ? (
-          <div className="text-center py-12 text-zinc-600">
+          <div className="text-center py-12 text-ink-faint">
             <ClipboardCheck size={40} className="mx-auto mb-3 opacity-40" />
             <p className="text-sm">Aucun contrôle enregistré</p>
           </div>
@@ -159,7 +159,7 @@ export default function AdminCheckVehiculeClient() {
 
               return (
                 <div key={c.id}
-                  className="flex items-center gap-3 bg-[#1A1A1A] border border-[#2a2a2a] hover:border-zinc-600 rounded-xl p-4 transition cursor-pointer"
+                  className="flex items-center gap-3 bg-surface-2 border border hover:border-zinc-600 rounded-xl p-4 transition cursor-pointer"
                   onClick={() => router.push(`/check-vehicule/${c.id}`)}
                 >
                   <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
@@ -167,16 +167,16 @@ export default function AdminCheckVehiculeClient() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-white font-medium truncate">
+                      <p className="text-ink font-medium truncate">
                         {c.vehicle?.name} — {c.vehicle?.plate}
                       </p>
                       {ncCount > 0 && (
-                        <span className="flex-shrink-0 bg-red-900/50 text-red-400 text-xs px-1.5 py-0.5 rounded-full">
+                        <span className="flex-shrink-0 bg-red-900/50 text-critical text-xs px-1.5 py-0.5 rounded-full">
                           {ncCount} N/C
                         </span>
                       )}
                     </div>
-                    <p className="text-zinc-500 text-xs mt-0.5">
+                    <p className="text-ink-muted text-xs mt-0.5">
                       <span className={cfg.color}>{cfg.label}</span>
                       {' · '}
                       {new Date(c.scheduled_date).toLocaleDateString('fr-BE', {
@@ -190,7 +190,7 @@ export default function AdminCheckVehiculeClient() {
                     <button
                       onClick={e => handleDelete(c.id, e)}
                       disabled={deletingId === c.id}
-                      className="flex-shrink-0 p-1.5 text-zinc-600 hover:text-red-400 transition rounded-lg hover:bg-red-900/20 disabled:opacity-50"
+                      className="flex-shrink-0 p-1.5 text-ink-faint hover:text-critical transition rounded-lg hover:bg-red-900/20 disabled:opacity-50"
                       title="Supprimer ce contrôle"
                     >
                       {deletingId === c.id
@@ -199,7 +199,7 @@ export default function AdminCheckVehiculeClient() {
                       }
                     </button>
                   ) : (
-                    <ChevronRight className="text-zinc-600 flex-shrink-0" size={16} />
+                    <ChevronRight className="text-ink-faint flex-shrink-0" size={16} />
                   )}
                 </div>
               )

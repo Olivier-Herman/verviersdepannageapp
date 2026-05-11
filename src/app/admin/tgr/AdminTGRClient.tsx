@@ -4,17 +4,17 @@
 import { useState } from 'react'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  pending:   { label: '⏳ En attente',  color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/30' },
-  accepted:  { label: '✅ Acceptée',    color: 'text-green-400',  bg: 'bg-green-500/10 border-green-500/30'  },
-  refused:   { label: '❌ Refusée',     color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/30'      },
-  taken:     { label: '🤝 Reprise',     color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/30'    },
-  completed: { label: '✔️ Terminée',    color: 'text-zinc-400',   bg: 'bg-zinc-500/10 border-zinc-500/30'    },
+  pending:   { label: '⏳ En attente',  color: 'text-warning', bg: 'bg-yellow-500/10 border-yellow-500/30' },
+  accepted:  { label: '✅ Acceptée',    color: 'text-success',  bg: 'bg-green-500/10 border-green-500/30'  },
+  refused:   { label: '❌ Refusée',     color: 'text-critical',    bg: 'bg-red-500/10 border-red-500/30'      },
+  taken:     { label: '🤝 Reprise',     color: 'text-info',   bg: 'bg-blue-500/10 border-blue-500/30'    },
+  completed: { label: '✔️ Terminée',    color: 'text-ink-muted',   bg: 'bg-zinc-500/10 border-zinc-500/30'    },
 }
 
 const PRIORITY_OPTIONS = [
-  { value: 1, label: 'P1', color: 'text-red-400' },
-  { value: 2, label: 'P2', color: 'text-orange-400' },
-  { value: 3, label: 'P3', color: 'text-green-400' },
+  { value: 1, label: 'P1', color: 'text-critical' },
+  { value: 2, label: 'P2', color: 'text-warning' },
+  { value: 3, label: 'P3', color: 'text-success' },
 ]
 
 export default function AdminTGRClient({ missions }: { missions: any[] }) {
@@ -95,66 +95,66 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-white font-bold text-2xl mb-1">TGR Touring</h1>
-        <p className="text-zinc-500 text-sm">{total} mission{total > 1 ? 's' : ''}</p>
+        <h1 className="text-ink font-bold text-2xl mb-1">TGR Touring</h1>
+        <p className="text-ink-muted text-sm">{total} mission{total > 1 ? 's' : ''}</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {[
-          { label: 'Total',        value: total,    color: 'text-white' },
-          { label: 'En attente',   value: pending,  color: 'text-yellow-400' },
-          { label: 'Acceptées',    value: accepted, color: 'text-green-400' },
-          { label: 'Refusées',     value: refused,  color: 'text-red-400' },
-          { label: 'Reprises',     value: taken,    color: 'text-blue-400' },
+          { label: 'Total',        value: total,    color: 'text-ink' },
+          { label: 'En attente',   value: pending,  color: 'text-warning' },
+          { label: 'Acceptées',    value: accepted, color: 'text-success' },
+          { label: 'Refusées',     value: refused,  color: 'text-critical' },
+          { label: 'Reprises',     value: taken,    color: 'text-info' },
         ].map(s => (
-          <div key={s.label} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-4">
+          <div key={s.label} className="bg-surface-2 border border rounded-xl p-4">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-zinc-500 text-xs mt-1">{s.label}</p>
+            <p className="text-ink-muted text-xs mt-1">{s.label}</p>
           </div>
         ))}
       </div>
 
       {/* Délai moyen */}
       {avgAcceptMin !== null && (
-        <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-4 mb-5 inline-block">
-          <p className="text-white font-bold text-lg">
+        <div className="bg-surface-2 border border rounded-xl p-4 mb-5 inline-block">
+          <p className="text-ink font-bold text-lg">
             {avgAcceptMin < 60
               ? `${avgAcceptMin} min`
               : `${Math.round(avgAcceptMin / 60)}h${avgAcceptMin % 60 > 0 ? ` ${avgAcceptMin % 60}min` : ''}`
             }
           </p>
-          <p className="text-zinc-500 text-xs">Délai moyen d'acceptation</p>
+          <p className="text-ink-muted text-xs">Délai moyen d'acceptation</p>
         </div>
       )}
 
       {/* Filtres */}
       <div className="flex flex-wrap gap-2 mb-5">
         <select value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}
-          className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2 text-zinc-400 text-xs outline-none appearance-none">
+          className="bg-surface border border rounded-xl px-3 py-2 text-ink-muted text-xs outline-none appearance-none">
           <option value="all">Toutes périodes</option>
           <option value="7d">7 derniers jours</option>
           <option value="30d">30 derniers jours</option>
         </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2 text-zinc-400 text-xs outline-none appearance-none">
+          className="bg-surface border border rounded-xl px-3 py-2 text-ink-muted text-xs outline-none appearance-none">
           <option value="">Tous statuts</option>
           {Object.entries(STATUS_CONFIG).map(([k, v]) => (
             <option key={k} value={k}>{v.label}</option>
           ))}
         </select>
         <select value={filterPartner} onChange={e => setFilterPartner(e.target.value)}
-          className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-2 text-zinc-400 text-xs outline-none appearance-none">
+          className="bg-surface border border rounded-xl px-3 py-2 text-ink-muted text-xs outline-none appearance-none">
           <option value="">Tous partenaires</option>
           {partners.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
       </div>
 
       {/* Tableau desktop */}
-      <div className="hidden lg:block bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+      <div className="hidden lg:block bg-surface-2 border border rounded-2xl overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="text-zinc-500 text-xs uppercase tracking-wider border-b border-[#2a2a2a]">
+            <tr className="text-ink-muted text-xs uppercase tracking-wider border-b border">
               <th className="text-left py-3 px-4">Référence</th>
               <th className="text-left py-3 px-4">Véhicule</th>
               <th className="text-left py-3 px-4">Trajet</th>
@@ -166,32 +166,32 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-zinc-600 text-sm text-center py-8">Aucune mission</td></tr>
+              <tr><td colSpan={7} className="text-ink-faint text-sm text-center py-8">Aucune mission</td></tr>
             )}
             {filtered.map(m => {
               const cfg = STATUS_CONFIG[m.status] ?? STATUS_CONFIG.pending
               const pri = PRIORITY_OPTIONS.find(p => p.value === m.priority)
               return (
                 <tr key={m.id} onClick={() => setSelected(m)}
-                  className="border-b border-[#1e1e1e] hover:bg-[#222] cursor-pointer transition-colors">
-                  <td className="py-3 px-4 text-white text-sm font-medium">{m.reference}</td>
+                  className="border-b border hover:bg-surface-hover cursor-pointer transition-colors">
+                  <td className="py-3 px-4 text-ink text-sm font-medium">{m.reference}</td>
                   <td className="py-3 px-4">
-                    <p className="text-white text-sm">{m.plate}</p>
-                    <p className="text-zinc-500 text-xs">{m.brand} {m.model}</p>
+                    <p className="text-ink text-sm">{m.plate}</p>
+                    <p className="text-ink-muted text-xs">{m.brand} {m.model}</p>
                   </td>
-                  <td className="py-3 px-4 text-zinc-400 text-xs max-w-[200px]">
+                  <td className="py-3 px-4 text-ink-muted text-xs max-w-[200px]">
                     <p className="truncate">{m.pickup_address?.split(',')[0]}</p>
                     <p className="truncate">→ {m.delivery_address?.split(',')[0]}</p>
-                    {m.distance_km && <p className="text-zinc-600">{m.distance_km} km</p>}
+                    {m.distance_km && <p className="text-ink-faint">{m.distance_km} km</p>}
                   </td>
-                  <td className="py-3 px-4 text-zinc-400 text-sm">{m.partner?.name}</td>
+                  <td className="py-3 px-4 text-ink-muted text-sm">{m.partner?.name}</td>
                   <td className="py-3 px-4">
                     <span className={`text-xs font-semibold ${pri?.color}`}>{pri?.label}</span>
                   </td>
                   <td className="py-3 px-4">
                     <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
                   </td>
-                  <td className="py-3 px-4 text-zinc-600 text-xs">
+                  <td className="py-3 px-4 text-ink-faint text-xs">
                     {new Date(m.created_at).toLocaleDateString('fr-BE')}
                   </td>
                 </tr>
@@ -208,13 +208,13 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
           const pri = PRIORITY_OPTIONS.find(p => p.value === m.priority)
           return (
             <button key={m.id} onClick={() => setSelected(m)}
-              className={`w-full bg-[#1A1A1A] border rounded-2xl p-4 text-left ${cfg.bg}`}>
+              className={`w-full bg-surface-2 border rounded-2xl p-4 text-left ${cfg.bg}`}>
               <div className="flex justify-between mb-1">
-                <p className="text-white font-bold">{m.reference}</p>
+                <p className="text-ink font-bold">{m.reference}</p>
                 <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
               </div>
-              <p className="text-zinc-400 text-sm">{m.plate} — {m.brand} {m.model}</p>
-              <p className="text-zinc-600 text-xs mt-1">{m.partner?.name} · <span className={pri?.color}>{pri?.label}</span></p>
+              <p className="text-ink-muted text-sm">{m.plate} — {m.brand} {m.model}</p>
+              <p className="text-ink-faint text-xs mt-1">{m.partner?.name} · <span className={pri?.color}>{pri?.label}</span></p>
             </button>
           )
         })}
@@ -222,18 +222,18 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
 
       {/* Modal détail */}
       {selected && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center"
+        <div className="fixed inset-0 bg-ink/80 z-50 flex items-end lg:items-center lg:justify-center"
           onClick={() => setSelected(null)}>
-          <div className="bg-[#1A1A1A] w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+          <div className="bg-surface-2 w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-white font-bold text-lg">{selected.reference}</h2>
+                <h2 className="text-ink font-bold text-lg">{selected.reference}</h2>
                 <span className={`text-xs font-semibold ${STATUS_CONFIG[selected.status]?.color}`}>
                   {STATUS_CONFIG[selected.status]?.label}
                 </span>
               </div>
-              <button onClick={() => setSelected(null)} className="text-zinc-500 text-2xl">×</button>
+              <button onClick={() => setSelected(null)} className="text-ink-muted text-2xl">×</button>
             </div>
 
             <div className="space-y-2 mb-5">
@@ -253,9 +253,9 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
                 ['Remarques',   selected.remarks],
                 ['Date',        new Date(selected.created_at).toLocaleString('fr-BE')],
               ].filter(r => r[1]).map(([label, value]) => (
-                <div key={label as string} className="flex justify-between py-2 border-b border-[#2a2a2a]">
-                  <span className="text-zinc-500 text-sm">{label}</span>
-                  <span className="text-white text-sm text-right max-w-[60%]">{value}</span>
+                <div key={label as string} className="flex justify-between py-2 border-b border">
+                  <span className="text-ink-muted text-sm">{label}</span>
+                  <span className="text-ink text-sm text-right max-w-[60%]">{value}</span>
                 </div>
               ))}
             </div>
@@ -290,49 +290,49 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
       )}
       {/* ─── Modal acceptation avec date ─── */}
       {showAcceptModal && selected && (
-        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4"
+        <div className="fixed inset-0 bg-ink/90 z-[60] flex items-center justify-center p-4"
           onClick={() => setShowAcceptModal(false)}>
-          <div className="bg-[#1A1A1A] rounded-2xl p-6 w-full max-w-md"
+          <div className="bg-surface-2 rounded-2xl p-6 w-full max-w-md"
             onClick={e => e.stopPropagation()}>
 
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-white font-bold text-lg">Accepter la mission</h2>
-                <p className="text-zinc-500 text-sm mt-0.5 font-mono">{selected.reference}</p>
+                <h2 className="text-ink font-bold text-lg">Accepter la mission</h2>
+                <p className="text-ink-muted text-sm mt-0.5 font-mono">{selected.reference}</p>
               </div>
-              <button onClick={() => setShowAcceptModal(false)} className="text-zinc-500 text-2xl">×</button>
+              <button onClick={() => setShowAcceptModal(false)} className="text-ink-muted text-2xl">×</button>
             </div>
 
             {/* Récap mission */}
-            <div className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+            <div className="bg-surface border border rounded-xl p-4 mb-4">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-white font-mono font-bold">{selected.plate}</span>
-                <span className="text-zinc-400 text-sm">— {selected.brand} {selected.model}</span>
+                <span className="text-ink font-mono font-bold">{selected.plate}</span>
+                <span className="text-ink-muted text-sm">— {selected.brand} {selected.model}</span>
               </div>
-              <p className="text-zinc-500 text-xs">{selected.pickup_address?.split(',')[0]} → {selected.delivery_address?.split(',')[0]}</p>
-              {selected.distance_km && <p className="text-zinc-600 text-xs mt-1">{selected.distance_km} km</p>}
+              <p className="text-ink-muted text-xs">{selected.pickup_address?.split(',')[0]} → {selected.delivery_address?.split(',')[0]}</p>
+              {selected.distance_km && <p className="text-ink-faint text-xs mt-1">{selected.distance_km} km</p>}
             </div>
 
             {/* Sélecteur date */}
             <div className="mb-4">
-              <label className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2 block">
+              <label className="text-ink-muted text-xs font-semibold uppercase tracking-wider mb-2 block">
                 📅 Date de prise en charge prévue
               </label>
               <div className="flex gap-2">
                 <input type="date" value={plannedDate}
                   onChange={e => setPlannedDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="flex-1 bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-3
-                             text-white text-sm outline-none focus:border-brand" />
+                  className="flex-1 bg-surface border border rounded-xl px-3 py-3
+                             text-ink text-sm outline-none focus:border-brand" />
                 <select value={plannedSlot} onChange={e => setPlannedSlot(e.target.value as any)}
-                  className="bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl px-3 py-3
-                             text-zinc-300 text-sm outline-none appearance-none">
+                  className="bg-surface border border rounded-xl px-3 py-3
+                             text-ink-secondary text-sm outline-none appearance-none">
                   <option value="before_noon">Avant midi</option>
                   <option value="during_day">Dans la journée</option>
                   <option value="asap">Dès que possible</option>
                 </select>
               </div>
-              <p className="text-zinc-600 text-xs mt-1.5">
+              <p className="text-ink-faint text-xs mt-1.5">
                 Deadline automatique : {selected.deadline_date
                   ? new Date(selected.deadline_date).toLocaleDateString('fr-BE', { weekday: 'long', day: '2-digit', month: 'long' })
                   : 'ASAP'}{selected.deadline_slot === 'before_noon' ? ' avant midi' : selected.deadline_slot === 'during_day' ? ' dans la journée' : ''}
@@ -359,7 +359,7 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
 
             <div className="flex gap-2">
               <button onClick={() => setShowAcceptModal(false)} disabled={acting}
-                className="flex-1 py-3 bg-[#2a2a2a] text-zinc-400 rounded-xl font-medium text-sm disabled:opacity-50">
+                className="flex-1 py-3 bg-surface-hover text-ink-muted rounded-xl font-medium text-sm disabled:opacity-50">
                 Annuler
               </button>
               <button onClick={() => doAction('accept')} disabled={acting}

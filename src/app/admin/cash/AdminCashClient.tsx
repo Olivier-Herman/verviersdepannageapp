@@ -44,37 +44,37 @@ export default function AdminCashClient({ drivers, entries }: { drivers: Driver[
     : entries
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] max-w-2xl mx-auto flex flex-col">
-      <div className="bg-[#1A1A1A] border-b border-[#2a2a2a] px-5 pt-12 pb-4">
+    <div className="min-h-screen bg-surface max-w-2xl mx-auto flex flex-col">
+      <div className="bg-surface-2 border-b border px-5 pt-12 pb-4">
         <div className="flex items-center gap-3 mb-3">
-          <Link href="/admin" className="w-10 h-10 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white text-lg">←</Link>
+          <Link href="/admin" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
           <Link href="/dashboard" className="flex-1 flex justify-center">
             <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
           </Link>
           <div className="w-10" />
         </div>
-        <h1 className="text-white font-bold text-lg">Vue caisses — Administration</h1>
+        <h1 className="text-ink font-bold text-lg">Vue caisses — Administration</h1>
       </div>
 
       <div className="flex-1 px-5 py-6">
         {/* Total espèces en circulation */}
         <div className="bg-brand/10 border border-brand/30 rounded-2xl p-5 text-center mb-6">
-          <p className="text-zinc-400 text-sm mb-1">Total espèces en circulation</p>
+          <p className="text-ink-muted text-sm mb-1">Total espèces en circulation</p>
           <p className="text-brand text-4xl font-bold">{formatEur(totalCash)}</p>
         </div>
 
         {/* Soldes par personne */}
-        <h3 className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-3">Solde par personne</h3>
+        <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wider mb-3">Solde par personne</h3>
         <div className="flex flex-col gap-2 mb-6">
           {balances.map(d => (
             <button key={d.id}
               onClick={() => setSelectedDriver(selectedDriver === d.email ? '' : d.email)}
-              className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${selectedDriver === d.email ? 'border-brand bg-brand/10' : 'border-[#2a2a2a] bg-[#1A1A1A] hover:border-zinc-600'}`}>
+              className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${selectedDriver === d.email ? 'border-brand bg-brand/10' : 'border bg-surface-2 hover:border-zinc-600'}`}>
               <div className="text-left">
-                <p className="text-white font-semibold text-sm">{d.name}</p>
-                <p className="text-zinc-500 text-xs">{d.role}</p>
+                <p className="text-ink font-semibold text-sm">{d.name}</p>
+                <p className="text-ink-muted text-xs">{d.role}</p>
               </div>
-              <p className={`font-bold text-lg ${d.balance > 0 ? 'text-green-400' : d.balance < 0 ? 'text-red-400' : 'text-zinc-600'}`}>
+              <p className={`font-bold text-lg ${d.balance > 0 ? 'text-success' : d.balance < 0 ? 'text-critical' : 'text-ink-faint'}`}>
                 {d.balance > 0 ? '+' : ''}{formatEur(d.balance)}
               </p>
             </button>
@@ -83,33 +83,33 @@ export default function AdminCashClient({ drivers, entries }: { drivers: Driver[
 
         {/* Historique */}
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-zinc-400 text-xs font-medium uppercase tracking-wider">
+          <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wider">
             Historique {selectedDriver ? `— ${balances.find(d => d.email === selectedDriver)?.name}` : 'complet'}
           </h3>
           {selectedDriver && (
-            <button onClick={() => setSelectedDriver('')} className="text-zinc-600 text-xs hover:text-white">
+            <button onClick={() => setSelectedDriver('')} className="text-ink-faint text-xs hover:text-ink">
               Voir tout
             </button>
           )}
         </div>
 
         {filteredEntries.map(e => (
-          <div key={e.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-3 mb-2">
+          <div key={e.id} className="bg-surface-2 border border rounded-xl p-3 mb-2">
             <div className="flex items-start justify-between mb-1">
               <div>
-                <p className="text-white text-sm font-semibold">{e.driver?.name}</p>
-                <p className={`text-xs font-medium ${e.type === 'encaissement' ? 'text-green-400' : e.type === 'reception' ? 'text-blue-400' : 'text-red-400'}`}>
+                <p className="text-ink text-sm font-semibold">{e.driver?.name}</p>
+                <p className={`text-xs font-medium ${e.type === 'encaissement' ? 'text-success' : e.type === 'reception' ? 'text-info' : 'text-critical'}`}>
                   {e.type === 'encaissement' ? '+ Encaissement espèces' : e.type === 'reception' ? '↓ Réception' : '↑ Transfert'}
                 </p>
               </div>
-              <p className={`font-bold ${e.type === 'encaissement' || e.type === 'reception' ? 'text-green-400' : 'text-red-400'}`}>
+              <p className={`font-bold ${e.type === 'encaissement' || e.type === 'reception' ? 'text-success' : 'text-critical'}`}>
                 {e.type === 'remise' ? '-' : '+'}{formatEur(e.amount)}
               </p>
             </div>
             {e.notes && e.type !== 'encaissement' && (
-              <p className="text-zinc-500 text-xs leading-relaxed">{e.notes}</p>
+              <p className="text-ink-muted text-xs leading-relaxed">{e.notes}</p>
             )}
-            <p className="text-zinc-700 text-xs mt-1">
+            <p className="text-ink-faint text-xs mt-1">
               {new Date(e.created_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>

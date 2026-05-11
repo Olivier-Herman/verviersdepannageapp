@@ -128,7 +128,7 @@ export default function SettingsClient({
             key={t.key}
             onClick={() => { setActiveTab(t.key as any); setShowAdd(false) }}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-              activeTab === t.key ? 'bg-brand text-white' : 'bg-[#1e1e1e] text-zinc-400 border border-[#2a2a2a]'
+              activeTab === t.key ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted border border'
             }`}
           >
             {t.label}
@@ -137,7 +137,7 @@ export default function SettingsClient({
         <button
           onClick={() => { setActiveTab('calls' as any); setShowAdd(false) }}
           className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'calls' ? 'bg-brand text-white' : 'bg-[#1e1e1e] text-zinc-400 border border-[#2a2a2a]'
+            activeTab === 'calls' ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted border border'
           }`}
         >
           Raccourcis appel
@@ -145,7 +145,7 @@ export default function SettingsClient({
         <button
           onClick={() => { setActiveTab('params'); setShowAdd(false) }}
           className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'params' ? 'bg-brand text-white' : 'bg-[#1e1e1e] text-zinc-400 border border-[#2a2a2a]'
+            activeTab === 'params' ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted border border'
           }`}
         >
           ⚙️ Paramètres
@@ -155,11 +155,11 @@ export default function SettingsClient({
       {/* ── Onglet Paramètres ── */}
       {activeTab === 'params' && (
         <div className="flex flex-col gap-4">
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-3">
+          <div className="bg-surface-2 border border rounded-2xl p-4">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
               Odoo — Avance de fonds
             </p>
-            <label className="block text-sm text-zinc-300 mb-1.5">
+            <label className="block text-sm text-ink-secondary mb-1.5">
               Email boîte achat
             </label>
             <input
@@ -167,10 +167,10 @@ export default function SettingsClient({
               placeholder="achats@verviersdepannage.be"
               value={purchaseEmail}
               onChange={e => setPurchaseEmail(e.target.value)}
-              className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5
-                         text-white text-sm outline-none focus:border-brand"
+              className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5
+                         text-ink text-sm outline-none focus:border-brand"
             />
-            <p className="text-zinc-600 text-xs mt-1.5">
+            <p className="text-ink-faint text-xs mt-1.5">
               Les factures fournisseurs (avances de fonds) seront envoyées à cette adresse pour traitement OCR Odoo.
             </p>
           </div>
@@ -185,11 +185,11 @@ export default function SettingsClient({
           </button>
 
           {/* Vider le cache session */}
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mt-2">
-            <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mb-2">
+          <div className="bg-surface-2 border border rounded-2xl p-4 mt-2">
+            <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-2">
               Cache session
             </p>
-            <p className="text-zinc-600 text-xs mb-3">
+            <p className="text-ink-faint text-xs mb-3">
               Si les rôles ou modules d'un utilisateur ne se reflètent pas après modification,
               utilisez ce bouton pour forcer le renouvellement du token de session.
             </p>
@@ -198,7 +198,7 @@ export default function SettingsClient({
                 await signOut({ redirect: false })
                 await signIn(undefined, { callbackUrl: '/admin/settings' })
               }}
-              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl
+              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-ink-secondary rounded-xl
                          font-medium text-sm transition-all border border-zinc-700">
               🔄 Vider le cache et reconnecter
             </button>
@@ -212,26 +212,26 @@ export default function SettingsClient({
           {/* Bouton ajouter */}
           <button
             onClick={() => setShowAdd(!showAdd)}
-            className="w-full bg-[#1e1e1e] border border-dashed border-[#333] text-zinc-400 rounded-xl py-3 text-sm mb-4 hover:border-brand hover:text-brand transition-colors"
+            className="w-full bg-surface-2 border border-dashed border-strong text-ink-muted rounded-xl py-3 text-sm mb-4 hover:border-brand hover:text-brand transition-colors"
           >
             + Ajouter un élément
           </button>
 
           {/* Formulaire ajout */}
           {showAdd && (
-            <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
+            <div className="bg-surface-2 border border rounded-2xl p-4 mb-4">
               <input
                 placeholder="Libellé *"
                 value={newLabel}
                 onChange={e => setNewLabel(e.target.value)}
-                className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand mb-2"
+                className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand mb-2"
               />
               {activeTab !== 'calls' && (
                 <input
                   placeholder="Valeur technique (optionnel)"
                   value={newValue}
                   onChange={e => setNewValue(e.target.value)}
-                  className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand mb-2"
+                  className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand mb-2"
                 />
               )}
               {activeTab === 'calls' && (
@@ -240,12 +240,12 @@ export default function SettingsClient({
                     placeholder="Numéro de téléphone *"
                     value={newPhone}
                     onChange={e => setNewPhone(e.target.value)}
-                    className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand mb-2"
+                    className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand mb-2"
                   />
                   <select
                     value={newCategory}
                     onChange={e => setNewCategory(e.target.value)}
-                    className="w-full bg-[#222] border border-[#333] rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-brand mb-2"
+                    className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand mb-2"
                   >
                     <option value="assistance">Assistance</option>
                     <option value="police">Police</option>
@@ -255,7 +255,7 @@ export default function SettingsClient({
                 </>
               )}
               <div className="flex gap-2">
-                <button onClick={() => setShowAdd(false)} className="flex-1 bg-[#222] border border-[#333] text-zinc-400 rounded-xl py-2.5 text-sm">
+                <button onClick={() => setShowAdd(false)} className="flex-1 bg-surface-hover border border-strong text-ink-muted rounded-xl py-2.5 text-sm">
                   Annuler
                 </button>
                 <button
@@ -274,11 +274,11 @@ export default function SettingsClient({
             {(activeTab === 'calls' ? callShortcuts : items).map((item: any) => (
               <div
                 key={item.id}
-                className={`bg-[#1A1A1A] border rounded-xl p-3.5 flex items-center gap-3 ${item.active ? 'border-[#2a2a2a]' : 'border-[#1e1e1e] opacity-50'}`}
+                className={`bg-surface-2 border rounded-xl p-3.5 flex items-center gap-3 ${item.active ? 'border' : 'border opacity-50'}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium">{item.label}</p>
-                  <p className="text-zinc-600 text-xs mt-0.5">
+                  <p className="text-ink text-sm font-medium">{item.label}</p>
+                  <p className="text-ink-faint text-xs mt-0.5">
                     {activeTab === 'calls' ? item.phone : item.value}
                   </p>
                 </div>
@@ -291,7 +291,7 @@ export default function SettingsClient({
                   </button>
                   <button
                     onClick={() => deleteItem(item.id, activeTab === 'calls' ? 'call_shortcuts' : 'list_items')}
-                    className="text-zinc-600 hover:text-red-400 text-lg transition-colors"
+                    className="text-ink-faint hover:text-critical text-lg transition-colors"
                   >
                     ×
                   </button>
@@ -300,7 +300,7 @@ export default function SettingsClient({
             ))}
 
             {(activeTab === 'calls' ? callShortcuts : items).length === 0 && (
-              <div className="text-center py-8 text-zinc-600 text-sm">
+              <div className="text-center py-8 text-ink-faint text-sm">
                 Aucun élément — clique sur + pour ajouter
               </div>
             )}

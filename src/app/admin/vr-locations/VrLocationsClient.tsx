@@ -52,8 +52,8 @@ function AddressInput({ value, onChange, onSelect }: { value: string; onChange: 
       </button>
       <input ref={ref} value={value} onChange={e => onChange(e.target.value)}
         placeholder="Nom d'établissement ou adresse…"
-        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
-      {value && <p className="text-green-400 text-xs truncate">✓ {value}</p>}
+        className="w-full bg-surface border border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
+      {value && <p className="text-success text-xs truncate">✓ {value}</p>}
     </div>
   )
 }
@@ -86,68 +86,68 @@ export default function VrLocationsClient({ initialData }: { initialData: VrLoca
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] px-6 py-8 max-w-3xl mx-auto">
+    <div className="min-h-screen bg-surface px-6 py-8 max-w-3xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/admin" className="w-9 h-9 flex items-center justify-center bg-[#2a2a2a] rounded-xl text-white">←</Link>
-        <h1 className="text-white font-bold text-2xl">Emplacements VR</h1>
+        <Link href="/admin" className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</Link>
+        <h1 className="text-ink font-bold text-2xl">Emplacements VR</h1>
         <button onClick={() => setEditing({ name: '', address: '', lat: null, lng: null, sort_order: 0 })}
           className="ml-auto px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">
           + Nouveau
         </button>
       </div>
-      <p className="text-zinc-500 text-sm mb-6">Ces emplacements apparaissent en priorité dans le champ "Où se trouve le VR ?" lors de la création d'un rapport REM+VR.</p>
+      <p className="text-ink-muted text-sm mb-6">Ces emplacements apparaissent en priorité dans le champ "Où se trouve le VR ?" lors de la création d'un rapport REM+VR.</p>
 
       <div className="space-y-3">
         {items.filter(i => i.active).map(item => (
-          <div key={item.id} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-4 flex items-center gap-4">
+          <div key={item.id} className="bg-surface-2 border border rounded-2xl p-4 flex items-center gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold">{item.name}</p>
-              <p className="text-zinc-500 text-sm truncate">{item.address}</p>
-              {item.lat && <p className="text-zinc-700 text-xs">{item.lat.toFixed(5)}, {item.lng?.toFixed(5)}</p>}
+              <p className="text-ink font-semibold">{item.name}</p>
+              <p className="text-ink-muted text-sm truncate">{item.address}</p>
+              {item.lat && <p className="text-ink-faint text-xs">{item.lat.toFixed(5)}, {item.lng?.toFixed(5)}</p>}
             </div>
             <div className="flex gap-2 flex-shrink-0">
-              <button onClick={() => setEditing({ ...item })} className="px-3 py-1.5 bg-[#2a2a2a] text-zinc-300 hover:text-white rounded-lg text-xs transition">Modifier</button>
-              <button onClick={() => handleDelete(item.id)} className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-xs transition">Supprimer</button>
+              <button onClick={() => setEditing({ ...item })} className="px-3 py-1.5 bg-surface-hover text-ink-secondary hover:text-ink rounded-lg text-xs transition">Modifier</button>
+              <button onClick={() => handleDelete(item.id)} className="px-3 py-1.5 bg-red-500/10 text-critical hover:bg-red-500/20 rounded-lg text-xs transition">Supprimer</button>
             </div>
           </div>
         ))}
         {items.filter(i => i.active).length === 0 && (
-          <p className="text-zinc-600 text-center py-12">Aucun emplacement configuré</p>
+          <p className="text-ink-faint text-center py-12">Aucun emplacement configuré</p>
         )}
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4" onClick={() => setEditing(null)}>
-          <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-ink/70 z-50 flex items-center justify-center px-4" onClick={() => setEditing(null)}>
+          <div className="bg-surface-2 border border rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="text-white font-bold text-lg">{editing.id ? 'Modifier' : 'Nouvel emplacement VR'}</h2>
-              <button onClick={() => setEditing(null)} className="text-zinc-500 text-2xl">×</button>
+              <h2 className="text-ink font-bold text-lg">{editing.id ? 'Modifier' : 'Nouvel emplacement VR'}</h2>
+              <button onClick={() => setEditing(null)} className="text-ink-muted text-2xl">×</button>
             </div>
             <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Nom *</label>
+              <label className="block text-ink-muted text-xs mb-1.5">Nom *</label>
               <input value={editing.name || ''} onChange={e => setEditing(v => ({ ...v!, name: e.target.value }))}
                 placeholder="Ex: Rent A Car Pepinster"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
+                className="w-full bg-surface border border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
             </div>
             <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Adresse ou établissement *</label>
+              <label className="block text-ink-muted text-xs mb-1.5">Adresse ou établissement *</label>
               <AddressInput
                 value={editing.address || ''}
                 onChange={v => setEditing(e => ({ ...e!, address: v }))}
                 onSelect={(addr, lat, lng) => setEditing(e => ({ ...e!, address: addr, lat, lng }))}
               />
-              {editing.lat && <p className="text-green-400 text-xs mt-1">✓ GPS encodé</p>}
+              {editing.lat && <p className="text-success text-xs mt-1">✓ GPS encodé</p>}
             </div>
             <div>
-              <label className="block text-zinc-500 text-xs mb-1.5">Ordre</label>
+              <label className="block text-ink-muted text-xs mb-1.5">Ordre</label>
               <input type="number" value={editing.sort_order ?? 0}
                 onChange={e => setEditing(v => ({ ...v!, sort_order: parseInt(e.target.value) || 0 }))}
-                className="w-24 bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand" />
+                className="w-24 bg-surface border border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
             </div>
-            {error && <p className="text-red-400 text-sm">⚠️ {error}</p>}
+            {error && <p className="text-critical text-sm">⚠️ {error}</p>}
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setEditing(null)} className="flex-1 py-2.5 bg-[#2a2a2a] text-zinc-400 rounded-xl text-sm">Annuler</button>
-              <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 bg-brand disabled:opacity-50 text-white rounded-xl text-sm font-semibold">
+              <button onClick={() => setEditing(null)} className="flex-1 py-2.5 bg-surface-hover text-ink-muted rounded-xl text-sm">Annuler</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 bg-brand disabled:opacity-50 text-ink rounded-xl text-sm font-semibold">
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
               </button>
             </div>

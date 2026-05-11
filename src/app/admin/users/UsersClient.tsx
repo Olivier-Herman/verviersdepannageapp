@@ -684,7 +684,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
       {showRoleModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
             onClick={roleSaving ? undefined : () => setShowRoleModal(false)}
             aria-hidden="true"
           />
@@ -725,7 +725,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
                     <div className="flex items-center gap-3">
                       <span
                         className={`w-4 h-4 rounded border flex items-center justify-center text-xs flex-shrink-0 ${
-                          active ? 'bg-brand border-brand text-white' : ''
+                          active ? 'bg-brand border-brand text-ink' : ''
                         }`}
                       >
                         {active && <span aria-hidden="true">✓</span>}

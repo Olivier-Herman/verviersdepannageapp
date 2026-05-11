@@ -23,11 +23,11 @@ function daysUntilExpiry(expiresAt: string): number {
 }
 
 function statusConfig(days: number) {
-  if (days < 0)    return { color: 'text-red-500',    bg: 'bg-red-500/10',    label: 'Expiré',    dot: 'bg-red-500' }
-  if (days <= 30)  return { color: 'text-red-400',    bg: 'bg-red-500/10',    label: '< 1 mois',  dot: 'bg-red-400' }
-  if (days <= 90)  return { color: 'text-orange-400', bg: 'bg-orange-500/10', label: '< 3 mois',  dot: 'bg-orange-400' }
-  if (days <= 180) return { color: 'text-yellow-400', bg: 'bg-yellow-500/10', label: '< 6 mois',  dot: 'bg-yellow-400' }
-  return             { color: 'text-green-400',  bg: 'bg-green-500/10',  label: 'Valide',    dot: 'bg-green-400' }
+  if (days < 0)    return { color: 'text-critical',    bg: 'bg-red-500/10',    label: 'Expiré',    dot: 'bg-red-500' }
+  if (days <= 30)  return { color: 'text-critical',    bg: 'bg-red-500/10',    label: '< 1 mois',  dot: 'bg-red-400' }
+  if (days <= 90)  return { color: 'text-warning', bg: 'bg-orange-500/10', label: '< 3 mois',  dot: 'bg-orange-400' }
+  if (days <= 180) return { color: 'text-warning', bg: 'bg-yellow-500/10', label: '< 6 mois',  dot: 'bg-yellow-400' }
+  return             { color: 'text-success',  bg: 'bg-green-500/10',  label: 'Valide',    dot: 'bg-green-400' }
 }
 
 export default function AdminDocumentsClient({
@@ -65,21 +65,21 @@ export default function AdminDocumentsClient({
     <div>
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-white font-bold text-2xl mb-1">Documents chauffeurs</h1>
-        <p className="text-zinc-500 text-sm">{drivers.length} chauffeurs · {allDocs.length} documents enregistrés</p>
+        <h1 className="text-ink font-bold text-2xl mb-1">Documents chauffeurs</h1>
+        <p className="text-ink-muted text-sm">{drivers.length} chauffeurs · {allDocs.length} documents enregistrés</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Expirés',      value: expired,  color: 'text-red-400' },
-          { label: '< 1 mois',     value: critical, color: 'text-orange-400' },
-          { label: '< 3 mois',     value: warning,  color: 'text-yellow-400' },
-          { label: 'Manquants',    value: missing,  color: 'text-zinc-400' },
+          { label: 'Expirés',      value: expired,  color: 'text-critical' },
+          { label: '< 1 mois',     value: critical, color: 'text-warning' },
+          { label: '< 3 mois',     value: warning,  color: 'text-warning' },
+          { label: 'Manquants',    value: missing,  color: 'text-ink-muted' },
         ].map(s => (
-          <div key={s.label} className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl p-4">
+          <div key={s.label} className="bg-surface-2 border border rounded-xl p-4">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-zinc-500 text-xs mt-1">{s.label}</p>
+            <p className="text-ink-muted text-xs mt-1">{s.label}</p>
           </div>
         ))}
       </div>
@@ -87,14 +87,14 @@ export default function AdminDocumentsClient({
       {/* Filtre */}
       <input value={filter} onChange={e => setFilter(e.target.value)}
         placeholder="Rechercher un chauffeur…"
-        className="w-full lg:max-w-sm bg-[#0F0F0F] border border-[#2a2a2a] rounded-xl
-                   px-4 py-2.5 text-white text-sm outline-none focus:border-brand mb-4" />
+        className="w-full lg:max-w-sm bg-surface border border rounded-xl
+                   px-4 py-2.5 text-ink text-sm outline-none focus:border-brand mb-4" />
 
       {/* Tableau */}
-      <div className="bg-[#1A1A1A] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+      <div className="bg-surface-2 border border rounded-2xl overflow-hidden">
         {/* Header tableau */}
-        <div className="grid grid-cols-5 gap-4 px-4 py-3 border-b border-[#2a2a2a]
-                        text-zinc-500 text-xs uppercase tracking-wider">
+        <div className="grid grid-cols-5 gap-4 px-4 py-3 border-b border
+                        text-ink-muted text-xs uppercase tracking-wider">
           <div>Chauffeur</div>
           {DOC_TYPES.map(dt => (
             <div key={dt.value} className="text-center">{dt.icon} {dt.label}</div>
@@ -104,12 +104,12 @@ export default function AdminDocumentsClient({
         {/* Lignes */}
         {filtered.map(({ driver, docMap }) => (
           <div key={driver.id}
-            className="grid grid-cols-5 gap-4 px-4 py-3 border-b border-[#1e1e1e]
-                       hover:bg-[#222] transition-colors items-center">
+            className="grid grid-cols-5 gap-4 px-4 py-3 border-b border
+                       hover:bg-surface-hover transition-colors items-center">
             {/* Chauffeur */}
             <div>
-              <p className="text-white text-sm font-medium">{driver.name}</p>
-              <p className="text-zinc-600 text-xs">{driver.email}</p>
+              <p className="text-ink text-sm font-medium">{driver.name}</p>
+              <p className="text-ink-faint text-xs">{driver.email}</p>
             </div>
 
             {/* Documents */}
@@ -117,7 +117,7 @@ export default function AdminDocumentsClient({
               const doc  = docMap[dt.value]
               if (!doc) return (
                 <div key={dt.value} className="text-center">
-                  <span className="text-zinc-700 text-xs">Manquant</span>
+                  <span className="text-ink-faint text-xs">Manquant</span>
                 </div>
               )
               const days = daysUntilExpiry(doc.expires_at)
@@ -142,30 +142,30 @@ export default function AdminDocumentsClient({
 
       {/* Modal vue document */}
       {viewDoc && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 bg-ink/80 z-50 flex items-center justify-center p-4"
           onClick={() => setViewDoc(null)}>
-          <div className="bg-[#1A1A1A] rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto"
+          <div className="bg-surface-2 rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-white font-bold">
+                <h2 className="text-ink font-bold">
                   {DOC_TYPES.find(d => d.value === viewDoc.doc_type)?.label}
                 </h2>
-                <p className="text-zinc-500 text-sm">{viewDoc.user?.name}</p>
+                <p className="text-ink-muted text-sm">{viewDoc.user?.name}</p>
               </div>
-              <button onClick={() => setViewDoc(null)} className="text-zinc-500 text-2xl">×</button>
+              <button onClick={() => setViewDoc(null)} className="text-ink-muted text-2xl">×</button>
             </div>
             <img src={viewDoc.file_url} alt="Document"
-              className="w-full rounded-xl border border-[#2a2a2a] mb-4 object-contain max-h-96 bg-[#0F0F0F]" />
+              className="w-full rounded-xl border border mb-4 object-contain max-h-96 bg-surface" />
             <div className="space-y-2">
               {[
                 ['Chauffeur',   viewDoc.user?.name],
                 ['Expiration',  new Date(viewDoc.expires_at).toLocaleDateString('fr-BE', { day: '2-digit', month: 'long', year: 'numeric' })],
                 ['Notes',       viewDoc.notes],
               ].filter(r => r[1]).map(([label, value]) => (
-                <div key={label} className="flex justify-between py-2 border-b border-[#2a2a2a]">
-                  <span className="text-zinc-500 text-sm">{label}</span>
-                  <span className="text-white text-sm">{value}</span>
+                <div key={label} className="flex justify-between py-2 border-b border">
+                  <span className="text-ink-muted text-sm">{label}</span>
+                  <span className="text-ink text-sm">{value}</span>
                 </div>
               ))}
             </div>
