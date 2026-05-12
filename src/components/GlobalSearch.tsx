@@ -17,12 +17,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   mission:      '🚗 Missions',
   encaissement: '💳 Encaissements',
   avance:       '📄 Avances de fonds',
+  invoice:      '🧾 Factures Odoo',
   driver:       '🧑‍🔧 Dépanneurs',
   user:         '👤 Utilisateurs',
-  vehicle:      '🚘 Véhicules',
+  vehicle:      '🚘 Véhicules Odoo',
 }
 
-const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'driver', 'user', 'vehicle']
+const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'driver', 'user', 'vehicle']
 
 export default function GlobalSearch() {
   const router = useRouter()

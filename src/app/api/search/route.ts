@@ -300,6 +300,44 @@ export async function GET(req: Request) {
     }
   }
 
+  // ── Factures Odoo ──────────────────────────────────────────
+  // Cherche dans account.move par numero OU nom partenaire. Best effort
+  // (Odoo HS → on log et on continue sans bloquer le reste).
+  if (q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
+    try {
+      const invoices = await odooCall<any[]>('account.move', 'search_read', [
+        [
+          '&',
+          ['state', '!=', 'cancel'],
+          ['move_type', 'in', ['out_invoice', 'out_refund']],
+          '|',
+          ['name', 'ilike', q],
+          ['partner_id.name', 'ilike', q],
+        ],
+      ], {
+        fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'state', 'move_type'],
+        limit:  PER_CATEGORY_LIMIT,
+        order:  'invoice_date desc',
+      })
+
+      for (const inv of invoices || []) {
+        const partnerName = inv.partner_id?.[1] || '—'
+        const isRefund    = inv.move_type === 'out_refund'
+        const stateLabel  = inv.state === 'posted' ? 'comptabilisée' : inv.state === 'draft' ? 'brouillon' : inv.state
+        out.push({
+          category: 'invoice',
+          id:       String(inv.id),
+          title:    `${isRefund ? '↩ ' : ''}${inv.name || '—'} · ${partnerName}`,
+          subtitle: `${Number(inv.amount_total || 0).toFixed(2)} €`,
+          meta:     `${fmtDateShort(inv.invoice_date)} · ${stateLabel}`,
+          href:     `${ODOO_URL}/web#id=${inv.id}&model=account.move&view_type=form`,
+        })
+      }
+    } catch (e: any) {
+      console.error('[search] Odoo invoices fail (non bloquant):', e.message)
+    }
+  }
+
   // ── Véhicules Odoo ─────────────────────────────────────────
   // Cherche par plaque normalisee OU VIN (substring). Limite la latence si Odoo HS.
   if (q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
