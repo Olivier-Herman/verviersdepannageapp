@@ -8,6 +8,7 @@ import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
+import GlobalSearch from '@/components/GlobalSearch'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
@@ -136,10 +137,11 @@ export default function AppShell({
             <Link
               href="/dashboard"
               title="Retour au dashboard"
-              className="flex-1 flex justify-center pr-10 hover:opacity-80 transition-opacity"
+              className="flex-1 flex justify-center hover:opacity-80 transition-opacity"
             >
               <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
             </Link>
+            <GlobalSearch />
           </div>
           <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
           {headerExtra}
@@ -158,9 +160,10 @@ export default function AppShell({
 
         {/* Header desktop */}
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <h1 className="font-display text-ink font-bold text-2xl">{title}</h1>
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
+            <GlobalSearch />
           </div>
         </div>
 
