@@ -161,7 +161,7 @@ export default function GlobalSearch() {
           `}</style>
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-surface w-full max-w-2xl rounded-2xl border-2 border-brand/30 overflow-hidden shadow-2xl shadow-brand/20 flex flex-col"
+            className="bg-surface w-full max-w-3xl rounded-2xl border-2 border-brand/30 overflow-hidden shadow-2xl shadow-brand/20 flex flex-col"
             style={{ maxHeight: '78vh', animation: 'gs-slide 200ms ease-out' }}
           >
             {/* Bande accent au top */}
@@ -189,34 +189,36 @@ export default function GlobalSearch() {
             </div>
 
             {/* Pills filtres */}
-            <div className="flex items-center gap-1.5 px-5 py-2.5 border-b bg-surface-2 overflow-x-auto scrollbar-hide">
-              <span className="text-ink-faint text-xs flex-shrink-0">Filtres :</span>
-              {CATEGORY_ORDER.map(cat => {
-                const meta = CATEGORY_META[cat]
-                const active = activeCats.has(cat)
-                return (
+            <div className="px-5 py-2.5 border-b bg-surface-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-ink-faint text-xs flex-shrink-0 mr-1">Filtres :</span>
+                {CATEGORY_ORDER.map(cat => {
+                  const meta = CATEGORY_META[cat]
+                  const active = activeCats.has(cat)
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => toggleCat(cat)}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap ${
+                        active
+                          ? `${meta.accent} border-current shadow-sm scale-105`
+                          : 'border bg-surface text-ink-muted hover:text-ink hover:bg-surface-hover'
+                      }`}
+                    >
+                      <span>{meta.emoji}</span>
+                      <span>{meta.label}</span>
+                    </button>
+                  )
+                })}
+                {activeCats.size > 0 && (
                   <button
-                    key={cat}
-                    onClick={() => toggleCat(cat)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap flex-shrink-0 ${
-                      active
-                        ? `${meta.accent} border-current shadow-sm scale-105`
-                        : 'border bg-surface text-ink-muted hover:text-ink hover:bg-surface-hover'
-                    }`}
+                    onClick={() => setActiveCats(new Set())}
+                    className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-critical transition"
                   >
-                    <span>{meta.emoji}</span>
-                    <span>{meta.label}</span>
+                    Tout effacer
                   </button>
-                )
-              })}
-              {activeCats.size > 0 && (
-                <button
-                  onClick={() => setActiveCats(new Set())}
-                  className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-critical transition flex-shrink-0"
-                >
-                  Tout effacer
-                </button>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Résultats */}
