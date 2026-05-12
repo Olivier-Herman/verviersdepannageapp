@@ -20,15 +20,11 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
   { href: '/mission',       label: 'Mes Missions',     icon: '🚗', moduleId: 'driver_missions' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
-  { href: '/encaissement',  label: 'Encaissement',     icon: '💳', moduleId: 'encaissement' },
-  { href: '/encaissements', label: 'Mouvements',       icon: '📊', moduleId: 'encaissements' },
-  { href: '/caisse',        label: 'Ma Caisse',        icon: '💰', moduleId: 'caisse' },
-  { href: '/avance-fonds',  label: 'Avance de fonds',  icon: '📄', moduleId: 'avance_fonds' },
+  { href: '/finance',       label: 'Finance',          icon: '💵', moduleId: 'finance' },
   { href: '/documents',     label: 'Documents',        icon: '📁', moduleId: 'documents' },
   { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔍', moduleId: 'check_vehicle' },
   { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
   { href: '/facturation',   label: 'Facturation',      icon: '🧾', moduleId: 'facturation' },
-  { href: '/finance',       label: 'Finance',          icon: '💵', moduleId: 'finance' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
   { href: '/profil',        label: 'Mon Profil',       icon: '👤', moduleId: null },
 ]
@@ -50,8 +46,10 @@ export function filterNavItems(opts: {
     if (item.moduleId === null) return true
     if (item.moduleId === 'admin') return isAdmin
     if (item.moduleId === 'finance') {
-      return userModules.includes('encaissements')
+      return userModules.includes('encaissement')
+          || userModules.includes('encaissements')
           || userModules.includes('caisse')
+          || userModules.includes('avance_fonds')
           || userModules.includes('relances')
     }
     return userModules.includes(item.moduleId)

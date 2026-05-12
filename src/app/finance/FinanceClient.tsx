@@ -3,16 +3,26 @@
 import Link from 'next/link'
 
 export default function FinanceClient({ userModules }: { userModules: string[] }) {
-  const isAdmin = false // hérité du layout, on affiche selon modules
-  const hasEncaissements = userModules.includes('encaissements') || userModules.includes('admin')
-  const hasCaisse        = userModules.includes('caisse')        || userModules.includes('admin')
-  const hasRelances      = userModules.includes('relances')      || userModules.includes('admin')
+  const isAdmin           = userModules.includes('admin')
+  const hasEncaissement   = userModules.includes('encaissement')  || isAdmin
+  const hasEncaissements  = userModules.includes('encaissements') || isAdmin
+  const hasCaisse         = userModules.includes('caisse')        || isAdmin
+  const hasAvanceFonds    = userModules.includes('avance_fonds')  || isAdmin
+  const hasRelances       = userModules.includes('relances')      || isAdmin
 
   const tiles = [
     {
+      id:    'encaissement',
+      label: 'Encaissement',
+      desc:  'Nouvel encaissement client',
+      icon:  '💳',
+      href:  '/encaissement',
+      show:  hasEncaissement,
+    },
+    {
       id:    'encaissements',
       label: 'Mouvements',
-      desc:  'Historique de vos encaissements',
+      desc:  'Historique des encaissements',
       icon:  '📊',
       href:  '/encaissements',
       show:  hasEncaissements,
@@ -24,6 +34,14 @@ export default function FinanceClient({ userModules }: { userModules: string[] }
       icon:  '💰',
       href:  '/caisse',
       show:  hasCaisse,
+    },
+    {
+      id:    'avance-fonds',
+      label: 'Avance de fonds',
+      desc:  'Demandes d\'avance de fonds',
+      icon:  '📄',
+      href:  '/avance-fonds',
+      show:  hasAvanceFonds,
     },
     {
       id:    'relances',
