@@ -47,7 +47,8 @@ interface SearchResult {
   title:        string
   subtitle:     string
   meta:         string                 // info contextuelle (date, statut, source...)
-  href:         string                 // navigation
+  href:         string                 // navigation principale (Consulter)
+  pdfUrl?:      string                 // si dispo : telechargement PDF direct
 }
 
 /** Normalise une plaque pour comparaison : retire séparateurs, MAJUSCULES. */
@@ -324,6 +325,7 @@ export async function GET(req: Request) {
         const partnerName = inv.partner_id?.[1] || '—'
         const isRefund    = inv.move_type === 'out_refund'
         const stateLabel  = inv.state === 'posted' ? 'comptabilisée' : inv.state === 'draft' ? 'brouillon' : inv.state
+        const reportName  = isRefund ? 'account.report_invoice_with_payments' : 'account.report_invoice'
         out.push({
           category: 'invoice',
           id:       String(inv.id),
@@ -331,6 +333,7 @@ export async function GET(req: Request) {
           subtitle: `${Number(inv.amount_total || 0).toFixed(2)} €`,
           meta:     `${fmtDateShort(inv.invoice_date)} · ${stateLabel}`,
           href:     `${ODOO_URL}/web#id=${inv.id}&model=account.move&view_type=form`,
+          pdfUrl:   `${ODOO_URL}/report/pdf/${reportName}/${inv.id}`,
         })
       }
     } catch (e: any) {

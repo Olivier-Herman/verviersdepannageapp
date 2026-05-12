@@ -11,6 +11,7 @@ interface SearchResult {
   subtitle: string
   meta:     string
   href:     string
+  pdfUrl?:  string
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -204,17 +205,45 @@ export default function GlobalSearch() {
                         const isActive = idx === activeIndex
                         return (
                           <li key={`${r.category}-${r.id}`}>
-                            <button
-                              onClick={() => navigate(r)}
+                            <div
                               onMouseEnter={() => setActiveIndex(idx)}
-                              className={`w-full text-left px-4 py-2.5 transition ${
-                                isActive ? 'bg-brand/10 border-l-2 border-l-brand' : 'border-l-2 border-l-transparent hover:bg-surface-hover'
+                              className={`flex items-stretch transition border-l-2 ${
+                                isActive ? 'bg-brand/10 border-l-brand' : 'border-l-transparent hover:bg-surface-hover'
                               }`}
                             >
-                              <p className="text-ink text-sm font-medium truncate">{r.title}</p>
-                              {r.subtitle && <p className="text-ink-secondary text-xs truncate">{r.subtitle}</p>}
-                              {r.meta && <p className="text-ink-faint text-xs truncate">{r.meta}</p>}
-                            </button>
+                              <button
+                                onClick={() => navigate(r)}
+                                className="flex-1 text-left px-4 py-2.5 min-w-0"
+                              >
+                                <p className="text-ink text-sm font-medium truncate">{r.title}</p>
+                                {r.subtitle && <p className="text-ink-secondary text-xs truncate">{r.subtitle}</p>}
+                                {r.meta && <p className="text-ink-faint text-xs truncate">{r.meta}</p>}
+                              </button>
+                              {r.pdfUrl && (
+                                <div className="flex items-center gap-1 pr-3">
+                                  <a
+                                    href={r.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => setOpen(false)}
+                                    className="px-2.5 py-1 text-xs bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md whitespace-nowrap transition"
+                                    title="Ouvrir la facture dans Odoo"
+                                  >
+                                    Consulter
+                                  </a>
+                                  <a
+                                    href={r.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download
+                                    className="px-2.5 py-1 text-xs bg-brand hover:bg-brand-hover text-white rounded-md whitespace-nowrap transition"
+                                    title="Télécharger le PDF de la facture"
+                                  >
+                                    📄 PDF
+                                  </a>
+                                </div>
+                              )}
+                            </div>
                           </li>
                         )
                       })}
