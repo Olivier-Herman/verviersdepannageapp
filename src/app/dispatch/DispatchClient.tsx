@@ -163,10 +163,22 @@ function formatLateLabel(lateMs: number): string {
   return `il y a ${days} jours`
 }
 
-function getDelai(dateStr: string | null): DelaiResult {
+// Les statuts ou le suivi du delai d'intervention reste pertinent : la mission
+// n'a pas encore ete prise en charge par un chauffeur. Une fois assignee/en
+// cours/terminee, le delai cesse de clignoter (et passe en neutre) pour ne pas
+// polluer l'attention du dispatcher.
+const DELAI_ACTIVE_STATUSES = new Set(['new', 'dispatching'])
+
+function getDelai(dateStr: string | null, status?: string): DelaiResult {
   if (!dateStr) {
     return { label: '—', color: 'text-ink-muted', bgColor: 'bg-surface-2', urgency: 'muted', pulse: false }
   }
+  // Mission deja prise en main : on affiche le delai en neutre, plus de pulse
+  // ni de couleur d'urgence (le dispatcher n'a plus rien a surveiller dessus).
+  if (status && !DELAI_ACTIVE_STATUSES.has(status)) {
+    return { label: '—', color: 'text-ink-muted', bgColor: 'bg-surface-2', urgency: 'muted', pulse: false }
+  }
+
   const d   = new Date(dateStr)
   const now = new Date()
   const deltaMs = d.getTime() - now.getTime()  // > 0 = futur, < 0 = retard
@@ -447,8 +459,9 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
   onModalChange?: (open: boolean) => void
 }) {
   const router  = useRouter()
-  const delai   = getDelai(mission.intervention_date)
+  const delai   = getDelai(mission.intervention_date, mission.status)
   const srcInfo = SOURCE_LABELS[mission.source] || { label: '?', color: 'bg-zinc-600' }
+  const showDelai = delai.urgency !== 'muted'
 
   return (
     <div
@@ -466,9 +479,11 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
             </span>
           )}
         </div>
-        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
-          {delai.label}
-        </span>
+        {showDelai && (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
+            {delai.label}
+          </span>
+        )}
       </div>
 
       {/* Client */}
@@ -958,8 +973,9 @@ export default function DispatchClient({
                 </thead>
                 <tbody className="divide-y divide-[#222]">
                   {filtered.map(m => {
-                    const delai   = getDelai(m.intervention_date)
+                    const delai   = getDelai(m.intervention_date, m.status)
                     const srcInfo = SOURCE_LABELS[m.source] || { label: '?', color: 'bg-zinc-600' }
+                    const showDelai = delai.urgency !== 'muted'
                     return (
                       <tr key={m.id}
                         className={`transition hover:bg-surface-2 cursor-pointer ${
@@ -983,9 +999,13 @@ export default function DispatchClient({
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
-                            {delai.label}
-                          </span>
+                          {showDelai ? (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
+                              {delai.label}
+                            </span>
+                          ) : (
+                            <span className="text-ink-faint text-xs">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-ink-secondary text-xs">
                           {m.mission_type ? (TYPE_LABELS[m.mission_type] || m.mission_type) : '—'}
