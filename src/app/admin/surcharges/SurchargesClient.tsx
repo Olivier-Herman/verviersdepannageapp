@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, X, AlertCircle, Search } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus, Trash2, X, AlertCircle } from 'lucide-react'
 
 interface Client {
   key: string
@@ -367,51 +367,48 @@ function EditCellPanel({
   )
 }
 
-interface OdooPartner {
-  id: number
-  name: string
-  city?: string | null
-  vat?: string | null
+interface AvailableSource {
+  source:          string
+  label:           string
+  odoo_partner_id: number | null
+  mission_count:   number
 }
 
 function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [query, setQuery]     = useState('')
-  const [results, setResults] = useState<OdooPartner[]>([])
-  const [picked, setPicked]   = useState<OdooPartner | null>(null)
-  const [searching, setSearching] = useState(false)
+  const [sources, setSources] = useState<AvailableSource[]>([])
+  const [picked, setPicked]   = useState<AvailableSource | null>(null)
+  const [filter, setFilter]   = useState('')
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState<string | null>(null)
-  const debounceRef = useRef<any>(null)
 
   useEffect(() => {
-    if (picked) return
-    clearTimeout(debounceRef.current)
-    if (query.trim().length < 3) { setResults([]); return }
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true)
-      try {
-        const res = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(query.trim())}`)
-        const j = await res.json()
-        setResults(j.clients || [])
-      } catch {
-        setResults([])
-      } finally {
-        setSearching(false)
-      }
-    }, 250)
-  }, [query, picked])
+    fetch('/api/admin/surcharges/sources')
+      .then(r => r.json())
+      .then(j => setSources(j.sources || []))
+      .catch(() => setError('Erreur chargement sources'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = useMemo(() => {
+    const q = filter.toLowerCase().trim()
+    if (!q) return sources
+    return sources.filter(s =>
+      s.source.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
+    )
+  }, [sources, filter])
 
   async function save() {
-    if (!picked) { setError('Sélectionne un client Odoo'); return }
+    if (!picked) { setError('Sélectionne une source'); return }
     setSaving(true); setError(null)
     try {
       const res = await fetch('/api/admin/surcharges/client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          odoo_partner_id: picked.id,
-          label:           picked.name,
-          kind:            'assistance',
+          source: picked.source,
+          label:  picked.label,
+          kind:   'assistance',
         }),
       })
       const j = await res.json()
@@ -427,46 +424,45 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
-        <h3 className="text-ink font-semibold">Ajouter un client d'assistance</h3>
+        <div>
+          <h3 className="text-ink font-semibold">Ajouter un client d'assistance</h3>
+          <p className="text-ink-muted text-xs mt-1">Choisis une source utilisée dans les missions.</p>
+        </div>
 
         {!picked ? (
           <>
-            <div>
-              <label className="block text-ink-muted text-xs mb-1">Rechercher dans Odoo</label>
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
-                <input
-                  value={query}
-                  onChange={e => { setQuery(e.target.value); setError(null) }}
-                  placeholder="Nom du client (min. 3 caractères)..."
-                  autoFocus
-                  className="w-full bg-surface-2 border rounded-xl pl-9 pr-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
-                />
-              </div>
-              <p className="text-ink-muted text-xs mt-1">
-                Le client doit exister dans Odoo (res.partner). Le nom servira de libellé.
-              </p>
-            </div>
-            <div className="border rounded-xl max-h-60 overflow-y-auto bg-surface-2">
-              {searching ? (
-                <p className="text-ink-muted text-xs text-center py-4">⏳ Recherche…</p>
-              ) : results.length === 0 && query.trim().length >= 3 ? (
-                <p className="text-ink-muted text-xs text-center py-4">Aucun résultat</p>
-              ) : results.length === 0 ? (
-                <p className="text-ink-faint text-xs text-center py-4">Tape au moins 3 caractères</p>
+            <input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filtrer..."
+              autoFocus
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+            />
+            <div className="border rounded-xl max-h-64 overflow-y-auto bg-surface-2">
+              {loading ? (
+                <p className="text-ink-muted text-xs text-center py-4">⏳ Chargement…</p>
+              ) : filtered.length === 0 ? (
+                <p className="text-ink-muted text-xs text-center py-4">
+                  {sources.length === 0
+                    ? 'Aucune source disponible (toutes déjà ajoutées ou aucune mission)'
+                    : 'Aucun résultat pour ce filtre'}
+                </p>
               ) : (
                 <ul>
-                  {results.map(r => (
-                    <li key={r.id}>
+                  {filtered.map(s => (
+                    <li key={s.source}>
                       <button
                         type="button"
-                        onClick={() => setPicked(r)}
-                        className="w-full text-left px-3 py-2 hover:bg-surface-hover transition border-b last:border-b-0"
+                        onClick={() => setPicked(s)}
+                        className="w-full text-left px-3 py-2 hover:bg-surface-hover transition border-b last:border-b-0 flex items-center justify-between gap-3"
                       >
-                        <p className="text-ink text-sm font-medium truncate">{r.name}</p>
-                        <p className="text-ink-muted text-xs truncate">
-                          {[r.city, r.vat].filter(Boolean).join(' · ') || `Odoo #${r.id}`}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="text-ink text-sm font-medium truncate">{s.label}</p>
+                          <p className="text-ink-muted text-xs font-mono truncate">{s.source}</p>
+                        </div>
+                        <span className="text-ink-muted text-xs flex-shrink-0">
+                          {s.mission_count > 0 ? `${s.mission_count} mission${s.mission_count > 1 ? 's' : ''}` : '—'}
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -476,11 +472,9 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           </>
         ) : (
           <div className="bg-success-soft border border-success rounded-xl p-3">
-            <p className="text-ink-muted text-xs">Client Odoo sélectionné</p>
-            <p className="text-success font-semibold text-sm">{picked.name}</p>
-            <p className="text-ink-muted text-xs">
-              {[picked.city, picked.vat].filter(Boolean).join(' · ') || `Odoo #${picked.id}`}
-            </p>
+            <p className="text-ink-muted text-xs">Source sélectionnée</p>
+            <p className="text-success font-semibold text-sm">{picked.label}</p>
+            <p className="text-ink-muted text-xs font-mono">{picked.source}</p>
             <button onClick={() => { setPicked(null); setError(null) }} className="text-xs text-brand hover:underline mt-2">
               Changer
             </button>
