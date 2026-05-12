@@ -31,6 +31,7 @@ interface Mission {
   completed_at?: string; parked_at?: string; delivering_at?: string
   amount_guaranteed?: number; amount_currency?: string; amount_to_collect?: number
   park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
+  photo_categories_covered?: string[]  // categories du wizard photos couvertes (persiste en BDD, multi-device)
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
 interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
@@ -699,15 +700,28 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       { id: 'vin',       icon: '🆔', label: 'VIN',            hint: 'Numéro de châssis (si visible)' },
       { id: 'km',        icon: '🔢', label: 'Kilométrage',    hint: 'Compteur lisible (si accessible)' },
     ]
-    // Quels catégories ont été ouvertes (= photos prises depuis cette cat)
-    // Stocké dans localStorage pour persister entre rafraîchissements.
+    // Catégories couvertes : persistées en BDD via photo_categories_covered
+    // pour partage cross-device (PC ↔ iPhone ↔ wrapper). Fallback localStorage
+    // pour edge cases avant que la mission soit refresh.
     const lsKey = `photo-cats-${M.id}`
-    const coveredCats: string[] = (() => {
+    const coveredFromDb: string[] = Array.isArray(M.photo_categories_covered)
+      ? M.photo_categories_covered : []
+    const coveredFromLs: string[] = (() => {
       try { return JSON.parse(localStorage.getItem(lsKey) || '[]') } catch { return [] }
     })()
+    const coveredCats: string[] = Array.from(new Set([...coveredFromDb, ...coveredFromLs]))
+
     const markCovered = (catId: string) => {
+      // Update local immediat (visuel) puis sync BDD en arriere-plan.
       const next = Array.from(new Set([...coveredCats, catId]))
       localStorage.setItem(lsKey, JSON.stringify(next))
+      setM(prev => ({ ...prev, photo_categories_covered: next }))
+      // Persistance BDD multi-device (best effort, ne bloque pas l UX).
+      fetch('/api/missions/driver-action', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_id: M.id, action: 'mark_photo_category', category: catId }),
+      }).catch(e => console.error('[mark_photo_category]', e))
     }
     const requiredCats = PHOTO_CATS.filter(c => c.required).map(c => c.id)
     const allRequiredDone = requiredCats.every(id => coveredCats.includes(id))

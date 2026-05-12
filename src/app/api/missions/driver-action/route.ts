@@ -41,14 +41,15 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   save_photos:      {                                                          logMessage: 'Photos sauvegardées' },
   update_address:   {                                                          logMessage: 'Adresse modifiée' },
   update_stops:     {                                                          logMessage: 'Stops mis à jour' },
+  mark_photo_category: {                                                       logMessage: 'Categorie photo couverte' },
 }
 
 const ALLOWED: Record<string, string[]> = {
   assigned:    ['accept'],
-  accepted:    ['on_way'],
-  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop'],
-  parked:      ['completed', 'start_delivery', 'change_type', 'save_photos'],
-  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_stops', 'save_photos', 'change_type'],
+  accepted:    ['on_way', 'mark_photo_category'],
+  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop', 'mark_photo_category'],
+  parked:      ['completed', 'start_delivery', 'change_type', 'save_photos', 'mark_photo_category'],
+  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category'],
 }
 
 interface Stop {
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
     lat?:          number | null
     lng?:          number | null
     stops?:        Stop[]
+    category?:     string    // pour action 'mark_photo_category'
     closing_data?: {
       final_mission_type?:    string
       mileage?:               number
@@ -119,7 +121,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -167,6 +169,20 @@ export async function POST(req: Request) {
   // ── Mettre à jour les stops ──────────────────────────────────────────────
   if (action === 'update_stops' && body.stops) {
     updatePayload.extra_addresses = body.stops
+  }
+
+  // ── Marquer une categorie photo comme couverte (multi-device) ───────────
+  // Persiste en BDD (text[]) au lieu de localStorage local au device.
+  if (action === 'mark_photo_category' && body.category) {
+    const current = Array.isArray((mission as any).photo_categories_covered)
+      ? (mission as any).photo_categories_covered as string[]
+      : []
+    if (!current.includes(body.category)) {
+      updatePayload.photo_categories_covered = [...current, body.category]
+    } else {
+      // Categorie deja couverte : pas de write inutile, on retourne OK.
+      return NextResponse.json({ mission, ok: true, noop: true })
+    }
   }
 
   // ── Dépôt en parc ────────────────────────────────────────────────────────
