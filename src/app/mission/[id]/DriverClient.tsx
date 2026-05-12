@@ -96,13 +96,17 @@ function Stepper({ status, onSite, loaded, isRem, isRel }: {
       ? ['Accepter', 'En route', 'Sur place', 'Chargé', 'Destination', 'Clôture']
       : ['Accepter', 'En route', 'Sur place', 'Clôture']
 
+  // 'to_invoice' = mission terminee cote chauffeur (en attente facturation).
+  // Pour les checks d'UI chauffeur, on le traite comme 'completed'.
+  const done = status === 'completed' || status === 'to_invoice'
+
   const step = isRel
     ? (
         status === 'assigned'                                    ? 0 :
         status === 'accepted'                                    ? 1 :
         (status === 'in_progress' && !loaded)                    ? 2 :  // En route / chargement au parc
-        (loaded && status !== 'completed' && status !== 'parked') ? 3 : // En cours de livraison
-        status === 'completed' || status === 'parked'            ? 4 : 0
+        (loaded && !done && status !== 'parked')                  ? 3 : // En cours de livraison
+        done || status === 'parked'                               ? 4 : 0
       )
     : isRem
       ? (
@@ -110,15 +114,15 @@ function Stepper({ status, onSite, loaded, isRem, isRel }: {
           status === 'accepted'                                    ? 1 :
           (status === 'in_progress' && !onSite)                    ? 2 :
           (onSite && !loaded && status !== 'delivering')           ? 3 :
-          (status === 'delivering' || (loaded && status !== 'completed' && status !== 'parked')) ? 4 :
-          (status === 'completed' || status === 'parked')          ? 5 : 0
+          (status === 'delivering' || (loaded && !done && status !== 'parked')) ? 4 :
+          (done || status === 'parked')                            ? 5 : 0
         )
       : (
           status === 'assigned'                                    ? 0 :
           status === 'accepted'                                    ? 1 :
           (status === 'in_progress' && !onSite)                    ? 2 :
           onSite                                                   ? 3 :
-          status === 'completed'                                   ? 4 : 0
+          done                                                     ? 4 : 0
         )
 
   return (
@@ -1149,8 +1153,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       </ScreenWrap>
   )
 
-  // ── Mission terminée ──────────────────────────────────────────────────────
-  if (M.status === 'completed') return (
+  // ── Mission terminee (to_invoice = cloturee, en attente facturation cote bureau) ──
+  if (M.status === 'completed' || M.status === 'to_invoice') return (
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4 px-4">
       <div className="w-16 h-16 bg-green-600/20 border border-green-500/30 rounded-full flex items-center justify-center text-3xl">✅</div>
       <h1 className="text-ink font-semibold text-xl">Mission terminée</h1>
