@@ -113,16 +113,18 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
 
   console.log(`[REL] Mission REL créée: ${rel.id} (parent: ${input.parentMissionId})`)
 
-  // La mission parente passe en 'completed' : sa partie 'remorquage vers parc'
-  // est terminée, le reste de la chaîne (relivraison) est portée par la nouvelle REL.
+  // La mission parente passe en 'to_invoice' : sa partie 'remorquage vers parc'
+  // est terminee, prete a etre facturee separement (chaque fiche est facturable
+  // independamment). Le reste de la chaine (relivraison) est portee par la
+  // nouvelle REL qui suivra son propre cycle vers 'to_invoice' a sa cloture.
   await sb
     .from('incoming_missions')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .update({ status: 'to_invoice', completed_at: new Date().toISOString() })
     .eq('id', input.parentMissionId)
   await sb.from('mission_logs').insert({
     mission_id: input.parentMissionId,
     action:     'completed',
-    notes:      `Terminée — relivraison déléguée à la mission ${externalId}`,
+    notes:      `Terminée — relivraison déléguée à la mission ${externalId}, à facturer`,
     metadata:   { rel_mission_id: rel.id },
   })
 

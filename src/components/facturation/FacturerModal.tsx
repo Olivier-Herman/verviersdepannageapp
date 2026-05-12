@@ -1,0 +1,452 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+
+interface BaseMission {
+  id: string
+  external_id: string | null
+  dossier_number?: string | null
+  source: string | null
+  status: string
+  mission_type: string | null
+  incident_type: string | null
+  parent_mission_id: string | null
+  client_name: string | null
+  client_phone?: string | null
+  vehicle_plate: string | null
+  vehicle_brand?: string | null
+  vehicle_model?: string | null
+  vehicle_vin?: string | null
+  incident_address?: string | null
+  destination_address?: string | null
+  received_at: string
+  completed_at: string | null
+  amount_collected?: number | null
+  payment_method?: string | null
+  invoice_method: string | null
+  invoice_number: string | null
+}
+
+interface PaymentRow {
+  id: string
+  mission_id: string | null
+  amount: number
+  payment_mode: string
+  client_name: string | null
+  created_at: string
+  driver_id: string | null
+}
+
+interface Props {
+  mission:     BaseMission
+  siblings:    BaseMission[]               // parent et/ou children
+  payments:    PaymentRow[]                // encaissements lies a la mission principale
+  driverName:  (id: string | null) => string
+  onClose:     () => void
+  onUpdated:   (updated: { id: string; status: string; invoice_method?: string | null; invoice_number?: string | null; invoice_url?: string | null }[]) => void
+}
+
+interface KmData { total_km: number; segments: Array<{ label: string; km: number | null }>; error?: string | null }
+
+function fmtDateTime(d: string | null): string {
+  if (!d) return '—'
+  return new Date(d).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function missionKind(m: { mission_type: string | null; incident_type: string | null; parent_mission_id: string | null }): 'REL' | 'REM' | 'DSP' | 'DPR' | 'AUTRE' {
+  const it = (m.incident_type || '').toLowerCase()
+  const mt = (m.mission_type   || '').toLowerCase()
+  if (it === 'relivraison' || m.parent_mission_id) return 'REL'
+  if (it === 'dpr')                                 return 'DPR'
+  if (mt === 'remorquage')                          return 'REM'
+  if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt)) return 'DSP'
+  return 'AUTRE'
+}
+
+const KIND_COLOR: Record<string, string> = {
+  REM: 'bg-amber-500',
+  DSP: 'bg-info',
+  REL: 'bg-purple-600',
+  DPR: 'bg-critical',
+  AUTRE: 'bg-ink-faint',
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  touring: 'Touring', allianz: 'Allianz', vab: 'VAB',
+  axa: 'AXA', ethias: 'Ethias', police: 'Police',
+}
+function fmtSource(s: string | null): string {
+  if (!s) return '—'
+  return SOURCE_LABEL[s.toLowerCase()] || s
+}
+
+function Copyable({ value, label, mono }: { value: string; label?: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  if (!value) return <span className="text-ink-faint">—</span>
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {}
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={label ? `Copier ${label}` : 'Copier'}
+      className={`group inline-flex items-center gap-1.5 hover:text-brand transition text-left ${mono ? 'font-mono' : ''}`}
+    >
+      <span>{value}</span>
+      <span className={`text-xs ${copied ? 'text-success' : 'text-ink-faint opacity-0 group-hover:opacity-100'} transition`}>
+        {copied ? '✓' : '📋'}
+      </span>
+    </button>
+  )
+}
+
+function MissionBlock({
+  m, payments, driverName, busy, onValidate, onAuto,
+}: {
+  m:          BaseMission
+  payments:   PaymentRow[]
+  driverName: (id: string | null) => string
+  busy:       boolean
+  onValidate: () => void
+  onAuto:     () => void
+}) {
+  const [km, setKm] = useState<KmData | null>(null)
+  const [kmLoading, setKmLoading] = useState(true)
+  const kind = missionKind(m)
+  const isReady = m.status === 'to_invoice'
+
+  useEffect(() => {
+    let cancelled = false
+    setKmLoading(true)
+    fetch(`/api/missions/${m.id}/km`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setKm(d) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setKmLoading(false) })
+    return () => { cancelled = true }
+  }, [m.id])
+
+  const totalCollected = payments.reduce((s, p) => s + Number(p.amount || 0), 0)
+
+  return (
+    <div className={`border rounded-2xl p-4 space-y-3 ${isReady ? 'bg-surface' : 'bg-surface-2 opacity-70'}`}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-white text-xs font-bold ${KIND_COLOR[kind]}`}>
+            {kind}
+          </span>
+          <span className="text-ink font-semibold text-sm">
+            <Copyable value={m.external_id || m.dossier_number || m.id.slice(0, 8)} label="référence" />
+          </span>
+        </div>
+        {!isReady && (
+          <span className="text-xs px-2 py-0.5 rounded bg-ink-faint/15 text-ink-muted">
+            {m.status === 'completed'
+              ? (m.invoice_method === 'auto' ? 'auto-facturée' : `facturée ${m.invoice_number || ''}`)
+              : m.status}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div>
+          <p className="text-ink-muted text-xs">Date/heure</p>
+          <p className="text-ink">{fmtDateTime(m.completed_at || m.received_at)}</p>
+        </div>
+        <div>
+          <p className="text-ink-muted text-xs">Km calculés</p>
+          <p className="text-ink">
+            {kmLoading ? <span className="text-ink-faint">⏳…</span>
+              : km?.total_km != null ? <Copyable value={`${km.total_km}`} label="km" /> : '—'}
+          </p>
+        </div>
+        {m.incident_address && (
+          <div className="sm:col-span-2">
+            <p className="text-ink-muted text-xs">Lieu intervention</p>
+            <p className="text-ink-secondary text-xs"><Copyable value={m.incident_address} /></p>
+          </div>
+        )}
+        {m.destination_address && (
+          <div className="sm:col-span-2">
+            <p className="text-ink-muted text-xs">Destination</p>
+            <p className="text-ink-secondary text-xs"><Copyable value={m.destination_address} /></p>
+          </div>
+        )}
+      </div>
+
+      {km?.segments && km.segments.length > 0 && (
+        <details className="text-xs">
+          <summary className="text-ink-muted cursor-pointer">Détail km par segment</summary>
+          <ul className="mt-2 space-y-1 pl-3">
+            {km.segments.map((s, i) => (
+              <li key={i} className="flex items-center justify-between">
+                <span className="text-ink-secondary">{s.label}</span>
+                <span className={s.km == null ? 'text-ink-faint' : 'text-ink-secondary'}>{s.km != null ? `${s.km} km` : '—'}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* Warning encaissement deja realise */}
+      {payments.length > 0 && (
+        <div className="bg-warning-soft border border-warning rounded-xl p-3 space-y-1.5">
+          <p className="text-warning text-xs font-semibold">⚠ ENCAISSEMENT DÉJÀ RÉALISÉ</p>
+          {payments.map(p => (
+            <p key={p.id} className="text-warning text-xs">
+              {Number(p.amount).toFixed(2)} € {p.payment_mode} reçu par {driverName(p.driver_id)} le {fmtDateTime(p.created_at)}
+            </p>
+          ))}
+          {payments.length > 1 && (
+            <p className="text-warning text-xs font-bold pt-1 border-t border-warning/30">
+              Total : {totalCollected.toFixed(2)} €
+            </p>
+          )}
+          <p className="text-warning text-xs italic">→ Facture à émettre comme acompte / soldée</p>
+        </div>
+      )}
+
+      {/* Actions par fiche */}
+      {isReady && (
+        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onValidate}
+            className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+          >
+            {busy ? '⏳…' : '✓ Facturation OK'}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onAuto}
+            className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink rounded-xl text-sm font-semibold transition"
+          >
+            {busy ? '⏳…' : '⚡ Autofacturation'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function FacturerModal({
+  mission, siblings, payments, driverName, onClose, onUpdated,
+}: Props) {
+  const [busy, setBusy]               = useState(false)
+  const [error, setError]             = useState<string | null>(null)
+  const [numberPrompt, setNumberPrompt] = useState<{ ids: string[]; label: string } | null>(null)
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+
+  // Bloque le scroll de fond + ferme sur Escape
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  // Toutes les fiches a afficher (mission principale + siblings, dédupliquées)
+  const all = [mission, ...siblings.filter(s => s.id !== mission.id)]
+  // Tri logique : REM avant REL (parent avant enfants)
+  all.sort((a, b) => {
+    const aIsParent = !a.parent_mission_id
+    const bIsParent = !b.parent_mission_id
+    if (aIsParent && !bIsParent) return -1
+    if (!aIsParent && bIsParent) return 1
+    return (a.received_at || '').localeCompare(b.received_at || '')
+  })
+
+  const readyIds = all.filter(m => m.status === 'to_invoice').map(m => m.id)
+  const totalKmChainHint = ''  // optionnel : on pourrait sommer mais on a deja km par fiche
+
+  async function submit(method: 'manual' | 'auto', ids: string[], number?: string) {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/missions/invoice', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_ids: ids, method, invoice_number: number || undefined }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        setError(j.error || `Erreur ${res.status}`)
+        setBusy(false)
+        return
+      }
+      onUpdated(j.updated || [])
+      setNumberPrompt(null)
+      setInvoiceNumber('')
+      // si plus rien a facturer, on ferme. Sinon on garde le modal ouvert pour
+      // continuer (cas chaine REM+REL ou l'employe fait l'un puis l'autre).
+      const remaining = all.filter(m => !ids.includes(m.id)).filter(m => m.status === 'to_invoice')
+      if (remaining.length === 0) onClose()
+    } catch (e: any) {
+      setError(e.message || 'Erreur réseau')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function askNumber(ids: string[], label: string) {
+    setNumberPrompt({ ids, label })
+    setInvoiceNumber('')
+  }
+
+  function confirmNumber() {
+    if (!numberPrompt) return
+    const n = invoiceNumber.trim()
+    if (!n) { setError('Numéro de facture obligatoire'); return }
+    submit('manual', numberPrompt.ids, n)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+         onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-surface w-full sm:max-w-2xl sm:rounded-2xl sm:my-8 sm:max-h-[90vh] flex flex-col overflow-hidden border border"
+      >
+
+        {/* Header */}
+        <div className="px-5 py-4 border-b flex items-center justify-between flex-shrink-0 bg-surface">
+          <div>
+            <p className="text-ink-muted text-xs uppercase tracking-wide">{fmtSource(mission.source)}</p>
+            <h2 className="text-ink font-semibold text-base">Facturer — {mission.external_id || mission.dossier_number || mission.id.slice(0,8)}</h2>
+          </div>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink text-2xl leading-none px-2">✕</button>
+        </div>
+
+        {/* Body scroll */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          {/* Infos communes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            <div>
+              <p className="text-ink-muted text-xs">Client</p>
+              <p className="text-ink"><Copyable value={mission.client_name || '—'} /></p>
+            </div>
+            {mission.client_phone && (
+              <div>
+                <p className="text-ink-muted text-xs">Téléphone</p>
+                <p className="text-ink"><Copyable value={mission.client_phone} mono /></p>
+              </div>
+            )}
+            <div>
+              <p className="text-ink-muted text-xs">Plaque</p>
+              <p className="text-ink"><Copyable value={mission.vehicle_plate || '—'} mono /></p>
+            </div>
+            <div>
+              <p className="text-ink-muted text-xs">Véhicule</p>
+              <p className="text-ink"><Copyable value={[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ') || '—'} /></p>
+            </div>
+            {mission.vehicle_vin && (
+              <div className="sm:col-span-2">
+                <p className="text-ink-muted text-xs">VIN</p>
+                <p className="text-ink"><Copyable value={mission.vehicle_vin} mono /></p>
+              </div>
+            )}
+          </div>
+
+          {/* Blocks par fiche */}
+          <div className="space-y-3">
+            {all.map(m => (
+              <MissionBlock
+                key={m.id}
+                m={m}
+                payments={m.id === mission.id ? payments : []}
+                driverName={driverName}
+                busy={busy}
+                onValidate={() => askNumber([m.id], m.external_id || m.id.slice(0,8))}
+                onAuto={() => submit('auto', [m.id])}
+              />
+            ))}
+          </div>
+
+          {/* Actions chaine */}
+          {readyIds.length >= 2 && (
+            <div className="bg-purple-600/10 border border-purple-600/30 rounded-2xl p-4 space-y-2">
+              <p className="text-ink-muted text-xs uppercase tracking-wide">Actions chaîne ({readyIds.length} fiches)</p>
+              <p className="text-ink-secondary text-xs">
+                Touring (et compagnies similaires) facturent souvent REM + REL ensemble avec 1 seul numéro.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => askNumber(readyIds, 'chaîne complète')}
+                  className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+                >
+                  ✓ Tout facturer OK (1 n°)
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => submit('auto', readyIds)}
+                  className="flex-1 py-2.5 bg-surface hover:bg-surface-hover disabled:opacity-50 border text-ink rounded-xl text-sm font-semibold transition"
+                >
+                  ⚡ Tout autofacturer
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-critical-soft border border-critical rounded-xl p-3">
+              <p className="text-critical text-sm">⚠ {error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sub-modal : saisie numero facture */}
+      {numberPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4"
+             onClick={() => { if (!busy) setNumberPrompt(null) }}>
+          <div onClick={e => e.stopPropagation()}
+               className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
+            <div>
+              <h3 className="text-ink font-semibold text-base">Numéro de facture Odoo</h3>
+              <p className="text-ink-muted text-xs mt-1">Pour {numberPrompt.label}</p>
+            </div>
+            <input
+              autoFocus
+              value={invoiceNumber}
+              onChange={e => setInvoiceNumber(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirmNumber() }}
+              placeholder="ex: INV/2026/00123"
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint font-mono"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setNumberPrompt(null)}
+                className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-xl text-sm transition"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={busy || !invoiceNumber.trim()}
+                onClick={confirmNumber}
+                className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+              >
+                {busy ? '⏳…' : 'Valider'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

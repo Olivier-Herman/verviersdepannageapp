@@ -85,6 +85,10 @@ interface Mission {
   assisted_name: string | null
   assisted_phone: string | null
   extra_addresses: Stop[] | null
+  invoice_method?: 'manual' | 'auto' | null
+  invoice_number?: string | null
+  invoice_url?:    string | null
+  invoiced_at?:    string | null
 }
 
 interface Stop {
@@ -1494,8 +1498,8 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Compte rendu clôture */}
-              {initialMission.status === 'completed' && (
+              {/* Compte rendu cloture — visible des que le chauffeur a fini (to_invoice) */}
+              {(initialMission.status === 'completed' || initialMission.status === 'to_invoice') && (
                 <div className="bg-surface border border-success rounded-2xl p-5">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>🏁</span> Compte rendu de mission
@@ -1574,6 +1578,43 @@ export default function MissionDetailClient({
                       )
                     })()}
                   </div>
+                </div>
+              )}
+
+              {/* Encart facturation — visible des to_invoice ou completed */}
+              {(initialMission.status === 'to_invoice' || initialMission.status === 'completed') && (
+                <div className="bg-surface border rounded-2xl p-5">
+                  <h2 className="text-ink font-semibold text-sm mb-3 flex items-center gap-2">
+                    <span>🧾</span> Facturation
+                  </h2>
+                  {initialMission.status === 'to_invoice' ? (
+                    <div className="bg-warning-soft border border-warning rounded-xl p-3">
+                      <p className="text-warning text-sm font-semibold">⏳ En attente de validation facturation</p>
+                      <p className="text-warning text-xs mt-1">À traiter depuis la page <a href="/facturation" className="underline">Facturation</a>.</p>
+                    </div>
+                  ) : initialMission.invoice_method === 'auto' ? (
+                    <div className="bg-success-soft border border-success rounded-xl p-3">
+                      <p className="text-success text-sm font-semibold">⚡ Auto-facturée</p>
+                      <p className="text-ink-muted text-xs mt-1">Validation directe dans le système assisteur.</p>
+                    </div>
+                  ) : initialMission.invoice_number ? (
+                    <div className="bg-success-soft border border-success rounded-xl p-3 space-y-2">
+                      <p className="text-success text-sm font-semibold">✓ Facturée</p>
+                      <p className="text-ink-secondary text-sm">
+                        N° : <span className="font-mono text-ink">{initialMission.invoice_number}</span>
+                      </p>
+                      {initialMission.invoice_url ? (
+                        <a href={initialMission.invoice_url} target="_blank" rel="noreferrer"
+                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-info hover:bg-info-hover text-white rounded-lg text-xs font-semibold transition">
+                          📄 Voir la facture
+                        </a>
+                      ) : (
+                        <p className="text-ink-muted text-xs italic">Lien Odoo en cours de résolution (cron)…</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-ink-muted text-sm">Statut terminé sans données facturation.</p>
+                  )}
                 </div>
               )}
 

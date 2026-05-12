@@ -31,12 +31,14 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   // REM : chargement du véhicule sur le camion. Déclenche le passage au statut
   // 'delivering' (= en route vers destination) et l'état fleet "Chargé sur camion".
   load_vehicle:     { status: 'delivering',  timestampField: 'loaded_at',     logMessage: 'Véhicule chargé sur le camion' },
-  completed:        { status: 'completed',   timestampField: 'completed_at',  logMessage: 'Mission terminée' },
+  // completed / complete_delivery : mission cloturee cote chauffeur, en attente
+  // validation par l'employe facturation (statut 'to_invoice').
+  completed:        { status: 'to_invoice',  timestampField: 'completed_at',  logMessage: 'Mission terminée — à facturer' },
   park:             { status: 'parked',      timestampField: 'parked_at',     logMessage: 'Véhicule mis en dépôt' },
   start_delivery:   { status: 'delivering',  timestampField: 'delivering_at', logMessage: 'Livraisons en cours' },
   arrive_stop:      {                                                          logMessage: 'Arrivée à un stop' },
   depart_stop:      {                                                          logMessage: 'En route vers un stop' },
-  complete_delivery:{ status: 'completed',   timestampField: 'completed_at',  logMessage: 'Livraisons terminées' },
+  complete_delivery:{ status: 'to_invoice',  timestampField: 'completed_at',  logMessage: 'Livraisons terminées — à facturer' },
   change_type:      {                                                          logMessage: 'Type de mission modifié' },
   save_photos:      {                                                          logMessage: 'Photos sauvegardées' },
   update_address:   {                                                          logMessage: 'Adresse modifiée' },

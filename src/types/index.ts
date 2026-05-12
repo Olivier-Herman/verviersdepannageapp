@@ -6,6 +6,8 @@ export type UserRole = 'driver' | 'dispatcher' | 'admin' | 'superadmin'
 
 export type ModuleId =
   | 'encaissement'
+  | 'encaissements'
+  | 'caisse'
   | 'depose'
   | 'depannage'
   | 'fourriere'
@@ -15,6 +17,9 @@ export type ModuleId =
   | 'documents'
   | 'check_vehicle'
   | 'missions'
+  | 'driver_missions'
+  | 'relances'
+  | 'facturation'
   | 'admin'
 
 export interface Module {
@@ -246,6 +251,9 @@ export type MissionStatus =
   | 'assigned'
   | 'accepted'
   | 'in_progress'
+  | 'delivering'
+  | 'parked'
+  | 'to_invoice'
   | 'completed'
   | 'cancelled'
   | 'ignored'
@@ -316,6 +324,14 @@ export interface IncomingMission {
   raw_content: string | null
   parsed_data: Record<string, unknown> | null
   parse_confidence: number | null
+
+  invoice_method: 'manual' | 'auto' | null
+  invoice_number: string | null
+  invoice_odoo_id: number | null
+  invoice_url: string | null
+  invoiced_at: string | null
+  invoiced_by: string | null
+  invoice_notes: string | null
 
   created_at: string
   updated_at: string
