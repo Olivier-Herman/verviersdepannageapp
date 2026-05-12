@@ -85,7 +85,6 @@ interface MinimalMission {
   client_name:    string | null
   mission_type:   string | null
   incident_type:  string | null
-  is_police_call?: boolean | null
   parent_mission_id?: string | null
 }
 
@@ -105,14 +104,15 @@ function normalizeKey(s: string): string {
 /**
  * Detecte le client_key applicable a une mission :
  *   1. mission.source normalise matche une key active dans surcharge_clients → ce client
- *   2. mission.is_police_call = true → 'accident_police'
- *   3. sinon → 'snc'
+ *   2. sinon → 'snc' (fallback hors-contrat)
+ *
+ * Le cas "Appel Police - Accident" doit etre encode comme une source mission
+ * normale (cle 'appel_police_accident') liee a un partenaire Odoo via
+ * mission_sources, ou choisie au moment de la creation manuelle.
  */
 async function resolveClientKey(mission: MinimalMission, activeKeys: Set<string>): Promise<string> {
   const source = normalizeKey(mission.source || '')
   if (source && activeKeys.has(source)) return source
-
-  if (mission.is_police_call === true) return 'accident_police'
 
   return 'snc'
 }

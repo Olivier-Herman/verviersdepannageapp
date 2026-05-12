@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const { data: mission, error } = await sb
     .from('incoming_missions')
-    .select('source, client_name, mission_type, incident_type, parent_mission_id, is_police_call, completed_at, intervention_date, received_at')
+    .select('source, client_name, mission_type, incident_type, parent_mission_id, completed_at, intervention_date, received_at')
     .eq('id', params.id)
     .maybeSingle()
   if (error)    return NextResponse.json({ error: error.message }, { status: 500 })

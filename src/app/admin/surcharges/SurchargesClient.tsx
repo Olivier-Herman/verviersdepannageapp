@@ -109,8 +109,7 @@ export default function SurchargesClient({
         <AlertCircle className="text-info flex-shrink-0 mt-0.5" size={16} />
         <p className="text-ink-secondary text-xs leading-relaxed">
           La détection en facturation : si la source de la mission correspond à un client listé ici, sa grille s'applique.
-          Sinon, si la mission est cochée <strong>"Appel police"</strong>, la grille <em>Accident Police</em> s'applique.
-          Sinon <em>SNC</em>. Les jours fériés belges utilisent automatiquement la colonne <strong>Dim/Férié</strong>.
+          Sinon → grille <em>SNC</em>. Les jours fériés belges utilisent automatiquement la colonne <strong>Dim/Férié</strong>.
         </p>
       </div>
 

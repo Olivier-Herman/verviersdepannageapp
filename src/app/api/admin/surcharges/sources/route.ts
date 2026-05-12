@@ -15,6 +15,24 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+// Sources canoniques connues du systeme (liste centralisee — doit rester
+// alignee avec SOURCE_LABELS dans DispatchClient.tsx). Permet de proposer
+// VAB, Ethias, etc. dans le picker meme si on n'a pas encore recu de
+// mission historique de cette source.
+const KNOWN_SOURCES: Record<string, string> = {
+  touring:                 'Touring',
+  allianz:                 'Allianz',
+  ethias:                  'Ethias',
+  vivium:                  'Vivium',
+  axa:                     'AXA',
+  ardenne:                 'Ardenne Assistance',
+  mondial:                 'Mondial Assistance',
+  vab:                     'VAB',
+  appel_police_accident:   'Appel Police - Accident',
+  prive:                   'Privé',
+  garage:                  'Garage',
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -55,9 +73,10 @@ export async function GET() {
     .select('key')
   const existingSet = new Set((existing || []).map(c => c.key))
 
-  // Resultat : toutes les sources connues (missions ∪ mappings), excluant
-  // celles deja dans surcharge_clients
+  // Resultat : sources connues canoniques + celles trouvees dans missions
+  // + celles trouvees dans mission_sources, excluant celles deja dans surcharge_clients
   const allSources = new Set<string>([
+    ...Object.keys(KNOWN_SOURCES),
     ...counts.keys(),
     ...mappingMap.keys(),
   ])
@@ -66,7 +85,7 @@ export async function GET() {
     .filter(s => !existingSet.has(s))
     .map(source => ({
       source,
-      label:           mappingMap.get(source)?.label || capitalize(source),
+      label:           mappingMap.get(source)?.label || KNOWN_SOURCES[source] || capitalize(source),
       odoo_partner_id: mappingMap.get(source)?.odoo_partner_id || null,
       mission_count:   counts.get(source) || 0,
     }))

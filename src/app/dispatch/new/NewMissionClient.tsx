@@ -330,7 +330,6 @@ export default function NewMissionClient({
   const [remarksGeneral,  setRemarksGeneral]  = useState('')
   const [remarksBilling,  setRemarksBilling]  = useState('')
   const [amountToCollect, setAmountToCollect] = useState('')
-  const [isPoliceCall,    setIsPoliceCall]    = useState(false)
 
   // ── Soumission ────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false)
@@ -487,7 +486,6 @@ export default function NewMissionClient({
           destinations,
           warnings:        warningLabels,
           amount_to_collect: amountToCollect ? parseFloat(amountToCollect) : null,
-          is_police_call:    isPoliceCall,
           remarks_general:   remarksGeneral,
           remarks_billing:   remarksBilling,
           rdv_at:          rdvAt,
@@ -812,37 +810,23 @@ export default function NewMissionClient({
                 </div>
               )}
 
-              {/* 8. Paiement à réclamer + Appel police */}
-              <div className="bg-surface borderrounded-2xl p-5 space-y-4">
-                <div>
-                  <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                    <span>💳</span> Paiement à réclamer au client
-                  </h2>
-                  <p className="text-ink-muted text-xs mb-3">Laisser vide si facturation directe à l'assurance</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={amountToCollect}
-                      onChange={e => setAmountToCollect(e.target.value)}
-                      placeholder="0.00"
-                      className="w-40 bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
-                    />
-                    <span className="text-ink-muted text-sm">€</span>
-                  </div>
-                </div>
-                <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface-2 border rounded-xl hover:bg-surface-hover transition">
+              {/* 8. Paiement à réclamer */}
+              <div className="bg-surface borderrounded-2xl p-5">
+                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
+                  <span>💳</span> Paiement à réclamer au client
+                </h2>
+                <p className="text-ink-muted text-xs mb-3">Laisser vide si facturation directe à l'assurance</p>
+                <div className="flex items-center gap-2">
                   <input
-                    type="checkbox"
-                    checked={isPoliceCall}
-                    onChange={e => setIsPoliceCall(e.target.checked)}
-                    className="mt-0.5"
+                    type="number"
+                    inputMode="decimal"
+                    value={amountToCollect}
+                    onChange={e => setAmountToCollect(e.target.value)}
+                    placeholder="0.00"
+                    className="w-40 bg-surface borderrounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
                   />
-                  <div>
-                    <p className="text-ink text-sm font-medium">🚓 Appel police</p>
-                    <p className="text-ink-muted text-xs">Cocher si la mission provient d'un appel police (Police zone Vesdre, Police fagnes...). Détermine la grille de majoration en facturation.</p>
-                  </div>
-                </label>
+                  <span className="text-ink-muted text-sm">€</span>
+                </div>
               </div>
 
               {/* 9. Remarques */}
