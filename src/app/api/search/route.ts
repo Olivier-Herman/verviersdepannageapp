@@ -13,6 +13,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { FOURRIERE_ZONE_BY_ID } from '@/lib/fourriere'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
@@ -360,7 +361,7 @@ export async function GET(req: Request) {
         ['vin_sn',        'ilike', odooQ],
       ]
       const vehicles = await odooCall<any[]>('fleet.vehicle', 'search_read', [domain], {
-        fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id'],
+        fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id'],
         limit:  PER_CATEGORY_LIMIT,
         order:  'license_plate asc',
       })
@@ -377,12 +378,17 @@ export async function GET(req: Request) {
       for (const v of vehicles || []) {
         const brand = v.brand_id?.[1] || ''
         const model = v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : ''
+        const stateId = v.state_id?.[0]
+        const fourriereZone = stateId ? FOURRIERE_ZONE_BY_ID[stateId] : null
+        const fourrierePrefix = fourriereZone ? `🚓 ${fourriereZone.label} · ` : ''
         out.push({
           category: 'vehicle',
           id:       String(v.id),
-          title:    `${v.license_plate || '—'} · ${brand} ${model}`.trim(),
+          title:    `${fourrierePrefix}${v.license_plate || '—'} · ${brand} ${model}`.trim(),
           subtitle: v.vin_sn ? `VIN ${v.vin_sn}` : '',
-          meta:     `Fiche Odoo (factures, ticket assistance, Towsoft)`,
+          meta:     fourriereZone
+            ? `EN FOURRIÈRE · ${fourriereZone.full_name}`
+            : `Fiche Odoo (factures, ticket assistance, Towsoft)`,
           href:     `${ODOO_URL}/web#id=${v.id}&model=fleet.vehicle&view_type=form`,
         })
       }

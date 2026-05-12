@@ -22,6 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/finance',       label: 'Finance',          icon: '💵', moduleId: 'finance' },
   { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔍', moduleId: 'check_vehicle' },
+  { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
   { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
   { href: '/facturation',   label: 'Facturation',      icon: '🧾', moduleId: 'facturation' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
