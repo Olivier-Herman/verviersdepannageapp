@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Plus, Trash2, X, AlertCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Plus, Trash2, X, AlertCircle, Search } from 'lucide-react'
 
 interface Client {
   key: string
@@ -367,28 +367,58 @@ function EditCellPanel({
   )
 }
 
-function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [label, setLabel] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+interface OdooPartner {
+  id: number
+  name: string
+  city?: string | null
+  vat?: string | null
+}
 
-  const autoKey = label.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [query, setQuery]     = useState('')
+  const [results, setResults] = useState<OdooPartner[]>([])
+  const [picked, setPicked]   = useState<OdooPartner | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+  const debounceRef = useRef<any>(null)
+
+  useEffect(() => {
+    if (picked) return
+    clearTimeout(debounceRef.current)
+    if (query.trim().length < 3) { setResults([]); return }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const res = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(query.trim())}`)
+        const j = await res.json()
+        setResults(j.clients || [])
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 250)
+  }, [query, picked])
 
   async function save() {
-    const trimmed = label.trim()
-    if (!trimmed) { setError('Nom du client requis'); return }
-    if (!autoKey) { setError('Nom invalide (caracteres speciaux uniquement)'); return }
-
+    if (!picked) { setError('Sélectionne un client Odoo'); return }
     setSaving(true); setError(null)
     try {
       const res = await fetch('/api/admin/surcharges/client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: autoKey, label: trimmed, kind: 'assistance' }),
+        body: JSON.stringify({
+          odoo_partner_id: picked.id,
+          label:           picked.name,
+          kind:            'assistance',
+        }),
       })
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
       onSaved()
+    } catch (e: any) {
+      setError(e.message || 'Erreur réseau')
     } finally {
       setSaving(false)
     }
@@ -398,28 +428,74 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
         <h3 className="text-ink font-semibold">Ajouter un client d'assistance</h3>
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Nom du client</label>
-          <input
-            value={label}
-            onChange={e => { setLabel(e.target.value); setError(null) }}
-            onKeyDown={e => { if (e.key === 'Enter') save() }}
-            placeholder="Ex: Touring"
-            autoFocus
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm"
-          />
-          <p className="text-ink-muted text-xs mt-1">
-            Doit correspondre au nom de la source dans les missions (insensible aux majuscules/espaces).
-          </p>
-        </div>
+
+        {!picked ? (
+          <>
+            <div>
+              <label className="block text-ink-muted text-xs mb-1">Rechercher dans Odoo</label>
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                <input
+                  value={query}
+                  onChange={e => { setQuery(e.target.value); setError(null) }}
+                  placeholder="Nom du client (min. 3 caractères)..."
+                  autoFocus
+                  className="w-full bg-surface-2 border rounded-xl pl-9 pr-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                />
+              </div>
+              <p className="text-ink-muted text-xs mt-1">
+                Le client doit exister dans Odoo (res.partner). Le nom servira de libellé.
+              </p>
+            </div>
+            <div className="border rounded-xl max-h-60 overflow-y-auto bg-surface-2">
+              {searching ? (
+                <p className="text-ink-muted text-xs text-center py-4">⏳ Recherche…</p>
+              ) : results.length === 0 && query.trim().length >= 3 ? (
+                <p className="text-ink-muted text-xs text-center py-4">Aucun résultat</p>
+              ) : results.length === 0 ? (
+                <p className="text-ink-faint text-xs text-center py-4">Tape au moins 3 caractères</p>
+              ) : (
+                <ul>
+                  {results.map(r => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        onClick={() => setPicked(r)}
+                        className="w-full text-left px-3 py-2 hover:bg-surface-hover transition border-b last:border-b-0"
+                      >
+                        <p className="text-ink text-sm font-medium truncate">{r.name}</p>
+                        <p className="text-ink-muted text-xs truncate">
+                          {[r.city, r.vat].filter(Boolean).join(' · ') || `Odoo #${r.id}`}
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="bg-success-soft border border-success rounded-xl p-3">
+            <p className="text-ink-muted text-xs">Client Odoo sélectionné</p>
+            <p className="text-success font-semibold text-sm">{picked.name}</p>
+            <p className="text-ink-muted text-xs">
+              {[picked.city, picked.vat].filter(Boolean).join(' · ') || `Odoo #${picked.id}`}
+            </p>
+            <button onClick={() => { setPicked(null); setError(null) }} className="text-xs text-brand hover:underline mt-2">
+              Changer
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="bg-critical-soft border border-critical rounded-lg p-2 text-critical text-xs">⚠ {error}</div>
         )}
+
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} disabled={saving} className="flex-1 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-xl text-sm transition">
             Annuler
           </button>
-          <button onClick={save} disabled={saving || !label.trim()} className="flex-1 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
+          <button onClick={save} disabled={saving || !picked} className="flex-1 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
             {saving ? '⏳…' : 'Créer'}
           </button>
         </div>
