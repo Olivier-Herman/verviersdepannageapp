@@ -37,6 +37,7 @@ export async function GET(req: Request) {
       status, dispatch_mode,
       assigned_to, assigned_at, accepted_at,
       parse_confidence,
+      invoice_method, invoice_number,
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
     .order(sortField, { ascending: false, nullsFirst: false })
@@ -64,7 +65,10 @@ export async function GET(req: Request) {
   } else if (status === 'parked') {
     query = query.in('status', ['parked', 'delivering'])
   } else if (status === 'completed') {
-    query = query.eq('status', 'completed')
+    // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
+    // chauffeur, en attente de validation employe facturation. Le tampon
+    // sur la card distingue visuellement le sous-statut facturation.
+    query = query.in('status', ['completed', 'to_invoice'])
   } else if (status === 'all') {
     query = query.not('status', 'in', '("parse_error","ignored")')
   }
@@ -89,7 +93,7 @@ export async function GET(req: Request) {
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => m.status === 'in_progress').length || 0,
     parked:      counts?.filter(m => ['parked','delivering'].includes(m.status)).length || 0,
-    completed:   counts?.filter(m => m.status === 'completed').length   || 0,
+    completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }
 

@@ -43,6 +43,8 @@ interface Mission {
   parse_confidence: number | null
   assigned_user: { id: string; name: string } | null
   warnings?: string[] | null
+  invoice_method?: 'manual' | 'auto' | null
+  invoice_number?: string | null
 }
 
 interface Driver {
@@ -409,6 +411,34 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
 
 // ── Vue CARTE — MissionCard ───────────────────────────────────────────────────
 
+// Tampon style "DOSSIER CLASSE" affiche en diagonale sur les cards Terminees.
+// Distingue visuellement le sous-statut facturation : to_invoice (a faire),
+// auto (auto-facturee), ou facturee avec numero.
+function InvoiceStamp({ mission }: { mission: Mission }) {
+  const isToInvoice = mission.status === 'to_invoice'
+  const isAuto      = mission.status === 'completed' && mission.invoice_method === 'auto'
+  const hasNumber   = mission.status === 'completed' && mission.invoice_method === 'manual' && !!mission.invoice_number
+
+  if (!isToInvoice && !isAuto && !hasNumber) return null
+
+  const { label, color } = isToInvoice
+    ? { label: 'A FACTURER',      color: 'text-amber-500 border-amber-500' }
+    : isAuto
+      ? { label: 'AUTOFACTUREE',  color: 'text-purple-500 border-purple-500' }
+      : { label: mission.invoice_number || 'FACTUREE', color: 'text-green-600 border-green-600' }
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden rounded-2xl">
+      <div
+        className={`px-4 py-1.5 border-[3px] rounded-md font-black tracking-widest text-base sm:text-lg uppercase bg-surface/30 backdrop-blur-[1px] ${color}`}
+        style={{ transform: 'rotate(-14deg)', letterSpacing: '0.15em' }}
+      >
+        {label}
+      </div>
+    </div>
+  )
+}
+
 function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChange }: {
   mission:        Mission
   drivers:        Driver[]
@@ -423,8 +453,9 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
   return (
     <div
       onClick={() => router.push(`/dispatch/${mission.id}`)}
-      className={`bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all ${URGENCY_BORDER[delai.urgency]}`}
+      className={`relative bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all ${URGENCY_BORDER[delai.urgency]}`}
     >
+      <InvoiceStamp mission={mission} />
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
