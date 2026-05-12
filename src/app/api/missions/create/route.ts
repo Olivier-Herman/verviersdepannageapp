@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       // Remarques
       remarks_general:      body.remarks_general,
       remarks_billing:      body.remarks_billing,
+      is_police_call:       body.is_police_call === true,
       // RDV
       rdv_at:               body.rdv_at               || null,
       incident_at:          body.rdv_at               || now,

@@ -48,6 +48,17 @@ interface Props {
 
 interface KmData { total_km: number; segments: Array<{ label: string; km: number | null }>; error?: string | null }
 
+interface SurchargeData {
+  surcharges: Array<{
+    client_label: string
+    weekday_label: string
+    hour_start: number
+    hour_end: number
+    rate_pct: number
+    range_label: string
+  }>
+}
+
 function fmtDateTime(d: string | null): string {
   if (!d) return '—'
   return new Date(d).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -117,6 +128,7 @@ function MissionBlock({
 }) {
   const [km, setKm] = useState<KmData | null>(null)
   const [kmLoading, setKmLoading] = useState(true)
+  const [surcharges, setSurcharges] = useState<SurchargeData | null>(null)
   const kind = missionKind(m)
   const isReady = m.status === 'to_invoice'
 
@@ -128,6 +140,10 @@ function MissionBlock({
       .then(d => { if (!cancelled) setKm(d) })
       .catch(() => {})
       .finally(() => { if (!cancelled) setKmLoading(false) })
+    fetch(`/api/missions/${m.id}/surcharges`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setSurcharges(d) })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [m.id])
 
@@ -191,6 +207,23 @@ function MissionBlock({
             ))}
           </ul>
         </details>
+      )}
+
+      {/* Majoration tarif applicable (info — l'employe applique manuellement dans Odoo) */}
+      {surcharges && surcharges.surcharges.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 space-y-1.5">
+          <p className="text-amber-500 text-xs font-semibold">⚠ MAJORATION TARIF À APPLIQUER</p>
+          {surcharges.surcharges.map((s, i) => (
+            <p key={i} className="text-amber-500 text-xs">
+              • {s.client_label} · {s.weekday_label} {s.range_label} : <strong>+{s.rate_pct}%</strong>
+            </p>
+          ))}
+          {surcharges.surcharges.length > 1 && (
+            <p className="text-amber-500 text-xs italic pt-1 border-t border-amber-500/30">
+              Cumul à appliquer manuellement selon contrat
+            </p>
+          )}
+        </div>
       )}
 
       {/* Warning encaissement deja realise */}

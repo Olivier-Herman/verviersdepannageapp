@@ -333,6 +333,8 @@ export interface IncomingMission {
   invoiced_by: string | null
   invoice_notes: string | null
 
+  is_police_call: boolean | null
+
   created_at: string
   updated_at: string
 
