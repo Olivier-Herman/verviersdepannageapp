@@ -42,7 +42,7 @@ async function odooCall<T = any>(model: string, method: string, args: any[] = []
 const PER_CATEGORY_LIMIT = 8
 
 interface SearchResult {
-  category:     'mission' | 'encaissement' | 'avance' | 'driver' | 'user' | 'vehicle'
+  category:     'mission' | 'encaissement' | 'avance' | 'invoice' | 'driver' | 'user' | 'vehicle'
   id:           string
   title:        string
   subtitle:     string
