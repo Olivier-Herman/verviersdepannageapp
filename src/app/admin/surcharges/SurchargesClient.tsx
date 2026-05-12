@@ -137,12 +137,7 @@ export default function SurchargesClient({
             ) : visibleClients.map(c => (
               <tr key={c.key} className="border-b last:border-b-0 hover:bg-surface-hover">
                 <td className="px-3 py-2 sticky left-0 bg-surface z-10 group">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-ink font-medium text-sm truncate">{c.label}</p>
-                      <p className="text-ink-muted text-xs font-mono truncate">{c.key}</p>
-                    </div>
-                  </div>
+                  <p className="text-ink font-medium text-sm truncate">{c.label}</p>
                 </td>
                 {WEEKDAYS.map(d => {
                   const cellSchedules = schedulesByCell.get(`${c.key}:${d.n}`) || []
@@ -373,22 +368,23 @@ function EditCellPanel({
 }
 
 function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [key, setKey]     = useState('')
   const [label, setLabel] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const autoKey = label.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+
   async function save() {
-    if (!label.trim()) { setError('Libellé requis'); return }
-    const finalKey = (key || label).toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-    if (!finalKey) { setError('Clé invalide'); return }
+    const trimmed = label.trim()
+    if (!trimmed) { setError('Nom du client requis'); return }
+    if (!autoKey) { setError('Nom invalide (caracteres speciaux uniquement)'); return }
 
     setSaving(true); setError(null)
     try {
       const res = await fetch('/api/admin/surcharges/client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: finalKey, label: label.trim(), kind: 'assistance' }),
+        body: JSON.stringify({ key: autoKey, label: trimmed, kind: 'assistance' }),
       })
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
@@ -398,32 +394,22 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     }
   }
 
-  const previewKey = (key || label).toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
         <h3 className="text-ink font-semibold">Ajouter un client d'assistance</h3>
         <div>
-          <label className="block text-ink-muted text-xs mb-1">Libellé affiché</label>
+          <label className="block text-ink-muted text-xs mb-1">Nom du client</label>
           <input
             value={label}
-            onChange={e => setLabel(e.target.value)}
+            onChange={e => { setLabel(e.target.value); setError(null) }}
+            onKeyDown={e => { if (e.key === 'Enter') save() }}
             placeholder="Ex: Touring"
             autoFocus
             className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm"
           />
-        </div>
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Clé technique (optionnel)</label>
-          <input
-            value={key}
-            onChange={e => setKey(e.target.value)}
-            placeholder={previewKey || 'généré depuis le libellé'}
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono"
-          />
           <p className="text-ink-muted text-xs mt-1">
-            Doit matcher exactement la valeur de <code className="font-mono">mission.source</code>. Auto-générée si vide : <span className="font-mono text-ink-secondary">{previewKey || '—'}</span>
+            Doit correspondre au nom de la source dans les missions (insensible aux majuscules/espaces).
           </p>
         </div>
         {error && (

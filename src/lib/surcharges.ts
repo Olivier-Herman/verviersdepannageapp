@@ -97,14 +97,19 @@ function isRemMission(m: MinimalMission): boolean {
   return mt === 'remorquage'
 }
 
+/** Normalise un libelle (label OU source) pour comparaison : minuscules, _ a la place des espaces, caracteres alphanumeriques uniquement. */
+function normalizeKey(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+}
+
 /**
  * Detecte le client_key applicable a une mission :
- *   1. mission.source matche une key active dans surcharge_clients → ce client
+ *   1. mission.source normalise matche une key active dans surcharge_clients → ce client
  *   2. mission.is_police_call = true → 'accident_police'
  *   3. sinon → 'snc'
  */
 async function resolveClientKey(mission: MinimalMission, activeKeys: Set<string>): Promise<string> {
-  const source = (mission.source || '').toLowerCase().trim()
+  const source = normalizeKey(mission.source || '')
   if (source && activeKeys.has(source)) return source
 
   if (mission.is_police_call === true) return 'accident_police'
