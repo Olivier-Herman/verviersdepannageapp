@@ -103,6 +103,11 @@ export async function GET(req: Request) {
   const qRaw = (searchParams.get('q') || '').trim()
   if (qRaw.length < 2) return NextResponse.json({ results: [], categories: {} })
 
+  // Filtre par categories : ?cats=mission,invoice  (vide = toutes)
+  const catsParam = (searchParams.get('cats') || '').trim()
+  const wantedCats = catsParam ? new Set(catsParam.split(',').map(c => c.trim()).filter(Boolean)) : null
+  const wants = (cat: string) => !wantedCats || wantedCats.has(cat)
+
   const q                = qRaw                                  // version brute
   const qLike            = `%${q}%`
   const qPlate           = normalizePlate(q)                     // pour plaques
@@ -112,7 +117,8 @@ export async function GET(req: Request) {
   const out: SearchResult[] = []
 
   // ── Missions ───────────────────────────────────────────────
-  const missionsQuery = sb
+  if (wants('mission')) {
+    const missionsQuery = sb
     .from('incoming_missions')
     .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to')
     .or([
@@ -175,8 +181,10 @@ export async function GET(req: Request) {
       href:     `/dispatch/${m.id}`,
     })
   }
+  } // /wants('mission')
 
   // ── Encaissements (interventions) ──────────────────────────
+  if (wants('encaissement')) {
   const interventionsQuery = sb
     .from('interventions')
     .select('id, plate, brand_text, model_text, client_name, payment_mode, amount, notes, created_at, driver_id, mission_id')
@@ -220,9 +228,10 @@ export async function GET(req: Request) {
       href:     i.mission_id ? `/dispatch/${i.mission_id}` : '/encaissements',
     })
   }
+  } // /wants('encaissement')
 
   // ── Avances de fonds ───────────────────────────────────────
-  {
+  if (wants('avance')) {
     const { data: avancesBase } = await sb
       .from('avance_fonds')
       .select('id, plate, client_name, amount, status, created_at, notes')
@@ -259,10 +268,10 @@ export async function GET(req: Request) {
         href:     '/avance-fonds',
       })
     }
-  }
+  } // /wants('avance')
 
   // ── Dépanneurs / chauffeurs ────────────────────────────────
-  {
+  if (wants('driver')) {
     const { data: drivers } = await sb
       .from('users')
       .select('id, name, email, role, active')
@@ -282,7 +291,7 @@ export async function GET(req: Request) {
   }
 
   // ── Utilisateurs (autres rôles) ────────────────────────────
-  {
+  if (wants('user')) {
     const { data: users } = await sb
       .from('users')
       .select('id, name, email, role, active')
@@ -304,7 +313,7 @@ export async function GET(req: Request) {
   // ── Factures Odoo ──────────────────────────────────────────
   // Cherche dans account.move par numero OU nom partenaire. Best effort
   // (Odoo HS → on log et on continue sans bloquer le reste).
-  if (q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
+  if (wants('invoice') && q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
     try {
       const invoices = await odooCall<any[]>('account.move', 'search_read', [
         [
@@ -343,7 +352,7 @@ export async function GET(req: Request) {
 
   // ── Véhicules Odoo ─────────────────────────────────────────
   // Cherche par plaque normalisee OU VIN (substring). Limite la latence si Odoo HS.
-  if (q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
+  if (wants('vehicle') && q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
     try {
       const odooQ = qPlate.length >= 3 ? qPlate : q.toUpperCase()
       const domain = ['|',

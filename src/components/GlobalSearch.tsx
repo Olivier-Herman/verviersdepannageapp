@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, X, Loader2 } from 'lucide-react'
+import { Search, X, Loader2, Sparkles } from 'lucide-react'
 
 interface SearchResult {
   category: string
@@ -14,32 +14,42 @@ interface SearchResult {
   pdfUrl?:  string
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  mission:      '🚗 Missions',
-  encaissement: '💳 Encaissements',
-  avance:       '📄 Avances de fonds',
-  invoice:      '🧾 Factures Odoo',
-  driver:       '🧑‍🔧 Dépanneurs',
-  user:         '👤 Utilisateurs',
-  vehicle:      '🚘 Véhicules Odoo',
+const CATEGORY_META: Record<string, { label: string; emoji: string; color: string; accent: string }> = {
+  mission:      { label: 'Missions',         emoji: '🚗', color: 'text-info',    accent: 'bg-info/15 border-info/30 text-info' },
+  encaissement: { label: 'Encaissements',    emoji: '💳', color: 'text-success', accent: 'bg-success/15 border-success/30 text-success' },
+  avance:       { label: 'Avances de fonds', emoji: '📄', color: 'text-warning', accent: 'bg-warning/15 border-warning/30 text-warning' },
+  invoice:      { label: 'Factures Odoo',    emoji: '🧾', color: 'text-purple-500', accent: 'bg-purple-500/15 border-purple-500/30 text-purple-500' },
+  driver:       { label: 'Dépanneurs',       emoji: '🧑‍🔧', color: 'text-amber-500',  accent: 'bg-amber-500/15 border-amber-500/30 text-amber-500' },
+  user:         { label: 'Utilisateurs',     emoji: '👤', color: 'text-ink-secondary', accent: 'bg-ink/10 border-ink/20 text-ink-secondary' },
+  vehicle:      { label: 'Véhicules Odoo',   emoji: '🚘', color: 'text-critical', accent: 'bg-critical/15 border-critical/30 text-critical' },
 }
 
 const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'driver', 'user', 'vehicle']
 
 export default function GlobalSearch() {
   const router = useRouter()
-  const [open, setOpen]         = useState(false)
-  const [query, setQuery]       = useState('')
-  const [results, setResults]   = useState<Record<string, SearchResult[]>>({})
-  const [loading, setLoading]   = useState(false)
-  const [total, setTotal]       = useState(0)
-  const [error, setError]       = useState<string | null>(null)
+  const [open, setOpen]           = useState(false)
+  const [query, setQuery]         = useState('')
+  const [results, setResults]     = useState<Record<string, SearchResult[]>>({})
+  const [loading, setLoading]     = useState(false)
+  const [total, setTotal]         = useState(0)
+  const [error, setError]         = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [activeCats, setActiveCats]   = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<any>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Cmd+K / Ctrl+K = ouvrir
+  function toggleCat(cat: string) {
+    setActiveCats(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
+
+  // Cmd+K / Ctrl+K
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -53,19 +63,15 @@ export default function GlobalSearch() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
-  // Lock scroll quand ouvert + focus input
+  // Lock scroll + focus input
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden'
       setTimeout(() => inputRef.current?.focus(), 50)
     } else {
       document.body.style.overflow = ''
-      // Reset content au close
-      setQuery('')
-      setResults({})
-      setTotal(0)
-      setError(null)
-      setActiveIndex(0)
+      setQuery(''); setResults({}); setTotal(0); setError(null)
+      setActiveIndex(0); setActiveCats(new Set())
     }
     return () => { document.body.style.overflow = '' }
   }, [open])
@@ -87,27 +93,21 @@ export default function GlobalSearch() {
       const ctl = new AbortController()
       abortRef.current = ctl
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { signal: ctl.signal })
-        if (!res.ok) {
-          setError('Erreur recherche')
-          setResults({}); setTotal(0)
-          return
-        }
+        const catsParam = activeCats.size > 0 ? `&cats=${Array.from(activeCats).join(',')}` : ''
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}${catsParam}`, { signal: ctl.signal })
+        if (!res.ok) { setError('Erreur recherche'); setResults({}); setTotal(0); return }
         const j = await res.json()
         setResults(j.categories || {})
         setTotal(j.total || 0)
         setActiveIndex(0)
       } catch (e: any) {
-        if (e.name !== 'AbortError') {
-          setError(e.message || 'Erreur réseau')
-        }
+        if (e.name !== 'AbortError') setError(e.message || 'Erreur réseau')
       } finally {
         setLoading(false)
       }
     }, 250)
-  }, [query, open])
+  }, [query, open, activeCats])
 
-  // Liste plate des résultats pour navigation clavier
   const flatResults: SearchResult[] = []
   for (const cat of CATEGORY_ORDER) {
     const items = results[cat]
@@ -142,62 +142,139 @@ export default function GlobalSearch() {
       <button
         onClick={() => setOpen(true)}
         title="Recherche globale (⌘K / Ctrl+K)"
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink transition text-sm"
+        className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand/10 to-purple-500/10 hover:from-brand/20 hover:to-purple-500/20 border border-brand/20 hover:border-brand/40 text-ink-secondary hover:text-ink transition-all text-sm shadow-sm"
       >
-        <Search size={14} />
+        <Search size={14} className="text-brand group-hover:scale-110 transition-transform" />
         <span className="hidden sm:inline">Rechercher</span>
         <kbd className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded bg-surface border text-ink-faint font-mono">⌘K</kbd>
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-2xl rounded-2xl border overflow-hidden shadow-2xl flex flex-col" style={{ maxHeight: '70vh' }}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 bg-black/70 backdrop-blur-md"
+          style={{ animation: 'gs-fade 150ms ease-out' }}
+          onClick={() => setOpen(false)}
+        >
+          <style>{`
+            @keyframes gs-fade { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes gs-slide { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+          `}</style>
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-surface w-full max-w-2xl rounded-2xl border-2 border-brand/30 overflow-hidden shadow-2xl shadow-brand/20 flex flex-col"
+            style={{ maxHeight: '78vh', animation: 'gs-slide 200ms ease-out' }}
+          >
+            {/* Bande accent au top */}
+            <div className="h-1 bg-gradient-to-r from-brand via-purple-500 to-info" />
 
             {/* Champ de recherche */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b">
-              <Search size={18} className="text-ink-muted flex-shrink-0" />
+            <div className="flex items-center gap-3 px-5 py-4 border-b bg-gradient-to-r from-brand/5 to-transparent">
+              <div className="relative flex-shrink-0">
+                <Search size={20} className="text-brand" />
+                {loading && (
+                  <Loader2 size={20} className="absolute inset-0 text-brand animate-spin" />
+                )}
+              </div>
               <input
                 ref={inputRef}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Plaque, VIN, client, adresse, date, dépanneur..."
-                className="flex-1 bg-transparent text-ink text-sm focus:outline-none placeholder:text-ink-faint"
+                className="flex-1 bg-transparent text-ink text-base font-medium focus:outline-none placeholder:text-ink-faint placeholder:font-normal"
               />
-              {loading && <Loader2 size={16} className="text-ink-muted animate-spin flex-shrink-0" />}
-              <button onClick={() => setOpen(false)} className="text-ink-muted hover:text-ink flex-shrink-0">
+              <button onClick={() => setOpen(false)} className="text-ink-muted hover:text-critical hover:rotate-90 transition-all duration-200 flex-shrink-0 p-1">
                 <X size={18} />
               </button>
+            </div>
+
+            {/* Pills filtres */}
+            <div className="flex items-center gap-1.5 px-5 py-2.5 border-b bg-surface-2 overflow-x-auto scrollbar-hide">
+              <span className="text-ink-faint text-xs flex-shrink-0">Filtres :</span>
+              {CATEGORY_ORDER.map(cat => {
+                const meta = CATEGORY_META[cat]
+                const active = activeCats.has(cat)
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => toggleCat(cat)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap flex-shrink-0 ${
+                      active
+                        ? `${meta.accent} border-current shadow-sm scale-105`
+                        : 'border bg-surface text-ink-muted hover:text-ink hover:bg-surface-hover'
+                    }`}
+                  >
+                    <span>{meta.emoji}</span>
+                    <span>{meta.label}</span>
+                  </button>
+                )
+              })}
+              {activeCats.size > 0 && (
+                <button
+                  onClick={() => setActiveCats(new Set())}
+                  className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-critical transition flex-shrink-0"
+                >
+                  Tout effacer
+                </button>
+              )}
             </div>
 
             {/* Résultats */}
             <div className="flex-1 overflow-y-auto">
               {error && (
-                <div className="px-4 py-3 text-critical text-sm">⚠ {error}</div>
-              )}
-              {!loading && query.trim().length >= 2 && total === 0 && !error && (
-                <div className="px-4 py-8 text-center text-ink-muted text-sm">
-                  Aucun résultat pour <span className="font-mono">{query}</span>.
+                <div className="m-4 bg-critical-soft border border-critical rounded-xl p-3 text-critical text-sm">
+                  ⚠ {error}
                 </div>
               )}
+
+              {!loading && query.trim().length >= 2 && total === 0 && !error && (
+                <div className="px-4 py-12 text-center">
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gradient-to-br from-brand/20 to-purple-500/20 flex items-center justify-center text-3xl">
+                    🔍
+                  </div>
+                  <p className="text-ink font-medium mb-1">Aucun résultat</p>
+                  <p className="text-ink-muted text-sm">pour <span className="font-mono bg-surface-2 px-1.5 py-0.5 rounded">{query}</span></p>
+                </div>
+              )}
+
               {query.trim().length < 2 && (
-                <div className="px-4 py-8 text-center text-ink-muted text-sm space-y-2">
-                  <p>Tape au moins 2 caractères.</p>
-                  <p className="text-xs text-ink-faint">
-                    Astuce : tu peux chercher par bout de plaque (<span className="font-mono">abc123</span>),
-                    bout de VIN (<span className="font-mono">WBA</span>),
-                    nom client, adresse, ou date (<span className="font-mono">12/05</span>, <span className="font-mono">2026-05-12</span>).
-                  </p>
+                <div className="px-4 py-10 text-center space-y-3">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-brand/20 via-purple-500/20 to-info/20 flex items-center justify-center text-3xl shadow-lg shadow-brand/10">
+                    <Sparkles className="text-brand" />
+                  </div>
+                  <p className="text-ink font-medium">Recherche globale</p>
+                  <p className="text-ink-muted text-sm">Tape au moins 2 caractères pour commencer.</p>
+                  <div className="max-w-md mx-auto pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-ink-faint">
+                      <span className="text-brand">✦</span>
+                      <span>Plaque tolérante : <span className="font-mono text-ink-secondary">1ABC123</span> = <span className="font-mono text-ink-secondary">1-abc-123</span></span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-ink-faint">
+                      <span className="text-brand">✦</span>
+                      <span>VIN partiel : <span className="font-mono text-ink-secondary">WBA</span> ou <span className="font-mono text-ink-secondary">123XYZ</span></span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-ink-faint">
+                      <span className="text-brand">✦</span>
+                      <span>Date : <span className="font-mono text-ink-secondary">12/05</span>, <span className="font-mono text-ink-secondary">2026-05-12</span></span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-ink-faint">
+                      <span className="text-brand">✦</span>
+                      <span>Filtre par catégorie en cliquant sur les pills ci-dessus</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {CATEGORY_ORDER.map(cat => {
                 const items = results[cat]
                 if (!items || items.length === 0) return null
+                const meta = CATEGORY_META[cat]
                 return (
                   <div key={cat} className="border-b last:border-b-0">
-                    <div className="px-4 py-1.5 bg-surface-2 text-ink-muted text-xs font-medium uppercase tracking-wide">
-                      {CATEGORY_LABELS[cat] || cat} ({items.length})
+                    <div className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-surface-2 to-transparent border-b">
+                      <span className="text-base">{meta.emoji}</span>
+                      <span className={`text-xs font-bold uppercase tracking-wide ${meta.color}`}>{meta.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${meta.accent} font-medium border`}>{items.length}</span>
                     </div>
                     <ul>
                       {items.map(r => {
@@ -207,20 +284,20 @@ export default function GlobalSearch() {
                           <li key={`${r.category}-${r.id}`}>
                             <div
                               onMouseEnter={() => setActiveIndex(idx)}
-                              className={`flex items-stretch transition border-l-2 ${
-                                isActive ? 'bg-brand/10 border-l-brand' : 'border-l-transparent hover:bg-surface-hover'
+                              className={`flex items-stretch transition-all border-l-[3px] ${
+                                isActive ? 'bg-brand/8 border-l-brand' : 'border-l-transparent hover:bg-surface-hover'
                               }`}
                             >
                               <button
                                 onClick={() => navigate(r)}
-                                className="flex-1 text-left px-4 py-2.5 min-w-0"
+                                className="flex-1 text-left px-5 py-3 min-w-0"
                               >
-                                <p className="text-ink text-sm font-medium truncate">{r.title}</p>
-                                {r.subtitle && <p className="text-ink-secondary text-xs truncate">{r.subtitle}</p>}
-                                {r.meta && <p className="text-ink-faint text-xs truncate">{r.meta}</p>}
+                                <p className="text-ink text-sm font-semibold truncate">{r.title}</p>
+                                {r.subtitle && <p className="text-ink-secondary text-xs truncate mt-0.5">{r.subtitle}</p>}
+                                {r.meta && <p className="text-ink-faint text-[11px] truncate mt-0.5">{r.meta}</p>}
                               </button>
                               {r.pdfUrl && (
-                                <div className="flex items-center gap-1 pr-3">
+                                <div className="flex items-center gap-1.5 pr-3">
                                   <a
                                     href={r.href}
                                     target="_blank"
@@ -236,7 +313,7 @@ export default function GlobalSearch() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     download
-                                    className="px-2.5 py-1 text-xs bg-brand hover:bg-brand-hover text-white rounded-md whitespace-nowrap transition"
+                                    className="px-2.5 py-1 text-xs bg-gradient-to-r from-brand to-purple-500 hover:opacity-90 text-white rounded-md whitespace-nowrap transition shadow-sm"
                                     title="Télécharger le PDF de la facture"
                                   >
                                     📄 PDF
@@ -254,12 +331,16 @@ export default function GlobalSearch() {
             </div>
 
             {/* Footer */}
-            <div className="px-4 py-2 border-t bg-surface-2 flex items-center gap-3 text-xs text-ink-faint">
-              <span className="hidden sm:flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-surface border font-mono">↑↓</kbd> naviguer</span>
-              <span className="hidden sm:flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-surface border font-mono">⏎</kbd> ouvrir</span>
-              <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-surface border font-mono">Esc</kbd> fermer</span>
+            <div className="px-5 py-2.5 border-t bg-gradient-to-r from-surface-2 via-surface to-surface-2 flex items-center gap-3 text-xs text-ink-faint">
+              <span className="hidden sm:flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 rounded bg-surface border font-mono">↑↓</kbd> naviguer</span>
+              <span className="hidden sm:flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 rounded bg-surface border font-mono">⏎</kbd> ouvrir</span>
+              <span className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 rounded bg-surface border font-mono">Esc</kbd> fermer</span>
               <span className="flex-1" />
-              <span>{total} résultat{total > 1 ? 's' : ''}</span>
+              {total > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-medium border border-brand/20">
+                  {total} résultat{total > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
         </div>
