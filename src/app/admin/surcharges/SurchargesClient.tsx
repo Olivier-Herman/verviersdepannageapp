@@ -193,6 +193,18 @@ export default function SurchargesClient({
             hour_start: s.hour_start, hour_end: s.hour_end,
             rate_dsp_pct: s.rate_dsp_pct, rate_rem_pct: s.rate_rem_pct,
           }))}
+          // Plages des autres jours pour le selecteur "Copier depuis..."
+          otherDays={WEEKDAYS
+            .filter(d => d.n !== editing.weekday)
+            .map(d => {
+              const ranges = (schedulesByCell.get(`${editing.client.key}:${d.n}`) || []).map(s => ({
+                hour_start: s.hour_start, hour_end: s.hour_end,
+                rate_dsp_pct: s.rate_dsp_pct, rate_rem_pct: s.rate_rem_pct,
+              }))
+              return { weekday: d.n, label: d.long, ranges }
+            })
+            .filter(d => d.ranges.length > 0)
+          }
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refreshAll() }}
         />
@@ -222,18 +234,29 @@ function CellRange({ s }: { s: Schedule }) {
 }
 
 function EditCellPanel({
-  client, weekday, weekdayLabel, initialRanges, onClose, onSaved,
+  client, weekday, weekdayLabel, initialRanges, otherDays, onClose, onSaved,
 }: {
   client: Client
   weekday: number
   weekdayLabel: string
   initialRanges: Range[]
+  otherDays: { weekday: number; label: string; ranges: Range[] }[]
   onClose: () => void
   onSaved: () => void
 }) {
   const [ranges, setRanges] = useState<Range[]>(initialRanges.length > 0 ? initialRanges : [])
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+  const [copyFrom, setCopyFrom] = useState<string>('')
+
+  function applyCopy() {
+    if (!copyFrom) return
+    const src = otherDays.find(d => String(d.weekday) === copyFrom)
+    if (!src) return
+    // Clone profond pour qu'editer l'une n'impacte pas l'autre
+    setRanges(src.ranges.map(r => ({ ...r })))
+    setCopyFrom('')
+  }
 
   function addRange() {
     setRanges(r => [...r, { hour_start: 0, hour_end: 24, rate_dsp_pct: 0, rate_rem_pct: 0 }])
@@ -282,6 +305,39 @@ function EditCellPanel({
         </div>
 
         <div className="px-5 py-4 space-y-3">
+
+          {/* Copier depuis un autre jour deja configure */}
+          {otherDays.length > 0 && (
+            <div className="bg-surface-2 border rounded-xl p-3 space-y-2">
+              <p className="text-ink-muted text-xs">⚡ Copier les valeurs d'un autre jour</p>
+              <div className="flex gap-2">
+                <select
+                  value={copyFrom}
+                  onChange={e => setCopyFrom(e.target.value)}
+                  className="flex-1 bg-surface border rounded-lg px-2 py-1.5 text-ink text-sm focus:outline-none focus:border-brand"
+                >
+                  <option value="">— Choisir un jour —</option>
+                  {otherDays.map(d => (
+                    <option key={d.weekday} value={String(d.weekday)}>
+                      {d.label} ({d.ranges.length} plage{d.ranges.length > 1 ? 's' : ''})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={applyCopy}
+                  disabled={!copyFrom}
+                  className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition whitespace-nowrap"
+                >
+                  Appliquer
+                </button>
+              </div>
+              {ranges.length > 0 && copyFrom && (
+                <p className="text-warning text-xs">⚠ Remplacera les {ranges.length} plage{ranges.length > 1 ? 's' : ''} actuelle{ranges.length > 1 ? 's' : ''}.</p>
+              )}
+            </div>
+          )}
+
           {ranges.length === 0 ? (
             <p className="text-ink-muted text-sm text-center py-6">Aucune plage horaire. Cliquez sur "+ Ajouter une plage".</p>
           ) : ranges.map((r, i) => (
