@@ -209,22 +209,22 @@ function MissionBlock({
         </details>
       )}
 
-      {/* Majoration tarif applicable (info — l'employe applique manuellement dans Odoo) */}
-      {surcharges && surcharges.surcharges.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 space-y-1.5">
-          <p className="text-amber-500 text-xs font-semibold">⚠ MAJORATION TARIF À APPLIQUER</p>
-          {surcharges.surcharges.map((s, i) => (
-            <p key={i} className="text-amber-500 text-xs">
-              • {s.client_label} · {s.weekday_label} {s.range_label} : <strong>+{s.rate_pct}%</strong>
-            </p>
-          ))}
-          {surcharges.surcharges.length > 1 && (
-            <p className="text-amber-500 text-xs italic pt-1 border-t border-amber-500/30">
-              Cumul à appliquer manuellement selon contrat
-            </p>
-          )}
-        </div>
-      )}
+      {/* Majoration tarif applicable (une seule a la fois — plages non-chevauchantes) */}
+      {surcharges && surcharges.surcharges.length > 0 && (() => {
+        const s = surcharges.surcharges[0]
+        return (
+          <div className="bg-gradient-to-r from-amber-500/15 to-orange-500/10 border-2 border-amber-500/50 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
+            <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">
+              ⚠
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-amber-500 text-[10px] font-bold uppercase tracking-widest">Majoration à appliquer</p>
+              <p className="text-amber-500 text-2xl font-black leading-tight">+{s.rate_pct}%</p>
+              <p className="text-amber-500/80 text-xs mt-0.5 truncate">{s.client_label} · {s.weekday_label} {s.range_label}</p>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Warning encaissement deja realise */}
       {payments.length > 0 && (
