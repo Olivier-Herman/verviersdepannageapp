@@ -1,0 +1,196 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
+
+export interface CreatedClient {
+  id: number
+  name: string
+  phone?: string
+  mobile?: string
+  street?: string
+  city?: string
+  zip?: string
+  email?: string
+  vat?: string
+}
+
+interface Props {
+  initialName?: string
+  onClose:      () => void
+  onCreated:    (client: CreatedClient) => void
+}
+
+export default function CreateClientModal({ initialName, onClose, onCreated }: Props) {
+  const [name,   setName]   = useState(initialName || '')
+  const [phone,  setPhone]  = useState('')
+  const [mobile, setMobile] = useState('')
+  const [email,  setEmail]  = useState('')
+  const [street, setStreet] = useState('')
+  const [zip,    setZip]    = useState('')
+  const [city,   setCity]   = useState('')
+  const [vat,    setVat]    = useState('')
+  const [isCompany, setIsCompany] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose, saving])
+
+  async function save() {
+    const trimmed = name.trim()
+    if (!trimmed) { setError('Nom requis'); return }
+    setSaving(true); setError(null)
+    try {
+      const res = await fetch('/api/odoo/create-client', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          name:       trimmed,
+          phone:      phone.trim()  || undefined,
+          mobile:     mobile.trim() || undefined,
+          email:      email.trim()  || undefined,
+          street:     street.trim() || undefined,
+          city:       city.trim()   || undefined,
+          zip:        zip.trim()    || undefined,
+          vat:        vat.trim()    || undefined,
+          is_company: isCompany,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.partner) {
+        setError(data.error || 'Erreur création client'); return
+      }
+      onCreated({
+        id:     data.partner.id,
+        name:   data.partner.name,
+        phone:  data.partner.phone || undefined,
+        mobile: data.partner.mobile || undefined,
+        street: data.partner.street || undefined,
+        city:   data.partner.city || undefined,
+        zip:    data.partner.zip || undefined,
+        email:  data.partner.email || undefined,
+        vat:    data.partner.vat || undefined,
+      })
+    } catch (e: any) {
+      setError(e.message || 'Erreur réseau')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+         onClick={() => !saving && onClose()}>
+      <div onClick={e => e.stopPropagation()}
+           className="bg-surface w-full max-w-xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="px-5 py-4 border-b flex items-center justify-between bg-gradient-to-r from-brand/10 to-transparent">
+          <div>
+            <p className="text-ink-muted text-xs uppercase tracking-wide">Nouveau client Odoo</p>
+            <h2 className="text-ink font-semibold text-base">Créer un client</h2>
+          </div>
+          <button onClick={onClose} disabled={saving}
+            className="text-ink-muted hover:text-critical hover:rotate-90 transition-all p-1">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+          <div>
+            <label className="block text-ink-muted text-xs mb-1.5">Nom <span className="text-critical">*</span></label>
+            <input value={name} onChange={e => setName(e.target.value)} autoFocus
+              placeholder="Nom complet ou raison sociale"
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isCompany} onChange={e => setIsCompany(e.target.checked)} />
+            <span className="text-ink-secondary text-sm">Société (cocher si entreprise / professionnel)</span>
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">Téléphone</label>
+              <input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel"
+                placeholder="+32 ..."
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono" />
+            </div>
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">Mobile</label>
+              <input value={mobile} onChange={e => setMobile(e.target.value)} inputMode="tel"
+                placeholder="+32 4..."
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-ink-muted text-xs mb-1.5">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="contact@exemple.be"
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+          </div>
+
+          <div>
+            <label className="block text-ink-muted text-xs mb-1.5">Rue + n°</label>
+            <input value={street} onChange={e => setStreet(e.target.value)}
+              placeholder="Rue Lefin 12"
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+          </div>
+
+          <div className="grid grid-cols-[120px_1fr] gap-3">
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">Code postal</label>
+              <input value={zip} onChange={e => setZip(e.target.value)}
+                placeholder="4860"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono" />
+            </div>
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">Ville</label>
+              <input value={city} onChange={e => setCity(e.target.value)}
+                placeholder="Pepinster"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+            </div>
+          </div>
+
+          {isCompany && (
+            <div>
+              <label className="block text-ink-muted text-xs mb-1.5">N° TVA</label>
+              <input value={vat} onChange={e => setVat(e.target.value)}
+                placeholder="BE0123456789"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono" />
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-critical-soft border border-critical rounded-lg p-2.5">
+              <p className="text-critical text-sm">⚠ {error}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t bg-surface-2 flex gap-2">
+          <button onClick={onClose} disabled={saving}
+            className="flex-1 py-2.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-xl text-sm transition">
+            Annuler
+          </button>
+          <button onClick={save} disabled={saving || !name.trim()}
+            className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
+            {saving ? '⏳ Création...' : 'Créer le client Odoo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

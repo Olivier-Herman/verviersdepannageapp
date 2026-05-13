@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { name, phone, mobile, street, city, zip, email } = await req.json()
+  const { name, phone, mobile, street, city, zip, email, vat, is_company } = await req.json()
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'Nom requis' }, { status: 400 })
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   try {
     const vals: Record<string, any> = {
       name:       name.trim(),
-      is_company: false,
+      is_company: !!is_company,
       customer_rank: 1,
     }
     if (phone)  vals.phone  = phone.trim()
@@ -48,12 +48,13 @@ export async function POST(req: Request) {
     if (city)   vals.city   = city.trim()
     if (zip)    vals.zip    = zip.trim()
     if (email)  vals.email  = email.trim()
+    if (vat)    vals.vat    = vat.trim()
 
     const partnerId = await odooCall('res.partner', 'create', [vals])
 
     // Relire le partenaire créé pour retourner les infos complètes
     const [partner] = await odooCall('res.partner', 'read', [[partnerId]], {
-      fields: ['id', 'name', 'phone', 'mobile', 'street', 'city', 'zip', 'email']
+      fields: ['id', 'name', 'phone', 'mobile', 'street', 'city', 'zip', 'email', 'vat']
     })
 
     return NextResponse.json({ ok: true, partner })

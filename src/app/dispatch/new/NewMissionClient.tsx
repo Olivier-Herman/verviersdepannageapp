@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import CreateClientModal from '@/components/CreateClientModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -289,6 +290,7 @@ export default function NewMissionClient({
   const [selectedClient,  setSelectedClient]  = useState<OdooClient|null>(null)
   const [billedName,      setBilledName]      = useState('')
   const [odooPartnerId,   setOdooPartnerId]   = useState<number|null>(null)
+  const [showCreateClient, setShowCreateClient] = useState(false)
 
   // ── Client assisté ────────────────────────────────────────────────────────
   const [assistedName,  setAssistedName]  = useState('')
@@ -579,6 +581,29 @@ export default function NewMissionClient({
                           <p className="text-ink-muted text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
                         </button>
                       ))}
+                      <button
+                        type="button"
+                        onMouseDown={() => { setShowClientDrop(false); setShowCreateClient(true) }}
+                        className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
+                      >
+                        <p className="text-brand text-sm font-semibold">＋ Créer un nouveau client Odoo</p>
+                        <p className="text-ink-muted text-xs">Aucun de ces résultats ne convient ? Ouvre le formulaire de création.</p>
+                      </button>
+                    </div>
+                  )}
+                  {showClientDrop && clientSearch.query.trim().length >= 3 && clientSearch.results.length === 0 && !clientSearch.loading && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface borderrounded-xl shadow-xl overflow-hidden">
+                      <div className="px-4 py-3 text-ink-muted text-xs">
+                        Aucun client trouvé pour <span className="font-mono">{clientSearch.query}</span>.
+                      </div>
+                      <button
+                        type="button"
+                        onMouseDown={() => { setShowClientDrop(false); setShowCreateClient(true) }}
+                        className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
+                      >
+                        <p className="text-brand text-sm font-semibold">＋ Créer ce client dans Odoo</p>
+                        <p className="text-ink-muted text-xs">Formulaire pré-rempli avec "{clientSearch.query}"</p>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -914,6 +939,29 @@ export default function NewMissionClient({
             </div>
           </div>
         </div>
+
+        {showCreateClient && (
+          <CreateClientModal
+            initialName={clientSearch.query || billedName}
+            onClose={() => setShowCreateClient(false)}
+            onCreated={(client) => {
+              // Le nouveau client devient le client lie : on appelle selectClient
+              // avec un objet conforme a l'interface OdooClient locale.
+              const odooClient: OdooClient = {
+                id:     client.id,
+                name:   client.name,
+                phone:  client.phone || false,
+                mobile: client.mobile || false,
+                street: client.street || false,
+                city:   client.city || false,
+                zip:    client.zip || false,
+                email:  client.email || false,
+              }
+              selectClient(odooClient)
+              setShowCreateClient(false)
+            }}
+          />
+        )}
     </AppShell>
   )
 }
