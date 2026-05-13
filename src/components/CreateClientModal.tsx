@@ -34,6 +34,43 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 
+  // VIES (validation TVA Europe)
+  const [viesLoading, setViesLoading] = useState(false)
+  const [viesResult, setViesResult]   = useState<null | {
+    valid: boolean; name?: string; address?: string; error?: string
+  }>(null)
+
+  async function checkVies() {
+    const cleaned = vat.replace(/[\s.\-]/g, '').toUpperCase()
+    if (cleaned.length < 6) { setViesResult(null); return }
+    setViesLoading(true)
+    try {
+      const res = await fetch(`/api/vies?vat=${encodeURIComponent(cleaned)}`)
+      const j   = await res.json()
+      setViesResult(j)
+      // Auto-remplissage si VIES valide ET champs vides
+      if (j.valid) {
+        if (!name.trim()    && j.name)    setName(j.name)
+        if (!street.trim()  && !city.trim() && j.address) {
+          // L'adresse VIES est en une seule ligne. On essaie de splitter
+          // pour separer street/zip/city — sinon on met tout dans street.
+          const match = j.address.match(/^(.+?)\s+(\d{4,5})\s+(.+)$/)
+          if (match) {
+            setStreet(match[1].trim())
+            setZip(match[2].trim())
+            setCity(match[3].trim())
+          } else {
+            setStreet(j.address)
+          }
+        }
+      }
+    } catch {
+      setViesResult({ valid: false, error: 'VIES indisponible' })
+    } finally {
+      setViesLoading(false)
+    }
+  }
+
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose() }
@@ -166,9 +203,42 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
           {isCompany && (
             <div>
               <label className="block text-ink-muted text-xs mb-1.5">N° TVA</label>
-              <input value={vat} onChange={e => setVat(e.target.value)}
-                placeholder="BE0123456789"
-                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono" />
+              <div className="flex gap-2">
+                <input
+                  value={vat}
+                  onChange={e => { setVat(e.target.value); setViesResult(null) }}
+                  onBlur={checkVies}
+                  placeholder="BE0123456789"
+                  className="flex-1 bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={checkVies}
+                  disabled={viesLoading || vat.trim().length < 6}
+                  className="px-3 py-2 bg-info hover:bg-info-hover disabled:opacity-50 text-white rounded-xl text-xs font-semibold whitespace-nowrap transition"
+                >
+                  {viesLoading ? '⏳…' : 'Vérifier VIES'}
+                </button>
+              </div>
+
+              {viesResult && (
+                <div className={`mt-2 px-3 py-2 rounded-lg border text-xs ${
+                  viesResult.valid
+                    ? 'bg-success-soft border-success text-success'
+                    : 'bg-critical-soft border-critical text-critical'
+                }`}>
+                  {viesResult.valid ? (
+                    <>
+                      <p className="font-semibold">✓ TVA valide</p>
+                      {viesResult.name && <p className="text-ink">Entreprise : <strong>{viesResult.name}</strong></p>}
+                      {viesResult.address && <p className="text-ink-secondary">{viesResult.address}</p>}
+                      <p className="text-ink-muted italic mt-1">Nom + adresse pré-remplis depuis VIES</p>
+                    </>
+                  ) : (
+                    <p>⚠ {viesResult.error || 'TVA invalide'}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
