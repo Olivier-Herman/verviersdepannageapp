@@ -13,7 +13,7 @@ import { createRelivraisonMission } from '@/lib/missions/create-relivraison'
 
 const ALLOWED_ROLES = ['dispatcher', 'admin', 'superadmin']
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const u = session.user as any
@@ -21,6 +21,11 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!userRoles.some(r => ALLOWED_ROLES.includes(r))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+
+  // Body optionnel : { redelivery_address?: string } pour saisir l'adresse
+  // si elle n'a pas ete capturee au moment de la mise en parc cote chauffeur.
+  let body: { redelivery_address?: string } = {}
+  try { body = await req.json() } catch {}
 
   const sb = createAdminClient()
 
@@ -39,7 +44,21 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   // À ce stade, destination_address contient l'adresse du parc (vu depuis park),
   // et redelivery_address contient l'adresse originale que l'on veut atteindre.
-  const redelivery = parent.redelivery_address
+  let redelivery = parent.redelivery_address
+  if (!redelivery && body.redelivery_address) {
+    // Le dispatcher fournit l'adresse manuellement, on la sauve avant de continuer
+    const newAddr = body.redelivery_address.trim()
+    if (newAddr) {
+      const { error: upErr } = await sb
+        .from('incoming_missions')
+        .update({ redelivery_address: newAddr })
+        .eq('id', params.id)
+      if (upErr) {
+        return NextResponse.json({ error: `Sauvegarde adresse: ${upErr.message}` }, { status: 500 })
+      }
+      redelivery = newAddr
+    }
+  }
   if (!redelivery) {
     return NextResponse.json({ error: 'Aucune adresse de relivraison enregistrée' }, { status: 422 })
   }

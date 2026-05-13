@@ -37,6 +37,28 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     .eq('mission_id', params.id)
     .order('created_at', { ascending: false })
 
+  // Missions liees dans la chaine REM ↔ REL
+  // - Si cette mission est une REL : charger la REM parente
+  // - Si cette mission est une REM : chercher une REL enfant (parent_mission_id = cette mission)
+  let linkedParent: any = null
+  let linkedChild:  any = null
+  if (mission.parent_mission_id) {
+    const { data: parent } = await supabase
+      .from('incoming_missions')
+      .select('id, external_id, dossier_number, status, vehicle_plate, completed_at, parked_at, destination_address, redelivery_address')
+      .eq('id', mission.parent_mission_id)
+      .maybeSingle()
+    linkedParent = parent
+  }
+  {
+    const { data: child } = await supabase
+      .from('incoming_missions')
+      .select('id, external_id, dossier_number, status, vehicle_plate, assigned_to, received_at, intervention_date')
+      .eq('parent_mission_id', mission.id)
+      .maybeSingle()
+    linkedChild = child
+  }
+
   // Chauffeurs actifs
   const { data: drivers } = await supabase
     .from('users')
@@ -50,6 +72,8 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       mission={mission}
       logs={logs || []}
       drivers={drivers || []}
+      linkedParent={linkedParent}
+      linkedChild={linkedChild}
       userName={user.name || ''}
       userEmail={user.email || undefined}
       userId={user.id || undefined}

@@ -268,16 +268,34 @@ function AddressReviewModal({
   )
 }
 
-function RelivrerButton({ missionId }: { missionId: string }) {
+function RelivrerButton({
+  missionId, initialRedeliveryAddress, originalDestination,
+}: {
+  missionId: string
+  initialRedeliveryAddress?: string | null
+  originalDestination?: string | null
+}) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
+  const [address, setAddress] = useState(initialRedeliveryAddress || originalDestination || '')
+
+  const hasAddress = (initialRedeliveryAddress || '').trim().length > 0
 
   const handle = async () => {
-    if (!confirm('Créer la mission de relivraison ? Le véhicule sera à charger depuis le parc et livré à l\'adresse originale.')) return
+    const finalAddr = address.trim()
+    if (!finalAddr) {
+      setError('Adresse de relivraison requise pour créer la mission REL')
+      return
+    }
+    if (!confirm(`Créer la mission de relivraison ?\nLe véhicule sera à charger depuis le parc et livré à :\n${finalAddr}`)) return
     setLoading(true); setError(null)
     try {
-      const res = await fetch(`/api/missions/${missionId}/relivrer`, { method: 'POST' })
+      const res = await fetch(`/api/missions/${missionId}/relivrer`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ redelivery_address: finalAddr }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erreur')
       setCreatedId(data.mission_id)
@@ -301,16 +319,37 @@ function RelivrerButton({ missionId }: { missionId: string }) {
   }
 
   return (
-    <div className="bg-surface border rounded-2xl p-5">
-      <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">🅿️ Véhicule en parc</h3>
-      <p className="text-ink-secondary text-xs mb-3">
-        Le véhicule attend en zone TRANSIT. Crée la mission de relivraison pour la planifier dans le dispatch.
-      </p>
-      <button onClick={handle} disabled={loading}
+    <div className="bg-surface border rounded-2xl p-5 space-y-3">
+      <div>
+        <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">🅿️ Véhicule en parc</h3>
+        <p className="text-ink-secondary text-xs">
+          Le véhicule attend en zone TRANSIT. Indique l'adresse de relivraison pour planifier la REL dans le dispatch.
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-ink-muted text-xs mb-1.5">
+          Adresse de relivraison {hasAddress && <span className="text-success">· enregistrée</span>}
+        </label>
+        <textarea
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          rows={2}
+          placeholder="Rue, n°, code postal, ville…"
+          className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint resize-none"
+        />
+        {!hasAddress && originalDestination && (
+          <p className="text-ink-muted text-xs mt-1">
+            💡 Pré-remplie depuis l'adresse client originale. Vérifie / corrige si besoin.
+          </p>
+        )}
+      </div>
+
+      <button onClick={handle} disabled={loading || !address.trim()}
         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
-        {loading ? '⏳ Création…' : '🚛 Relivrer'}
+        {loading ? '⏳ Création…' : '🚛 Créer la mission de relivraison'}
       </button>
-      {error && <p className="text-critical text-xs mt-2">⚠ {error}</p>}
+      {error && <p className="text-critical text-xs">⚠ {error}</p>}
     </div>
   )
 }
@@ -422,10 +461,27 @@ function Select({ value, onChange, options }: {
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
+interface LinkedMissionLight {
+  id: string
+  external_id: string | null
+  dossier_number?: string | null
+  status: string
+  vehicle_plate?: string | null
+  destination_address?: string | null
+  redelivery_address?: string | null
+  completed_at?: string | null
+  parked_at?: string | null
+  received_at?: string | null
+  intervention_date?: string | null
+  assigned_to?: string | null
+}
+
 export default function MissionDetailClient({
   mission: initialMission,
   logs,
   drivers,
+  linkedParent,
+  linkedChild,
   userName,
   userRole,
   userEmail,
@@ -436,6 +492,8 @@ export default function MissionDetailClient({
   mission:       Mission
   logs:          MissionLog[]
   drivers:       Driver[]
+  linkedParent?: LinkedMissionLight | null
+  linkedChild?:  LinkedMissionLight | null
   userName:      string
   userRole:      string
   userEmail?:    string
@@ -1859,9 +1917,39 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Bouton Relivrer — visible uniquement quand mission en parc */}
-              {status === 'parked' && (
-                <RelivrerButton missionId={initialMission.id} />
+              {/* Bouton Relivrer — visible uniquement quand mission en parc et pas encore de REL */}
+              {status === 'parked' && !linkedChild && (
+                <RelivrerButton
+                  missionId={initialMission.id}
+                  initialRedeliveryAddress={(initialMission as any).redelivery_address}
+                  originalDestination={initialMission.destination_address || ''}
+                />
+              )}
+
+              {/* Encart REL existante — si une mission REL a deja ete creee pour ce parc */}
+              {linkedChild && (
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4">
+                  <p className="text-purple-400 text-xs font-bold uppercase tracking-wide mb-2">🚛 Relivraison liée</p>
+                  <p className="text-ink text-sm font-medium">{linkedChild.external_id || linkedChild.dossier_number || linkedChild.id.slice(0, 8)}</p>
+                  <p className="text-ink-muted text-xs mb-3">Statut : {linkedChild.status}</p>
+                  <Link href={`/dispatch/${linkedChild.id}`}
+                    className="block w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium text-center transition">
+                    Ouvrir la fiche REL →
+                  </Link>
+                </div>
+              )}
+
+              {/* Encart REM parente — si cette mission est elle-meme une REL */}
+              {linkedParent && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+                  <p className="text-amber-400 text-xs font-bold uppercase tracking-wide mb-2">🚗 Mission parente (REM)</p>
+                  <p className="text-ink text-sm font-medium">{linkedParent.external_id || linkedParent.dossier_number || linkedParent.id.slice(0, 8)}</p>
+                  <p className="text-ink-muted text-xs mb-3">Issue du remorquage initial</p>
+                  <Link href={`/dispatch/${linkedParent.id}`}
+                    className="block w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium text-center transition">
+                    Ouvrir la fiche REM →
+                  </Link>
+                </div>
               )}
 
               {/* Bouton dossier Odoo FSM */}
