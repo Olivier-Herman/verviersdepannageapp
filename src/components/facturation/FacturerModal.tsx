@@ -20,6 +20,7 @@ interface BaseMission {
   incident_address?: string | null
   destination_address?: string | null
   received_at: string
+  intervention_date?: string | null
   completed_at: string | null
   amount_collected?: number | null
   payment_method?: string | null
@@ -171,8 +172,11 @@ function MissionBlock({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div>
-          <p className="text-ink-muted text-xs">Date/heure</p>
-          <p className="text-ink">{fmtDateTime(m.completed_at || m.received_at)}</p>
+          <p className="text-ink-muted text-xs">Date intervention</p>
+          <p className="text-ink"><Copyable value={fmtDateTime(m.intervention_date || m.received_at)} label="date intervention" /></p>
+          {m.completed_at && m.intervention_date && (
+            <p className="text-ink-faint text-[10px] mt-0.5">Clôturée le {fmtDateTime(m.completed_at)}</p>
+          )}
         </div>
         <div>
           <p className="text-ink-muted text-xs">Km calculés</p>
