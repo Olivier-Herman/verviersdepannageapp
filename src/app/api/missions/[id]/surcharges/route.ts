@@ -1,21 +1,26 @@
 // src/app/api/missions/[id]/surcharges/route.ts
 //
 // GET /api/missions/[id]/surcharges
-// Renvoie les majorations applicables a la mission, basees sur l'heure
-// d'envoi de la mission PAR l'assistance = received_at.
+// Renvoie les majorations applicables a la mission, basees sur la date
+// d'intervention = intervention_date (= bandeau rouge dans la fiche dispatch).
 //
 // Choix metier (decide 2026-05-13 par Olivier) :
-//   Les assistances valident/refusent la majoration sur la facture en
-//   se basant sur l'heure ou ELLES nous ont envoye la mission :
-//   - Mission recue a 18h59 : Touring refuse +35% (avant 19h00)
-//   - Mission recue a 19h00 : +35% accepte
-//   - Mission recue a 06h59 : +35% accepte (avant fin de plage 07h00)
-//   - Mission recue a 07h00 : refuse
-//   Donc on s'aligne strictement sur l'heure des compagnies. Pas de
-//   marge, pas d'heure chauffeur (completed_at), pas d'heure planifiee
-//   (intervention_date).
+//   intervention_date reflete l'heure REELLE de l'intervention indiquee
+//   par l'assistance. C'est le critere que les assistances utilisent
+//   pour valider/refuser la majoration sur leur facture.
 //
-// Fallback : intervention_date si received_at est null (theoriquement impossible).
+//   Exemples concrets :
+//   - Mission urgente : assistance envoie mardi 20:37 pour intervention
+//     immediate → intervention_date = 20:37 mardi → +35% nuit semaine OK
+//   - Mission differee : assistance envoie lundi 22h pour intervention
+//     mardi 9h → intervention_date = mardi 9h → PAS de majoration
+//     (received_at = lundi 22h aurait declenche +35% a tort)
+//   - Mission batch : incident mardi 20h, assistance nous envoie mercredi
+//     08:43 → intervention_date = mardi 20h → +35% nuit OK
+//     (received_at = mercredi 08:43 aurait rate la majoration)
+//
+//   On ignore completed_at (heure cloture chauffeur) qui peut deriver
+//   de plusieurs minutes apres l'intervention reelle.
 
 import { NextResponse }            from 'next/server'
 import { getServerSession }        from 'next-auth'
@@ -38,7 +43,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (error)    return NextResponse.json({ error: error.message }, { status: 500 })
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
-  const dateStr = mission.received_at || mission.intervention_date
+  const dateStr = mission.intervention_date || mission.received_at
   const at = new Date(dateStr)
 
   const surcharges = await getApplicableSurcharges(mission, at)
@@ -46,6 +51,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json({
     surcharges,
     reference_at: at.toISOString(),
-    reference_kind: mission.received_at ? 'received_at' : 'intervention_date',
+    reference_kind: mission.intervention_date ? 'intervention_date' : 'received_at',
   })
 }
