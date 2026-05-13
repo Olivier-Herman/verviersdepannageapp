@@ -39,6 +39,44 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * Extrait jour/heure d'un Date dans le timezone Europe/Brussels.
+ * Critique car le serveur Vercel tourne en UTC : un "mardi 20h37" belge
+ * (= 18:37 UTC en ete avec DST CEST) serait sinon vu comme mardi 18h37 et
+ * raterait la plage 19h-24h Touring. Maintenant on extrait l'heure locale
+ * belge directement via Intl.DateTimeFormat.
+ */
+function belgianParts(date: Date): { weekday: number; hour: number; minute: number; ymd: string } {
+  // Utilise sv-SE qui retourne ISO-like (YYYY-MM-DD HH:MM:SS), facile a parser.
+  const isoLocal = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Brussels',
+    year:   'numeric',
+    month:  '2-digit',
+    day:    '2-digit',
+    hour:   '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)
+  // ex: "2026-05-12 20:37:00"
+  const [datePart, timePart] = isoLocal.split(' ')
+  const [year, month, day]   = datePart.split('-').map(Number)
+  const [hour, minute]       = timePart.split(':').map(Number)
+
+  // Calcul du jour de la semaine via UTC midi de la date locale (evite les
+  // ambiguites DST cas limite minuit). Mardi=2, Dim=7 (ISO).
+  const refUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
+  const jsDay  = refUtc.getUTCDay()              // 0=Dim..6=Sam
+  const weekday = jsDay === 0 ? 7 : jsDay         // 1=Lun..7=Dim
+
+  return {
+    weekday,
+    hour,
+    minute,
+    ymd: datePart,
+  }
+}
+
 /** Liste des dates feries officiels en Belgique pour une annee (YYYY-MM-DD). */
 function belgianHolidays(year: number): Set<string> {
   const easter = easterSunday(year)
@@ -58,13 +96,17 @@ function belgianHolidays(year: number): Set<string> {
 
 const _holidayCache = new Map<number, Set<string>>()
 export function isBelgianHoliday(date: Date): boolean {
-  const year = date.getUTCFullYear()
+  // Utilise la date LOCALE Belgique : un 21/07 a 00:30 Belgique reste un
+  // 21/07 (Fete nationale). Sans cette conversion timezone, on aurait pu
+  // lire la date UTC du 20/07 et rater le jour ferie.
+  const local = belgianParts(date)
+  const year = Number(local.ymd.slice(0, 4))
   let set = _holidayCache.get(year)
   if (!set) {
     set = belgianHolidays(year)
     _holidayCache.set(year, set)
   }
-  return set.has(ymd(date))
+  return set.has(local.ymd)
 }
 
 // ─── Detection client + applicable surcharges ────────────────────────────────
@@ -139,10 +181,11 @@ export async function getApplicableSurcharges(
   const clientKey = await resolveClientKey(mission, new Set(activeMap.keys()))
   const clientLabel = activeMap.get(clientKey) || clientKey
 
-  // 2. Determiner le weekday effectif (1-7, fonction Date europeenne : Lun=1, Dim=7)
-  // getDay() : 0=Dim..6=Sam → on convertit
-  const jsDay = at.getDay()
-  const realWeekday = jsDay === 0 ? 7 : jsDay        // 1=Lun..7=Dim
+  // 2. Extraire jour/heure dans le timezone Europe/Brussels (le serveur tourne
+  // en UTC, sans cette conversion une intervention belge a 20h37 serait vue
+  // comme 18h37 UTC et raterait les plages config locales).
+  const local = belgianParts(at)
+  const realWeekday = local.weekday                    // 1=Lun..7=Dim
   const holiday = isBelgianHoliday(at)
   const effectiveWeekday = holiday ? 7 : realWeekday
 
@@ -153,10 +196,8 @@ export async function getApplicableSurcharges(
     .eq('client_key', clientKey)
     .eq('weekday', effectiveWeekday)
 
-  // 4. Filtrer les plages qui couvrent l'heure de la mission
-  const hour = at.getHours()
-  const minute = at.getMinutes()
-  const decimalHour = hour + minute / 60
+  // 4. Filtrer les plages qui couvrent l'heure (LOCALE BE) de la mission
+  const decimalHour = local.hour + local.minute / 60
 
   const isRem = isRemMission(mission)
 
