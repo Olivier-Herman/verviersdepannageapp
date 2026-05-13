@@ -48,12 +48,14 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
       const res = await fetch(`/api/vies?vat=${encodeURIComponent(cleaned)}`)
       const j   = await res.json()
       setViesResult(j)
-      // Auto-remplissage si VIES valide ET champs vides
+      // VIES = source officielle europeenne → on ecrase TOUJOURS les champs
+      // existants (nom + adresse). User saisissait peut-etre une version
+      // tronquee/incorrecte qu'il faut corriger avec les donnees VIES.
       if (j.valid) {
-        if (!name.trim()    && j.name)    setName(j.name)
-        if (!street.trim()  && !city.trim() && j.address) {
-          // L'adresse VIES est en une seule ligne. On essaie de splitter
-          // pour separer street/zip/city — sinon on met tout dans street.
+        if (j.name) setName(j.name)
+        if (j.address) {
+          // Adresse VIES en une seule ligne : tentative de split en
+          // rue/cp/ville via regex. Sinon tout dans street.
           const match = j.address.match(/^(.+?)\s+(\d{4,5})\s+(.+)$/)
           if (match) {
             setStreet(match[1].trim())
@@ -61,6 +63,8 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
             setCity(match[3].trim())
           } else {
             setStreet(j.address)
+            setZip('')
+            setCity('')
           }
         }
       }
@@ -232,7 +236,7 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
                       <p className="font-semibold">✓ TVA valide</p>
                       {viesResult.name && <p className="text-ink">Entreprise : <strong>{viesResult.name}</strong></p>}
                       {viesResult.address && <p className="text-ink-secondary">{viesResult.address}</p>}
-                      <p className="text-ink-muted italic mt-1">Nom + adresse pré-remplis depuis VIES</p>
+                      <p className="text-ink-muted italic mt-1">Nom + adresse écrasés avec les données officielles VIES.</p>
                     </>
                   ) : (
                     <p>⚠ {viesResult.error || 'TVA invalide'}</p>
