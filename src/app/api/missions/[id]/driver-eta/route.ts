@@ -9,10 +9,11 @@
 // Utilise par le modal "Assigner chauffeur" cote dispatch.
 // Filtre les chauffeurs hors service (pas de ping recent ET pas en mission active).
 
-import { NextResponse }      from 'next/server'
-import { getServerSession }  from 'next-auth'
-import { authOptions }       from '@/lib/auth'
-import { createAdminClient } from '@/lib/supabase'
+import { NextResponse }                          from 'next/server'
+import { getServerSession }                      from 'next-auth'
+import { authOptions }                           from '@/lib/auth'
+import { createAdminClient }                     from '@/lib/supabase'
+import { isInDaySchedule, isInNightSchedule }    from '@/lib/schedule'
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
@@ -123,14 +124,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     incident = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
   }
 
-  // Chauffeurs = utilisateurs actifs avec un towsoft_name renseigne
-  // (= meme flag que celui qui affiche le module "Mission chauffeur")
+  // Chauffeurs disponibles pour assignation : users actifs avec role 'driver'
+  // (ou admin/superadmin pour pouvoir s'auto-assigner). Le filtre legacy
+  // towsoft_name a ete retire (Towsoft en voie de decommissionnement).
   const { data: drivers } = await sb
     .from('users')
-    .select('id, name, avatar_url, last_location_lat, last_location_lng, location_updated_at')
+    .select('id, name, avatar_url, last_location_lat, last_location_lng, location_updated_at, schedule_day, schedule_night')
     .eq('active', true)
-    .not('towsoft_name', 'is', null)
-    .neq('towsoft_name', '')
+    .in('role', ['driver', 'admin', 'superadmin'])
     .order('name')
   if (!drivers || drivers.length === 0) return NextResponse.json({ drivers: [] })
 
@@ -145,7 +146,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     if (m.assigned_to) missionsByDriver.set(m.assigned_to, m)
   }
 
-  const now = Date.now()
+  const now    = Date.now()
+  const nowDt  = new Date(now)
   const enriched = await Promise.all(drivers.map(async (d) => {
     const locAge = d.location_updated_at
       ? Math.floor((now - new Date(d.location_updated_at).getTime()) / 1000)
@@ -155,8 +157,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
     const activeMission = missionsByDriver.get(d.id)
 
+    // En service si planning de garde actif (schedule_day en journee OU
+    // schedule_night la nuit). Cohabite avec ping recent + mission active.
+    const inDayShift   = !!d.schedule_day   && isInDaySchedule(nowDt)
+    const inNightShift = !!d.schedule_night && isInNightSchedule(nowDt)
+    const onSchedule   = inDayShift || inNightShift
+
     // Filtrage "hors service" : pas de ping recent ET pas en mission active
-    if (!isFresh && !activeMission) return null
+    // ET pas de garde forcee
+    if (!isFresh && !activeMission && !onSchedule) return null
 
     const driverPos: Coord | null = hasPosition
       ? { lat: Number(d.last_location_lat), lng: Number(d.last_location_lng) }
