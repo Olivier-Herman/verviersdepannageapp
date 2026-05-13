@@ -172,9 +172,9 @@ function MissionBlock({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div>
-          <p className="text-ink-muted text-xs">Date intervention</p>
-          <p className="text-ink"><Copyable value={fmtDateTime(m.intervention_date || m.received_at)} label="date intervention" /></p>
-          {m.completed_at && m.intervention_date && (
+          <p className="text-ink-muted text-xs">Heure réception <span className="text-ink-faint">(assistance)</span></p>
+          <p className="text-ink"><Copyable value={fmtDateTime(m.received_at)} label="heure réception" /></p>
+          {m.completed_at && (
             <p className="text-ink-faint text-[10px] mt-0.5">Clôturée le {fmtDateTime(m.completed_at)}</p>
           )}
         </div>
