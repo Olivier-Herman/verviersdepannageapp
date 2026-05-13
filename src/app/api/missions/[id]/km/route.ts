@@ -18,7 +18,10 @@ const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE
 type Coord = { lat: number; lng: number }
 
 async function getDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
-  if (!GMAPS_KEY) return null
+  if (!GMAPS_KEY) {
+    console.error('[km] GMAPS_KEY non configuree')
+    return null
+  }
   const url = `https://maps.googleapis.com/maps/api/directions/json` +
               `?origin=${origin.lat},${origin.lng}` +
               `&destination=${destination.lat},${destination.lng}` +
@@ -26,9 +29,18 @@ async function getDistanceKm(origin: Coord, destination: Coord): Promise<number 
   try {
     const res  = await fetch(url)
     const data = await res.json()
+    if (data.status !== 'OK') {
+      console.error(`[km] Google Directions ${data.status}: ${data.error_message || '(pas de detail)'}`)
+      return null
+    }
     const meters = data.routes?.[0]?.legs?.[0]?.distance?.value
-    return typeof meters === 'number' ? meters / 1000 : null
-  } catch {
+    if (typeof meters !== 'number') {
+      console.error('[km] Google Directions: pas de distance dans la reponse')
+      return null
+    }
+    return meters / 1000
+  } catch (e: any) {
+    console.error('[km] fetch failed:', e.message)
     return null
   }
 }
