@@ -8,6 +8,7 @@ import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
+import CreateClientModal from '@/components/CreateClientModal'
 import AppShell from '@/components/layout/AppShell'
 
 const sb = createClient(
@@ -756,6 +757,7 @@ export default function MissionDetailClient({
 
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
+  const [showCreateClientModal, setShowCreateClientModal] = useState(false)
   const [clientQuery,     setClientQuery]     = useState('')
   const [clientResults,   setClientResults]   = useState<Array<{id:number;name:string;phone?:string;mobile?:string;city?:string}>>([])
   const [showClientDrop,  setShowClientDrop]  = useState(false)
@@ -1223,6 +1225,29 @@ export default function MissionDetailClient({
                             <p className="text-ink-muted text-xs">{[c.phone || c.mobile, c.city].filter(Boolean).join(' · ')}</p>
                           </button>
                         ))}
+                        <button
+                          type="button"
+                          onMouseDown={() => { setShowClientDrop(false); setShowCreateClientModal(true) }}
+                          className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
+                        >
+                          <p className="text-brand text-sm font-semibold">＋ Créer un nouveau client Odoo</p>
+                          <p className="text-ink-muted text-xs">Aucun de ces résultats ne convient ? Ouvre le formulaire de création.</p>
+                        </button>
+                      </div>
+                    )}
+                    {showClientDrop && clientQuery.trim().length >= 3 && clientResults.length === 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border rounded-xl shadow-xl overflow-hidden">
+                        <div className="px-4 py-3 text-ink-muted text-xs">
+                          Aucun client trouvé pour <span className="font-mono">{clientQuery}</span>.
+                        </div>
+                        <button
+                          type="button"
+                          onMouseDown={() => { setShowClientDrop(false); setShowCreateClientModal(true) }}
+                          className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
+                        >
+                          <p className="text-brand text-sm font-semibold">＋ Créer ce client dans Odoo</p>
+                          <p className="text-ink-muted text-xs">Formulaire pré-rempli avec "{clientQuery}"</p>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -2100,6 +2125,17 @@ export default function MissionDetailClient({
             closeReview()
           }}
           onSkip={closeReview}
+        />
+      )}
+
+      {showCreateClientModal && (
+        <CreateClientModal
+          initialName={clientQuery || form.billed_to_name || ''}
+          onClose={() => setShowCreateClientModal(false)}
+          onCreated={(client) => {
+            selectBilledClient({ id: client.id, name: client.name })
+            setShowCreateClientModal(false)
+          }}
         />
       )}
     </AppShell>
