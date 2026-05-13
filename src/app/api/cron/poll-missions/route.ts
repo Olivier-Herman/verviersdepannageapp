@@ -22,6 +22,13 @@ async function graphGet(token: string, path: string): Promise<any> {
 }
 
 export async function GET(req: Request) {
+  // Protection : seul Vercel cron (avec CRON_SECRET) peut declencher ce endpoint.
+  // Sinon n'importe quel service externe (ex: cron-job.org) peut le marteler.
+  const authHeader = req.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const results: Record<string, number> = { new: 0, duplicate: 0, skipped: 0, error: 0, inserted: 0 }
 
   try {
