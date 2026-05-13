@@ -438,7 +438,7 @@ export default function NewMissionClient({
     if (!missionType)               return setError('Type de mission requis')
     if (!destinations[0]?.address)  return setError('Lieu d\'incident requis')
     if (!odooPartnerId && !billedName.trim()) {
-      return setError('Client requis — sélectionne un client dans Odoo ou tape le nom')
+      return setError('Client requis — sélectionne un client ou tape le nom')
     }
 
     setSaving(true); setError('')
@@ -565,7 +565,7 @@ export default function NewMissionClient({
               <div className="bg-surface borderrounded-2xl p-5">
                 <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
                 <div className="relative mb-3">
-                  <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans Odoo</label>
+                  <label className="block text-ink-muted text-xs mb-1.5">Rechercher un client</label>
                   <input value={clientSearch.query}
                     onChange={e => { clientSearch.setQuery(e.target.value); setShowClientDrop(true) }}
                     onFocus={() => setShowClientDrop(true)}
@@ -586,7 +586,7 @@ export default function NewMissionClient({
                         onMouseDown={() => { setShowClientDrop(false); setShowCreateClient(true) }}
                         className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
                       >
-                        <p className="text-brand text-sm font-semibold">＋ Créer un nouveau client Odoo</p>
+                        <p className="text-brand text-sm font-semibold">＋ Créer un nouveau client</p>
                         <p className="text-ink-muted text-xs">Aucun de ces résultats ne convient ? Ouvre le formulaire de création.</p>
                       </button>
                     </div>
@@ -601,7 +601,7 @@ export default function NewMissionClient({
                         onMouseDown={() => { setShowClientDrop(false); setShowCreateClient(true) }}
                         className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
                       >
-                        <p className="text-brand text-sm font-semibold">＋ Créer ce client dans Odoo</p>
+                        <p className="text-brand text-sm font-semibold">＋ Créer ce client</p>
                         <p className="text-ink-muted text-xs">Formulaire pré-rempli avec "{clientSearch.query}"</p>
                       </button>
                     </div>
@@ -610,7 +610,7 @@ export default function NewMissionClient({
 
                 {selectedClient && (
                   <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-3">
-                    <span className="text-green-400 text-xs">✓ Lié Odoo #{selectedClient.id}</span>
+                    <span className="text-green-400 text-xs">✓ Client lié</span>
                     <span className="text-green-300 text-xs font-medium">{selectedClient.name}</span>
                     <button onClick={() => { setSelectedClient(null); setOdooPartnerId(null); clientSearch.setQuery(''); setBilledName('') }}
                       className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
@@ -739,7 +739,7 @@ export default function NewMissionClient({
                 </div>
                 {selectedVehicle && (
                   <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
-                    <span className="text-green-400 text-xs">✓ Véhicule Odoo lié</span>
+                    <span className="text-green-400 text-xs">✓ Véhicule lié</span>
                     <span className="text-green-300 text-xs font-mono font-medium">{selectedVehicle.plate}</span>
                     <button onClick={() => { setSelectedVehicle(null); setOdooVehicleId(null); vehicleSearch.setQuery('') }}
                       className="ml-auto text-ink-muted hover:text-red-400 text-xs">✕</button>
@@ -913,10 +913,10 @@ export default function NewMissionClient({
                   ))}
 
                   {odooPartnerId && (
-                    <div className="flex items-center gap-1.5 text-green-400 text-xs">✓ Client Odoo lié</div>
+                    <div className="flex items-center gap-1.5 text-green-400 text-xs">✓ Client lié</div>
                   )}
                   {odooVehicleId && (
-                    <div className="flex items-center gap-1.5 text-green-400 text-xs">✓ Véhicule Odoo lié</div>
+                    <div className="flex items-center gap-1.5 text-green-400 text-xs">✓ Véhicule lié</div>
                   )}
                   {distanceKm !== null && (
                     <div className="flex justify-between">

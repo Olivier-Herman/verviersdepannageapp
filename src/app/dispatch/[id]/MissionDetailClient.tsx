@@ -1010,7 +1010,7 @@ export default function MissionDetailClient({
     // Validation : client requis avant de confirmer la mission (necessaire
     // pour la facturation future)
     if (!billedPartnerId && !(form.billed_to_name || '').trim()) {
-      alert('Client facturé requis. Recherche un client dans Odoo ou tape son nom dans le champ "Client facturé".')
+      alert('Client facturé requis. Recherche un client ou tape son nom dans le champ "Client facturé".')
       return
     }
     setLoadingConfirm(true)
@@ -1207,7 +1207,7 @@ export default function MissionDetailClient({
 
                   {/* Recherche Odoo */}
                   <div className="relative mb-3">
-                    <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans Odoo</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Rechercher un client</label>
                     <input
                       value={clientQuery}
                       onChange={e => { setClientQuery(e.target.value); setShowClientDrop(true) }}
@@ -1230,7 +1230,7 @@ export default function MissionDetailClient({
                           onMouseDown={() => { setShowClientDrop(false); setShowCreateClientModal(true) }}
                           className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
                         >
-                          <p className="text-brand text-sm font-semibold">＋ Créer un nouveau client Odoo</p>
+                          <p className="text-brand text-sm font-semibold">＋ Créer un nouveau client</p>
                           <p className="text-ink-muted text-xs">Aucun de ces résultats ne convient ? Ouvre le formulaire de création.</p>
                         </button>
                       </div>
@@ -1245,7 +1245,7 @@ export default function MissionDetailClient({
                           onMouseDown={() => { setShowClientDrop(false); setShowCreateClientModal(true) }}
                           className="w-full text-left px-4 py-3 bg-brand/5 hover:bg-brand/10 transition border-t border-brand/30"
                         >
-                          <p className="text-brand text-sm font-semibold">＋ Créer ce client dans Odoo</p>
+                          <p className="text-brand text-sm font-semibold">＋ Créer ce client</p>
                           <p className="text-ink-muted text-xs">Formulaire pré-rempli avec "{clientQuery}"</p>
                         </button>
                       </div>
@@ -1255,7 +1255,7 @@ export default function MissionDetailClient({
                   {/* Badge lien Odoo */}
                   {billedPartnerId && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success rounded-xl mb-3">
-                      <span className="text-success text-xs">✓ Lié Odoo #{billedPartnerId}</span>
+                      <span className="text-success text-xs">✓ Client lié</span>
                       <span className="text-success text-xs font-medium">{form.billed_to_name}</span>
                       <button type="button" onClick={clearBilledClient}
                         className="ml-auto text-ink-muted hover:text-critical text-xs">✕</button>
@@ -1266,7 +1266,7 @@ export default function MissionDetailClient({
                     <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
                   </Field>
                   {!billedPartnerId && form.billed_to_name && (
-                    <p className="text-warning text-xs mt-1.5">⚠ Pas de contact Odoo lié — un nouveau sera créé à la confirmation.</p>
+                    <p className="text-warning text-xs mt-1.5">⚠ Pas de client lié — un nouveau sera créé à la confirmation.</p>
                   )}
                 </div>
 
@@ -1314,11 +1314,11 @@ export default function MissionDetailClient({
                     </div>
                   )}
                   {!odooVehicleId && vehicleSearched && vehicleResults.length === 0 && form.vehicle_plate.trim().length >= 3 && (
-                    <p className="text-warning text-xs mb-3">⚠ Aucun véhicule Odoo avec cette plaque — un nouveau sera créé à la confirmation.</p>
+                    <p className="text-warning text-xs mb-3">⚠ Aucun véhicule connu avec cette plaque — un nouveau sera créé à la confirmation.</p>
                   )}
                   {!odooVehicleId && vehicleResults.length > 0 && (
                     <div className="mb-4 bg-surface border border-brand/30 rounded-xl p-3">
-                      <p className="text-ink-secondary text-xs mb-2">{vehicleResults.length} véhicule(s) trouvé(s) dans Odoo — clique pour lier (évite le doublon) :</p>
+                      <p className="text-ink-secondary text-xs mb-2">{vehicleResults.length} véhicule(s) trouvé(s) — clique pour lier (évite le doublon) :</p>
                       <div className="space-y-1">
                         {vehicleResults.map(v => {
                           const sim = vehicleSimilarity(v)

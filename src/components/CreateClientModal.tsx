@@ -136,7 +136,7 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
         {/* Header */}
         <div className="px-5 py-4 border-b flex items-center justify-between bg-gradient-to-r from-brand/10 to-transparent">
           <div>
-            <p className="text-ink-muted text-xs uppercase tracking-wide">Nouveau client Odoo</p>
+            <p className="text-ink-muted text-xs uppercase tracking-wide">Nouveau client</p>
             <h2 className="text-ink font-semibold text-base">Créer un client</h2>
           </div>
           <button onClick={onClose} disabled={saving}
@@ -261,7 +261,7 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
           </button>
           <button onClick={save} disabled={saving || !name.trim()}
             className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
-            {saving ? '⏳ Création...' : 'Créer le client Odoo'}
+            {saving ? '⏳ Création...' : 'Créer le client'}
           </button>
         </div>
       </div>
