@@ -17,25 +17,38 @@ const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE
 
 type Coord = { lat: number; lng: number }
 
+// Migration legacy Directions API → Routes API (mai 2026 : Google a depreche
+// l'ancien endpoint /maps/api/directions/json pour les nouveaux projets).
+// Doc : https://developers.google.com/maps/documentation/routes/compute_route_directions
 async function getDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
   if (!GMAPS_KEY) {
     console.error('[km] GMAPS_KEY non configuree')
     return null
   }
-  const url = `https://maps.googleapis.com/maps/api/directions/json` +
-              `?origin=${origin.lat},${origin.lng}` +
-              `&destination=${destination.lat},${destination.lng}` +
-              `&mode=driving&key=${GMAPS_KEY}`
   try {
-    const res  = await fetch(url)
-    const data = await res.json()
-    if (data.status !== 'OK') {
-      console.error(`[km] Google Directions ${data.status}: ${data.error_message || '(pas de detail)'}`)
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'X-Goog-Api-Key':    GMAPS_KEY,
+        'X-Goog-FieldMask':  'routes.distanceMeters,routes.duration',
+      },
+      body: JSON.stringify({
+        origin:      { location: { latLng: { latitude: origin.lat,      longitude: origin.lng      } } },
+        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode:  'DRIVE',
+        routingPreference: 'TRAFFIC_UNAWARE',
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`[km] Routes API ${res.status}: ${text.slice(0, 300)}`)
       return null
     }
-    const meters = data.routes?.[0]?.legs?.[0]?.distance?.value
+    const data = await res.json()
+    const meters = data.routes?.[0]?.distanceMeters
     if (typeof meters !== 'number') {
-      console.error('[km] Google Directions: pas de distance dans la reponse')
+      console.error('[km] Routes API: pas de distance dans la reponse', JSON.stringify(data).slice(0, 200))
       return null
     }
     return meters / 1000
