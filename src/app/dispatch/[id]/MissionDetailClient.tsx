@@ -1005,6 +1005,12 @@ export default function MissionDetailClient({
 
   // Confirmer la mission
   const handleConfirm = async () => {
+    // Validation : client requis avant de confirmer la mission (necessaire
+    // pour la facturation future)
+    if (!billedPartnerId && !(form.billed_to_name || '').trim()) {
+      alert('Client facturé requis. Recherche un client dans Odoo ou tape son nom dans le champ "Client facturé".')
+      return
+    }
     setLoadingConfirm(true)
     const payload = { ...form, billed_to_id: billedPartnerId, odoo_vehicle_id: odooVehicleId, depot_depart_id: depotId || null, extra_addresses: stops.length > 0 ? stops : null }
     await fetch(`/api/missions/${initialMission.id}`, {

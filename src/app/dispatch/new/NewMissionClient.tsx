@@ -435,6 +435,9 @@ export default function NewMissionClient({
   const handleSubmit = async () => {
     if (!missionType)               return setError('Type de mission requis')
     if (!destinations[0]?.address)  return setError('Lieu d\'incident requis')
+    if (!odooPartnerId && !billedName.trim()) {
+      return setError('Client requis — sélectionne un client dans Odoo ou tape le nom')
+    }
 
     setSaving(true); setError('')
 
