@@ -8,8 +8,13 @@ export interface DistanceResult {
 }
 
 /**
- * Calcule la distance routière entre deux adresses via Google Maps Distance Matrix.
- * Nécessite GOOGLE_MAPS_SERVER_KEY dans les variables d'environnement Vercel.
+ * Calcule la distance et la duree entre deux adresses via Google Routes API.
+ *
+ * Migration de l'ancienne Distance Matrix API (depreciee pour les nouveaux
+ * projets Cloud → REQUEST_DENIED "legacy API") vers Routes API
+ * (routes.googleapis.com/directions/v2:computeRoutes).
+ *
+ * Necessite GOOGLE_MAPS_SERVER_KEY (ou fallback NEXT_PUBLIC_GOOGLE_MAPS_API_KEY).
  */
 export async function getRouteDistance(
   origin:      string,
@@ -19,31 +24,38 @@ export async function getRouteDistance(
 
   if (!key) throw new Error('Clé Google Maps serveur non configurée (GOOGLE_MAPS_SERVER_KEY)')
 
-  const params = new URLSearchParams({
-    origins:      origin,
-    destinations: destination,
-    mode:         'driving',
-    language:     'fr',
-    key,
+  const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: {
+      'Content-Type':     'application/json',
+      'X-Goog-Api-Key':   key,
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+    },
+    body: JSON.stringify({
+      origin:      { address: origin },
+      destination: { address: destination },
+      travelMode:  'DRIVE',
+      routingPreference: 'TRAFFIC_UNAWARE',
+      languageCode: 'fr',
+    }),
   })
 
-  const res  = await fetch(
-    `https://maps.googleapis.com/maps/api/distancematrix/json?${params}`
-  )
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Routes API ${res.status}: ${text.slice(0, 200)}`)
+  }
+
   const data = await res.json()
-
-  if (data.status !== 'OK') {
-    throw new Error(`Distance Matrix API: ${data.status} — ${data.error_message || ''}`)
+  const route = data.routes?.[0]
+  if (!route || typeof route.distanceMeters !== 'number') {
+    throw new Error('Routes API: pas de distance dans la reponse')
   }
 
-  const element = data.rows[0]?.elements[0]
-  if (!element || element.status !== 'OK') {
-    throw new Error(`Distance Matrix element: ${element?.status}`)
-  }
+  const durationSec = parseInt(String(route.duration || '0s').replace('s', '')) || 0
 
   return {
-    distanceKm:  Math.ceil(element.distance.value / 1000),
-    durationMin: Math.ceil(element.duration.value / 60),
+    distanceKm:  Math.ceil(route.distanceMeters / 1000),
+    durationMin: Math.ceil(durationSec / 60),
   }
 }
 
