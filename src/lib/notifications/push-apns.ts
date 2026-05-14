@@ -78,10 +78,29 @@ export async function sendApnsPush(token: string, payload: ApnsPayload): Promise
 
   const host = sandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'
 
+  // Mapping son par type (fichiers .caf bundles dans le wrapper iOS).
+  // Pour ajouter des sons differencies, drag&drop le .caf dans Xcode
+  // (target App → Build Phases → Copy Bundle Resources) puis ajouter
+  // l'entree ci-dessous. Si le fichier est absent du bundle, iOS fallback
+  // silencieusement sur 'default'.
+  const SOUND_BY_TYPE: Record<string, string> = {
+    new_mission_received:        'sounds.caf',
+    mission_assigned_manual:     'sounds.caf',
+    auto_dispatch_dispo_request: 'sounds.caf',
+    auto_dispatch_refused:       'sounds.caf',
+    auto_dispatch_timeout:       'sounds.caf',
+    escalation_call:             'sounds.caf',
+    payment_validated:           'sounds.caf',
+    check_vehicule_due:          'sounds.caf',
+    email_parse_error:           'sounds.caf',
+    garde_uncovered:             'sounds.caf',
+  }
+  const sound = (payload.notif_type && SOUND_BY_TYPE[payload.notif_type]) || 'sounds.caf'
+
   const apsBody = {
     aps: {
       alert: { title: payload.title, body: payload.body },
-      sound: 'default',
+      sound,
       'mutable-content': 1,
     },
     notif_type: payload.notif_type,
