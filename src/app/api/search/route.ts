@@ -286,12 +286,40 @@ export async function GET(req: Request) {
   // Note : recherche utilisateurs/chauffeurs volontairement exclue (non-operationnelle).
   // Pour gerer les comptes, passer par /admin/users.
 
+  // ── Véhicules Odoo ─────────────────────────────────────────
+  // Cherche par plaque normalisee OU VIN (substring). On lance la recherche
+  // si l'utilisateur veut les vehicules OU les factures (croisement vehicle→invoices).
+  let vehiclesFound: any[] = []
+  const vehiclePlateById = new Map<number, string>()
+  if ((wants('vehicle') || wants('invoice')) && q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
+    try {
+      const odooQ = qPlate.length >= 3 ? qPlate : q.toUpperCase()
+      const domain = ['|',
+        ['license_plate', 'ilike', odooQ],
+        ['vin_sn',        'ilike', odooQ],
+      ]
+      vehiclesFound = await odooCall<any[]>('fleet.vehicle', 'search_read', [domain], {
+        fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id'],
+        limit:  PER_CATEGORY_LIMIT,
+        order:  'license_plate asc',
+      }) || []
+      for (const v of vehiclesFound) {
+        if (v.license_plate) vehiclePlateById.set(v.id, v.license_plate)
+      }
+    } catch (e: any) {
+      console.error('[search] Odoo vehicles fail (non bloquant):', e.message)
+    }
+  }
+
   // ── Factures Odoo ──────────────────────────────────────────
-  // Cherche dans account.move par numero OU nom partenaire. Best effort
-  // (Odoo HS → on log et on continue sans bloquer le reste).
+  // 1) Match par numero/partenaire   2) Liees aux vehicules trouves (x_studio_plaque_1)
+  // Dedup par id.
   if (wants('invoice') && q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
     try {
-      const invoices = await odooCall<any[]>('account.move', 'search_read', [
+      const invoiceFields = ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'state', 'move_type', 'x_studio_plaque_1']
+
+      // 1) Match par numero ou nom partenaire
+      const byNamePromise = odooCall<any[]>('account.move', 'search_read', [
         [
           '&',
           ['state', '!=', 'cancel'],
@@ -301,22 +329,56 @@ export async function GET(req: Request) {
           ['partner_id.name', 'ilike', q],
         ],
       ], {
-        fields: ['id', 'name', 'partner_id', 'amount_total', 'invoice_date', 'state', 'move_type'],
+        fields: invoiceFields,
         limit:  PER_CATEGORY_LIMIT,
         order:  'invoice_date desc',
       })
 
-      for (const inv of invoices || []) {
+      // 2) Factures liees aux vehicules trouves (champ custom x_studio_plaque_1)
+      const vehicleIds = vehiclesFound.map(v => v.id)
+      const byVehiclePromise = vehicleIds.length > 0
+        ? odooCall<any[]>('account.move', 'search_read', [
+            [
+              '&', '&',
+              ['state', '!=', 'cancel'],
+              ['move_type', 'in', ['out_invoice', 'out_refund']],
+              ['x_studio_plaque_1', 'in', vehicleIds],
+            ],
+          ], {
+            fields: invoiceFields,
+            limit:  PER_CATEGORY_LIMIT,
+            order:  'invoice_date desc',
+          })
+        : Promise.resolve([] as any[])
+
+      const [invoicesByName, invoicesByVehicle] = await Promise.all([
+        byNamePromise.catch(e => { console.error('[search] invoices by name:', e.message); return [] as any[] }),
+        byVehiclePromise.catch(e => { console.error('[search] invoices by vehicle:', e.message); return [] as any[] }),
+      ])
+
+      // Merge + dedup
+      const seen = new Set<number>()
+      const merged: any[] = []
+      for (const inv of [...(invoicesByName || []), ...(invoicesByVehicle || [])]) {
+        if (seen.has(inv.id)) continue
+        seen.add(inv.id)
+        merged.push(inv)
+      }
+
+      for (const inv of merged) {
         const partnerName = inv.partner_id?.[1] || '—'
         const isRefund    = inv.move_type === 'out_refund'
         const stateLabel  = inv.state === 'posted' ? 'comptabilisée' : inv.state === 'draft' ? 'brouillon' : inv.state
         const reportName  = isRefund ? 'account.report_invoice_with_payments' : 'account.report_invoice'
+        const linkedVehicleId    = inv.x_studio_plaque_1?.[0]
+        const linkedVehiclePlate = inv.x_studio_plaque_1?.[1] || (linkedVehicleId ? vehiclePlateById.get(linkedVehicleId) : '') || ''
+        const vehicleMeta = linkedVehiclePlate ? ` · 🚗 ${linkedVehiclePlate}` : ''
         out.push({
           category: 'invoice',
           id:       String(inv.id),
           title:    `${isRefund ? '↩ ' : ''}${inv.name || '—'} · ${partnerName}`,
           subtitle: `${Number(inv.amount_total || 0).toFixed(2)} €`,
-          meta:     `${fmtDateShort(inv.invoice_date)} · ${stateLabel}`,
+          meta:     `${fmtDateShort(inv.invoice_date)} · ${stateLabel}${vehicleMeta}`,
           href:     `${ODOO_URL}/web#id=${inv.id}&model=account.move&view_type=form`,
           pdfUrl:   `${ODOO_URL}/report/pdf/${reportName}/${inv.id}`,
         })
@@ -326,23 +388,11 @@ export async function GET(req: Request) {
     }
   }
 
-  // ── Véhicules Odoo ─────────────────────────────────────────
-  // Cherche par plaque normalisee OU VIN (substring). Limite la latence si Odoo HS.
-  if (wants('vehicle') && q.length >= 3 && ODOO_URL && ODOO_API_KEY) {
+  // ── Push vehicules dans les resultats ──────────────────────
+  if (wants('vehicle') && vehiclesFound.length > 0) {
     try {
-      const odooQ = qPlate.length >= 3 ? qPlate : q.toUpperCase()
-      const domain = ['|',
-        ['license_plate', 'ilike', odooQ],
-        ['vin_sn',        'ilike', odooQ],
-      ]
-      const vehicles = await odooCall<any[]>('fleet.vehicle', 'search_read', [domain], {
-        fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id'],
-        limit:  PER_CATEGORY_LIMIT,
-        order:  'license_plate asc',
-      })
-
       const modelIds = Array.from(new Set(
-        (vehicles || []).map((v: any) => v.model_id?.[0]).filter((x: any) => typeof x === 'number')
+        vehiclesFound.map((v: any) => v.model_id?.[0]).filter((x: any) => typeof x === 'number')
       ))
       const modelMap = new Map<number, string>()
       if (modelIds.length > 0) {
@@ -350,7 +400,7 @@ export async function GET(req: Request) {
         for (const m of models) modelMap.set(m.id, m.name)
       }
 
-      for (const v of vehicles || []) {
+      for (const v of vehiclesFound) {
         const brand = v.brand_id?.[1] || ''
         const model = v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : ''
         const stateId = v.state_id?.[0]
@@ -368,7 +418,7 @@ export async function GET(req: Request) {
         })
       }
     } catch (e: any) {
-      console.error('[search] Odoo vehicles fail (non bloquant):', e.message)
+      console.error('[search] Odoo vehicles render fail (non bloquant):', e.message)
     }
   }
 
