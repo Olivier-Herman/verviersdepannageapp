@@ -27,13 +27,11 @@ const CATEGORY_META: Record<string, {
   mission:      { label: 'Missions',         emoji: '🚗', gradient: 'from-info/30    to-info/5',       accent: 'bg-info/15 text-info border-info/30',         ring: 'ring-info/40',     text: 'text-info' },
   encaissement: { label: 'Encaissements',    emoji: '💳', gradient: 'from-success/30 to-success/5',    accent: 'bg-success/15 text-success border-success/30', ring: 'ring-success/40',  text: 'text-success' },
   avance:       { label: 'Avances de fonds', emoji: '📄', gradient: 'from-warning/30 to-warning/5',    accent: 'bg-warning/15 text-warning border-warning/30', ring: 'ring-warning/40',  text: 'text-warning' },
-  invoice:      { label: 'Factures Odoo',    emoji: '🧾', gradient: 'from-purple-500/30 to-purple-500/5', accent: 'bg-purple-500/15 text-purple-500 border-purple-500/30', ring: 'ring-purple-500/40', text: 'text-purple-500' },
-  driver:       { label: 'Dépanneurs',       emoji: '🧑‍🔧', gradient: 'from-amber-500/30 to-amber-500/5',   accent: 'bg-amber-500/15 text-amber-500 border-amber-500/30',     ring: 'ring-amber-500/40',  text: 'text-amber-500' },
-  user:         { label: 'Utilisateurs',     emoji: '👤', gradient: 'from-ink-faint/30 to-ink-faint/5', accent: 'bg-ink-faint/15 text-ink-secondary border-ink-faint/30',  ring: 'ring-ink-faint/40',  text: 'text-ink-secondary' },
-  vehicle:      { label: 'Véhicules Odoo',   emoji: '🚘', gradient: 'from-critical/30 to-critical/5',    accent: 'bg-critical/15 text-critical border-critical/30',         ring: 'ring-critical/40',   text: 'text-critical' },
+  invoice:      { label: 'Factures',         emoji: '🧾', gradient: 'from-purple-500/30 to-purple-500/5', accent: 'bg-purple-500/15 text-purple-500 border-purple-500/30', ring: 'ring-purple-500/40', text: 'text-purple-500' },
+  vehicle:      { label: 'Véhicules',        emoji: '🚘', gradient: 'from-critical/30 to-critical/5',    accent: 'bg-critical/15 text-critical border-critical/30',         ring: 'ring-critical/40',   text: 'text-critical' },
 }
 
-const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle', 'driver', 'user']
+const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle']
 
 const RECENT_KEY     = 'verviers:recent-searches'
 const RECENT_MAX     = 8

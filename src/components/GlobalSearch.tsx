@@ -18,13 +18,11 @@ const CATEGORY_META: Record<string, { label: string; emoji: string; color: strin
   mission:      { label: 'Missions',         emoji: '🚗', color: 'text-info',    accent: 'bg-info/15 border-info/30 text-info' },
   encaissement: { label: 'Encaissements',    emoji: '💳', color: 'text-success', accent: 'bg-success/15 border-success/30 text-success' },
   avance:       { label: 'Avances de fonds', emoji: '📄', color: 'text-warning', accent: 'bg-warning/15 border-warning/30 text-warning' },
-  invoice:      { label: 'Factures Odoo',    emoji: '🧾', color: 'text-purple-500', accent: 'bg-purple-500/15 border-purple-500/30 text-purple-500' },
-  driver:       { label: 'Dépanneurs',       emoji: '🧑‍🔧', color: 'text-amber-500',  accent: 'bg-amber-500/15 border-amber-500/30 text-amber-500' },
-  user:         { label: 'Utilisateurs',     emoji: '👤', color: 'text-ink-secondary', accent: 'bg-ink/10 border-ink/20 text-ink-secondary' },
-  vehicle:      { label: 'Véhicules Odoo',   emoji: '🚘', color: 'text-critical', accent: 'bg-critical/15 border-critical/30 text-critical' },
+  invoice:      { label: 'Factures',         emoji: '🧾', color: 'text-purple-500', accent: 'bg-purple-500/15 border-purple-500/30 text-purple-500' },
+  vehicle:      { label: 'Véhicules',        emoji: '🚘', color: 'text-critical', accent: 'bg-critical/15 border-critical/30 text-critical' },
 }
 
-const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'driver', 'user', 'vehicle']
+const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle']
 
 export default function GlobalSearch() {
   const router = useRouter()

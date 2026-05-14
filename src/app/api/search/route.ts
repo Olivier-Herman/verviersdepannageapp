@@ -283,45 +283,8 @@ export async function GET(req: Request) {
     }
   } // /wants('avance')
 
-  // ── Dépanneurs / chauffeurs ────────────────────────────────
-  if (wants('driver')) {
-    const { data: drivers } = await sb
-      .from('users')
-      .select('id, name, email, role, active')
-      .ilike('name', qLike)
-      .eq('role', 'driver')
-      .limit(PER_CATEGORY_LIMIT)
-    for (const d of drivers || []) {
-      out.push({
-        category: 'driver',
-        id:       d.id,
-        title:    d.name || d.email,
-        subtitle: d.email,
-        meta:     d.active ? 'actif' : 'inactif',
-        href:     `/admin/users#${d.id}`,
-      })
-    }
-  }
-
-  // ── Utilisateurs (autres rôles) ────────────────────────────
-  if (wants('user')) {
-    const { data: users } = await sb
-      .from('users')
-      .select('id, name, email, role, active')
-      .or(`name.ilike.${qLike},email.ilike.${qLike}`)
-      .neq('role', 'driver')
-      .limit(PER_CATEGORY_LIMIT)
-    for (const u of users || []) {
-      out.push({
-        category: 'user',
-        id:       u.id,
-        title:    u.name || u.email,
-        subtitle: `${u.email} · ${u.role}`,
-        meta:     u.active ? 'actif' : 'inactif',
-        href:     `/admin/users#${u.id}`,
-      })
-    }
-  }
+  // Note : recherche utilisateurs/chauffeurs volontairement exclue (non-operationnelle).
+  // Pour gerer les comptes, passer par /admin/users.
 
   // ── Factures Odoo ──────────────────────────────────────────
   // Cherche dans account.move par numero OU nom partenaire. Best effort
@@ -400,7 +363,7 @@ export async function GET(req: Request) {
           subtitle: v.vin_sn ? `VIN ${v.vin_sn}` : '',
           meta:     fourriereZone
             ? `EN FOURRIÈRE · ${fourriereZone.full_name}`
-            : `Fiche Odoo (factures, ticket assistance, Towsoft)`,
+            : `Fiche véhicule · factures · ticket assistance`,
           href:     `${ODOO_URL}/web#id=${v.id}&model=fleet.vehicle&view_type=form`,
         })
       }
