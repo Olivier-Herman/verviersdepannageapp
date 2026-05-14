@@ -94,31 +94,35 @@ export async function sendNotification(
     return { ok: false, error: error.message }
   }
 
-  // 4. Push natif (best-effort, async) — pour reveiller le device si l'app
-  //    est en background. Echec silencieux : la notif est deja en BDD donc
-  //    elle s'affichera des que l'app sera ouverte (canal in_app).
-  void (async () => {
-    try {
-      const pushRes = await sendPushNotification(userId, {
-        title:      payload.title,
-        body:       payload.body,
-        action_url: payload.action_url,
-        mission_id: payload.mission_id,
+  // 4. Push natif — pour reveiller le device si l'app est en background.
+  //    Await obligatoire : sinon Vercel tue la lambda apres le return et
+  //    le push ne part jamais (fire-and-forget non supporte sur serverless).
+  //    Timeout 15s max via push-apns.ts. Echec n'empeche pas la reponse OK
+  //    cote API : la notif est deja en DB (canal in_app) → le client la verra
+  //    des qu'il ouvre l'app.
+  console.log('[sendNotification] calling sendPushNotification for', userId, 'type=', type)
+  try {
+    const pushRes = await sendPushNotification(userId, {
+      title:      payload.title,
+      body:       payload.body,
+      action_url: payload.action_url,
+      mission_id: payload.mission_id,
+      notif_type: type,
+      data:       payload.data,
+    })
+    console.log('[sendNotification] push result =', JSON.stringify(pushRes))
+    if (!pushRes.no_devices) {
+      const { error: pushLogErr } = await sb.from('notifications_log').insert({
+        user_id:    userId,
         notif_type: type,
-        data:       payload.data,
+        payload:    { ...payload, push_summary: pushRes } as any,
+        channel:    'push',
       })
-      if (!pushRes.no_devices) {
-        await sb.from('notifications_log').insert({
-          user_id:    userId,
-          notif_type: type,
-          payload:    { ...payload, push_summary: pushRes } as any,
-          channel:    'push',
-        })
-      }
-    } catch (e: any) {
-      console.error('[sendNotification] push error:', e.message)
+      if (pushLogErr) console.error('[sendNotification] push log INSERT error:', pushLogErr.message)
     }
-  })()
+  } catch (e: any) {
+    console.error('[sendNotification] push error:', e.message, e.stack?.slice(0, 200))
+  }
 
   return { ok: true, log_id: data.id }
 }
