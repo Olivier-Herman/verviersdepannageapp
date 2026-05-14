@@ -18,6 +18,10 @@ const TAX_21           = 5   // TVA 21% Belgique
 // ============================================================
 // JSON-RPC core
 // ============================================================
+export async function odooRpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
+  return rpc<T>(model, method, args, kwargs)
+}
+
 async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
   const res = await fetch(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',

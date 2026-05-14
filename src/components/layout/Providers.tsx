@@ -3,6 +3,7 @@
 import { SessionProvider } from 'next-auth/react'
 import { useEffect }       from 'react'
 import { ThemeProvider }   from '@/components/theme/ThemeProvider'
+import SheetStackProvider  from '@/components/sheets/SheetStackProvider'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
 
@@ -21,7 +22,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider>
-      <SessionProvider>{children}</SessionProvider>
+      <SessionProvider>
+        <SheetStackProvider>{children}</SheetStackProvider>
+      </SessionProvider>
     </ThemeProvider>
   )
 }

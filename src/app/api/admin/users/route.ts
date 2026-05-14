@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, email, name, role, roles, active, can_verify, personal_email, auth_provider,
       last_login, created_at, tgr_push_notify, odoo_partner_id, towsoft_name,
-      schedule_day, schedule_night,
+      schedule_day, schedule_night, has_odoo_access,
       user_modules!user_modules_user_id_fkey (module_id, granted)
     `)
     .order('name')
@@ -78,6 +78,7 @@ export async function PATCH(req: NextRequest) {
     userId, email, role, roles, active, can_verify,
     personal_email, auth_provider, modules,
     tgr_push_notify, odoo_partner_id, towsoft_name,
+    has_odoo_access,
   } = await req.json()
 
   if (!userId) return NextResponse.json({ error: 'userId requis' }, { status: 400 })
@@ -105,6 +106,7 @@ export async function PATCH(req: NextRequest) {
     tgr_push_notify: tgr_push_notify ?? false,
     odoo_partner_id: odoo_partner_id ? parseInt(String(odoo_partner_id)) : null,
     towsoft_name:    towsoft_name || null,
+    has_odoo_access: has_odoo_access ?? false,
     updated_at:      new Date().toISOString(),
   }
   if (email) updateData.email = email.toLowerCase()

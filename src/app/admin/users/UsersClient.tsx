@@ -97,6 +97,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   const [userCanVerify,    setUserCanVerify]    = useState(false)
   const [userAuthProvider, setUserAuthProvider] = useState('email_password')
   const [userTgrPush,      setUserTgrPush]      = useState(false)
+  const [userHasOdooAccess, setUserHasOdooAccess] = useState(false)
   const [userOdooId,       setUserOdooId]       = useState('')
   const [userModules,      setUserModules]      = useState<string[]>([])
   const [resetLoading,     setResetLoading]     = useState(false)
@@ -123,6 +124,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     setUserCanVerify(!!user.can_verify)
     setUserAuthProvider(user.auth_provider || 'email_password')
     setUserTgrPush(!!user.tgr_push_notify)
+    setUserHasOdooAccess(!!user.has_odoo_access)
     setUserOdooId(user.odoo_partner_id ? String(user.odoo_partner_id) : '')
     setUserTowsoftName(user.towsoft_name || '')
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
@@ -182,6 +184,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           auth_provider:   userAuthProvider,
           modules:         userModules,
           tgr_push_notify: userTgrPush,
+          has_odoo_access: userHasOdooAccess,
           odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
           towsoft_name:    userTowsoftName || null,
         }),
@@ -403,6 +406,18 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
             <p className="text-ink-faint text-xs mt-0.5">Accès au PIN de validation caisse</p>
           </div>
           <Toggle value={userCanVerify} onChange={() => setUserCanVerify(!userCanVerify)} />
+        </div>
+      </div>
+
+      {/* ── Accès Odoo ── */}
+      <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
+        <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Accès Odoo</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <span className="block text-ink-muted text-xs font-semibold uppercase tracking-wider">Activé</span>
+            <p className="text-ink-faint text-xs mt-0.5">Si activé, l'utilisateur verra le bouton "Ouvrir dans Odoo" sur les fiches véhicule, facture et autres (in-app). Si désactivé : consultation uniquement dans l'app.</p>
+          </div>
+          <Toggle value={userHasOdooAccess} onChange={() => setUserHasOdooAccess(!userHasOdooAccess)} />
         </div>
       </div>
 

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import AppShell from '@/components/layout/AppShell'
+import { useSheetStack } from '@/components/sheets/SheetStackProvider'
 import { Search, Loader2, Sparkles, Clock, X, ExternalLink, FileText, ArrowRight } from 'lucide-react'
 
 interface SearchResult {
@@ -69,6 +71,9 @@ function clearRecent() {
 export default function RechercheClient({ initialQuery, userRole, userName, userEmail, userId, userModules }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { openVehicle, openInvoice } = useSheetStack()
+  const { data: session } = useSession()
+  const hasOdooAccess = !!(session?.user as any)?.hasOdooAccess
   const [query,         setQuery]         = useState(initialQuery)
   const [results,       setResults]       = useState<Record<string, SearchResult[]>>({})
   const [loading,       setLoading]       = useState(false)
@@ -142,6 +147,9 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
   }
 
   function navigate(r: SearchResult) {
+    // Sheets in-app pour vehicules et factures Odoo
+    if (r.category === 'vehicle') { openVehicle(parseInt(r.id, 10)); return }
+    if (r.category === 'invoice') { openInvoice(parseInt(r.id, 10)); return }
     const isExternal = /^https?:\/\//.test(r.href)
     if (isExternal) {
       window.open(r.href, '_blank', 'noopener,noreferrer')
@@ -419,15 +427,17 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                             )}
                             {r.pdfUrl && (
                               <div className="flex items-center gap-1.5 mt-2 pt-2 border-t">
-                                <a
-                                  href={r.href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md transition"
-                                >
-                                  <ExternalLink size={11} /> Odoo
-                                </a>
+                                {hasOdooAccess && (
+                                  <a
+                                    href={r.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={e => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md transition"
+                                  >
+                                    <ExternalLink size={11} /> Odoo
+                                  </a>
+                                )}
                                 <a
                                   href={r.pdfUrl}
                                   target="_blank"

@@ -32,6 +32,13 @@ async function loadModules(userId: string) {
   return (data || []).map(m => m.module_id)
 }
 
+async function loadOdooAccess(userId: string): Promise<boolean> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('users').select('has_odoo_access').eq('id', userId).maybeSingle()
+  return !!data?.has_odoo_access
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -46,7 +53,7 @@ export const authOptions: NextAuthOptions = {
         const supabase = createAdminClient()
 
         const { data: user } = await supabase.from('users')
-          .select('id, email, name, role, roles, active, password_hash, must_change_password, avatar_url, auth_provider')
+          .select('id, email, name, role, roles, active, password_hash, must_change_password, avatar_url, auth_provider, has_odoo_access')
           .ilike('email', credentials.email)
           .maybeSingle()
 
@@ -70,6 +77,7 @@ export const authOptions: NextAuthOptions = {
           roles:               user.roles || [user.role],
           mustChangePassword:  user.must_change_password,
           image:               user.avatar_url,
+          hasOdooAccess:       !!user.has_odoo_access,
         }
       }
     }),
@@ -96,7 +104,7 @@ export const authOptions: NextAuthOptions = {
 
       const supabase = createAdminClient()
       const { data: dbUser } = await supabase.from('users')
-        .select('id, role, roles, active, must_change_password, auth_provider')
+        .select('id, role, roles, active, must_change_password, auth_provider, has_odoo_access')
         .ilike('email', email)
         .maybeSingle()
 
@@ -145,6 +153,7 @@ export const authOptions: NextAuthOptions = {
       ;(user as any).role               = dbUser.role
       ;(user as any).roles              = dbUser.roles || [dbUser.role]
       ;(user as any).mustChangePassword = dbUser.must_change_password || false
+      ;(user as any).hasOdooAccess      = !!dbUser.has_odoo_access
       return true
     },
 
@@ -156,12 +165,14 @@ export const authOptions: NextAuthOptions = {
           token.roles = (user as any).roles || [(user as any).role]
           token.mustChangePassword = (user as any).mustChangePassword
           token.pending = false
+          token.hasOdooAccess = !!(user as any).hasOdooAccess
         } else {
           token.id    = (user as any).dbId
           token.role  = (user as any).role
           token.roles = (user as any).roles || [(user as any).role]
           token.mustChangePassword = (user as any).mustChangePassword || false
           token.pending = (user as any).pending || false
+          token.hasOdooAccess = !!(user as any).hasOdooAccess
         }
         if (token.id) token.modules = await loadModules(token.id as string)
       }
@@ -176,19 +187,24 @@ export const authOptions: NextAuthOptions = {
         ;(session.user as any).mustChangePassword= token.mustChangePassword
         ;(session.user as any).pending           = token.pending
 
-        // Refresh modules a chaque session check (sinon le JWT garde les
-        // modules au moment du login, et l user devrait se reconnecter
-        // pour voir un nouveau module active dans le menu).
-        // Cout : 1 query par page render -- negligeable pour Supabase.
+        // Refresh modules + acces Odoo a chaque session check (sinon le JWT
+        // garde l'etat du login, et un toggle admin necessiterait une
+        // reconnexion). Cout : 2 queries Supabase par render — negligeable.
         if (token.id) {
           try {
-            const fresh = await loadModules(token.id as string)
-            ;(session.user as any).modules = fresh
+            const [fresh, odooAccess] = await Promise.all([
+              loadModules(token.id as string),
+              loadOdooAccess(token.id as string),
+            ])
+            ;(session.user as any).modules        = fresh
+            ;(session.user as any).hasOdooAccess  = odooAccess
           } catch {
-            ;(session.user as any).modules = token.modules || []
+            ;(session.user as any).modules        = token.modules || []
+            ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
           }
         } else {
-          ;(session.user as any).modules = token.modules || []
+          ;(session.user as any).modules        = token.modules || []
+          ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
         }
       }
       return session

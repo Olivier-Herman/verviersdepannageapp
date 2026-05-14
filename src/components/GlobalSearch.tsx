@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { Search, X, Loader2, Sparkles } from 'lucide-react'
+import { useSheetStack } from '@/components/sheets/SheetStackProvider'
 
 interface SearchResult {
   category: string
@@ -26,6 +28,9 @@ const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle
 
 export default function GlobalSearch() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const hasOdooAccess = !!(session?.user as any)?.hasOdooAccess
+  const { openVehicle, openInvoice } = useSheetStack()
   const [open, setOpen]           = useState(false)
   const [query, setQuery]         = useState('')
   const [results, setResults]     = useState<Record<string, SearchResult[]>>({})
@@ -126,6 +131,17 @@ export default function GlobalSearch() {
   }
 
   function navigate(r: SearchResult) {
+    // Sheets in-app pour vehicules et factures
+    if (r.category === 'vehicle') {
+      setOpen(false)
+      openVehicle(parseInt(r.id, 10))
+      return
+    }
+    if (r.category === 'invoice') {
+      setOpen(false)
+      openInvoice(parseInt(r.id, 10))
+      return
+    }
     const isExternal = /^https?:\/\//.test(r.href)
     if (isExternal) {
       window.open(r.href, '_blank', 'noopener,noreferrer')
@@ -298,16 +314,18 @@ export default function GlobalSearch() {
                               </button>
                               {r.pdfUrl && (
                                 <div className="flex items-center gap-1.5 pr-3">
-                                  <a
-                                    href={r.href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => setOpen(false)}
-                                    className="px-2.5 py-1 text-xs bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md whitespace-nowrap transition"
-                                    title="Ouvrir la facture dans Odoo"
-                                  >
-                                    Consulter
-                                  </a>
+                                  {hasOdooAccess && (
+                                    <a
+                                      href={r.href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => setOpen(false)}
+                                      className="px-2.5 py-1 text-xs bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md whitespace-nowrap transition"
+                                      title="Ouvrir dans Odoo"
+                                    >
+                                      Odoo
+                                    </a>
+                                  )}
                                   <a
                                     href={r.pdfUrl}
                                     target="_blank"
