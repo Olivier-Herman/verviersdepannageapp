@@ -387,20 +387,56 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
   })
   debugLog.push(`candidateLinks count: ${candidateLinks.length}`)
 
-  // Pour chaque lien candidat, on extrait le n° mission dans le meme container
+  // Pour chaque lien candidat, on extrait le n° mission dans le meme container.
+  // Strategy en plusieurs etages : tr -> table parente -> body avec proximite.
   for (const cand of candidateLinks) {
-    const row = cand.row
-    if (!row || row.length === 0) continue
+    // Extract AssignmentId depuis l'URL (toujours dispo)
+    const aidMatch = cand.href.match(/[?&]AssignmentId=(\d+)/i)
+    const assignmentId = aidMatch ? aidMatch[1] : null
 
-    // Cherche un texte numerique long (>=5 chiffres) dans la row
-    const allText = row.text().replace(/\s+/g, ' ').trim()
-    const numMatch = allText.match(/\b(\d{6,10})\b/)
-    if (!numMatch) continue
-    const missionNumber = numMatch[1]
-    // Dedup : si deja vu, skip
+    // Essaie d'extraire le n° mission depuis plusieurs scopes
+    let missionNumber: string | null = null
+    let scopeUsed = 'none'
+
+    const scopes: Array<{ name: string; el: any }> = [
+      { name: 'closest-tr',    el: cand.row.closest('tr') },
+      { name: 'closest-table', el: cand.row.closest('table') },
+      { name: 'parent-2up',    el: cand.row.parent().parent() },
+      { name: 'parent-3up',    el: cand.row.parent().parent().parent() },
+    ]
+    for (const scope of scopes) {
+      if (!scope.el || scope.el.length === 0) continue
+      const text = scope.el.text().replace(/\s+/g, ' ').trim()
+      // Match un nombre 6-10 chiffres distinct de l'AssignmentId
+      const matches = text.match(/\b(\d{6,10})\b/g) || []
+      const candidate = matches.find(n => n !== assignmentId)
+      if (candidate) {
+        missionNumber = candidate
+        scopeUsed = scope.name
+        break
+      }
+    }
+
+    // Fallback : si on n'a pas trouve de mission number distinct mais on a
+    // l'AssignmentId, on utilise l'AssignmentId comme identifiant unique
+    // (mieux que rien — la dedup BDD pourra le matcher si on stocke aussi
+    // l'AssignmentId comme external_id quand l'email parse arrive)
+    if (!missionNumber && assignmentId) {
+      missionNumber = assignmentId
+      scopeUsed = 'fallback-assignment-id'
+    }
+
+    if (!missionNumber) {
+      debugLog.push(`cand-skip: href=${cand.href.slice(0, 60)} (rien trouve)`)
+      continue
+    }
+    debugLog.push(`cand-ok: ${missionNumber} via ${scopeUsed}`)
+
+    // Dedup
     if (missions.some(m => m.missionNumber === missionNumber)) continue
 
-    // Extraction des cellules si row est un tr
+    // Extract cellules si dispo
+    const tr = cand.row.closest('tr')
     let taskType: string | null = null
     let dispatchDate: string | null = null
     let status: string | null = null
@@ -408,13 +444,13 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
     let fromLocation: string | null = null
     let toLocation: string | null = null
 
-    const cells = row.find('td')
-    if (cells.length >= 4) {
-      taskType     = $(cells[1]).text().trim() || null
-      dispatchDate = $(cells[2]).text().trim() || null
-      status       = $(cells[3]).text().trim() || null
-      if (cells.length > 5) fromLocation = $(cells[5]).text().trim().replace(/\s+/g, ' ') || null
-      if (cells.length > 6) toLocation   = $(cells[6]).text().trim().replace(/\s+/g, ' ') || null
+    if (tr.length > 0) {
+      const cells = tr.find('td')
+      if (cells.length >= 2) taskType     = $(cells[1]).text().trim() || null
+      if (cells.length >= 3) dispatchDate = $(cells[2]).text().trim() || null
+      if (cells.length >= 4) status       = $(cells[3]).text().trim() || null
+      if (cells.length > 5)  fromLocation = $(cells[5]).text().trim().replace(/\s+/g, ' ') || null
+      if (cells.length > 6)  toLocation   = $(cells[6]).text().trim().replace(/\s+/g, ' ') || null
       if (cells.length > 7) {
         const vehText = $(cells[7]).text().trim()
         plate = vehText.split(/\s+/).filter(Boolean).pop() || null
