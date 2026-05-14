@@ -11,6 +11,8 @@ interface Source {
   notes:         string | null
   mission_count: number
   has_surcharge: boolean
+  default_billed_to_id?:   number | null
+  default_billed_to_name?: string | null
 }
 
 export default function SourcesClient({ initial }: { initial: Source[] }) {
@@ -144,10 +146,42 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
   const [key, setKey]     = useState(source?.key || '')
   const [sortOrder, setSortOrder] = useState(source?.sort_order ?? 100)
   const [notes, setNotes] = useState(source?.notes || '')
+  const [defaultBilledId,   setDefaultBilledId]   = useState<number | null>(source?.default_billed_to_id   || null)
+  const [defaultBilledName, setDefaultBilledName] = useState<string>(source?.default_billed_to_name || '')
+  const [clientQuery, setClientQuery] = useState('')
+  const [clientResults, setClientResults] = useState<Array<{ id: number; name: string }>>([])
+  const [clientSearching, setClientSearching] = useState(false)
+  const [showClientDrop, setShowClientDrop] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 
   const autoKey = (key || label).toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+
+  async function searchClient() {
+    if (clientQuery.trim().length < 3) { setClientResults([]); return }
+    setClientSearching(true)
+    try {
+      const data = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(clientQuery)}`).then(r => r.json())
+      setClientResults((data.clients || data || []).slice(0, 8))
+    } catch {
+      setClientResults([])
+    } finally {
+      setClientSearching(false)
+    }
+  }
+
+  function selectClient(c: { id: number; name: string }) {
+    setDefaultBilledId(c.id)
+    setDefaultBilledName(c.name)
+    setShowClientDrop(false)
+    setClientQuery('')
+    setClientResults([])
+  }
+
+  function clearClient() {
+    setDefaultBilledId(null)
+    setDefaultBilledName('')
+  }
 
   async function save() {
     if (!label.trim()) { setError('Libellé requis'); return }
@@ -156,8 +190,10 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
       const url    = '/api/admin/sources'
       const method = isNew ? 'POST' : 'PATCH'
       const body   = isNew
-        ? { key: autoKey, label: label.trim(), sort_order: sortOrder, notes: notes.trim() || null }
-        : { key: source!.key, label: label.trim(), sort_order: sortOrder, notes: notes.trim() || null }
+        ? { key: autoKey, label: label.trim(), sort_order: sortOrder, notes: notes.trim() || null,
+            default_billed_to_id: defaultBilledId, default_billed_to_name: defaultBilledName || null }
+        : { key: source!.key, label: label.trim(), sort_order: sortOrder, notes: notes.trim() || null,
+            default_billed_to_id: defaultBilledId, default_billed_to_name: defaultBilledName || null }
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
@@ -202,6 +238,44 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
             <input type="number" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value) || 100)}
               className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-ink-muted text-xs mb-1">Client à facturer par défaut (optionnel)</label>
+          <p className="text-ink-faint text-[11px] mb-2">
+            Si défini, les missions de cette source seront pré-remplies avec ce client. Le dispatcher peut toujours le modifier.
+          </p>
+          {defaultBilledId ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success/30 rounded-xl">
+              <span className="text-success text-xs flex-1 truncate">✓ {defaultBilledName}</span>
+              <button onClick={clearClient} type="button"
+                className="text-ink-muted hover:text-critical text-xs">✕ retirer</button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input value={clientQuery}
+                onChange={e => { setClientQuery(e.target.value); setShowClientDrop(true) }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); searchClient() } }}
+                onFocus={() => setShowClientDrop(true)}
+                onBlur={() => setTimeout(() => setShowClientDrop(false), 200)}
+                placeholder="Rechercher un client Odoo (min 3 char + Enter)..."
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
+              {showClientDrop && clientResults.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+                  {clientResults.map(c => (
+                    <button key={c.id} type="button"
+                      onMouseDown={() => selectClient(c)}
+                      className="w-full text-left px-3 py-2 hover:bg-surface-hover text-ink text-sm border-b last:border-b-0">
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {clientSearching && (
+                <p className="text-ink-faint text-xs mt-1">⏳ Recherche…</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div>

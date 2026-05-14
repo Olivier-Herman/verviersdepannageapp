@@ -89,6 +89,15 @@ export async function POST(req: Request) {
       })
     }
 
+    // Lookup client par defaut source VAB
+    const { data: vabCat } = await sb
+      .from('mission_source_catalog')
+      .select('default_billed_to_id, default_billed_to_name')
+      .eq('key', 'vab')
+      .maybeSingle()
+    const defaultBilledToId   = vabCat?.default_billed_to_id || null
+    const defaultBilledToName = vabCat?.default_billed_to_name || null
+
     // ── Mode send : scrape detail + insert direct en BDD ────────────
     const toImport = items.filter(i => !i.alreadyImported && i.detailHref)
     const results: Array<{ missionNumber: string; ok: boolean; error?: string; debug?: string }> = []
@@ -156,6 +165,11 @@ export async function POST(req: Request) {
           parse_confidence:    0.95,
           received_at:         new Date().toISOString(),
           intervention_date:   interventionIso || new Date().toISOString(),
+          // Client a facturer par defaut (configure dans /admin/sources)
+          ...(defaultBilledToId ? {
+            billed_to_id:   defaultBilledToId,
+            billed_to_name: defaultBilledToName,
+          } : {}),
         }
 
         const { error: insertErr } = await sb

@@ -31,6 +31,15 @@ export async function GET(req: Request) {
 
     const sb = createAdminClient()
 
+    // Lookup du client par defaut pour la source VAB
+    const { data: vabCat } = await sb
+      .from('mission_source_catalog')
+      .select('default_billed_to_id, default_billed_to_name')
+      .eq('key', 'vab')
+      .maybeSingle()
+    const defaultBilledToId   = vabCat?.default_billed_to_id || null
+    const defaultBilledToName = vabCat?.default_billed_to_name || null
+
     // Dedup par AssignmentId (= external_id en BDD pour les missions VAB)
     const assignmentIds = missions
       .map(m => m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1])
@@ -107,6 +116,11 @@ export async function GET(req: Request) {
           parse_confidence:   0.95,
           received_at:        new Date().toISOString(),
           intervention_date:  interventionIso || new Date().toISOString(),
+          // Client a facturer par defaut (configure dans /admin/sources si defini)
+          ...(defaultBilledToId ? {
+            billed_to_id:   defaultBilledToId,
+            billed_to_name: defaultBilledToName,
+          } : {}),
         })
 
         if (insertErr) {

@@ -682,6 +682,28 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // Sur une mise à jour de dossier existant, on préserve la valeur
     // intervention_date déjà en base si le dispatcher l'a modifiée.
     console.log(`[Processor] step=update_final messageId=${msgIdShort} source=${source} targetId=${targetId}`)
+
+    // Lookup du client par defaut pour cette source (mission_source_catalog).
+    // Si defini, on pre-remplit billed_to_id / billed_to_name pour eviter au
+    // dispatcher de saisir manuellement (ex: Ethias → Ethias SA, Vivium → ...)
+    // Le dispatcher peut toujours modifier dans /dispatch/[id].
+    let defaultBilledToId:   number | null = null
+    let defaultBilledToName: string | null = null
+    try {
+      const { data: srcCat } = await supabase
+        .from('mission_source_catalog')
+        .select('default_billed_to_id, default_billed_to_name')
+        .eq('key', source)
+        .maybeSingle()
+      if (srcCat?.default_billed_to_id) {
+        defaultBilledToId   = srcCat.default_billed_to_id
+        defaultBilledToName = srcCat.default_billed_to_name || null
+        console.log(`[Processor] billed_to default applique : ${source} → #${defaultBilledToId} (${defaultBilledToName})`)
+      }
+    } catch (e: any) {
+      console.warn(`[Processor] Lookup billed_to default failed (non bloquant):`, e.message)
+    }
+
     const updatePayload: Record<string, unknown> = {
       external_id:          parsed.external_id,
       dossier_number:       parsed.dossier_number,
@@ -713,6 +735,14 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       parsed_data:          parsed,
       parse_confidence:     parsed.confidence,
     }
+    // Pre-remplissage du client a facturer si la source a un default defini
+    // ET que la mission est nouvelle (on n'ecrase pas si le dispatcher a deja
+    // modifie manuellement sur un dossier existant)
+    if (!existingMissionId && defaultBilledToId) {
+      updatePayload.billed_to_id   = defaultBilledToId
+      updatePayload.billed_to_name = defaultBilledToName
+    }
+
     // Nouvelle mission (placeholder) → init intervention_date = receivedAt.
     // Mise à jour d'un dossier existant → ne pas écraser la valeur saisie
     // par le dispatcher.

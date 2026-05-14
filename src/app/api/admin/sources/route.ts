@@ -78,7 +78,14 @@ export async function POST(req: Request) {
   const auth = await requireAdmin()
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const body = await req.json() as { key?: string; label?: string; sort_order?: number; notes?: string }
+  const body = await req.json() as {
+    key?: string
+    label?: string
+    sort_order?: number
+    notes?: string
+    default_billed_to_id?: number | null
+    default_billed_to_name?: string | null
+  }
   const label = (body.label || '').trim()
   if (!label) return NextResponse.json({ error: 'Libellé requis' }, { status: 400 })
 
@@ -91,8 +98,10 @@ export async function POST(req: Request) {
     .insert({
       key,
       label,
-      sort_order: body.sort_order ?? 100,
-      notes:      body.notes || null,
+      sort_order:             body.sort_order ?? 100,
+      notes:                  body.notes || null,
+      default_billed_to_id:   body.default_billed_to_id ?? null,
+      default_billed_to_name: body.default_billed_to_name ?? null,
     })
     .select()
     .single()
@@ -110,15 +119,25 @@ export async function PATCH(req: Request) {
   const auth = await requireAdmin()
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const body = await req.json() as { key?: string; label?: string; active?: boolean; sort_order?: number; notes?: string }
+  const body = await req.json() as {
+    key?: string
+    label?: string
+    active?: boolean
+    sort_order?: number
+    notes?: string
+    default_billed_to_id?: number | null
+    default_billed_to_name?: string | null
+  }
   const key = (body.key || '').trim()
   if (!key) return NextResponse.json({ error: 'key requis' }, { status: 400 })
 
   const update: any = { updated_at: new Date().toISOString() }
-  if (body.label !== undefined)      update.label      = body.label.trim()
-  if (body.active !== undefined)     update.active     = body.active
-  if (body.sort_order !== undefined) update.sort_order = body.sort_order
-  if (body.notes !== undefined)      update.notes      = body.notes
+  if (body.label !== undefined)                  update.label                  = body.label.trim()
+  if (body.active !== undefined)                 update.active                 = body.active
+  if (body.sort_order !== undefined)             update.sort_order             = body.sort_order
+  if (body.notes !== undefined)                  update.notes                  = body.notes
+  if (body.default_billed_to_id !== undefined)   update.default_billed_to_id   = body.default_billed_to_id
+  if (body.default_billed_to_name !== undefined) update.default_billed_to_name = body.default_billed_to_name
 
   const sb = createAdminClient()
   const { data, error } = await sb
