@@ -13,6 +13,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import VabImportButton from '@/components/dispatch/VabImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
+import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -444,12 +445,14 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
 // Mission "dispatching" → bouton ⚡ Assigner qui ouvre le modal ETA temps réel.
 // Autres états (assigned/in_progress/...) → dropdown classique pour réassigner.
 // "new" / "completed" → rien (action contextuelle).
-function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChange }: {
+function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChange, userRole, userModules }: {
   mission:        Mission
   drivers:        Driver[]
   driverStatuses: DriverStatus[]
   onRefresh:      () => void
   onModalChange?: (open: boolean) => void
+  userRole:       string
+  userModules:    string[]
 }) {
   const [showModal, setShowModal] = useState(false)
   const isAwaitingDispatch = mission.status === 'dispatching'
@@ -471,15 +474,33 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
     return <span className="text-green-400 text-xs font-medium">{mission.assigned_user?.name || '—'}</span>
   }
   if (mission.status === 'new') {
-    return <span className="text-ink-faint text-xs">À confirmer</span>
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-ink-faint text-xs">À confirmer</span>
+        <AutoDispatchButton
+          missionId={mission.id}
+          missionType={mission.mission_type}
+          userRole={userRole}
+          userModules={userModules}
+          onTriggered={onRefresh}
+        />
+      </div>
+    )
   }
   if (isAwaitingDispatch) {
     return (
-      <>
+      <div className="flex items-center gap-2">
         <button type="button" onClick={openModal}
           className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition">
           ⚡ Assigner
         </button>
+        <AutoDispatchButton
+          missionId={mission.id}
+          missionType={mission.mission_type}
+          userRole={userRole}
+          userModules={userModules}
+          onTriggered={onRefresh}
+        />
         {showModal && (
           <DriverPickerModal
             missionId={mission.id}
@@ -487,7 +508,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
             onClose={closeModal}
           />
         )}
-      </>
+      </div>
     )
   }
   return <AssignDropdown mission={mission} drivers={drivers} driverStatuses={driverStatuses} onAssigned={onRefresh} />
@@ -503,12 +524,14 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
 // les cas "sans frais", "annulee" et "archivee" (utilise aussi dans
 // /missions-terminees pour coherence visuelle).
 
-function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChange }: {
+function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChange, userRole, userModules }: {
   mission:        Mission
   drivers:        Driver[]
   driverStatuses: DriverStatus[]
   onRefresh:      () => void
   onModalChange?: (open: boolean) => void
+  userRole:       string
+  userModules:    string[]
 }) {
   const router  = useRouter()
   const delai   = getDelai(mission.intervention_date, mission.status)
@@ -588,7 +611,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border">
         <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-1 min-w-0">
-          <AssignAction mission={mission} drivers={drivers} driverStatuses={driverStatuses} onRefresh={onRefresh} onModalChange={onModalChange} />
+          <AssignAction mission={mission} drivers={drivers} driverStatuses={driverStatuses} onRefresh={onRefresh} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
           {mission.assigned_user && mission.status !== 'completed' && (
             <span className="text-green-400 text-xs font-medium">✓ {mission.assigned_user.name}</span>
           )}
@@ -1008,6 +1031,8 @@ export default function DispatchClient({
                   driverStatuses={driverStatuses}
                   onRefresh={load}
                   onModalChange={onModalChange}
+                  userRole={userRole}
+                  userModules={userModules}
                 />
               ))}
             </div>
@@ -1026,6 +1051,8 @@ export default function DispatchClient({
                     driverStatuses={driverStatuses}
                     onRefresh={load}
                     onModalChange={onModalChange}
+                    userRole={userRole}
+                    userModules={userModules}
                   />
                 ))}
               </div>
@@ -1100,7 +1127,7 @@ export default function DispatchClient({
                           {m.destination_name || m.destination_address || '—'}
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                          <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} />
+                          <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <Link href={`/dispatch/${m.id}`}
