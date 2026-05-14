@@ -213,17 +213,17 @@ export async function loginVab(): Promise<SessionCookies> {
  * dans la nav pour extraire l'URL reelle.
  */
 export async function listVabMissions(session: SessionCookies): Promise<{ missions: ScrapedMission[]; debug: string }> {
-  // Note : apres login, le serveur redirige vers /Comet_TH/ (TH = Touring Hub).
-  // Le path /Comet/ est uniquement pour la page de login.
+  // URLs confirmees par Olivier :
+  // - Liste : /Comet/Home.aspx (oui, "Home.aspx" est aussi la page de login,
+  //   et apres auth elle affiche la liste des missions du jour)
+  // - Detail : /Comet/TowAssignments_Details.aspx?AssignmentId={id}
   const candidatePaths = [
-    '/Comet_TH/Missions.aspx',
-    '/Comet_TH/NewMissions.aspx',
-    '/Comet_TH/MissionList.aspx',
-    '/Comet_TH/Default.aspx',
-    '/Comet_TH/Home.aspx',
+    '/Comet/Home.aspx',
     '/Comet/Missions.aspx',
     '/Comet/NewMissions.aspx',
     '/Comet/MissionList.aspx',
+    '/Comet_TH/Home.aspx',
+    '/Comet_TH/Missions.aspx',
   ]
 
   let res: Response | null = null
@@ -314,9 +314,11 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
     if (!href) return
     const lower = href.toLowerCase()
     const txtLower = text.toLowerCase()
-    // Candidat = lien vers detail ou contenant le mot "détail"
+    // Candidat = lien vers detail (TowAssignments_Details est l'URL VAB)
     if (
+      lower.includes('towassignments_details') ||
       lower.includes('missiondetail') ||
+      lower.includes('assignmentid=') ||
       lower.includes('detail') ||
       lower.includes('mission?') ||
       lower.includes('/mission/') ||
