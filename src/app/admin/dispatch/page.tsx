@@ -4,7 +4,7 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DispatchSubNav        from '@/components/admin/DispatchSubNav'
-import { Radio, Percent, Database, MapPin } from 'lucide-react'
+import { Radio, Percent, Database, MapPin, Archive } from 'lucide-react'
 
 export const dynamic    = 'force-dynamic'
 export const revalidate = 0
@@ -21,11 +21,13 @@ export default async function DispatchAdminPage() {
     { count: sourcesCount },
     { count: surchargesCount },
     { count: depotsCount },
+    { count: archivedCount },
   ] = await Promise.all([
-    sb.from('incoming_missions').select('id', { count: 'exact', head: true }),
+    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).is('archived_at', null),
     sb.from('mission_source_catalog').select('key', { count: 'exact', head: true }),
     sb.from('surcharge_clients').select('key', { count: 'exact', head: true }),
     sb.from('depots').select('id', { count: 'exact', head: true }),
+    sb.from('incoming_missions').select('id', { count: 'exact', head: true }).not('archived_at', 'is', null),
   ])
 
   const sections = [
@@ -60,6 +62,14 @@ export default async function DispatchAdminPage() {
       desc:  'Parcs et lieux de dépôt utilisés pour le suivi véhicule.',
       count: depotsCount || 0,
       countLabel: 'dépôts',
+    },
+    {
+      href:  '/admin/archives',
+      label: 'Archives',
+      icon:  Archive,
+      desc:  'Missions facturées archivées automatiquement (7 jours après facturation).',
+      count: archivedCount || 0,
+      countLabel: 'archivées',
     },
   ]
 

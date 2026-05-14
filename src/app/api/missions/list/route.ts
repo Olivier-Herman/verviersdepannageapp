@@ -48,6 +48,9 @@ export async function GET(req: Request) {
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
+    // Exclure les missions archivees (auto-archivees 7j apres facturation).
+    // Recherche globale ratisse partout, c'est le seul endroit ou on les voit.
+    .is('archived_at', null)
 
   if (mapMode) {
     // Vue carte : missions actives à partir de "En attente" (les "En commande"
@@ -79,13 +82,14 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Compteurs par statut
+  // Compteurs par statut (exclu les archivees pour coherence avec la liste)
   const { data: counts } = await supabase
     .from('incoming_missions')
     .select('status')
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
+    .is('archived_at', null)
 
   const counters = {
     new:         counts?.filter(m => m.status === 'new').length         || 0,

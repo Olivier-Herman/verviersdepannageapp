@@ -121,7 +121,7 @@ export async function GET(req: Request) {
   if (wants('mission')) {
     const missionsQuery = sb
     .from('incoming_missions')
-    .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to')
+    .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at')
     .or([
       `external_id.ilike.${qLike}`,
       `dossier_number.ilike.${qLike}`,
@@ -141,7 +141,7 @@ export async function GET(req: Request) {
   if (qPlate.length >= 2) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to')
+      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at')
       .not('vehicle_plate', 'is', null)
       .order('received_at', { ascending: false })
       .limit(200)
@@ -154,7 +154,7 @@ export async function GET(req: Request) {
   if (dateRange) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to')
+      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at')
       .gte('intervention_date', dateRange.from)
       .lte('intervention_date', dateRange.to)
       .order('intervention_date', { ascending: false })
@@ -173,12 +173,14 @@ export async function GET(req: Request) {
   for (const m of missions) {
     const plate = m.vehicle_plate || '—'
     const veh   = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
+    const archivedPrefix = m.archived_at ? '🗄 ' : ''
+    const archivedMeta   = m.archived_at ? ' · 🗄 Archivée' : ''
     out.push({
       category: 'mission',
       id:       m.id,
-      title:    `${m.external_id || m.dossier_number || m.id.slice(0, 8)} · ${plate}`,
+      title:    `${archivedPrefix}${m.external_id || m.dossier_number || m.id.slice(0, 8)} · ${plate}`,
       subtitle: [m.client_name, veh, m.incident_address].filter(Boolean).join(' · '),
-      meta:     `${m.source || ''} · ${m.status} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
+      meta:     `${m.source || ''} · ${m.status}${archivedMeta} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
       href:     `/dispatch/${m.id}`,
     })
   }

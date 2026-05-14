@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Radio, Percent, Database, MapPin } from 'lucide-react'
+import { Radio, Percent, Database, MapPin, Archive } from 'lucide-react'
 
 const SUB_NAV = [
   { href: '/admin/dispatch',            label: 'Vue d\'ensemble', icon: Radio,    exact: true  },
@@ -10,6 +10,7 @@ const SUB_NAV = [
   { href: '/admin/surcharges',          label: 'Majorations',      icon: Percent                },
   { href: '/admin/sources',             label: 'Sources',          icon: Database               },
   { href: '/admin/depots',              label: 'Dépôts',           icon: MapPin                 },
+  { href: '/admin/archives',            label: 'Archives',         icon: Archive                },
 ]
 
 export default function DispatchSubNav() {
