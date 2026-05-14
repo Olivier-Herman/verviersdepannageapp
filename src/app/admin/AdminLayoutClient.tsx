@@ -8,6 +8,7 @@ import { filterNavItems } from '@/components/layout/nav-items'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
+import AmbientBackground from '@/components/AmbientBackground'
 
 export default function AdminLayoutClient({
   children,
@@ -113,9 +114,13 @@ export default function AdminLayoutClient({
           <h1 className="font-display text-ink font-bold text-2xl">Administration</h1>
         </div>
 
-        {/* AdminNav + contenu — chaque client gère son propre padding */}
+        {/* AdminNav + contenu — chaque client gère son propre padding.
+            AmbientBackground variant=light pose un fond discret sur toute la zone admin
+            (toutes les sous-pages /admin/* en heritent en une fois). */}
         <main className="flex-1 min-w-0 overflow-x-hidden lg:px-8 lg:py-6">
-          {children}
+          <AmbientBackground variant="light">
+            {children}
+          </AmbientBackground>
         </main>
       </div>
     </div>
