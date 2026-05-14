@@ -6,6 +6,7 @@ import { signOut, useSession } from 'next-auth/react'
 import { useState } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
+import NotificationsProvider from '@/components/notifications/NotificationsProvider'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
 import GlobalSearch from '@/components/GlobalSearch'
@@ -56,6 +57,7 @@ export default function AppShell({
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
 
   return (
+   <NotificationsProvider userId={userId || null}>
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
@@ -181,6 +183,7 @@ export default function AppShell({
         </main>
       </div>
     </div>
+   </NotificationsProvider>
   )
 }
 
