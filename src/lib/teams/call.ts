@@ -16,8 +16,14 @@
 //   TEAMS_CLIENT_ID      App Registration Graph (peut etre une App separee
 //                        de celle de NextAuth, avec permissions Calls.*)
 //   TEAMS_CLIENT_SECRET  secret de l'App Reg Teams
-//   TEAMS_BOT_OBJECT_ID  Object ID du bot user M365 (source de l'appel)
-//   TEAMS_BOT_PHONE      numero E.164 du bot (ex +3287600833)
+//   TEAMS_APP_SP_ID      Object ID du Service Principal de l'App Reg dans le
+//                        tenant (visible dans Azure → Enterprise applications →
+//                        ton App → Properties → Object ID). C'est CE id qui doit
+//                        figurer dans source.identity.applicationInstance.id,
+//                        PAS l'Object ID du user M365.
+//   TEAMS_BOT_OBJECT_ID  Object ID du bot user M365 (utilise pour la table /
+//                        traceability — pas dans le payload Graph)
+//   TEAMS_BOT_PHONE      numero E.164 du bot (ex +3287600833, pour info)
 //
 // Note: on peut aussi reutiliser AZURE_AD_CLIENT_ID / SECRET si l'App Reg
 // NextAuth contient les permissions Graph Calls (sinon il vaut mieux une
@@ -84,12 +90,17 @@ export interface InitiateCallResult {
  * + une Teams Cloud Communications policy qui autorise les appels PSTN au bot.
  */
 export async function initiatePstnCall(params: InitiateCallParams): Promise<InitiateCallResult> {
-  const botObjectId = process.env.TEAMS_BOT_OBJECT_ID
-  const botPhone    = process.env.TEAMS_BOT_PHONE
-  const appBase     = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+  // Source identity = Service Principal de l'App Reg, pas le user M365.
+  // C'est ce qu'attend Microsoft Graph Communications pour les bot calls.
+  const appSpId  = process.env.TEAMS_APP_SP_ID
+  const botPhone = process.env.TEAMS_BOT_PHONE
+  const appBase  = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
 
-  if (!botObjectId || !botPhone) {
-    return { ok: false, error: 'TEAMS_BOT_OBJECT_ID ou TEAMS_BOT_PHONE manquant' }
+  if (!appSpId) {
+    return { ok: false, error: 'TEAMS_APP_SP_ID manquant (Service Principal Object ID, voir Azure → Enterprise applications)' }
+  }
+  if (!botPhone) {
+    return { ok: false, error: 'TEAMS_BOT_PHONE manquant (numero E.164 du bot)' }
   }
   if (!params.toPhone || !params.toPhone.startsWith('+')) {
     return { ok: false, error: `Numero invalide (E.164 attendu): ${params.toPhone}` }
@@ -110,7 +121,7 @@ export async function initiatePstnCall(params: InitiateCallParams): Promise<Init
         '@odata.type': '#microsoft.graph.identitySet',
         applicationInstance: {
           '@odata.type': '#microsoft.graph.identity',
-          id: botObjectId,
+          id: appSpId,
           displayName: 'Verviers Dispatch',
         },
       },
