@@ -1,8 +1,14 @@
 // ============================================================
 // VERVIERS DÉPANNAGE — Connecteur Odoo JSON-RPC
 // Odoo 19 — verviers-depannage.odoo.com
-// UID: 8
+// Service account fallback : compte dedié "VD App" (ODOO_UID + ODOO_API_KEY
+// en env vars). Si l'utilisateur appelant a sa propre cle API encodee dans
+// public.users (odoo_api_key + odoo_uid), elle est utilisee a la place →
+// signature au nom du vrai utilisateur dans le chatter Odoo.
 // ============================================================
+
+import { createAdminClient } from '@/lib/supabase'
+import { AsyncLocalStorage } from 'async_hooks'
 
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
@@ -15,14 +21,90 @@ const SALE_TEMPLATE_ID = 7
 const PRODUCT_FORFAIT  = 5   // [FORFAIT] Forfait
 const TAX_21           = 5   // TVA 21% Belgique
 
+export interface OdooCreds { uid: number; apiKey: string }
+
+const MASTER_CREDS: OdooCreds = { uid: ODOO_UID, apiKey: ODOO_API_KEY }
+
+// ============================================================
+// Async context : propage l'actorUserId a travers tous les rpc()
+// d'une chaine d'appels sans avoir a le threader manuellement.
+// Les call sites API n'ont qu'a wrapper avec withOdooActor.
+// ============================================================
+const actorStore = new AsyncLocalStorage<string | null | undefined>()
+
+/**
+ * Execute la fonction `fn` dans un contexte où l'acteur Odoo est `actorUserId`.
+ * Tous les rpc() declenches a l'interieur (directement ou via les helpers
+ * findOrCreatePartner, createSaleOrder, etc.) utiliseront automatiquement la
+ * cle/uid de cet utilisateur si elles sont encodees, sinon le service account.
+ */
+export function withOdooActor<T>(actorUserId: string | null | undefined, fn: () => Promise<T>): Promise<T> {
+  return actorStore.run(actorUserId, fn)
+}
+
+function currentActor(): string | null | undefined {
+  return actorStore.getStore()
+}
+
+// Cache simple (par process) des creds users pour eviter une query Supabase
+// a chaque call. TTL = 30s. Suffisant pour ne pas marteler la DB pendant un
+// burst (un encaissement = 5-10 calls Odoo) sans differer trop le picking up
+// d'un nouveau toggle/clé.
+const credsCache = new Map<string, { creds: OdooCreds; expiresAt: number }>()
+const CREDS_TTL_MS = 30_000
+
+/**
+ * Resout les creds Odoo a utiliser pour un user de l'app.
+ * Si le user a sa propre cle (odoo_api_key + odoo_uid valides) → ses creds.
+ * Sinon → fallback service account (env vars).
+ */
+export async function resolveOdooCreds(actorUserId?: string | null): Promise<OdooCreds> {
+  if (!actorUserId) return MASTER_CREDS
+
+  const cached = credsCache.get(actorUserId)
+  if (cached && cached.expiresAt > Date.now()) return cached.creds
+
+  try {
+    const sb = createAdminClient()
+    const { data } = await sb
+      .from('users')
+      .select('odoo_api_key, odoo_uid')
+      .eq('id', actorUserId)
+      .maybeSingle()
+
+    let creds: OdooCreds = MASTER_CREDS
+    if (data?.odoo_api_key && data?.odoo_uid) {
+      creds = { uid: Number(data.odoo_uid), apiKey: String(data.odoo_api_key) }
+    }
+    credsCache.set(actorUserId, { creds, expiresAt: Date.now() + CREDS_TTL_MS })
+    return creds
+  } catch (e: any) {
+    console.warn('[odoo] resolveOdooCreds fail (fallback master):', e.message)
+    return MASTER_CREDS
+  }
+}
+
 // ============================================================
 // JSON-RPC core
 // ============================================================
+/**
+ * Execute un appel Odoo. Utilise automatiquement les creds de l'actor present
+ * dans l'AsyncLocalStorage (poses par withOdooActor) si disponible, sinon
+ * fallback service account. Cette fonction est utilisee tant en interne par
+ * les helpers de ce module qu'exposee pour les call sites custom.
+ */
 export async function odooRpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
   return rpc<T>(model, method, args, kwargs)
 }
 
-async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
+/** Version explicite : force un actorUserId sans passer par withOdooActor. */
+export async function odooRpcAs<T = any>(actorUserId: string | null | undefined, model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
+  const creds = await resolveOdooCreds(actorUserId)
+  return rpc<T>(model, method, args, kwargs, creds)
+}
+
+async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}, credsOverride?: OdooCreds): Promise<T> {
+  const creds = credsOverride || await resolveOdooCreds(currentActor())
   const res = await fetch(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -33,7 +115,7 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
       params: {
         service: 'object',
         method: 'execute_kw',
-        args: [ODOO_DB, ODOO_UID, ODOO_API_KEY, model, method, args, kwargs]
+        args: [ODOO_DB, creds.uid, creds.apiKey, model, method, args, kwargs]
       }
     })
   })

@@ -4,7 +4,7 @@ import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendPushToUser }            from '@/lib/push'
-import { createTGRQuote, setTGRVehicleTermine } from '@/lib/odoo'
+import { createTGRQuote, setTGRVehicleTermine, withOdooActor } from '@/lib/odoo'
 import { formatEur }                 from '@/lib/format'
 
 const APP_URL    = process.env.NEXT_PUBLIC_APP_URL    || 'https://app.verviersdepannage.com'
@@ -139,7 +139,7 @@ export async function POST(
       console.error('[TGR Accept]', odooError)
     } else {
       try {
-        const result = await createTGRQuote({
+        const result = await withOdooActor(me?.id, () => createTGRQuote({
           partnerId,
           reference:       mission.reference,
           distanceKm:      mission.distance_km ?? 1,
@@ -148,7 +148,7 @@ export async function POST(
           plate:           mission.plate,
           brand:           mission.brand,
           model:           mission.model,
-        })
+        }))
         odooQuoteId   = result.orderId
         odooQuoteName = result.orderName
         if (result.priceUnit && mission.distance_km) {
@@ -286,8 +286,8 @@ export async function POST(
       updated_at: new Date().toISOString(),
     }).eq('id', missionId)
 
-    // Passer le véhicule en statut "Terminé" dans fleet Odoo
-    await setTGRVehicleTermine(mission.plate).catch(err =>
+    // Passer le véhicule en statut "Terminé" dans fleet Odoo (signe au nom du dispatcher)
+    await withOdooActor(me?.id, () => setTGRVehicleTermine(mission.plate)).catch(err =>
       console.error('[TGR refuse] Erreur statut véhicule Odoo:', err.message)
     )
 

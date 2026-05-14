@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { syncInterventionToOdoo } from '@/lib/odoo'
+import { syncInterventionToOdoo, withOdooActor } from '@/lib/odoo'
 import { sendClientReceipt } from '@/lib/emails'
 
 export async function POST(req: NextRequest) {
@@ -83,11 +83,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4. Sync Odoo
+  // 4. Sync Odoo (signe au nom du chauffeur si sa cle Odoo est encodee)
   let odooResult: { orderName?: string; orderId?: number } = {}
   if (intervention && body.plate) {
     try {
-      const result = await syncInterventionToOdoo({
+      const actorId = driver?.id || (session.user as any).id
+      const result = await withOdooActor(actorId, () => syncInterventionToOdoo({
         reference: intervention.reference,
         plate: body.plate,
         brandText: body.brand_text || 'Autre',
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
         paymentReference: body.payment_reference,
         driverName: session.user.name || session.user.email,
         notes: body.notes,
-      })
+      }))
 
       await supabase.from('interventions').update({
         odoo_invoice_id: result.orderId,

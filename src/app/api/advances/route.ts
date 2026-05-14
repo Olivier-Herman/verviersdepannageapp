@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
-import { findOrCreateVehicle, createAdvanceOrder, attachFileToOrder } from '@/lib/odoo'
+import { findOrCreateVehicle, createAdvanceOrder, attachFileToOrder, withOdooActor } from '@/lib/odoo'
 import { sendAdvancePurchaseEmail }  from '@/lib/emails'
 
 export async function POST(req: NextRequest) {
@@ -27,47 +27,46 @@ export async function POST(req: NextRequest) {
       .from('users').select('id, name').eq('email', session.user.email).single()
     if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
-    // ── Créer véhicule dans Odoo si nécessaire ────────────
-    try {
-      await findOrCreateVehicle({
-        licensePlate: normalizedPlate,
-        brandName:    brandName || 'Inconnu',
-        modelName:    modelName || 'Inconnu',
-      })
-    } catch (vErr) {
-      console.error('[Odoo] findOrCreateVehicle:', vErr)
-    }
-
-    // ── Créer devis brouillon Odoo ────────────────────────
+    // ── Toute la chaine Odoo signe au nom du user appelant ──
     let odooOrderId:   number | null = null
     let odooOrderName: string | null = null
     let odooVehicleSet               = false
 
-    try {
-      const result   = await createAdvanceOrder(normalizedPlate, htva)
-      odooOrderId    = result.orderId
-      odooOrderName  = result.orderName
-      odooVehicleSet = result.vehicleSet
-    } catch (odooErr) {
-      console.error('[Odoo] createAdvanceOrder:', odooErr)
-    }
-
-    // ── Attacher la facture dans le chatter du devis ──────
-    if (odooOrderId) {
+    await withOdooActor(me.id, async () => {
       try {
-        // Télécharger le fichier depuis Supabase Storage
-        const fileRes = await fetch(invoiceUrl)
-        if (fileRes.ok) {
-          const fileBuffer  = await fileRes.arrayBuffer()
-          const base64Data  = Buffer.from(fileBuffer).toString('base64')
-          const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
-          const filename    = `facture-avance-${normalizedPlate}-${Date.now()}.jpg`
-          await attachFileToOrder(odooOrderId, base64Data, filename, contentType)
-        }
-      } catch (attachErr) {
-        console.error('[Odoo] attachFileToOrder:', attachErr)
+        await findOrCreateVehicle({
+          licensePlate: normalizedPlate,
+          brandName:    brandName || 'Inconnu',
+          modelName:    modelName || 'Inconnu',
+        })
+      } catch (vErr) {
+        console.error('[Odoo] findOrCreateVehicle:', vErr)
       }
-    }
+
+      try {
+        const result   = await createAdvanceOrder(normalizedPlate, htva)
+        odooOrderId    = result.orderId
+        odooOrderName  = result.orderName
+        odooVehicleSet = result.vehicleSet
+      } catch (odooErr) {
+        console.error('[Odoo] createAdvanceOrder:', odooErr)
+      }
+
+      if (odooOrderId) {
+        try {
+          const fileRes = await fetch(invoiceUrl)
+          if (fileRes.ok) {
+            const fileBuffer  = await fileRes.arrayBuffer()
+            const base64Data  = Buffer.from(fileBuffer).toString('base64')
+            const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
+            const filename    = `facture-avance-${normalizedPlate}-${Date.now()}.jpg`
+            await attachFileToOrder(odooOrderId, base64Data, filename, contentType)
+          }
+        } catch (attachErr) {
+          console.error('[Odoo] attachFileToOrder:', attachErr)
+        }
+      }
+    })
 
     // ── Email vers boîte achat ────────────────────────────
     const { data: setting } = await supabase

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { syncInterventionToOdoo } from '@/lib/odoo'
+import { syncInterventionToOdoo, withOdooActor } from '@/lib/odoo'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -36,7 +36,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await syncInterventionToOdoo({
+    // Le rejeu de sync conserve le user qui clique (re-essai manuel)
+    const actorId = (session.user as any).id as string | undefined
+    const result = await withOdooActor(actorId, () => syncInterventionToOdoo({
       reference: intervention.reference,
       plate: intervention.plate,
       brandText: intervention.brand_text || 'Autre',
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
       amount: parseFloat(intervention.amount || '0'),
       motifText: intervention.motif_text || intervention.motif_id || 'Intervention',
       paymentMode: intervention.payment_mode || undefined,
-    })
+    }))
 
     // Mettre à jour Supabase
     await supabase
