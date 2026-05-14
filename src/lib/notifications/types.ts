@@ -1,0 +1,136 @@
+// src/lib/notifications/types.ts
+//
+// Catalogue figé des types de notifications gérés par l'app.
+// Chaque type est applicable a un sous-ensemble de roles → l'UI admin
+// n'affiche que les checkbox pertinentes par user.
+//
+// Pour ajouter un type : ajouter une entree ici + brancher l'emission
+// (cf src/lib/notifications/send.ts a venir dans N3).
+
+export type NotificationCategory = 'dispatcher' | 'driver' | 'admin' | 'on_duty'
+
+export interface NotificationType {
+  key:         string
+  label:       string
+  description: string
+  category:    NotificationCategory
+  /** Roles pour lesquels ce type est pertinent (UI admin filtre dessus) */
+  applicableRoles: Array<'driver' | 'dispatcher' | 'admin' | 'superadmin'>
+  /** Default enabled si pas de ligne explicite en notification_preferences */
+  defaultEnabled: boolean
+}
+
+export const NOTIFICATION_TYPES: readonly NotificationType[] = [
+  // ── Dispatcher (et admin/superadmin) ────────────────────────────────
+  {
+    key:             'new_mission_received',
+    label:           'Nouvelle mission entrante',
+    description:     'Mission VAB/email/manuelle reçue, en attente de dispatch.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'auto_dispatch_refused',
+    label:           'Auto-dispatch refusé',
+    description:     'Un chauffeur a répondu "Pas dispo" sur une proposition auto-dispatch.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'auto_dispatch_timeout',
+    label:           'Auto-dispatch sans réponse',
+    description:     'Timeout 90s atteint sans réponse → escalade dispatcher de garde.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'payment_validated',
+    label:           'Paiement validé',
+    description:     'Un paiement encaissé a été vérifié et validé.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  false,
+  },
+
+  // ── Chauffeur ────────────────────────────────────────────────────────
+  {
+    key:             'mission_assigned_manual',
+    label:           'Nouvelle mission assignée',
+    description:     'Le dispatcher t\'a assigné manuellement une mission.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'auto_dispatch_dispo_request',
+    label:           'Demande de dispo (auto-dispatch)',
+    description:     'Question "Tu es dispo dans combien de temps ?" pour une mission entrante.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'check_vehicule_due',
+    label:           'Check véhicule à effectuer',
+    description:     'Rappel pour effectuer le check véhicule quotidien.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+
+  // ── Admin ────────────────────────────────────────────────────────────
+  {
+    key:             'email_parse_error',
+    label:           'Erreur parsing email',
+    description:     'Un email entrant n\'a pas pu être parsé (mission ratée).',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'garde_uncovered',
+    label:           'Créneau de garde non couvert',
+    description:     'Un créneau jour ou nuit n\'a aucun chauffeur assigné.',
+    category:        'admin',
+    applicableRoles: ['admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+
+  // ── Dispatcher de garde (escalade) ───────────────────────────────────
+  {
+    key:             'escalation_call',
+    label:           'Appel d\'escalade (auto-call Teams)',
+    description:     'Auto-dispatch sans réponse → déclenche un appel Teams vers le dispatcher de garde.',
+    category:        'on_duty',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+] as const
+
+export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {
+  dispatcher: 'Dispatcher',
+  driver:     'Chauffeur',
+  admin:      'Admin',
+  on_duty:    'Dispatcher de garde (escalade)',
+}
+
+/** Liste les types pertinents pour un role donne. */
+export function getApplicableTypes(role: string): NotificationType[] {
+  return NOTIFICATION_TYPES.filter(t =>
+    (t.applicableRoles as readonly string[]).includes(role)
+  )
+}
+
+/** Resout l'etat enabled effectif : pref explicite si presente, sinon default. */
+export function isEnabled(
+  type: string,
+  prefs: Map<string, boolean>,
+): boolean {
+  const explicit = prefs.get(type)
+  if (typeof explicit === 'boolean') return explicit
+  const def = NOTIFICATION_TYPES.find(t => t.key === type)
+  return def?.defaultEnabled ?? false
+}

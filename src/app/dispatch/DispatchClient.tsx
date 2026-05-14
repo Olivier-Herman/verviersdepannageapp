@@ -12,6 +12,7 @@ import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import VabImportButton from '@/components/dispatch/VabImportButton'
+import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -833,6 +834,9 @@ export default function DispatchClient({
                 🗺️ Carte
               </button>
             </div>
+
+            {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
+            <DispatcherOnDutyBadge userRole={userRole} />
 
             {/* Import VAB — bouton dedie (orange ambre pour signal action externe) */}
             <VabImportButton onImportDone={() => load()} />
