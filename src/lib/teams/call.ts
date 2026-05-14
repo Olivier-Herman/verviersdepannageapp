@@ -12,11 +12,16 @@
 // callDisconnected). On le pointe vers /api/teams/callback de notre app.
 //
 // Variables d'env Vercel (Production) :
-//   TEAMS_TENANT_ID      Azure AD tenant
-//   TEAMS_CLIENT_ID      App Registration Graph
-//   TEAMS_CLIENT_SECRET  secret de l'App Reg
+//   AZURE_AD_TENANT_ID   Azure AD tenant (deja en place pour NextAuth)
+//   TEAMS_CLIENT_ID      App Registration Graph (peut etre une App separee
+//                        de celle de NextAuth, avec permissions Calls.*)
+//   TEAMS_CLIENT_SECRET  secret de l'App Reg Teams
 //   TEAMS_BOT_OBJECT_ID  Object ID du bot user M365 (source de l'appel)
 //   TEAMS_BOT_PHONE      numero E.164 du bot (ex +3287600833)
+//
+// Note: on peut aussi reutiliser AZURE_AD_CLIENT_ID / SECRET si l'App Reg
+// NextAuth contient les permissions Graph Calls (sinon il vaut mieux une
+// App Reg dediee pour isoler le scope).
 
 let cachedToken:        string | null = null
 let cachedTokenExpiry:  number        = 0
@@ -25,11 +30,13 @@ async function getGraphAccessToken(): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   if (cachedToken && cachedTokenExpiry > now + 60) return cachedToken
 
-  const tenant = process.env.TEAMS_TENANT_ID
-  const clientId = process.env.TEAMS_CLIENT_ID
-  const secret = process.env.TEAMS_CLIENT_SECRET
+  // Tenant : reutilise AZURE_AD_TENANT_ID (deja en place pour NextAuth)
+  // pour eviter de dupliquer. Si TEAMS_TENANT_ID est defini, il a priorite.
+  const tenant   = process.env.TEAMS_TENANT_ID   || process.env.AZURE_AD_TENANT_ID
+  const clientId = process.env.TEAMS_CLIENT_ID   || process.env.AZURE_AD_CLIENT_ID
+  const secret   = process.env.TEAMS_CLIENT_SECRET || process.env.AZURE_AD_CLIENT_SECRET
   if (!tenant || !clientId || !secret) {
-    throw new Error('Teams non configure (TEAMS_TENANT_ID / TEAMS_CLIENT_ID / TEAMS_CLIENT_SECRET manquant)')
+    throw new Error('Teams non configure (tenant / client_id / secret manquant — voir AZURE_AD_* ou TEAMS_*)')
   }
 
   const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
@@ -123,7 +130,7 @@ export async function initiatePstnCall(params: InitiateCallParams): Promise<Init
         },
       },
     }],
-    tenantId: process.env.TEAMS_TENANT_ID,
+    tenantId: process.env.TEAMS_TENANT_ID || process.env.AZURE_AD_TENANT_ID,
     mediaConfig: {
       '@odata.type': '#microsoft.graph.serviceHostedMediaConfig',
     },
