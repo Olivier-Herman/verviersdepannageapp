@@ -12,6 +12,14 @@ import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import VabImportButton from '@/components/dispatch/VabImportButton'
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, useSortable, horizontalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -218,20 +226,78 @@ const URGENCY_BORDER: Record<DelaiUrgency, string> = {
 
 // ── Panel statut chauffeurs ───────────────────────────────────────────────────
 
-function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; onRefresh: () => void }) {
-  const [editing, setEditing] = useState<DriverStatus | null>(null)
-  if (statuses.length === 0) return null
+const styleByStatus = {
+  en_mission:   'bg-alert-soft border-alert text-alert',
+  en_service:   'bg-success-soft border-success text-success',
+  hors_service: 'bg-surface border text-ink-muted',
+} as const
+const dotByStatus = {
+  en_mission:   'bg-alert-fill',
+  en_service:   'bg-success-fill',
+  hors_service: 'bg-ink-faint',
+} as const
 
-  const styleByStatus = {
-    en_mission:   'bg-alert-soft border-alert text-alert',
-    en_service:   'bg-success-soft border-success text-success',
-    hors_service: 'bg-surface border text-ink-muted',
-  } as const
-  const dotByStatus = {
-    en_mission:   'bg-alert-fill',
-    en_service:   'bg-success-fill',
-    hors_service: 'bg-ink-faint',
-  } as const
+function SortableDriverBadge({ d, onClick, canDrag }: {
+  d:       DriverStatus
+  onClick: () => void
+  canDrag: boolean
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: d.id, disabled: !canDrag })
+  const isHorsService = d.status === 'hors_service'
+  const isOnSchedule  = !!(d as any).on_schedule
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : (isHorsService ? 0.55 : 1),
+  }
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      type="button"
+      onClick={onClick}
+      {...attributes}
+      {...listeners}
+      title={d.status === 'en_mission'
+        ? `${d.client_name || '?'} · ${d.mission_type || ''}`
+        : isHorsService
+          ? 'Cliquer pour activer la garde · glisser pour réordonner'
+          : 'Cliquer pour modifier la garde · glisser pour réordonner'}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition ${
+        styleByStatus[d.status]
+      } ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''} ${
+        isHorsService ? 'hover:opacity-100' : 'hover:opacity-80'
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
+      {d.name}
+      {d.status === 'en_service' && isOnSchedule && (
+        <span className="opacity-70">🛡️</span>
+      )}
+    </button>
+  )
+}
+
+function DriverStatusPanel({ statuses, onRefresh, userRole }: {
+  statuses:  DriverStatus[]
+  onRefresh: () => void
+  userRole:  string
+}) {
+  const [editing, setEditing] = useState<DriverStatus | null>(null)
+  // Etat local optimiste : on re-ordonne immediatement au drop, puis on persiste.
+  // Si la prop `statuses` change (poll 20s), on re-sync (cf useEffect ci-dessous).
+  const [order, setOrder] = useState<DriverStatus[]>(statuses)
+  useEffect(() => { setOrder(statuses) }, [statuses])
+
+  const canDrag = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),  // <6px = clic, >=6px = drag
+  )
+
+  if (order.length === 0) return null
 
   const toggleSchedule = async (driverId: string, field: 'schedule_day' | 'schedule_night', current: boolean) => {
     await fetch('/api/garde', {
@@ -242,43 +308,44 @@ function DriverStatusPanel({ statuses, onRefresh }: { statuses: DriverStatus[]; 
     onRefresh()
   }
 
-  // Tri : en mission d'abord, puis en service, puis hors service
-  const sorted = [...statuses].sort((a, b) => {
-    const order = { en_mission: 0, en_service: 1, hors_service: 2 }
-    return order[a.status] - order[b.status]
-  })
-  const actifs = sorted.filter(d => d.status !== 'hors_service')
-  const inactifs = sorted.filter(d => d.status === 'hors_service')
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = order.findIndex(d => d.id === active.id)
+    const newIndex = order.findIndex(d => d.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    const reordered = arrayMove(order, oldIndex, newIndex)
+    setOrder(reordered)
+    try {
+      await fetch('/api/admin/driver-priority', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ order: reordered.map(d => d.id) }),
+      })
+      onRefresh()
+    } catch {
+      // En cas d'echec, on laisse l'etat local en place — le prochain poll
+      // resynchronisera avec la DB.
+    }
+  }
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 px-3 lg:px-8 py-2 lg:py-3 bg-surface border-b border">
-        {actifs.map(d => {
-          const isOnSchedule = d.on_schedule
-          return (
-            <button key={d.id} type="button" onClick={() => setEditing(d)}
-              title={d.status === 'en_mission' ? `${d.client_name || '?'} · ${d.mission_type || ''}` : 'Cliquer pour modifier la garde'}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition hover:opacity-80 ${styleByStatus[d.status]}`}>
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
-              {d.name}
-              {/* On ne reaffiche pas le client_name : le code couleur orange + dot suffit */}
-              {d.status === 'en_service' && isOnSchedule && (
-                <span className="opacity-70">🛡️</span>
-              )}
-            </button>
-          )
-        })}
-        {inactifs.length > 0 && actifs.length > 0 && (
-          <div className="w-px h-5 bg-surface-hover mx-1" />
-        )}
-        {inactifs.map(d => (
-          <button key={d.id} type="button" onClick={() => setEditing(d)}
-            title="Cliquer pour activer la garde de ce chauffeur"
-            className={`flex items-center gap-2 px-2.5 py-1 rounded-xl border text-xs font-medium transition hover:opacity-100 opacity-50 hover:border-zinc-500 ${styleByStatus[d.status]}`}>
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotByStatus[d.status]}`} />
-            <span className="opacity-80">{d.name}</span>
-          </button>
-        ))}
+      <div className="px-3 lg:px-8 py-2 lg:py-3 bg-surface border-b border">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={order.map(d => d.id)} strategy={horizontalListSortingStrategy}>
+            <div className="flex flex-wrap items-center gap-2">
+              {order.map(d => (
+                <SortableDriverBadge
+                  key={d.id}
+                  d={d}
+                  canDrag={canDrag}
+                  onClick={() => setEditing(d)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
       {/* Modal d'édition rapide de la garde */}
@@ -886,7 +953,7 @@ export default function DispatchClient({
         </div>
 
         {/* ── Panel statut chauffeurs ──────────────────────────────────── */}
-        <DriverStatusPanel statuses={driverStatuses} onRefresh={load} />
+        <DriverStatusPanel statuses={driverStatuses} onRefresh={load} userRole={userRole} />
 
         {/* ── Contenu wrappe d'un ambient background ────────────────── */}
         <AmbientBackground>

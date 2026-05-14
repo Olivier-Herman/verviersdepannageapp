@@ -20,13 +20,16 @@ export async function GET() {
 
   const supabase = createAdminClient()
 
-  // Chauffeurs = users actifs avec un towsoft_name (= flag canonique)
+  // Chauffeurs = users actifs avec un towsoft_name (= flag canonique).
+  // Tri principal = priority_order custom (drag&drop dispatcher), NULL en fin
+  // (= chauffeurs non classes), puis fallback alphabetique.
   const { data: drivers, error } = await supabase
     .from('users')
-    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng')
+    .select('id, name, schedule_day, schedule_night, location_updated_at, last_location_lat, last_location_lng, priority_order')
     .eq('active', true)
     .not('towsoft_name', 'is', null)
     .neq('towsoft_name', '')
+    .order('priority_order', { ascending: true, nullsFirst: false })
     .order('name')
 
   if (error) {
