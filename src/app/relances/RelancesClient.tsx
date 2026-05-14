@@ -485,8 +485,8 @@ export default function RelancesClient({ session }: { session: Session }) {
                                   ? <>{inv.plate}{inv.vehicleLabel && <span className="text-ink-muted ml-1">· {inv.vehicleLabel}</span>}</>
                                   : '—'}
                               </td>
-                              <td className="py-1 pr-2 text-ink-muted whitespace-nowrap">{formatDate(inv.dueDate)}</td>
-                              <td className="py-1 pr-2 text-ink-muted text-right whitespace-nowrap">{inv.daysOverdue}j</td>
+                              <td className="py-1 pr-2 text-ink-muted whitespace-nowrap">{inv.dueDate ? formatDate(inv.dueDate) : '—'}</td>
+                              <td className="py-1 pr-2 text-ink-muted text-right whitespace-nowrap">{inv.dueDate ? `${inv.daysOverdue}j` : '—'}</td>
                               <td className="py-1 pr-2 text-ink-muted text-right whitespace-nowrap">{formatEur(inv.amountTotal)}</td>
                               <td className="py-1 pr-2 text-ink font-medium text-right whitespace-nowrap">{formatEur(inv.amountResidual)}</td>
                               <td className="py-1">

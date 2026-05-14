@@ -70,8 +70,8 @@ export function generateReminderXlsx(data: XlsxData): Buffer {
     rows.push([
       inv.name,
       formatDate(inv.invoiceDate),
-      formatDate(inv.dueDate),
-      inv.daysOverdue,
+      inv.dueDate ? formatDate(inv.dueDate) : '',
+      inv.dueDate ? inv.daysOverdue : '',
       inv.plate || '',
       inv.vehicleLabel || '',
       Number(inv.amountTotal.toFixed(2)),
