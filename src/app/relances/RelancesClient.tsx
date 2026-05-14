@@ -12,11 +12,12 @@ interface OverdueInvoice {
   id:               number
   name:             string
   invoiceDate:      string
-  dueDate:          string
+  dueDate:          string | null
   daysOverdue:      number
   level:            ReminderLevel
   amountTotal:      number
   amountResidual:   number
+  isRefund:         boolean
   plate:            string | null
   vehicleLabel:     string | null
 }
@@ -30,6 +31,8 @@ interface PartnerGroup {
   partnerPhone:    string | null
   invoices:        OverdueInvoice[]
   totalResidual:   number
+  invoiceCount:    number
+  refundCount:     number
   maxDaysOverdue:  number
   level:           ReminderLevel
   lastReminder:    {
@@ -102,6 +105,9 @@ export default function RelancesClient({ session }: { session: Session }) {
   const [error,     setError]     = useState<string | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [filter,    setFilter]    = useState<ReminderLevel | 'all'>('all')
+  // Toggle "Montants > 0 uniquement" : masque les partners en credit (NC > factures)
+  // et les pures NC. Utile pour le workflow d'envoi de relances.
+  const [positiveOnly, setPositiveOnly] = useState(true)
 
   // Selection multiple
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -167,7 +173,9 @@ export default function RelancesClient({ session }: { session: Session }) {
   }, [historyOpen, historyItems])
 
   const filtered = groups
-    ? (filter === 'all' ? groups : groups.filter(g => g.level === filter))
+    ? groups
+        .filter(g => filter === 'all' ? true : g.level === filter)
+        .filter(g => positiveOnly ? g.totalResidual > 0 : true)
     : []
   const counts = {
     1: groups?.filter(g => g.level === 1).length ?? 0,
@@ -177,8 +185,13 @@ export default function RelancesClient({ session }: { session: Session }) {
   const totalAll = groups?.reduce((s, g) => s + g.totalResidual, 0) ?? 0
 
   // Selection helpers
-  const toggleOne = (partnerId: number, hasEmail: boolean) => {
-    if (!hasEmail) return  // pas d email = pas selectionnable
+  // Un partner n'est selectionnable pour relance que s'il a un email ET un
+  // solde net positif (sinon on lui relancerait pour 0 ou pour negatif, ce
+  // qui n'a pas de sens).
+  const isSendable = (g: PartnerGroup) => !!g.partnerEmail && g.totalResidual > 0
+
+  const toggleOne = (partnerId: number, sendable: boolean) => {
+    if (!sendable) return
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(partnerId)) next.delete(partnerId)
@@ -187,7 +200,7 @@ export default function RelancesClient({ session }: { session: Session }) {
     })
   }
   const toggleAllVisible = () => {
-    const eligible = filtered.filter(g => !!g.partnerEmail).map(g => g.partnerId)
+    const eligible = filtered.filter(isSendable).map(g => g.partnerId)
     const allOn = eligible.every(id => selectedIds.has(id))
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -203,9 +216,9 @@ export default function RelancesClient({ session }: { session: Session }) {
     [groups, selectedIds],
   )
   const selectedTotal = selectedGroups.reduce((s, g) => s + g.totalResidual, 0)
-  const eligibleVisibleCount = filtered.filter(g => !!g.partnerEmail).length
+  const eligibleVisibleCount = filtered.filter(isSendable).length
   const allVisibleSelected   = eligibleVisibleCount > 0
-                            && filtered.filter(g => !!g.partnerEmail)
+                            && filtered.filter(isSendable)
                                        .every(g => selectedIds.has(g.partnerId))
 
   // ── Envoi ──
@@ -288,6 +301,17 @@ export default function RelancesClient({ session }: { session: Session }) {
             </button>
           ))}
 
+          {/* Toggle "Montants > 0 uniquement" */}
+          <label className="inline-flex items-center gap-2 text-sm text-ink-secondary cursor-pointer select-none px-2 py-1 rounded-md border bg-surface-2">
+            <input
+              type="checkbox"
+              checked={positiveOnly}
+              onChange={() => setPositiveOnly(!positiveOnly)}
+              className="w-4 h-4 accent-brand"
+            />
+            Montants &gt; 0 uniquement
+          </label>
+
           {/* Tout sélectionner */}
           {filtered.length > 0 && eligibleVisibleCount > 0 && (
             <label className="ml-auto inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer select-none">
@@ -347,25 +371,33 @@ export default function RelancesClient({ session }: { session: Session }) {
             {filtered.map(g => {
               const selected = selectedIds.has(g.partnerId)
               const noEmail  = !g.partnerEmail
+              const negative = g.totalResidual <= 0
+              const sendable = !noEmail && !negative
               const warnDup  = g.lastReminder
                             && g.lastReminder.daysSince < 7
                             && g.lastReminder.level === g.level
+
+              const blockReason = noEmail
+                ? "Pas d'email — non sélectionnable"
+                : negative
+                  ? "Solde nul ou négatif (NC ≥ factures) — pas de relance à envoyer"
+                  : ''
 
               return (
                 <article
                   key={g.partnerId}
                   className={`rounded-lg border bg-surface-2 p-4 transition-colors ${
                     selected ? 'ring-2 ring-brand border-brand' : ''
-                  } ${noEmail ? 'opacity-60' : ''}`}
+                  } ${!sendable ? 'opacity-60' : ''}`}
                 >
                   <header className="flex items-start gap-3 mb-2">
                     <input
                       type="checkbox"
                       checked={selected}
-                      disabled={noEmail}
-                      onChange={() => toggleOne(g.partnerId, !noEmail)}
+                      disabled={!sendable}
+                      onChange={() => toggleOne(g.partnerId, sendable)}
                       className="mt-1 w-4 h-4 accent-brand cursor-pointer disabled:cursor-not-allowed"
-                      title={noEmail ? 'Pas d\'email — non sélectionnable' : ''}
+                      title={blockReason}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-ink truncate">
@@ -387,18 +419,26 @@ export default function RelancesClient({ session }: { session: Session }) {
                   </header>
 
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm mb-2 ml-7">
-                    <span className="text-ink">
-                      <strong>{formatEur(g.totalResidual)}</strong> dû
+                    <span className={g.totalResidual < 0 ? 'text-critical' : 'text-ink'}>
+                      <strong>{formatEur(g.totalResidual)}</strong>{' '}
+                      {g.totalResidual < 0 ? 'à rembourser' : 'dû'}
                     </span>
                     <span className="text-ink-muted">
-                      {g.invoices.length} facture{g.invoices.length > 1 ? 's' : ''}
+                      {g.invoiceCount > 0 && `${g.invoiceCount} facture${g.invoiceCount > 1 ? 's' : ''}`}
+                      {g.invoiceCount > 0 && g.refundCount > 0 && ' · '}
+                      {g.refundCount > 0 && (
+                        <span className="text-critical">{g.refundCount} NC</span>
+                      )}
                     </span>
-                    <span className="text-ink-muted">
-                      Retard max : {g.maxDaysOverdue} jours
-                    </span>
+                    {g.invoiceCount > 0 && (
+                      <span className="text-ink-muted">
+                        Retard max : {g.maxDaysOverdue} jours
+                      </span>
+                    )}
                     <button
                       onClick={() => setPreviewing(g.partnerId)}
-                      disabled={noEmail}
+                      disabled={!sendable}
+                      title={blockReason}
                       className="ml-auto text-xs text-brand hover:underline disabled:text-ink-muted disabled:no-underline disabled:cursor-not-allowed"
                     >
                       🔍 Aperçu

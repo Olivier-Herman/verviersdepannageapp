@@ -266,13 +266,14 @@ export interface OverdueInvoice {
   id:               number   // account.move.id
   name:             string   // ex "INV/2025/00042"
   invoiceDate:      string   // YYYY-MM-DD (invoice_date)
-  dueDate:          string   // YYYY-MM-DD (invoice_date_due)
-  daysOverdue:      number   // jours pleins entre dueDate et today
+  dueDate:          string | null   // YYYY-MM-DD (invoice_date_due) — null possible sur les notes de credit
+  daysOverdue:      number   // jours pleins entre dueDate et today (0 si pas de dueDate, ex: NC)
   level:            ReminderLevel  // niveau propre a cette facture (basé sur daysOverdue)
-  amountTotal:      number   // amount_total TVAC
-  amountResidual:   number   // amount_residual TVAC (restant dû)
-  plate:            string | null  // immatriculation si liee a un fleet.vehicle via sale.order
-  vehicleLabel:     string | null  // ex "BMW X5" si vehicule resolu
+  amountTotal:      number   // signed : positif si invoice, negatif si refund (NC)
+  amountResidual:   number   // signed : restant du (positif) ou restant a rembourser (negatif)
+  isRefund:         boolean  // true = note de credit (out_refund) ouverte
+  plate:            string | null
+  vehicleLabel:     string | null
 }
 
 export interface PartnerOverdueGroup {
@@ -287,8 +288,10 @@ export interface PartnerOverdueGroup {
   partnerCity:     string | null
   partnerCountry:  string | null   // libelle pays (ex "Belgique") resolu depuis country_id
   invoices:        OverdueInvoice[]
-  totalResidual:   number          // somme amount_residual
-  maxDaysOverdue:  number          // retard max sur le groupe
+  totalResidual:   number          // somme NETTE des residuals signes (invoices - refunds)
+  invoiceCount:    number          // nb out_invoice
+  refundCount:     number          // nb out_refund (NC ouvertes)
+  maxDaysOverdue:  number          // retard max sur le groupe (factures uniquement)
   level:           ReminderLevel   // niveau découlant de maxDaysOverdue
 }
 
@@ -339,13 +342,23 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
   // on INCLUT not_paid, partial, in_payment (paiement en cours non reconcilie),
   // et toute valeur future. Plus robuste qu un IN strict qui pourrait rater
   // des states custom Odoo. amount_residual > 0 fait le filtre final.
+  //
+  // out_invoice ET out_refund (NC) sont inclus :
+  //   - out_invoice : echu >= 15j (cutoffStr) → dette client
+  //   - out_refund  : open (peu importe la date) → credit a rembourser au
+  //     client. amount_residual sera "signe negatif" cote app pour visualisation.
   const domain: any[] = [
-    ['move_type',         '=',  'out_invoice'],
     ['state',             '=',  'posted'],
     ['payment_state',     'not in', ['paid', 'reversed']],
-    ['invoice_date_due',  '!=', false],
-    ['invoice_date_due',  '<=', cutoffStr],
     ['amount_residual',   '>',  0],
+    // OR : (invoice echue) OU (refund peu importe date)
+    '|',
+      '&',
+        ['move_type',         '=',  'out_invoice'],
+        '&',
+          ['invoice_date_due',  '!=', false],
+          ['invoice_date_due',  '<=', cutoffStr],
+      ['move_type',         '=',  'out_refund'],
   ]
   if (vdCompanyId !== null) {
     domain.push(['company_id', '=', vdCompanyId])
@@ -368,8 +381,8 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
       [domain],
       {
         fields: ['id', 'name', 'partner_id', 'invoice_date', 'invoice_date_due',
-                 'amount_total', 'amount_residual', 'invoice_origin'],
-        order:  'invoice_date_due asc',
+                 'amount_total', 'amount_residual', 'invoice_origin', 'move_type'],
+        order:  'invoice_date_due asc, invoice_date desc',
         limit:  PAGE_SIZE,
         offset,
       }
@@ -511,14 +524,25 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
     const partner = partnerById.get(partnerId)
     if (!partner) continue
 
-    const dueDateStr = m.invoice_date_due as string
-    const dueDate    = new Date(dueDateStr + 'T00:00:00Z')
-    const todayUtc   = new Date(today.toISOString().slice(0, 10) + 'T00:00:00Z')
-    const daysOverdue = Math.floor((todayUtc.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+    const dueDateStr: string | null = (m.invoice_date_due && typeof m.invoice_date_due === 'string') ? m.invoice_date_due : null
+    let daysOverdue = 0
+    if (dueDateStr) {
+      const dueDate    = new Date(dueDateStr + 'T00:00:00Z')
+      const todayUtc   = new Date(today.toISOString().slice(0, 10) + 'T00:00:00Z')
+      daysOverdue = Math.floor((todayUtc.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+    }
 
     const invLevel = computeLevel(daysOverdue) ?? 1
     const origin   = typeof m.invoice_origin === 'string' ? m.invoice_origin.trim() : ''
     const veh      = origin ? vehicleByOrderName.get(origin) : null
+    const isRefund = m.move_type === 'out_refund'
+
+    // Sign convention : factures positives (dette client), NC negatives (credit a rembourser)
+    const rawResidual = Math.abs(Number(m.amount_residual) || 0)
+    const rawTotal    = Math.abs(Number(m.amount_total) || 0)
+    const signedResidual = isRefund ? -rawResidual : rawResidual
+    const signedTotal    = isRefund ? -rawTotal    : rawTotal
+
     const invoice: OverdueInvoice = {
       id:             m.id,
       name:           m.name,
@@ -526,8 +550,9 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
       dueDate:        dueDateStr,
       daysOverdue,
       level:          invLevel,
-      amountTotal:    Number(m.amount_total) || 0,
-      amountResidual: Number(m.amount_residual) || 0,
+      amountTotal:    signedTotal,
+      amountResidual: signedResidual,
+      isRefund,
       plate:          veh?.plate || null,
       vehicleLabel:   veh?.label || null,
     }
@@ -548,6 +573,8 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
         partnerCountry: countryName,
         invoices:       [],
         totalResidual:  0,
+        invoiceCount:   0,
+        refundCount:    0,
         maxDaysOverdue: 0,
         level:          1,
       }
@@ -555,21 +582,30 @@ export async function getOverdueInvoicesGroupedByPartner(): Promise<OverdueResul
     }
     group.invoices.push(invoice)
     group.totalResidual  += invoice.amountResidual
-    group.maxDaysOverdue  = Math.max(group.maxDaysOverdue, daysOverdue)
+    if (isRefund) group.refundCount  += 1
+    else          group.invoiceCount += 1
+    // Le retard ne compte que pour les factures (les NC n'ont pas vraiment d'echeance)
+    if (!isRefund) group.maxDaysOverdue = Math.max(group.maxDaysOverdue, daysOverdue)
   }
 
   // 4. Calcul niveau final + tri (plus gros retards d'abord)
   const result: PartnerOverdueGroup[] = []
   for (const g of groups.values()) {
-    const lvl = computeLevel(g.maxDaysOverdue)
-    if (lvl === null) continue   // safe-guard, ne devrait pas arriver vu le filtre cutoff
-    g.level = lvl
+    // Un partner avec uniquement des NC (aucune facture echue) n'a pas de
+    // niveau de relance, mais on le garde dans la liste pour qu'on voit le
+    // remboursement a faire. Default level=1 dans ce cas (cosmetique seulement).
+    if (g.invoiceCount > 0) {
+      const lvl = computeLevel(g.maxDaysOverdue)
+      if (lvl === null) continue   // safe-guard
+      g.level = lvl
+    } else {
+      g.level = 1
+    }
     g.totalResidual = Math.round(g.totalResidual * 100) / 100
     result.push(g)
   }
-  // Tri par defaut : montant total du desc (les plus gros enjeux d abord).
-  // Tie-break par maxDaysOverdue desc puis partner_name asc pour
-  // determinisme.
+  // Tri par defaut : montant total NET desc (positifs en haut, puis NC pures en bas).
+  // Tie-break par maxDaysOverdue desc puis partner_name asc pour determinisme.
   result.sort((a, b) => {
     if (b.totalResidual !== a.totalResidual) return b.totalResidual - a.totalResidual
     if (b.maxDaysOverdue !== a.maxDaysOverdue) return b.maxDaysOverdue - a.maxDaysOverdue
