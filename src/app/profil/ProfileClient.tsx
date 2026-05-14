@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { signOut }   from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 import AppShell      from '@/components/layout/AppShell'
+import NavOrderEditor from '@/components/profil/NavOrderEditor'
+import { filterNavItems } from '@/components/layout/nav-items'
 
 // ── Types documents ────────────────────────────────────────
 const DOC_TYPES = [
@@ -39,6 +41,9 @@ export default function ProfileClient({ user }: { user: any }) {
   const userRole    = user?.role ?? 'driver'
   const userName    = user?.name ?? ''
   const userModules = (user?.modules ?? []) as string[]
+  const { data: session } = useSession()
+  const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
+  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder })
 
   // ── PIN ──────────────────────────────────────────────────
   const [pin1,       setPin1]       = useState('')
@@ -287,6 +292,17 @@ export default function ProfileClient({ user }: { user: any }) {
             </span>
           </div>
         </div>
+
+        {/* Personnalisation menu (drag & drop) */}
+        {visibleNav.length > 1 && (
+          <div className="bg-surface border rounded-2xl p-5">
+            <h2 className="text-ink font-bold mb-1">Ordre du menu</h2>
+            <NavOrderEditor
+              initialItems={visibleNav}
+              hasCustomOrder={Array.isArray(userNavOrder) && userNavOrder.length > 0}
+            />
+          </div>
+        )}
 
         {/* PIN */}
         {user?.can_verify && (

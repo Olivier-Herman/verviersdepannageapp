@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 import { Moon, Sun, LogOut } from 'lucide-react'
 import { filterNavItems } from '@/components/layout/nav-items'
 import { useTheme } from '@/components/theme/ThemeProvider'
@@ -27,6 +27,8 @@ export default function AdminLayoutClient({
 }) {
   const pathname = usePathname()
   const { theme, toggleTheme, mounted } = useTheme()
+  const { data: session } = useSession()
+  const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
 
   return (
     <div className="min-h-screen flex">
@@ -40,7 +42,7 @@ export default function AdminLayoutClient({
         </div>
 
         <nav className="flex-1 px-3 py-4 overflow-y-auto flex flex-col gap-0.5">
-          {filterNavItems({ userModules, userRole }).map(item => {
+          {filterNavItems({ userModules, userRole, userNavOrder }).map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link key={item.href} href={item.href}

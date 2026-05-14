@@ -39,6 +39,13 @@ async function loadOdooAccess(userId: string): Promise<boolean> {
   return !!data?.has_odoo_access
 }
 
+async function loadNavOrder(userId: string): Promise<string[] | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('users').select('nav_order').eq('id', userId).maybeSingle()
+  return Array.isArray(data?.nav_order) ? data!.nav_order as string[] : null
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -192,19 +199,23 @@ export const authOptions: NextAuthOptions = {
         // reconnexion). Cout : 2 queries Supabase par render — negligeable.
         if (token.id) {
           try {
-            const [fresh, odooAccess] = await Promise.all([
+            const [fresh, odooAccess, navOrder] = await Promise.all([
               loadModules(token.id as string),
               loadOdooAccess(token.id as string),
+              loadNavOrder(token.id as string),
             ])
             ;(session.user as any).modules        = fresh
             ;(session.user as any).hasOdooAccess  = odooAccess
+            ;(session.user as any).navOrder       = navOrder
           } catch {
             ;(session.user as any).modules        = token.modules || []
             ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
+            ;(session.user as any).navOrder       = null
           }
         } else {
           ;(session.user as any).modules        = token.modules || []
           ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
+          ;(session.user as any).navOrder       = null
         }
       }
       return session

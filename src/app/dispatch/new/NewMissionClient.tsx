@@ -673,9 +673,12 @@ export default function NewMissionClient({
 
                 <div>
                   <label className="block text-ink-muted text-xs mb-1.5">Nom / Raison sociale</label>
-                  <input value={billedName} onChange={e => setBilledName(e.target.value)}
-                    placeholder="Ex: Touring SA, Police Zone Vesdre..."
-                    className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
+                  <input
+                    value={billedName}
+                    readOnly
+                    placeholder="Rempli automatiquement via la recherche ci-dessus"
+                    title="Champ en lecture seule — passe par la recherche ou clique sur '＋ Créer un nouveau client' si introuvable"
+                    className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink-secondary text-sm placeholder:text-ink-faint cursor-not-allowed" />
                 </div>
 
                 {/* Source déduite */}

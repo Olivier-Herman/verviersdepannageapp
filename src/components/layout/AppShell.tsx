@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 import { useState } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
@@ -44,7 +44,12 @@ export default function AppShell({
   userModules = [],
 }: AppShellProps) {
   const pathname = usePathname()
-  const visibleNav = filterNavItems({ userModules, userRole })
+  // Lit l'ordre personnalise du menu depuis la session (set via /profil).
+  // Le refresh de session a chaque page render assure que le drag&drop
+  // se reflete immediatement sans relogin.
+  const { data: session } = useSession()
+  const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
+  const visibleNav = filterNavItems({ userModules, userRole, userNavOrder })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()

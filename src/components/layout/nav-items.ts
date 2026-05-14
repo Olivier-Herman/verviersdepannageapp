@@ -35,16 +35,22 @@ export const NAV_ITEMS: NavItem[] = [
 /**
  * Filtre les NAV_ITEMS selon les modules accordés à l'utilisateur et son rôle.
  * Retourne les items visibles dans l'ordre d'affichage.
+ *
+ * Si `userNavOrder` est fourni (array de hrefs personnalises par l'user via
+ * drag & drop dans /profil), les items autorises sont rendus dans cet ordre.
+ * Les nouveaux items (ajoutes apres la personnalisation) viennent a la fin
+ * dans leur ordre par defaut.
  */
 export function filterNavItems(opts: {
-  userModules: string[]
-  userRole:    string
+  userModules:  string[]
+  userRole:     string
+  userNavOrder?: string[] | null
 }): NavItem[] {
-  const { userModules, userRole } = opts
+  const { userModules, userRole, userNavOrder } = opts
   const isAdmin      = ['admin', 'superadmin'].includes(userRole)
   const isDispatcher = ['dispatcher', 'admin', 'superadmin'].includes(userRole)
 
-  return NAV_ITEMS.filter(item => {
+  const visible = NAV_ITEMS.filter(item => {
     if (item.role === 'dispatcher_or_admin') return isDispatcher
     if (item.moduleId === null) return true
     if (item.moduleId === 'admin') return isAdmin
@@ -60,4 +66,24 @@ export function filterNavItems(opts: {
     }
     return userModules.includes(item.moduleId)
   })
+
+  // Si l'user a un ordre personnalise → applique-le, avec les items
+  // non-presents dans l'ordre custom a la fin (cas d'un nouveau menu
+  // ajoute apres la personnalisation).
+  if (Array.isArray(userNavOrder) && userNavOrder.length > 0) {
+    const visibleByHref = new Map(visible.map(item => [item.href, item]))
+    const ordered: NavItem[] = []
+    const seen = new Set<string>()
+    for (const href of userNavOrder) {
+      const item = visibleByHref.get(href)
+      if (item) { ordered.push(item); seen.add(href) }
+    }
+    // Items visibles non-presents dans l'ordre custom -> a la fin
+    for (const item of visible) {
+      if (!seen.has(item.href)) ordered.push(item)
+    }
+    return ordered
+  }
+
+  return visible
 }

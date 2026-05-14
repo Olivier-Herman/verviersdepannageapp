@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import { filterNavItems } from './nav-items'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
@@ -21,7 +22,9 @@ interface Props {
 
 export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules }: Props) {
   const pathname = usePathname()
-  const items = filterNavItems({ userModules, userRole })
+  const { data: session } = useSession()
+  const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
+  const items = filterNavItems({ userModules, userRole, userNavOrder })
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
 
