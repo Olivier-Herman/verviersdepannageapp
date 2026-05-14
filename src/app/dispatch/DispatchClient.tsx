@@ -11,6 +11,7 @@ import DispatchMap, { type MapMission, type MapDriver } from '@/components/dispa
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
+import VabImportButton from '@/components/dispatch/VabImportButton'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -765,6 +766,9 @@ export default function DispatchClient({
                 🗺️ Carte
               </button>
             </div>
+
+            {/* Import VAB — bouton dedie (orange ambre pour signal action externe) */}
+            <VabImportButton onImportDone={() => load()} />
 
             {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"

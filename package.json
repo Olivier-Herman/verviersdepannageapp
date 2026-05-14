@@ -23,6 +23,7 @@
     "@vercel/functions": "^3.4.3",
     "autoprefixer": "^10.4.19",
     "bcryptjs": "^2.4.3",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.408.0",
     "mammoth": "^1.12.0",
