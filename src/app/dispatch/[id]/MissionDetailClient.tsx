@@ -320,7 +320,7 @@ function RelivrerButton({
   }
 
   return (
-    <div className="bg-surface border rounded-2xl p-5 space-y-3">
+    <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
       <div>
         <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">🅿️ Véhicule en parc</h3>
         <p className="text-ink-secondary text-xs">
@@ -1121,11 +1121,20 @@ export default function MissionDetailClient({
       userRole={userRole}
       userModules={userModules}
     >
-      {/* Top-bar contenu — badges contextuels (source / dossier / statut / IA%)
-          + ← retour vers la liste dispatch. Hex hardcodés conservés pour étape E. */}
-      <div className="bg-surface border-b border px-4 lg:px-8 py-4 sticky top-0 z-10">
+      <style>{`
+        @keyframes md-fade-up {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .md-card-enter { animation: md-fade-up 320ms ease-out both; }
+      `}</style>
+
+      {/* Top-bar : badges contextuels + ← retour. backdrop-blur pour fondre avec le bg ambient */}
+      <div className="bg-surface/85 backdrop-blur-md border-b px-4 lg:px-8 py-4 sticky top-0 z-20">
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/dispatch" className="text-ink-secondary hover:text-ink transition text-lg" title="Retour à la liste dispatch">←</Link>
+          <Link href="/dispatch" className="text-ink-secondary hover:text-ink transition text-lg flex items-center gap-1.5" title="Retour à la liste dispatch">
+            ← <span className="hidden sm:inline text-sm">Dispatch</span>
+          </Link>
           <div className="flex items-center gap-3 flex-1 flex-wrap">
             <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${srcInfo.color}`}>
               {srcInfo.label}
@@ -1149,6 +1158,15 @@ export default function MissionDetailClient({
           </div>
         </div>
       </div>
+
+      {/* Ambient gradient blobs — purement decoratif, derriere tout le contenu */}
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-50 -z-0">
+          <div className="absolute -top-32 -left-20 w-[420px] h-[420px] rounded-full bg-gradient-to-br from-brand/15 to-purple-500/10 blur-3xl" />
+          <div className="absolute top-1/3 -right-32 w-[480px] h-[480px] rounded-full bg-gradient-to-br from-info/15 to-success/10 blur-3xl" />
+          <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
+        </div>
+        <div className="relative z-10">
 
         {/* ── Barre Date d'intervention ─────────────────────────── */}
         <div className="px-4 lg:px-8 pt-6">
@@ -1200,7 +1218,7 @@ export default function MissionDetailClient({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
 
                 {/* Client facturé */}
-                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter flex flex-col h-full">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>🧾</span> Client facturé
                   </h2>
@@ -1271,7 +1289,7 @@ export default function MissionDetailClient({
                 </div>
 
                 {/* Client assisté */}
-                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter flex flex-col h-full">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>👤</span> Client assisté (personne en panne)
                   </h2>
@@ -1300,7 +1318,7 @@ export default function MissionDetailClient({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
 
                 {/* Véhicule */}
-                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter flex flex-col h-full">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>🚗</span> Véhicule
                   </h2>
@@ -1398,7 +1416,7 @@ export default function MissionDetailClient({
                 </div>
 
                 {/* Intervention */}
-                <div className="bg-surface border rounded-2xl p-5 flex flex-col h-full">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter flex flex-col h-full">
                   <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                     <span>📋</span> Intervention
                   </h2>
@@ -1433,7 +1451,7 @@ export default function MissionDetailClient({
                 //    d'intervention, géré séparément
                 const noDestination = ['depannage', 'reparation_place', 'trajet_vide'].includes(form.mission_type)
                 return (
-              <div className="bg-surface border rounded-2xl p-5">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>📍</span> {noDestination ? 'Lieu d\'intervention' : 'Lieu d\'intervention / Destination'}
                 </h2>
@@ -1520,7 +1538,7 @@ export default function MissionDetailClient({
 
               {/* Stops intermédiaires (REM uniquement) */}
               {!['depannage', 'reparation_place', 'trajet_vide'].includes(form.mission_type) && (
-                <div className="bg-surface border rounded-2xl p-5">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-ink font-semibold text-sm flex items-center gap-2">
                       <span>🛣️</span> Stops intermédiaires
@@ -1573,7 +1591,7 @@ export default function MissionDetailClient({
               )}
 
               {/* Montant garanti + Paiement client */}
-              <div className="bg-surface border rounded-2xl p-5">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>💶</span> Montants
                 </h2>
@@ -1672,7 +1690,7 @@ export default function MissionDetailClient({
 
               {/* Encart facturation — visible des to_invoice ou completed */}
               {(initialMission.status === 'to_invoice' || initialMission.status === 'completed') && (
-                <div className="bg-surface border rounded-2xl p-5">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <h2 className="text-ink font-semibold text-sm mb-3 flex items-center gap-2">
                     <span>🧾</span> Facturation
                   </h2>
@@ -1731,7 +1749,7 @@ export default function MissionDetailClient({
             <div className="space-y-5">
 
               {/* Actions */}
-              <div className="bg-surface border rounded-2xl p-5 space-y-3">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
 
                 {/* Avertissement véhicule en attente de décision — bloque save/confirm */}
                 {vehicleDecisionPending && (
@@ -1874,7 +1892,7 @@ export default function MissionDetailClient({
 
               {/* ── Suivi chauffeur (P6) ─────────────────────────────── */}
               {['assigned', 'accepted', 'in_progress', 'completed'].includes(status) && (
-                <div className="bg-surface border rounded-2xl p-5">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-4">
                     🚗 Suivi chauffeur
                   </h3>
@@ -1895,7 +1913,7 @@ export default function MissionDetailClient({
 
               {/* Photos chauffeur */}
               {M.driver_photos && M.driver_photos.length > 0 && (
-                <div className="bg-surface border rounded-2xl p-5">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
                     📷 Photos chauffeur ({M.driver_photos.length})
                   </h3>
@@ -1911,12 +1929,12 @@ export default function MissionDetailClient({
               )}
 
               {/* Kilométrage estimé (Google Directions, recalculé sur chaque modif d'adresse/stop/dépôt) */}
-              <div className="bg-surface border rounded-2xl p-5">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />
               </div>
 
               {/* Récap numéros */}
-              <div className="bg-surface border rounded-2xl p-5">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Référence</h3>
                 <div className="space-y-2">
                   <div>
@@ -1984,7 +2002,7 @@ export default function MissionDetailClient({
               )}
 
               {/* Bouton dossier Odoo FSM */}
-              <div className="bg-surface border rounded-2xl p-5">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Dossier Odoo</h3>
                 {odooTicketUrl ? (
                   <a href={odooTicketUrl} target="_blank" rel="noopener noreferrer"
@@ -2011,7 +2029,7 @@ export default function MissionDetailClient({
 
               {/* Bouton enrichissement IMA */}
               {imaLink && (
-                <div className="bg-surface border rounded-2xl p-5">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Portail IMA</h3>
                   {imaSuccess ? (
                     <div className="text-success text-sm text-center py-2">✅ Données enrichies !</div>
@@ -2035,7 +2053,7 @@ export default function MissionDetailClient({
 
               {/* Historique */}
               {logs.length > 0 && (
-                <div className="bg-surface border rounded-2xl p-5">
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Historique</h3>
                   <div className="space-y-3">
                     {logs.slice(0, 8).map(log => (
@@ -2056,6 +2074,8 @@ export default function MissionDetailClient({
             </div>
           </div>
         </div>
+        </div>
+      </div>
 
       {/* Modal de sélection chauffeur avec ETA temps réel + cap 90 km/h camion */}
       {showDriverModal && (
