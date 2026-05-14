@@ -46,25 +46,37 @@ export async function POST(req: Request) {
     const { missions, debug } = await listVabMissions(session)
 
     const sb = createAdminClient()
-    const missionNumbers = missions.map(m => m.missionNumber)
-    const { data: existing } = missionNumbers.length > 0
+
+    // Strategy de dedup simple et fiable :
+    // external_id en BDD = AssignmentId VAB (unique par sous-tache).
+    // Deux lignes VAB avec meme missionNumber mais AssignmentId differents
+    // = deux missions distinctes en BDD (correct car ce sont 2 sous-taches).
+    const assignmentIds = missions
+      .map(m => m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1])
+      .filter((x): x is string => !!x)
+
+    const { data: existing } = assignmentIds.length > 0
       ? await sb
           .from('incoming_missions')
           .select('external_id')
           .ilike('source', 'vab')
-          .in('external_id', missionNumbers)
+          .in('external_id', assignmentIds)
       : { data: [] as { external_id: string }[] }
 
     const existingSet = new Set((existing || []).map(e => e.external_id))
-    const items: PreviewItem[] = missions.map(m => ({
-      missionNumber: m.missionNumber,
-      detailHref:    m.detailHref,
-      status:        m.status,
-      plate:         m.plate,
-      fromLocation:  m.fromLocation,
-      toLocation:    m.toLocation,
-      alreadyImported: existingSet.has(m.missionNumber),
-    }))
+
+    const items: PreviewItem[] = missions.map(m => {
+      const aid = m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1] || null
+      return {
+        missionNumber: m.missionNumber,
+        detailHref:    m.detailHref,
+        status:        m.status,
+        plate:         m.plate,
+        fromLocation:  m.fromLocation,
+        toLocation:    m.toLocation,
+        alreadyImported: aid ? existingSet.has(aid) : false,
+      }
+    })
 
     if (mode === 'preview') {
       return NextResponse.json({
@@ -102,10 +114,22 @@ export async function POST(req: Request) {
           }
         }
 
+        // AssignmentId depuis l'URL = identifiant unique stable VAB
+        const aidMatch = item.detailHref.match(/[?&]AssignmentId=(\d+)/i)
+        const assignmentId = aidMatch ? aidMatch[1] : null
+
+        // dossier_number = "missionNumber/taskNumber" (lisible) si dispo,
+        // sinon juste missionNumber. detail.dossierNumber contient taskNumber.
+        const fullDossier = detail.dossierNumber
+          ? `${detail.missionNumber}/${detail.dossierNumber}`
+          : detail.missionNumber
+
         // Map VAB fields → incoming_missions schema
         const insertPayload = {
-          external_id:        detail.missionNumber,
-          dossier_number:     detail.dossierNumber,
+          // external_id = AssignmentId : unique par sous-tache, sert a la dedup
+          external_id:        assignmentId || detail.missionNumber,
+          // dossier_number = "8293644/34496031" : numero complet visible par user
+          dossier_number:     fullDossier,
           source:             'vab',
           status:             'new',
           mission_type:       detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'

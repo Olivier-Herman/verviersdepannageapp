@@ -389,10 +389,19 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
 
   // Pour chaque lien candidat, on extrait le n° mission dans le meme container.
   // Strategy en plusieurs etages : tr -> table parente -> body avec proximite.
+  //
+  // NB: chez VAB, plusieurs lignes peuvent avoir le meme N° mission (8293644)
+  // mais avec des AssignmentId differents (= 2 sous-taches du meme dossier,
+  // ex: Remorquage + Livraison VR). On dedup donc par AssignmentId, PAS par
+  // missionNumber (qui peut etre identique sur 2 lignes legitimes).
+  const seenAssignmentIds = new Set<string>()
   for (const cand of candidateLinks) {
     // Extract AssignmentId depuis l'URL (toujours dispo)
     const aidMatch = cand.href.match(/[?&]AssignmentId=(\d+)/i)
     const assignmentId = aidMatch ? aidMatch[1] : null
+    // Dedup par AssignmentId : si meme assignmentId que precedent, skip
+    if (assignmentId && seenAssignmentIds.has(assignmentId)) continue
+    if (assignmentId) seenAssignmentIds.add(assignmentId)
 
     // Essaie d'extraire le n° mission depuis plusieurs scopes
     let missionNumber: string | null = null
@@ -430,10 +439,11 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
       debugLog.push(`cand-skip: href=${cand.href.slice(0, 60)} (rien trouve)`)
       continue
     }
-    debugLog.push(`cand-ok: ${missionNumber} via ${scopeUsed}`)
+    debugLog.push(`cand-ok: ${missionNumber} (aid=${assignmentId || 'n/a'}) via ${scopeUsed}`)
 
-    // Dedup
-    if (missions.some(m => m.missionNumber === missionNumber)) continue
+    // Note : pas de dedup par missionNumber - chez VAB, 2 sous-taches peuvent
+    // partager le meme n° mission mais avec des AssignmentId differents.
+    // La dedup par AssignmentId est faite au debut de la boucle.
 
     // Extract cellules si dispo
     const tr = cand.row.closest('tr')
