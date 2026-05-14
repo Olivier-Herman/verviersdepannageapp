@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 import { ExternalLink, Search, Archive } from 'lucide-react'
 
 interface TerminatedMission {
@@ -189,11 +190,18 @@ export default function MissionsTermineesClient({ userRole, userName, userEmail,
 
   return (
     <AppShell title="Missions terminées" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userId={userId || undefined} userModules={userModules}>
+      <AmbientBackground>
       <div className="p-4 lg:p-6 space-y-4">
 
-        <div>
-          <h1 className="text-ink text-xl font-semibold">Missions terminées</h1>
-          <p className="text-ink-muted text-sm">Toutes les missions clôturées : à facturer, facturées, sans frais, annulées. Les archivées sont masquées par défaut.</p>
+        {/* Hero header */}
+        <div className="ambient-fade-up flex items-start gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-info/20 via-success/15 to-purple-500/15 flex items-center justify-center text-2xl shadow-lg shadow-info/10 flex-shrink-0">
+            <span>📂</span>
+          </div>
+          <div>
+            <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Missions terminées</h1>
+            <p className="text-ink-muted text-sm mt-1">Toutes les missions clôturées : à facturer, facturées, sans frais, annulées. Les archivées sont masquées par défaut.</p>
+          </div>
         </div>
 
         {/* Filtres chips */}
@@ -313,6 +321,7 @@ export default function MissionsTermineesClient({ userRole, userName, userEmail,
           </div>
         )}
       </div>
+      </AmbientBackground>
     </AppShell>
   )
 }

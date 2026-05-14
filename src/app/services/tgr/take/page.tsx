@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useRouter }       from 'next/navigation'
 import AppShell            from '@/components/layout/AppShell'
+import AmbientBackground   from '@/components/AmbientBackground'
 
 function TGRTakeContent() {
   const params    = useSearchParams()
@@ -107,13 +108,15 @@ function TGRTakeContent() {
 export default function TGRTakePage() {
   return (
     <AppShell title="Prise de mission TGR">
-      <Suspense fallback={
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-ink-muted">Chargement…</p>
-        </div>
-      }>
-        <TGRTakeContent />
-      </Suspense>
+      <AmbientBackground>
+        <Suspense fallback={
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <p className="text-ink-muted">Chargement…</p>
+          </div>
+        }>
+          <TGRTakeContent />
+        </Suspense>
+      </AmbientBackground>
     </AppShell>
   )
 }

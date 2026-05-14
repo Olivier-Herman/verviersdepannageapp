@@ -3,8 +3,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter }  from 'next/navigation'
-import AppShell       from '@/components/layout/AppShell'
-import Image          from 'next/image'
+import AppShell          from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
+import Image             from 'next/image'
 
 // ── Types ──────────────────────────────────────────────────
 interface Brand  { id: number; name: string }
@@ -218,7 +219,8 @@ export default function TGRClient({ user }: { user: any }) {
   // ── LISTE ─────────────────────────────────────────────────
   if (view === 'list') return (
     <AppShell title="TGR Touring" userRole={userRole} userName={userName} userModules={userModules}>
-      <div className="px-4 lg:px-8 py-6 max-w-4xl">
+      <AmbientBackground>
+      <div className="px-4 lg:px-8 py-6 max-w-4xl ambient-fade-up">
 
         {/* Header Touring */}
         <div className="flex items-center justify-between mb-6">
@@ -279,6 +281,7 @@ export default function TGRClient({ user }: { user: any }) {
           </div>
         )}
       </div>
+      </AmbientBackground>
 
       {selected && (
         <MissionModal mission={selected} isAdmin={isAdmin}
@@ -291,8 +294,9 @@ export default function TGRClient({ user }: { user: any }) {
   // ── SUCCÈS ─────────────────────────────────────────────────
   if (success) return (
     <AppShell title="Mission soumise" userRole={userRole} userName={userName} userModules={userModules}>
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center gap-6 max-w-md mx-auto">
-        <div className="text-7xl">✅</div>
+      <AmbientBackground>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center gap-6 max-w-md mx-auto ambient-fade-up">
+        <div className="text-7xl ambient-sparkle">✅</div>
         <img src="/logo-touring.png" alt="Touring" className="h-6 w-auto opacity-60" />
         <div>
           <h2 className="text-ink font-bold text-xl mb-2">Mission soumise !</h2>
@@ -306,16 +310,18 @@ export default function TGRClient({ user }: { user: any }) {
           Retour aux missions
         </button>
       </div>
+      </AmbientBackground>
     </AppShell>
   )
 
   // ── FORMULAIRE ─────────────────────────────────────────────
   return (
     <AppShell title="Nouvelle mission TGR" userRole={userRole} userName={userName} userModules={userModules}>
+      <AmbientBackground>
       <div className="lg:hidden px-4 pt-3 pb-1">
         <button onClick={() => setView('list')} className="text-ink-secondary hover:text-ink text-sm">← Retour</button>
       </div>
-      <div className="px-4 lg:px-8 py-4 max-w-xl flex flex-col gap-5 pb-10">
+      <div className="px-4 lg:px-8 py-4 max-w-xl flex flex-col gap-5 pb-10 ambient-fade-up">
 
         {/* Logo Touring */}
         <div className="flex items-center gap-3 bg-surface border border rounded-xl px-4 py-3">
@@ -546,6 +552,7 @@ export default function TGRClient({ user }: { user: any }) {
             : '📤 Soumettre la mission TGR'}
         </button>
       </div>
+      </AmbientBackground>
     </AppShell>
   )
 }

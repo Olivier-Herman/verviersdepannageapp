@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 import { formatEur } from '@/lib/format'
 // Pattern utilisé partout dans les Client Components du projet (MissionListClient, DriverClient...)
 // — éviter d'importer depuis @/lib/supabase qui embarque next/headers (serveur uniquement).
@@ -287,8 +288,8 @@ export default function CashClient({
   // ── Render ───────────────────────────────────────────────
   return (
     <AppShell title="Ma Caisse" userRole={userRole} userName={userName} userModules={userModules}>
-
-      <div className="px-4 lg:px-8 py-6 max-w-4xl mx-auto lg:mx-0">
+      <AmbientBackground>
+      <div className="px-4 lg:px-8 py-6 max-w-4xl mx-auto lg:mx-0 ambient-fade-up">
 
         {/* Solde */}
         <div className={`rounded-2xl p-6 text-center mb-6 ${balance > 0
@@ -542,6 +543,7 @@ export default function CashClient({
           </div>
         ))}
       </div>
+      </AmbientBackground>
 
       {/* ── Modal PIN pour valider un transfert entrant ── */}
       {pinModalTransfer && (

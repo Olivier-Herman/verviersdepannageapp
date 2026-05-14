@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
@@ -93,7 +94,9 @@ function BaseShell({
         </div>
       )}
 
-      <div className="flex-1 px-5 lg:px-8 py-6 overflow-y-auto max-w-md lg:max-w-2xl mx-auto w-full">{children}</div>
+      <AmbientBackground>
+      <div className="flex-1 px-5 lg:px-8 py-6 overflow-y-auto max-w-md lg:max-w-2xl mx-auto w-full ambient-fade-up">{children}</div>
+      </AmbientBackground>
     </AppShell>
   )
 }

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import type { Session } from 'next-auth'
 import type { VehicleCheck, CheckTemplateItem, CheckItemResult } from '@/types'
+import AmbientBackground from '@/components/AmbientBackground'
 
 const CATEGORIES = ['Documents', 'Matériel', 'Carrosserie', 'Mécanique'] as const
 
@@ -166,7 +167,8 @@ export default function CheckDetailClient({
   const okCount          = results.filter(r => r.ok === true).length
 
   return (
-    <div className="max-w-2xl mx-auto p-4 pb-28">
+    <AmbientBackground>
+    <div className="max-w-2xl mx-auto p-4 pb-28 ambient-fade-up">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -380,5 +382,6 @@ export default function CheckDetailClient({
         </div>
       )}
     </div>
+    </AmbientBackground>
   )
 }

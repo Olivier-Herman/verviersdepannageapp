@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 import FacturerModal from '@/components/facturation/FacturerModal'
 
 interface MissionRow {
@@ -184,14 +185,22 @@ export default function FacturationClient({
 
   return (
     <AppShell title="Facturation" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
+      <AmbientBackground>
       <div className="p-4 lg:p-6 space-y-4">
 
-        {/* Header + filtres */}
-        <div className="bg-surface border rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h1 className="text-ink text-lg font-semibold">À facturer</h1>
-            <p className="text-ink-muted text-sm">{filtered.length} fiche{filtered.length > 1 ? 's' : ''}</p>
+        {/* Hero header */}
+        <div className="ambient-fade-up flex items-start gap-3 mb-2">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-success/20 via-brand/15 to-purple-500/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
+            <span>🧾</span>
           </div>
+          <div>
+            <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Facturation</h1>
+            <p className="text-ink-muted text-sm mt-1">{filtered.length} mission{filtered.length > 1 ? 's' : ''} à facturer.</p>
+          </div>
+        </div>
+
+        {/* Filtres */}
+        <div className="bg-surface border rounded-2xl p-4 space-y-3 ambient-fade-up ambient-stagger-1">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <input
               value={search}
@@ -275,6 +284,7 @@ export default function FacturationClient({
           </ul>
         )}
       </div>
+      </AmbientBackground>
 
       {selected && (
         <FacturerModal

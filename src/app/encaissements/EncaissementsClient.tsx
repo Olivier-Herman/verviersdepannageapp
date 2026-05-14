@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 import { formatEur } from '@/lib/format'
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -141,6 +142,7 @@ export default function EncaissementsClient({
 
   return (
     <AppShell title="Mouvements" userRole={userRole} userName={userName} userModules={userModules} headerExtra={Filters}>
+      <AmbientBackground>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 px-4 lg:px-8 py-4">
@@ -374,6 +376,7 @@ export default function EncaissementsClient({
           </div>
         </div>
       )}
+      </AmbientBackground>
     </AppShell>
   )
 }

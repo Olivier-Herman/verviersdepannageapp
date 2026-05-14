@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 import { ArrowRightLeft, RefreshCw, X, ExternalLink } from 'lucide-react'
 
 interface Zone {
@@ -106,7 +107,8 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
 
   return (
     <AppShell title="Fourrière" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
-      <div className="p-4 lg:p-6 space-y-4">
+      <AmbientBackground>
+      <div className="p-4 lg:p-6 space-y-4 ambient-fade-up">
 
         {/* Header + actions */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -222,6 +224,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
           </div>
         )}
       </div>
+      </AmbientBackground>
 
       {moving && (
         <MoveModal

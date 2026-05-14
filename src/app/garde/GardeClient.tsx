@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 
 interface Driver {
   id:              string
@@ -58,7 +59,8 @@ export default function GardeClient({
 
   return (
     <AppShell title="🛡️ Garde — Planning chauffeurs" userRole={userRole} userName={userName} userModules={userModules}>
-      <div className="px-4 lg:px-8 py-5 lg:py-6 max-w-4xl mx-auto">
+      <AmbientBackground>
+      <div className="px-4 lg:px-8 py-5 lg:py-6 max-w-4xl mx-auto ambient-fade-up">
         <p className="text-ink-secondary text-sm mb-6">
           Active les plages pendant lesquelles chaque chauffeur est forcé en service.
           Pendant ces heures, ils ne pourront pas se mettre hors service depuis leur dashboard.
@@ -119,6 +121,7 @@ export default function GardeClient({
           ))}
         </div>
       </div>
+      </AmbientBackground>
     </AppShell>
   )
 }

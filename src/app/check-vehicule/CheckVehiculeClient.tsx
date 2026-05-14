@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ClipboardCheck, Clock, CheckCircle2, AlertCircle, ChevronRight, Truck } from 'lucide-react'
 import type { Session } from 'next-auth'
 import type { VehicleCheck } from '@/types'
+import AmbientBackground from '@/components/AmbientBackground'
 
 const STATUS_CONFIG = {
   scheduled:     { label: 'Planifié',                   color: 'text-zinc-400',  bg: 'bg-zinc-800',        icon: Clock         },
@@ -49,7 +50,8 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
   const completed     = checks.filter(c => c.status === 'completed')
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-5">
+    <AmbientBackground>
+    <div className="max-w-2xl mx-auto p-4 space-y-5 ambient-fade-up">
 
       {/* Bannière driver: contrôle en cours sur son véhicule */}
       {!isResponsible && activeCheck && (
@@ -133,5 +135,6 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
         )}
       </div>
     </div>
+    </AmbientBackground>
   )
 }

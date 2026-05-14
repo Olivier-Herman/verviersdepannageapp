@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
+import AmbientBackground from '@/components/AmbientBackground'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -1167,10 +1168,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // VUE PRINCIPALE
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-surface pb-48">
+    <div className="min-h-screen bg-surface pb-48 relative">
+      <AmbientBackground variant="light">
 
-      {/* Header */}
-      <div className="bg-surface border-b border px-4 pt-12 pb-4 sticky top-0 z-20">
+      {/* Header avec backdrop-blur pour fondre avec l'ambient */}
+      <div className="bg-surface/85 backdrop-blur-md border-b px-4 pt-12 pb-4 sticky top-0 z-20">
         <div className="flex items-center justify-between mb-1">
           <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
@@ -1650,6 +1652,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         setShowVeh(false)
         await fetch('/api/missions/update-vehicle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }) }).catch(() => {})
       }} />}
+      </AmbientBackground>
     </div>
   )
 }

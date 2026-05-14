@@ -5,6 +5,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,8 +51,8 @@ export default async function MissionListPage() {
       userModules={(session.user as any).modules ?? []}
     >
       {/* Wrapper relatif pour positionner le FAB */}
-      <div className="relative">
-        <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24">
+      <AmbientBackground>
+        <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24 ambient-fade-up">
 
           {active.length === 0 && completed.length === 0 && (
             <div className="text-center py-16 text-ink-faint">
@@ -117,7 +118,7 @@ export default async function MissionListPage() {
         >
           +
         </Link>
-      </div>
+      </AmbientBackground>
     </AppShell>
   )
 }
