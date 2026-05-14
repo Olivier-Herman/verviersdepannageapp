@@ -112,6 +112,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   const isSuperAdmin = currentUserRole === 'superadmin'
   const [roleSaving,       setRoleSaving]       = useState(false)
   const [userTowsoftName,  setUserTowsoftName]  = useState('')
+  const [userPhone,        setUserPhone]        = useState('')
   const [roleError,        setRoleError]        = useState('')
 
   // ── Ouvrir un utilisateur ──────────────────────────────
@@ -133,6 +134,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     setShowOdooKey(false)
     setUserOdooId(user.odoo_partner_id ? String(user.odoo_partner_id) : '')
     setUserTowsoftName(user.towsoft_name || '')
+    setUserPhone(user.phone || '')
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
     setResetSuccess('')
     setWelcomeSuccess('')
@@ -195,6 +197,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           odoo_uid:        userOdooUid.trim() ? parseInt(userOdooUid) : null,
           odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
           towsoft_name:    userTowsoftName || null,
+          phone:           userPhone.trim() || null,
         }),
       })
       const data = await res.json()
@@ -326,6 +329,21 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
             onChange={e => setUserEmail(e.target.value)}
             className={inputCls}
           />
+        </div>
+
+        {/* Téléphone (E.164, requis pour auto-dispatch Teams Phone) */}
+        <div className="mb-3">
+          <label className={labelCls}>Téléphone</label>
+          <input
+            type="tel"
+            value={userPhone}
+            onChange={e => setUserPhone(e.target.value)}
+            placeholder="+32475123456"
+            className={inputCls}
+          />
+          <p className="text-ink-faint text-xs mt-1">
+            Format international (E.164) — requis pour l'auto-dispatch (call Teams Phone) et SMS.
+          </p>
         </div>
 
         {/* Rôle(s) — lecture seule + bouton modal */}
