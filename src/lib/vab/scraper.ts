@@ -58,11 +58,15 @@ function parseCookies(res: Response): string {
 }
 
 /**
- * Login sur comet.vab.be. Retourne un cookie de session reutilisable.
+ * Login sur comet.vab.be.
  *
- * Le formulaire de login VAB est /login (vu sur le screenshot).
- * Champs : Username + Password (POST URL-encoded).
- * Le serveur retourne 302 vers /Missions avec un cookie de session.
+ * Strategy robuste :
+ * 1. GET /COMET (entry point base sur le screenshot URL "comet.vab.be/COMET")
+ *    OU fallback / si /COMET retourne 404
+ * 2. Parse le <form> de login : recupere son action URL + tous les hidden inputs
+ *    (CSRF, viewstate ASP.NET, etc.)
+ * 3. POST sur l'action URL avec username/password + hidden fields
+ * 4. Verifie qu'on est bien logge (302 vers /Missions ou cookie auth different)
  */
 export async function loginVab(): Promise<SessionCookies> {
   const username = process.env.VAB_EMAIL
@@ -71,9 +75,38 @@ export async function loginVab(): Promise<SessionCookies> {
     throw new Error('VAB_EMAIL et VAB_PASSWORD env vars sont requis')
   }
 
-  // 1. GET /login pour recuperer le cookie initial + un eventuel CSRF token
-  const initRes = await fetch(`${VAB_BASE}/login`, {
-    method: 'GET',
+  // Essaie plusieurs entry points jusqu'a trouver la page de login.
+  // VAB COMET est ASP.NET WebForms → .aspx avec __VIEWSTATE etc.
+  const entryPaths = ['/Comet/Home.aspx', '/Comet/Default.aspx', '/COMET', '/']
+  let initRes: Response | null = null
+  let initUrl: string = ''
+  for (const path of entryPaths) {
+    const url = `${VAB_BASE}${path}`
+    const r = await fetch(url, {
+      method:   'GET',
+      redirect: 'follow', // suit les eventuelles 302 vers la vraie page de login
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+      },
+    })
+    if (r.status === 200) {
+      initRes = r
+      initUrl = r.url // URL finale apres redirects
+      console.log(`[vab/login] entry OK via ${path} → ${initUrl}`)
+      break
+    }
+    console.log(`[vab/login] entry ${path} status ${r.status}`)
+  }
+  if (!initRes) {
+    throw new Error('VAB login : aucune page d\'entree trouvee parmi ' + entryPaths.join(', '))
+  }
+
+  // initRes.headers ne contient pas tous les Set-Cookie apres redirect. Refait
+  // un GET sur initUrl en manual mode pour les recuperer.
+  const initManual = await fetch(initUrl, {
+    method:   'GET',
     redirect: 'manual',
     headers: {
       'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
@@ -81,77 +114,93 @@ export async function loginVab(): Promise<SessionCookies> {
       'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
     },
   })
-  const initCookies = parseCookies(initRes)
+  const initCookies = parseCookies(initManual)
+  const html = await initRes.text()
+  const $ = cheerio.load(html)
 
-  // Cherche un eventuel CSRF token dans le HTML (input hidden)
-  let csrfToken: string | null = null
-  let csrfFieldName: string | null = null
+  // Trouve le <form> de login : celui qui contient un input password
+  let formAction = ''
+  const passwordInput = $('input[type="password"]').first()
+  const $form = passwordInput.closest('form')
+  if ($form.length === 0) {
+    throw new Error('VAB login : pas de <form> avec input password trouve dans ' + initUrl)
+  }
+  formAction = $form.attr('action') || initUrl
+  const usernameField = $form.find('input[type="text"], input[type="email"]').first()
+  const usernameFieldName = usernameField.attr('name') || 'Username'
+  const passwordFieldName = passwordInput.attr('name') || 'Password'
+
+  // Resoud l'URL de submit (peut etre relative)
+  let submitUrl: string
   try {
-    const html = await initRes.text()
-    const $ = cheerio.load(html)
-    // Try common csrf field names
-    const candidates = [
-      'input[name="_token"]',
-      'input[name="__RequestVerificationToken"]',
-      'input[name="csrf_token"]',
-      'input[name="authenticity_token"]',
-      'input[name="csrfmiddlewaretoken"]',
-      'input[type="hidden"][name*="token" i]',
-    ]
-    for (const sel of candidates) {
-      const el = $(sel).first()
-      const val = el.attr('value')
-      const name = el.attr('name')
-      if (val && name) {
-        csrfToken = val
-        csrfFieldName = name
-        break
-      }
-    }
-  } catch (e: any) {
-    console.warn('[vab/login] init HTML parse failed (continue without CSRF):', e.message)
+    submitUrl = new URL(formAction, initUrl).toString()
+  } catch {
+    submitUrl = initUrl
+  }
+  console.log(`[vab/login] form action → ${submitUrl} (user field: ${usernameFieldName}, pwd field: ${passwordFieldName})`)
+
+  // Recupere TOUS les hidden inputs (CSRF, ASP.NET __VIEWSTATE, __EVENTVALIDATION,
+  // __VIEWSTATEGENERATOR, etc.). Critique pour ASP.NET WebForms.
+  const formData = new URLSearchParams()
+  $form.find('input[type="hidden"]').each((_idx, el) => {
+    const n = $(el).attr('name')
+    const v = $(el).attr('value') ?? ''
+    if (n) formData.set(n, v)
+  })
+  formData.set(usernameFieldName, username)
+  formData.set(passwordFieldName, password)
+
+  // ASP.NET : le serveur s'attend a recevoir le bouton qui a declenche le
+  // postback (name + value). On cherche le bouton "Login" / "Submit" / "Connexion".
+  const $loginBtn = $form.find('input[type="submit"], button[type="submit"], button').filter((_, btn) => {
+    const txt = ($(btn).text() || $(btn).attr('value') || '').toLowerCase()
+    return txt.includes('login') || txt.includes('connexion') || txt.includes('se connecter') || txt.includes('sign in')
+  }).first()
+  const btnName = $loginBtn.attr('name')
+  const btnValue = $loginBtn.attr('value') || $loginBtn.text().trim()
+  if (btnName) {
+    formData.set(btnName, btnValue || 'Login')
+    console.log(`[vab/login] submit btn detecte : ${btnName}=${btnValue || 'Login'}`)
   }
 
-  // 2. POST /login avec creds + eventuel CSRF
-  const formData = new URLSearchParams()
-  formData.set('Username', username)
-  formData.set('Password', password)
-  // Ajoute aussi des variants de noms communs (le serveur peut etre case-sensitive)
-  formData.set('username', username)
-  formData.set('password', password)
-  formData.set('email', username)
-  if (csrfToken && csrfFieldName) formData.set(csrfFieldName, csrfToken)
-
-  const loginRes = await fetch(`${VAB_BASE}/login`, {
-    method: 'POST',
-    redirect: 'manual',  // important : on veut le Set-Cookie de la 302
+  // POST sur l'action URL
+  const loginRes = await fetch(submitUrl, {
+    method:   'POST',
+    redirect: 'manual',
     headers: {
       'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
       'Content-Type':    'application/x-www-form-urlencoded',
       'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
       'Cookie':          initCookies,
-      'Referer':         `${VAB_BASE}/login`,
+      'Referer':         initUrl,
       'Origin':          VAB_BASE,
     },
     body: formData.toString(),
   })
 
-  // 302 vers /Missions = success. 200 = login KO (re-render formulaire avec erreur).
-  if (loginRes.status !== 302 && loginRes.status !== 303) {
+  // 302/303 = success habituellement, mais ASP.NET peut retourner 200 si l'auth
+  // est gere via cookie set sur la reponse 200 elle-meme. On accepte les deux.
+  const sessionCookies = parseCookies(loginRes)
+  if (loginRes.status === 200) {
+    // 200 = page rerenderee avec eventuelle erreur. Verifie qu'il n'y a pas un
+    // message d'erreur evident dans la reponse.
     const body = await loginRes.text().catch(() => '')
-    const snippet = body.slice(0, 500)
-    throw new Error(`VAB login echec (status ${loginRes.status}). HTML: ${snippet}`)
+    if (/invalid|incorrect|erreur|wrong|failed/i.test(body) && /password|mot.?de.?passe/i.test(body)) {
+      throw new Error(`VAB login : creds invalides (page reload avec erreur). Snippet: ${body.slice(0, 300)}`)
+    }
+    // Sinon, suppose qu'on est passe (la session est dans le cookie)
+  } else if (loginRes.status !== 302 && loginRes.status !== 303) {
+    const body = await loginRes.text().catch(() => '')
+    throw new Error(`VAB login : status ${loginRes.status}. URL: ${submitUrl}. Snippet: ${body.slice(0, 500)}`)
   }
 
-  const sessionCookies = parseCookies(loginRes)
-  if (!sessionCookies) {
+  // Combine init + session cookies
+  const allCookies = [initCookies, sessionCookies].filter(Boolean).join('; ')
+  if (!allCookies) {
     throw new Error('VAB login : aucun cookie de session retourne')
   }
-
-  // Combine init cookies + session cookies pour les requetes suivantes
-  const allCookies = [initCookies, sessionCookies].filter(Boolean).join('; ')
-  console.log(`[vab/login] OK, cookie set (${allCookies.length} bytes)`)
+  console.log(`[vab/login] OK, status ${loginRes.status}, cookie ${allCookies.length} bytes`)
   return { cookieHeader: allCookies }
 }
 

@@ -105,7 +105,7 @@ export default function VabImportButton({ onImportDone }: Props) {
       <button
         onClick={openAndPreview}
         title="Récupérer les missions VAB en attente"
-        className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium transition flex-shrink-0"
+        className="flex items-center justify-center gap-1.5 w-10 h-10 lg:w-auto lg:h-auto lg:px-3 lg:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium transition flex-shrink-0"
       >
         <span>📨</span>
         <span className="hidden lg:inline">Import VAB</span>
