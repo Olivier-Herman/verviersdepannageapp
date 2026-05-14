@@ -17,7 +17,8 @@ import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { resolveInvoiceByNumber }  from '@/lib/odoo-invoice'
 
-export const dynamic = 'force-dynamic'
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60   // PDF + push Odoo via waitUntil peut prendre 30s+
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -115,22 +116,19 @@ export async function POST(req: Request) {
 
   // Attache le PDF resume mission a la facture Odoo (et regenere helpdesk+vehicle
   // si pas encore fait). Si plusieurs missions sont facturees ensemble (chaine
-  // REM+REL), on attache UN seul PDF combine a la facture, via les ids passes
-  // a la commande de facturation.
-  // Fire-and-forget : ne bloque pas la reponse a l'employe facturation.
+  // REM+REL), on attache UN seul PDF combine a la facture.
+  // waitUntil pour survivre au return de la fonction Vercel.
   if (invoice_odoo_id || method === 'auto') {
-    // Pour 'auto', invoice_odoo_id sera typiquement null (pas de facture Odoo
-    // creee cote app). On attache quand meme aux helpdesk/vehicle si pas deja
-    // fait. Si plusieurs ids → on pousse le combine sur le premier de la chaine
-    // (qui aura aussi son own helpdesk+vehicle), les autres maillons recoivent
-    // juste la mise a jour du flag pdf_attached_invoice_at via l'orchestrateur.
     const chainIds = ids.length > 1 ? ids : undefined
     const primaryId = ids[0]
-    import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
-      attachMissionPdf(primaryId, { chainMissionIds: chainIds })
-    ).catch(e => {
-      console.error('[mission-pdf] invoice attach échoué (non bloquant):', e.message)
-    })
+    const { waitUntil } = await import('@vercel/functions')
+    waitUntil(
+      import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
+        attachMissionPdf(primaryId, { chainMissionIds: chainIds })
+      ).catch(e => {
+        console.error('[mission-pdf] invoice attach échoué (non bloquant):', e.message)
+      })
+    )
   }
 
   return NextResponse.json({ ok: true, updated })

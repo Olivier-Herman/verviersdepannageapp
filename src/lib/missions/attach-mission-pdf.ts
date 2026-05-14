@@ -16,8 +16,9 @@ import { attachToOdoo }     from '@/lib/odoo-attachment'
 import { MissionPdfDocument, type MissionPdfData } from '@/lib/missions/mission-pdf'
 
 const MAX_PHOTO_WIDTH = 800
-const MAX_PHOTOS      = 24      // garde-fou : trop de photos = PDF lourd
+const MAX_PHOTOS      = 12       // garde-fou : trop de photos = PDF lourd + timeout
 const MAX_ATTEMPTS    = 5
+const PHOTO_FETCH_TIMEOUT_MS = 5000    // une photo cassee ne doit pas bloquer le PDF
 
 const ACTION_LABEL: Record<string, string> = {
   accepted:           'Mission acceptee',
@@ -87,21 +88,25 @@ function missionKindLabel(m: { mission_type: string | null; incident_type: strin
  * Best effort : silent fail si une photo est cassee.
  */
 async function fetchAndResizePhoto(url: string): Promise<{ src: string } | null> {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), PHOTO_FETCH_TIMEOUT_MS)
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: ctl.signal })
     if (!res.ok) return null
     const buf = Buffer.from(await res.arrayBuffer())
-    // sharp : resize si necessaire (preserve ratio), output JPEG quality 80
+    // sharp : resize si necessaire (preserve ratio), output JPEG quality 75
     const resized = await sharp(buf)
       .rotate()                                             // auto-rotate selon EXIF
       .resize({ width: MAX_PHOTO_WIDTH, withoutEnlargement: true })
-      .jpeg({ quality: 80, mozjpeg: true })
+      .jpeg({ quality: 75, mozjpeg: true })
       .toBuffer()
     const b64 = resized.toString('base64')
     return { src: `data:image/jpeg;base64,${b64}` }
   } catch (e: any) {
     console.warn('[attach-mission-pdf] photo fetch/resize fail:', url, e.message)
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 

@@ -217,12 +217,16 @@ export async function createOdooDossierForMission(
   const taskUrl = fsmResult?.taskUrl || ''
 
   // ── Sauvegarde des IDs Odoo ──────────────────────────────────────────────
+  // odoo_vehicle_id : crucial pour que le PDF mission puisse etre attache a
+  // la fiche vehicule, et pour eviter que l'UI demande au dispatcher de
+  // re-lier le vehicule a chaque ouverture.
   const update: any = {
     odoo_helpdesk_id: ticketId,
     odoo_ticket_url:  ticketUrl,
   }
-  if (taskId)  update.odoo_task_id  = taskId
-  if (taskUrl) update.odoo_task_url = taskUrl
+  if (taskId)    update.odoo_task_id    = taskId
+  if (taskUrl)   update.odoo_task_url   = taskUrl
+  if (vehicleId) update.odoo_vehicle_id = vehicleId
   await sb.from('incoming_missions').update(update).eq('id', missionId)
 
   if (taskId) {

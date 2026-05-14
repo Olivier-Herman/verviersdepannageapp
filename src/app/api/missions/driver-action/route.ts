@@ -6,6 +6,8 @@ import { createAdminClient } from '@/lib/supabase'
 import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
 import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 
+export const maxDuration = 60   // hook PDF via waitUntil peut prendre 30s+
+
 // Mapping action chauffeur → stage FSM Odoo. null = pas de changement de stage.
 const ACTION_TO_FSM_STAGE: Record<string, string | null> = {
   accept:            'Assigné',
@@ -363,15 +365,18 @@ export async function POST(req: Request) {
     })
   }
 
-  // Mission cloturee → genere et attache le PDF resume aux 3 cibles Odoo
-  // (helpdesk + vehicle ; invoice ne sera dispo qu'au moment de la facturation).
-  // Fire-and-forget : on ne bloque pas la reponse au chauffeur.
+  // Mission cloturee → genere et attache le PDF resume aux cibles Odoo dispo
+  // (helpdesk + vehicle ; invoice viendra a la facturation).
+  // waitUntil garantit que la promise survit au return de la fonction Vercel.
   if (action === 'completed' || action === 'complete_delivery') {
-    import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
-      attachMissionPdf(mission_id, { targets: ['helpdesk', 'vehicle'] })
-    ).catch(e => {
-      console.error('[mission-pdf] driver-action attach échoué (non bloquant):', e.message)
-    })
+    const { waitUntil } = await import('@vercel/functions')
+    waitUntil(
+      import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
+        attachMissionPdf(mission_id, { targets: ['helpdesk', 'vehicle'] })
+      ).catch(e => {
+        console.error('[mission-pdf] driver-action attach échoué (non bloquant):', e.message)
+      })
+    )
   }
 
   return NextResponse.json({ ok: true, mission: updated })
