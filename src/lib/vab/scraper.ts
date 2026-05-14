@@ -408,8 +408,8 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
       if (!scope.el || scope.el.length === 0) continue
       const text = scope.el.text().replace(/\s+/g, ' ').trim()
       // Match un nombre 6-10 chiffres distinct de l'AssignmentId
-      const matches = text.match(/\b(\d{6,10})\b/g) || []
-      const candidate = matches.find(n => n !== assignmentId)
+      const matches: string[] = text.match(/\b(\d{6,10})\b/g) || []
+      const candidate = matches.find((n: string) => n !== assignmentId)
       if (candidate) {
         missionNumber = candidate
         scopeUsed = scope.name
