@@ -2,17 +2,21 @@
 //
 // Helper pour envoyer un push vers Apple Push Notification service (APNs).
 //
-// Apple exige un JWT signé en ES256 avec la clé privée (.p8) configurée dans
-// Apple Developer Console. Le JWT est valide 1h max, on le cache 50 min.
+// Apple exige HTTP/2 obligatoirement. Le fetch natif undici de Vercel
+// Node runtime ne fait pas toujours l'upgrade ALPN h2 → on utilise donc
+// le module 'node:http2' natif directement, plus fiable.
+//
+// JWT signe en ES256 avec la cle privee (.p8), valide 1h, cache 50min.
 //
 // Variables d'env Vercel (Production) :
-//   APNS_KEY_ID       — 10 chars, ID de la clé Apple
+//   APNS_KEY_ID       — 10 chars, ID de la cle Apple
 //   APNS_TEAM_ID      — 10 chars, ID Apple Team
 //   APNS_BUNDLE_ID    — ex 'com.verviersdepannage.app'
 //   APNS_AUTH_KEY     — contenu complet du .p8 (avec les BEGIN/END PRIVATE KEY)
 //   APNS_USE_SANDBOX  — 'true' pour dev (api.sandbox.push.apple.com), sinon prod
 
 import { SignJWT, importPKCS8 } from 'jose'
+import http2 from 'node:http2'
 
 let cachedJwt:        string | null = null
 let cachedJwtExpiry:  number        = 0
@@ -28,7 +32,6 @@ async function getApnsJwt(): Promise<string> {
     throw new Error('APNs non configure (APNS_KEY_ID / APNS_TEAM_ID / APNS_AUTH_KEY manquant)')
   }
 
-  // Le .p8 stocke parfois \n litteraux dans une env var → on normalise
   const pem = p8.replace(/\\n/g, '\n')
   const privateKey = await importPKCS8(pem, 'ES256')
 
@@ -39,20 +42,16 @@ async function getApnsJwt(): Promise<string> {
     .sign(privateKey)
 
   cachedJwt       = jwt
-  cachedJwtExpiry = now + 50 * 60  // 50 min, JWT APNs valide max 60 min
+  cachedJwtExpiry = now + 50 * 60
   return jwt
 }
 
 export interface ApnsPayload {
   title:       string
   body:        string
-  /** URL ouverte au tap (deep link via UNNotificationCategory plus tard) */
   action_url?: string
-  /** ID mission, propage cote app pour navigation */
   mission_id?: string
-  /** Type de notif (cote app : choisir le son / l'action) */
   notif_type?: string
-  /** Donnees custom */
   data?:       Record<string, any>
 }
 
@@ -60,14 +59,9 @@ export interface ApnsResult {
   ok:     boolean
   status: number
   reason?: string
-  /** Si Apple renvoie 410, le token est invalide → caller doit supprimer */
   invalid_token?: boolean
 }
 
-/**
- * Envoie un push APNs vers UN device token (iOS).
- * Retourne le statut HTTP + reason si erreur.
- */
 export async function sendApnsPush(token: string, payload: ApnsPayload): Promise<ApnsResult> {
   const bundleId  = process.env.APNS_BUNDLE_ID
   const sandbox   = process.env.APNS_USE_SANDBOX === 'true'
@@ -77,12 +71,13 @@ export async function sendApnsPush(token: string, payload: ApnsPayload): Promise
 
   let jwt: string
   try { jwt = await getApnsJwt() }
-  catch (e: any) { return { ok: false, status: 0, reason: e.message || 'JWT error' } }
+  catch (e: any) {
+    console.error('[push-apns] JWT error:', e.message)
+    return { ok: false, status: 0, reason: e.message || 'JWT error' }
+  }
 
   const host = sandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'
-  const url  = `https://${host}/3/device/${encodeURIComponent(token)}`
 
-  // Payload APNs format : aps + custom data
   const apsBody = {
     aps: {
       alert: { title: payload.title, body: payload.body },
@@ -94,34 +89,75 @@ export async function sendApnsPush(token: string, payload: ApnsPayload): Promise
     mission_id: payload.mission_id,
     ...payload.data,
   }
+  const bodyBuf = Buffer.from(JSON.stringify(apsBody))
 
-  try {
-    const res = await fetch(url, {
-      method:  'POST',
-      headers: {
-        'authorization':   `bearer ${jwt}`,
-        'apns-topic':      bundleId,
-        'apns-push-type':  'alert',
-        'apns-priority':   '10',
-        'content-type':    'application/json',
-      },
-      body: JSON.stringify(apsBody),
+  return new Promise<ApnsResult>((resolve) => {
+    let client: http2.ClientHttp2Session | null = null
+    let settled = false
+
+    const finish = (result: ApnsResult) => {
+      if (settled) return
+      settled = true
+      try { client?.close() } catch { /* ignore */ }
+      resolve(result)
+    }
+
+    try {
+      client = http2.connect(`https://${host}`)
+    } catch (e: any) {
+      return finish({ ok: false, status: 0, reason: `connect failed: ${e.message}` })
+    }
+
+    client.on('error', (err: any) => {
+      console.error('[push-apns] http2 client error:', err.message, 'code:', err.code)
+      finish({ ok: false, status: 0, reason: `http2 error: ${err.code || err.message}` })
     })
 
-    if (res.status === 200) return { ok: true, status: 200 }
+    const req = client.request({
+      ':method':         'POST',
+      ':path':           `/3/device/${token}`,
+      'authorization':   `bearer ${jwt}`,
+      'apns-topic':      bundleId,
+      'apns-push-type':  'alert',
+      'apns-priority':   '10',
+      'content-type':    'application/json',
+      'content-length':  bodyBuf.length,
+    })
 
-    let reason = res.statusText
-    try {
-      const body = await res.json()
-      if (body?.reason) reason = body.reason
-    } catch { /* ignore non-JSON */ }
+    let status = 0
+    let respBody = ''
 
-    // 410 Gone = device token desactive (app desinstallee, etc.) → marquer invalide
-    // 400 BadDeviceToken = token malforme → invalide aussi
-    const invalidToken = res.status === 410 || reason === 'BadDeviceToken' || reason === 'Unregistered'
+    req.on('response', (headers) => {
+      status = Number(headers[':status']) || 0
+    })
+    req.on('data', (chunk) => { respBody += chunk.toString() })
+    req.on('end', () => {
+      if (status === 200) {
+        return finish({ ok: true, status: 200 })
+      }
+      let reason = ''
+      try {
+        const json = JSON.parse(respBody)
+        reason = json?.reason || ''
+      } catch { /* non-JSON */ }
+      const invalidToken =
+        status === 410 ||
+        reason === 'BadDeviceToken' ||
+        reason === 'Unregistered' ||
+        reason === 'DeviceTokenNotForTopic'
+      finish({ ok: false, status, reason: reason || `HTTP ${status}`, invalid_token: invalidToken })
+    })
+    req.on('error', (err: any) => {
+      console.error('[push-apns] http2 req error:', err.message, 'code:', err.code)
+      finish({ ok: false, status: 0, reason: `req error: ${err.code || err.message}` })
+    })
 
-    return { ok: false, status: res.status, reason, invalid_token: invalidToken }
-  } catch (e: any) {
-    return { ok: false, status: 0, reason: e.message || 'fetch error' }
-  }
+    req.setTimeout(15000, () => {
+      console.error('[push-apns] timeout 15s')
+      try { req.close() } catch { /* ignore */ }
+      finish({ ok: false, status: 0, reason: 'timeout' })
+    })
+
+    req.end(bodyBuf)
+  })
 }
