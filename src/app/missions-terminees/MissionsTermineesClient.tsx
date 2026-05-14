@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import MissionStamp from '@/components/missions/MissionStamp'
 import { ExternalLink, Search, Archive } from 'lucide-react'
 
 interface TerminatedMission {
@@ -104,9 +105,11 @@ function Chip({ active, onClick, count, label, color }: ChipProps) {
 }
 
 /**
- * Tampon visuel : à facturer / facturée / autofacturée / sans frais / annulée / archivée.
+ * Badge compact (cellule de tableau) : à facturer / facturée / autofacturée /
+ * sans frais / annulée / archivée. Distinct du <MissionStamp> qui pose un
+ * tampon rotated en overlay sur les cards.
  */
-function MissionStamp({ m }: { m: TerminatedMission }) {
+function MissionStatusBadge({ m }: { m: TerminatedMission }) {
   if (m.archived_at) {
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-ink-faint/15 text-ink-muted">🗄 Archivée</span>
   }
@@ -249,7 +252,7 @@ export default function MissionsTermineesClient({ userRole, userName, userEmail,
         {/* Compteur */}
         <p className="text-ink-muted text-sm">{total} mission{total > 1 ? 's' : ''}</p>
 
-        {/* Liste */}
+        {/* Liste — grid de cards avec tampon en overlay */}
         {loading ? (
           <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted text-sm">⏳ Chargement…</div>
         ) : missions.length === 0 ? (
@@ -257,52 +260,58 @@ export default function MissionsTermineesClient({ userRole, userName, userEmail,
             <p className="text-ink-muted text-sm">Aucune mission pour cette sélection.</p>
           </div>
         ) : (
-          <div className="bg-surface border rounded-2xl overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 border-b">
-                <tr className="text-ink-muted text-xs uppercase tracking-wide">
-                  <th className="px-4 py-2 text-left">Type</th>
-                  <th className="px-4 py-2 text-left">Référence</th>
-                  <th className="px-4 py-2 text-left">Source</th>
-                  <th className="px-4 py-2 text-left">Véhicule</th>
-                  <th className="px-4 py-2 text-left">Client</th>
-                  <th className="px-4 py-2 text-left">Intervention</th>
-                  <th className="px-4 py-2 text-left">Statut</th>
-                  <th className="w-16"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {missions.map(m => {
-                  const kind = missionKind(m)
-                  return (
-                    <tr key={m.id} className="hover:bg-surface-hover">
-                      <td className="px-4 py-2">
-                        <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-white text-[10px] font-bold ${KIND_COLOR[kind]}`}>
-                          {kind}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs">{m.external_id || m.dossier_number || m.id.slice(0, 8)}</td>
-                      <td className="px-4 py-2 text-xs text-ink-secondary">{fmtSource(m.source)}</td>
-                      <td className="px-4 py-2">
-                        <p className="text-ink text-xs font-mono">{m.vehicle_plate || '—'}</p>
-                        <p className="text-ink-muted text-xs">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
-                      </td>
-                      <td className="px-4 py-2 text-ink text-xs truncate max-w-[200px]">{m.client_name || '—'}</td>
-                      <td className="px-4 py-2 text-ink-secondary text-xs">{fmtDate(m.intervention_date)}</td>
-                      <td className="px-4 py-2">
-                        <MissionStamp m={m} />
-                      </td>
-                      <td className="px-4 py-2">
-                        <Link href={`/dispatch/${m.id}`}
-                          className="p-1.5 text-ink-faint hover:text-brand transition rounded inline-block" title="Ouvrir la fiche">
-                          <ExternalLink size={14} />
-                        </Link>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {missions.map(m => {
+              const kind = missionKind(m)
+              const ref  = m.external_id || m.dossier_number || m.id.slice(0, 8)
+              const veh  = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
+              return (
+                <Link
+                  key={m.id}
+                  href={`/dispatch/${m.id}`}
+                  className="relative bg-surface border rounded-2xl p-4 hover:border-brand/40 hover:shadow-lg hover:-translate-y-0.5 transition-all overflow-hidden block"
+                >
+                  {/* Tampon rotated en overlay */}
+                  <MissionStamp mission={m} size="small" />
+
+                  {/* Header : type + source + référence */}
+                  <div className="flex items-center justify-between gap-2 mb-3 relative z-20">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-white text-[10px] font-bold ${KIND_COLOR[kind]}`}>
+                        {kind}
+                      </span>
+                      <span className="text-ink-muted text-[10px] uppercase tracking-wider">{fmtSource(m.source)}</span>
+                    </div>
+                    <ExternalLink size={12} className="text-ink-faint flex-shrink-0" />
+                  </div>
+
+                  {/* Référence */}
+                  <p className="text-ink font-mono text-xs font-semibold mb-2 relative z-20">{ref}</p>
+
+                  {/* Véhicule */}
+                  <div className="mb-2 relative z-20">
+                    <p className="text-ink text-sm font-mono font-semibold">{m.vehicle_plate || '—'}</p>
+                    {veh && <p className="text-ink-muted text-xs">{veh}</p>}
+                  </div>
+
+                  {/* Client */}
+                  <p className="text-ink-secondary text-xs truncate mb-1 relative z-20">
+                    {m.client_name || <span className="text-ink-faint">—</span>}
+                  </p>
+
+                  {/* Date intervention */}
+                  <p className="text-ink-faint text-xs relative z-20">📅 {fmtDate(m.intervention_date)}</p>
+
+                  {/* Badge compact en bas si pas de tampon (cas "completed sans facturation") */}
+                  {!m.archived_at && m.status !== 'cancelled' && m.status !== 'to_invoice' && !m.no_charge_at
+                    && m.invoice_method !== 'auto' && !m.invoice_number && (
+                    <div className="mt-2 relative z-20">
+                      <MissionStatusBadge m={m} />
+                    </div>
+                  )}
+                </Link>
+              )
+            })}
           </div>
         )}
 

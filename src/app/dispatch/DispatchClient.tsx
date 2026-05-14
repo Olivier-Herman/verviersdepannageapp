@@ -10,6 +10,7 @@ import DriverPickerModal from '@/components/DriverPickerModal'
 import DispatchMap, { type MapMission, type MapDriver } from '@/components/dispatch/DispatchMap'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import MissionStamp from '@/components/missions/MissionStamp'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -117,9 +118,10 @@ const TABS = [
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
   { key: 'parked',      label: 'En Parc',     countKey: 'parked'      as const },
-  { key: 'completed',   label: 'Terminées',   countKey: 'completed'   as const },
   { key: 'all',         label: 'Toutes',      countKey: null },
 ]
+// Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees
+// qui offre une vue plus riche (chips de filtre, tampons, toggle archives).
 
 const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','vab','police','prive','garage']
 
@@ -427,30 +429,10 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
 // Tampon style "DOSSIER CLASSE" affiche en diagonale sur les cards Terminees.
 // Distingue visuellement le sous-statut facturation : to_invoice (a faire),
 // auto (auto-facturee), ou facturee avec numero.
-function InvoiceStamp({ mission }: { mission: Mission }) {
-  const isToInvoice = mission.status === 'to_invoice'
-  const isAuto      = mission.status === 'completed' && mission.invoice_method === 'auto'
-  const hasNumber   = mission.status === 'completed' && mission.invoice_method === 'manual' && !!mission.invoice_number
-
-  if (!isToInvoice && !isAuto && !hasNumber) return null
-
-  const { label, color } = isToInvoice
-    ? { label: 'A FACTURER',      color: 'text-amber-500 border-amber-500' }
-    : isAuto
-      ? { label: 'AUTOFACTUREE',  color: 'text-purple-500 border-purple-500' }
-      : { label: mission.invoice_number || 'FACTUREE', color: 'text-green-600 border-green-600' }
-
-  return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden rounded-2xl">
-      <div
-        className={`px-4 py-1.5 border-[3px] rounded-md font-black tracking-widest text-base sm:text-lg uppercase bg-surface/30 backdrop-blur-[1px] ${color}`}
-        style={{ transform: 'rotate(-14deg)', letterSpacing: '0.15em' }}
-      >
-        {label}
-      </div>
-    </div>
-  )
-}
+// Note : l'ancien InvoiceStamp local a ete remplace par le composant partage
+// <MissionStamp> de src/components/missions/MissionStamp.tsx qui gere en plus
+// les cas "sans frais", "annulee" et "archivee" (utilise aussi dans
+// /missions-terminees pour coherence visuelle).
 
 function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChange }: {
   mission:        Mission
@@ -469,7 +451,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
       onClick={() => router.push(`/dispatch/${mission.id}`)}
       className={`relative bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all ${URGENCY_BORDER[delai.urgency]}`}
     >
-      <InvoiceStamp mission={mission} />
+      <MissionStamp mission={mission} />
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
