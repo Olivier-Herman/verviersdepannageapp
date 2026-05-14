@@ -213,12 +213,17 @@ export async function loginVab(): Promise<SessionCookies> {
  * dans la nav pour extraire l'URL reelle.
  */
 export async function listVabMissions(session: SessionCookies): Promise<{ missions: ScrapedMission[]; debug: string }> {
+  // Note : apres login, le serveur redirige vers /Comet_TH/ (TH = Touring Hub).
+  // Le path /Comet/ est uniquement pour la page de login.
   const candidatePaths = [
+    '/Comet_TH/Missions.aspx',
+    '/Comet_TH/NewMissions.aspx',
+    '/Comet_TH/MissionList.aspx',
+    '/Comet_TH/Default.aspx',
+    '/Comet_TH/Home.aspx',
     '/Comet/Missions.aspx',
     '/Comet/NewMissions.aspx',
     '/Comet/MissionList.aspx',
-    '/Missions',
-    '/Comet/Default.aspx',
   ]
 
   let res: Response | null = null
@@ -244,8 +249,9 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
   }
 
   // Fallback : si rien ne marche, on tente de discover via la home page
+  // ET la racine /Comet_TH/ qui peut rediriger vers la vraie home apres auth
   if (!res) {
-    const homeRes = await fetch(`${VAB_BASE}/Comet/Home.aspx`, {
+    const homeRes = await fetch(`${VAB_BASE}/Comet_TH/`, {
       method: 'GET',
       redirect: 'follow',
       headers: {
