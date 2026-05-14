@@ -1144,26 +1144,27 @@ export default function MissionDetailClient({
       `}</style>
 
       {/* Top-bar : badges contextuels + ← retour. backdrop-blur pour fondre avec le bg ambient */}
-      <div className="bg-surface/85 backdrop-blur-md border-b px-4 lg:px-8 py-4 sticky top-0 z-20">
-        <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/dispatch" className="text-ink-secondary hover:text-ink transition text-lg flex items-center gap-1.5" title="Retour à la liste dispatch">
+      <div className="bg-surface/85 backdrop-blur-md border-b px-3 lg:px-8 py-3 lg:py-4 sticky top-0 z-20">
+        <div className="flex items-center gap-2 lg:gap-4 flex-wrap min-w-0">
+          <Link href="/dispatch" className="text-ink-secondary hover:text-ink transition text-lg flex items-center gap-1.5 flex-shrink-0" title="Retour à la liste dispatch">
             ← <span className="hidden sm:inline text-sm">Dispatch</span>
           </Link>
-          <div className="flex items-center gap-3 flex-1 flex-wrap">
-            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white ${srcInfo.color}`}>
+          <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
+            <span className={`px-2 py-0.5 rounded-lg text-[10px] lg:text-xs font-bold text-white ${srcInfo.color}`}>
               {srcInfo.label}
             </span>
             {initialMission.dossier_number && (
-              <span className="text-ink-muted text-sm font-mono">{initialMission.dossier_number}</span>
+              <span className="text-ink-muted text-xs lg:text-sm font-mono truncate max-w-[140px]">{initialMission.dossier_number}</span>
             )}
-            <span className={`text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
+            <span className={`text-xs lg:text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-ink-muted text-xs">
-              Reçu le {new Date(initialMission.received_at).toLocaleString('fr-BE')}
+          <div className="flex items-center gap-1.5 lg:gap-2 flex-wrap">
+            <span className="text-ink-muted text-[10px] lg:text-xs">
+              <span className="hidden sm:inline">Reçu le </span>
+              {new Date(initialMission.received_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </span>
             {initialMission.parse_confidence !== null && (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${
+              <span className={`text-[10px] lg:text-xs px-1.5 py-0.5 rounded-full ${
                 initialMission.parse_confidence >= 0.8 ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
               }`}>
                 IA {Math.round(initialMission.parse_confidence * 100)}%
@@ -1174,7 +1175,7 @@ export default function MissionDetailClient({
       </div>
 
       {/* Ambient gradient blobs — purement decoratif, derriere tout le contenu */}
-      <div className="relative">
+      <div className="relative overflow-x-hidden">
         <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-50 -z-0">
           <div className="absolute -top-32 -left-20 w-[420px] h-[420px] rounded-full bg-gradient-to-br from-brand/15 to-purple-500/10 blur-3xl" />
           <div className="absolute top-1/3 -right-32 w-[480px] h-[480px] rounded-full bg-gradient-to-br from-info/15 to-success/10 blur-3xl" />
