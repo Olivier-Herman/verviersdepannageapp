@@ -129,9 +129,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // towsoft_name a ete retire (Towsoft en voie de decommissionnement).
   const { data: drivers } = await sb
     .from('users')
-    .select('id, name, avatar_url, last_location_lat, last_location_lng, location_updated_at, schedule_day, schedule_night')
+    .select('id, name, avatar_url, last_location_lat, last_location_lng, location_updated_at, schedule_day, schedule_night, priority_order, phone')
     .eq('active', true)
     .in('role', ['driver', 'admin', 'superadmin'])
+    .order('priority_order', { ascending: true, nullsFirst: false })
     .order('name')
   if (!drivers || drivers.length === 0) return NextResponse.json({ drivers: [] })
 
@@ -206,6 +207,21 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       }
     }
 
+    // Calcul ETA total et distance pour le tri
+    // - Libre : position → incident
+    // - En mission : position → destination + 10min decharge + destination → incident
+    const UNLOAD_MIN = 10  // temps decharge / fin intervention (paramétrable plus tard /admin/settings)
+    let etaTotalMin: number | null = null
+    if (activeMission) {
+      const toDest = currentMission?.eta_to_destination_min
+      const destToInc = currentMission?.eta_destination_to_incident_min
+      if (toDest != null && destToInc != null) {
+        etaTotalMin = toDest + UNLOAD_MIN + destToInc
+      }
+    } else {
+      etaTotalMin = etaPositionToIncident
+    }
+
     return {
       id:                       d.id,
       name:                     d.name,
@@ -213,24 +229,43 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       has_position:             hasPosition,
       location_age_seconds:     locAge,
       is_fresh:                 isFresh,
-      status:                   activeMission ? 'on_mission' : 'free',
+      status:                   activeMission ? 'on_mission' as const : 'free' as const,
       eta_to_incident_min:      etaPositionToIncident,
+      eta_total_min:            etaTotalMin,    // NEW : ETA total avec decharge si en mission
+      priority_order:           (d as any).priority_order ?? null,
       current_mission:          currentMission,
     }
   }))
 
-  // Filtrer les nulls (hors service) et trier : libres d'abord par ETA, puis en mission par ETA total
+  // Filtrer les nulls (hors service)
   const filtered = enriched.filter((x): x is NonNullable<typeof x> => x !== null)
-  filtered.sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'free' ? -1 : 1
-    const aEta = a.status === 'free'
-      ? (a.eta_to_incident_min ?? Infinity)
-      : ((a.current_mission?.eta_to_destination_min ?? 0) + (a.current_mission?.eta_destination_to_incident_min ?? Infinity))
-    const bEta = b.status === 'free'
-      ? (b.eta_to_incident_min ?? Infinity)
-      : ((b.current_mission?.eta_to_destination_min ?? 0) + (b.current_mission?.eta_destination_to_incident_min ?? Infinity))
-    return aEta - bEta
-  })
 
-  return NextResponse.json({ drivers: filtered })
+  // Algo de selection en 2 passes (cf project_auto_dispatch_scenario.md) :
+  //   1. best_eta = min des ETA totaux (libres + en mission unifies)
+  //   2. Garder candidats avec eta_total <= best_eta + TOLERANCE
+  //   3. Dans le sous-groupe, trier par eta_total ASC, tiebreaker priority_order
+  // Cette logique remplace l'ancien tri "libres d'abord" qui ratait le cas
+  // "chauffeur qui decharge a Aywaille dans 3 min" vs "chauffeur libre 25 min de Pepinster".
+  const TOLERANCE_MIN = 10  // marge ETA pour preferer un chauffeur plus proche en km
+
+  const withEta = filtered.filter(d => d.eta_total_min != null) as Array<typeof filtered[number] & { eta_total_min: number }>
+  if (withEta.length > 0) {
+    const bestEta = Math.min(...withEta.map(d => d.eta_total_min))
+    // Score = eta_total (ASC), tiebreaker = priority_order (ASC NULLS LAST)
+    withEta.sort((a, b) => {
+      if (a.eta_total_min !== b.eta_total_min) return a.eta_total_min - b.eta_total_min
+      const aPrio = a.priority_order ?? Number.MAX_SAFE_INTEGER
+      const bPrio = b.priority_order ?? Number.MAX_SAFE_INTEGER
+      return aPrio - bPrio
+    })
+  }
+  // Chauffeurs sans ETA computable (pas de position) → en fin de liste, triés par priority_order
+  const withoutEta = filtered.filter(d => d.eta_total_min == null)
+  withoutEta.sort((a, b) => (a.priority_order ?? Number.MAX_SAFE_INTEGER) - (b.priority_order ?? Number.MAX_SAFE_INTEGER))
+
+  return NextResponse.json({
+    drivers: [...withEta, ...withoutEta],
+    best_eta_min: withEta.length > 0 ? Math.min(...withEta.map(d => d.eta_total_min)) : null,
+    tolerance_min: TOLERANCE_MIN,
+  })
 }
