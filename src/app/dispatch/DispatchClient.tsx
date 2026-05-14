@@ -450,7 +450,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
   return (
     <div
       onClick={() => router.push(`/dispatch/${mission.id}`)}
-      className={`relative bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all ${URGENCY_BORDER[delai.urgency]}`}
+      className={`relative bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all overflow-hidden min-w-0 ${URGENCY_BORDER[delai.urgency]}`}
     >
       <MissionStamp mission={mission} />
       {/* Header */}
@@ -890,7 +890,7 @@ export default function DispatchClient({
 
         {/* ── Contenu wrappe d'un ambient background ────────────────── */}
         <AmbientBackground>
-        <main className="flex-1 overflow-auto px-3 lg:px-6 py-4 lg:py-6 ambient-fade-up">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-3 lg:px-6 py-4 lg:py-6 ambient-fade-up">
           {loading ? (
             <div className="flex items-center justify-center h-64 text-ink-muted">Chargement…</div>
           ) : filtered.length === 0 ? (
