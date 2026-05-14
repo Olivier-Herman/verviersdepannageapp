@@ -205,24 +205,90 @@ export async function loginVab(): Promise<SessionCookies> {
 }
 
 /**
- * Liste les missions visibles sur la page /Missions de COMET.
+ * Liste les missions visibles sur la page Missions de COMET.
  * Parse la table HTML pour extraire chaque ligne.
+ *
+ * Strategy : essaie plusieurs paths .aspx (le serveur est ASP.NET WebForms),
+ * puis si tout echoue, GET la page Home et cherche un lien vers Missions
+ * dans la nav pour extraire l'URL reelle.
  */
 export async function listVabMissions(session: SessionCookies): Promise<ScrapedMission[]> {
-  const res = await fetch(`${VAB_BASE}/Missions`, {
-    method: 'GET',
-    redirect: 'manual',
-    headers: {
-      'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
-      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
-      'Cookie':          session.cookieHeader,
-    },
-  })
+  const candidatePaths = [
+    '/Comet/Missions.aspx',
+    '/Comet/NewMissions.aspx',
+    '/Comet/MissionList.aspx',
+    '/Missions',
+    '/Comet/Default.aspx',
+  ]
 
-  if (res.status !== 200) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`VAB /Missions echec (status ${res.status}). Snippet: ${body.slice(0, 300)}`)
+  let res: Response | null = null
+  let usedPath: string = ''
+  for (const path of candidatePaths) {
+    const r = await fetch(`${VAB_BASE}${path}`, {
+      method: 'GET',
+      redirect: 'follow', // suit eventuelles 302
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+        'Cookie':          session.cookieHeader,
+      },
+    })
+    if (r.status === 200) {
+      res = r
+      usedPath = path
+      console.log(`[vab/list] page trouvee via ${path} -> ${r.url}`)
+      break
+    }
+    console.log(`[vab/list] ${path} -> status ${r.status}`)
+  }
+
+  // Fallback : si rien ne marche, on tente de discover via la home page
+  if (!res) {
+    const homeRes = await fetch(`${VAB_BASE}/Comet/Home.aspx`, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Cookie':          session.cookieHeader,
+      },
+    })
+    if (homeRes.status === 200) {
+      const homeHtml = await homeRes.text()
+      const $h = cheerio.load(homeHtml)
+      // Cherche un lien dont le texte contient "Missions"
+      let foundLink: string | null = null
+      $h('a').each((_idx, a) => {
+        if (foundLink) return
+        const txt = $h(a).text().toLowerCase().trim()
+        const href = $h(a).attr('href')
+        if (href && (txt.includes('nouvelles') || txt.includes('missions'))) {
+          foundLink = href
+        }
+      })
+      if (foundLink) {
+        const found: string = foundLink
+        const url = new URL(found, homeRes.url).toString()
+        console.log(`[vab/list] discover via home -> ${url}`)
+        const r = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+            'Accept':     'text/html,*/*;q=0.8',
+            'Cookie':     session.cookieHeader,
+          },
+        })
+        if (r.status === 200) {
+          res = r
+          usedPath = found
+        }
+      }
+    }
+  }
+
+  if (!res) {
+    throw new Error(`VAB Missions : aucun path ne fonctionne. Tente : ${candidatePaths.join(', ')}`)
   }
 
   const html = await res.text()
