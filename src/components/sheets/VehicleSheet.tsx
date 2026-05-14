@@ -24,7 +24,6 @@ interface VehicleData {
     gearbox:          string | null
     modelYear:        number | null
     acquisitionDate:  string | null
-    firstContractDate: string | null
     odometer:         number | null
     odometerUnit:     string
     nextAssignation:  string | null
@@ -176,7 +175,8 @@ export default function VehicleSheet({ id, isTop, zIndex, hasOdooAccess, onClose
 
           {error && (
             <div className="bg-critical-soft border border-critical rounded-2xl p-4 text-critical text-sm">
-              ⚠ {error}
+              <p className="font-semibold mb-1">⚠ Impossible de charger la fiche</p>
+              <p className="text-xs opacity-80">Détail technique : {(error.length > 200 ? error.slice(0, 200) + '…' : error)}</p>
             </div>
           )}
 

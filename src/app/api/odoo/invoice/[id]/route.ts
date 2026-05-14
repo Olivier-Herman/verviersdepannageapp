@@ -23,15 +23,18 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   }
 
   try {
-    const moves = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], {
-      fields: [
-        'id', 'name', 'state', 'move_type', 'payment_state',
-        'invoice_date', 'invoice_date_due', 'amount_untaxed', 'amount_tax',
-        'amount_total', 'amount_residual', 'currency_id', 'narration',
-        'partner_id', 'invoice_origin', 'ref', 'invoice_user_id',
-        'invoice_line_ids', 'x_studio_plaque_1',
-      ],
-    })
+    // fields_get pour filtrer les champs custom selon ce qui existe vraiment
+    const allMoveFields = await odooRpc<Record<string, any>>('account.move', 'fields_get', [], { attributes: ['type'] })
+    const wantedMoveFields = [
+      'id', 'name', 'state', 'move_type', 'payment_state',
+      'invoice_date', 'invoice_date_due', 'amount_untaxed', 'amount_tax',
+      'amount_total', 'amount_residual', 'currency_id', 'narration',
+      'partner_id', 'invoice_origin', 'ref', 'invoice_user_id',
+      'invoice_line_ids', 'x_studio_plaque_1',
+    ]
+    const safeMoveFields = wantedMoveFields.filter(f => f === 'id' || allMoveFields[f])
+
+    const moves = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: safeMoveFields })
     const m = moves[0]
     if (!m) return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 })
 

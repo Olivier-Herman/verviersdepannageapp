@@ -26,17 +26,21 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   }
 
   try {
-    // 1) Vehicule (champs principaux)
-    const vehicles = await odooRpc<any[]>('fleet.vehicle', 'read', [[vehicleId]], {
-      fields: [
-        'id', 'name', 'license_plate', 'vin_sn', 'model_id', 'brand_id',
-        'color', 'fuel_type', 'transmission', 'tag_ids',
-        'driver_id', 'state_id', 'company_id',
-        'model_year', 'acquisition_date', 'first_contract_date',
-        'odometer', 'odometer_unit', 'next_assignation_date',
-        'image_128',
-      ],
-    })
+    // 1) Vehicule (champs principaux). On utilise fields_get pour ne demander
+    // que les champs qui existent reellement (les colonnes Odoo varient selon
+    // les modules installes et les versions).
+    const allFields = await odooRpc<Record<string, any>>('fleet.vehicle', 'fields_get', [], { attributes: ['type'] })
+    const wanted = [
+      'id', 'name', 'license_plate', 'vin_sn', 'model_id', 'brand_id',
+      'color', 'fuel_type', 'transmission', 'tag_ids',
+      'driver_id', 'state_id', 'company_id',
+      'model_year', 'acquisition_date',
+      'odometer', 'odometer_unit', 'next_assignation_date',
+      'image_128',
+    ]
+    const safeFields = wanted.filter(f => f === 'id' || allFields[f])
+
+    const vehicles = await odooRpc<any[]>('fleet.vehicle', 'read', [[vehicleId]], { fields: safeFields })
     const v = vehicles[0]
     if (!v) return NextResponse.json({ error: 'Vehicule introuvable' }, { status: 404 })
 
@@ -125,7 +129,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         gearbox:        v.transmission || null,
         modelYear:      v.model_year || null,
         acquisitionDate: v.acquisition_date || null,
-        firstContractDate: v.first_contract_date || null,
         odometer:       v.odometer || null,
         odometerUnit:   v.odometer_unit || 'kilometers',
         nextAssignation: v.next_assignation_date || null,

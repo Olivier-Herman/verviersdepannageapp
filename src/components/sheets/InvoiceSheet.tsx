@@ -164,7 +164,10 @@ export default function InvoiceSheet({ id, isTop, zIndex, hasOdooAccess, onClose
           )}
 
           {error && (
-            <div className="bg-critical-soft border border-critical rounded-2xl p-4 text-critical text-sm">⚠ {error}</div>
+            <div className="bg-critical-soft border border-critical rounded-2xl p-4 text-critical text-sm">
+              <p className="font-semibold mb-1">⚠ Impossible de charger la fiche</p>
+              <p className="text-xs opacity-80">Détail technique : {(error.length > 200 ? error.slice(0, 200) + '…' : error)}</p>
+            </div>
           )}
 
           {!loading && data && inv && (
