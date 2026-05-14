@@ -15,7 +15,7 @@ import * as cheerio from 'cheerio'
 
 const VAB_BASE = 'https://comet.vab.be'
 
-interface ScrapedMission {
+export interface ScrapedMission {
   /** N° de mission VAB (ex: "8293644") — identifiant principal */
   missionNumber: string
   /** Identifiant interne VAB pour ouvrir le detail (depuis href du bouton Detail) */
@@ -212,7 +212,7 @@ export async function loginVab(): Promise<SessionCookies> {
  * puis si tout echoue, GET la page Home et cherche un lien vers Missions
  * dans la nav pour extraire l'URL reelle.
  */
-export async function listVabMissions(session: SessionCookies): Promise<ScrapedMission[]> {
+export async function listVabMissions(session: SessionCookies): Promise<{ missions: ScrapedMission[]; debug: string }> {
   const candidatePaths = [
     '/Comet/Missions.aspx',
     '/Comet/NewMissions.aspx',
@@ -295,47 +295,71 @@ export async function listVabMissions(session: SessionCookies): Promise<ScrapedM
   const $ = cheerio.load(html)
 
   const missions: ScrapedMission[] = []
+  const debugLog: string[] = []
 
-  // Strategy : trouver toutes les <tr> de la table missions.
-  // On cherche les rows qui ont une cellule "N° DE MISSION" (numerique).
-  // Robuste a la structure exacte : on parcourt toutes les tr et on filtre.
-  $('table tr').each((_idx, tr) => {
-    const cells = $(tr).find('td')
-    if (cells.length < 4) return // header ou ligne vide
+  // Strategy : on cherche les liens vers /Comet/MissionDetail.aspx?... (ou
+  // similaire). Ces liens contiennent l'identifiant de mission et permettent
+  // de remonter au numero affiche dans la meme row. Plus robuste que de
+  // deviner la structure du tableau.
+  const candidateLinks: Array<{ href: string; text: string; row: any }> = []
+  $('a').each((_idx, a) => {
+    const href = $(a).attr('href') || ''
+    const text = $(a).text().trim()
+    if (!href) return
+    const lower = href.toLowerCase()
+    const txtLower = text.toLowerCase()
+    // Candidat = lien vers detail ou contenant le mot "détail"
+    if (
+      lower.includes('missiondetail') ||
+      lower.includes('detail') ||
+      lower.includes('mission?') ||
+      lower.includes('/mission/') ||
+      txtLower.includes('détail') ||
+      txtLower.includes('detail')
+    ) {
+      const row = $(a).closest('tr').length > 0 ? $(a).closest('tr') : $(a).closest('div')
+      candidateLinks.push({ href, text, row })
+    }
+  })
+  debugLog.push(`candidateLinks count: ${candidateLinks.length}`)
 
-    // Hypothese : 1ere cellule = N° mission (numerique pur)
-    const firstText = $(cells[0]).text().trim()
-    const missionNumber = firstText.match(/^\d{5,}$/) ? firstText : null
-    if (!missionNumber) return
+  // Pour chaque lien candidat, on extrait le n° mission dans le meme container
+  for (const cand of candidateLinks) {
+    const row = cand.row
+    if (!row || row.length === 0) continue
 
-    // Cherche le bouton Detail dans la derniere cellule (action)
-    let detailHref: string | null = null
-    $(tr).find('a').each((__, a) => {
-      const href = $(a).attr('href') || ''
-      const text = $(a).text().toLowerCase()
-      if (text.includes('détail') || text.includes('detail') || href.toLowerCase().includes('details') || href.toLowerCase().includes('detail')) {
-        detailHref = href
+    // Cherche un texte numerique long (>=5 chiffres) dans la row
+    const allText = row.text().replace(/\s+/g, ' ').trim()
+    const numMatch = allText.match(/\b(\d{6,10})\b/)
+    if (!numMatch) continue
+    const missionNumber = numMatch[1]
+    // Dedup : si deja vu, skip
+    if (missions.some(m => m.missionNumber === missionNumber)) continue
+
+    // Extraction des cellules si row est un tr
+    let taskType: string | null = null
+    let dispatchDate: string | null = null
+    let status: string | null = null
+    let plate: string | null = null
+    let fromLocation: string | null = null
+    let toLocation: string | null = null
+
+    const cells = row.find('td')
+    if (cells.length >= 4) {
+      taskType     = $(cells[1]).text().trim() || null
+      dispatchDate = $(cells[2]).text().trim() || null
+      status       = $(cells[3]).text().trim() || null
+      if (cells.length > 5) fromLocation = $(cells[5]).text().trim().replace(/\s+/g, ' ') || null
+      if (cells.length > 6) toLocation   = $(cells[6]).text().trim().replace(/\s+/g, ' ') || null
+      if (cells.length > 7) {
+        const vehText = $(cells[7]).text().trim()
+        plate = vehText.split(/\s+/).filter(Boolean).pop() || null
       }
-    })
-
-    // Extrait les autres cellules selon l'ordre vu sur le screenshot :
-    // [0] N° DE MISSION | [1] TYPE DE TÂCHE | [2] DATE DISPATCH | [3] STATUS |
-    // [4] UTILISATEUR | [5] LOCALISATION DE | [6] LOCALISATION À | [7] TYPE VÉHICULE | [8] FOURNISSEUR | [9] actions
-    const taskType     = cells.length > 1 ? $(cells[1]).text().trim() : null
-    const dispatchDate = cells.length > 2 ? $(cells[2]).text().trim() : null
-    const status       = cells.length > 3 ? $(cells[3]).text().trim() : null
-    // Pour plate : type vehicule contient la plaque selon le screenshot (col 7)
-    const vehColIdx    = cells.length > 7 ? 7 : (cells.length - 3)
-    const vehCellHtml  = cells.length > vehColIdx ? $(cells[vehColIdx]).text().trim() : null
-    // La plaque suit le modele/marque sur 2 lignes — on prend la derniere
-    const plate        = vehCellHtml ? vehCellHtml.split(/\s+/).filter(Boolean).pop() || null : null
-
-    const fromLocation = cells.length > 5 ? $(cells[5]).text().trim().replace(/\s+/g, ' ') : null
-    const toLocation   = cells.length > 6 ? $(cells[6]).text().trim().replace(/\s+/g, ' ') : null
+    }
 
     missions.push({
       missionNumber,
-      detailHref,
+      detailHref: cand.href,
       taskType,
       dispatchDate,
       status,
@@ -343,10 +367,34 @@ export async function listVabMissions(session: SessionCookies): Promise<ScrapedM
       fromLocation,
       toLocation,
     })
-  })
+  }
 
-  console.log(`[vab/list] ${missions.length} mission(s) trouvee(s)`)
-  return missions
+  // Fallback 1 : si on a 0 missions mais que le HTML contient bien des numeros
+  // longs (style 8293644), on essaie de les extraire directement.
+  if (missions.length === 0) {
+    const allMatches = html.match(/\b(\d{6,10})\b/g)
+    const uniqueNums = Array.from(new Set(allMatches || [])).slice(0, 50)
+    debugLog.push(`fallback: ${uniqueNums.length} num(s) detectes dans HTML brut`)
+    if (uniqueNums.length > 0 && uniqueNums.length < 50) {
+      // On loggue les premiers, sans les pousser dans missions[] (incertain)
+      debugLog.push(`fallback nums sample: ${uniqueNums.slice(0, 5).join(', ')}`)
+    }
+  }
+
+  // Dump structure summary in logs pour debug
+  const tableCount = $('table').length
+  const rowsCount = $('tr').length
+  const linksCount = $('a').length
+  debugLog.push(`tables: ${tableCount}, tr: ${rowsCount}, a: ${linksCount}`)
+  const debug = `path=${usedPath} | url=${res.url} | tables=${tableCount} | tr=${rowsCount} | a=${linksCount} | ${debugLog.join(' | ')}`
+  console.log(`[vab/list] ${missions.length} mission(s) trouvee(s). ${debug}`)
+
+  if (missions.length === 0 && rowsCount === 0 && tableCount === 0) {
+    const snippet = html.slice(0, 1000).replace(/\s+/g, ' ')
+    console.warn(`[vab/list] HTML snippet (pas de table): ${snippet}`)
+  }
+
+  return { missions, debug }
 }
 
 /**

@@ -26,6 +26,7 @@ interface PreviewResponse {
   total: number
   new:   number
   items: PreviewItem[]
+  debug?: string
 }
 
 interface SendResponse {
@@ -212,10 +213,26 @@ export default function VabImportButton({ onImportDone }: Props) {
                     </details>
                   )}
 
-                  {preview.new === 0 && (
+                  {preview.new === 0 && preview.total > 0 && (
                     <div className="bg-success-soft border border-success/30 rounded-xl p-4 text-center text-success">
                       <p className="font-semibold">Tout est à jour 🎉</p>
                       <p className="text-xs mt-1 opacity-80">Aucune nouvelle mission VAB à importer.</p>
+                    </div>
+                  )}
+                  {preview.total === 0 && (
+                    <div className="bg-warning-soft border border-warning/30 rounded-xl p-4 text-center">
+                      <p className="text-warning font-semibold">Aucune mission détectée sur VAB</p>
+                      <p className="text-ink-secondary text-xs mt-1">
+                        Si VAB a bien des missions visibles, c'est un problème de parsing.
+                      </p>
+                      {preview.debug && (
+                        <details className="mt-3 text-left">
+                          <summary className="cursor-pointer text-ink-muted text-xs">Détails techniques</summary>
+                          <code className="block mt-1 text-[10px] text-ink-faint bg-surface-2 p-2 rounded break-all">
+                            {preview.debug}
+                          </code>
+                        </details>
+                      )}
                     </div>
                   )}
                 </>

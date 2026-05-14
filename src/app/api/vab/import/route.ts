@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   try {
     const session = await loginVab()
-    const missions = await listVabMissions(session)
+    const { missions, debug } = await listVabMissions(session)
 
     // Cross-check avec la BDD : quelles missions VAB sont deja importees ?
     // On compare par external_id (n° VAB) sur les missions source=vab.
@@ -77,6 +77,7 @@ export async function POST(req: Request) {
         total: items.length,
         new:   items.filter(i => !i.alreadyImported).length,
         items,
+        debug,  // utile pour diagnostiquer si 0 mission alors qu'il y en a dans VAB
       })
     }
 
@@ -109,6 +110,7 @@ export async function POST(req: Request) {
       success,
       failed,
       results,
+      debug,
     })
   } catch (e: any) {
     console.error('[api/vab/import]', e.message)
