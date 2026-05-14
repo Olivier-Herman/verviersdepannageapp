@@ -149,3 +149,33 @@ body {
 /* Safe area pour iPhone */
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 .safe-top    { padding-top:    env(safe-area-inset-top); }
+
+/* ============================================================
+   Ambient mood — keyframes globales reutilisables.
+   1 source de verite pour eviter la duplication par page.
+   Utilisees par <AmbientBackground> + classes utilitaires.
+   ============================================================ */
+@keyframes ambient-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ambient-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 46, 0.0); }
+  50%      { box-shadow: 0 0 0 6px rgba(225, 29, 46, 0.15); }
+}
+@keyframes ambient-sparkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(0.92); }
+}
+.ambient-fade-up { animation: ambient-fade-up 320ms ease-out both; }
+.ambient-pulse   { animation: ambient-pulse-glow 2s ease-in-out infinite; }
+.ambient-sparkle { animation: ambient-sparkle 1.6s ease-in-out infinite; }
+.ambient-stagger-1 { animation-delay: 30ms;  }
+.ambient-stagger-2 { animation-delay: 70ms;  }
+.ambient-stagger-3 { animation-delay: 120ms; }
+.ambient-stagger-4 { animation-delay: 180ms; }
+.ambient-stagger-5 { animation-delay: 240ms; }
+.ambient-stagger-6 { animation-delay: 300ms; }
+.ambient-stagger-7 { animation-delay: 360ms; }
+.ambient-stagger-8 { animation-delay: 420ms; }
+.ambient-stagger-9 { animation-delay: 480ms; }

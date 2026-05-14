@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import DispatchMap, { type MapMission, type MapDriver } from '@/components/dispatch/DispatchMap'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -728,10 +729,9 @@ export default function DispatchClient({
       userModules={userModules}
     >
       {/* ── Barre de contrôle ──────────────────────────────────────────────
-          Conservée hex hardcodée pour l'instant — sera refondue en étape E
-          (intégration <KpiCard>, <MissionCard>, etc.). Burger mobile et h1
-          "Dispatch" retirés (gérés par AppShell). */}
-      <div className="bg-surface border-b border px-3 lg:px-6 py-3 lg:py-4 sticky top-0 z-10">
+          backdrop-blur pour fondre avec l'ambient background.
+          Burger mobile et h1 "Dispatch" gérés par AppShell. */}
+      <div className="bg-surface/85 backdrop-blur-md border-b px-3 lg:px-6 py-3 lg:py-4 sticky top-0 z-20">
         <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
 
             <input
@@ -849,8 +849,26 @@ export default function DispatchClient({
             </div>
           </div>
 
-          {/* Onglets — l'onglet "En commande" est mis en valeur si > 0 (action requise) */}
-          <div className="flex gap-1 mt-3 overflow-x-auto">
+          {/* Onglets — version mobile (select) + desktop (tabs flex).
+              Sur mobile, on remplace les tabs scrollables par un select clair
+              qui affiche tous les statuts + leurs compteurs d'un coup. */}
+          <div className="mt-3 md:hidden">
+            <select
+              value={activeTab}
+              onChange={e => setActiveTab(e.target.value)}
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm font-medium focus:outline-none focus:border-brand"
+            >
+              {TABS.map(tab => {
+                const count = tab.countKey ? counters[tab.countKey] : null
+                return (
+                  <option key={tab.key} value={tab.key}>
+                    {tab.label}{count !== null && count > 0 ? ` (${count})` : ''}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+          <div className="hidden md:flex gap-1 mt-3 overflow-x-auto">
             {TABS.map(tab => {
               const count  = tab.countKey ? counters[tab.countKey] : null
               const active = activeTab === tab.key
@@ -884,8 +902,9 @@ export default function DispatchClient({
         {/* ── Panel statut chauffeurs ──────────────────────────────────── */}
         <DriverStatusPanel statuses={driverStatuses} onRefresh={load} />
 
-        {/* ── Contenu ─────────────────────────────────────────────────── */}
-        <main className="flex-1 overflow-auto px-3 lg:px-6 py-4 lg:py-6">
+        {/* ── Contenu wrappe d'un ambient background ────────────────── */}
+        <AmbientBackground>
+        <main className="flex-1 overflow-auto px-3 lg:px-6 py-4 lg:py-6 ambient-fade-up">
           {loading ? (
             <div className="flex items-center justify-center h-64 text-ink-muted">Chargement…</div>
           ) : filtered.length === 0 ? (
@@ -1041,6 +1060,7 @@ export default function DispatchClient({
             </>
           )}
         </main>
+        </AmbientBackground>
     </AppShell>
   )
 }

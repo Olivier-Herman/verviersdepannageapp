@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { Session } from 'next-auth'
 import AppShell from '@/components/layout/AppShell'
+import AmbientBackground from '@/components/AmbientBackground'
 
 // ─────────────────────────────────────────────────────────
 // CONFIGURATION DES SECTIONS
@@ -128,63 +129,72 @@ export default function DashboardClient({
       userId={sessionUser.id}
       userModules={userModules}
     >
-      <div className="px-4 lg:px-8 py-5 lg:py-6 max-w-5xl mx-auto">
+      <AmbientBackground>
+        <div className="px-4 lg:px-8 py-5 lg:py-8 max-w-5xl mx-auto">
 
-        {/* Titre + sous-titre — desktop seulement (le titre mobile est dans le header sticky) */}
-        <div className="hidden lg:block mb-6">
-          <h1 className="font-display text-ink text-2xl font-bold">Dashboard</h1>
-          <p className="text-ink-muted text-sm mt-1">
-            Bienvenue {session.user?.name?.split(' ')[0] || ''}, voici tes actions du jour.
-          </p>
-        </div>
-
-        {/* Section 1 — Actions principales */}
-        {visibleActions.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-              Actions principales
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {visibleActions.map(item => <ActionCard key={item.id} item={item} />)}
+          {/* Hero header — desktop visible, mobile garde le header sticky AppShell */}
+          <div className="hidden lg:block mb-8 ambient-fade-up">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand/20 via-purple-500/15 to-info/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
+                <span className="ambient-sparkle">👋</span>
+              </div>
+              <div>
+                <h1 className="font-display text-ink text-2xl lg:text-3xl font-bold leading-tight">
+                  Bonjour {session.user?.name?.split(' ')[0] || ''}
+                </h1>
+                <p className="text-ink-muted text-sm mt-1">Voici tes actions et modules disponibles.</p>
+              </div>
             </div>
-          </section>
-        )}
-
-        {/* Section 2 — Modules */}
-        {visibleModules.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-              Modules
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {visibleModules.map(item => <ModuleCard key={item.id} item={item} />)}
-            </div>
-          </section>
-        )}
-
-        {/* Section 3 — Appels rapides */}
-        {visibleCalls.length > 0 && (
-          <section className="mb-4">
-            <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-              Appels rapides
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {visibleCalls.map(c => (
-                <QuickCall key={c.id} item={c} phone={getPhone(c.id)} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Empty state */}
-        {isEmpty && (
-          <div className="text-center py-16 border-2 border-dashed rounded-card text-ink-muted">
-            <p className="text-4xl mb-3" aria-hidden="true">🔒</p>
-            <p className="font-display font-semibold text-ink mb-1">Aucun module activé</p>
-            <p className="text-sm">Contacte un administrateur pour t&apos;attribuer des accès.</p>
           </div>
-        )}
-      </div>
+
+          {/* Section 1 — Actions principales */}
+          {visibleActions.length > 0 && (
+            <section className="mb-8 ambient-fade-up ambient-stagger-1">
+              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+                Actions principales
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {visibleActions.map(item => <ActionCard key={item.id} item={item} />)}
+              </div>
+            </section>
+          )}
+
+          {/* Section 2 — Modules */}
+          {visibleModules.length > 0 && (
+            <section className="mb-8 ambient-fade-up ambient-stagger-2">
+              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+                Modules
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {visibleModules.map(item => <ModuleCard key={item.id} item={item} />)}
+              </div>
+            </section>
+          )}
+
+          {/* Section 3 — Appels rapides */}
+          {visibleCalls.length > 0 && (
+            <section className="mb-4 ambient-fade-up ambient-stagger-3">
+              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
+                Appels rapides
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {visibleCalls.map(c => (
+                  <QuickCall key={c.id} item={c} phone={getPhone(c.id)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Empty state */}
+          {isEmpty && (
+            <div className="text-center py-16 border-2 border-dashed rounded-card text-ink-muted ambient-fade-up">
+              <p className="text-4xl mb-3" aria-hidden="true">🔒</p>
+              <p className="font-display font-semibold text-ink mb-1">Aucun module activé</p>
+              <p className="text-sm">Contacte un administrateur pour t&apos;attribuer des accès.</p>
+            </div>
+          )}
+        </div>
+      </AmbientBackground>
     </AppShell>
   )
 }
