@@ -12,6 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { NOTIFICATION_TYPES, isEnabled } from './types'
+import { sendPushNotification } from './push'
 
 export interface NotificationPayload {
   /** Titre court affiche dans le bandeau */
@@ -76,7 +77,7 @@ export async function sendNotification(
     return { ok: false, skipped: 'disabled_by_pref' }
   }
 
-  // 3. INSERT dans le log → Realtime propage au client
+  // 3. INSERT dans le log → Realtime propage au client (canal in_app)
   const { data, error } = await sb
     .from('notifications_log')
     .insert({
@@ -92,6 +93,32 @@ export async function sendNotification(
     console.error('[sendNotification] INSERT error:', error.message)
     return { ok: false, error: error.message }
   }
+
+  // 4. Push natif (best-effort, async) — pour reveiller le device si l'app
+  //    est en background. Echec silencieux : la notif est deja en BDD donc
+  //    elle s'affichera des que l'app sera ouverte (canal in_app).
+  void (async () => {
+    try {
+      const pushRes = await sendPushNotification(userId, {
+        title:      payload.title,
+        body:       payload.body,
+        action_url: payload.action_url,
+        mission_id: payload.mission_id,
+        notif_type: type,
+        data:       payload.data,
+      })
+      if (!pushRes.no_devices) {
+        await sb.from('notifications_log').insert({
+          user_id:    userId,
+          notif_type: type,
+          payload:    { ...payload, push_summary: pushRes } as any,
+          channel:    'push',
+        })
+      }
+    } catch (e: any) {
+      console.error('[sendNotification] push error:', e.message)
+    }
+  })()
 
   return { ok: true, log_id: data.id }
 }

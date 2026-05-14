@@ -10,6 +10,7 @@
 import { useEffect, useState, useCallback, createContext, useContext } from 'react'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { playNotificationSound } from '@/lib/notifications/sounds'
+import { usePushRegistration } from '@/hooks/usePushRegistration'
 import NotificationBanner from './NotificationBanner'
 
 interface NotifEvent {
@@ -52,6 +53,9 @@ export default function NotificationsProvider({
 }) {
   const [pending, setPending] = useState<NotifEvent[]>([])
 
+  // Register le push natif (no-op si pas dans Capacitor)
+  usePushRegistration(userId)
+
   const dismiss = useCallback((id: string) => {
     setPending(prev => prev.filter(n => n.id !== id))
   }, [])
@@ -80,6 +84,10 @@ export default function NotificationsProvider({
         filter: `user_id=eq.${userId}`,
       }, (payload) => {
         const row = payload.new as NotifEvent
+        // Filtre : on n'affiche le bandeau que pour le canal in_app.
+        // Les rows channel='push' sont des logs de tentative d'envoi natif
+        // qu'on insere aussi mais qui ne doivent pas declencher de toast.
+        if (row.channel && row.channel !== 'in_app') return
         // Anti-duplicate (Realtime peut redeliver)
         setPending(prev => {
           if (prev.some(n => n.id === row.id)) return prev
