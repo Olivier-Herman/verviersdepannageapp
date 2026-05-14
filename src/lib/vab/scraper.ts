@@ -509,6 +509,8 @@ export interface VabMissionDetail {
   /** N° dossier interne VAB / contrat */
   dossierNumber:    string | null
   taskType:         string | null
+  /** Codes de panne (ex: "Accident de voiture") */
+  codesDePanne:     string | null
   // From location (emplacement de)
   fromName:         string | null
   fromStreet:       string | null
@@ -524,6 +526,8 @@ export interface VabMissionDetail {
   // General (client)
   clientName:       string | null
   clientPhone:      string | null
+  /** Date intervention (A) ex: "14-05-2026 17:00:00" */
+  interventionAt:   string | null
   // Vehicle
   vehiclePlate:     string | null
   vehicleBrand:     string | null
@@ -531,6 +535,8 @@ export interface VabMissionDetail {
   vehicleVin:       string | null
   vehicleYear:      string | null
   vehicleColor:     string | null
+  /** Categorie vehicule (Voiture / Moto / Camion / ...) */
+  vehicleCategory:  string | null
   // Raw HTML dump for debug
   rawSnippet:       string
 }
@@ -567,125 +573,168 @@ export async function fetchVabMissionDetail(
   const aidMatch = detailHref.match(/[?&]AssignmentId=(\d+)/i)
   const assignmentId = aidMatch ? aidMatch[1] : null
 
-  // Strategy de parsing : VAB COMET utilise des labels suivis de valeurs
-  // dans des structures de type <label>...</label><span>...</span> ou
-  // <div class="label">Nom</div><div class="value">VAL</div>.
+  // Pattern VAB COMET (OutSystems) confirme par l'inspection du HTML brut :
   //
-  // Approche : on cherche pour chaque champ un label texte (ex: "Nom",
-  // "Rue", "Code postal"), puis on prend le texte de l'element suivant
-  // ou enfant. Plus robuste car ne depend pas de class names.
+  //   <div class="SpacerBottom5">
+  //     <label class=' OSFillParent' style='' for='' >Nom</label>
+  //     VERVIERS DEPANNAGE SA
+  //   </div>
+  //
+  // Pour les tels : la valeur est dans <div><a><span class="Telephone">VAL</span></a></div>
+  // Pour les vehicules : wrappe d'un <div class="ThemeGrid_Width6">
+  //
+  // Strategy : pour chaque <div class="SpacerBottom5">, on lit le label et
+  // tout le reste du texte (excluant le label) = la valeur.
+  //
+  // Pour distinguer "Nom" dans "Emplacement de" vs "Emplacement à", on scope
+  // par les containers identifies : id contient wtLocationFromContainer,
+  // wtLocationToContainer, wtGeneralInfoContainer.
 
-  function getValueAfterLabel(labelText: string, context?: any): string | null {
-    let result: string | null = null
-    const root = context || $.root()
-    // Strategy 1 : <X>Label</X> suivi de <Y>Value</Y> (siblings)
-    root.find('*').each((_idx: number, el: any) => {
-      if (result) return
+  /**
+   * Extrait toutes les paires label→value des .SpacerBottom5 dans un scope.
+   */
+  function extractFields(scope: any): Record<string, string> {
+    const fields: Record<string, string> = {}
+    if (!scope || scope.length === 0) return fields
+    scope.find('.SpacerBottom5').each((_idx: number, el: any) => {
       const $el = $(el)
-      const txt = $el.text().trim()
-      // Match exact label, ou label suivi de ':' / espace
-      if (txt === labelText || txt === labelText + ' :' || txt === labelText + ':') {
-        // Prends le contenu de l'element suivant ou du parent suivant
-        const next = $el.next()
-        if (next.length && next.text().trim().length > 0 && next.text().trim() !== labelText) {
-          result = next.text().trim().replace(/\s+/g, ' ')
-        }
+      const $label = $el.find('label').first()
+      if ($label.length === 0) return
+      const labelText = $label.text().trim().replace(/\s+/g, ' ')
+      if (!labelText) return
+
+      // Retire le label du HTML pour ne garder que la valeur
+      // Approche : clone, retire le label, lit le text restant
+      const $clone = $el.clone()
+      $clone.find('label').first().remove()
+      const valueText = $clone.text().trim().replace(/\s+/g, ' ')
+      if (valueText) {
+        fields[labelText] = valueText
       }
+    })
+    return fields
+  }
+
+  // Trouve les conteneurs par suffixe d'id
+  function findContainerByIdSuffix(suffix: string): any {
+    let result: any = null
+    $(`[id$="${suffix}"]`).each((_idx: number, el: any) => {
+      if (result) return
+      result = $(el)
     })
     return result
   }
 
-  // ASP.NET WebForms : souvent <span id="lblNom">value</span>. Cherche aussi
-  // par id contenant le nom du champ.
-  function getValueById(idPattern: RegExp): string | null {
-    let result: string | null = null
-    $('span, div, p').each((_idx: number, el: any) => {
-      if (result) return
-      const id = $(el).attr('id') || ''
-      if (idPattern.test(id)) {
-        const txt = $(el).text().trim()
-        if (txt) result = txt.replace(/\s+/g, ' ')
-      }
-    })
-    return result
+  const fromContainer    = findContainerByIdSuffix('wtLocationFromContainer2')
+  const toContainer      = findContainerByIdSuffix('wtLocationToContainer2')
+  const generalContainer = findContainerByIdSuffix('wtGeneralInfoContainer')
+
+  // Le panel "Informations véhicule" n'a pas d'id reconnaissable mais on peut
+  // le trouver via son titre (Heading3 contenant "Informations véhicule")
+  let vehicleContainer: any = null
+  $('.Panel').each((_idx: number, panel: any) => {
+    if (vehicleContainer) return
+    const $panel = $(panel)
+    const title = $panel.find('.Panel__title').first().text().trim()
+    if (title.includes('Informations véhicule') || title.includes('Informations vehicule')) {
+      vehicleContainer = $panel.find('.Panel_content').first()
+    }
+  })
+
+  // Extraction par section
+  const fromFields    = extractFields(fromContainer)
+  const toFields      = extractFields(toContainer)
+  const generalFields = extractFields(generalContainer)
+  const vehicleFields = extractFields(vehicleContainer)
+
+  // Type de tache extrait du <title> "Détails du remorquage" → "remorquage"
+  const titleEl = $('title').text().trim()
+  let taskTypeRaw: string | null = null
+  const titleMatch = titleEl.match(/d[ée]tails du (\w+)/i)
+  if (titleMatch) taskTypeRaw = titleMatch[1]
+
+  // Codes de panne : <span ...wtListRecords1><ul><li>VAL</li></ul></span>
+  let codesDePanne: string | null = null
+  const $codes = $('[id*="wtListRecords1"]').first()
+  if ($codes.length > 0) {
+    codesDePanne = $codes.text().trim().replace(/\s+/g, ' ') || null
   }
 
-  // Combine les 2 strategies pour chaque champ
-  function getField(labels: string[], idPatterns: RegExp[]): string | null {
-    for (const label of labels) {
-      const v = getValueAfterLabel(label)
-      if (v) return v
-    }
-    for (const pat of idPatterns) {
-      const v = getValueById(pat)
-      if (v) return v
-    }
-    return null
-  }
-
-  // Extract sections "Emplacement de" et "Emplacement à"
-  // VAB affiche ces sections en colonnes. On cherche par id ou par
-  // proximite au titre "Emplacement de" / "Emplacement à".
-
-  // Pour pas etre noye dans le DOM, on essaie d'extraire les <fieldset>
-  // ou containers contenant ces titres et on scope la recherche.
-  function getSectionContext(title: string): any | null {
-    let ctx: any = null
-    $('*').each((_idx: number, el: any) => {
-      if (ctx) return
+  // Le champ "Type de véhicule" apparait 2x : 1ere = marque/modele, 2eme = categorie (Voiture)
+  // vehicleFields['Type de véhicule'] ne prendra que la derniere. On parse manuellement.
+  let vehicleMarqueModele: string | null = null
+  let vehicleCategorie: string | null = null
+  if (vehicleContainer && vehicleContainer.length > 0) {
+    const typeOccurrences: string[] = []
+    vehicleContainer.find('.SpacerBottom5').each((_idx: number, el: any) => {
       const $el = $(el)
-      const txt = $el.text().trim()
-      if (txt.startsWith(title)) {
-        // Remonte au container probable (fieldset, div avec class card, etc.)
-        ctx = $el.closest('fieldset')
-        if (!ctx || ctx.length === 0) ctx = $el.parent()
-        if (!ctx || ctx.length === 0) ctx = $el
+      const $label = $el.find('label').first()
+      if (!$label.length) return
+      if ($label.text().trim().toLowerCase().includes('type de véhicule')) {
+        const $clone = $el.clone()
+        $clone.find('label').first().remove()
+        const v = $clone.text().trim().replace(/\s+/g, ' ')
+        if (v) typeOccurrences.push(v)
       }
     })
-    return ctx
+    if (typeOccurrences.length >= 1) vehicleMarqueModele = typeOccurrences[0]
+    if (typeOccurrences.length >= 2) vehicleCategorie = typeOccurrences[1]
   }
 
-  const fromCtx = getSectionContext('Emplacement de')
-  const toCtx   = getSectionContext('Emplacement à')
-
-  function getInSection(ctx: any, labels: string[]): string | null {
-    if (!ctx || ctx.length === 0) return null
-    for (const label of labels) {
-      const v = getValueAfterLabel(label, ctx)
-      if (v) return v
+  // Split marque/modele : "SKODA FABIA" → marque=SKODA, modele=FABIA
+  let vehicleBrand: string | null = null
+  let vehicleModel: string | null = null
+  if (vehicleMarqueModele) {
+    const parts = vehicleMarqueModele.split(/\s+/)
+    if (parts.length >= 2) {
+      vehicleBrand = parts[0]
+      vehicleModel = parts.slice(1).join(' ')
+    } else {
+      vehicleBrand = vehicleMarqueModele
     }
-    return null
   }
+
+  // Extract dossier number depuis le titre (ex: "8293644 / 34496031")
+  let dossierNumber: string | null = null
+  $('.HeaderTitle, .Heading1').each((_idx: number, el: any) => {
+    if (dossierNumber) return
+    const txt = $(el).text().trim()
+    const m = txt.match(/(\d{6,10})\s*\/\s*(\d{6,10})/)
+    if (m) dossierNumber = m[2]  // 2eme = n° tache / contrat interne
+  })
 
   const detail: VabMissionDetail = {
     missionNumber,
     assignmentId,
-    dossierNumber:  getField(['N° de dossier', 'Référence', 'Reference'], [/dossier/i, /reference/i, /ref$/i]),
-    taskType:       getField(['Type de tâche', 'Type', 'Type de mission'], [/tasktype/i, /typetache/i]),
+    dossierNumber,
+    taskType:       taskTypeRaw,
+    codesDePanne,
 
-    fromName:       getInSection(fromCtx, ['Nom']),
-    fromStreet:     getInSection(fromCtx, ['Rue', 'Adresse']),
-    fromZip:        getInSection(fromCtx, ['Code postal']),
-    fromCity:       getInSection(fromCtx, ['Ville']),
-    fromPhone:      getInSection(fromCtx, ['Téléphone', 'GSM', 'Telephone']),
+    fromName:       fromFields['Nom'] || null,
+    fromStreet:     fromFields['Rue'] || null,
+    fromZip:        fromFields['Code postal'] || null,
+    fromCity:       fromFields['Ville'] || null,
+    fromPhone:      fromFields['Téléphone'] || fromFields['GSM'] || null,
 
-    toName:         getInSection(toCtx, ['Nom']),
-    toStreet:       getInSection(toCtx, ['Rue', 'Adresse']),
-    toZip:          getInSection(toCtx, ['Code postal']),
-    toCity:         getInSection(toCtx, ['Ville']),
-    toPhone:        getInSection(toCtx, ['Téléphone', 'GSM', 'Telephone']),
+    toName:         toFields['Nom'] || null,
+    toStreet:       toFields['Rue'] || null,
+    toZip:          toFields['Code postal'] || null,
+    toCity:         toFields['Ville'] || null,
+    toPhone:        toFields['Téléphone'] || toFields['GSM'] || null,
 
-    clientName:     getField(['Nom du client'], [/client.*nom/i, /nom.*client/i]),
-    clientPhone:    getField(['Téléphone'], [/client.*phone/i, /phone.*client/i]),
+    clientName:     generalFields['Nom du client'] || null,
+    clientPhone:    generalFields['Téléphone'] || generalFields['GSM'] || null,
+    interventionAt: generalFields['À'] || generalFields['A'] || null,
 
-    vehiclePlate:   getField(['Immatriculation', 'Plaque'], [/immatriculation/i, /plaque/i]),
-    vehicleBrand:   getField(['Marque', 'Type de véhicule'], [/marque/i, /brand/i, /typevehicule/i]),
-    vehicleModel:   getField(['Modèle', 'Modele'], [/modele/i, /model/i]),
-    vehicleVin:     getField(['Numéro de châssis', 'VIN'], [/chassis/i, /vin/i]),
-    vehicleYear:    getField(['Année de construction', 'Année'], [/annee/i, /year/i]),
-    vehicleColor:   getField(['Couleur', 'Color'], [/couleur/i, /color/i]),
+    vehiclePlate:   vehicleFields['Immatriculation'] || null,
+    vehicleBrand,
+    vehicleModel,
+    vehicleVin:     vehicleFields['Numéro de châssis'] || vehicleFields['VIN'] || null,
+    vehicleYear:    vehicleFields['Année de construction'] || null,
+    vehicleColor:   vehicleFields['Couleur'] || null,
+    vehicleCategory: vehicleCategorie,
 
-    rawSnippet: html.slice(0, 500).replace(/\s+/g, ' '),
+    rawSnippet: `taskType=${taskTypeRaw} | fields=from(${Object.keys(fromFields).length}) to(${Object.keys(toFields).length}) gen(${Object.keys(generalFields).length}) veh(${Object.keys(vehicleFields).length}) | codes=${codesDePanne || 'n/a'}`,
   }
 
   return detail

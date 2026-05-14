@@ -93,6 +93,15 @@ export async function POST(req: Request) {
           continue
         }
 
+        // Parse date intervention "14-05-2026 17:00:00" → ISO
+        let interventionIso: string | null = null
+        if (detail.interventionAt) {
+          const m = detail.interventionAt.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/)
+          if (m) {
+            interventionIso = `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}+02:00`
+          }
+        }
+
         // Map VAB fields → incoming_missions schema
         const insertPayload = {
           external_id:        detail.missionNumber,
@@ -103,24 +112,26 @@ export async function POST(req: Request) {
                             : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
                             : detail.taskType?.toLowerCase().includes('livraison')  ? 'depannage'
                             : null,
-          // Client (assistance)
+          incident_type:      detail.codesDePanne,  // ex: "Accident de voiture"
+          incident_description: detail.codesDePanne,
+          // Client (assistance) = "Général" sur VAB
           client_name:        detail.clientName,
-          client_phone:       detail.clientPhone || detail.fromPhone,
+          client_phone:       detail.clientPhone,
           // Vehicule
           vehicle_plate:      detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,
           vehicle_brand:      detail.vehicleBrand,
           vehicle_model:      detail.vehicleModel,
           vehicle_vin:        detail.vehicleVin,
-          // Lieu intervention = "Emplacement de"
+          // Lieu intervention = "Emplacement de" (depart)
           incident_address:   [detail.fromStreet, detail.fromZip, detail.fromCity].filter(Boolean).join(', ') || null,
           incident_city:      detail.fromCity,
           // Destination = "Emplacement à"
           destination_name:    detail.toName,
           destination_address: [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null,
           // Meta
-          parse_confidence:    0.95,  // scraping direct = haute confiance
+          parse_confidence:    0.95,
           received_at:         new Date().toISOString(),
-          intervention_date:   new Date().toISOString(),
+          intervention_date:   interventionIso || new Date().toISOString(),
         }
 
         const { error: insertErr } = await sb
