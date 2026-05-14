@@ -91,15 +91,16 @@ export interface InitiateCallResult {
  */
 export async function initiatePstnCall(params: InitiateCallParams): Promise<InitiateCallResult> {
   // Source identity pour Microsoft Graph Communications PSTN bot calls :
-  // c'est l'AppId de l'App Reg (= TEAMS_CLIENT_ID), pas le Service Principal
-  // Object ID ni le user M365 Object ID. C'est l'identite canonique du bot
-  // Microsoft Bot Framework qui passe les appels.
-  const appId    = process.env.TEAMS_CLIENT_ID || process.env.AZURE_AD_CLIENT_ID
-  const botPhone = process.env.TEAMS_BOT_PHONE
-  const appBase  = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+  // Object ID du bot user M365 (qui a la licence Teams Phone et le numero).
+  // L'AppId et le SP Object ID donnent "Call source identity invalid".
+  // Maintenant que l'Azure Bot resource est creee + CsApplicationAccessPolicy
+  // est granted Global, l'identite user devrait etre reconnue.
+  const botObjectId = process.env.TEAMS_BOT_OBJECT_ID
+  const botPhone    = process.env.TEAMS_BOT_PHONE
+  const appBase     = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
 
-  if (!appId) {
-    return { ok: false, error: 'TEAMS_CLIENT_ID manquant (AppId de l\'App Registration Azure)' }
+  if (!botObjectId) {
+    return { ok: false, error: 'TEAMS_BOT_OBJECT_ID manquant (Object ID du bot user M365 avec licence Teams Phone)' }
   }
   if (!botPhone) {
     return { ok: false, error: 'TEAMS_BOT_PHONE manquant (numero E.164 du bot)' }
@@ -123,7 +124,7 @@ export async function initiatePstnCall(params: InitiateCallParams): Promise<Init
         '@odata.type': '#microsoft.graph.identitySet',
         applicationInstance: {
           '@odata.type': '#microsoft.graph.identity',
-          id: appId,
+          id: botObjectId,
           displayName: 'Verviers Dispatch',
         },
       },
