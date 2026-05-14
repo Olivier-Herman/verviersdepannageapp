@@ -7,7 +7,8 @@
 // 2. User clique "Déclencher l'envoi" → appel send → emails partent
 // 3. Les emails arrivent dans la boite -> parser existant -> nouvelles missions visibles dans /dispatch
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PreviewItem {
@@ -101,24 +102,24 @@ export default function VabImportButton({ onImportDone }: Props) {
   const newMissions = preview?.items.filter(i => !i.alreadyImported) || []
   const existingMissions = preview?.items.filter(i => i.alreadyImported) || []
 
-  return (
-    <>
-      <button
-        onClick={openAndPreview}
-        title="Récupérer les missions VAB en attente"
-        className="flex items-center justify-center gap-1.5 w-10 h-10 lg:w-auto lg:h-auto lg:px-3 lg:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium transition flex-shrink-0"
-      >
-        <span>📨</span>
-        <span className="hidden lg:inline">Import VAB</span>
-      </button>
+  // Lock scroll body quand modal ouvert
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [open])
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-             onClick={!loading ? close : undefined}>
-          <div
-            onClick={e => e.stopPropagation()}
-            className="bg-surface border-2 border-amber-500/30 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
-          >
+  // Le modal est portail au niveau document.body pour echapper aux stacking
+  // contexts parents (sticky header avec backdrop-blur qui creerait un
+  // containing block pour position: fixed sinon).
+  const modal = open && typeof window !== 'undefined' ? createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+         onClick={!loading ? close : undefined}>
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-surface border-2 border-amber-500/30 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+      >
             {/* Bande accent top */}
             <div className="h-1.5 bg-gradient-to-r from-amber-500 to-orange-500" />
 
@@ -298,8 +299,21 @@ export default function VabImportButton({ onImportDone }: Props) {
               )}
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body,
+      ) : null
+
+  return (
+    <>
+      <button
+        onClick={openAndPreview}
+        title="Récupérer les missions VAB en attente"
+        className="flex items-center justify-center gap-1.5 w-10 h-10 lg:w-auto lg:h-auto lg:px-3 lg:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium transition flex-shrink-0"
+      >
+        <span>📨</span>
+        <span className="hidden lg:inline">Import VAB</span>
+      </button>
+      {modal}
     </>
   )
 }
