@@ -3,10 +3,11 @@
 // POST /api/vab/import?mode=preview|send
 //
 // Preview : liste les missions visibles sur comet.vab.be et flagge celles
-//           qui existent deja en BDD (via external_id ou source=vab + plate).
-// Send    : pour chaque mission non encore importee, declenche l'envoi email
-//           depuis VAB → l'email arrivera dans la boite et sera parse par
-//           le flow existant.
+//           qui existent deja en BDD (via external_id).
+// Send    : pour chaque mission non encore importee, recupere les details
+//           depuis VAB COMET et INSERT directement dans incoming_missions
+//           (source=vab, status=new). Plus rapide et fiable que l'envoi
+//           mail + cron parse.
 //
 // Acces : admin / superadmin / dispatcher uniquement.
 
@@ -14,12 +15,10 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { loginVab, listVabMissions, sendVabMissionEmail } from '@/lib/vab/scraper'
+import { loginVab, listVabMissions, fetchVabMissionDetail } from '@/lib/vab/scraper'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60   // login + list + N x send = peut prendre 30-40s
-
-const DESTINATION_EMAIL = 'assistance@verviersdepannage.com'
+export const maxDuration = 60
 
 interface PreviewItem {
   missionNumber: string
@@ -46,8 +45,6 @@ export async function POST(req: Request) {
     const session = await loginVab()
     const { missions, debug } = await listVabMissions(session)
 
-    // Cross-check avec la BDD : quelles missions VAB sont deja importees ?
-    // On compare par external_id (n° VAB) sur les missions source=vab.
     const sb = createAdminClient()
     const missionNumbers = missions.map(m => m.missionNumber)
     const { data: existing } = missionNumbers.length > 0
@@ -69,7 +66,6 @@ export async function POST(req: Request) {
       alreadyImported: existingSet.has(m.missionNumber),
     }))
 
-    // Mode preview : on retourne juste la liste avec flags
     if (mode === 'preview') {
       return NextResponse.json({
         ok: true,
@@ -77,22 +73,64 @@ export async function POST(req: Request) {
         total: items.length,
         new:   items.filter(i => !i.alreadyImported).length,
         items,
-        debug,  // utile pour diagnostiquer si 0 mission alors qu'il y en a dans VAB
+        debug,
       })
     }
 
-    // Mode send : declenche les emails pour les missions non encore importees
-    const toSend = items.filter(i => !i.alreadyImported && i.detailHref)
-    const results: Array<{ missionNumber: string; ok: boolean; error?: string }> = []
+    // ── Mode send : scrape detail + insert direct en BDD ────────────
+    const toImport = items.filter(i => !i.alreadyImported && i.detailHref)
+    const results: Array<{ missionNumber: string; ok: boolean; error?: string; debug?: string }> = []
 
-    for (const item of toSend) {
+    for (const item of toImport) {
       if (!item.detailHref) {
         results.push({ missionNumber: item.missionNumber, ok: false, error: 'detailHref manquant' })
         continue
       }
       try {
-        const r = await sendVabMissionEmail(session, item.detailHref, DESTINATION_EMAIL)
-        results.push({ missionNumber: item.missionNumber, ok: r.ok, error: r.ok ? undefined : r.error })
+        const detail = await fetchVabMissionDetail(session, item.detailHref, item.missionNumber)
+        if ('error' in detail) {
+          results.push({ missionNumber: item.missionNumber, ok: false, error: detail.error })
+          continue
+        }
+
+        // Map VAB fields → incoming_missions schema
+        const insertPayload = {
+          external_id:        detail.missionNumber,
+          dossier_number:     detail.dossierNumber,
+          source:             'vab',
+          status:             'new',
+          mission_type:       detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
+                            : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
+                            : detail.taskType?.toLowerCase().includes('livraison')  ? 'depannage'
+                            : null,
+          // Client (assistance)
+          client_name:        detail.clientName,
+          client_phone:       detail.clientPhone || detail.fromPhone,
+          // Vehicule
+          vehicle_plate:      detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,
+          vehicle_brand:      detail.vehicleBrand,
+          vehicle_model:      detail.vehicleModel,
+          vehicle_vin:        detail.vehicleVin,
+          // Lieu intervention = "Emplacement de"
+          incident_address:   [detail.fromStreet, detail.fromZip, detail.fromCity].filter(Boolean).join(', ') || null,
+          incident_city:      detail.fromCity,
+          // Destination = "Emplacement à"
+          destination_name:    detail.toName,
+          destination_address: [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null,
+          // Meta
+          parse_confidence:    0.95,  // scraping direct = haute confiance
+          received_at:         new Date().toISOString(),
+          intervention_date:   new Date().toISOString(),
+        }
+
+        const { error: insertErr } = await sb
+          .from('incoming_missions')
+          .insert(insertPayload)
+        if (insertErr) {
+          results.push({ missionNumber: item.missionNumber, ok: false, error: `INSERT: ${insertErr.message}` })
+          continue
+        }
+        results.push({ missionNumber: item.missionNumber, ok: true })
       } catch (e: any) {
         results.push({ missionNumber: item.missionNumber, ok: false, error: e.message || 'Erreur' })
       }
@@ -106,7 +144,7 @@ export async function POST(req: Request) {
       mode: 'send',
       total:   items.length,
       already: items.filter(i => i.alreadyImported).length,
-      attempted: toSend.length,
+      attempted: toImport.length,
       success,
       failed,
       results,

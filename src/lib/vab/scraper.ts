@@ -498,29 +498,281 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
 }
 
 /**
- * Declenche l'envoi par email d'une mission VAB.
+ * Champs scrapes depuis la page detail d'une mission VAB.
+ * Permet d'inserer directement la mission en BDD sans passer par l'email.
+ */
+export interface VabMissionDetail {
+  /** N° mission VAB (depuis la liste) */
+  missionNumber:    string
+  /** AssignmentId (depuis URL) */
+  assignmentId:     string | null
+  /** N° dossier interne VAB / contrat */
+  dossierNumber:    string | null
+  taskType:         string | null
+  // From location (emplacement de)
+  fromName:         string | null
+  fromStreet:       string | null
+  fromZip:          string | null
+  fromCity:         string | null
+  fromPhone:        string | null
+  // To location
+  toName:           string | null
+  toStreet:         string | null
+  toZip:            string | null
+  toCity:           string | null
+  toPhone:          string | null
+  // General (client)
+  clientName:       string | null
+  clientPhone:      string | null
+  // Vehicle
+  vehiclePlate:     string | null
+  vehicleBrand:     string | null
+  vehicleModel:     string | null
+  vehicleVin:       string | null
+  vehicleYear:      string | null
+  vehicleColor:     string | null
+  // Raw HTML dump for debug
+  rawSnippet:       string
+}
+
+/**
+ * Recupere et parse la page detail d'une mission VAB. Extrait tous les
+ * champs utilisables pour creer une mission dans incoming_missions sans
+ * passer par l'email.
+ */
+export async function fetchVabMissionDetail(
+  session:    SessionCookies,
+  detailHref: string,
+  missionNumber: string,
+): Promise<VabMissionDetail | { error: string }> {
+  const detailUrl = detailHref.startsWith('http')
+    ? detailHref
+    : `${VAB_BASE}${detailHref.startsWith('/') ? detailHref : '/' + detailHref}`
+
+  const res = await fetch(detailUrl, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      'User-Agent':      REAL_UA,
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+      'Cookie':          session.cookieHeader,
+    },
+  })
+  if (res.status !== 200) {
+    return { error: `GET detail status ${res.status} (${detailUrl})` }
+  }
+  const html = await res.text()
+  const $ = cheerio.load(html)
+  const aidMatch = detailHref.match(/[?&]AssignmentId=(\d+)/i)
+  const assignmentId = aidMatch ? aidMatch[1] : null
+
+  // Strategy de parsing : VAB COMET utilise des labels suivis de valeurs
+  // dans des structures de type <label>...</label><span>...</span> ou
+  // <div class="label">Nom</div><div class="value">VAL</div>.
+  //
+  // Approche : on cherche pour chaque champ un label texte (ex: "Nom",
+  // "Rue", "Code postal"), puis on prend le texte de l'element suivant
+  // ou enfant. Plus robuste car ne depend pas de class names.
+
+  function getValueAfterLabel(labelText: string, context?: any): string | null {
+    let result: string | null = null
+    const root = context || $.root()
+    // Strategy 1 : <X>Label</X> suivi de <Y>Value</Y> (siblings)
+    root.find('*').each((_idx: number, el: any) => {
+      if (result) return
+      const $el = $(el)
+      const txt = $el.text().trim()
+      // Match exact label, ou label suivi de ':' / espace
+      if (txt === labelText || txt === labelText + ' :' || txt === labelText + ':') {
+        // Prends le contenu de l'element suivant ou du parent suivant
+        const next = $el.next()
+        if (next.length && next.text().trim().length > 0 && next.text().trim() !== labelText) {
+          result = next.text().trim().replace(/\s+/g, ' ')
+        }
+      }
+    })
+    return result
+  }
+
+  // ASP.NET WebForms : souvent <span id="lblNom">value</span>. Cherche aussi
+  // par id contenant le nom du champ.
+  function getValueById(idPattern: RegExp): string | null {
+    let result: string | null = null
+    $('span, div, p').each((_idx: number, el: any) => {
+      if (result) return
+      const id = $(el).attr('id') || ''
+      if (idPattern.test(id)) {
+        const txt = $(el).text().trim()
+        if (txt) result = txt.replace(/\s+/g, ' ')
+      }
+    })
+    return result
+  }
+
+  // Combine les 2 strategies pour chaque champ
+  function getField(labels: string[], idPatterns: RegExp[]): string | null {
+    for (const label of labels) {
+      const v = getValueAfterLabel(label)
+      if (v) return v
+    }
+    for (const pat of idPatterns) {
+      const v = getValueById(pat)
+      if (v) return v
+    }
+    return null
+  }
+
+  // Extract sections "Emplacement de" et "Emplacement à"
+  // VAB affiche ces sections en colonnes. On cherche par id ou par
+  // proximite au titre "Emplacement de" / "Emplacement à".
+
+  // Pour pas etre noye dans le DOM, on essaie d'extraire les <fieldset>
+  // ou containers contenant ces titres et on scope la recherche.
+  function getSectionContext(title: string): any | null {
+    let ctx: any = null
+    $('*').each((_idx: number, el: any) => {
+      if (ctx) return
+      const $el = $(el)
+      const txt = $el.text().trim()
+      if (txt.startsWith(title)) {
+        // Remonte au container probable (fieldset, div avec class card, etc.)
+        ctx = $el.closest('fieldset')
+        if (!ctx || ctx.length === 0) ctx = $el.parent()
+        if (!ctx || ctx.length === 0) ctx = $el
+      }
+    })
+    return ctx
+  }
+
+  const fromCtx = getSectionContext('Emplacement de')
+  const toCtx   = getSectionContext('Emplacement à')
+
+  function getInSection(ctx: any, labels: string[]): string | null {
+    if (!ctx || ctx.length === 0) return null
+    for (const label of labels) {
+      const v = getValueAfterLabel(label, ctx)
+      if (v) return v
+    }
+    return null
+  }
+
+  const detail: VabMissionDetail = {
+    missionNumber,
+    assignmentId,
+    dossierNumber:  getField(['N° de dossier', 'Référence', 'Reference'], [/dossier/i, /reference/i, /ref$/i]),
+    taskType:       getField(['Type de tâche', 'Type', 'Type de mission'], [/tasktype/i, /typetache/i]),
+
+    fromName:       getInSection(fromCtx, ['Nom']),
+    fromStreet:     getInSection(fromCtx, ['Rue', 'Adresse']),
+    fromZip:        getInSection(fromCtx, ['Code postal']),
+    fromCity:       getInSection(fromCtx, ['Ville']),
+    fromPhone:      getInSection(fromCtx, ['Téléphone', 'GSM', 'Telephone']),
+
+    toName:         getInSection(toCtx, ['Nom']),
+    toStreet:       getInSection(toCtx, ['Rue', 'Adresse']),
+    toZip:          getInSection(toCtx, ['Code postal']),
+    toCity:         getInSection(toCtx, ['Ville']),
+    toPhone:        getInSection(toCtx, ['Téléphone', 'GSM', 'Telephone']),
+
+    clientName:     getField(['Nom du client'], [/client.*nom/i, /nom.*client/i]),
+    clientPhone:    getField(['Téléphone'], [/client.*phone/i, /phone.*client/i]),
+
+    vehiclePlate:   getField(['Immatriculation', 'Plaque'], [/immatriculation/i, /plaque/i]),
+    vehicleBrand:   getField(['Marque', 'Type de véhicule'], [/marque/i, /brand/i, /typevehicule/i]),
+    vehicleModel:   getField(['Modèle', 'Modele'], [/modele/i, /model/i]),
+    vehicleVin:     getField(['Numéro de châssis', 'VIN'], [/chassis/i, /vin/i]),
+    vehicleYear:    getField(['Année de construction', 'Année'], [/annee/i, /year/i]),
+    vehicleColor:   getField(['Couleur', 'Color'], [/couleur/i, /color/i]),
+
+    rawSnippet: html.slice(0, 500).replace(/\s+/g, ' '),
+  }
+
+  return detail
+}
+
+/**
+ * Helper : extract tous les hidden inputs d'un form (cheerio).
+ */
+function getHiddenFields($: cheerio.CheerioAPI, $form: any): Record<string, string> {
+  const fields: Record<string, string> = {}
+  $form.find('input[type="hidden"]').each((_idx: number, el: any) => {
+    const n = $(el).attr('name')
+    const v = $(el).attr('value') ?? ''
+    if (n) fields[n] = v
+  })
+  return fields
+}
+
+/**
+ * Helper : envoie un postback ASP.NET en simulant un __doPostBack.
+ * Renvoie le HTML resultant.
+ */
+async function aspnetPostBack(
+  url: string,
+  formAction: string,
+  hidden: Record<string, string>,
+  eventTarget: string,
+  eventArgument: string,
+  extraFields: Record<string, string>,
+  cookieHeader: string,
+  referer: string,
+): Promise<{ html: string; status: number; finalUrl: string }> {
+  const body = new URLSearchParams()
+  // Reinjecte tous les hidden fields (CRITIQUE pour __VIEWSTATE et compagnie)
+  for (const [k, v] of Object.entries(hidden)) body.set(k, v)
+  // Force __EVENTTARGET / __EVENTARGUMENT pour simuler le __doPostBack JS
+  body.set('__EVENTTARGET', eventTarget)
+  body.set('__EVENTARGUMENT', eventArgument)
+  // Ajoute les champs supplementaires (Email destinataire, Langue, etc.)
+  for (const [k, v] of Object.entries(extraFields)) body.set(k, v)
+
+  const submitUrl = formAction.startsWith('http')
+    ? formAction
+    : new URL(formAction, url).toString()
+
+  const res = await fetch(submitUrl, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'User-Agent':      REAL_UA,
+      'Content-Type':    'application/x-www-form-urlencoded',
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+      'Cookie':          cookieHeader,
+      'Referer':         referer,
+      'Origin':          VAB_BASE,
+    },
+    body: body.toString(),
+  })
+  const html = await res.text()
+  return { html, status: res.status, finalUrl: res.url }
+}
+
+/**
+ * Declenche l'envoi par email d'une mission VAB via double postback ASP.NET.
  *
  * Le flow UI :
- * 1. Ouvre la page de detail (peut requerir cookie + token)
- * 2. Clique "Email" → modal "Envoyer mission"
- * 3. Click "D'accord" → POST avec langue=FR + email destinataire
+ * 1. GET page detail → capture __VIEWSTATE etc.
+ * 2. POST postback "Email" button → page rerenderee avec modal email ouverte
+ * 3. POST postback "D'accord" + champ Email + Langue → vrai envoi
  *
- * On simule en HTTP : GET detail → extract eventuel CSRF → POST email form.
- *
- * NB: on ne connait pas l'URL exacte du POST email — premiere tentative :
- *   /Mission/SendEmail/{id} ou similaire (a ajuster si fail).
+ * ASP.NET WebForms : chaque postback inclut TOUS les hidden inputs +
+ * __EVENTTARGET = name du control declencheur (avec $ remplaces par : dans
+ * certains cas, sinon le name brut).
  */
 export async function sendVabMissionEmail(
   session:        SessionCookies,
   detailHref:     string,
   destinationEmail: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  // 1. Resoud l'URL absolue du detail
+): Promise<{ ok: true; debug?: string } | { ok: false; error: string; debug?: string }> {
   const detailUrl = detailHref.startsWith('http')
     ? detailHref
     : `${VAB_BASE}${detailHref.startsWith('/') ? detailHref : '/' + detailHref}`
 
-  // 2. GET detail pour recuperer CSRF + cookies a jour
+  const debugLog: string[] = []
+
+  // ─── Etape 1 : GET page detail ─────────────────────────────────
   const detailRes = await fetch(detailUrl, {
     method: 'GET',
     redirect: 'manual',
@@ -535,85 +787,152 @@ export async function sendVabMissionEmail(
     return { ok: false, error: `GET detail ${detailUrl} status ${detailRes.status}` }
   }
   const detailHtml = await detailRes.text()
-  const $ = cheerio.load(detailHtml)
-
-  // Extract CSRF token si present
-  let csrfToken: string | null = null
-  let csrfFieldName: string | null = null
-  const csrfCandidates = [
-    'input[name="_token"]',
-    'input[name="__RequestVerificationToken"]',
-    'input[type="hidden"][name*="token" i]',
-  ]
-  for (const sel of csrfCandidates) {
-    const el = $(sel).first()
-    const val = el.attr('value')
-    const name = el.attr('name')
-    if (val && name) {
-      csrfToken = val
-      csrfFieldName = name
-      break
-    }
+  const $1 = cheerio.load(detailHtml)
+  const form1 = $1('form').first()
+  if (form1.length === 0) {
+    return { ok: false, error: 'Pas de form trouve sur la page detail' }
   }
+  const action1 = form1.attr('action') || detailUrl
+  const hidden1 = getHiddenFields($1, form1)
+  debugLog.push(`step1 hidden=${Object.keys(hidden1).length}`)
 
-  // Cherche le formulaire d'envoi email pour determiner l'action URL exacte.
-  // Strategy : trouver un <form> contenant un input "email" ou un bouton "D'accord".
-  let emailFormAction = '' as string
-  $('form').each((_idx, form) => {
-    if (emailFormAction) return
-    const $form = $(form)
-    const hasEmailInput = $form.find('input[type="email"], input[name*="email" i], input[name*="adresse" i]').length > 0
-    const hasOkButton = $form.find('button, input[type="submit"]').toArray().some(btn => {
-      const txt = $(btn).text().toLowerCase() + ($(btn).attr('value') || '').toLowerCase()
-      return txt.includes('accord') || txt.includes('ok') || txt.includes('envoyer')
-    })
-    if (hasEmailInput || hasOkButton) {
-      emailFormAction = $form.attr('action') || ''
+  // Cherche le bouton/lien "Email"
+  let emailEventTarget: string | null = null
+  let emailButtonName: string | null = null
+  let emailButtonValue: string | null = null
+  form1.find('input[type="submit"], input[type="button"], button, a').each((_idx, el) => {
+    if (emailEventTarget || emailButtonName) return
+    const $el = $1(el)
+    const txt = $el.text().toLowerCase().trim()
+    const val = ($el.attr('value') || '').toLowerCase().trim()
+    const isEmailBtn = txt === 'email' || val === 'email' ||
+      (txt.includes('email') && txt.length < 20) ||
+      (val.includes('email') && val.length < 20)
+    if (!isEmailBtn) return
+    // Si c'est un LinkButton, le href contient __doPostBack('UniqueID','')
+    const href = $el.attr('href') || ''
+    const doPostBack = href.match(/__doPostBack\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]*)['"]\)/i)
+    if (doPostBack) {
+      emailEventTarget = doPostBack[1]
+      debugLog.push(`step1 found LinkButton -> EVENTTARGET=${emailEventTarget}`)
+    } else {
+      // Si c'est un submit/button normal : name=value direct
+      emailButtonName = $el.attr('name') || null
+      emailButtonValue = $el.attr('value') || $el.text().trim() || 'Email'
+      debugLog.push(`step1 found Button -> ${emailButtonName}=${emailButtonValue}`)
     }
   })
 
-  // Fallback : tente /Mission/SendEmail/{id} avec l'id extrait de detailHref
-  const idMatch = detailHref.match(/(\d{5,})(?:[^\d]|$)/)
-  const fallbackUrl = idMatch ? `${VAB_BASE}/Mission/SendEmail/${idMatch[1]}` : null
-
-  const submitUrl = emailFormAction
-    ? (emailFormAction.startsWith('http') ? emailFormAction
-       : `${VAB_BASE}${emailFormAction.startsWith('/') ? emailFormAction : '/' + emailFormAction}`)
-    : fallbackUrl
-
-  if (!submitUrl) {
-    return { ok: false, error: 'Impossible de determiner l URL de submission email' }
+  if (!emailEventTarget && !emailButtonName) {
+    return { ok: false, error: 'Bouton Email introuvable sur la page detail', debug: debugLog.join(' | ') }
   }
 
-  // 3. POST submit avec langue + email
-  const body = new URLSearchParams()
-  body.set('Email', destinationEmail)
-  body.set('email', destinationEmail)
-  body.set('Adresse électronique', destinationEmail)
-  body.set('Langue', 'FR')
-  body.set('Language', 'FR')
-  if (csrfToken && csrfFieldName) body.set(csrfFieldName, csrfToken)
+  // ─── Etape 2 : POST postback "Email" → ouvre la modal ─────────
+  const extraStep2: Record<string, string> = {}
+  if (emailButtonName) {
+    extraStep2[emailButtonName] = emailButtonValue || 'Email'
+  }
+  const eventTarget1 = emailEventTarget || ''
+  const post1 = await aspnetPostBack(detailUrl, action1, hidden1, eventTarget1, '', extraStep2, session.cookieHeader, detailUrl)
+  debugLog.push(`step2 status=${post1.status}`)
+  if (post1.status !== 200 && post1.status !== 302) {
+    return { ok: false, error: `Postback Email status ${post1.status}`, debug: debugLog.join(' | ') }
+  }
 
-  const sendRes = await fetch(submitUrl, {
-    method: 'POST',
-    redirect: 'manual',
-    headers: {
-      'User-Agent':      REAL_UA,
-      'Content-Type':    'application/x-www-form-urlencoded',
-      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
-      'Cookie':          session.cookieHeader,
-      'Referer':         detailUrl,
-      'Origin':          VAB_BASE,
-    },
-    body: body.toString(),
+  // ─── Etape 3 : parse la modal email (nouveau form avec input destinataire + bouton D'accord) ─
+  const $2 = cheerio.load(post1.html)
+  const form2 = $2('form').first()
+  if (form2.length === 0) {
+    return { ok: false, error: 'Pas de form apres postback Email', debug: debugLog.join(' | ') }
+  }
+  const action2 = form2.attr('action') || detailUrl
+  const hidden2 = getHiddenFields($2, form2)
+  debugLog.push(`step3 hidden=${Object.keys(hidden2).length}`)
+
+  // Trouve le champ email
+  let emailFieldName: string | null = null
+  form2.find('input[type="email"], input[type="text"]').each((_idx, el) => {
+    if (emailFieldName) return
+    const $el = $2(el)
+    const name = $el.attr('name') || ''
+    const id = $el.attr('id') || ''
+    if (/email|adresse|mail/i.test(name) || /email|adresse|mail/i.test(id)) {
+      emailFieldName = name
+      debugLog.push(`step3 emailField=${name}`)
+    }
   })
 
-  if (sendRes.status !== 200 && sendRes.status !== 302 && sendRes.status !== 303) {
-    const text = await sendRes.text().catch(() => '')
-    return { ok: false, error: `POST email ${submitUrl} status ${sendRes.status}. Body: ${text.slice(0, 300)}` }
+  // Trouve le champ langue (select)
+  let langueFieldName: string | null = null
+  let langueFRValue: string | null = null
+  form2.find('select').each((_idx, el) => {
+    if (langueFieldName) return
+    const $el = $2(el)
+    const name = $el.attr('name') || ''
+    const id = $el.attr('id') || ''
+    if (/lang|langue/i.test(name) || /lang|langue/i.test(id)) {
+      langueFieldName = name
+      // Trouve la valeur "FR" / "Francais"
+      $el.find('option').each((_i, opt) => {
+        if (langueFRValue) return
+        const $opt = $2(opt)
+        const val = $opt.attr('value') || ''
+        const text = $opt.text().toLowerCase()
+        if (val.toLowerCase() === 'fr' || /fran[çc]ais/i.test(text)) {
+          langueFRValue = val
+        }
+      })
+      debugLog.push(`step3 langueField=${name} val=${langueFRValue}`)
+    }
+  })
+
+  // Trouve le bouton "D'accord"
+  let okEventTarget: string | null = null
+  let okButtonName: string | null = null
+  let okButtonValue: string | null = null
+  form2.find('input[type="submit"], input[type="button"], button, a').each((_idx, el) => {
+    if (okEventTarget || okButtonName) return
+    const $el = $2(el)
+    const txt = $el.text().toLowerCase().trim()
+    const val = ($el.attr('value') || '').toLowerCase().trim()
+    const isOk = txt.includes('accord') || val.includes('accord') ||
+      txt.includes("d'accord") || val.includes("d'accord")
+    if (!isOk) return
+    const href = $el.attr('href') || ''
+    const doPostBack = href.match(/__doPostBack\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]*)['"]\)/i)
+    if (doPostBack) {
+      okEventTarget = doPostBack[1]
+      debugLog.push(`step3 ok LinkButton -> ${okEventTarget}`)
+    } else {
+      okButtonName = $el.attr('name') || null
+      okButtonValue = $el.attr('value') || $el.text().trim() || "D'accord"
+      debugLog.push(`step3 ok Button -> ${okButtonName}=${okButtonValue}`)
+    }
+  })
+
+  if (!okEventTarget && !okButtonName) {
+    return { ok: false, error: 'Bouton "D\'accord" introuvable apres postback Email', debug: debugLog.join(' | ') }
   }
 
-  console.log(`[vab/send] OK pour ${detailHref}`)
-  return { ok: true }
+  // ─── Etape 4 : POST postback "D'accord" → vrai envoi ─────────
+  const extraStep4: Record<string, string> = {}
+  if (emailFieldName) extraStep4[emailFieldName] = destinationEmail
+  if (langueFieldName && langueFRValue) extraStep4[langueFieldName] = langueFRValue
+  if (okButtonName) extraStep4[okButtonName] = okButtonValue || "D'accord"
+  const eventTarget2 = okEventTarget || ''
+  const post2 = await aspnetPostBack(detailUrl, action2, hidden2, eventTarget2, '', extraStep4, session.cookieHeader, detailUrl)
+  debugLog.push(`step4 status=${post2.status}`)
+
+  if (post2.status !== 200 && post2.status !== 302 && post2.status !== 303) {
+    return { ok: false, error: `Postback D'accord status ${post2.status}`, debug: debugLog.join(' | ') }
+  }
+
+  // Verifie si la reponse contient un message de succes/erreur
+  const responseText = post2.html.slice(0, 500).toLowerCase()
+  if (/erreur|invalid|incorrect/i.test(responseText)) {
+    return { ok: false, error: `Reponse contient erreur. Snippet: ${post2.html.slice(0, 300)}`, debug: debugLog.join(' | ') }
+  }
+
+  console.log(`[vab/send] OK pour ${detailHref}. Debug: ${debugLog.join(' | ')}`)
+  return { ok: true, debug: debugLog.join(' | ') }
 }
