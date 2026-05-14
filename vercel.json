@@ -7,6 +7,7 @@
     { "path": "/api/cron/cleanup-stale-placeholders","schedule": "*/15 * * * *" },
     { "path": "/api/cron/sync-invoice-urls",         "schedule": "*/20 * * * *" },
     { "path": "/api/cron/poll-missions",             "schedule": "*/5 * * * *"  },
-    { "path": "/api/cron/auto-archive",              "schedule": "0 3 * * *"    }
+    { "path": "/api/cron/auto-archive",              "schedule": "0 3 * * *"    },
+    { "path": "/api/cron/sync-mission-pdf",          "schedule": "30 3 * * *"   }
   ]
 }

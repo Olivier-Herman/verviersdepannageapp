@@ -113,5 +113,25 @@ export async function POST(req: Request) {
   }))
   await sb.from('mission_logs').insert(logRows)
 
+  // Attache le PDF resume mission a la facture Odoo (et regenere helpdesk+vehicle
+  // si pas encore fait). Si plusieurs missions sont facturees ensemble (chaine
+  // REM+REL), on attache UN seul PDF combine a la facture, via les ids passes
+  // a la commande de facturation.
+  // Fire-and-forget : ne bloque pas la reponse a l'employe facturation.
+  if (invoice_odoo_id || method === 'auto') {
+    // Pour 'auto', invoice_odoo_id sera typiquement null (pas de facture Odoo
+    // creee cote app). On attache quand meme aux helpdesk/vehicle si pas deja
+    // fait. Si plusieurs ids → on pousse le combine sur le premier de la chaine
+    // (qui aura aussi son own helpdesk+vehicle), les autres maillons recoivent
+    // juste la mise a jour du flag pdf_attached_invoice_at via l'orchestrateur.
+    const chainIds = ids.length > 1 ? ids : undefined
+    const primaryId = ids[0]
+    import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
+      attachMissionPdf(primaryId, { chainMissionIds: chainIds })
+    ).catch(e => {
+      console.error('[mission-pdf] invoice attach échoué (non bloquant):', e.message)
+    })
+  }
+
   return NextResponse.json({ ok: true, updated })
 }

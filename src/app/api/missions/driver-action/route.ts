@@ -363,5 +363,16 @@ export async function POST(req: Request) {
     })
   }
 
+  // Mission cloturee → genere et attache le PDF resume aux 3 cibles Odoo
+  // (helpdesk + vehicle ; invoice ne sera dispo qu'au moment de la facturation).
+  // Fire-and-forget : on ne bloque pas la reponse au chauffeur.
+  if (action === 'completed' || action === 'complete_delivery') {
+    import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
+      attachMissionPdf(mission_id, { targets: ['helpdesk', 'vehicle'] })
+    ).catch(e => {
+      console.error('[mission-pdf] driver-action attach échoué (non bloquant):', e.message)
+    })
+  }
+
   return NextResponse.json({ ok: true, mission: updated })
 }
