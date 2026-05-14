@@ -116,35 +116,20 @@ export async function PATCH(req: NextRequest) {
   }
   if (email) updateData.email = email.toLowerCase()
 
-  console.log('[PATCH users] userId =', userId, 'updateData =', JSON.stringify({
-    ...updateData,
-    odoo_api_key: updateData.odoo_api_key ? '***REDACTED***' : null,
-  }))
-
   const { data: updatedRow, error: userError } = await supabase
     .from('users')
     .update(updateData)
     .eq('id', userId)
-    .select('id, email, has_odoo_access, odoo_uid, odoo_api_key, phone')
+    .select('id')
     .maybeSingle()
 
   if (userError) {
     console.error('[PATCH users] Supabase error:', JSON.stringify(userError))
-    console.error('[PATCH users] updateData:', JSON.stringify(updateData))
     return NextResponse.json({ error: userError.message, details: userError }, { status: 500 })
   }
   if (!updatedRow) {
-    console.error('[PATCH users] Aucune ligne mise a jour pour userId =', userId)
     return NextResponse.json({ error: `Aucune ligne mise a jour (userId introuvable: ${userId})` }, { status: 404 })
   }
-  console.log('[PATCH users] Row updated =', JSON.stringify({
-    id:              updatedRow.id,
-    email:           updatedRow.email,
-    has_odoo_access: updatedRow.has_odoo_access,
-    odoo_uid:        updatedRow.odoo_uid,
-    has_api_key:     !!updatedRow.odoo_api_key,
-    phone:           updatedRow.phone,
-  }))
 
   // Email d'activation
   if (active && prevUser && !prevUser.active) {
