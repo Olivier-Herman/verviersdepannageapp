@@ -432,14 +432,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Input({ value, onChange, placeholder }: {
+function Input({ value, onChange, placeholder, readOnly, title }: {
   value: string; onChange: (v: string) => void; placeholder?: string
+  readOnly?: boolean
+  title?: string
 }) {
+  if (readOnly) {
+    return (
+      <input
+        value={value}
+        readOnly
+        placeholder={placeholder}
+        title={title}
+        className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink-secondary text-sm placeholder:text-ink-faint cursor-not-allowed"
+      />
+    )
+  }
   return (
     <input
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
+      title={title}
       className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
     />
   )
@@ -1281,7 +1295,13 @@ export default function MissionDetailClient({
                   )}
 
                   <Field label="Nom / Raison sociale">
-                    <Input value={form.billed_to_name} onChange={f('billed_to_name')} placeholder="Ex: Touring SA, Police Zone Vesdre..." />
+                    <Input
+                      value={form.billed_to_name}
+                      onChange={f('billed_to_name')}
+                      placeholder="Rempli automatiquement via la recherche ci-dessus"
+                      readOnly
+                      title="Champ en lecture seule — passe par la recherche ou clique sur '＋ Créer un nouveau client' si introuvable"
+                    />
                   </Field>
                   {!billedPartnerId && form.billed_to_name && (
                     <p className="text-warning text-xs mt-1.5">⚠ Pas de client lié — un nouveau sera créé à la confirmation.</p>
