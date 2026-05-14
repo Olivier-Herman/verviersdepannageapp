@@ -178,29 +178,35 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     if (!selectedUser) return
     setSaving(true)
     try {
+      const payload = {
+        userId:          selectedUser.id,
+        email:           userEmail,
+        role:            userRoles[0] || 'driver',
+        roles:           userRoles,
+        active:          userActive,
+        can_verify:      userCanVerify,
+        personal_email:  userPersonalEmail || null,
+        auth_provider:   userAuthProvider,
+        modules:         userModules,
+        tgr_push_notify: userTgrPush,
+        has_odoo_access: userHasOdooAccess,
+        odoo_api_key:    userOdooApiKey.trim() || null,
+        odoo_uid:        userOdooUid.trim() ? parseInt(userOdooUid) : null,
+        odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
+        towsoft_name:    userTowsoftName || null,
+        phone:           userPhone.trim() || null,
+      }
+      console.log('[saveUser] payload sent =', {
+        ...payload,
+        odoo_api_key: payload.odoo_api_key ? '***SET***' : null,
+      })
       const res = await fetch('/api/admin/users', {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId:          selectedUser.id,
-          email:           userEmail,
-          role:            userRoles[0] || 'driver',
-          roles:           userRoles,
-          active:          userActive,
-          can_verify:      userCanVerify,
-          personal_email:  userPersonalEmail || null,
-          auth_provider:   userAuthProvider,
-          modules:         userModules,
-          tgr_push_notify: userTgrPush,
-          has_odoo_access: userHasOdooAccess,
-          odoo_api_key:    userOdooApiKey.trim() || null,
-          odoo_uid:        userOdooUid.trim() ? parseInt(userOdooUid) : null,
-          odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
-          towsoft_name:    userTowsoftName || null,
-          phone:           userPhone.trim() || null,
-        }),
+        body:    JSON.stringify(payload),
       })
       const data = await res.json()
+      console.log('[saveUser] response =', { status: res.status, body: data })
       if (!res.ok) { alert('Erreur: ' + data.error); return }
       setSelectedUser(null)
       window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now()
