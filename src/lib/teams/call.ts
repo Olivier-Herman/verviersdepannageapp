@@ -90,14 +90,16 @@ export interface InitiateCallResult {
  * + une Teams Cloud Communications policy qui autorise les appels PSTN au bot.
  */
 export async function initiatePstnCall(params: InitiateCallParams): Promise<InitiateCallResult> {
-  // Source identity = Service Principal de l'App Reg, pas le user M365.
-  // C'est ce qu'attend Microsoft Graph Communications pour les bot calls.
-  const appSpId  = process.env.TEAMS_APP_SP_ID
+  // Source identity pour Microsoft Graph Communications PSTN bot calls :
+  // c'est l'AppId de l'App Reg (= TEAMS_CLIENT_ID), pas le Service Principal
+  // Object ID ni le user M365 Object ID. C'est l'identite canonique du bot
+  // Microsoft Bot Framework qui passe les appels.
+  const appId    = process.env.TEAMS_CLIENT_ID || process.env.AZURE_AD_CLIENT_ID
   const botPhone = process.env.TEAMS_BOT_PHONE
   const appBase  = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
 
-  if (!appSpId) {
-    return { ok: false, error: 'TEAMS_APP_SP_ID manquant (Service Principal Object ID, voir Azure → Enterprise applications)' }
+  if (!appId) {
+    return { ok: false, error: 'TEAMS_CLIENT_ID manquant (AppId de l\'App Registration Azure)' }
   }
   if (!botPhone) {
     return { ok: false, error: 'TEAMS_BOT_PHONE manquant (numero E.164 du bot)' }
@@ -121,7 +123,7 @@ export async function initiatePstnCall(params: InitiateCallParams): Promise<Init
         '@odata.type': '#microsoft.graph.identitySet',
         applicationInstance: {
           '@odata.type': '#microsoft.graph.identity',
-          id: appSpId,
+          id: appId,
           displayName: 'Verviers Dispatch',
         },
       },
