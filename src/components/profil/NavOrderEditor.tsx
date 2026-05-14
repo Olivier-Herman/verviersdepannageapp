@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -64,6 +65,7 @@ function SortableRow({ item }: SortableRowProps) {
 
 export default function NavOrderEditor({ initialItems, hasCustomOrder }: Props) {
   const router = useRouter()
+  const { update: updateSession } = useSession()
   const [items, setItems] = useState<NavItem[]>(initialItems)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -88,7 +90,10 @@ export default function NavOrderEditor({ initialItems, hasCustomOrder }: Props) 
         throw new Error(j.error || `Erreur ${res.status}`)
       }
       setSavedAt(Date.now())
-      // Refresh la page pour que la sidebar lise la nouvelle session
+      // 1. update() force useSession() a re-fetch /api/auth/session
+      //    → AppShell / Sidebar lisent l'ordre fraichement sauve sans relogin
+      // 2. router.refresh() re-render les server components au cas ou (defense)
+      await updateSession()
       router.refresh()
     } catch (e: any) {
       setError(e.message || 'Erreur reseau')
