@@ -98,6 +98,9 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   const [userAuthProvider, setUserAuthProvider] = useState('email_password')
   const [userTgrPush,      setUserTgrPush]      = useState(false)
   const [userHasOdooAccess, setUserHasOdooAccess] = useState(false)
+  const [userOdooApiKey,   setUserOdooApiKey]   = useState('')
+  const [userOdooUid,      setUserOdooUid]      = useState('')
+  const [showOdooKey,      setShowOdooKey]      = useState(false)
   const [userOdooId,       setUserOdooId]       = useState('')
   const [userModules,      setUserModules]      = useState<string[]>([])
   const [resetLoading,     setResetLoading]     = useState(false)
@@ -125,6 +128,9 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     setUserAuthProvider(user.auth_provider || 'email_password')
     setUserTgrPush(!!user.tgr_push_notify)
     setUserHasOdooAccess(!!user.has_odoo_access)
+    setUserOdooApiKey(user.odoo_api_key || '')
+    setUserOdooUid(user.odoo_uid ? String(user.odoo_uid) : '')
+    setShowOdooKey(false)
     setUserOdooId(user.odoo_partner_id ? String(user.odoo_partner_id) : '')
     setUserTowsoftName(user.towsoft_name || '')
     setUserModules(user.user_modules?.filter((m: any) => m.granted).map((m: any) => m.module_id) || [])
@@ -185,6 +191,8 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           modules:         userModules,
           tgr_push_notify: userTgrPush,
           has_odoo_access: userHasOdooAccess,
+          odoo_api_key:    userOdooApiKey.trim() || null,
+          odoo_uid:        userOdooUid.trim() ? parseInt(userOdooUid) : null,
           odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
           towsoft_name:    userTowsoftName || null,
         }),
@@ -412,12 +420,48 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
       {/* ── Accès Odoo ── */}
       <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
         <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Accès Odoo</p>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <span className="block text-ink-muted text-xs font-semibold uppercase tracking-wider">Activé</span>
-            <p className="text-ink-faint text-xs mt-0.5">Si activé, l'utilisateur verra le bouton "Ouvrir dans Odoo" sur les fiches véhicule, facture et autres (in-app). Si désactivé : consultation uniquement dans l'app.</p>
+            <p className="text-ink-faint text-xs mt-0.5">Si activé : bouton "Ouvrir dans Odoo" visible sur les fiches in-app. Sinon, consultation uniquement.</p>
           </div>
           <Toggle value={userHasOdooAccess} onChange={() => setUserHasOdooAccess(!userHasOdooAccess)} />
+        </div>
+
+        <div className="mb-3">
+          <label className={labelCls}>UID Odoo (res.users.id)</label>
+          <input
+            type="number"
+            placeholder="Ex: 12"
+            value={userOdooUid}
+            onChange={e => setUserOdooUid(e.target.value)}
+            className={inputCls}
+          />
+          <p className="text-ink-faint text-xs mt-1">ID utilisateur dans Odoo. À récupérer depuis <span className="font-mono">Paramètres → Utilisateurs</span> (mode dev → URL).</p>
+        </div>
+
+        <div>
+          <label className={labelCls}>Clé API Odoo personnelle</label>
+          <div className="relative">
+            <input
+              type={showOdooKey ? 'text' : 'password'}
+              placeholder="••••••••••••"
+              value={userOdooApiKey}
+              onChange={e => setUserOdooApiKey(e.target.value)}
+              className={inputCls + ' pr-20 font-mono'}
+              autoComplete="off"
+            />
+            {userOdooApiKey && (
+              <button
+                type="button"
+                onClick={() => setShowOdooKey(!showOdooKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-ink-muted hover:text-ink bg-surface-2 hover:bg-surface-hover rounded-md transition"
+              >
+                {showOdooKey ? 'Masquer' : 'Afficher'}
+              </button>
+            )}
+          </div>
+          <p className="text-ink-faint text-xs mt-1">Clé API personnelle de l'utilisateur (Odoo → Préférences → Sécurité du compte → Clés API). Permet aux écritures déclenchées depuis l'app d'être signées au nom de l'utilisateur. Si vide : utilise la clé maître.</p>
         </div>
       </div>
 
