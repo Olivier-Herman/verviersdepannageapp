@@ -40,22 +40,48 @@ interface SessionCookies {
 }
 
 /**
- * Parse les headers Set-Cookie d'une reponse en cookie header reutilisable.
- * Garde uniquement les paires name=value (drop des attributs Path, Expires, ...).
+ * Cookie jar minimal : merge plusieurs reponses Set-Cookie en gardant
+ * uniquement la DERNIERE valeur pour chaque nom. Critique pour ASP.NET
+ * FormsAuth : .ASPXAUTH anonyme (pre-login) doit etre ecrase par le
+ * .ASPXAUTH authentifie (post-login), sinon le serveur considere la
+ * session comme anonyme et renvoie NoPermission.
  */
-function parseCookies(res: Response): string {
-  const setCookies = res.headers.getSetCookie?.() || []
-  if (setCookies.length === 0) {
-    const single = res.headers.get('set-cookie')
-    if (single) setCookies.push(single)
+class CookieJar {
+  private jar = new Map<string, string>()
+
+  addFromResponse(res: Response): void {
+    const setCookies = res.headers.getSetCookie?.() || []
+    if (setCookies.length === 0) {
+      const single = res.headers.get('set-cookie')
+      if (single) setCookies.push(single)
+    }
+    for (const c of setCookies) {
+      const firstPair = c.split(';')[0]?.trim()
+      if (!firstPair) continue
+      const eqIdx = firstPair.indexOf('=')
+      if (eqIdx < 0) continue
+      const name = firstPair.slice(0, eqIdx).trim()
+      const value = firstPair.slice(eqIdx + 1).trim()
+      // Si la valeur est vide (Max-Age=0 ou explicit delete), on retire
+      if (!value || value === '""') {
+        this.jar.delete(name)
+      } else {
+        this.jar.set(name, value)
+      }
+    }
   }
-  const pairs: string[] = []
-  for (const c of setCookies) {
-    const firstPair = c.split(';')[0]?.trim()
-    if (firstPair) pairs.push(firstPair)
+
+  toHeader(): string {
+    return Array.from(this.jar.entries()).map(([n, v]) => `${n}=${v}`).join('; ')
   }
-  return pairs.join('; ')
+
+  size(): number {
+    return this.jar.size
+  }
 }
+
+/** User-Agent realiste : certains serveurs filtrent les UA non-browser. */
+const REAL_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
 /**
  * Login sur comet.vab.be.
@@ -75,47 +101,58 @@ export async function loginVab(): Promise<SessionCookies> {
     throw new Error('VAB_EMAIL et VAB_PASSWORD env vars sont requis')
   }
 
+  // CookieJar partage qui accumule les cookies tout au long du flow.
+  const jar = new CookieJar()
+
   // Essaie plusieurs entry points jusqu'a trouver la page de login.
   // VAB COMET est ASP.NET WebForms → .aspx avec __VIEWSTATE etc.
   const entryPaths = ['/Comet/Home.aspx', '/Comet/Default.aspx', '/COMET', '/']
   let initRes: Response | null = null
   let initUrl: string = ''
+  let initHtml: string = ''
   for (const path of entryPaths) {
     const url = `${VAB_BASE}${path}`
-    const r = await fetch(url, {
-      method:   'GET',
-      redirect: 'follow', // suit les eventuelles 302 vers la vraie page de login
-      headers: {
-        'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
-        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
-      },
-    })
-    if (r.status === 200) {
-      initRes = r
-      initUrl = r.url // URL finale apres redirects
-      console.log(`[vab/login] entry OK via ${path} → ${initUrl}`)
+    // redirect: 'manual' pour capturer TOUS les Set-Cookie de la chaine
+    let currentUrl = url
+    let currentRes: Response | null = null
+    // Suit les redirects manuellement et capture chaque Set-Cookie
+    for (let hop = 0; hop < 5; hop++) {
+      const r = await fetch(currentUrl, {
+        method:   'GET',
+        redirect: 'manual',
+        headers: {
+          'User-Agent':      REAL_UA,
+          'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+          'Cookie':          jar.toHeader(),
+        },
+      })
+      jar.addFromResponse(r)
+      if (r.status === 200) {
+        currentRes = r
+        break
+      }
+      if (r.status === 302 || r.status === 303) {
+        const loc = r.headers.get('location')
+        if (!loc) break
+        currentUrl = new URL(loc, currentUrl).toString()
+        continue
+      }
       break
     }
-    console.log(`[vab/login] entry ${path} status ${r.status}`)
+    if (currentRes && currentRes.status === 200) {
+      initRes = currentRes
+      initUrl = currentUrl
+      initHtml = await currentRes.text()
+      console.log(`[vab/login] entry OK via ${path} → ${initUrl} (cookies: ${jar.size()})`)
+      break
+    }
+    console.log(`[vab/login] entry ${path} : pas de 200 finale`)
   }
   if (!initRes) {
     throw new Error('VAB login : aucune page d\'entree trouvee parmi ' + entryPaths.join(', '))
   }
-
-  // initRes.headers ne contient pas tous les Set-Cookie apres redirect. Refait
-  // un GET sur initUrl en manual mode pour les recuperer.
-  const initManual = await fetch(initUrl, {
-    method:   'GET',
-    redirect: 'manual',
-    headers: {
-      'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
-      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
-    },
-  })
-  const initCookies = parseCookies(initManual)
-  const html = await initRes.text()
+  const html = initHtml
   const $ = cheerio.load(html)
 
   // Trouve le <form> de login : celui qui contient un input password
@@ -163,45 +200,64 @@ export async function loginVab(): Promise<SessionCookies> {
     console.log(`[vab/login] submit btn detecte : ${btnName}=${btnValue || 'Login'}`)
   }
 
-  // POST sur l'action URL
-  const loginRes = await fetch(submitUrl, {
-    method:   'POST',
-    redirect: 'manual',
-    headers: {
-      'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
-      'Content-Type':    'application/x-www-form-urlencoded',
-      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
-      'Cookie':          initCookies,
-      'Referer':         initUrl,
-      'Origin':          VAB_BASE,
-    },
-    body: formData.toString(),
-  })
+  // POST sur l'action URL en suivant manuellement les redirects pour
+  // capturer TOUS les Set-Cookie (notamment .ASPXAUTH apres la 302).
+  let postUrl = submitUrl
+  let loginRes: Response | null = null
+  for (let hop = 0; hop < 5; hop++) {
+    const r = await fetch(postUrl, {
+      method:   hop === 0 ? 'POST' : 'GET',
+      redirect: 'manual',
+      headers: {
+        'User-Agent':      REAL_UA,
+        'Content-Type':    hop === 0 ? 'application/x-www-form-urlencoded' : '',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
+        'Cookie':          jar.toHeader(),
+        'Referer':         initUrl,
+        'Origin':          VAB_BASE,
+      },
+      body: hop === 0 ? formData.toString() : undefined,
+    })
+    jar.addFromResponse(r)
+    if (r.status === 200) {
+      loginRes = r
+      break
+    }
+    if (r.status === 302 || r.status === 303) {
+      const loc = r.headers.get('location')
+      if (!loc) { loginRes = r; break }
+      postUrl = new URL(loc, postUrl).toString()
+      console.log(`[vab/login] redirect ${hop+1} -> ${postUrl}`)
+      continue
+    }
+    loginRes = r
+    break
+  }
+  if (!loginRes) throw new Error('VAB login : pas de reponse finale')
 
-  // 302/303 = success habituellement, mais ASP.NET peut retourner 200 si l'auth
-  // est gere via cookie set sur la reponse 200 elle-meme. On accepte les deux.
-  const sessionCookies = parseCookies(loginRes)
+  // Verifie qu'on n'est pas reste sur la page de login (auth ratee)
   if (loginRes.status === 200) {
-    // 200 = page rerenderee avec eventuelle erreur. Verifie qu'il n'y a pas un
-    // message d'erreur evident dans la reponse.
     const body = await loginRes.text().catch(() => '')
     if (/invalid|incorrect|erreur|wrong|failed/i.test(body) && /password|mot.?de.?passe/i.test(body)) {
-      throw new Error(`VAB login : creds invalides (page reload avec erreur). Snippet: ${body.slice(0, 300)}`)
+      throw new Error(`VAB login : creds invalides. Snippet: ${body.slice(0, 300)}`)
     }
-    // Sinon, suppose qu'on est passe (la session est dans le cookie)
+    // Si la page contient encore un input password, c'est probablement la
+    // page de login re-rendue (auth ratee silencieuse)
+    if (cheerio.load(body)('input[type="password"]').length > 0) {
+      throw new Error('VAB login : la reponse contient encore un champ password. Auth ratee. Snippet: ' + body.slice(0, 300))
+    }
   } else if (loginRes.status !== 302 && loginRes.status !== 303) {
     const body = await loginRes.text().catch(() => '')
-    throw new Error(`VAB login : status ${loginRes.status}. URL: ${submitUrl}. Snippet: ${body.slice(0, 500)}`)
+    throw new Error(`VAB login : status ${loginRes.status}. URL: ${postUrl}. Snippet: ${body.slice(0, 500)}`)
   }
 
-  // Combine init + session cookies
-  const allCookies = [initCookies, sessionCookies].filter(Boolean).join('; ')
-  if (!allCookies) {
+  const cookieHeader = jar.toHeader()
+  if (!cookieHeader) {
     throw new Error('VAB login : aucun cookie de session retourne')
   }
-  console.log(`[vab/login] OK, status ${loginRes.status}, cookie ${allCookies.length} bytes`)
-  return { cookieHeader: allCookies }
+  console.log(`[vab/login] OK, ${jar.size()} cookies (header ${cookieHeader.length} bytes)`)
+  return { cookieHeader }
 }
 
 /**
@@ -233,7 +289,7 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
       method: 'GET',
       redirect: 'follow', // suit eventuelles 302
       headers: {
-        'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+        'User-Agent':      REAL_UA,
         'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
         'Cookie':          session.cookieHeader,
@@ -255,7 +311,7 @@ export async function listVabMissions(session: SessionCookies): Promise<{ missio
       method: 'GET',
       redirect: 'follow',
       headers: {
-        'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+        'User-Agent':      REAL_UA,
         'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Cookie':          session.cookieHeader,
       },
@@ -433,7 +489,7 @@ export async function sendVabMissionEmail(
     method: 'GET',
     redirect: 'manual',
     headers: {
-      'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+      'User-Agent':      REAL_UA,
       'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
       'Cookie':          session.cookieHeader,
@@ -506,7 +562,7 @@ export async function sendVabMissionEmail(
     method: 'POST',
     redirect: 'manual',
     headers: {
-      'User-Agent':      'Mozilla/5.0 (compatible; Verviers-App/1.0)',
+      'User-Agent':      REAL_UA,
       'Content-Type':    'application/x-www-form-urlencoded',
       'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'fr-BE,fr;q=0.9,en;q=0.8',
