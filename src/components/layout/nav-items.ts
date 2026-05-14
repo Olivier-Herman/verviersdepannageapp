@@ -17,13 +17,15 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',     label: 'Dashboard',        icon: '🏠', moduleId: null },
+  { href: '/recherche',     label: 'Recherche',        icon: '🔍', moduleId: null },
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
   { href: '/mission',       label: 'Mes Missions',     icon: '🚗', moduleId: 'driver_missions' },
   { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
-  { href: '/facturation',   label: 'Facturation',      icon: '🧾', moduleId: 'facturation' },
-  { href: '/finance',       label: 'Finance',          icon: '💵', moduleId: 'finance' },
+  { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
+  { href: '/missions-terminees', label: 'Missions terminées', icon: '📂', moduleId: 'facturation_or_missions' },
+  { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
-  { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔍', moduleId: 'check_vehicle' },
+  { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔧', moduleId: 'check_vehicle' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
   // 'Mon Profil' retire de la sidebar : doublon avec le UserBlock cliquable
@@ -52,6 +54,9 @@ export function filterNavItems(opts: {
           || userModules.includes('caisse')
           || userModules.includes('avance_fonds')
           || userModules.includes('relances')
+    }
+    if (item.moduleId === 'facturation_or_missions') {
+      return userModules.includes('facturation') || userModules.includes('missions')
     }
     return userModules.includes(item.moduleId)
   })

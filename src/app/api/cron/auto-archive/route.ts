@@ -1,12 +1,12 @@
 // src/app/api/cron/auto-archive/route.ts
 //
 // Cron quotidien (3h du matin UTC). Archive automatiquement les missions
-// completed depuis > 7 jours apres facturation complete.
+// completed depuis > 7 jours apres facturation OU non-facturation (sans frais).
 //
 // Regle critique pour les chaines REM ↔ REL :
 //   on n'archive UNE mission de la chaine que si TOUS les maillons sont
-//   completed depuis > 7 jours. Empeche d'archiver une REM alors que la
-//   REL est encore active (sinon UX cassee dans le dispatch).
+//   completed depuis > 7 jours (chacun soit facture, soit sans frais).
+//   Empeche d'archiver une REM alors que la REL est encore active.
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -16,8 +16,21 @@ import { createAdminClient } from '@/lib/supabase'
 
 const ARCHIVE_DELAY_DAYS = 7
 
+interface ChainMission {
+  id:                string
+  parent_mission_id: string | null
+  status:            string
+  invoiced_at:       string | null
+  no_charge_at:      string | null
+}
+
+function chainSettled(m: ChainMission, cutoff: string): boolean {
+  if (m.status !== 'completed') return false
+  const settledAt = m.invoiced_at || m.no_charge_at
+  return Boolean(settledAt) && settledAt! < cutoff
+}
+
 export async function GET(req: Request) {
-  // Auth Vercel cron (header Bearer CRON_SECRET)
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -26,14 +39,13 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
   const cutoff = new Date(Date.now() - ARCHIVE_DELAY_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
-  // 1) Candidats : missions completed avec invoiced_at < cutoff et archived_at NULL
+  // 1) Candidats : missions completed reglees (facture OU sans frais) avant cutoff
   const { data: candidates, error } = await sb
     .from('incoming_missions')
-    .select('id, parent_mission_id, status, invoiced_at, external_id')
+    .select('id, parent_mission_id, status, invoiced_at, no_charge_at, external_id')
     .eq('status', 'completed')
-    .not('invoiced_at', 'is', null)
-    .lt('invoiced_at', cutoff)
     .is('archived_at', null)
+    .or('invoiced_at.not.is.null,no_charge_at.not.is.null')
     .limit(500)
 
   if (error) {
@@ -44,55 +56,55 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, archived: 0 })
   }
 
-  // 2) Pour chaque candidat, verifier que sa chaine REM+REL est totalement
-  //    completed depuis > 7j. On rassemble les IDs concernes pour eviter les
-  //    queries Supabase une-par-une.
-  const candidateIds   = candidates.map(m => m.id)
-  const parentIds      = candidates.map(m => m.parent_mission_id).filter(Boolean) as string[]
+  // Filtre cutoff cote app (Supabase ne supporte pas COALESCE dans .lt() facilement)
+  const eligible = candidates.filter(m => {
+    const settledAt = m.invoiced_at || m.no_charge_at
+    return settledAt && settledAt < cutoff
+  })
 
-  // Charger parents (pour les REL) et enfants (pour les REM)
-  const { data: chainMissions } = await sb
-    .from('incoming_missions')
-    .select('id, parent_mission_id, status, invoiced_at')
-    .or(
-      [
-        parentIds.length > 0  ? `id.in.(${parentIds.join(',')})` : '',
-        candidateIds.length   ? `parent_mission_id.in.(${candidateIds.join(',')})` : '',
-      ].filter(Boolean).join(',')
-    )
+  if (eligible.length === 0) {
+    return NextResponse.json({ ok: true, archived: 0, candidates: candidates.length })
+  }
 
-  const chainById = new Map<string, any>()
-  ;(chainMissions || []).forEach(m => chainById.set(m.id, m))
-  const childrenByParent = new Map<string, any[]>()
+  // 2) Verifier la chaine REM+REL : tous les maillons doivent etre regles depuis > cutoff
+  const candidateIds = eligible.map(m => m.id)
+  const parentIds    = eligible.map(m => m.parent_mission_id).filter(Boolean) as string[]
+
+  const orClauses = [
+    parentIds.length > 0  ? `id.in.(${parentIds.join(',')})` : '',
+    candidateIds.length   ? `parent_mission_id.in.(${candidateIds.join(',')})` : '',
+  ].filter(Boolean).join(',')
+
+  const { data: chainMissions } = orClauses
+    ? await sb
+        .from('incoming_missions')
+        .select('id, parent_mission_id, status, invoiced_at, no_charge_at')
+        .or(orClauses)
+    : { data: [] as ChainMission[] }
+
+  const chainById = new Map<string, ChainMission>()
+  ;(chainMissions || []).forEach(m => chainById.set(m.id, m as ChainMission))
+  const childrenByParent = new Map<string, ChainMission[]>()
   ;(chainMissions || []).forEach(m => {
     if (!m.parent_mission_id) return
     const arr = childrenByParent.get(m.parent_mission_id) || []
-    arr.push(m)
+    arr.push(m as ChainMission)
     childrenByParent.set(m.parent_mission_id, arr)
   })
 
   const toArchive: string[] = []
 
-  for (const m of candidates) {
+  for (const m of eligible) {
     let chainOk = true
 
-    // Verifier le parent (si REL)
     if (m.parent_mission_id) {
       const parent = chainById.get(m.parent_mission_id)
-      if (!parent) {
-        // Parent disparu : on archive quand meme
-      } else if (parent.status !== 'completed' || !parent.invoiced_at || parent.invoiced_at >= cutoff) {
-        chainOk = false
-      }
+      if (parent && !chainSettled(parent, cutoff)) chainOk = false
     }
 
-    // Verifier les enfants REL (si REM)
     const children = childrenByParent.get(m.id) || []
     for (const child of children) {
-      if (child.status !== 'completed' || !child.invoiced_at || child.invoiced_at >= cutoff) {
-        chainOk = false
-        break
-      }
+      if (!chainSettled(child, cutoff)) { chainOk = false; break }
     }
 
     if (chainOk) toArchive.push(m.id)
@@ -103,11 +115,11 @@ export async function GET(req: Request) {
       ok: true,
       archived: 0,
       candidates: candidates.length,
-      skipped_chain_incomplete: candidates.length,
+      eligible:   eligible.length,
+      skipped_chain_incomplete: eligible.length,
     })
   }
 
-  // 3) UPDATE en batch
   const now = new Date().toISOString()
   const { error: updErr } = await sb
     .from('incoming_missions')
@@ -122,9 +134,10 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    archived: toArchive.length,
+    archived:   toArchive.length,
     candidates: candidates.length,
-    skipped_chain_incomplete: candidates.length - toArchive.length,
-    cutoff_at: cutoff,
+    eligible:   eligible.length,
+    skipped_chain_incomplete: eligible.length - toArchive.length,
+    cutoff_at:  cutoff,
   })
 }

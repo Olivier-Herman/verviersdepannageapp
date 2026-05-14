@@ -40,7 +40,8 @@ async function odooCall<T = any>(model: string, method: string, args: any[] = []
   return data.result
 }
 
-const PER_CATEGORY_LIMIT = 8
+const PER_CATEGORY_LIMIT_DEFAULT = 8
+const PER_CATEGORY_LIMIT_FULL    = 30
 
 interface SearchResult {
   category:     'mission' | 'encaissement' | 'avance' | 'invoice' | 'driver' | 'user' | 'vehicle'
@@ -109,6 +110,10 @@ export async function GET(req: Request) {
   const wantedCats = catsParam ? new Set(catsParam.split(',').map(c => c.trim()).filter(Boolean)) : null
   const wants = (cat: string) => !wantedCats || wantedCats.has(cat)
 
+  // Mode "full" : utilise par la page /recherche pour ratisser plus large
+  const fullMode = searchParams.get('full') === '1'
+  const PER_CATEGORY_LIMIT = fullMode ? PER_CATEGORY_LIMIT_FULL : PER_CATEGORY_LIMIT_DEFAULT
+
   const q                = qRaw                                  // version brute
   const qLike            = `%${q}%`
   const qPlate           = normalizePlate(q)                     // pour plaques
@@ -121,7 +126,7 @@ export async function GET(req: Request) {
   if (wants('mission')) {
     const missionsQuery = sb
     .from('incoming_missions')
-    .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at')
+    .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
     .or([
       `external_id.ilike.${qLike}`,
       `dossier_number.ilike.${qLike}`,
@@ -141,7 +146,7 @@ export async function GET(req: Request) {
   if (qPlate.length >= 2) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at')
+      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
       .not('vehicle_plate', 'is', null)
       .order('received_at', { ascending: false })
       .limit(200)
@@ -154,7 +159,7 @@ export async function GET(req: Request) {
   if (dateRange) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at')
+      .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
       .gte('intervention_date', dateRange.from)
       .lte('intervention_date', dateRange.to)
       .order('intervention_date', { ascending: false })
@@ -173,14 +178,19 @@ export async function GET(req: Request) {
   for (const m of missions) {
     const plate = m.vehicle_plate || '—'
     const veh   = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
-    const archivedPrefix = m.archived_at ? '🗄 ' : ''
-    const archivedMeta   = m.archived_at ? ' · 🗄 Archivée' : ''
+    const archivedPrefix = m.archived_at ? '🗄 ' : m.no_charge_at ? '🚫 ' : ''
+    const statusExtras: string[] = []
+    if (m.archived_at)   statusExtras.push('🗄 Archivée')
+    if (m.no_charge_at)  statusExtras.push(`🚫 Sans frais${m.no_charge_reason ? ' — ' + m.no_charge_reason : ''}`)
+    else if (m.invoice_method === 'auto')    statusExtras.push('⚡ Autofacturée')
+    else if (m.invoice_number)               statusExtras.push(`🧾 ${m.invoice_number}`)
+    const extrasStr = statusExtras.length ? ' · ' + statusExtras.join(' · ') : ''
     out.push({
       category: 'mission',
       id:       m.id,
       title:    `${archivedPrefix}${m.external_id || m.dossier_number || m.id.slice(0, 8)} · ${plate}`,
       subtitle: [m.client_name, veh, m.incident_address].filter(Boolean).join(' · '),
-      meta:     `${m.source || ''} · ${m.status}${archivedMeta} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
+      meta:     `${m.source || ''} · ${m.status}${extrasStr} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
       href:     `/dispatch/${m.id}`,
     })
   }

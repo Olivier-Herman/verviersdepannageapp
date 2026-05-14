@@ -338,6 +338,19 @@ export default function GlobalSearch() {
               <span className="hidden sm:flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 rounded bg-surface border font-mono">⏎</kbd> ouvrir</span>
               <span className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 rounded bg-surface border font-mono">Esc</kbd> fermer</span>
               <span className="flex-1" />
+              {query.trim().length >= 2 && (
+                <button
+                  onClick={() => {
+                    const q = query.trim()
+                    setOpen(false)
+                    router.push(`/recherche?q=${encodeURIComponent(q)}`)
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-brand/15 to-purple-500/15 hover:from-brand/30 hover:to-purple-500/30 text-brand font-semibold border border-brand/30 transition"
+                  title="Voir tous les résultats sur la page dédiée"
+                >
+                  Page recherche →
+                </button>
+              )}
               {total > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-medium border border-brand/20">
                   {total} résultat{total > 1 ? 's' : ''}

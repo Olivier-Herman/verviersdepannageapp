@@ -39,7 +39,8 @@ export default async function FacturationPage() {
       received_at, intervention_date, completed_at,
       amount_to_collect, amount_collected, payment_method,
       assigned_to,
-      invoice_method, invoice_number, invoice_url
+      invoice_method, invoice_number, invoice_url,
+      no_charge_at, no_charge_reason
     `)
     .eq('status', 'to_invoice')
     .order('completed_at', { ascending: false, nullsFirst: false })
@@ -63,7 +64,8 @@ export default async function FacturationPage() {
         mission_type, incident_type, parent_mission_id,
         client_name, vehicle_plate,
         received_at, completed_at,
-        invoice_method, invoice_number
+        invoice_method, invoice_number,
+        no_charge_at, no_charge_reason
       `)
       .or(
         [

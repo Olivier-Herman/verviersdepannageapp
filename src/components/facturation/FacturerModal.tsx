@@ -26,6 +26,8 @@ interface BaseMission {
   payment_method?: string | null
   invoice_method: string | null
   invoice_number: string | null
+  no_charge_at?:     string | null
+  no_charge_reason?: string | null
 }
 
 interface PaymentRow {
@@ -118,7 +120,7 @@ function Copyable({ value, label, mono }: { value: string; label?: string; mono?
 }
 
 function MissionBlock({
-  m, payments, driverName, busy, onValidate, onAuto,
+  m, payments, driverName, busy, onValidate, onAuto, onNoCharge,
 }: {
   m:          BaseMission
   payments:   PaymentRow[]
@@ -126,6 +128,7 @@ function MissionBlock({
   busy:       boolean
   onValidate: () => void
   onAuto:     () => void
+  onNoCharge: () => void
 }) {
   const [km, setKm] = useState<KmData | null>(null)
   const [kmLoading, setKmLoading] = useState(true)
@@ -162,9 +165,13 @@ function MissionBlock({
           </span>
         </div>
         {!isReady && (
-          <span className="text-xs px-2 py-0.5 rounded bg-ink-faint/15 text-ink-muted">
+          <span className="text-xs px-2 py-0.5 rounded bg-ink-faint/15 text-ink-muted" title={m.no_charge_reason || undefined}>
             {m.status === 'completed'
-              ? (m.invoice_method === 'auto' ? 'auto-facturée' : `facturée ${m.invoice_number || ''}`)
+              ? (m.no_charge_at
+                  ? `🚫 sans frais${m.no_charge_reason ? ' — ' + m.no_charge_reason : ''}`
+                  : m.invoice_method === 'auto'
+                    ? 'auto-facturée'
+                    : `facturée ${m.invoice_number || ''}`)
               : m.status}
           </span>
         )}
@@ -250,22 +257,32 @@ function MissionBlock({
 
       {/* Actions par fiche */}
       {isReady && (
-        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+        <div className="space-y-2 pt-1">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onValidate}
+              className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+            >
+              {busy ? '⏳…' : '✓ Facturation OK'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onAuto}
+              className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink rounded-xl text-sm font-semibold transition"
+            >
+              {busy ? '⏳…' : '⚡ Autofacturation'}
+            </button>
+          </div>
           <button
             type="button"
             disabled={busy}
-            onClick={onValidate}
-            className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+            onClick={onNoCharge}
+            className="w-full py-2 bg-transparent hover:bg-surface-hover disabled:opacity-50 border border-dashed text-ink-secondary hover:text-ink rounded-xl text-xs font-medium transition"
           >
-            {busy ? '⏳…' : '✓ Facturation OK'}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onAuto}
-            className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink rounded-xl text-sm font-semibold transition"
-          >
-            {busy ? '⏳…' : '⚡ Autofacturation'}
+            🚫 Intervention sans frais
           </button>
         </div>
       )}
@@ -280,6 +297,8 @@ export default function FacturerModal({
   const [error, setError]             = useState<string | null>(null)
   const [numberPrompt, setNumberPrompt] = useState<{ ids: string[]; label: string } | null>(null)
   const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [noChargePrompt, setNoChargePrompt] = useState<{ ids: string[]; label: string } | null>(null)
+  const [noChargeReason, setNoChargeReason] = useState('')
 
   // Bloque le scroll de fond + ferme sur Escape
   useEffect(() => {
@@ -346,6 +365,40 @@ export default function FacturerModal({
     submit('manual', numberPrompt.ids, n)
   }
 
+  function askNoCharge(ids: string[], label: string) {
+    setNoChargePrompt({ ids, label })
+    setNoChargeReason('')
+  }
+
+  async function confirmNoCharge() {
+    if (!noChargePrompt) return
+    const reason = noChargeReason.trim()
+    if (reason.length < 4) { setError('Motif requis (min 4 caractères)'); return }
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/missions/no-charge', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_ids: noChargePrompt.ids, reason }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        setError(j.error || `Erreur ${res.status}`)
+        setBusy(false)
+        return
+      }
+      onUpdated(j.updated || [])
+      setNoChargePrompt(null)
+      setNoChargeReason('')
+      const remaining = all.filter(m => !noChargePrompt.ids.includes(m.id)).filter(m => m.status === 'to_invoice')
+      if (remaining.length === 0) onClose()
+    } catch (e: any) {
+      setError(e.message || 'Erreur réseau')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/60 backdrop-blur-sm"
          onClick={onClose}>
@@ -405,6 +458,7 @@ export default function FacturerModal({
                 busy={busy}
                 onValidate={() => askNumber([m.id], m.external_id || m.id.slice(0,8))}
                 onAuto={() => submit('auto', [m.id])}
+                onNoCharge={() => askNoCharge([m.id], m.external_id || m.id.slice(0,8))}
               />
             ))}
           </div>
@@ -434,6 +488,14 @@ export default function FacturerModal({
                   ⚡ Tout autofacturer
                 </button>
               </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => askNoCharge(readyIds, 'chaîne complète')}
+                className="w-full py-2 bg-transparent hover:bg-surface-hover disabled:opacity-50 border border-dashed text-ink-secondary hover:text-ink rounded-xl text-xs font-medium transition"
+              >
+                🚫 Toute la chaîne sans frais
+              </button>
             </div>
           )}
 
@@ -444,6 +506,50 @@ export default function FacturerModal({
           )}
         </div>
       </div>
+
+      {/* Sub-modal : motif intervention sans frais */}
+      {noChargePrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4"
+             onClick={() => { if (!busy) setNoChargePrompt(null) }}>
+          <div onClick={e => e.stopPropagation()}
+               className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
+            <div>
+              <h3 className="text-ink font-semibold text-base">🚫 Intervention sans frais</h3>
+              <p className="text-ink-muted text-xs mt-1">Pour {noChargePrompt.label}</p>
+              <p className="text-ink-secondary text-xs mt-2">Motif obligatoire (min 4 caractères) — ex: Momo, geste commercial, ami, etc.</p>
+            </div>
+            <textarea
+              autoFocus
+              value={noChargeReason}
+              onChange={e => setNoChargeReason(e.target.value)}
+              placeholder="Motif libre…"
+              rows={3}
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint resize-none"
+            />
+            <p className="text-ink-faint text-[10px]">
+              {noChargeReason.trim().length}/4 caractères minimum
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setNoChargePrompt(null)}
+                className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-xl text-sm transition"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={busy || noChargeReason.trim().length < 4}
+                onClick={confirmNoCharge}
+                className="flex-1 py-2.5 bg-warning hover:opacity-90 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+              >
+                {busy ? '⏳…' : 'Valider sans frais'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sub-modal : saisie numero facture */}
       {numberPrompt && (

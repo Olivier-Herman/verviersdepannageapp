@@ -31,6 +31,8 @@ interface MissionRow {
   invoice_method: string | null
   invoice_number: string | null
   invoice_url: string | null
+  no_charge_at:     string | null
+  no_charge_reason: string | null
 }
 
 interface SiblingRow {
@@ -47,6 +49,8 @@ interface SiblingRow {
   completed_at: string | null
   invoice_method: string | null
   invoice_number: string | null
+  no_charge_at:     string | null
+  no_charge_reason: string | null
 }
 
 interface PaymentRow {
