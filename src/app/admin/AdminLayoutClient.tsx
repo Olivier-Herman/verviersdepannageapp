@@ -9,6 +9,7 @@ import { useTheme } from '@/components/theme/ThemeProvider'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import AmbientBackground from '@/components/AmbientBackground'
+import NotificationsProvider from '@/components/notifications/NotificationsProvider'
 
 export default function AdminLayoutClient({
   children,
@@ -31,6 +32,7 @@ export default function AdminLayoutClient({
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
 
   return (
+   <NotificationsProvider userId={userId || null}>
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
@@ -126,5 +128,6 @@ export default function AdminLayoutClient({
         </main>
       </div>
     </div>
+   </NotificationsProvider>
   )
 }
