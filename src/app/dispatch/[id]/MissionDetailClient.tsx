@@ -904,6 +904,27 @@ export default function MissionDetailClient({
     return brandOk && modelOk ? 'match' : 'mismatch'
   }
 
+  // Auto-lien : si un seul resultat avec plaque exacte + marque/modele coherents
+  // (ou vides cote form), on lie sans clic. Couvre le cas nominal (VAB qui prefill
+  // brand/model identiques au vehicule Odoo). Le dispatcher peut toujours delier.
+  useEffect(() => {
+    if (odooVehicleId) return
+    if (vehicleResults.length !== 1) return
+    const v = vehicleResults[0]
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[-.\s]/g, '')
+    if (norm(v.plate) !== norm(form.vehicle_plate)) return
+    const fuzzy = (a: string, b: string) => {
+      const na = norm(a), nb = norm(b)
+      if (!na || !nb) return false
+      return na.includes(nb) || nb.includes(na)
+    }
+    const brandOk = !form.vehicle_brand || fuzzy(v.brand, form.vehicle_brand)
+    const modelOk = !form.vehicle_model || fuzzy(v.model, form.vehicle_model)
+    if (!brandOk || !modelOk) return
+    selectOdooVehicle(v)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleResults, odooVehicleId])
+
   const [M, setM] = useState<Mission>(initialMission)
   const [saveOk, setSaveOk] = useState(false)
   const [kmRefresh, setKmRefresh] = useState(0)  // incrémenté à chaque save → force le re-calcul des KM
