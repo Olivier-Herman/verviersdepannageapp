@@ -361,17 +361,37 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     new_amount: number | null
     note: string | null
   } | null>(null)
+  const [derogManageOpen, setDerogManageOpen] = useState(false)
   const handleDerogTap = () => {
-    if (derogPending) return  // demande deja en cours
     const next = derogTapCount + 1
     setDerogTapCount(next)
     if (derogTapTimer) clearTimeout(derogTapTimer)
     if (next >= 5) {
       setDerogTapCount(0)
-      setDerogModalOpen(true)
+      // Si une demande existe deja : modal de gestion (modifier / annuler / nouveau)
+      if (derogPending) {
+        setDerogManageOpen(true)
+      } else {
+        setDerogModalOpen(true)
+      }
       return
     }
     setDerogTapTimer(setTimeout(() => setDerogTapCount(0), 2000))
+  }
+  const cancelDerogation = async () => {
+    if (!derogPending) return
+    setDerogSubmitting(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}/payment-derogation`, { method: 'DELETE' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setDerogPending(null)
+      setDerogManageOpen(false)
+    } catch (e: any) {
+      setErr(e.message || 'Erreur')
+    } finally {
+      setDerogSubmitting(false)
+    }
   }
 
   // ── Set amount_to_collect (geste 5-taps cache sur Dossier) ──────────────────
@@ -429,8 +449,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     if (motive.length < 5) { setErr('Motif trop court'); return }
     setDerogSubmitting(true); setErr('')
     try {
+      // Si une demande pending existe deja → PATCH (modifier le motif).
+      // Sinon → POST (nouvelle demande).
+      const method = derogPending ? 'PATCH' : 'POST'
       const r = await fetch(`/api/missions/${M.id}/payment-derogation`, {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ motive }),
       })
@@ -1470,6 +1493,51 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         </div>
       )}
 
+      {/* Modal "Gestion d'une demande existante" : declenche si 5-taps alors qu une demande est pending */}
+      {derogManageOpen && derogPending && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !derogSubmitting && setDerogManageOpen(false)}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <div>
+              <p className="text-ink font-semibold">⏳ Demande déjà en attente</p>
+              <p className="text-ink-muted text-xs mt-0.5">Une demande de dérogation est déjà en attente de validation par le dispatcher pour cette mission.</p>
+            </div>
+            <div className="bg-warning-soft border border-warning rounded-xl p-3">
+              <p className="text-ink-muted text-xs uppercase tracking-wide mb-1">Motif actuel</p>
+              <p className="text-ink text-sm whitespace-pre-wrap">{derogPending.motive}</p>
+            </div>
+            {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
+            <button
+              onClick={() => { setDerogManageOpen(false); setDerogMotive(derogPending.motive); setDerogModalOpen(true) }}
+              disabled={derogSubmitting}
+              className="w-full py-3 bg-brand text-white font-semibold rounded-2xl text-sm">
+              ✏️ Modifier le motif
+            </button>
+            <button
+              onClick={cancelDerogation}
+              disabled={derogSubmitting}
+              className="w-full py-3 bg-critical text-white font-medium rounded-2xl text-sm disabled:opacity-50">
+              {derogSubmitting ? '⏳…' : '🗑️ Annuler la demande'}
+            </button>
+            <button
+              onClick={async () => {
+                await cancelDerogation()
+                setDerogMotive('')
+                setDerogModalOpen(true)
+              }}
+              disabled={derogSubmitting}
+              className="w-full py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm disabled:opacity-50">
+              🗑️➕ Annuler + nouvelle demande
+            </button>
+            <button
+              onClick={() => setDerogManageOpen(false)}
+              disabled={derogSubmitting}
+              className="w-full py-2 text-ink-muted text-xs">
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal "Définir un montant à encaisser" (geste 5-taps sur Dossier) */}
       {setAmtModalOpen && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !setAmtSubmitting && setSetAmtModalOpen(false)}>
@@ -1543,8 +1611,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !derogSubmitting && setDerogModalOpen(false)}>
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div>
-              <p className="text-ink font-semibold">🆘 Demande de dérogation paiement</p>
-              <p className="text-ink-muted text-xs mt-0.5">Le dispatcheur de garde sera notifié. Indique pourquoi le client ne peut/veut pas payer.</p>
+              <p className="text-ink font-semibold">{derogPending ? '✏️ Modifier la demande de dérogation' : '🆘 Demande de dérogation paiement'}</p>
+              <p className="text-ink-muted text-xs mt-0.5">{derogPending ? 'Le motif sera mis à jour. Le dispatcheur verra la nouvelle version.' : 'Le dispatcheur de garde sera notifié. Indique pourquoi le client ne peut/veut pas payer.'}</p>
             </div>
             <textarea
               value={derogMotive}
@@ -1560,7 +1628,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
               <button onClick={submitDerogation} disabled={derogSubmitting || derogMotive.trim().length < 5}
                 className="flex-1 py-3 bg-brand disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
-                {derogSubmitting ? '⏳…' : 'Envoyer la demande'}
+                {derogSubmitting ? '⏳…' : (derogPending ? 'Enregistrer' : 'Envoyer la demande')}
               </button>
             </div>
           </div>

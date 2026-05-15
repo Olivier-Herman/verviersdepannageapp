@@ -111,3 +111,79 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return NextResponse.json({ ok: true, derogation_id: derogation.id })
 }
+
+// PATCH : le chauffeur modifie le motif d une demande pending (la sienne)
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json() as { motive?: string }
+  const motive = (body.motive || '').trim()
+  if (!motive || motive.length < 5) return NextResponse.json({ error: 'Motif trop court' }, { status: 400 })
+
+  const sb = createAdminClient()
+  const { data: me } = await sb
+    .from('users')
+    .select('id, name')
+    .eq('email', session.user.email!)
+    .single()
+  if (!me) return NextResponse.json({ error: 'User introuvable' }, { status: 401 })
+
+  // Update uniquement si encore pending ET cree par ce chauffeur
+  const { data: updated, error } = await sb
+    .from('payment_derogations')
+    .update({ motive })
+    .eq('mission_id', params.id)
+    .eq('requested_by', me.id)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!updated) return NextResponse.json({ error: 'Aucune demande pending a modifier' }, { status: 404 })
+
+  await sb.from('mission_logs').insert({
+    mission_id: params.id,
+    actor_id:   me.id,
+    action:     'payment_derogation_modified',
+    notes:      `Motif modifié : ${motive}`,
+  })
+
+  return NextResponse.json({ ok: true })
+}
+
+// DELETE : le chauffeur annule sa demande pending
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const sb = createAdminClient()
+  const { data: me } = await sb
+    .from('users')
+    .select('id, name')
+    .eq('email', session.user.email!)
+    .single()
+  if (!me) return NextResponse.json({ error: 'User introuvable' }, { status: 401 })
+
+  // Hard delete : pas encore decide, aucun audit metier a preserver (le log
+  // mission_logs garde la trace de l intention initiale)
+  const { data: deleted, error } = await sb
+    .from('payment_derogations')
+    .delete()
+    .eq('mission_id', params.id)
+    .eq('requested_by', me.id)
+    .eq('status', 'pending')
+    .select('id')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!deleted || deleted.length === 0) {
+    return NextResponse.json({ error: 'Aucune demande pending a annuler' }, { status: 404 })
+  }
+
+  await sb.from('mission_logs').insert({
+    mission_id: params.id,
+    actor_id:   me.id,
+    action:     'payment_derogation_cancelled',
+    notes:      'Demande annulée par le chauffeur',
+  })
+
+  return NextResponse.json({ ok: true })
+}
