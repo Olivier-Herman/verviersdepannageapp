@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase'
 import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import NewInterventionButton from '@/components/mission/NewInterventionButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,10 +60,7 @@ export default async function MissionListPage() {
               <p className="text-4xl mb-4">🚗</p>
               <p className="font-medium text-ink mb-1">Aucune mission assignée</p>
               <p className="text-sm mb-6">Les missions te seront notifiées automatiquement.</p>
-              <Link href="/mission/new"
-                className="inline-flex items-center gap-2 px-5 py-3 bg-brand text-white rounded-2xl font-semibold text-sm">
-                + Nouvelle intervention
-              </Link>
+              <NewInterventionButton variant="cta" />
             </div>
           )}
 
@@ -111,13 +109,7 @@ export default async function MissionListPage() {
         </div>
 
         {/* ── FAB Nouvelle intervention ─────────────────────────────────── */}
-        <Link
-          href="/mission/new"
-          className="fixed bottom-6 right-5 w-16 h-16 bg-brand rounded-full shadow-2xl flex items-center justify-center text-ink text-3xl font-bold z-20 active:scale-95 transition-transform"
-          title="Nouvelle intervention"
-        >
-          +
-        </Link>
+        <NewInterventionButton variant="fab" />
       </AmbientBackground>
     </AppShell>
   )
