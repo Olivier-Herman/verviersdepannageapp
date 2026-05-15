@@ -1955,10 +1955,10 @@ export default function MissionDetailClient({
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
                     🛠 Actions dispatcher
                   </h3>
-                  <p className="text-ink-faint text-xs mb-3">
-                    Force le statut de la mission sans passer par le pointage chauffeur (utile pour débloquer une mission abandonnée ou clôturer sans photos).
+                  <p className="text-ink-faint text-xs mb-4">
+                    Force le statut de la mission sans passer par le pointage chauffeur (utile pour débloquer ou clôturer sans photos).
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="space-y-2">
                     <button type="button"
                       onClick={async () => {
                         if (!confirm('Réinitialiser la mission en "En attente" et désassigner le chauffeur ?')) return
@@ -1974,8 +1974,12 @@ export default function MissionDetailClient({
                           router.refresh()
                         } catch (e: any) { alert('Erreur : ' + e.message) }
                       }}
-                      className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-xl text-xs font-medium transition">
-                      🔄 Réinitialiser
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-surface-2 hover:bg-surface-hover border rounded-xl text-left transition">
+                      <span className="text-xl flex-shrink-0">🔄</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-ink text-sm font-semibold">Réinitialiser</p>
+                        <p className="text-ink-muted text-xs">Repasse en "En attente" et désassigne le chauffeur</p>
+                      </div>
                     </button>
 
                     <button type="button"
@@ -1992,8 +1996,12 @@ export default function MissionDetailClient({
                           router.refresh()
                         } catch (e: any) { alert('Erreur : ' + e.message) }
                       }}
-                      className="px-3 py-2 bg-success/10 hover:bg-success/20 border border-success/30 text-success rounded-xl text-xs font-medium transition">
-                      ✅ Forcer clôture
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-success/10 hover:bg-success/20 border border-success/30 rounded-xl text-left transition">
+                      <span className="text-xl flex-shrink-0">✅</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-success text-sm font-semibold">Forcer la clôture</p>
+                        <p className="text-ink-muted text-xs">Passe en "À facturer" sans pointage ni photos</p>
+                      </div>
                     </button>
 
                     <button type="button"
@@ -2010,8 +2018,12 @@ export default function MissionDetailClient({
                           router.refresh()
                         } catch (e: any) { alert('Erreur : ' + e.message) }
                       }}
-                      className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-medium transition">
-                      🅿️ Forcer en parc
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-left transition">
+                      <span className="text-xl flex-shrink-0">🅿️</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-amber-400 text-sm font-semibold">Forcer en parc</p>
+                        <p className="text-ink-muted text-xs">Passe en "Mise en parc" sans pointage chauffeur</p>
+                      </div>
                     </button>
                   </div>
                 </div>
