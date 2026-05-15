@@ -1440,12 +1440,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               (window as any).__derogTapTs = now
             }
           }}
-          className="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 flex items-center gap-2 select-none cursor-pointer"
+          className="bg-warning-soft border-b-2 border-warning px-4 py-3 flex items-center gap-3 select-none cursor-pointer"
         >
-          <span className="text-lg">⏳</span>
+          <span className="text-2xl">⏳</span>
           <div className="flex-1 min-w-0">
-            <p className="text-amber-400 text-xs font-semibold">Dérogation en attente de validation dispatch</p>
-            <p className="text-amber-300/80 text-xs truncate">Motif : {derogPending.motive} · <span className="opacity-60">double-tap pour rafraîchir</span></p>
+            <p className="text-warning text-sm font-bold uppercase tracking-wide">Dérogation en attente</p>
+            <p className="text-ink text-sm truncate">Motif : <span className="font-medium">{derogPending.motive}</span></p>
+            <p className="text-ink-secondary text-xs mt-0.5">↻ Double-tap pour rafraîchir</p>
           </div>
         </div>
       )}
