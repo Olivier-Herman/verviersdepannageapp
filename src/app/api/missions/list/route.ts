@@ -64,9 +64,9 @@ export async function GET(req: Request) {
   } else if (status === 'assigned') {
     query = query.in('status', ['assigned', 'accepted'])
   } else if (status === 'in_progress') {
-    query = query.eq('status', 'in_progress')
+    query = query.in('status', ['in_progress', 'delivering'])
   } else if (status === 'parked') {
-    query = query.in('status', ['parked', 'delivering'])
+    query = query.eq('status', 'parked')
   } else if (status === 'completed') {
     // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
     // chauffeur, en attente de validation employe facturation. Le tampon
@@ -95,8 +95,8 @@ export async function GET(req: Request) {
     new:         counts?.filter(m => m.status === 'new').length         || 0,
     dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
-    in_progress: counts?.filter(m => m.status === 'in_progress').length || 0,
-    parked:      counts?.filter(m => ['parked','delivering'].includes(m.status)).length || 0,
+    in_progress: counts?.filter(m => ['in_progress','delivering'].includes(m.status)).length || 0,
+    parked:      counts?.filter(m => m.status === 'parked').length || 0,
     completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }
