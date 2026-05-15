@@ -46,14 +46,15 @@ const ACTION_MAP: Record<string, { status?: string; timestampField?: string; log
   update_address:   {                                                          logMessage: 'Adresse modifiée' },
   update_stops:     {                                                          logMessage: 'Stops mis à jour' },
   mark_photo_category: {                                                       logMessage: 'Categorie photo couverte' },
+  set_amount_to_collect: {                                                     logMessage: 'Montant à encaisser défini par le chauffeur' },
 }
 
 const ALLOWED: Record<string, string[]> = {
-  assigned:    ['accept'],
-  accepted:    ['on_way', 'mark_photo_category'],
-  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop', 'mark_photo_category'],
-  parked:      ['completed', 'start_delivery', 'change_type', 'save_photos', 'mark_photo_category'],
-  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category'],
+  assigned:    ['accept', 'set_amount_to_collect'],
+  accepted:    ['on_way', 'mark_photo_category', 'set_amount_to_collect'],
+  in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop', 'mark_photo_category', 'set_amount_to_collect'],
+  parked:      ['completed', 'start_delivery', 'change_type', 'save_photos', 'mark_photo_category', 'set_amount_to_collect'],
+  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
 }
 
 interface Stop {
@@ -109,6 +110,7 @@ export async function POST(req: Request) {
     redelivery_address?: string
     stop_id?:            string
     photo_urls?:         string[]
+    amount?:             number | string
   }
 
   const { mission_id, action, closing_data, park_data } = body
@@ -173,6 +175,17 @@ export async function POST(req: Request) {
   // ── Mettre à jour les stops ──────────────────────────────────────────────
   if (action === 'update_stops' && body.stops) {
     updatePayload.extra_addresses = body.stops
+  }
+
+  // ── Definir/modifier le montant a encaisser (geste 5-taps cache sur dossier)
+  // Cas : mission envoyee sans paiement mais le client doit finalement payer
+  // (decouverte sur place). Le chauffeur ajoute le montant via UI cachee.
+  if (action === 'set_amount_to_collect' && body.amount !== undefined && body.amount !== null) {
+    const n = typeof body.amount === 'string' ? parseFloat(body.amount) : Number(body.amount)
+    if (Number.isNaN(n) || n < 0) {
+      return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
+    }
+    updatePayload.amount_to_collect = n
   }
 
   // ── Marquer une categorie photo comme couverte (multi-device) ───────────

@@ -373,6 +373,48 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     }
     setDerogTapTimer(setTimeout(() => setDerogTapCount(0), 2000))
   }
+
+  // ── Set amount_to_collect (geste 5-taps cache sur Dossier) ──────────────────
+  // Cas inverse de la derogation : mission envoyee SANS montant a encaisser mais
+  // qui s avere finalement payante sur place. Le chauffeur ajoute le montant.
+  const [setAmtTapCount, setSetAmtTapCount] = useState(0)
+  const [setAmtTapTimer, setSetAmtTapTimer] = useState<NodeJS.Timeout | null>(null)
+  const [setAmtModalOpen, setSetAmtModalOpen] = useState(false)
+  const [setAmtValue, setSetAmtValue] = useState('')
+  const [setAmtSubmitting, setSetAmtSubmitting] = useState(false)
+  const handleSetAmtTap = () => {
+    const next = setAmtTapCount + 1
+    setSetAmtTapCount(next)
+    if (setAmtTapTimer) clearTimeout(setAmtTapTimer)
+    if (next >= 5) {
+      setSetAmtTapCount(0)
+      setSetAmtValue(String(M.amount_to_collect || ''))
+      setSetAmtModalOpen(true)
+      return
+    }
+    setSetAmtTapTimer(setTimeout(() => setSetAmtTapCount(0), 2000))
+  }
+  const submitSetAmount = async () => {
+    const n = parseFloat(setAmtValue)
+    if (Number.isNaN(n) || n < 0) { setErr('Montant invalide'); return }
+    setSetAmtSubmitting(true); setErr('')
+    try {
+      const r = await fetch('/api/missions/driver-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, action: 'set_amount_to_collect', amount: n }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setSetAmtModalOpen(false)
+      setSetAmtValue('')
+      window.location.reload()
+    } catch (e: any) {
+      setErr(e.message || 'Erreur')
+    } finally {
+      setSetAmtSubmitting(false)
+    }
+  }
   // Charge l etat de derogation pending au mount + refresh sur changement mission
   useEffect(() => {
     let cancelled = false
@@ -1371,6 +1413,39 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         </div>
       )}
 
+      {/* Modal "Définir un montant à encaisser" (geste 5-taps sur Dossier) */}
+      {setAmtModalOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !setAmtSubmitting && setSetAmtModalOpen(false)}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <div>
+              <p className="text-ink font-semibold">💶 Montant à encaisser</p>
+              <p className="text-ink-muted text-xs mt-0.5">Ajoute ou modifie le montant à percevoir auprès du client. La banderole rouge apparaîtra après validation.</p>
+            </div>
+            <div>
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1.5">Montant (€)</p>
+              <input
+                type="number" step="0.01" min={0}
+                value={setAmtValue}
+                onChange={e => setSetAmtValue(e.target.value)}
+                placeholder="0.00"
+                autoFocus
+                className="w-full bg-surface-hover border border rounded-xl px-3 py-3 text-ink text-2xl font-bold text-center outline-none focus:border-brand"
+                disabled={setAmtSubmitting}
+              />
+            </div>
+            {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setSetAmtModalOpen(false)} disabled={setAmtSubmitting}
+                className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+              <button onClick={submitSetAmount} disabled={setAmtSubmitting || !setAmtValue}
+                className="flex-1 py-3 bg-brand disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
+                {setAmtSubmitting ? '⏳…' : 'Valider'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal "Réponse à votre dérogation" : OK = reload */}
       {derogResult && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
@@ -1473,9 +1548,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Facturé à</p>
             <p className="text-ink text-sm font-medium truncate">{M.billed_to_name || M.source || '—'}</p>
           </div>
-          <div className="bg-surface border border rounded-2xl p-3">
+          <div
+            onClick={handleSetAmtTap}
+            className={`relative bg-surface border border rounded-2xl p-3 select-none ${setAmtTapCount >= 3 ? 'animate-pulse' : ''}`}
+          >
             <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Dossier</p>
             <p className="text-ink text-xs font-mono truncate">{M.dossier_number || M.external_id || '—'}</p>
+            {setAmtTapCount >= 3 && setAmtTapCount < 5 && (
+              <span className="absolute bottom-1 right-2 text-[10px] text-ink-muted font-mono">{setAmtTapCount}/5</span>
+            )}
           </div>
         </div>
 

@@ -837,6 +837,23 @@ export default function DispatchClient({
               className="flex-1 min-w-[120px] lg:min-w-[180px] max-w-xs bg-surface border border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
             />
 
+            {/* Indicateur global "Dérogations paiement à valider" — visible tout le temps tant qu il y a au moins une demande pending */}
+            {(() => {
+              const pendingDerogs = missions.filter(m => m.has_pending_derogation)
+              if (pendingDerogs.length === 0) return null
+              return (
+                <Link
+                  href={`/dispatch/${pendingDerogs[0].id}`}
+                  title="Dérogation paiement en attente de validation"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-2 bg-amber-600/15 border border-amber-600/40 rounded-xl text-amber-400 text-xs font-semibold transition hover:bg-amber-600/25"
+                >
+                  <span className="animate-pulse">🆘</span>
+                  <span className="hidden sm:inline">Dérogation{pendingDerogs.length > 1 ? `s (${pendingDerogs.length})` : ''}</span>
+                  <span className="sm:hidden">{pendingDerogs.length}</span>
+                </Link>
+              )
+            })()}
+
             <select
               value={sourceFilter}
               onChange={e => setSourceFilter(e.target.value)}
