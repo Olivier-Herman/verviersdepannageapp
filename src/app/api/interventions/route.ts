@@ -49,13 +49,22 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // 1.bis. Si lie a une mission : annoter la mission (Payee / Facture a envoyer)
+  // payment_amount = SOMME de tous les encaissements lies a la mission (un meme
+  // dossier peut etre encaisse en plusieurs fois) → on recalcule a chaque insert
+  // pour rester coherent avec la table interventions (source de verite).
   if (intervention && body.mission_id) {
     try {
+      const { data: allPayments } = await supabase
+        .from('interventions')
+        .select('amount')
+        .eq('mission_id', body.mission_id)
+      const sum = (allPayments || []).reduce((s, p) => s + Number(p.amount || 0), 0)
       await supabase
         .from('incoming_missions')
         .update({
           payment_collected_at: new Date().toISOString(),
           payment_mode:         body.payment_mode || 'unpaid',
+          payment_amount:       sum,
         })
         .eq('id', body.mission_id)
     } catch (err: any) {

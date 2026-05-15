@@ -477,19 +477,39 @@ export default function EncaissementClient({
     autocompleteRef.current = null; autocompleteClientRef.current = null
   }
 
-  if (saved) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-      <div className="text-6xl mb-6" aria-hidden="true">✅</div>
-      <h2 className="font-display text-ink text-2xl font-bold mb-2">Enregistré !</h2>
-      <p className="text-ink-muted text-sm mb-2">Intervention sauvegardée avec succès.</p>
-      <p className="text-ink-faint text-xs mb-8">Retour au dashboard dans 5 secondes…</p>
-      <button onClick={resetForm}
-        className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3 shadow-brand hover:bg-brand-hover hover:shadow-brand-hover transition-all">
-        + Nouvelle intervention
-      </button>
-      <Link href="/dashboard" className="text-ink-muted hover:text-ink text-sm transition-colors">← Dashboard</Link>
-    </div>
-  )
+  if (saved) {
+    // Flow mission : retour automatique sur la fiche, pas de bouton "Nouvelle
+    // intervention" ni de lien "Dashboard" (clic accidentel = casse le flow).
+    if (prefill?.mission_id || prefill?.return_to) {
+      const back = prefill.return_to || `/mission/${prefill.mission_id}`
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+          <div className="text-6xl mb-6" aria-hidden="true">✅</div>
+          <h2 className="font-display text-ink text-2xl font-bold mb-2">Enregistré !</h2>
+          <p className="text-ink-muted text-sm mb-2">Paiement lié à la mission.</p>
+          <p className="text-ink-faint text-xs mb-8">Retour à la mission dans 3 secondes…</p>
+          <Link href={back}
+            className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 shadow-brand hover:bg-brand-hover hover:shadow-brand-hover transition-all">
+            ← Retour à la mission
+          </Link>
+        </div>
+      )
+    }
+    // Flow standalone (passage caisse) : comportement inchange
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <div className="text-6xl mb-6" aria-hidden="true">✅</div>
+        <h2 className="font-display text-ink text-2xl font-bold mb-2">Enregistré !</h2>
+        <p className="text-ink-muted text-sm mb-2">Intervention sauvegardée avec succès.</p>
+        <p className="text-ink-faint text-xs mb-8">Retour au dashboard dans 3 secondes…</p>
+        <button onClick={resetForm}
+          className="w-full max-w-sm bg-brand text-white font-bold rounded-xl py-3.5 mb-3 shadow-brand hover:bg-brand-hover hover:shadow-brand-hover transition-all">
+          + Nouvelle intervention
+        </button>
+        <Link href="/dashboard" className="text-ink-muted hover:text-ink text-sm transition-colors">← Dashboard</Link>
+      </div>
+    )
+  }
 
   // ── Page 0 — Immatriculation ──────────────────────────────
   if (page === 0) return (

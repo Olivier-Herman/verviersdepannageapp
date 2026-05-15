@@ -31,7 +31,7 @@ interface Mission {
   loaded_at?: string
   completed_at?: string; parked_at?: string; delivering_at?: string
   amount_guaranteed?: number; amount_currency?: string; amount_to_collect?: number
-  payment_collected_at?: string | null; payment_mode?: string | null
+  payment_collected_at?: string | null; payment_mode?: string | null; payment_amount?: number | null
   park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
   photo_categories_covered?: string[]  // categories du wizard photos couvertes (persiste en BDD, multi-device)
 }
@@ -328,11 +328,22 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}[]>([])
   const [paid, setPaid]           = useState(false)
-  // Etat reel persiste (post-encaissement) : DB > state local (qui sert juste de
-  // quick-feedback pendant les 3s avant le redirect retour depuis /encaissement)
-  const paidEffective = paid || !!M.payment_collected_at
-  // 'unpaid' = mode "A facturer" → affichage distinct (facture a envoyer manuellement)
-  const isToInvoice   = paidEffective && M.payment_mode === 'unpaid'
+  // Etat reel persiste : DB > state local (le state local sert de quick-feedback
+  // pendant les 3s avant redirect retour depuis /encaissement)
+  const hasAnyPayment   = paid || !!M.payment_collected_at
+  // 'unpaid' = mode "A facturer" → considere comme resolu (le bureau facturera)
+  const isToInvoice     = hasAnyPayment && M.payment_mode === 'unpaid'
+  // Montant a afficher : SOMME de tous les encaissements lies a la mission
+  const paidAmount      = M.payment_amount != null ? M.payment_amount : M.amount_to_collect
+  // Paiement complet : pas de montant a encaisser, OU mode "A facturer", OU somme >= total prevu
+  const requiredAmount  = M.amount_to_collect || 0
+  const paymentComplete = requiredAmount <= 0
+    || isToInvoice
+    || (hasAnyPayment && (M.payment_amount ?? 0) + 0.001 >= requiredAmount)  // +0.001 = tolerance arrondi
+  // paidEffective = encaisse ET complet (utilise pour les annotations "Payee" / "Facture a envoyer")
+  const paidEffective   = hasAnyPayment && paymentComplete
+  // Paiement partiel : au moins un encaissement mais total insuffisant
+  const partiallyPaid   = hasAnyPayment && !paymentComplete
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'rel'|'dpr'|'park'>(() => (
     isRELMission(init) ? 'rel'
     : isREM(init.mission_type || '') ? 'rem'
@@ -1177,10 +1188,19 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
             </button>
           ) : (
-            <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && totPh < 3)}
-              className="w-full py-4 bg-green-600 disabled:opacity-40 text-ink font-semibold rounded-2xl">
-              {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
-            </button>
+            <>
+              {/* Blocage cloture tant que paiement incomplet (sauf DPR : pas de prestation, pas d encaissement attendu) */}
+              {closeType !== 'dpr' && !paymentComplete && (
+                <p className="text-amber-400 text-xs text-center mb-2 px-2">
+                  ⚠ Encaissement incomplet : {formatEur(M.payment_amount ?? 0, { suffix: false })} / {formatEur(requiredAmount, { suffix: false })} {M.amount_currency || 'EUR'}.
+                  La clôture est bloquée tant que le total prévu n'est pas atteint (ou utilisez "À facturer").
+                </p>
+              )}
+              <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && (totPh < 3 || !paymentComplete))}
+                className="w-full py-4 bg-green-600 disabled:opacity-40 text-ink font-semibold rounded-2xl">
+                {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
+              </button>
+            </>
           )}
         </div>
       </ScreenWrap>
@@ -1222,14 +1242,21 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         <Stepper status={M.status} onSite={onSite} loaded={loaded} isRem={rem} isRel={rel} />
       </div>
 
-      {/* Banderole rouge : montant à encaisser */}
+      {/* Banderole rouge : montant à encaisser (rien encore OU partiel) */}
       {M.amount_to_collect != null && M.amount_to_collect > 0 && !paidEffective && (
         <div className="bg-red-600 border-b-2 border-red-700 px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-2xl">💶</span>
             <div>
-              <p className="text-ink font-bold text-sm uppercase tracking-wide">À encaisser</p>
-              <p className="text-ink text-xl font-bold">{formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
+              <p className="text-ink font-bold text-sm uppercase tracking-wide">{partiallyPaid ? 'Reste à encaisser' : 'À encaisser'}</p>
+              {partiallyPaid ? (
+                <p className="text-ink text-xl font-bold">
+                  {formatEur(requiredAmount - (M.payment_amount ?? 0), { suffix: false })} {M.amount_currency || 'EUR'}
+                  <span className="text-ink/80 text-xs font-normal ml-2">({formatEur(M.payment_amount ?? 0, { suffix: false })} / {formatEur(requiredAmount, { suffix: false })})</span>
+                </p>
+              ) : (
+                <p className="text-ink text-xl font-bold">{formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
+              )}
             </div>
           </div>
           <button onClick={() => setScreen('encaissement')}
@@ -1242,11 +1269,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         isToInvoice
           ? <div className="bg-amber-600/15 border-b border-amber-600/30 px-4 py-2 flex items-center gap-2">
               <span className="text-lg">📄</span>
-              <p className="text-amber-400 text-sm font-medium">Facture à envoyer : {formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
+              <p className="text-amber-400 text-sm font-medium">Facture à envoyer : {formatEur(paidAmount || 0, { suffix: false })} {M.amount_currency || 'EUR'}</p>
             </div>
           : <div className="bg-green-600/15 border-b border-green-600/30 px-4 py-2 flex items-center gap-2">
               <span className="text-lg">✅</span>
-              <p className="text-green-400 text-sm font-medium">Payée : {formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
+              <p className="text-green-400 text-sm font-medium">Payée : {formatEur(paidAmount || 0, { suffix: false })} {M.amount_currency || 'EUR'}</p>
             </div>
       )}
 
