@@ -53,7 +53,7 @@ export default function NewInterventionButton({ variant }: { variant: 'fab' | 'c
 
             <button
               type="button"
-              onClick={() => { setOpen(false); router.push('/mission/new') }}
+              onClick={() => { setOpen(false); router.push('/mission/police') }}
               className="w-full flex items-start gap-3 p-4 bg-surface-2 hover:bg-surface-hover border rounded-2xl text-left transition active:scale-[0.98]">
               <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center">
                 <Shield size={20} />
