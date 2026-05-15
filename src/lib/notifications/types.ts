@@ -108,6 +108,22 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+  {
+    key:             'payment_derogation_requested',
+    label:           'Demande de dérogation paiement',
+    description:     'Un chauffeur demande une dérogation (annulation/ajustement) sur un montant à encaisser.',
+    category:        'on_duty',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    key:             'payment_derogation_decided',
+    label:           'Réponse à dérogation paiement',
+    description:     'Le dispatcher de garde a statué sur ta demande de dérogation.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
 ] as const
 
 export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {

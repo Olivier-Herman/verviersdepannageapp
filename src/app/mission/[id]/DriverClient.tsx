@@ -344,6 +344,62 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const paidEffective   = hasAnyPayment && paymentComplete
   // Paiement partiel : au moins un encaissement mais total insuffisant
   const partiallyPaid   = hasAnyPayment && !paymentComplete
+
+  // ── Dérogation paiement (5-tap caché sur banderole rouge) ──────────────────
+  // UX : pas de bouton visible (briefing vocal a l equipe). 5 taps rapides
+  // (< 2s entre chaque) sur la banderole "A encaisser" → modal s ouvre.
+  // Feedback discret a partir du 3e tap (compteur "3/5").
+  const [derogTapCount, setDerogTapCount] = useState(0)
+  const [derogTapTimer, setDerogTapTimer] = useState<NodeJS.Timeout | null>(null)
+  const [derogModalOpen, setDerogModalOpen] = useState(false)
+  const [derogMotive, setDerogMotive] = useState('')
+  const [derogSubmitting, setDerogSubmitting] = useState(false)
+  const [derogPending, setDerogPending] = useState<{ id: string; motive: string; requested_at: string } | null>(null)
+  const handleDerogTap = () => {
+    if (derogPending) return  // demande deja en cours
+    const next = derogTapCount + 1
+    setDerogTapCount(next)
+    if (derogTapTimer) clearTimeout(derogTapTimer)
+    if (next >= 5) {
+      setDerogTapCount(0)
+      setDerogModalOpen(true)
+      return
+    }
+    setDerogTapTimer(setTimeout(() => setDerogTapCount(0), 2000))
+  }
+  // Charge l etat de derogation pending au mount + refresh sur changement mission
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/missions/${M.id}/payment-derogation`)
+      .then(r => r.json())
+      .then(j => { if (!cancelled) setDerogPending(j.derogation || null) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [M.id, M.amount_to_collect])
+  const submitDerogation = async () => {
+    const motive = derogMotive.trim()
+    if (motive.length < 5) { setErr('Motif trop court'); return }
+    setDerogSubmitting(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}/payment-derogation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motive }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setDerogModalOpen(false)
+      setDerogMotive('')
+      // Re-fetch immediat pour afficher l etat pending
+      const r2 = await fetch(`/api/missions/${M.id}/payment-derogation`)
+      const j2 = await r2.json()
+      setDerogPending(j2.derogation || null)
+    } catch (e: any) {
+      setErr(e.message || 'Erreur')
+    } finally {
+      setDerogSubmitting(false)
+    }
+  }
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'rel'|'dpr'|'park'>(() => (
     isRELMission(init) ? 'rel'
     : isREM(init.mission_type || '') ? 'rem'
@@ -1243,8 +1299,12 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       </div>
 
       {/* Banderole rouge : montant à encaisser (rien encore OU partiel) */}
+      {/* 5 taps caches sur la banderole → modal derogation (briefing vocal) */}
       {M.amount_to_collect != null && M.amount_to_collect > 0 && !paidEffective && (
-        <div className="bg-red-600 border-b-2 border-red-700 px-4 py-3 flex items-center justify-between gap-3">
+        <div
+          onClick={handleDerogTap}
+          className={`relative bg-red-600 border-b-2 border-red-700 px-4 py-3 flex items-center justify-between gap-3 select-none ${derogTapCount >= 3 ? 'animate-pulse' : ''}`}
+        >
           <div className="flex items-center gap-2">
             <span className="text-2xl">💶</span>
             <div>
@@ -1259,10 +1319,54 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               )}
             </div>
           </div>
-          <button onClick={() => setScreen('encaissement')}
+          <button onClick={e => { e.stopPropagation(); setScreen('encaissement') }}
             className="px-3 py-2 bg-white text-red-700 rounded-lg text-xs font-bold whitespace-nowrap">
             Encaisser →
           </button>
+          {/* Compteur discret à partir du 3e tap */}
+          {derogTapCount >= 3 && derogTapCount < 5 && (
+            <span className="absolute bottom-1 right-2 text-[10px] text-ink/70 font-mono">{derogTapCount}/5</span>
+          )}
+        </div>
+      )}
+
+      {/* Bandeau dérogation en attente */}
+      {derogPending && (
+        <div className="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 flex items-center gap-2">
+          <span className="text-lg">⏳</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-amber-400 text-xs font-semibold">Dérogation en attente de validation dispatch</p>
+            <p className="text-amber-300/80 text-xs truncate">Motif : {derogPending.motive}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal saisie motif dérogation */}
+      {derogModalOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !derogSubmitting && setDerogModalOpen(false)}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <div>
+              <p className="text-ink font-semibold">🆘 Demande de dérogation paiement</p>
+              <p className="text-ink-muted text-xs mt-0.5">Le dispatcheur de garde sera notifié. Indique pourquoi le client ne peut/veut pas payer.</p>
+            </div>
+            <textarea
+              value={derogMotive}
+              onChange={e => setDerogMotive(e.target.value)}
+              placeholder="Ex : voiture non démarrée, client refuse paiement, prestation contestée…"
+              rows={4}
+              className="w-full bg-surface-hover border border rounded-xl p-3 text-ink text-sm outline-none focus:border-brand"
+              disabled={derogSubmitting}
+            />
+            {err && <p className="text-red-400 text-xs">⚠️ {err}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setDerogModalOpen(false)} disabled={derogSubmitting}
+                className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+              <button onClick={submitDerogation} disabled={derogSubmitting || derogMotive.trim().length < 5}
+                className="flex-1 py-3 bg-brand disabled:opacity-40 text-white font-semibold rounded-2xl text-sm">
+                {derogSubmitting ? '⏳…' : 'Envoyer la demande'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {paidEffective && M.amount_to_collect != null && M.amount_to_collect > 0 && (

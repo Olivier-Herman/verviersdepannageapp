@@ -955,6 +955,74 @@ export default function MissionDetailClient({
     return () => { sb.removeChannel(ch) }
   }, [initialMission.id])
 
+  // ── Dérogation paiement (workflow validation dispatcher) ───────────────────
+  type PendingDerog = { id: string; motive: string; requested_at: string; requester?: { id: string; name: string } | null } | null
+  const [pendingDerog, setPendingDerog] = useState<PendingDerog>(null)
+  const [derogDecision, setDerogDecision] = useState<'cancelled_amount' | 'adjusted' | 'refused' | null>(null)
+  const [derogNewAmount, setDerogNewAmount] = useState('')
+  const [derogNote, setDerogNote] = useState('')
+  const [derogSubmitting, setDerogSubmitting] = useState(false)
+  const [derogError, setDerogError] = useState('')
+  const fetchPendingDerog = async () => {
+    try {
+      const r = await fetch(`/api/missions/${initialMission.id}/payment-derogation`)
+      const j = await r.json()
+      setPendingDerog(j.derogation || null)
+    } catch {}
+  }
+  useEffect(() => { fetchPendingDerog() }, [initialMission.id])
+  // Realtime : si un autre dispatcheur decide, l encart disparait pour les autres
+  useEffect(() => {
+    const ch = sb.channel(`derogations-${initialMission.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'payment_derogations',
+        filter: `mission_id=eq.${initialMission.id}`,
+      }, () => { fetchPendingDerog() })
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMission.id])
+  const submitDerogDecision = async () => {
+    if (!pendingDerog || !derogDecision) return
+    if (derogDecision === 'adjusted') {
+      const n = parseFloat(derogNewAmount)
+      if (Number.isNaN(n) || n < 0) { setDerogError('Montant invalide'); return }
+    }
+    setDerogSubmitting(true); setDerogError('')
+    try {
+      const r = await fetch(`/api/missions/${initialMission.id}/payment-derogation/decide`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          derogation_id: pendingDerog.id,
+          decision:      derogDecision,
+          new_amount:    derogDecision === 'adjusted' ? parseFloat(derogNewAmount) : undefined,
+          note:          derogNote.trim() || undefined,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok) {
+        // 409 = un autre dispatcheur a deja decide → on hide direct
+        if (j.already_decided) {
+          setPendingDerog(null)
+          setDerogDecision(null)
+          setDerogError('Déjà traitée par un autre dispatcheur')
+          return
+        }
+        throw new Error(j.error || 'Erreur')
+      }
+      setPendingDerog(null)
+      setDerogDecision(null)
+      setDerogNewAmount('')
+      setDerogNote('')
+      router.refresh()
+    } catch (e: any) {
+      setDerogError(e.message || 'Erreur')
+    } finally {
+      setDerogSubmitting(false)
+    }
+  }
+
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
   // Détecter lien IMA dans raw_content
@@ -1205,6 +1273,93 @@ export default function MissionDetailClient({
           <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
         </div>
         <div className="relative z-10">
+
+        {/* Dérogation paiement en attente — encart prioritaire pour le dispatcher */}
+        {pendingDerog && (
+          <div className="px-4 lg:px-8 pt-6">
+            <div className="bg-amber-600/15 border-2 border-amber-600/40 rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-start gap-2 flex-1 min-w-0">
+                  <span className="text-2xl">🆘</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-amber-400 font-semibold text-sm">Dérogation paiement demandée</p>
+                    <p className="text-ink-secondary text-xs mt-0.5">
+                      Par {pendingDerog.requester?.name || '?'} · {new Date(pendingDerog.requested_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-surface/50 rounded-lg p-3 mb-3">
+                <p className="text-ink-muted text-xs uppercase tracking-wide mb-1">Motif chauffeur</p>
+                <p className="text-ink text-sm whitespace-pre-wrap">{pendingDerog.motive}</p>
+              </div>
+              {derogDecision == null && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    onClick={() => setDerogDecision('cancelled_amount')}
+                    className="px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition"
+                  >
+                    Annuler le montant
+                  </button>
+                  <button
+                    onClick={() => { setDerogDecision('adjusted'); setDerogNewAmount(String(M.amount_to_collect ?? '')) }}
+                    className="px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition"
+                  >
+                    Ajuster le montant
+                  </button>
+                  <button
+                    onClick={() => setDerogDecision('refused')}
+                    className="px-3 py-2.5 bg-critical hover:bg-critical-hover text-white rounded-lg text-sm font-semibold transition"
+                  >
+                    Refuser
+                  </button>
+                </div>
+              )}
+              {derogDecision != null && (
+                <div className="space-y-2">
+                  {derogDecision === 'adjusted' && (
+                    <div>
+                      <p className="text-ink-muted text-xs mb-1">Nouveau montant (€)</p>
+                      <input
+                        type="number" step="0.01" min={0}
+                        value={derogNewAmount}
+                        onChange={e => setDerogNewAmount(e.target.value)}
+                        className="w-full bg-surface border rounded-lg px-3 py-2 text-ink text-sm outline-none focus:border-brand"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-ink-muted text-xs mb-1">Note (optionnel, envoyée au chauffeur)</p>
+                    <input
+                      type="text"
+                      value={derogNote}
+                      onChange={e => setDerogNote(e.target.value)}
+                      placeholder="Ex : OK suite vérification téléphonique"
+                      className="w-full bg-surface border rounded-lg px-3 py-2 text-ink text-sm outline-none focus:border-brand"
+                    />
+                  </div>
+                  {derogError && <p className="text-red-400 text-xs">⚠️ {derogError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setDerogDecision(null); setDerogNewAmount(''); setDerogNote(''); setDerogError('') }}
+                      disabled={derogSubmitting}
+                      className="flex-1 px-3 py-2.5 bg-surface-hover text-ink-secondary rounded-lg text-sm transition"
+                    >
+                      Retour
+                    </button>
+                    <button
+                      onClick={submitDerogDecision}
+                      disabled={derogSubmitting}
+                      className="flex-1 px-3 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition"
+                    >
+                      {derogSubmitting ? '⏳…' : 'Confirmer'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Auto-dispatch en cours — affiche l'etape courante (assignation/appel) */}
         {autoDispatchStatus && (
