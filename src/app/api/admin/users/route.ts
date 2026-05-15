@@ -168,3 +168,44 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+
+// DELETE /api/admin/users?userId=...
+// Supprime un user (hard delete, cascade via FK).
+// Reserve aux SUPERADMINS uniquement. Auto-protection : on ne peut pas
+// se supprimer soi-meme (sinon plus aucun superadmin pour gerer).
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  const role = (session.user as any).role || ''
+  if (role !== 'superadmin') {
+    return NextResponse.json({ error: 'Reserve aux superadmins' }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const userId = searchParams.get('userId')
+  if (!userId) return NextResponse.json({ error: 'userId requis' }, { status: 400 })
+
+  // Self-protect
+  const currentUserId = (session.user as any).id
+  if (userId === currentUserId) {
+    return NextResponse.json({ error: 'Tu ne peux pas te supprimer toi-meme' }, { status: 400 })
+  }
+
+  const supabase = createAdminClient()
+
+  // Suppression : la table users a probablement des FK vers d'autres tables
+  // (incoming_missions.assigned_to, mission_logs.actor_id, etc.). Selon les
+  // contraintes ON DELETE, soit cascade soit SET NULL. On laisse Postgres
+  // gerer. Si une contrainte FK strict bloque, on retourne l'erreur.
+  const { error } = await supabase
+    .from('users')
+    .delete()
+    .eq('id', userId)
+
+  if (error) {
+    console.error('[DELETE users] error:', error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
+}

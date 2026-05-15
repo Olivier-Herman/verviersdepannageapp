@@ -549,6 +549,40 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
       <Button variant="primary" size="lg" fullWidth loading={saving} onClick={saveUser}>
         ✓ Sauvegarder
       </Button>
+
+      {/* ── Zone de suppression (superadmin uniquement) ── */}
+      {isSuperAdmin && selectedUser && selectedUser.id !== (typeof window !== 'undefined' ? '' : '') && (
+        <div className="mt-6 pt-6 border-t border-critical/20">
+          <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-2">Zone dangereuse</p>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              if (!selectedUser) return
+              if (!confirm(`Supprimer définitivement le compte de "${selectedUser.name || selectedUser.email}" ?\n\nCette action est irréversible.`)) return
+              setSaving(true)
+              try {
+                const res = await fetch(`/api/admin/users?userId=${encodeURIComponent(selectedUser.id)}`, { method: 'DELETE' })
+                const j = await res.json()
+                if (!res.ok) {
+                  alert('Erreur : ' + (j.error || res.status))
+                  return
+                }
+                setSelectedUser(null)
+                window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now()
+              } finally {
+                setSaving(false)
+              }
+            }}
+            className="w-full py-3 bg-critical-soft hover:bg-critical/20 border border-critical/40 text-critical rounded-md font-medium text-sm transition-colors disabled:opacity-50"
+          >
+            🗑 Supprimer définitivement ce compte
+          </button>
+          <p className="text-ink-faint text-xs mt-2">
+            La suppression est <strong>irréversible</strong>. Les missions assignées à ce user seront désassignées (FK SET NULL).
+          </p>
+        </div>
+      )}
     </div>
   )
 
