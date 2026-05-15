@@ -31,6 +31,7 @@ interface Mission {
   loaded_at?: string
   completed_at?: string; parked_at?: string; delivering_at?: string
   amount_guaranteed?: number; amount_currency?: string; amount_to_collect?: number
+  payment_collected_at?: string | null; payment_mode?: string | null
   park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
   photo_categories_covered?: string[]  // categories du wizard photos couvertes (persiste en BDD, multi-device)
 }
@@ -327,6 +328,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}[]>([])
   const [paid, setPaid]           = useState(false)
+  // Etat reel persiste (post-encaissement) : DB > state local (qui sert juste de
+  // quick-feedback pendant les 3s avant le redirect retour depuis /encaissement)
+  const paidEffective = paid || !!M.payment_collected_at
+  // 'unpaid' = mode "A facturer" → affichage distinct (facture a envoyer manuellement)
+  const isToInvoice   = paidEffective && M.payment_mode === 'unpaid'
   const [closeType, setCloseType] = useState<'dsp'|'rem'|'rel'|'dpr'|'park'>(() => (
     isRELMission(init) ? 'rel'
     : isREM(init.mission_type || '') ? 'rem'
@@ -915,8 +921,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           <p className="text-ink/70 text-sm mb-1">Montant à encaisser</p>
           <p className="text-ink text-4xl font-semibold">{formatEur(M.amount_to_collect || 0)}</p>
         </div>
-        {paid
-          ? <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Paiement encaissé</p></div>
+        {paidEffective
+          ? (isToInvoice
+              ? <div className="bg-amber-600/20 border border-amber-500/30 rounded-2xl p-4 text-center"><p className="text-amber-400 font-semibold">📄 Facture à envoyer</p></div>
+              : <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Payée</p></div>)
           : <a href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${M.amount_to_collect || 0}&return_to=/mission/${M.id}`} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-brand text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
       </div>
       <div className="px-4 py-4 border-t border">
@@ -1109,8 +1117,10 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                 className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
                 <span className="text-ink-secondary text-sm">💶 Encaissement</span>
                 <span className="flex items-center gap-2">
-                  <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-red-400'}`}>
-                    {paid ? '✓ Encaissé' : `${formatEur(M.amount_to_collect, { suffix: false })} ${M.amount_currency || 'EUR'}`}
+                  <span className={`text-sm font-medium ${paidEffective ? (isToInvoice ? 'text-amber-400' : 'text-green-400') : 'text-red-400'}`}>
+                    {paidEffective
+                      ? (isToInvoice ? '📄 Facture à envoyer' : '✓ Payée')
+                      : `${formatEur(M.amount_to_collect, { suffix: false })} ${M.amount_currency || 'EUR'}`}
                   </span>
                   <span className="text-blue-400 text-xs">→</span>
                 </span>
@@ -1213,7 +1223,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       </div>
 
       {/* Banderole rouge : montant à encaisser */}
-      {M.amount_to_collect != null && M.amount_to_collect > 0 && !paid && (
+      {M.amount_to_collect != null && M.amount_to_collect > 0 && !paidEffective && (
         <div className="bg-red-600 border-b-2 border-red-700 px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-2xl">💶</span>
@@ -1228,11 +1238,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </button>
         </div>
       )}
-      {paid && M.amount_to_collect != null && M.amount_to_collect > 0 && (
-        <div className="bg-green-600/15 border-b border-green-600/30 px-4 py-2 flex items-center gap-2">
-          <span className="text-lg">✅</span>
-          <p className="text-green-400 text-sm font-medium">Encaissé : {formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
-        </div>
+      {paidEffective && M.amount_to_collect != null && M.amount_to_collect > 0 && (
+        isToInvoice
+          ? <div className="bg-amber-600/15 border-b border-amber-600/30 px-4 py-2 flex items-center gap-2">
+              <span className="text-lg">📄</span>
+              <p className="text-amber-400 text-sm font-medium">Facture à envoyer : {formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
+            </div>
+          : <div className="bg-green-600/15 border-b border-green-600/30 px-4 py-2 flex items-center gap-2">
+              <span className="text-lg">✅</span>
+              <p className="text-green-400 text-sm font-medium">Payée : {formatEur(M.amount_to_collect, { suffix: false })} {M.amount_currency || 'EUR'}</p>
+            </div>
       )}
 
       <div className="px-4 py-4 space-y-3">
@@ -1524,10 +1539,16 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
               {/* Encaisser */}
               {M.amount_to_collect != null && M.amount_to_collect > 0 && (
                 <button onClick={() => { setShowGrid(false); setScreen('encaissement') }}
-                  className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${paid ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
-                  <span className="text-2xl">💳</span>
-                  <span className={`text-sm font-medium ${paid ? 'text-green-400' : 'text-ink-secondary'}`}>Encaisser</span>
-                  {paid && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">✓</span>}
+                  className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${
+                    paidEffective
+                      ? (isToInvoice ? 'bg-amber-600/20 border-amber-600/40' : 'bg-green-600/20 border-green-600/40')
+                      : 'bg-surface border'
+                  }`}>
+                  <span className="text-2xl">{isToInvoice ? '📄' : '💳'}</span>
+                  <span className={`text-sm font-medium ${
+                    paidEffective ? (isToInvoice ? 'text-amber-400' : 'text-green-400') : 'text-ink-secondary'
+                  }`}>{paidEffective ? (isToInvoice ? 'À facturer' : 'Payée') : 'Encaisser'}</span>
+                  {paidEffective && <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold text-ink ${isToInvoice ? 'bg-amber-500' : 'bg-green-500'}`}>✓</span>}
                 </button>
               )}
               {/* DSP↔REM */}

@@ -175,10 +175,14 @@ export default function EncaissementClient({
     }
   }, [userRole, userName, userModules])
 
-  // Auto-redirect après sauvegarde — vers return_to si défini, sinon dashboard
+  // Auto-redirect après sauvegarde
+  //  - return_to explicite (passe en query) prime
+  //  - sinon, si l encaissement etait lie a une mission : retour sur la fiche mission
+  //  - sinon : dashboard (encaissement standalone)
   useEffect(() => {
     if (!saved) return
-    const dest = prefill?.return_to || '/dashboard'
+    const dest = prefill?.return_to
+      || (prefill?.mission_id ? `/mission/${prefill.mission_id}` : '/dashboard')
     const t = setTimeout(() => router.push(dest), 3000)
     return () => clearTimeout(t)
   }, [saved])
@@ -430,6 +434,8 @@ export default function EncaissementClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_type: 'encaissement', plate,
+          // mission_id : lien vers la mission qui a declenche l'encaissement (si applicable)
+          mission_id: prefill?.mission_id || null,
           // brand_id / model_id sur interventions sont legacy (FK vers tables
           // Supabase vehicle_brands/vehicle_models deprecated, alimentées par Odoo
           // via /api/vehicles → IDs Odoo absents côté Supabase = FK violation).

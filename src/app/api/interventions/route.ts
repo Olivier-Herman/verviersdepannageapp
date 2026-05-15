@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
     .insert({
       service_type: body.service_type || 'encaissement',
       driver_id: driver?.id,
+      // mission_id : lien optionnel vers la mission qui a declenche l'encaissement
+      // (encaissement standalone reste null, comportement inchange)
+      mission_id: body.mission_id || null,
       plate: body.plate,
       brand_id: body.brand_id || null,
       model_id: body.model_id || null,
@@ -44,6 +47,21 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // 1.bis. Si lie a une mission : annoter la mission (Payee / Facture a envoyer)
+  if (intervention && body.mission_id) {
+    try {
+      await supabase
+        .from('incoming_missions')
+        .update({
+          payment_collected_at: new Date().toISOString(),
+          payment_mode:         body.payment_mode || 'unpaid',
+        })
+        .eq('id', body.mission_id)
+    } catch (err: any) {
+      console.error('[Mission payment] Erreur update annotation:', err.message)
+    }
+  }
 
   // 2. Entrée caisse si espèces
   if (intervention && body.payment_mode === 'cash' && driver?.id) {
