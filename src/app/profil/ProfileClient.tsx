@@ -481,7 +481,7 @@ export default function ProfileClient({ user }: { user: any }) {
                 <button onClick={() => cameraRef.current?.click()} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">📷 Photo</button>
                 <button onClick={() => fileRef.current?.click()}   className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-2 transition-colors">🗂️ Galerie</button>
               </div>
-              <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+              <input ref={cameraRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
               <input ref={fileRef}   type="file" accept="image/*,application/pdf"       className="hidden" onChange={handleFile} />
             </div>
 

@@ -267,7 +267,7 @@ export default function CheckDetailClient({
                     : <Camera className="text-zinc-500" size={20} />
                   }
                   <span className="text-zinc-500 text-xs mt-1">Ajouter</span>
-                  <input type="file" accept="image/*" capture="environment" className="hidden"
+                  <input type="file" accept="image/*" className="hidden"
                     onChange={e => { if (e.target.files?.[0]) uploadPhoto(e.target.files[0], 'general') }} />
                 </label>
               )}
@@ -332,7 +332,7 @@ export default function CheckDetailClient({
                                 : <Camera size={14} />
                               }
                               <span>Ajouter une photo</span>
-                              <input type="file" accept="image/*" capture="environment" className="hidden"
+                              <input type="file" accept="image/*" className="hidden"
                                 onChange={e => { if (e.target.files?.[0]) uploadPhoto(e.target.files[0], item.item_id) }} />
                             </label>
                           )}

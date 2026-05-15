@@ -221,7 +221,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
             className="w-full py-5 bg-brand hover:bg-brand/90 text-ink rounded-2xl font-semibold text-lg flex items-center justify-center gap-3">
             <span className="text-2xl">📷</span> Prendre une photo
           </button>
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+          <input ref={cameraRef} type="file" accept="image/*"
             className="hidden" onChange={handlePhoto} />
           <button onClick={() => fileRef.current?.click()}
             className="w-full py-4 bg-surface border border text-ink-secondary rounded-2xl font-medium flex items-center justify-center gap-3">

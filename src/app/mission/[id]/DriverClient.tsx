@@ -733,7 +733,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
     return (
       <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''} · ${coveredCats.length}/${PHOTO_CATS.length} angles couverts`} back={() => setScreen('main')}>
-        <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" className="hidden"
+        <input ref={photoRef} type="file" accept="image/*" multiple className="hidden"
           onChange={e => {
             // La catégorie cliquée a été stockée dans data-cat sur le button
             const cat = (photoRef.current as any)?.dataset?.cat

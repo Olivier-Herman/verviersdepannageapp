@@ -340,7 +340,7 @@ export default function DocumentsClient({ user }: { user: any }) {
                     🗂️ Galerie
                   </button>
                 </div>
-                <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
+                <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp"
                   className="hidden" onChange={handleFile} />
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
                   className="hidden" onChange={handleFile} />
@@ -371,7 +371,7 @@ export default function DocumentsClient({ user }: { user: any }) {
                       🗂️ Galerie
                     </button>
                   </div>
-                  <input ref={cameraVersoRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
+                  <input ref={cameraVersoRef} type="file" accept="image/jpeg,image/png,image/webp"
                     className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; setFormFileVerso(f); setFormPreviewVerso(URL.createObjectURL(f)) }} />
                   <input ref={fileVersoRef} type="file" accept="image/jpeg,image/png,image/webp"
                     className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; setFormFileVerso(f); setFormPreviewVerso(URL.createObjectURL(f)) }} />
