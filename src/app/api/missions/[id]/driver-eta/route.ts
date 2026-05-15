@@ -13,7 +13,7 @@ import { NextResponse }                          from 'next/server'
 import { getServerSession }                      from 'next-auth'
 import { authOptions }                           from '@/lib/auth'
 import { createAdminClient }                     from '@/lib/supabase'
-import { isInDaySchedule, isInNightSchedule }    from '@/lib/schedule'
+import { isInDaySchedule, isInNightSchedule, isAutoDispatchNight }    from '@/lib/schedule'
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
@@ -256,7 +256,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // La nuit, le dispatcher a configure l ordre operationnel via drag&drop
   // → l auto-dispatch respecte cet ordre meme si un autre chauffeur arrive
   // plus vite.
-  const isNight = isInNightSchedule(nowDt)
+  const isNight = isAutoDispatchNight(nowDt)  // 18h-8h pour l'auto-dispatch
 
   if (withEta.length > 0) {
     if (isNight) {

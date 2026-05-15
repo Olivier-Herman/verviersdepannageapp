@@ -30,3 +30,13 @@ export function isInNightSchedule(now: Date = new Date()): boolean {
   const h = getBelgiumHour(now)
   return h >= 17 || h < 9
 }
+
+/**
+ * Plage nuit dediee a l'auto-dispatch : 18h00 - 08h00.
+ * Pendant ces heures, l'algo respecte strict priority_order (l'ordre
+ * dispatcher prime sur l'ETA). Cf demande Olivier 2026-05-15.
+ */
+export function isAutoDispatchNight(now: Date = new Date()): boolean {
+  const h = getBelgiumHour(now)
+  return h >= 18 || h < 8
+}
