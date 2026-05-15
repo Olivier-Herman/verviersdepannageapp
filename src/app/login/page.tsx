@@ -2,7 +2,7 @@
 
 import { signIn } from 'next-auth/react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import Image from 'next/image'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -22,6 +22,14 @@ function LoginContent() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [loginError, setLoginError] = useState('')
+  // Google OAuth bloque les WebViews (error 403 disallowed_useragent) → on
+  // cache le bouton Google dans l'app native Capacitor. Affiche dans browser.
+  const [isCapacitor, setIsCapacitor] = useState(false)
+  useEffect(() => {
+    import('@capacitor/core')
+      .then(({ Capacitor }) => setIsCapacitor(Capacitor.isNativePlatform()))
+      .catch(() => setIsCapacitor(false))
+  }, [])
 
   const providerError = error ? PROVIDER_ERRORS[error] : null
 
@@ -100,7 +108,8 @@ function LoginContent() {
             <span className="text-sm font-medium">Microsoft professionnel</span>
           </button>
 
-          {/* Google */}
+          {/* Google — caché dans l'app native (Google bloque OAuth dans WebView) */}
+          {!isCapacitor && (
           <button onClick={() => { setLoading(true); signIn('google', { callbackUrl: '/dashboard' }) }}
             disabled={loading}
             className="w-full flex items-center gap-3 bg-surface border hover:bg-surface-hover hover:border-strong text-ink rounded-md px-4 py-3.5 transition-colors disabled:opacity-40">
@@ -112,6 +121,7 @@ function LoginContent() {
             </svg>
             <span className="text-sm font-medium">Google</span>
           </button>
+          )}
         </div>
 
         <div className="text-center mt-4">
