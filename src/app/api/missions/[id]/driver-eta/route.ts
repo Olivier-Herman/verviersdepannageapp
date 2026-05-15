@@ -249,15 +249,33 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const TOLERANCE_MIN = 10  // marge ETA pour preferer un chauffeur plus proche en km
 
   const withEta = filtered.filter(d => d.eta_total_min != null) as Array<typeof filtered[number] & { eta_total_min: number }>
+
+  // Politique jour vs nuit (Olivier 2026-05-15) :
+  // - JOUR : tri ETA-based (rapidité prime, tiebreaker priority_order)
+  // - NUIT : tri strict priority_order (l ordre dispatcher prime, ETA secondaire)
+  // La nuit, le dispatcher a configure l ordre operationnel via drag&drop
+  // → l auto-dispatch respecte cet ordre meme si un autre chauffeur arrive
+  // plus vite.
+  const isNight = isInNightSchedule(nowDt)
+
   if (withEta.length > 0) {
-    const bestEta = Math.min(...withEta.map(d => d.eta_total_min))
-    // Score = eta_total (ASC), tiebreaker = priority_order (ASC NULLS LAST)
-    withEta.sort((a, b) => {
-      if (a.eta_total_min !== b.eta_total_min) return a.eta_total_min - b.eta_total_min
-      const aPrio = a.priority_order ?? Number.MAX_SAFE_INTEGER
-      const bPrio = b.priority_order ?? Number.MAX_SAFE_INTEGER
-      return aPrio - bPrio
-    })
+    if (isNight) {
+      // Nuit : priority_order strict, tiebreaker eta_total
+      withEta.sort((a, b) => {
+        const aPrio = a.priority_order ?? Number.MAX_SAFE_INTEGER
+        const bPrio = b.priority_order ?? Number.MAX_SAFE_INTEGER
+        if (aPrio !== bPrio) return aPrio - bPrio
+        return a.eta_total_min - b.eta_total_min
+      })
+    } else {
+      // Jour : ETA ASC, tiebreaker priority_order
+      withEta.sort((a, b) => {
+        if (a.eta_total_min !== b.eta_total_min) return a.eta_total_min - b.eta_total_min
+        const aPrio = a.priority_order ?? Number.MAX_SAFE_INTEGER
+        const bPrio = b.priority_order ?? Number.MAX_SAFE_INTEGER
+        return aPrio - bPrio
+      })
+    }
   }
   // Chauffeurs sans ETA computable (pas de position) → en fin de liste, triés par priority_order
   const withoutEta = filtered.filter(d => d.eta_total_min == null)
@@ -267,5 +285,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     drivers: [...withEta, ...withoutEta],
     best_eta_min: withEta.length > 0 ? Math.min(...withEta.map(d => d.eta_total_min)) : null,
     tolerance_min: TOLERANCE_MIN,
+    sort_mode: isNight ? 'priority_order' : 'eta',
   })
 }
