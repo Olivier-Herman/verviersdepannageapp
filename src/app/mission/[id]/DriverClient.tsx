@@ -1406,13 +1406,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
           {rem && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
             <>
-              {M.destination_address && (
-                <button onClick={() => { setCloseType(rel ? 'rel' : 'rem'); setScreen('close') }} disabled={loading}
-                  className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                  📍 Arrivé à destination
+              <button onClick={() => { setCloseType(rel ? 'rel' : 'rem'); setScreen('close') }} disabled={loading}
+                className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
+                📍 Arrivé à destination
+                {M.destination_address && (
                   <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
-                </button>
-              )}
+                )}
+              </button>
               {/* "Mise en parc" : pour REM seulement (une REL ramène DEPUIS le parc, pas vers) */}
               {!rel && (
                 <button onClick={() => {
