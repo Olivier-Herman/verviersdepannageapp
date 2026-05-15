@@ -15,13 +15,15 @@ interface Props {
   missionType:  string | null
   userRole:     string
   userModules:  string[]
+  /** Auto-dispatch en cours → bouton devient "Stop" qui annule la procedure */
+  isActive?:    boolean
   onTriggered?: () => void
 }
 
 const AUTO_DISPATCH_TYPES = ['remorquage', 'depannage']
 
 export default function AutoDispatchButton({
-  missionId, missionType, userRole, userModules, onTriggered,
+  missionId, missionType, userRole, userModules, isActive, onTriggered,
 }: Props) {
   const [loading, setLoading]   = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -33,6 +35,30 @@ export default function AutoDispatchButton({
   const allowed = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
                 || userModules.includes('auto_dispatch')
   if (!allowed) return null
+
+  async function cancel() {
+    if (!confirm('Stopper la procedure auto-dispatch en cours ?')) return
+    setLoading(true); setFeedback(null)
+    try {
+      const r = await fetch('/api/auto-dispatch/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId }),
+      })
+      const j = await r.json()
+      if (!r.ok) {
+        setFeedback(`❌ ${j.error || 'Erreur'}`)
+      } else {
+        setFeedback('🛑 Stoppe')
+        setTimeout(() => onTriggered?.(), 300)
+      }
+    } catch (e: any) {
+      setFeedback(`❌ ${e.message || 'Erreur reseau'}`)
+    } finally {
+      setLoading(false)
+      setTimeout(() => setFeedback(null), 4000)
+    }
+  }
 
   async function trigger() {
     if (!confirm('Lancer l\'auto-dispatch sur cette mission ?')) return
@@ -77,6 +103,20 @@ export default function AutoDispatchButton({
       }`}>
         {feedback}
       </span>
+    )
+  }
+
+  if (isActive) {
+    return (
+      <button
+        type="button"
+        onClick={cancel}
+        disabled={loading}
+        title="Stopper la procedure auto-dispatch en cours (sans assigner de chauffeur)"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-critical hover:bg-critical-hover text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
+      >
+        🛑 {loading ? '…' : 'Stop'}
+      </button>
     )
   }
 

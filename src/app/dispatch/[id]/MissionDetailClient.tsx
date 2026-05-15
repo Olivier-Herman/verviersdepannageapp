@@ -1211,7 +1211,32 @@ export default function MissionDetailClient({
           <div className="px-4 lg:px-8 pt-6">
             <div className="flex items-center gap-2 px-3 py-2 bg-brand/10 border border-brand/30 rounded-xl">
               <span className="text-brand text-sm animate-pulse">⚡</span>
-              <span className="text-brand text-sm font-medium">{autoDispatchStatus}</span>
+              <span className="text-brand text-sm font-medium flex-1">{autoDispatchStatus}</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm('Stopper la procedure auto-dispatch en cours ?')) return
+                  try {
+                    const r = await fetch('/api/auto-dispatch/cancel', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ mission_id: initialMission.id }),
+                    })
+                    if (!r.ok) {
+                      const j = await r.json().catch(() => ({}))
+                      alert(`Erreur : ${j.error || r.status}`)
+                      return
+                    }
+                    router.refresh()
+                  } catch (e: any) {
+                    alert(`Erreur reseau : ${e.message || e}`)
+                  }
+                }}
+                title="Stopper la procedure auto-dispatch (sans assigner de chauffeur)"
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-critical hover:bg-critical-hover text-white rounded-lg text-xs font-bold transition"
+              >
+                🛑 Stop
+              </button>
             </div>
           </div>
         )}

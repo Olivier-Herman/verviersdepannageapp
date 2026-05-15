@@ -502,6 +502,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
           missionType={mission.mission_type}
           userRole={userRole}
           userModules={userModules}
+          isActive={!!mission.auto_dispatch_attempt_status}
           onTriggered={onRefresh}
         />
         {showModal && (
