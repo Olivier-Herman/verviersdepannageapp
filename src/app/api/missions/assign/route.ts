@@ -9,6 +9,7 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { sendNotification }          from '@/lib/notifications/send'
 import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
+import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -22,11 +23,12 @@ export async function POST(req: Request) {
   // Récupérer les infos de la mission (incl. odoo_task_id pour update FSM)
   const { data: mission, error: mErr } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, source, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id')
+    .select('id, external_id, source, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
     .eq('id', mission_id)
     .single()
 
   if (mErr || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  const wasNew = mission.status === 'new'
 
   // Résoudre l'acteur
   const { data: actor } = await supabase
@@ -70,6 +72,32 @@ export async function POST(req: Request) {
       notes:     `Assigné à ${driver?.name}`,
       metadata:  { driver_id, driver_name: driver?.name }
     })
+
+    // Assignation directe depuis "En commande" (status='new') = confirmation
+    // implicite : on cree le dossier Odoo comme le ferait /api/missions/confirm.
+    // Best effort, non bloquant — si echec, "Creer dossier Odoo" reste dispo
+    // sur la fiche.
+    if (wasNew) {
+      try {
+        const odooResult = await createOdooDossierForMission(mission_id)
+        if (odooResult.created) {
+          await supabase.from('mission_logs').insert({
+            mission_id,
+            actor_id: actor?.id || null,
+            action:   'odoo_synced',
+            notes:    `Dossier Odoo cree : helpdesk #${odooResult.ticketId}, task #${odooResult.taskId}`,
+          })
+        }
+      } catch (e: any) {
+        console.error('[Assign+Confirm] Creation Odoo echouee (non bloquant):', e.message)
+        await supabase.from('mission_logs').insert({
+          mission_id,
+          actor_id: actor?.id || null,
+          action:   'error',
+          notes:    `Creation Odoo echouee : ${e.message}. Reessayer via "Creer dossier Odoo".`,
+        })
+      }
+    }
 
     // Notifier le chauffeur
     const typeLabel    = mission.mission_type === 'remorquage' ? '🚛 Remorquage'
