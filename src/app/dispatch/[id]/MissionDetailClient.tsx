@@ -1949,6 +1949,74 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
+              {/* ── Actions admin (dispatcher peut forcer le statut sans pointage chauffeur) ── */}
+              {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (
+                <div className="bg-surface border border-amber-500/30 rounded-2xl p-5 md-card-enter">
+                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
+                    🛠 Actions dispatcher
+                  </h3>
+                  <p className="text-ink-faint text-xs mb-3">
+                    Force le statut de la mission sans passer par le pointage chauffeur (utile pour débloquer une mission abandonnée ou clôturer sans photos).
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button type="button"
+                      onClick={async () => {
+                        if (!confirm('Réinitialiser la mission en "En attente" et désassigner le chauffeur ?')) return
+                        try {
+                          await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body:    JSON.stringify({ status: 'dispatching' }),
+                          })
+                          setStatus('dispatching')
+                          setSelectedDriver('')
+                          setM(prev => ({ ...prev, status: 'dispatching', assigned_to: null, assigned_user: null } as any))
+                          router.refresh()
+                        } catch (e: any) { alert('Erreur : ' + e.message) }
+                      }}
+                      className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-xl text-xs font-medium transition">
+                      🔄 Réinitialiser
+                    </button>
+
+                    <button type="button"
+                      onClick={async () => {
+                        if (!confirm('Forcer la clôture (passe en "À facturer") sans pointage ni photo ?')) return
+                        try {
+                          await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body:    JSON.stringify({ status: 'to_invoice' }),
+                          })
+                          setStatus('to_invoice')
+                          setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
+                          router.refresh()
+                        } catch (e: any) { alert('Erreur : ' + e.message) }
+                      }}
+                      className="px-3 py-2 bg-success/10 hover:bg-success/20 border border-success/30 text-success rounded-xl text-xs font-medium transition">
+                      ✅ Forcer clôture
+                    </button>
+
+                    <button type="button"
+                      onClick={async () => {
+                        if (!confirm('Forcer en "Mise en parc" ?')) return
+                        try {
+                          await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body:    JSON.stringify({ status: 'parked' }),
+                          })
+                          setStatus('parked')
+                          setM(prev => ({ ...prev, status: 'parked', parked_at: new Date().toISOString() } as any))
+                          router.refresh()
+                        } catch (e: any) { alert('Erreur : ' + e.message) }
+                      }}
+                      className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-medium transition">
+                      🅿️ Forcer en parc
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* ── Suivi chauffeur (P6) ─────────────────────────────── */}
               {['assigned', 'accepted', 'in_progress', 'completed'].includes(status) && (
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
