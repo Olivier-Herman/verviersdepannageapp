@@ -14,7 +14,7 @@ export default async function ProfilePage() {
   const userId = (session.user as any).id
   let query = supabase
     .from('users')
-    .select('id, name, email, role, can_verify, verify_pin_hash')
+    .select('id, name, email, role, can_verify, verify_pin_hash, nav_app')
 
   const { data: user } = userId
     ? await query.eq('id', userId).single()

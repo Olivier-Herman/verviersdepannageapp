@@ -41,6 +41,8 @@ export default function ProfileClient({ user }: { user: any }) {
   const userRole    = user?.role ?? 'driver'
   const userName    = user?.name ?? ''
   const userModules = (user?.modules ?? []) as string[]
+  const [navApp,        setNavApp]        = useState<'gmaps' | 'waze' | 'apple'>((user?.nav_app as any) || 'gmaps')
+  const [navAppLoading, setNavAppLoading] = useState(false)
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
   const visibleNav = filterNavItems({ userModules, userRole, userNavOrder })
@@ -303,6 +305,50 @@ export default function ProfileClient({ user }: { user: any }) {
             />
           </div>
         )}
+
+        {/* App de navigation préférée */}
+        <div className="bg-surface border rounded-2xl p-5">
+          <h2 className="text-ink font-bold mb-1">App de navigation</h2>
+          <p className="text-ink-muted text-xs mb-3">
+            Choisis l&apos;app utilisée pour naviguer vers les lieux d&apos;intervention (à installer sur ton iPhone si pas déjà fait).
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {([['gmaps', '🗺️', 'Google Maps'], ['waze', '🧭', 'Waze'], ['apple', '📍', 'Plans']] as const).map(([id, ic, lb]) => {
+              const active = navApp === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={navAppLoading}
+                  onClick={async () => {
+                    if (id === navApp) return
+                    setNavAppLoading(true)
+                    const prev = navApp
+                    setNavApp(id)
+                    try {
+                      const r = await fetch('/api/users/nav-preference', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nav_app: id }),
+                      })
+                      if (!r.ok) setNavApp(prev)
+                    } catch { setNavApp(prev) }
+                    finally { setNavAppLoading(false) }
+                  }}
+                  className={`flex flex-col items-center gap-1 py-3 rounded-2xl border transition active:scale-95 disabled:opacity-50 ${
+                    active
+                      ? 'bg-brand-soft border-brand text-brand'
+                      : 'bg-surface-2 hover:bg-surface-hover border text-ink'
+                  }`}
+                >
+                  <span className="text-2xl">{ic}</span>
+                  <span className="text-xs font-medium">{lb}</span>
+                  {active && <span className="text-[10px] uppercase tracking-wider">Actif</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         {/* PIN */}
         {user?.can_verify && (
