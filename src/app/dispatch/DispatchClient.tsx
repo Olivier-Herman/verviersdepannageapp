@@ -836,24 +836,9 @@ export default function DispatchClient({
               onChange={e => setSearch(e.target.value)}
               className="flex-1 min-w-[120px] lg:min-w-[180px] max-w-xs bg-surface border border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
             />
-
-            {/* Indicateur global "Dérogations paiement à valider" — TRES visible
-                car un chauffeur attend une reponse pour pouvoir avancer */}
-            {(() => {
-              const pendingDerogs = missions.filter(m => m.has_pending_derogation)
-              if (pendingDerogs.length === 0) return null
-              return (
-                <Link
-                  href={`/dispatch/${pendingDerogs[0].id}`}
-                  title="Un chauffeur attend une réponse à sa demande de dérogation paiement"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 border-2 border-red-400 text-white font-bold rounded-xl text-sm shadow-lg shadow-red-500/30 animate-pulse transition"
-                >
-                  <span className="text-xl leading-none">🆘</span>
-                  <span className="hidden sm:inline">DÉROGATION{pendingDerogs.length > 1 ? `S (${pendingDerogs.length})` : ''} À VALIDER</span>
-                  <span className="sm:hidden">{pendingDerogs.length} À VALIDER</span>
-                </Link>
-              )
-            })()}
+            {/* Note : le badge "Derogation a valider" global vit dans AppShell
+                (composant DispatchAlertBadge) → visible depuis n importe quelle
+                page, pas seulement /dispatch. */}
 
             <select
               value={sourceFilter}

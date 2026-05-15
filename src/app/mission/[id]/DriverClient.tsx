@@ -289,7 +289,7 @@ function ScreenWrap({ title, sub, back, children }: { title: string; sub?: strin
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, isReadOnly = false, navApp: initNav }: Props) {
+export default function DriverClient({ mission: init, currentUserId, isReadOnly = false, navApp: initNav }: Props) {
   const router = useRouter()
 
   const [M, setM]               = useState<Mission>(init)
@@ -572,11 +572,24 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   // ⚠ Plus d'auto-accept : le chauffeur doit cliquer "Accepter la mission" en bas.
   // Ouvrir la fiche n'engage pas le chauffeur (il peut consulter avant de prendre).
 
+  // Mission retiree au chauffeur (assigned_to passe a un autre user ou null)
+  const [unassignedModal, setUnassignedModal] = useState(false)
+
   // Realtime subscription
   useEffect(() => {
     const ch = sb.channel(`mission-v4-${M.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'incoming_missions', filter: `id=eq.${M.id}` },
-        payload => { setM(prev => ({ ...prev, ...(payload.new as Partial<Mission>) })) })
+        payload => {
+          const next = payload.new as Partial<Mission> & { assigned_to?: string | null }
+          // Si la mission est retiree (assigned_to change pour quelqu un d autre
+          // ou devient null) le chauffeur doit etre prevenu et rebascule
+          // sur la liste de ses missions.
+          if (currentUserId && next.assigned_to !== undefined && next.assigned_to !== currentUserId) {
+            setUnassignedModal(true)
+            return
+          }
+          setM(prev => ({ ...prev, ...next }))
+        })
       // Derogation : si le dispatcheur decide, le row passe de pending a une
       // decision. Le chauffeur voit une modal explicite avec le verdict + OK
       // qui force le reload pour repartir d un etat sain.
@@ -1409,6 +1422,25 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           <div className="flex-1 min-w-0">
             <p className="text-amber-400 text-xs font-semibold">Dérogation en attente de validation dispatch</p>
             <p className="text-amber-300/80 text-xs truncate">Motif : {derogPending.motive}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal "Mission retirée" : assigned_to a change, le chauffeur doit revenir a sa liste */}
+      {unassignedModal && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center px-6 text-center">
+          <div className="bg-surface rounded-3xl p-6 space-y-4 max-w-sm w-full">
+            <div className="text-5xl" aria-hidden="true">🛑</div>
+            <p className="text-ink font-semibold text-lg">Mission retirée</p>
+            <p className="text-ink-secondary text-sm">
+              Cette mission ne t'est plus attribuée. Le dispatch l'a réaffectée ou désassignée.
+            </p>
+            <button
+              onClick={() => { window.location.href = '/mission' }}
+              className="w-full py-3.5 bg-brand text-white font-semibold rounded-2xl text-sm"
+            >
+              OK, retour à mes missions
+            </button>
           </div>
         </div>
       )}

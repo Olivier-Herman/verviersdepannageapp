@@ -10,6 +10,7 @@ import NotificationsProvider from '@/components/notifications/NotificationsProvi
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
 import GlobalSearch from '@/components/GlobalSearch'
+import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
@@ -148,6 +149,7 @@ export default function AppShell({
             >
               <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
             </Link>
+            <DispatchAlertBadge userRole={userRole} />
             <GlobalSearch />
           </div>
           <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
@@ -170,6 +172,7 @@ export default function AppShell({
           <div className="flex items-center justify-between gap-4">
             <h1 className="font-display text-ink font-bold text-2xl">{title}</h1>
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
+            <DispatchAlertBadge userRole={userRole} />
             <GlobalSearch />
           </div>
         </div>
