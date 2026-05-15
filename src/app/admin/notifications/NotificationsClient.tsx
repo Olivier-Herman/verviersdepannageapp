@@ -117,7 +117,7 @@ export default function NotificationsClient({
 
       {/* Legende */}
       <div className="bg-surface-2 border rounded-xl p-3 text-xs text-ink-muted">
-        💡 Cellule <span className="text-ink-faint">grisée</span> = type non applicable à ce rôle. Cellule <span className="text-success">✓</span> = activée. Cellule <span className="text-critical">✕</span> = désactivée. Click pour basculer (sauvegarde immédiate).
+        💡 Cellule <span className="text-success">✓</span> = activée. Cellule <span className="text-critical">✕</span> = désactivée. Cellule <span className="opacity-50">atténuée</span> = hors rôle par défaut (mais tu peux quand même l'activer manuellement). Click pour basculer (sauvegarde immédiate).
       </div>
 
       {/* Matrice */}
@@ -160,15 +160,12 @@ export default function NotificationsClient({
                   {categoriesOrder.flatMap(cat =>
                     NOTIFICATION_TYPES.filter(t => t.category === cat).map(t => {
                       const isApplicable = applicable.has(t.key)
-                      if (!isApplicable) {
-                        return (
-                          <td key={t.key} className="text-center px-2 py-2 border-l">
-                            <span className="text-ink-faint text-xs">—</span>
-                          </td>
-                        )
-                      }
                       const value  = getValue(u.id, t.key, u.role)
                       const isLoad = saving === `${u.id}:${t.key}`
+                      // Toutes les cellules sont cliquables — l'admin peut overrider
+                      // pour donner une notif non-applicable au role (ex : un dispatcher
+                      // qui doit aussi recevoir les notifs chauffeur). Visuellement
+                      // attenue si pas applicable par default.
                       return (
                         <td key={t.key} className="text-center px-2 py-2 border-l">
                           <button type="button"
@@ -178,8 +175,11 @@ export default function NotificationsClient({
                               value
                                 ? 'bg-success-soft border-success text-success hover:opacity-80'
                                 : 'bg-critical-soft border-critical/40 text-critical hover:opacity-80'
-                            } ${isLoad ? 'opacity-50' : ''}`}
-                            title={value ? 'Activé · clic pour désactiver' : 'Désactivé · clic pour activer'}>
+                            } ${isLoad ? 'opacity-50' : ''} ${!isApplicable ? 'opacity-50' : ''}`}
+                            title={
+                              (isApplicable ? '' : 'Hors rôle par défaut · ') +
+                              (value ? 'Activé · clic pour désactiver' : 'Désactivé · clic pour activer')
+                            }>
                             {isLoad ? '⏳' : value ? <Check size={14} /> : <X size={14} />}
                           </button>
                         </td>
