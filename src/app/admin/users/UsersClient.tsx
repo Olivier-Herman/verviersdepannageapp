@@ -83,6 +83,11 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   const [search,      setSearch]      = useState('')
   const [selectedUser,setSelectedUser]= useState<any>(null)
   const [showNewUser, setShowNewUser] = useState(false)
+  // Modal suppression user : PIN admin requis
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletePin, setDeletePin]             = useState('')
+  const [deleteError, setDeleteError]         = useState('')
+  const [deleting, setDeleting]               = useState(false)
   const [newEmail,    setNewEmail]    = useState('')
   const [newName,     setNewName]     = useState('')
   const [newRole,     setNewRole]     = useState('driver')
@@ -551,28 +556,16 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
       </Button>
 
       {/* ── Zone de suppression (superadmin uniquement) ── */}
-      {isSuperAdmin && selectedUser && selectedUser.id !== (typeof window !== 'undefined' ? '' : '') && (
+      {isSuperAdmin && selectedUser && (
         <div className="mt-6 pt-6 border-t border-critical/20">
           <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-2">Zone dangereuse</p>
           <button
             type="button"
             disabled={saving}
-            onClick={async () => {
-              if (!selectedUser) return
-              if (!confirm(`Supprimer définitivement le compte de "${selectedUser.name || selectedUser.email}" ?\n\nCette action est irréversible.`)) return
-              setSaving(true)
-              try {
-                const res = await fetch(`/api/admin/users?userId=${encodeURIComponent(selectedUser.id)}`, { method: 'DELETE' })
-                const j = await res.json()
-                if (!res.ok) {
-                  alert('Erreur : ' + (j.error || res.status))
-                  return
-                }
-                setSelectedUser(null)
-                window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now()
-              } finally {
-                setSaving(false)
-              }
+            onClick={() => {
+              setDeletePin('')
+              setDeleteError('')
+              setShowDeleteModal(true)
             }}
             className="w-full py-3 bg-critical-soft hover:bg-critical/20 border border-critical/40 text-critical rounded-md font-medium text-sm transition-colors disabled:opacity-50"
           >
@@ -581,6 +574,83 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           <p className="text-ink-faint text-xs mt-2">
             La suppression est <strong>irréversible</strong>. Les missions assignées à ce user seront désassignées (FK SET NULL).
           </p>
+        </div>
+      )}
+
+      {/* ── Modal confirmation suppression avec PIN ── */}
+      {showDeleteModal && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => !deleting && setShowDeleteModal(false)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-surface w-full max-w-md rounded-2xl border-2 border-critical p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-critical-soft rounded-xl flex items-center justify-center text-2xl">🗑</div>
+              <div>
+                <h3 className="text-ink font-bold">Supprimer ce compte ?</h3>
+                <p className="text-ink-muted text-xs">Action irréversible</p>
+              </div>
+            </div>
+
+            <div className="bg-surface-2 border rounded-xl p-3 space-y-1">
+              <p className="text-ink text-sm font-medium">{selectedUser.name || '(sans nom)'}</p>
+              <p className="text-ink-muted text-xs">{selectedUser.email}</p>
+              <p className="text-ink-faint text-xs capitalize">{selectedUser.role}</p>
+            </div>
+
+            <div>
+              <label className="block text-ink text-sm font-medium mb-2">
+                Confirme avec ton PIN personnel à 4 chiffres
+              </label>
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={4}
+                value={deletePin}
+                onChange={e => { setDeletePin(e.target.value.replace(/\D/g, '').slice(0, 4)); setDeleteError('') }}
+                autoFocus
+                placeholder="••••"
+                className="w-full bg-surface-2 border border rounded-xl px-4 py-3 text-ink text-2xl text-center font-mono tracking-[0.5em] focus:outline-none focus:border-critical"
+              />
+              {deleteError && (
+                <p className="text-critical text-xs mt-2">⚠ {deleteError}</p>
+              )}
+              <p className="text-ink-faint text-xs mt-2">
+                Le PIN est celui que tu utilises pour valider les paiements caisse. Configure-le dans /profil si pas encore fait.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button type="button"
+                disabled={deleting}
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-xl text-sm font-medium transition disabled:opacity-50">
+                Annuler
+              </button>
+              <button type="button"
+                disabled={deleting || deletePin.length !== 4}
+                onClick={async () => {
+                  if (!selectedUser) return
+                  setDeleting(true); setDeleteError('')
+                  try {
+                    const res = await fetch(`/api/admin/users?userId=${encodeURIComponent(selectedUser.id)}&pin=${deletePin}`, { method: 'DELETE' })
+                    const j = await res.json()
+                    if (!res.ok) {
+                      setDeleteError(j.error || 'Erreur')
+                      return
+                    }
+                    setShowDeleteModal(false)
+                    setSelectedUser(null)
+                    window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now()
+                  } finally {
+                    setDeleting(false)
+                  }
+                }}
+                className="flex-1 py-2.5 bg-critical hover:bg-critical/80 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition">
+                {deleting ? '⏳ Suppression…' : '🗑 Supprimer'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

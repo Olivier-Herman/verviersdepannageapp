@@ -3,6 +3,7 @@ import { getServerSession }         from 'next-auth'
 import { authOptions }              from '@/lib/auth'
 import { createAdminClient }        from '@/lib/supabase'
 import { sendAccountActivated }     from '@/lib/emails'
+import bcrypt                       from 'bcryptjs'
 
 async function checkAdmin() {
   try {
@@ -169,10 +170,11 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// DELETE /api/admin/users?userId=...
+// DELETE /api/admin/users?userId=...&pin=XXXX
 // Supprime un user (hard delete, cascade via FK).
 // Reserve aux SUPERADMINS uniquement. Auto-protection : on ne peut pas
-// se supprimer soi-meme (sinon plus aucun superadmin pour gerer).
+// se supprimer soi-meme. Requiert le PIN 4 chiffres du superadmin
+// (meme PIN que celui de la validation caisse, stocke dans verify_pin_hash).
 export async function DELETE(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -183,7 +185,12 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const userId = searchParams.get('userId')
+  const pin    = searchParams.get('pin') || ''
+
   if (!userId) return NextResponse.json({ error: 'userId requis' }, { status: 400 })
+  if (!pin || !/^\d{4}$/.test(pin)) {
+    return NextResponse.json({ error: 'PIN à 4 chiffres requis' }, { status: 400 })
+  }
 
   // Self-protect
   const currentUserId = (session.user as any).id
@@ -193,10 +200,23 @@ export async function DELETE(req: NextRequest) {
 
   const supabase = createAdminClient()
 
-  // Suppression : la table users a probablement des FK vers d'autres tables
-  // (incoming_missions.assigned_to, mission_logs.actor_id, etc.). Selon les
-  // contraintes ON DELETE, soit cascade soit SET NULL. On laisse Postgres
-  // gerer. Si une contrainte FK strict bloque, on retourne l'erreur.
+  // Verify PIN du current superadmin
+  const { data: currentUser } = await supabase
+    .from('users')
+    .select('verify_pin_hash')
+    .eq('id', currentUserId)
+    .single()
+  if (!currentUser?.verify_pin_hash) {
+    return NextResponse.json({
+      error: 'Tu dois d\'abord configurer ton PIN personnel dans /profil (section Validation caisse).',
+    }, { status: 400 })
+  }
+  const validPin = await bcrypt.compare(pin, currentUser.verify_pin_hash)
+  if (!validPin) {
+    return NextResponse.json({ error: 'PIN incorrect' }, { status: 403 })
+  }
+
+  // Suppression : FK gerees par contraintes Postgres ON DELETE
   const { error } = await supabase
     .from('users')
     .delete()
