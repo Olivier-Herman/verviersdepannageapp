@@ -355,6 +355,12 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [derogMotive, setDerogMotive] = useState('')
   const [derogSubmitting, setDerogSubmitting] = useState(false)
   const [derogPending, setDerogPending] = useState<{ id: string; motive: string; requested_at: string } | null>(null)
+  // Modal "Reponse a votre derogation" : declenche par realtime quand le dispatcheur decide
+  const [derogResult, setDerogResult] = useState<{
+    decision: 'cancelled_amount' | 'adjusted' | 'refused'
+    new_amount: number | null
+    note: string | null
+  } | null>(null)
   const handleDerogTap = () => {
     if (derogPending) return  // demande deja en cours
     const next = derogTapCount + 1
@@ -529,8 +535,32 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     const ch = sb.channel(`mission-v4-${M.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'incoming_missions', filter: `id=eq.${M.id}` },
         payload => { setM(prev => ({ ...prev, ...(payload.new as Partial<Mission>) })) })
+      // Derogation : si le dispatcheur decide, le row passe de pending a une
+      // decision. Le chauffeur voit une modal explicite avec le verdict + OK
+      // qui force le reload pour repartir d un etat sain.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_derogations', filter: `mission_id=eq.${M.id}` },
+        (payload: any) => {
+          const row = payload.new
+          if (!row) return
+          if (row.status === 'pending') {
+            // Nouveau pending (cas rare : autre device meme chauffeur) → fetch
+            fetch(`/api/missions/${M.id}/payment-derogation`)
+              .then(r => r.json())
+              .then(j => setDerogPending(j.derogation || null))
+              .catch(() => {})
+          } else {
+            // Decision rendue → modal pour le chauffeur
+            setDerogPending(null)
+            setDerogResult({
+              decision:   row.status,
+              new_amount: row.new_amount ?? null,
+              note:       row.decision_note ?? null,
+            })
+          }
+        })
       .subscribe()
     return () => { sb.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [M.id])
 
   // ── API statuts simples (avec reload) ───────────────────────────────────
@@ -1337,6 +1367,41 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           <div className="flex-1 min-w-0">
             <p className="text-amber-400 text-xs font-semibold">Dérogation en attente de validation dispatch</p>
             <p className="text-amber-300/80 text-xs truncate">Motif : {derogPending.motive}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal "Réponse à votre dérogation" : OK = reload */}
+      {derogResult && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4">
+            <div className="text-center">
+              <div className="text-5xl mb-2" aria-hidden="true">
+                {derogResult.decision === 'refused' ? '❌' : '✅'}
+              </div>
+              <p className="text-ink font-semibold text-lg">
+                {derogResult.decision === 'cancelled_amount' && 'Dérogation acceptée'}
+                {derogResult.decision === 'adjusted'         && 'Montant ajusté'}
+                {derogResult.decision === 'refused'          && 'Dérogation refusée'}
+              </p>
+              <p className="text-ink-secondary text-sm mt-1">
+                {derogResult.decision === 'cancelled_amount' && 'Le montant à encaisser a été annulé. Tu peux clôturer la mission.'}
+                {derogResult.decision === 'adjusted' && `Nouveau montant à encaisser : ${derogResult.new_amount} €.`}
+                {derogResult.decision === 'refused'  && 'Tu dois encaisser le montant total prévu.'}
+              </p>
+            </div>
+            {derogResult.note && (
+              <div className="bg-surface-hover rounded-xl p-3">
+                <p className="text-ink-muted text-xs uppercase tracking-wide mb-1">Note du dispatch</p>
+                <p className="text-ink text-sm whitespace-pre-wrap">{derogResult.note}</p>
+              </div>
+            )}
+            <button
+              onClick={() => { setDerogResult(null); window.location.reload() }}
+              className="w-full py-3.5 bg-brand text-white font-semibold rounded-2xl text-sm"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

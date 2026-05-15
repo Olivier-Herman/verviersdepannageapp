@@ -121,6 +121,17 @@ export async function GET(req: Request) {
       ;(m as any).auto_dispatch_attempt_status = att.status
       ;(m as any).auto_dispatch_driver_name = driverName
     }
+
+    // Derogations paiement pending : flag sur la card pour signaler au dispatcher
+    const { data: pendingDerogs } = await supabase
+      .from('payment_derogations')
+      .select('mission_id')
+      .in('mission_id', missionIds)
+      .eq('status', 'pending')
+    const derogSet = new Set((pendingDerogs || []).map(d => d.mission_id))
+    for (const m of missions || []) {
+      if (derogSet.has(m.id)) (m as any).has_pending_derogation = true
+    }
   }
 
   // Compteurs par statut (exclu les archivees pour coherence avec la liste)

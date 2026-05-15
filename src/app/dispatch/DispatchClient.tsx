@@ -60,6 +60,7 @@ interface Mission {
   auto_dispatch_status?: string | null
   auto_dispatch_attempt_status?: 'pending' | 'push_sent' | 'call_1_sent' | 'call_2_sent' | null
   auto_dispatch_driver_name?: string | null
+  has_pending_derogation?: boolean
   invoice_number?: string | null
 }
 
@@ -620,6 +621,14 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
         </div>
       )}
 
+      {/* Dérogation paiement demandée */}
+      {mission.has_pending_derogation && (
+        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-amber-600/15 border border-amber-600/40 rounded-lg">
+          <span className="text-amber-400 text-xs animate-pulse">🆘</span>
+          <span className="text-amber-400 text-xs font-medium truncate">Dérogation paiement à valider</span>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border">
         <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-1 min-w-0">
@@ -1144,6 +1153,12 @@ export default function DispatchClient({
                             <p className="mt-1.5 text-brand text-[11px] flex items-center gap-1">
                               <span className="animate-pulse">⚡</span>
                               {m.auto_dispatch_status}
+                            </p>
+                          )}
+                          {m.has_pending_derogation && (
+                            <p className="mt-1.5 text-amber-400 text-[11px] flex items-center gap-1">
+                              <span className="animate-pulse">🆘</span>
+                              Dérogation à valider
                             </p>
                           )}
                         </td>
