@@ -373,6 +373,8 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [newStopLat, setNewStopLat]     = useState<number|null>(null)
   const [newStopLng, setNewStopLng]     = useState<number|null>(null)
   const [newStopLabel, setNewStopLabel] = useState('')
+  // editStopId null = mode creation, sinon id du stop a remplacer dans extra_addresses
+  const [editStopId, setEditStopId]     = useState<string|null>(null)
 
   // VR locations
   const [vrLocs, setVrLocs] = useState<VrLoc[]>([])
@@ -561,23 +563,33 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     finally { setLoading(false) }
   }
 
-  // ── Ajouter stop ──────────────────────────────────────────────────────────
-  const addStop = async () => {
+  // ── Ajouter / modifier stop ───────────────────────────────────────────────
+  const saveStop = async () => {
     if (!newStopAddr) return
-    const newStop: Stop = {
-      id: crypto.randomUUID(), type: 'custom', label: newStopLabel || newStopAddr,
-      address: newStopAddr, lat: newStopLat, lng: newStopLng, arrived_at: null, sort_order: stops.length,
+    let nextStops: Stop[]
+    if (editStopId) {
+      // Mode edition : remplace l'entree existante en gardant id/sort/arrived
+      nextStops = stops.map(s => s.id === editStopId
+        ? { ...s, label: newStopLabel || newStopAddr, address: newStopAddr, lat: newStopLat, lng: newStopLng }
+        : s
+      )
+    } else {
+      const newStop: Stop = {
+        id: crypto.randomUUID(), type: 'custom', label: newStopLabel || newStopAddr,
+        address: newStopAddr, lat: newStopLat, lng: newStopLng, arrived_at: null, sort_order: stops.length,
+      }
+      nextStops = [...stops, newStop]
     }
     setLoading(true)
     try {
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, action: 'update_stops', stops: [...stops, newStop] }),
+        body: JSON.stringify({ mission_id: M.id, action: 'update_stops', stops: nextStops }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(j.mission); setScreen('main')
-      setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null)
+      setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null); setEditStopId(null)
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
   }
@@ -913,9 +925,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     </ScreenWrap>
   )
 
-  // ── Ajouter stop ──────────────────────────────────────────────────────────
+  // ── Ajouter / modifier stop ───────────────────────────────────────────────
   if (screen === 'add-stop') return (
-    <ScreenWrap title="Ajouter un stop" back={() => setScreen('main')}>
+    <ScreenWrap title={editStopId ? 'Modifier le stop' : 'Ajouter un stop'} back={() => { setScreen('main'); setEditStopId(null); setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null) }}>
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <div>
           <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Label <span className="text-ink-faint normal-case">(optionnel)</span></p>
@@ -929,9 +941,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
       </div>
       <div className="px-4 py-4 border-t border flex gap-3">
-        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
-        <button onClick={addStop} disabled={!newStopAddr || loading} className="flex-1 py-3 bg-brand disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">
-          {loading ? '⏳…' : '+ Ajouter'}
+        <button onClick={() => { setScreen('main'); setEditStopId(null); setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null) }} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+        <button onClick={saveStop} disabled={!newStopAddr || loading} className="flex-1 py-3 bg-brand disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">
+          {loading ? '⏳…' : (editStopId ? '✓ Enregistrer' : '+ Ajouter')}
         </button>
       </div>
     </ScreenWrap>
@@ -1328,12 +1340,13 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                     if (point.id === '__dest__') {
                       setAddrModal({ title: point.label, address: point.address, field: 'destination' })
                     } else {
-                      setAddrModal({ title: point.label, address: point.address, lat: point.lat ?? undefined, lng: point.lng ?? undefined })
+                      // field='stop:<id>' → la modal sait deroute vers l'edition stop
+                      setAddrModal({ title: point.label, address: point.address, lat: point.lat ?? undefined, lng: point.lng ?? undefined, field: `stop:${point.id}` })
                     }
                   }}>
                     <p className="text-ink-muted text-xs">{point.label}</p>
                     <p className="text-ink text-sm truncate">{point.address}</p>
-                    <p className="text-blue-400 text-xs mt-0.5">{point.id === '__dest__' ? 'Tap → Naviguer ou Modifier' : 'Tap → Naviguer'}</p>
+                    <p className="text-blue-400 text-xs mt-0.5">Tap → Naviguer ou Modifier</p>
                   </button>
                   {canReorder && !point.arrived_at && point.id !== '__dest__' && (
                     <button onClick={() => api('arrive_stop', { stop_id: point.id })} disabled={loading}
@@ -1646,7 +1659,22 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         <AddrActionModal
           title={addrModal.title} address={addrModal.address}
           onNavigate={() => { const u = gUrl(navApp, addrModal.lat, addrModal.lng, addrModal.address); if (u) window.open(u, '_blank'); setAddrModal(null) }}
-          onModify={addrModal.field ? () => { setModField(addrModal.field!); setModVal(addrModal.address); setModLat(addrModal.lat ?? null); setModLng(addrModal.lng ?? null); setAddrModal(null); setScreen('modify-addr') } : undefined}
+          onModify={addrModal.field ? () => {
+            const f = addrModal.field!
+            if (f.startsWith('stop:')) {
+              // Edition d'un stop : pre-remplir l'ecran add-stop en mode edit
+              const stopId = f.slice(5)
+              const target = stops.find(s => s.id === stopId)
+              setEditStopId(stopId)
+              setNewStopAddr(addrModal.address)
+              setNewStopLabel(target?.label || '')
+              setNewStopLat(addrModal.lat ?? null)
+              setNewStopLng(addrModal.lng ?? null)
+              setAddrModal(null); setScreen('add-stop')
+            } else {
+              setModField(f); setModVal(addrModal.address); setModLat(addrModal.lat ?? null); setModLng(addrModal.lng ?? null); setAddrModal(null); setScreen('modify-addr')
+            }
+          } : undefined}
           onClose={() => setAddrModal(null)}
         />
       )}
