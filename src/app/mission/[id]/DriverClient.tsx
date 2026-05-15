@@ -291,6 +291,11 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
 
   const [M, setM]               = useState<Mission>(init)
   const [screen, setScreen]     = useState<Screen>('main')
+  // Memorise l ecran d origine avant d entrer dans 'photos' pour pouvoir y
+  // retourner apres save/retour. Sans ca, on revenait toujours sur 'main'
+  // meme si on venait de 'close'.
+  const [photosFrom, setPhotosFrom] = useState<Screen>('main')
+  const goPhotos = (from: Screen = 'main') => { setPhotosFrom(from); setScreen('photos') }
   const [loading, setLoading]   = useState(false)
   const [err, setErr]           = useState('')
   const [navApp, setNavApp]     = useState<NavApp>(initNav || 'gmaps')
@@ -685,6 +690,9 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
       setPhotoUrls(allUrls); setPreviews(allUrls); setPhotos([])
       saveDraft({ photoUrls: allUrls })
       setLoading(false)
+      // Auto-retour sur l'ecran d'origine apres save (ex: close si on venait
+      // du resume de cloture). Plus besoin de cliquer Retour manuellement.
+      setScreen(photosFrom)
     } catch (e: any) { setErr(e.message || 'Erreur sauvegarde'); setLoading(false) }
   }
 
@@ -732,7 +740,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
     const allRequiredDone = requiredCats.every(id => coveredCats.includes(id))
 
     return (
-      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''} · ${coveredCats.length}/${PHOTO_CATS.length} angles couverts`} back={() => setScreen('main')}>
+      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''} · ${coveredCats.length}/${PHOTO_CATS.length} angles couverts`} back={() => setScreen(photosFrom)}>
         <input ref={photoRef} type="file" accept="image/*" multiple className="hidden"
           onChange={e => {
             // La catégorie cliquée a été stockée dans data-cat sur le button
@@ -823,7 +831,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </button>
           )}
           {photos.length === 0 && (
-            <button onClick={() => setScreen('main')} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-semibold rounded-2xl">← Retour</button>
+            <button onClick={() => setScreen(photosFrom)} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-semibold rounded-2xl">← Retour</button>
           )}
         </div>
       </ScreenWrap>
@@ -1023,7 +1031,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </div>
 
             {/* Photos */}
-            <button onClick={() => setScreen('photos')}
+            <button onClick={() => goPhotos('close')}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
               <span className="text-ink-secondary text-sm">📷 Photos</span>
               <span className="flex items-center gap-2">
@@ -1128,7 +1136,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           </div>
 
           {closeType !== 'dpr' && totPh < 3 && (
-            <button onClick={() => setScreen('photos')}
+            <button onClick={() => goPhotos('close')}
               className="w-full flex items-center justify-between bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl px-3 py-3 transition active:scale-95">
               <span className="text-amber-400 text-sm font-medium">⚠️ {3 - totPh} photo(s) manquante(s)</span>
               <span className="text-amber-300 text-xs">📷 Ajouter →</span>
@@ -1434,7 +1442,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
           {!rem && onSite && M.status !== 'completed' && (
             <>
               {totPh < 3 && (
-                <button onClick={() => setScreen('photos')}
+                <button onClick={() => goPhotos('main')}
                   className="w-full py-4 bg-orange-500 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                   📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
                 </button>
@@ -1481,7 +1489,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
             </div>
             <div className="grid grid-cols-2 gap-3 p-4">
               {/* Photos */}
-              <button onClick={() => { setShowGrid(false); setScreen('photos') }}
+              <button onClick={() => { setShowGrid(false); goPhotos('main') }}
                 className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${totPh > 0 ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
                 <span className="text-2xl">📷</span>
                 <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-ink-secondary'}`}>Photos</span>
