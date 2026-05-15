@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   // 1. Fetch mission
   const { data: mission } = await sb
     .from('incoming_missions')
-    .select('id, mission_type, dossier_number, incident_city, status, assigned_to')
+    .select('id, mission_type, dossier_number, incident_address, incident_city, incident_lat, incident_lng, status, assigned_to')
     .eq('id', body.mission_id)
     .maybeSingle()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -46,6 +46,37 @@ export async function POST(req: Request) {
   // 3. Mission deja assignee ?
   if (mission.assigned_to) {
     return NextResponse.json({ error: 'Mission deja assignee' }, { status: 409 })
+  }
+
+  // 3.5. Geocoder l'adresse incident si pas encore fait (pour /driver-eta).
+  // Permet de declencher l'auto-dispatch sur une mission 'new' non encore
+  // confirmee par le dispatcher.
+  if (mission.incident_lat == null || mission.incident_lng == null) {
+    const addr = mission.incident_address || ''
+    if (!addr.trim()) {
+      return NextResponse.json({ error: 'Mission sans adresse d\'incident — impossible de calculer les ETA chauffeur' }, { status: 400 })
+    }
+    const key = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!key) {
+      return NextResponse.json({ error: 'Google Geocoding API non configure' }, { status: 500 })
+    }
+    try {
+      const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${key}&language=fr&region=be`)
+      const geo = await geoRes.json()
+      const loc = geo?.results?.[0]?.geometry?.location
+      if (!loc?.lat || !loc?.lng) {
+        return NextResponse.json({ error: `Geocoding echec pour: ${addr}` }, { status: 400 })
+      }
+      await sb.from('incoming_missions').update({
+        incident_lat: loc.lat,
+        incident_lng: loc.lng,
+      }).eq('id', mission.id)
+      // Update in-memory pour les etapes suivantes
+      ;(mission as any).incident_lat = loc.lat
+      ;(mission as any).incident_lng = loc.lng
+    } catch (e: any) {
+      return NextResponse.json({ error: `Geocoding fetch error: ${e.message}` }, { status: 500 })
+    }
   }
 
   // 4. Tentative deja en cours ?
