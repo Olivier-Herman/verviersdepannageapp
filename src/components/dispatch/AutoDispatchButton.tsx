@@ -46,9 +46,18 @@ export default function AutoDispatchButton({
       const j = await r.json()
       if (!r.ok) {
         setFeedback(`❌ ${j.error || 'Erreur'}`)
+        // Refresh quand meme en cas d'erreur (la mission a peut-etre change)
+        setTimeout(() => onTriggered?.(), 4000)
       } else {
+        // Affiche aussi un alert visible globalement (le feedback inline
+        // peut etre cache si la card change de tab apres refresh)
+        const msg = `⚡ Auto-dispatch lancé\n→ ${j.target_driver?.name || 'chauffeur'}`
         setFeedback(`⚡ → ${j.target_driver?.name || 'chauffeur'}`)
-        onTriggered?.()
+        // Delai 4s avant refresh pour que le user voit le feedback
+        setTimeout(() => {
+          onTriggered?.()
+          alert(msg)
+        }, 100)
       }
     } catch (e: any) {
       setFeedback(`❌ ${e.message || 'Erreur réseau'}`)
