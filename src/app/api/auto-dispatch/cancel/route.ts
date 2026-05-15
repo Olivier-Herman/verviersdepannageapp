@@ -37,15 +37,8 @@ export async function POST(req: Request) {
     .select('id')
   if (cancelErr) return NextResponse.json({ error: cancelErr.message }, { status: 500 })
 
-  // Repasse la mission en 'new' si elle etait en 'dispatching' (et non encore assignee)
-  const { data: mission } = await sb
-    .from('incoming_missions')
-    .select('id, status, assigned_to')
-    .eq('id', body.mission_id)
-    .maybeSingle()
-  if (mission && mission.status === 'dispatching' && !mission.assigned_to) {
-    await sb.from('incoming_missions').update({ status: 'new', updated_at: now }).eq('id', body.mission_id)
-  }
+  // La mission reste en 'dispatching' (onglet "En attente") : le dispatcher peut
+  // re-trigger l'auto-dispatch ou assigner manuellement depuis cet onglet.
 
   // Resoudre acteur pour le log
   const { data: actor } = await sb
