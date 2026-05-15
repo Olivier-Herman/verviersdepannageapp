@@ -1415,13 +1415,37 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         </div>
       )}
 
-      {/* Bandeau dérogation en attente */}
+      {/* Bandeau dérogation en attente — double tap = check manuel (fallback realtime) */}
       {derogPending && (
-        <div className="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 flex items-center gap-2">
+        <div
+          onClick={async () => {
+            const now = Date.now()
+            const last = (window as any).__derogTapTs || 0
+            if (now - last < 500) {
+              (window as any).__derogTapTs = 0
+              // Re-fetch et detecte une eventuelle decision deja prise
+              try {
+                const r = await fetch(`/api/missions/${M.id}/payment-derogation?latest=1`)
+                const j = await r.json()
+                if (j.derogation == null) {
+                  // Plus rien en pending → soit decision rendue, soit cancelled
+                  // Force reload pour re-render proprement (la modal peut ne pas
+                  // avoir le contexte si decision rendue avant subscription)
+                  window.location.reload()
+                }
+              } catch {
+                window.location.reload()
+              }
+            } else {
+              (window as any).__derogTapTs = now
+            }
+          }}
+          className="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 flex items-center gap-2 select-none cursor-pointer"
+        >
           <span className="text-lg">⏳</span>
           <div className="flex-1 min-w-0">
             <p className="text-amber-400 text-xs font-semibold">Dérogation en attente de validation dispatch</p>
-            <p className="text-amber-300/80 text-xs truncate">Motif : {derogPending.motive}</p>
+            <p className="text-amber-300/80 text-xs truncate">Motif : {derogPending.motive} · <span className="opacity-60">double-tap pour rafraîchir</span></p>
           </div>
         </div>
       )}
