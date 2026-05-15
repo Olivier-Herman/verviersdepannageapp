@@ -14,6 +14,7 @@ import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { initiatePstnCall }  from '@/lib/teams/call'
 import { skipToNext }        from '@/lib/auto-dispatch/orchestrator'
+import { isInDaySchedule, isInNightSchedule } from '@/lib/schedule'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -99,13 +100,29 @@ export async function GET(req: Request) {
       // → on fetch tous et on filtre cote client (plus fiable)
       const { data: allCandidates } = await sb
         .from('users')
-        .select('id, name, phone, priority_order')
+        .select('id, name, phone, priority_order, schedule_day, schedule_night, location_updated_at')
         .eq('active', true)
         .in('role', ['driver', 'admin', 'superadmin'])
         .order('priority_order', { ascending: true, nullsFirst: false })
         .order('name')
 
-      const candidates = (allCandidates || []).filter(c => !triedIds.has(c.id))
+      // Filtre "de garde" : meme logique que /api/missions/[id]/driver-eta
+      // (planning de garde actif OU ping GPS recent < 30 min). Sans ca le cron
+      // pioche dans tous les chauffeurs actifs et peut tomber sur un hors-service.
+      const FRESH_PING_SEC = 30 * 60
+      const nowDt = new Date()
+      const inDay   = isInDaySchedule(nowDt)
+      const inNight = isInNightSchedule(nowDt)
+      const onDutyCandidates = (allCandidates || []).filter(c => {
+        if (triedIds.has(c.id)) return false
+        const onSchedule = (!!c.schedule_day && inDay) || (!!c.schedule_night && inNight)
+        const ageSec = c.location_updated_at
+          ? Math.floor((nowDt.getTime() - new Date(c.location_updated_at).getTime()) / 1000)
+          : null
+        const freshPing = ageSec != null && ageSec < FRESH_PING_SEC
+        return onSchedule || freshPing
+      })
+      const candidates = onDutyCandidates
 
       const nextDrivers = candidates.map(c => ({
         id:          c.id,

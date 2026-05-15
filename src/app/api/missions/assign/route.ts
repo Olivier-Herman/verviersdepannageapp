@@ -54,6 +54,15 @@ export async function POST(req: Request) {
       })
       .eq('id', mission_id)
 
+    // Annuler toute tentative auto-dispatch en cours : assignation manuelle prime.
+    // Sans ça la card continue à afficher "En cours d'assignation à X" et le cron
+    // continue à escalader push → call_1 → call_2 sur l'ancien candidat.
+    await supabase
+      .from('dispatch_attempts_log')
+      .update({ status: 'cancelled', updated_at: now })
+      .eq('mission_id', mission_id)
+      .in('status', ['pending', 'push_sent', 'call_1_sent', 'call_2_sent'])
+
     await supabase.from('mission_logs').insert({
       mission_id,
       actor_id:  actor?.id || null,
