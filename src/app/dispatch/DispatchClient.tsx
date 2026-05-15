@@ -57,6 +57,9 @@ interface Mission {
   assigned_user: { id: string; name: string } | null
   warnings?: string[] | null
   invoice_method?: 'manual' | 'auto' | null
+  auto_dispatch_status?: string | null
+  auto_dispatch_attempt_status?: 'pending' | 'push_sent' | 'call_1_sent' | 'call_2_sent' | null
+  auto_dispatch_driver_name?: string | null
   invoice_number?: string | null
 }
 
@@ -608,6 +611,14 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
         </div>
       )}
 
+      {/* Auto-dispatch en cours */}
+      {mission.auto_dispatch_status && (
+        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-brand/10 border border-brand/30 rounded-lg">
+          <span className="text-brand text-xs animate-pulse">⚡</span>
+          <span className="text-brand text-xs font-medium truncate">{mission.auto_dispatch_status}</span>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border">
         <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-1 min-w-0">
@@ -1128,6 +1139,12 @@ export default function DispatchClient({
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
+                          {m.auto_dispatch_status && (
+                            <p className="mt-1.5 text-brand text-[11px] flex items-center gap-1">
+                              <span className="animate-pulse">⚡</span>
+                              {m.auto_dispatch_status}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <Link href={`/dispatch/${m.id}`}

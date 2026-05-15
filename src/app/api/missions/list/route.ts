@@ -82,6 +82,47 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Enrichissement : auto-dispatch status actif (1 attempt par mission max)
+  // → permet au dispatcher de voir 'En cours d assignation a Franck' /
+  //   'Tentative d appel a Franck' sur les cards et liste.
+  const missionIds = (missions || []).map(m => m.id)
+  if (missionIds.length > 0) {
+    const { data: activeAttempts } = await supabase
+      .from('dispatch_attempts_log')
+      .select('mission_id, driver_id, status, attempt_order, driver:users!dispatch_attempts_log_driver_id_fkey(name)')
+      .in('mission_id', missionIds)
+      .in('status', ['pending', 'push_sent', 'call_1_sent', 'call_2_sent'])
+      .order('attempt_order', { ascending: false })
+
+    // Garde uniquement le plus recent par mission (le bouger en map)
+    const byMission = new Map<string, any>()
+    for (const att of activeAttempts || []) {
+      if (!byMission.has(att.mission_id)) byMission.set(att.mission_id, att)
+    }
+
+    for (const m of missions || []) {
+      const att = byMission.get(m.id)
+      if (!att) continue
+      const driverName = (att.driver as any)?.name || '?'
+      let label = ''
+      switch (att.status) {
+        case 'pending':
+        case 'push_sent':
+          label = `En cours d'assignation à ${driverName}`
+          break
+        case 'call_1_sent':
+          label = `Tentative d'appel à ${driverName}`
+          break
+        case 'call_2_sent':
+          label = `2e tentative d'appel à ${driverName}`
+          break
+      }
+      ;(m as any).auto_dispatch_status = label
+      ;(m as any).auto_dispatch_attempt_status = att.status
+      ;(m as any).auto_dispatch_driver_name = driverName
+    }
+  }
+
   // Compteurs par statut (exclu les archivees pour coherence avec la liste)
   const { data: counts } = await supabase
     .from('incoming_missions')

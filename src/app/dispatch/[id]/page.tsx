@@ -37,6 +37,32 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     .eq('mission_id', params.id)
     .order('created_at', { ascending: false })
 
+  // Auto-dispatch en cours (le plus recent attempt actif)
+  const { data: activeAttempt } = await supabase
+    .from('dispatch_attempts_log')
+    .select('driver_id, status, attempt_order, created_at, driver:users!dispatch_attempts_log_driver_id_fkey(name)')
+    .eq('mission_id', params.id)
+    .in('status', ['pending', 'push_sent', 'call_1_sent', 'call_2_sent'])
+    .order('attempt_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  let autoDispatchStatus: string | null = null
+  if (activeAttempt) {
+    const driverName = (activeAttempt.driver as any)?.name || '?'
+    switch (activeAttempt.status) {
+      case 'pending':
+      case 'push_sent':
+        autoDispatchStatus = `En cours d'assignation à ${driverName}`
+        break
+      case 'call_1_sent':
+        autoDispatchStatus = `Tentative d'appel à ${driverName}`
+        break
+      case 'call_2_sent':
+        autoDispatchStatus = `2e tentative d'appel à ${driverName}`
+        break
+    }
+  }
+
   // Missions liees dans la chaine REM ↔ REL
   // - Si cette mission est une REL : charger la REM parente
   // - Si cette mission est une REM : chercher une REL enfant (parent_mission_id = cette mission)
@@ -80,6 +106,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       userRole={user.role || ''}
       userModules={user.modules || []}
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+      autoDispatchStatus={autoDispatchStatus}
     />
   )
 }

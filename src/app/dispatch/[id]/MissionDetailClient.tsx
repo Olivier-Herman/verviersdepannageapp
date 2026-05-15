@@ -503,6 +503,7 @@ export default function MissionDetailClient({
   userId,
   userModules = [],
   googleMapsKey,
+  autoDispatchStatus,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -515,6 +516,7 @@ export default function MissionDetailClient({
   userId?:       string
   userModules?:  string[]
   googleMapsKey: string
+  autoDispatchStatus?: string | null
 }) {
   const router = useRouter()
 
@@ -1203,6 +1205,16 @@ export default function MissionDetailClient({
           <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
         </div>
         <div className="relative z-10">
+
+        {/* Auto-dispatch en cours — affiche l'etape courante (assignation/appel) */}
+        {autoDispatchStatus && (
+          <div className="px-4 lg:px-8 pt-6">
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand/10 border border-brand/30 rounded-xl">
+              <span className="text-brand text-sm animate-pulse">⚡</span>
+              <span className="text-brand text-sm font-medium">{autoDispatchStatus}</span>
+            </div>
+          </div>
+        )}
 
         {/* ── Barre Date d'intervention ─────────────────────────── */}
         <div className="px-4 lg:px-8 pt-6">

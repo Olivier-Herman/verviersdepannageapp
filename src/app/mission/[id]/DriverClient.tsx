@@ -253,7 +253,7 @@ function NavModal({ onPick }: { onPick: (a: NavApp) => void }) {
 
 // ─── AddrActionModal — tap adresse ────────────────────────────────────────────
 function AddrActionModal({ title, address, onNavigate, onModify, onClose }: {
-  title: string; address: string; onNavigate: () => void; onModify: () => void; onClose: () => void
+  title: string; address: string; onNavigate: () => void; onModify?: () => void; onClose: () => void
 }) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
@@ -263,7 +263,9 @@ function AddrActionModal({ title, address, onNavigate, onModify, onClose }: {
           <button onClick={onClose} className="text-ink-muted text-2xl ml-4">×</button>
         </div>
         <button onClick={onNavigate} className="w-full py-3.5 bg-blue-600 text-ink font-semibold rounded-2xl text-sm">🗺️ Naviguer</button>
-        <button onClick={onModify} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-medium rounded-2xl text-sm">✏️ Modifier l'adresse</button>
+        {onModify && (
+          <button onClick={onModify} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-medium rounded-2xl text-sm">✏️ Modifier l'adresse</button>
+        )}
       </div>
     </div>
   )
@@ -304,7 +306,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
   const [showGrid, setShowGrid] = useState(false)
   const [showPark, setShowPark] = useState(false)
   const [dischFrom, setDischFrom] = useState<Screen>('main')
-  const [addrModal, setAddrModal] = useState<{ title: string; address: string; lat?: number; lng?: number; field: string } | null>(null)
+  const [addrModal, setAddrModal] = useState<{ title: string; address: string; lat?: number; lng?: number; field?: string } | null>(null)
 
   // Modify address
   const [modField, setModField] = useState('')
@@ -1323,11 +1325,15 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
                   <div className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: point.id === '__dest__' ? '#2563eb' : (STOP_COLORS[point.type] || STOP_COLORS.custom) }} />
                   <button className="flex-1 min-w-0 text-left py-1" onClick={() => {
-                    if (point.id === '__dest__') setAddrModal({ title: point.label, address: point.address, field: 'destination' })
+                    if (point.id === '__dest__') {
+                      setAddrModal({ title: point.label, address: point.address, field: 'destination' })
+                    } else {
+                      setAddrModal({ title: point.label, address: point.address, lat: point.lat ?? undefined, lng: point.lng ?? undefined })
+                    }
                   }}>
                     <p className="text-ink-muted text-xs">{point.label}</p>
                     <p className="text-ink text-sm truncate">{point.address}</p>
-                    {point.id === '__dest__' && <p className="text-blue-400 text-xs mt-0.5">Tap → Naviguer ou Modifier</p>}
+                    <p className="text-blue-400 text-xs mt-0.5">{point.id === '__dest__' ? 'Tap → Naviguer ou Modifier' : 'Tap → Naviguer'}</p>
                   </button>
                   {canReorder && !point.arrived_at && point.id !== '__dest__' && (
                     <button onClick={() => api('arrive_stop', { stop_id: point.id })} disabled={loading}
@@ -1640,7 +1646,7 @@ export default function DriverClient({ mission: init, isReadOnly = false, navApp
         <AddrActionModal
           title={addrModal.title} address={addrModal.address}
           onNavigate={() => { const u = gUrl(navApp, addrModal.lat, addrModal.lng, addrModal.address); if (u) window.open(u, '_blank'); setAddrModal(null) }}
-          onModify={() => { setModField(addrModal.field); setModVal(addrModal.address); setModLat(addrModal.lat ?? null); setModLng(addrModal.lng ?? null); setAddrModal(null); setScreen('modify-addr') }}
+          onModify={addrModal.field ? () => { setModField(addrModal.field!); setModVal(addrModal.address); setModLat(addrModal.lat ?? null); setModLng(addrModal.lng ?? null); setAddrModal(null); setScreen('modify-addr') } : undefined}
           onClose={() => setAddrModal(null)}
         />
       )}
