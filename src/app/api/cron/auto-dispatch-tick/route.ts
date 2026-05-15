@@ -95,16 +95,19 @@ export async function GET(req: Request) {
         .eq('mission_id', a.mission_id)
       const triedIds = new Set((tried || []).map(t => t.driver_id))
 
-      const { data: candidates } = await sb
+      // NB: Supabase .not('id', 'in', ...) buggue avec UUIDs entre quotes simples
+      // → on fetch tous et on filtre cote client (plus fiable)
+      const { data: allCandidates } = await sb
         .from('users')
         .select('id, name, phone, priority_order')
         .eq('active', true)
         .in('role', ['driver', 'admin', 'superadmin'])
-        .not('id', 'in', `(${Array.from(triedIds).map(id => `'${id}'`).join(',') || "''"})`)
         .order('priority_order', { ascending: true, nullsFirst: false })
         .order('name')
 
-      const nextDrivers = (candidates || []).map(c => ({
+      const candidates = (allCandidates || []).filter(c => !triedIds.has(c.id))
+
+      const nextDrivers = candidates.map(c => ({
         id:          c.id,
         name:        c.name,
         phone:       c.phone as string | null,
