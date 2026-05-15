@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import FacturerModal from '@/components/facturation/FacturerModal'
@@ -237,9 +238,9 @@ export default function FacturationClient({
 
               return (
                 <li key={m.id}>
-                  <button
-                    onClick={() => setSelected(m)}
-                    className="w-full text-left bg-surface border hover:bg-surface-hover rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3"
+                  <Link
+                    href={`/dispatch/${m.id}`}
+                    className="block bg-surface border hover:bg-surface-hover rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3"
                   >
                     <span className={`inline-flex items-center justify-center w-12 h-12 rounded-xl text-white text-xs font-bold flex-shrink-0 ${KIND_COLOR[kind]}`}>
                       {kind}
@@ -274,10 +275,14 @@ export default function FacturationClient({
                       </span>
                     )}
 
-                    <span className="px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold transition whitespace-nowrap flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected(m) }}
+                      className="px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold transition whitespace-nowrap flex-shrink-0"
+                    >
                       Facturer →
-                    </span>
-                  </button>
+                    </button>
+                  </Link>
                 </li>
               )
             })}
