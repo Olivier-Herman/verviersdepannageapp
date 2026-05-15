@@ -6,6 +6,7 @@ import Link         from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { Shield, Wallet, X } from 'lucide-react'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -72,6 +73,7 @@ export default function MissionListClient({
 }) {
   const router = useRouter()
   const [missions, setMissions] = useState<Mission[]>(initialMissions)
+  const [showChoice, setShowChoice] = useState(false)
 
   // Force refresh à l'ouverture — données toujours fraîches
   useEffect(() => {
@@ -104,10 +106,10 @@ export default function MissionListClient({
             <p className="text-5xl mb-4">🚗</p>
             <p className="text-lg font-semibold text-ink mb-1">Aucune mission</p>
             <p className="text-sm mb-6">Vous n&apos;avez pas de mission assignée</p>
-            <Link href="/mission/new"
+            <button type="button" onClick={() => setShowChoice(true)}
               className="flex items-center gap-2 px-5 py-3 bg-brand text-white rounded-2xl font-semibold">
               + Nouvelle intervention
-            </Link>
+            </button>
           </div>
         )}
 
@@ -122,12 +124,56 @@ export default function MissionListClient({
       </div>
 
       {/* ── FAB Nouvelle intervention ────────────────────────────────────── */}
-      <Link
-        href="/mission/new"
+      <button
+        type="button"
+        onClick={() => setShowChoice(true)}
         className="fixed bottom-6 right-5 w-16 h-16 bg-brand rounded-full shadow-2xl flex items-center justify-center text-ink text-3xl font-bold transition active:scale-95 z-20"
         title="Nouvelle intervention">
         +
-      </Link>
+      </button>
+
+      {/* ── Modal choix type d'intervention ────────────────────────────── */}
+      {showChoice && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setShowChoice(false)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-ink font-bold text-lg">Quel type d&apos;intervention ?</h3>
+              <button type="button" onClick={() => setShowChoice(false)}
+                className="text-ink-muted hover:text-ink p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push('/mission/new')}
+              className="w-full flex items-start gap-3 p-4 bg-surface-2 hover:bg-surface-hover border rounded-2xl text-left transition active:scale-[0.98]">
+              <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center">
+                <Shield size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-ink font-semibold">Appel Police</p>
+                <p className="text-ink-muted text-xs mt-0.5">Accident · Saisie · Mal garée · SNC · AVP</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push('/encaissement')}
+              className="w-full flex items-start gap-3 p-4 bg-surface-2 hover:bg-surface-hover border rounded-2xl text-left transition active:scale-[0.98]">
+              <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-success/10 text-success flex items-center justify-center">
+                <Wallet size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-ink font-semibold">Intervention avec encaissement</p>
+                <p className="text-ink-muted text-xs mt-0.5">Mission privée à encaisser directement par le chauffeur</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
