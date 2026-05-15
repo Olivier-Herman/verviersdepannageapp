@@ -1913,7 +1913,24 @@ export default function MissionDetailClient({
                           <span className="text-ink text-sm">
                             {drivers.find(d => d.id === selectedDriver)?.name || '— inconnu —'}
                           </span>
-                          <button type="button" onClick={() => setSelectedDriver('')}
+                          <button type="button" onClick={async () => {
+                            // Délier = unassign immediat en DB (driver_id: null)
+                            // Sans ca, le state local change mais la DB garde l'ancien
+                            // chauffeur et le bouton 'Confirmer' n'envoie pas la disassign.
+                            if (!confirm('Délier le chauffeur de cette mission ?')) return
+                            try {
+                              await fetch('/api/missions/assign', {
+                                method:  'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body:    JSON.stringify({ mission_id: initialMission.id, driver_id: null }),
+                              })
+                              setSelectedDriver('')
+                              setStatus('dispatching')
+                              setM(prev => ({ ...prev, assigned_to: null, assigned_user: null, status: 'dispatching' } as any))
+                            } catch (e: any) {
+                              alert('Erreur : ' + (e.message || 'reseau'))
+                            }
+                          }}
                             className="text-ink-muted hover:text-critical text-xs">Délier ✕</button>
                         </div>
                       ) : (
