@@ -7,7 +7,7 @@ import { NextResponse }              from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
-import { sendPushToUser }            from '@/lib/push'
+import { sendNotification }          from '@/lib/notifications/send'
 import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 
 export async function POST(req: Request) {
@@ -69,11 +69,11 @@ export async function POST(req: Request) {
     const vehicleLabel = [mission.vehicle_brand, mission.vehicle_model, mission.vehicle_plate]
       .filter(Boolean).join(' ')
 
-    await sendPushToUser(driver_id, {
-      title: `${typeLabel} — ${mission.source.toUpperCase()}`,
-      body:  `${vehicleLabel} — ${mission.incident_city || mission.incident_address || ''}`,
-      url:   `/mission/${mission_id}`,
-      tag:   `mission-assigned-${mission_id}`,
+    await sendNotification(driver_id, 'mission_assigned_manual', {
+      title:      `${typeLabel} — ${mission.source.toUpperCase()}`,
+      body:       `${vehicleLabel} — ${mission.incident_city || mission.incident_address || ''}`,
+      action_url: `/mission/${mission_id}`,
+      mission_id,
     })
 
     // Update task FSM Odoo : stage → Assigné + chauffeur (best effort, non bloquant)
