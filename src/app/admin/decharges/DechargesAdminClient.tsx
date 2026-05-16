@@ -9,8 +9,6 @@
 // - Supprimer (warning : les decharges deja signees gardent leur type_key)
 
 import { useEffect, useState } from 'react'
-import AppShell from '@/components/layout/AppShell'
-import AmbientBackground from '@/components/AmbientBackground'
 
 interface DischargeRow {
   id:               string
@@ -30,15 +28,7 @@ interface DischargeRow {
   sort_order:       number
 }
 
-interface Props {
-  userName:    string
-  userRole:    string
-  userEmail?:  string
-  userId?:     string
-  userModules: string[]
-}
-
-export default function DechargesAdminClient({ userName, userRole, userEmail, userId, userModules }: Props) {
+export default function DechargesAdminClient() {
   const [list, setList] = useState<DischargeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<DischargeRow | null>(null)
@@ -75,9 +65,7 @@ export default function DechargesAdminClient({ userName, userRole, userEmail, us
   }
 
   return (
-    <AppShell title="Décharges — Catalogue" userName={userName} userEmail={userEmail} userId={userId} userRole={userRole} userModules={userModules}>
-      <AmbientBackground>
-      <div className="px-4 lg:px-8 py-6 max-w-5xl">
+    <div className="px-4 lg:px-8 py-6 max-w-5xl">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-ink text-xl lg:text-2xl font-bold font-display">Types de décharges</h2>
@@ -135,9 +123,7 @@ export default function DechargesAdminClient({ userName, userRole, userEmail, us
             onSaved={() => { setEditing(null); setCreating(false); load() }}
           />
         )}
-      </div>
-      </AmbientBackground>
-    </AppShell>
+    </div>
   )
 }
 

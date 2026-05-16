@@ -13,5 +13,5 @@ export default async function DechargesAdminPage() {
   const role = (session.user as any).role || ''
   if (!['admin', 'superadmin'].includes(role)) redirect('/dashboard?error=access_denied')
 
-  return <DechargesAdminClient userName={session.user.name || ''} userRole={role} userEmail={session.user.email || undefined} userId={(session.user as any).id} userModules={(session.user as any).modules || []} />
+  return <DechargesAdminClient />
 }
