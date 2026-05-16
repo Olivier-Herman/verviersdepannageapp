@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
 import AmbientBackground from '@/components/AmbientBackground'
+import { DISCHARGE_TYPES, getDischarge, type DischargeEntry } from '@/lib/decharges'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -326,7 +327,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const [previews, setPreviews]   = useState<string[]>([])
   const [sig, setSig]             = useState<string>('')
-  const [disch, setDisch]         = useState<{motif:string;name:string;sig:string}[]>([])
+  const [disch, setDisch]         = useState<DischargeEntry[]>([])
   const [paid, setPaid]           = useState(false)
   // Etat reel persiste : DB > state local (le state local sert de quick-feedback
   // pendant les 3s avant redirect retour depuis /encaissement)
@@ -536,9 +537,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     if (d.disch) setDisch(Array.isArray(d.disch) ? d.disch : d.disch ? [d.disch] : [])
   }, [])
 
-  // Décharge
+  // Décharge — flow type → champs dynamiques → signature
+  const [dTypeKey, setDTypeKey] = useState<string>('')  // '' = ecran de selection
   const [dMotif, setDMotif] = useState(''); const [dName, setDName] = useState('')
   const [dSig, setDSig]     = useState(''); const [showDSig, setShowDSig] = useState(false)
+  const [dPhotos, setDPhotos] = useState<string[]>([])  // urls (apres upload) ou data URLs (temp)
+  const resetDischargeForm = () => {
+    setDTypeKey(''); setDMotif(''); setDName(''); setDSig(''); setDPhotos([]); setShowDSig(false)
+  }
 
   // Add stop
   const [newStopAddr, setNewStopAddr]   = useState('')
@@ -1160,41 +1166,159 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   }
 
   // ── Décharge ──────────────────────────────────────────────────────────────
-  if (screen === 'decharge') return (
-    <ScreenWrap title="Décharge client" back={() => setScreen(dischFrom)}>
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <div>
-          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Motif *</p>
-          <textarea rows={3} value={dMotif} onChange={e => setDMotif(e.target.value)} placeholder="Client refuse le remorquage…"
-            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
+  if (screen === 'decharge') {
+    const selectedType = dTypeKey ? getDischarge(dTypeKey) : null
+
+    // Etape 1 : selection du type (pas encore de type choisi)
+    if (!selectedType) {
+      return (
+        <ScreenWrap title="Choisir une décharge" back={() => { resetDischargeForm(); setScreen(dischFrom) }}>
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Type de décharge</p>
+            {DISCHARGE_TYPES.map(t => (
+              <button key={t.key} onClick={() => setDTypeKey(t.key)}
+                className={`w-full text-left p-3 rounded-2xl border transition active:scale-[0.99] ${
+                  t.color === 'green'
+                    ? 'bg-green-500/5 border-green-500/30 hover:border-green-500/60'
+                    : 'bg-surface border hover:border-zinc-500'
+                }`}>
+                <p className={`font-semibold text-sm ${t.color === 'green' ? 'text-green-300' : 'text-ink'}`}>{t.label}</p>
+                <p className="text-ink-muted text-xs mt-0.5 line-clamp-2">{t.body.split('\n')[0]}</p>
+              </button>
+            ))}
+          </div>
+        </ScreenWrap>
+      )
+    }
+
+    // Etape 2 : saisie + signature pour le type selectionne
+    return (
+      <ScreenWrap title={selectedType.label} sub="Décharge à faire signer" back={() => setDTypeKey('')}>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {/* Titre formel + texte juridique en lecture seule */}
+          <div className={`rounded-2xl p-4 border ${selectedType.color === 'green' ? 'bg-green-500/5 border-green-500/30' : 'bg-red-500/5 border-red-500/30'}`}>
+            <p className={`font-bold text-sm uppercase tracking-wide mb-2 ${selectedType.color === 'green' ? 'text-green-300' : 'text-red-400'}`}>
+              {selectedType.title}
+            </p>
+            <p className="text-ink text-sm whitespace-pre-wrap leading-relaxed">{selectedType.body}</p>
+            {selectedType.footnote && (
+              <p className="text-ink-muted text-xs italic mt-3">⚠ {selectedType.footnote}</p>
+            )}
+          </div>
+
+          {/* Commentaire si requis */}
+          {selectedType.needsComment && (
+            <div>
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">
+                {selectedType.commentLabel || 'Commentaire'} *
+              </p>
+              <textarea rows={3} value={dMotif} onChange={e => setDMotif(e.target.value)}
+                placeholder={selectedType.commentLabel || 'Détails…'}
+                className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
+            </div>
+          )}
+
+          {/* Photos si requises */}
+          {selectedType.needsPhotos && (
+            <div>
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">
+                Photos {selectedType.photosHint && <span className="text-ink-faint normal-case">— {selectedType.photosHint}</span>}
+              </p>
+              {dPhotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {dPhotos.map((p, i) => (
+                    <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
+                      <img src={p} className="w-full h-full object-cover" />
+                      <button onClick={() => setDPhotos(arr => arr.filter((_, j) => j !== i))}
+                        className="absolute top-1 right-1 w-6 h-6 bg-black/70 rounded-full text-ink text-xs flex items-center justify-center">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button onClick={async () => {
+                if (isCapacitor) {
+                  try {
+                    const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
+                    while (true) {
+                      try {
+                        const photo = await Camera.getPhoto({
+                          source: CameraSource.Camera, resultType: CameraResultType.DataUrl,
+                          quality: 80, saveToGallery: false, allowEditing: false,
+                        })
+                        if (!photo.dataUrl) break
+                        setDPhotos(prev => [...prev, photo.dataUrl!])
+                      } catch { break }
+                    }
+                  } catch (e: any) { setErr(`Camera : ${e.message || 'erreur'}`) }
+                } else {
+                  // Web fallback : input file
+                  const input = document.createElement('input')
+                  input.type = 'file'; input.accept = 'image/*'; input.multiple = true
+                  input.onchange = () => {
+                    if (!input.files) return
+                    Array.from(input.files).forEach(f => {
+                      const r = new FileReader()
+                      r.onload = e => setDPhotos(prev => [...prev, e.target?.result as string])
+                      r.readAsDataURL(f)
+                    })
+                  }
+                  input.click()
+                }
+              }} className="w-full py-3 border-2 border-dashed border rounded-2xl text-ink-secondary text-sm">
+                📷 Ajouter des photos
+              </button>
+            </div>
+          )}
+
+          {/* Nom du signataire */}
+          <div>
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">
+              {selectedType.nameFieldLabel || 'Nom du signataire'}
+            </p>
+            <input value={dName} onChange={e => setDName(e.target.value)} placeholder="Prénom Nom"
+              className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" />
+          </div>
+
+          {/* Signature */}
+          <div>
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Signature *</p>
+            {!dSig ? (showDSig
+              ? <SigPad onSave={d => { setDSig(d); setShowDSig(false) }} />
+              : <button onClick={() => setShowDSig(true)} className="w-full py-3 border border-dashed border rounded-xl text-ink-secondary text-sm">✍️ Faire signer</button>)
+              : <div><div className="border border-green-500/30 rounded-xl overflow-hidden bg-surface mb-2"><img src={dSig} className="w-full max-h-20 object-contain" /></div>
+                  <button onClick={() => setDSig('')} className="text-ink-muted text-xs">Refaire</button></div>}
+          </div>
         </div>
-        <div>
-          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Nom du signataire</p>
-          <input value={dName} onChange={e => setDName(e.target.value)} placeholder="Prénom Nom"
-            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" />
+
+        <div className="px-4 py-4 border-t border flex gap-3">
+          <button onClick={() => { resetDischargeForm(); setScreen(dischFrom) }}
+            className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+          <button
+            onClick={() => {
+              if (!dSig) { setErr('Signature requise'); return }
+              if (selectedType.needsComment && !dMotif.trim()) { setErr('Commentaire requis'); return }
+              const entry: DischargeEntry = {
+                type_key:   selectedType.key,
+                motif:      dMotif.trim() || undefined,
+                name:       dName.trim() || undefined,
+                sig:        dSig,
+                photo_urls: dPhotos.length > 0 ? dPhotos : undefined,
+                created_at: new Date().toISOString(),
+              }
+              const updated = [...disch, entry]
+              setDisch(updated); saveDraft({ disch: updated })
+              resetDischargeForm(); setErr('')
+              setScreen(dischFrom)
+            }}
+            disabled={!dSig || (selectedType.needsComment && !dMotif.trim())}
+            className={`flex-1 py-3 disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm ${selectedType.color === 'green' ? 'bg-green-600' : 'bg-amber-600'}`}>
+            Enregistrer
+          </button>
         </div>
-        <div>
-          <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Signature</p>
-          {!dSig ? (showDSig
-            ? <SigPad onSave={d => { setDSig(d); setShowDSig(false) }} />
-            : <button onClick={() => setShowDSig(true)} className="w-full py-3 border border-dashed border rounded-xl text-ink-secondary text-sm">✍️ Faire signer</button>)
-            : <div><div className="border border-green-500/30 rounded-xl overflow-hidden bg-surface mb-2"><img src={dSig} className="w-full max-h-20 object-contain" /></div>
-                <button onClick={() => setDSig('')} className="text-ink-muted text-xs">Refaire</button></div>}
-        </div>
-      </div>
-      <div className="px-4 py-4 border-t border flex gap-3">
-        <button onClick={() => setScreen('main')} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
-        <button onClick={() => {
-            if (!dMotif) return
-            const d = { motif: dMotif, name: dName, sig: dSig }
-            const updated = [...disch, d]; setDisch(updated); saveDraft({ disch: updated })
-            setDMotif(''); setDName(''); setDSig('')
-            setScreen(dischFrom)
-          }}
-          disabled={!dMotif} className="flex-1 py-3 bg-amber-600 disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">Enregistrer</button>
-      </div>
-    </ScreenWrap>
-  )
+        {err && <p className="text-red-400 text-xs px-4 pb-2">⚠️ {err}</p>}
+      </ScreenWrap>
+    )
+  }
 
   // ── Signature ─────────────────────────────────────────────────────────────
   if (screen === 'sig') return (
@@ -1366,7 +1490,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </button>
 
             {/* Décharge */}
-            <button onClick={() => { setDischFrom('close'); setDMotif(''); setDName(''); setDSig(''); setScreen('decharge') }}
+            <button onClick={() => { resetDischargeForm(); setDischFrom('close'); setScreen('decharge') }}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
               <span className="text-ink-secondary text-sm">🛡️ Décharge{disch.length > 1 ? 's' : ''}</span>
               <span className="flex items-center gap-2">
@@ -1429,10 +1553,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             )}
           </div>
 
-          {/* Décharge rapide "sans dégâts" */}
+          {/* Décharge rapide "Fin d'intervention sans dégâts" → pré-sélectionne le type */}
           <button onClick={() => {
-              setDMotif("Je soussigné(e) reconnais que l'intervention du dépanneur s'est déroulée correctement et que ce dernier n'a causé aucun dégât supplémentaire à mon véhicule.")
-              setDName(''); setDSig('')
+              resetDischargeForm()
+              setDTypeKey('fin_intervention_sans_degats')
               setDischFrom('close'); setScreen('decharge')
             }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-surface border border-dashed border hover:border-zinc-600 rounded-2xl text-left transition">
             <span className="text-xl">🛡️</span>
@@ -1443,10 +1567,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </button>
           {disch.map((d, i) => (
             <div key={i} className="flex items-center gap-3 bg-amber-600/10 border border-amber-600/30 rounded-2xl px-4 py-3">
-              <span className="text-xl">🛡️</span>
+              <span className="text-xl">{d.type_key && getDischarge(d.type_key)?.color === 'green' ? '✅' : '🛡️'}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-amber-400 text-sm font-medium">✓ Décharge {i + 1}</p>
-                <p className="text-ink-muted text-xs truncate">{d.motif.slice(0, 60)}{d.motif.length > 60 ? '…' : ''}</p>
+                <p className="text-amber-400 text-sm font-medium">
+                  {d.type_key ? (getDischarge(d.type_key)?.label || 'Décharge') : `Décharge ${i + 1}`}
+                </p>
+                {(d.motif || d.name) && (
+                  <p className="text-ink-muted text-xs truncate">
+                    {d.name ? d.name : ''}{d.name && d.motif ? ' · ' : ''}{d.motif ? d.motif.slice(0, 60) : ''}{(d.motif || '').length > 60 ? '…' : ''}
+                  </p>
+                )}
               </div>
               <button onClick={() => { const u = disch.filter((_, j) => j !== i); setDisch(u); saveDraft({ disch: u }) }} className="text-ink-faint text-xs flex-shrink-0">✕</button>
             </div>
@@ -2058,7 +2188,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">{totPh}</span>}
               </button>
               {/* Décharge */}
-              <button onClick={() => { setShowGrid(false); setDischFrom('main'); setDMotif(''); setDName(''); setDSig(''); setScreen('decharge') }}
+              <button onClick={() => { setShowGrid(false); resetDischargeForm(); setDischFrom('main'); setScreen('decharge') }}
                 className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch.length > 0 ? 'bg-amber-600/20 border-amber-600/40' : 'bg-surface border'}`}>
                 <span className="text-2xl">📋</span>
                 <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-ink-secondary'}`}>Décharge</span>
