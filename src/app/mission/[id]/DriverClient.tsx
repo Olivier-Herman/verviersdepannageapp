@@ -159,33 +159,94 @@ function Stepper({ status, onSite, loaded, isRem, isRel }: {
 }
 
 // ─── SigPad ───────────────────────────────────────────────────────────────────
+// Pad de signature : pointer events (touch + souris + stylet), fond blanc
+// fixe (papier), trait noir fixe (encre). Independant du theme dark/light.
 function SigPad({ onSave }: { onSave: (d: string) => void }) {
-  const ref = useRef<HTMLCanvasElement>(null); const pen = useRef(false); const [drawn, setDrawn] = useState(false)
-  const xy = (e: React.TouchEvent | React.MouseEvent, c: HTMLCanvasElement) => {
-    const r = c.getBoundingClientRect(); const s = 'touches' in e ? e.touches[0] : e
-    return { x: s.clientX - r.left, y: s.clientY - r.top }
+  const ref = useRef<HTMLCanvasElement>(null)
+  const pen = useRef(false)
+  const last = useRef<{ x: number; y: number } | null>(null)
+  const [drawn, setDrawn] = useState(false)
+
+  // Initialise un fond blanc opaque sur le canvas (sinon toDataURL → fond
+  // transparent, ce qui peut etre illisible sur le PDF).
+  useEffect(() => {
+    const c = ref.current; if (!c) return
+    const ctx = c.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, c.width, c.height)
+  }, [])
+
+  const getPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const c = ref.current!
+    const r = c.getBoundingClientRect()
+    return {
+      x: (e.clientX - r.left) / r.width  * c.width,
+      y: (e.clientY - r.top)  / r.height * c.height,
+    }
   }
-  const down = (e: React.TouchEvent | React.MouseEvent) => {
-    e.preventDefault(); const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!; const p = xy(e, c); ctx.beginPath(); ctx.moveTo(p.x, p.y); pen.current = true
+  const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    const c = ref.current; if (!c) return
+    const ctx = c.getContext('2d')!
+    const p = getPos(e)
+    pen.current = true
+    last.current = p
+    // Petit point initial pour signer un simple tap
+    ctx.fillStyle = '#111111'
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, 1.4, 0, Math.PI * 2)
+    ctx.fill()
   }
-  const move = (e: React.TouchEvent | React.MouseEvent) => {
-    e.preventDefault(); if (!pen.current) return; const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!; const p = xy(e, c)
-    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#fff'; ctx.lineTo(p.x, p.y); ctx.stroke(); setDrawn(true)
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!pen.current) return
+    e.preventDefault()
+    const c = ref.current; if (!c) return
+    const ctx = c.getContext('2d')!
+    const p = getPos(e)
+    if (!last.current) { last.current = p; return }
+    ctx.lineWidth   = 2.8
+    ctx.lineCap     = 'round'
+    ctx.lineJoin    = 'round'
+    ctx.strokeStyle = '#111111'
+    ctx.beginPath()
+    ctx.moveTo(last.current.x, last.current.y)
+    ctx.lineTo(p.x, p.y)
+    ctx.stroke()
+    last.current = p
+    setDrawn(true)
   }
-  const clear = () => { ref.current?.getContext('2d')!.clearRect(0, 0, 340, 130); setDrawn(false) }
+  const up = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pen.current = false
+    last.current = null
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
+  }
+  const clear = () => {
+    const c = ref.current; if (!c) return
+    const ctx = c.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, c.width, c.height)
+    setDrawn(false)
+  }
   return (
     <div>
-      <div className="border border rounded-xl overflow-hidden bg-surface mb-3">
-        <canvas ref={ref} width={340} height={130} className="w-full touch-none"
-          onMouseDown={down} onMouseMove={move} onMouseUp={() => { pen.current = false }}
-          onTouchStart={down} onTouchMove={move} onTouchEnd={() => { pen.current = false }} />
+      <div className="border border rounded-xl overflow-hidden bg-white mb-3">
+        <canvas
+          ref={ref}
+          width={680}
+          height={260}
+          className="w-full touch-none"
+          style={{ aspectRatio: '680 / 260' }}
+          onPointerDown={down}
+          onPointerMove={move}
+          onPointerUp={up}
+          onPointerCancel={up}
+        />
       </div>
       <div className="flex gap-2">
         <button onClick={clear} className="flex-1 py-2.5 bg-surface-hover text-ink-secondary rounded-xl text-sm">Effacer</button>
-        <button onClick={() => ref.current && onSave(ref.current.toDataURL())} disabled={!drawn}
-          className="flex-1 py-2.5 bg-green-600 disabled:opacity-40 text-ink rounded-xl text-sm font-medium">✅ Valider</button>
+        <button onClick={() => ref.current && onSave(ref.current.toDataURL('image/png'))} disabled={!drawn}
+          className="flex-1 py-2.5 bg-green-600 disabled:opacity-40 text-white rounded-xl text-sm font-medium">✅ Valider</button>
       </div>
     </div>
   )
