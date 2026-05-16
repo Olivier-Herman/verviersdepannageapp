@@ -65,11 +65,5 @@ export async function GET() {
   return NextResponse.json({
     providers,
     total_linked: providers.filter(p => p.linked).length,
-    debug: {
-      session_user_id:    (session.user as any).id || null,
-      session_user_email: session.user?.email || null,
-      resolved_user_id:   userId,
-      raw_links_count:    (links || []).length,
-    },
   })
 }
