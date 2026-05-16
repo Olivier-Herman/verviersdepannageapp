@@ -16,10 +16,16 @@ type ProviderKey = typeof ALL_PROVIDERS[number]
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const userId = (session.user as any).id
-  if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
 
   const sb = createAdminClient()
+  // Resoud le user_id : prefere session.user.id, fallback lookup par email
+  // (utile si le JWT est ancien format, ou si on est dans une transition).
+  let userId = (session.user as any).id as string | undefined
+  if (!userId && session.user?.email) {
+    const { data: u } = await sb.from('users').select('id').ilike('email', session.user.email).maybeSingle()
+    userId = u?.id
+  }
+  if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
   const { data: links } = await sb
     .from('user_auth_providers')
     .select('id, provider, provider_email, linked_at')

@@ -14,10 +14,14 @@ export const dynamic = 'force-dynamic'
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const userId = (session.user as any).id
-  if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
 
   const sb = createAdminClient()
+  let userId = (session.user as any).id as string | undefined
+  if (!userId && session.user?.email) {
+    const { data: u } = await sb.from('users').select('id').ilike('email', session.user.email).maybeSingle()
+    userId = u?.id
+  }
+  if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
 
   // Verifier que le lien appartient bien a cet user
   const { data: link } = await sb

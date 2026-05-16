@@ -16,7 +16,12 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const userId = (session.user as any).id
+  const sbTmp = createAdminClient()
+  let userId = (session.user as any).id as string | undefined
+  if (!userId && session.user?.email) {
+    const { data: u } = await sbTmp.from('users').select('id').ilike('email', session.user.email).maybeSingle()
+    userId = u?.id
+  }
   if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
 
   const body = await req.json() as { current_password?: string; new_password?: string }
@@ -25,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Le mot de passe doit faire au moins 8 caractères' }, { status: 400 })
   }
 
-  const sb = createAdminClient()
+  const sb = sbTmp
   const { data: u } = await sb
     .from('users')
     .select('id, email, password_hash')
@@ -63,10 +68,15 @@ export async function POST(req: Request) {
 export async function DELETE() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const userId = (session.user as any).id
+  const sbTmp = createAdminClient()
+  let userId = (session.user as any).id as string | undefined
+  if (!userId && session.user?.email) {
+    const { data: u } = await sbTmp.from('users').select('id').ilike('email', session.user.email).maybeSingle()
+    userId = u?.id
+  }
   if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
 
-  const sb = createAdminClient()
+  const sb = sbTmp
   // Verifier qu il reste une autre methode
   const { data: links } = await sb.from('user_auth_providers')
     .select('provider').eq('user_id', userId)

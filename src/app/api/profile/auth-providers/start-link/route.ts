@@ -18,7 +18,15 @@ const LINKING_COOKIE = 'vd_linking_user_id'
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const userId = (session.user as any).id
+
+  // Resoud user_id avec fallback email
+  let userId = (session.user as any).id as string | undefined
+  if (!userId && session.user?.email) {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const sb = createAdminClient()
+    const { data: u } = await sb.from('users').select('id').ilike('email', session.user.email).maybeSingle()
+    userId = u?.id
+  }
   if (!userId) return NextResponse.json({ error: 'No user id' }, { status: 401 })
 
   const body = await req.json() as { provider?: string }
