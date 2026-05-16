@@ -1111,7 +1111,10 @@ export default function MissionDetailClient({
   }
 
   // Confirmer la mission
-  const handleConfirm = async () => {
+  // driverIdOverride : utilise par DriverPickerModal pour declencher
+  // handleConfirm sans dependre du state selectedDriver (qui n est pas
+  // encore commit a ce moment)
+  const handleConfirm = async (driverIdOverride?: string) => {
     // Validation : client requis avant de confirmer la mission (necessaire
     // pour la facturation future)
     if (!billedPartnerId && !(form.billed_to_name || '').trim()) {
@@ -1140,11 +1143,12 @@ export default function MissionDetailClient({
         }),
       }).catch(() => {})
     }
-    if (selectedDriver) {
+    const driverToAssign = driverIdOverride ?? selectedDriver
+    if (driverToAssign) {
       await fetch('/api/missions/assign', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ mission_id: initialMission.id, driver_id: selectedDriver })
+        body:    JSON.stringify({ mission_id: initialMission.id, driver_id: driverToAssign })
       })
     }
     await fetch('/api/missions/confirm', {
@@ -1999,7 +2003,7 @@ export default function MissionDetailClient({
                 {status === 'new' && (
                   <>
                     <button
-                      onClick={handleConfirm}
+                      onClick={() => handleConfirm()}
                       disabled={loadingConfirm || vehicleDecisionPending}
                       className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
                     >
@@ -2427,6 +2431,13 @@ export default function MissionDetailClient({
               setStatus('assigned')
               // On reste sur la fiche pour voir le chauffeur assigne. UX Olivier 11/05.
               router.refresh()
+            } else if (status === 'new') {
+              // Mission encore en "En commande" : le pick d un chauffeur vaut
+              // confirmation (assigner = confirmer). Declenche handleConfirm
+              // qui PATCH le form + assign + confirm + creation Odoo en cascade.
+              // Si client facture manquant, l alert s affichera et le pick reste
+              // memorise dans selectedDriver pour re-tenter.
+              await handleConfirm(driverId)
             }
           }}
           onClose={() => setShowDriverModal(false)}
