@@ -6,7 +6,7 @@ import { authOptions }      from '@/lib/auth'
 import { redirect }         from 'next/navigation'
 import DocumentsClient      from './DocumentsClient'
 
-export const metadata = { title: 'Mes Documents — Verviers Dépannage' }
+export const metadata = { title: 'Mes Documents — VD Soft' }
 
 export default async function DocumentsPage() {
   const session = await getServerSession(authOptions)

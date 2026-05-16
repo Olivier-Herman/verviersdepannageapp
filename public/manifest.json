@@ -1,7 +1,7 @@
 {
-  "name": "Verviers Dépannage",
-  "short_name": "VD App",
-  "description": "Application interne Verviers Dépannage — chauffeurs et gestion",
+  "name": "VD Soft",
+  "short_name": "VD Soft",
+  "description": "VD Soft — application interne Verviers Dépannage (chauffeurs et gestion)",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#0F0F0F",

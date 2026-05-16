@@ -1,4 +1,4 @@
-# Verviers Dépannage — App PWA
+# VD Soft — App PWA (Verviers Dépannage)
 
 Stack : **Next.js 14** · **Supabase** · **Vercel** · **NextAuth (Azure AD)**
 

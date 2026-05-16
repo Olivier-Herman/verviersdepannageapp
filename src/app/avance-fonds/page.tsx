@@ -4,7 +4,7 @@ import { authOptions }      from '@/lib/auth';
 import { redirect }         from 'next/navigation';
 import AvanceFondsClient    from './AvanceFondsClient';
 
-export const metadata = { title: 'Avance de fonds — Verviers Dépannage' };
+export const metadata = { title: 'Avance de fonds — VD Soft' };
 
 export default async function AvanceFondsPage() {
   const session = await getServerSession(authOptions);

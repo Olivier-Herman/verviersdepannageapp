@@ -6,7 +6,7 @@ import { authOptions }      from '@/lib/auth'
 import { redirect }         from 'next/navigation'
 import TGRClient            from './TGRClient'
 
-export const metadata = { title: 'TGR Touring — Verviers Dépannage' }
+export const metadata = { title: 'TGR Touring — VD Soft' }
 
 export default async function TGRPage() {
   const session = await getServerSession(authOptions)

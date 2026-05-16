@@ -65,7 +65,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
             title="Retour au dashboard"
             className="inline-block hover:opacity-80 transition-opacity"
           >
-            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-9 w-auto object-contain" />
+            <img src="/logo.jpg" alt="VD Soft" className="h-9 w-auto object-contain" />
           </Link>
           <button
             onClick={onClose}

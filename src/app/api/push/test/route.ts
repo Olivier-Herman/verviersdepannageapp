@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   if (!me) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
 
   const result = await sendPushToUser(me.id, {
-    title: '🔔 Test — Verviers Dépannage',
+    title: '🔔 Test — VD Soft',
     body:  'Les notifications push fonctionnent correctement !',
     url:   '/dashboard',
     tag:   'test',

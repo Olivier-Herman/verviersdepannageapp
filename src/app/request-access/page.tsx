@@ -58,7 +58,7 @@ function RequestContent() {
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-10">
       <div className="mb-8 text-center">
         <div className="bg-white rounded-2xl px-8 py-5 inline-block mb-4 shadow-card">
-          <Image src="/logo.jpg" alt="Verviers Dépannage" width={180} height={180}
+          <Image src="/logo.jpg" alt="VD Soft" width={180} height={180}
             style={{ width: '180px', height: 'auto' }} className="object-contain" priority />
         </div>
       </div>

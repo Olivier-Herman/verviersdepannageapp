@@ -27,13 +27,13 @@ const jetbrains = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Verviers Dépannage',
-  description: 'Application interne Verviers Dépannage',
+  title: 'VD Soft',
+  description: 'VD Soft — application interne Verviers Dépannage',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'VD App',
+    title: 'VD Soft',
   },
 }
 

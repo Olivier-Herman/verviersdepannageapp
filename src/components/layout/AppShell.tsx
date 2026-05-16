@@ -75,7 +75,7 @@ export default function AppShell({
           >
             <img
               src="/logo.jpg"
-              alt="Verviers Dépannage"
+              alt="VD Soft"
               className={`object-contain transition-all duration-200 ${collapsed ? 'h-7 w-7' : 'h-10 w-auto'}`}
             />
           </Link>
@@ -147,7 +147,7 @@ export default function AppShell({
               title="Retour au dashboard"
               className="flex-1 flex justify-center hover:opacity-80 transition-opacity"
             >
-              <img src="/logo.jpg" alt="VD" className="h-8 w-auto object-contain" />
+              <img src="/logo.jpg" alt="VD Soft" className="h-8 w-auto object-contain" />
             </Link>
             <DispatchAlertBadge userRole={userRole} />
             <GlobalSearch />

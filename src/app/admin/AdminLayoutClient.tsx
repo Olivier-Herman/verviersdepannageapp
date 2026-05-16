@@ -39,7 +39,7 @@ export default function AdminLayoutClient({
       <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-surface border-r flex-shrink-0 fixed top-0 left-0 h-full z-30">
         <div className="px-6 py-5 border-b">
           <Link href="/dashboard">
-            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-10 w-auto object-contain" />
+            <img src="/logo.jpg" alt="VD Soft" className="h-10 w-auto object-contain" />
           </Link>
         </div>
 
