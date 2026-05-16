@@ -65,6 +65,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
           <p class="comment-value">${esc(d.motif || '').replace(/\n/g, '<br/>')}</p>
         </div>
       ` : ''}
+      ${d.schema_urls && Object.values(d.schema_urls).filter(Boolean).length > 0 ? `
+        <div class="schemas">
+          <p class="photos-label">Schéma de dégâts</p>
+          <div class="schemas-grid">
+            ${(['front','back','left','right'] as const).map(v => d.schema_urls?.[v] ? `
+              <div class="schema-cell">
+                <p class="schema-cell-label">${v === 'front' ? 'Avant' : v === 'back' ? 'Arrière' : v === 'left' ? 'Gauche' : 'Droite'}</p>
+                <img src="${esc(d.schema_urls[v]!)}" class="schema-img" alt="${v}"/>
+              </div>
+            ` : '').join('')}
+          </div>
+        </div>
+      ` : ''}
       ${photos.length > 0 ? `
         <div class="photos">
           <p class="photos-label">Photos</p>
@@ -116,6 +129,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   .photos-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
   .photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .photo-img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; border: 1px solid #eee; }
+  .schemas { margin-bottom: 16px; }
+  .schemas-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .schema-cell { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 4px; }
+  .schema-cell-label { font-size: 9px; color: #666; text-align: center; margin-bottom: 2px; text-transform: uppercase; }
+  .schema-img { width: 100%; aspect-ratio: 5/3; object-fit: contain; }
   .footnote { font-size: 11px; color: #999; font-style: italic; margin-bottom: 16px; }
   .signature-block { display: flex; gap: 24px; margin-top: 16px; }
   .sig-left { flex: 1; }

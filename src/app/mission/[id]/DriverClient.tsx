@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
 import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge, type DischargeEntry } from '@/lib/decharges'
+import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -542,8 +543,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [dMotif, setDMotif] = useState(''); const [dName, setDName] = useState('')
   const [dSig, setDSig]     = useState(''); const [showDSig, setShowDSig] = useState(false)
   const [dPhotos, setDPhotos] = useState<string[]>([])  // urls (apres upload) ou data URLs (temp)
+  const [dSchemas, setDSchemas] = useState<DamageSchemaUrls>({})
+  const [showSchemaPad, setShowSchemaPad] = useState(false)
   const resetDischargeForm = () => {
-    setDTypeKey(''); setDMotif(''); setDName(''); setDSig(''); setDPhotos([]); setShowDSig(false)
+    setDTypeKey(''); setDMotif(''); setDName(''); setDSig(''); setDPhotos([]); setDSchemas({}); setShowDSig(false); setShowSchemaPad(false)
   }
 
   // Add stop
@@ -1169,6 +1172,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   if (screen === 'decharge') {
     const selectedType = dTypeKey ? getDischarge(dTypeKey) : null
 
+    // Plein ecran : pad de dessin schema de degats
+    if (showSchemaPad) {
+      return (
+        <DamageSchemaPad
+          initial={dSchemas}
+          onSave={(urls) => { setDSchemas(urls); setShowSchemaPad(false) }}
+          onCancel={() => setShowSchemaPad(false)}
+        />
+      )
+    }
+
     // Etape 1 : selection du type (pas encore de type choisi)
     if (!selectedType) {
       return (
@@ -1215,6 +1229,28 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <textarea rows={3} value={dMotif} onChange={e => setDMotif(e.target.value)}
                 placeholder={selectedType.commentLabel || 'Détails…'}
                 className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
+            </div>
+          )}
+
+          {/* Schéma de dégâts si requis */}
+          {selectedType.needsSchema && (
+            <div>
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Schéma de dégâts</p>
+              {Object.values(dSchemas).filter(Boolean).length > 0 ? (
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  {(['front','back','left','right'] as const).map(v => (
+                    <div key={v} className="aspect-[5/3] bg-white border rounded-lg overflow-hidden flex items-center justify-center">
+                      {dSchemas[v]
+                        ? <img src={dSchemas[v]} className="w-full h-full object-contain" alt={v} />
+                        : <span className="text-ink-faint text-[10px]">—</span>}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <button onClick={() => setShowSchemaPad(true)}
+                className="w-full py-3 border-2 border-dashed border rounded-2xl text-ink-secondary text-sm">
+                {Object.values(dSchemas).filter(Boolean).length > 0 ? '✏️ Modifier le schéma' : '📐 Dessiner le schéma'}
+              </button>
             </div>
           )}
 
@@ -1298,12 +1334,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               if (!dSig) { setErr('Signature requise'); return }
               if (selectedType.needsComment && !dMotif.trim()) { setErr('Commentaire requis'); return }
               const entry: DischargeEntry = {
-                type_key:   selectedType.key,
-                motif:      dMotif.trim() || undefined,
-                name:       dName.trim() || undefined,
-                sig:        dSig,
-                photo_urls: dPhotos.length > 0 ? dPhotos : undefined,
-                created_at: new Date().toISOString(),
+                type_key:    selectedType.key,
+                motif:       dMotif.trim() || undefined,
+                name:        dName.trim() || undefined,
+                sig:         dSig,
+                photo_urls:  dPhotos.length > 0 ? dPhotos : undefined,
+                schema_urls: Object.values(dSchemas).filter(Boolean).length > 0 ? dSchemas : undefined,
+                created_at:  new Date().toISOString(),
               }
               const updated = [...disch, entry]
               setDisch(updated); saveDraft({ disch: updated })

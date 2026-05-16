@@ -32,6 +32,8 @@ export interface DischargeType {
   needsPhotos:    boolean
   /** Hint affiche pour les photos */
   photosHint?:    string
+  /** La decharge requiert-elle un schema annote des degats (4 vues voiture) */
+  needsSchema?:   boolean
 }
 
 export const DISCHARGE_TYPES: readonly DischargeType[] = [
@@ -39,12 +41,13 @@ export const DISCHARGE_TYPES: readonly DischargeType[] = [
     key:    'remorquage_vh_dommages',
     label:  'Remorquage véhicule présentant des dommages',
     title:  'REMORQUAGE VÉHICULE PRÉSENTANT DES DOMMAGES',
-    body:   'Le client reconnaît par la présente que les dommages repris sur le document annexe sont présents sur le véhicule et ne sont pas de la responsabilité de la société de dépannage ou de son personnel.',
-    footnote: 'Ne pas oublier de faire les photos des dégâts.',
+    body:   'Le client reconnaît par la présente que les dommages repris sur le schéma annexe sont présents sur le véhicule et ne sont pas de la responsabilité de la société Verviers Dépannage ou de son personnel.',
+    footnote: 'Annoter le schéma + photos des dégâts.',
     color:  'red',
     needsComment: false,
     needsPhotos:  true,
     photosHint:   'Photos des dégâts existants AVANT prise en charge',
+    needsSchema:  true,
   },
   {
     key:    'livraison_domicile_client',
@@ -158,12 +161,13 @@ export const DISCHARGE_TYPES: readonly DischargeType[] = [
     label:  'Déclaration de dégâts effectués sur le véhicule',
     title:  'LORS DE L\'INTERVENTION DE VERVIERS DÉPANNAGE, LE VÉHICULE A SUBI UN/DES DOMMAGE(S)',
     body:   'Le client reconnaît par la présente que le(s) dommage(s) repris sur le schéma suivant correspond(ent) totalement au(x) dégât(s) engendré(s).',
-    footnote: 'Les détails seront décrits dans le champ "Remarque" après le schéma. Ne pas oublier de faire les photos des dégâts.',
+    footnote: 'Annoter le schéma + détails dans le commentaire + photos des dégâts.',
     color:  'red',
     needsComment: true,
     commentLabel: 'Détail des dommages',
     needsPhotos:  true,
     photosHint:   'Photos précises des dommages causés pendant l\'intervention',
+    needsSchema:  true,
   },
 ] as const
 
@@ -186,6 +190,8 @@ export interface DischargeEntry {
   sig?:         string
   /** Photos rattachees a CETTE decharge (URLs Supabase Storage) */
   photo_urls?:  string[]
+  /** Schemas de degats annotes (4 vues) — data URL ou URL Storage */
+  schema_urls?: { front?: string; back?: string; left?: string; right?: string }
   /** Date d ajout */
   created_at?:  string
 }
