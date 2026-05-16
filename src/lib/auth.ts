@@ -179,6 +179,43 @@ export const authOptions: NextAuthOptions = {
       const email             = (user.email || '').toLowerCase()
       const supabase          = createAdminClient()
 
+      // ── Mode LINKING : l user est deja connecte et veut lier un provider OAuth ──
+      // Le cookie vd_linking_user_id contient l id de l user connecte (pose par
+      // /api/profile/auth-providers/start-link). Si present, on ne fait QUE le link.
+      try {
+        const { cookies } = await import('next/headers')
+        const linkingUserId = cookies().get('vd_linking_user_id')?.value
+        if (linkingUserId) {
+          // Verifier que ce provider_account_id n est pas deja lie a un AUTRE user
+          const conflict = await findUserByProviderAccount(normProvider, providerAccountId)
+          if (conflict && conflict !== linkingUserId) {
+            // Ce provider est deja lie a un autre compte → refus
+            cookies().delete('vd_linking_user_id')
+            return '/profil?error=PROVIDER_ALREADY_LINKED_OTHER_USER'
+          }
+          await upsertAuthProviderLink(linkingUserId, normProvider, providerAccountId, email)
+          cookies().delete('vd_linking_user_id')
+          // Reuse la session de l user d origine (linkingUserId) - on continue
+          // le signIn comme si c etait lui qui se connectait avec ce provider.
+          // Du coup il faut renseigner les user fields pour le JWT callback.
+          const { data: existing } = await supabase.from('users')
+            .select('id, role, roles, active, must_change_password, has_odoo_access')
+            .eq('id', linkingUserId)
+            .maybeSingle()
+          if (existing) {
+            ;(user as any).dbId               = existing.id
+            ;(user as any).role               = existing.role
+            ;(user as any).roles              = existing.roles || [existing.role]
+            ;(user as any).mustChangePassword = existing.must_change_password || false
+            ;(user as any).hasOdooAccess      = !!existing.has_odoo_access
+            ;(user as any).pending            = !existing.active
+            return true
+          }
+        }
+      } catch (e: any) {
+        console.error('[Auth] Linking mode error:', e.message)
+      }
+
       // ── Lookup 1 : par (provider, providerAccountId) ─────────────────────
       // Si l user s est deja connecte avec ce provider, on retrouve son user_id direct.
       let dbUserId = await findUserByProviderAccount(normProvider, providerAccountId)

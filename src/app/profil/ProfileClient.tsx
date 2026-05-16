@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import AppShell      from '@/components/layout/AppShell'
 import NavOrderEditor from '@/components/profil/NavOrderEditor'
+import AuthProvidersSection from '@/components/profile/AuthProvidersSection'
 import { filterNavItems } from '@/components/layout/nav-items'
 
 // ── Types documents ────────────────────────────────────────
@@ -294,6 +295,9 @@ export default function ProfileClient({ user }: { user: any }) {
             </span>
           </div>
         </div>
+
+        {/* Méthodes de connexion (multi-provider linking) */}
+        <AuthProvidersSection />
 
         {/* Personnalisation menu (drag & drop) */}
         {visibleNav.length > 1 && (
