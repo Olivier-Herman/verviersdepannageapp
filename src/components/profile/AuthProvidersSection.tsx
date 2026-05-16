@@ -6,6 +6,7 @@
 // lie/non-lie + actions Lier / Dissocier / Definir mot de passe.
 
 import { useEffect, useState } from 'react'
+import { signIn } from 'next-auth/react'
 
 type ProviderKey = 'apple' | 'google' | 'azure-ad' | 'credentials'
 
@@ -106,17 +107,22 @@ export default function AuthProvidersSection() {
       return
     }
     try {
+      // 1. Pose le cookie vd_linking_user_id cote serveur (5 min TTL).
+      //    Le signIn callback (lib/auth.ts) detecte ce cookie au retour OAuth
+      //    et fait le link au lieu de creer/auth un nouvel user.
       const r = await fetch('/api/profile/auth-providers/start-link', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ provider }),
       })
       const j = await r.json()
-      if (!r.ok || !j.redirect_to) {
+      if (!r.ok || !j.ok) {
         setErr(j.error || 'Impossible de démarrer la liaison')
         return
       }
-      window.location.href = j.redirect_to
+      // 2. Lance le flow OAuth via next-auth/react (gere le CSRF token interne).
+      //    Au retour : signIn callback voit le cookie linking → fait le link.
+      await signIn(provider, { callbackUrl: `/profil?linked=${provider}` })
     } catch (e: any) {
       setErr(e.message || 'Erreur')
     }

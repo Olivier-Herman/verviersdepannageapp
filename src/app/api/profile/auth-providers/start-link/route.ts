@@ -44,9 +44,8 @@ export async function POST(req: Request) {
     maxAge:   5 * 60,
   })
 
-  // URL OAuth NextAuth standard. callbackUrl = /profil?linked=<provider>
-  const callbackUrl = `/profil?linked=${provider}`
-  return NextResponse.json({
-    redirect_to: `/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`,
-  })
+  // Cookie pose - le client va maintenant appeler signIn(provider) via next-auth/react
+  // qui fait le POST CSRF correct (le GET /api/auth/signin/<provider> ne lance pas
+  // le flow OAuth, il redirige vers la page login)
+  return NextResponse.json({ ok: true })
 }
