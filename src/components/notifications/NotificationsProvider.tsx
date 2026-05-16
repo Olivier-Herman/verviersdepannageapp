@@ -75,6 +75,15 @@ export default function NotificationsProvider({
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     )
 
+    const handleNewNotif = (row: NotifEvent) => {
+      if (row.channel && row.channel !== 'in_app') return
+      setPending(prev => {
+        if (prev.some(n => n.id === row.id)) return prev
+        return [...prev, row]
+      })
+      playNotificationSound(row.notif_type)
+    }
+
     const channel = sb
       .channel(`notif-${userId}`)
       .on('postgres_changes', {
@@ -82,22 +91,30 @@ export default function NotificationsProvider({
         schema: 'public',
         table:  'notifications_log',
         filter: `user_id=eq.${userId}`,
-      }, (payload) => {
-        const row = payload.new as NotifEvent
-        // Filtre : on n'affiche le bandeau que pour le canal in_app.
-        // Les rows channel='push' sont des logs de tentative d'envoi natif
-        // qu'on insere aussi mais qui ne doivent pas declencher de toast.
-        if (row.channel && row.channel !== 'in_app') return
-        // Anti-duplicate (Realtime peut redeliver)
-        setPending(prev => {
-          if (prev.some(n => n.id === row.id)) return prev
-          return [...prev, row]
-        })
-        playNotificationSound(row.notif_type)
-      })
+      }, (payload) => handleNewNotif(payload.new as NotifEvent))
       .subscribe()
 
+    // Polling fallback 15s : recupere les notifs in_app non lues recentes.
+    // Si Realtime fire, l anti-duplicate (par id) evite les doublons. Si
+    // Realtime echoue, le toast apparait quand meme en max 15s.
+    let cancelled = false
+    const pollUnread = async () => {
+      try {
+        const r = await fetch('/api/notifications/unread')
+        if (!r.ok) return
+        const j = await r.json()
+        if (cancelled) return
+        for (const n of (j.notifications || []) as NotifEvent[]) {
+          handleNewNotif(n)
+        }
+      } catch {}
+    }
+    pollUnread()  // tick immediat
+    const pollId = setInterval(pollUnread, 15_000)
+
     return () => {
+      cancelled = true
+      clearInterval(pollId)
       sb.removeChannel(channel)
     }
   }, [userId])

@@ -13,12 +13,17 @@ import { sendNotification }  from '@/lib/notifications/send'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
-  const { data } = await sb
+  const url = new URL(req.url)
+  // ?latest=1 → retourne aussi la decision recente si pas de pending
+  // (utile pour le polling chauffeur en fallback du Realtime)
+  const includeLatest = url.searchParams.get('latest') === '1'
+
+  const { data: pending } = await sb
     .from('payment_derogations')
     .select('id, mission_id, motive, status, requested_at, requester:users!payment_derogations_requested_by_fkey(id, name)')
     .eq('mission_id', params.id)
@@ -27,7 +32,21 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .limit(1)
     .maybeSingle()
 
-  return NextResponse.json({ derogation: data || null })
+  if (pending || !includeLatest) {
+    return NextResponse.json({ derogation: pending || null, recent_decided: null })
+  }
+
+  // Pas de pending + latest demande → fetch la decision recente
+  const { data: decided } = await sb
+    .from('payment_derogations')
+    .select('id, mission_id, status, new_amount, decision_note, decided_at, requested_at')
+    .eq('mission_id', params.id)
+    .in('status', ['cancelled_amount', 'adjusted', 'refused'])
+    .order('decided_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return NextResponse.json({ derogation: null, recent_decided: decided || null })
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {

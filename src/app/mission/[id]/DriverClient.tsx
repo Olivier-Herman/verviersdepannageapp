@@ -444,6 +444,34 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       .catch(() => {})
     return () => { cancelled = true }
   }, [M.id, M.amount_to_collect])
+
+  // Polling 5s en fallback du Realtime : si Realtime ne fire pas (config Supabase
+  // douteuse, websocket flap), le chauffeur voit la decision en max 5s.
+  useEffect(() => {
+    if (!derogPending) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/missions/${M.id}/payment-derogation?latest=1`)
+        const j = await r.json()
+        if (cancelled) return
+        if (j.derogation) {
+          // Toujours pending → maj du motif si modifie ailleurs
+          setDerogPending(j.derogation)
+        } else if (j.recent_decided) {
+          // Decision rendue → modal verdict
+          setDerogPending(null)
+          setDerogResult({
+            decision:   j.recent_decided.status,
+            new_amount: j.recent_decided.new_amount ?? null,
+            note:       j.recent_decided.decision_note ?? null,
+          })
+        }
+      } catch {}
+    }
+    const id = setInterval(tick, 5000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [derogPending?.id, M.id])
   const submitDerogation = async () => {
     const motive = derogMotive.trim()
     if (motive.length < 5) { setErr('Motif trop court'); return }
