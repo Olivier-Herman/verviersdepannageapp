@@ -56,38 +56,84 @@ export function useOnDutyPing() {
   }, [scheduleInfo.day, scheduleInfo.night, onDuty])
 
   // Boucle de ping GPS
+  // Web : navigator.geolocation.getCurrentPosition + setInterval (s arrete en
+  //       background sur iOS Safari, mais c est le web behavior attendu).
+  // Capacitor iOS : @capacitor/geolocation.watchPosition + Background Modes
+  //                 location → continue a recevoir des positions meme app fermee.
+  //                 Throttle pour ne POST qu une fois toutes les 30s.
   useEffect(() => {
     if (!onDuty) return
 
     let cancelled = false
-    const sendPing = () => {
-      if (!navigator.geolocation) {
-        setError('Géolocalisation non disponible')
-        return
+    let lastPostMs = 0
+    let webIntervalId: any = null
+    let capWatchId: string | null = null
+
+    const postPing = async (lat: number, lng: number) => {
+      const now = Date.now()
+      if (now - lastPostMs < PING_INTERVAL_MS - 1000) return  // throttle 30s
+      lastPostMs = now
+      try {
+        await fetch('/api/users/ping-location', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ lat, lng }),
+        })
+        if (!cancelled) { setLastPing(new Date()); setError(null) }
+      } catch {
+        if (!cancelled) setError('Erreur reseau lors du ping')
       }
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          if (cancelled) return
-          try {
-            await fetch('/api/users/ping-location', {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            })
-            setLastPing(new Date())
-            setError(null)
-          } catch {
-            setError('Erreur réseau lors du ping')
-          }
-        },
-        (err) => { if (!cancelled) setError(err.message || 'Permission GPS refusée') },
-        { enableHighAccuracy: false, maximumAge: 15_000, timeout: 10_000 }
-      )
     }
 
-    sendPing()
-    const id = setInterval(sendPing, PING_INTERVAL_MS)
-    return () => { cancelled = true; clearInterval(id) }
+    ;(async () => {
+      // Capacitor (mobile native) : watchPosition continue en background
+      try {
+        const { Capacitor } = await import('@capacitor/core')
+        if (Capacitor.isNativePlatform()) {
+          const { Geolocation } = await import('@capacitor/geolocation')
+          // Permission Always pour background ; iOS demandera quand meme
+          // l autorisation systeme la premiere fois
+          await Geolocation.requestPermissions().catch(() => {})
+          capWatchId = await Geolocation.watchPosition(
+            { enableHighAccuracy: false, timeout: 10_000 },
+            (pos, err) => {
+              if (cancelled) return
+              if (err) { setError(err.message || 'Erreur GPS'); return }
+              if (!pos) return
+              postPing(pos.coords.latitude, pos.coords.longitude)
+            }
+          )
+          return
+        }
+      } catch {
+        // pas capacitor → fallback web ci-dessous
+      }
+
+      // Web (browser) : getCurrentPosition + setInterval
+      if (!navigator.geolocation) {
+        setError('Geolocalisation non disponible')
+        return
+      }
+      const sendPingWeb = () => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => { if (!cancelled) postPing(pos.coords.latitude, pos.coords.longitude) },
+          (err) => { if (!cancelled) setError(err.message || 'Permission GPS refusee') },
+          { enableHighAccuracy: false, maximumAge: 15_000, timeout: 10_000 }
+        )
+      }
+      sendPingWeb()
+      webIntervalId = setInterval(sendPingWeb, PING_INTERVAL_MS)
+    })()
+
+    return () => {
+      cancelled = true
+      if (webIntervalId) clearInterval(webIntervalId)
+      if (capWatchId) {
+        import('@capacitor/geolocation')
+          .then(({ Geolocation }) => Geolocation.clearWatch({ id: capWatchId! }))
+          .catch(() => {})
+      }
+    }
   }, [onDuty])
 
   const setOnDuty = (value: boolean) => {

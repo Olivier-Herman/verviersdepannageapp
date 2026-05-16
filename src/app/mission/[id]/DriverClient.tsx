@@ -728,6 +728,82 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     newFiles.forEach(f => { const r = new FileReader(); r.onload = e => setPreviews(p => [...p, e.target?.result as string]); r.readAsDataURL(f) })
   }
 
+  // ── Capacitor Camera : prise de photos continue + galerie multi ───────────
+  // Sur iOS natif, l input <type=file> ouvre un picker systeme limite (1 action a
+  // la fois). Capacitor permet : (1) prendre N photos d affilee sans repasser
+  // par le menu, (2) selection multi dans la galerie en un coup.
+  // Detect Capacitor, fallback au input file si web.
+  const [isCapacitor, setIsCapacitor] = useState(false)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { Capacitor } = await import('@capacitor/core')
+        setIsCapacitor(Capacitor.isNativePlatform())
+      } catch {}
+    })()
+  }, [])
+  const dataUrlToFile = (dataUrl: string, name: string): File => {
+    const [meta, b64] = dataUrl.split(',')
+    const mime = meta.match(/data:(.*?);base64/)?.[1] || 'image/jpeg'
+    const bin = atob(b64)
+    const arr = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+    return new File([arr], name, { type: mime })
+  }
+  const capCameraLoop = async () => {
+    try {
+      const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
+      // Boucle "prendre photo, valider, prendre encore" :
+      // Camera.getPhoto bloque jusqu a ce que l user valide / annule. On reboucle.
+      while (true) {
+        try {
+          const photo = await Camera.getPhoto({
+            source:        CameraSource.Camera,
+            resultType:    CameraResultType.DataUrl,
+            quality:       80,
+            saveToGallery: false,
+            allowEditing:  false,
+          })
+          if (!photo.dataUrl) break
+          const file = dataUrlToFile(photo.dataUrl, `cam-${Date.now()}.jpg`)
+          setPhotos(p => [...p, file])
+          setPreviews(p => [...p, photo.dataUrl!])
+        } catch {
+          // Annule = sortie de la boucle
+          break
+        }
+      }
+    } catch (e: any) {
+      setErr(`Camera : ${e.message || 'erreur'}`)
+    }
+  }
+  const capPickGallery = async () => {
+    try {
+      const { Camera } = await import('@capacitor/camera')
+      const result = await Camera.pickImages({ quality: 80, limit: 20 })
+      if (!result.photos || result.photos.length === 0) return
+      // pickImages renvoie webPath (file:// ou blob://) → fetch + convert en File
+      for (const p of result.photos) {
+        try {
+          const res = await fetch(p.webPath)
+          const blob = await res.blob()
+          const file = new File([blob], `pick-${Date.now()}.${p.format || 'jpg'}`, { type: blob.type || 'image/jpeg' })
+          const reader = new FileReader()
+          await new Promise<void>((resolve) => {
+            reader.onload = e => {
+              setPhotos(prev => [...prev, file])
+              setPreviews(prev => [...prev, e.target?.result as string])
+              resolve()
+            }
+            reader.readAsDataURL(file)
+          })
+        } catch {}
+      }
+    } catch (e: any) {
+      setErr(`Galerie : ${e.message || 'erreur'}`)
+    }
+  }
+
   // ── Modifier adresse ──────────────────────────────────────────────────────
   const saveAddr = async () => {
     if (!modField || !modVal) return
@@ -982,8 +1058,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               return (
                 <button key={cat.id}
                   onClick={() => {
-                    if (photoRef.current) (photoRef.current as any).dataset.cat = cat.id
-                    photoRef.current?.click()
+                    if (isCapacitor) {
+                      markCovered(cat.id)
+                      capCameraLoop()
+                    } else {
+                      if (photoRef.current) (photoRef.current as any).dataset.cat = cat.id
+                      photoRef.current?.click()
+                    }
                   }}
                   className={`relative p-3 rounded-2xl border text-left transition active:scale-95 ${
                     done ? 'bg-green-500/10 border-green-500/40' :
@@ -1003,13 +1084,30 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
 
           {/* Catégorie libre / photo générique */}
-          <button onClick={() => {
-              if (photoRef.current) (photoRef.current as any).dataset.cat = 'autre'
-              photoRef.current?.click()
-            }}
-            className="w-full mt-3 py-3 border-2 border-dashed border hover:border-zinc-500 rounded-2xl text-ink-secondary text-sm">
-            + Autre photo (libre)
-          </button>
+          {isCapacitor ? (
+            // App native : 2 boutons distincts pour exploiter Camera (loop) et
+            // pickImages (galerie multi) — UX bien plus rapide que <input type=file>
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <button
+                onClick={() => { markCovered('autre'); capCameraLoop() }}
+                className="py-3 border-2 border-dashed border hover:border-zinc-500 rounded-2xl text-ink-secondary text-sm flex items-center justify-center gap-1.5">
+                📷 Caméra
+              </button>
+              <button
+                onClick={() => { markCovered('autre'); capPickGallery() }}
+                className="py-3 border-2 border-dashed border hover:border-zinc-500 rounded-2xl text-ink-secondary text-sm flex items-center justify-center gap-1.5">
+                🖼️ Galerie
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => {
+                if (photoRef.current) (photoRef.current as any).dataset.cat = 'autre'
+                photoRef.current?.click()
+              }}
+              className="w-full mt-3 py-3 border-2 border-dashed border hover:border-zinc-500 rounded-2xl text-ink-secondary text-sm">
+              + Autre photo (libre)
+            </button>
+          )}
 
           {!allRequiredDone && (
             <p className="text-amber-400 text-xs bg-amber-500/10 rounded-xl px-3 py-2 mt-2">
