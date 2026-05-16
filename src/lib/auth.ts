@@ -1,10 +1,55 @@
 import CredentialsProvider from 'next-auth/providers/credentials'
 import AzureADProvider     from 'next-auth/providers/azure-ad'
 import GoogleProvider      from 'next-auth/providers/google'
+import AppleProvider       from 'next-auth/providers/apple'
 import { createAdminClient }             from '@/lib/supabase'
 import { sendAccessRequestNotification } from '@/lib/emails'
 import type { NextAuthOptions }          from 'next-auth'
 import bcrypt                            from 'bcryptjs'
+
+/** Mapping NextAuth account.provider → notre nomenclature DB user_auth_providers.provider */
+function normalizeProvider(p: string | undefined): 'apple' | 'google' | 'azure-ad' | 'credentials' | null {
+  if (p === 'apple') return 'apple'
+  if (p === 'google') return 'google'
+  if (p === 'azure-ad') return 'azure-ad'
+  if (p === 'credentials') return 'credentials'
+  return null
+}
+
+/** Enregistre/upsert le lien provider → user dans user_auth_providers (idempotent). */
+async function upsertAuthProviderLink(
+  userId: string,
+  provider: 'apple' | 'google' | 'azure-ad' | 'credentials',
+  providerAccountId: string,
+  providerEmail: string | null | undefined,
+) {
+  const sb = createAdminClient()
+  // upsert sur (provider, provider_account_id) - si deja lie, no-op
+  await sb.from('user_auth_providers').upsert(
+    {
+      user_id:             userId,
+      provider,
+      provider_account_id: providerAccountId,
+      provider_email:      providerEmail || null,
+    },
+    { onConflict: 'provider,provider_account_id' }
+  )
+}
+
+/** Lookup d un user existant via la table user_auth_providers (multi-provider). */
+async function findUserByProviderAccount(
+  provider: 'apple' | 'google' | 'azure-ad',
+  providerAccountId: string,
+): Promise<string | null> {
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('user_auth_providers')
+    .select('user_id')
+    .eq('provider', provider)
+    .eq('provider_account_id', providerAccountId)
+    .maybeSingle()
+  return data?.user_id || null
+}
 
 async function getAppToken(): Promise<string> {
   const res = await fetch(
@@ -76,6 +121,9 @@ export const authOptions: NextAuthOptions = {
 
         await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id)
 
+        // Persiste le lien credentials dans user_auth_providers (idempotent)
+        await upsertAuthProviderLink(user.id, 'credentials', user.email.toLowerCase(), user.email.toLowerCase())
+
         return {
           id:                  user.id,
           email:               user.email,
@@ -100,36 +148,73 @@ export const authOptions: NextAuthOptions = {
       clientId:     process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
+
+    // Sign in with Apple — utilise le Service ID + cle .p8 (JWT signe par
+    // NextAuth a chaque exchange). Apple ne renvoie l email QUE la 1ere
+    // connexion, donc on doit memoriser l identite via le subject (sub)
+    // stocke dans user_auth_providers.provider_account_id.
+    AppleProvider({
+      clientId:     process.env.APPLE_ID!,         // Service ID
+      clientSecret: process.env.APPLE_PRIVATE_KEY  // contenu du .p8
+        ? {
+            teamId:     process.env.APPLE_TEAM_ID!,
+            privateKey: process.env.APPLE_PRIVATE_KEY,
+            keyId:      process.env.APPLE_KEY_ID!,
+          } as any  // next-auth AppleProvider accepte le format objet en v4 recent
+        : '',
+      authorization: { params: { scope: 'name email' } },
+    }),
   ],
 
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === 'credentials') return true
 
-      const email = user.email
-      if (!email) return false
+      const normProvider = normalizeProvider(account?.provider)
+      if (!normProvider || normProvider === 'credentials') return false
 
-      const supabase = createAdminClient()
-      const { data: dbUser } = await supabase.from('users')
-        .select('id, role, roles, active, must_change_password, auth_provider, has_odoo_access')
-        .ilike('email', email)
-        .maybeSingle()
+      // ID stable du compte cote provider (ex: sub OAuth) - prioritaire sur email
+      // car l email peut changer ou etre anonymise (Apple Hide My Email).
+      const providerAccountId = (account?.providerAccountId || user.id || user.email || '').toLowerCase()
+      const email             = (user.email || '').toLowerCase()
+      const supabase          = createAdminClient()
 
-      if (!dbUser) {
-        const provider = account?.provider === 'google' ? 'google' : 'microsoft'
-        await supabase.from('users').insert({
-          email:                email.toLowerCase(),
+      // ── Lookup 1 : par (provider, providerAccountId) ─────────────────────
+      // Si l user s est deja connecte avec ce provider, on retrouve son user_id direct.
+      let dbUserId = await findUserByProviderAccount(normProvider, providerAccountId)
+
+      // ── Lookup 2 : par email (linking auto si le user existe deja avec un autre provider) ──
+      if (!dbUserId && email) {
+        const { data: byEmail } = await supabase.from('users')
+          .select('id').ilike('email', email).maybeSingle()
+        if (byEmail) dbUserId = byEmail.id
+      }
+
+      // ── Cas A : nouveau user (aucun lookup n a fonctionne) ─────────────────
+      if (!dbUserId) {
+        if (!email) return false
+        const legacyProvider =
+          normProvider === 'google'   ? 'google'    :
+          normProvider === 'azure-ad' ? 'microsoft' :
+          normProvider === 'apple'    ? 'apple'     : 'unknown'
+        const { data: created } = await supabase.from('users').insert({
+          email:                email,
           name:                 user.name || email,
           avatar_url:           user.image,
           role:                 'driver',
           roles:                ['driver'],
           active:               false,
-          auth_provider:        provider,
+          auth_provider:        legacyProvider,
           must_change_password: false,
-        })
+        }).select('id').single()
+
+        if (!created) return false
+        dbUserId = created.id
+
+        await upsertAuthProviderLink(dbUserId!, normProvider, providerAccountId, email)
 
         try {
-          await sendAccessRequestNotification({ name: user.name || email, email, provider })
+          await sendAccessRequestNotification({ name: user.name || email, email, provider: legacyProvider as any })
         } catch (e) { console.error('[Auth] Notify error:', e) }
 
         ;(user as any).dbId   = null
@@ -140,19 +225,25 @@ export const authOptions: NextAuthOptions = {
         return true
       }
 
+      // ── Cas B : user existant - on lie (ou re-lie) le provider courant ────
+      // Auto-linking : pas de restriction WRONG_PROVIDER. L user peut se connecter
+      // avec n importe lequel des providers lies a son compte (multi-provider).
+      await upsertAuthProviderLink(dbUserId!, normProvider, providerAccountId, email)
+
+      const { data: dbUser } = await supabase.from('users')
+        .select('id, role, roles, active, must_change_password, has_odoo_access')
+        .eq('id', dbUserId)
+        .maybeSingle()
+
+      if (!dbUser) return false
+
       if (!dbUser.active) {
-        ;(user as any).dbId   = dbUser.id
-        ;(user as any).role   = dbUser.role
-        ;(user as any).roles  = dbUser.roles || [dbUser.role]
+        ;(user as any).dbId    = dbUser.id
+        ;(user as any).role    = dbUser.role
+        ;(user as any).roles   = dbUser.roles || [dbUser.role]
         ;(user as any).pending = true
         return true
       }
-
-      const expectedProvider = dbUser.auth_provider
-      const actualProvider   = account?.provider
-      if (expectedProvider === 'google'         && actualProvider !== 'google')    return '/login?error=WRONG_PROVIDER_MICROSOFT'
-      if (expectedProvider === 'microsoft'      && actualProvider !== 'azure-ad')  return '/login?error=WRONG_PROVIDER_GOOGLE'
-      if (expectedProvider === 'email_password')                                   return '/login?error=WRONG_PROVIDER_EMAIL'
 
       await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', dbUser.id)
 
