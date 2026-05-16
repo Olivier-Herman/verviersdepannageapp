@@ -21,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
   { href: '/mission',       label: 'Mes Missions',     icon: '🚗', moduleId: 'driver_missions' },
   { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
+  { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
   { href: '/missions-terminees', label: 'Missions terminées', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
