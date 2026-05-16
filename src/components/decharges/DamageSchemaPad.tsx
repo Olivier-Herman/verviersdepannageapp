@@ -15,9 +15,10 @@ const CANVAS_W = 400
 const CANVAS_H = 240
 const STROKE_COLOR = '#dc2626'  // rouge-600
 const STROKE_WIDTH = 4
-const VIEWS: CarView[] = ['front', 'back', 'left', 'right']
+const VIEWS: CarView[] = ['top', 'front', 'back', 'left', 'right']
 
 export interface DamageSchemaUrls {
+  top?:   string
   front?: string
   back?:  string
   left?:  string
@@ -34,12 +35,12 @@ interface Props {
 export default function DamageSchemaPad({ initial, onSave, onCancel }: Props) {
   const [activeView, setActiveView] = useState<CarView>('front')
   const [hasDrawing, setHasDrawing] = useState<Record<CarView, boolean>>({
-    front: !!initial?.front, back: !!initial?.back, left: !!initial?.left, right: !!initial?.right,
+    top: !!initial?.top, front: !!initial?.front, back: !!initial?.back, left: !!initial?.left, right: !!initial?.right,
   })
 
-  // 4 refs distincts pour preserver le dessin entre changements d onglet
+  // 5 refs distincts pour preserver le dessin entre changements d onglet
   const canvasRefs = useRef<Record<CarView, HTMLCanvasElement | null>>({
-    front: null, back: null, left: null, right: null,
+    top: null, front: null, back: null, left: null, right: null,
   })
 
   // Charge les dessins initiaux (si edition) au montage
@@ -173,8 +174,8 @@ export default function DamageSchemaPad({ initial, onSave, onCancel }: Props) {
       {/* Header */}
       <div className="bg-surface border-b border px-4 pt-12 pb-3 flex-shrink-0">
         <div className="flex items-center justify-between gap-3 mb-2">
-          <button onClick={onCancel} className="text-ink-secondary text-sm">← Annuler</button>
-          <p className="text-ink font-semibold text-sm">Schéma de dégâts {drawingCount > 0 && <span className="text-ink-muted">· {drawingCount}/4</span>}</p>
+          <button onClick={onCancel} className="text-ink-secondary text-sm flex items-center gap-1">← Annuler</button>
+          <p className="text-ink font-semibold text-sm">Schéma de dégâts {drawingCount > 0 && <span className="text-ink-muted">· {drawingCount}/{VIEWS.length}</span>}</p>
           <button
             onClick={handleSave}
             disabled={drawingCount === 0}
@@ -207,7 +208,7 @@ export default function DamageSchemaPad({ initial, onSave, onCancel }: Props) {
           {/* SVG silhouettes (toutes rendues mais une seule visible — preserve les refs canvas) */}
           {VIEWS.map(v => (
             <div key={v} className="absolute inset-0" style={{ display: activeView === v ? 'block' : 'none' }}>
-              <div id={`car-svg-${v}`} className="absolute inset-0 text-zinc-400 pointer-events-none">
+              <div id={`car-svg-${v}`} className="absolute inset-0 text-zinc-500 pointer-events-none">
                 <CarSilhouette view={v} className="w-full h-full" />
               </div>
               {/* Canvas overlay pour le dessin (touch action none = pas de scroll) */}
@@ -227,8 +228,8 @@ export default function DamageSchemaPad({ initial, onSave, onCancel }: Props) {
         <button
           onClick={() => clearView(activeView)}
           disabled={!hasDrawing[activeView]}
-          className="mt-4 px-4 py-2 bg-surface-hover disabled:opacity-40 text-ink-secondary text-xs rounded-lg">
-          Effacer cette vue
+          className="mt-4 px-4 py-2 bg-surface-hover disabled:opacity-40 text-ink-secondary text-xs rounded-lg flex items-center gap-1.5">
+          🧽 Effacer cette vue
         </button>
       </div>
     </div>

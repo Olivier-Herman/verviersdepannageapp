@@ -82,9 +82,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         <div class="schemas">
           <p class="photos-label">Schéma de dégâts</p>
           <div class="schemas-grid">
-            ${(['front','back','left','right'] as const).map(v => d.schema_urls?.[v] ? `
+            ${(['top','front','back','left','right'] as const).map(v => d.schema_urls?.[v] ? `
               <div class="schema-cell">
-                <p class="schema-cell-label">${v === 'front' ? 'Avant' : v === 'back' ? 'Arrière' : v === 'left' ? 'Gauche' : 'Droite'}</p>
+                <p class="schema-cell-label">${v === 'top' ? 'Dessus' : v === 'front' ? 'Avant' : v === 'back' ? 'Arrière' : v === 'left' ? 'Gauche' : 'Droite'}</p>
                 <img src="${esc(d.schema_urls[v]!)}" class="schema-img" alt="${v}"/>
               </div>
             ` : '').join('')}
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   .photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .photo-img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; border: 1px solid #eee; }
   .schemas { margin-bottom: 16px; }
-  .schemas-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .schemas-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .schema-cell { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 4px; }
   .schema-cell-label { font-size: 9px; color: #666; text-align: center; margin-bottom: 2px; text-transform: uppercase; }
   .schema-img { width: 100%; aspect-ratio: 5/3; object-fit: contain; }

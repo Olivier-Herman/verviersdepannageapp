@@ -1318,8 +1318,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <div>
               <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Schéma de dégâts</p>
               {Object.values(dSchemas).filter(Boolean).length > 0 ? (
-                <div className="grid grid-cols-4 gap-1.5 mb-2">
-                  {(['front','back','left','right'] as const).map(v => (
+                <div className="grid grid-cols-5 gap-1.5 mb-2">
+                  {(['top','front','back','left','right'] as const).map(v => (
                     <div key={v} className="aspect-[5/3] bg-white border rounded-lg overflow-hidden flex items-center justify-center">
                       {dSchemas[v]
                         ? <img src={dSchemas[v]} className="w-full h-full object-contain" alt={v} />

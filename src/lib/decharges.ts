@@ -190,8 +190,8 @@ export interface DischargeEntry {
   sig?:         string
   /** Photos rattachees a CETTE decharge (URLs Supabase Storage) */
   photo_urls?:  string[]
-  /** Schemas de degats annotes (4 vues) — data URL ou URL Storage */
-  schema_urls?: { front?: string; back?: string; left?: string; right?: string }
+  /** Schemas de degats annotes (5 vues : dessus + 4 cotes) — data URL ou URL Storage */
+  schema_urls?: { top?: string; front?: string; back?: string; left?: string; right?: string }
   /** Date d ajout */
   created_at?:  string
 }
