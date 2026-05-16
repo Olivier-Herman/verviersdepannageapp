@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
-import { getDischarge, type DischargeEntry } from '@/lib/decharges'
+import { getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -24,6 +24,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     .single()
 
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+
+  // Catalogue des types : fetch DB en priorite, fallback fige
+  const { data: typesData } = await supabase
+    .from('discharge_types')
+    .select('key, label, title, body, footnote, name_field_label, color, needs_comment, comment_label, needs_photos, photos_hint, needs_schema')
+  const typesFromDb: DischargeType[] = (typesData || []).map((d: any) => ({
+    key: d.key, label: d.label, title: d.title, body: d.body,
+    footnote: d.footnote ?? undefined, nameFieldLabel: d.name_field_label ?? undefined,
+    color: d.color, needsComment: d.needs_comment, commentLabel: d.comment_label ?? undefined,
+    needsPhotos: d.needs_photos, photosHint: d.photos_hint ?? undefined, needsSchema: d.needs_schema ?? false,
+  }))
+  const getDischarge = (key: string): DischargeType | null =>
+    typesFromDb.find(d => d.key === key) ?? getDischargeFallback(key)
 
   // Charge les decharges du nouveau format (avec type_key) + legacy (motif libre)
   const discharges: DischargeEntry[] =

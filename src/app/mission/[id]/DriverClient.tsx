@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
 import AmbientBackground from '@/components/AmbientBackground'
-import { DISCHARGE_TYPES, getDischarge, type DischargeEntry } from '@/lib/decharges'
+import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -545,6 +545,26 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [dPhotos, setDPhotos] = useState<string[]>([])  // urls (apres upload) ou data URLs (temp)
   const [dSchemas, setDSchemas] = useState<DamageSchemaUrls>({})
   const [showSchemaPad, setShowSchemaPad] = useState(false)
+  // Catalogue de types : charge depuis l API + Realtime pour propagation immediate
+  // des modifs admin. Fallback fige (DISCHARGE_TYPES) si API echoue.
+  const [dTypes, setDTypes] = useState<DischargeType[]>(DISCHARGE_TYPES as DischargeType[])
+  useEffect(() => {
+    let cancelled = false
+    const fetchTypes = () => {
+      fetch('/api/decharges')
+        .then(r => r.json())
+        .then(j => { if (!cancelled && j.types) setDTypes(j.types) })
+        .catch(() => {})
+    }
+    fetchTypes()
+    // Realtime : INSERT/UPDATE/DELETE sur discharge_types → re-fetch
+    const ch = sb.channel('discharge_types-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'discharge_types' }, () => fetchTypes())
+      .subscribe()
+    return () => { cancelled = true; sb.removeChannel(ch) }
+  }, [])
+  const getDischarge = (key: string): DischargeType | null =>
+    dTypes.find(d => d.key === key) ?? getDischargeFallback(key)
   const resetDischargeForm = () => {
     setDTypeKey(''); setDMotif(''); setDName(''); setDSig(''); setDPhotos([]); setDSchemas({}); setShowDSig(false); setShowSchemaPad(false)
   }
@@ -1189,7 +1209,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         <ScreenWrap title="Choisir une décharge" back={() => { resetDischargeForm(); setScreen(dischFrom) }}>
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
             <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Type de décharge</p>
-            {DISCHARGE_TYPES.map(t => (
+            {dTypes.map(t => (
               <button key={t.key} onClick={() => setDTypeKey(t.key)}
                 className={`w-full text-left p-3 rounded-2xl border transition active:scale-[0.99] ${
                   t.color === 'green'
