@@ -15,6 +15,12 @@ export interface PushPayload {
   mission_id?: string
   notif_type?: string
   data?:       Record<string, any>
+  /**
+   * 'alert' (default) : notif visible avec son.
+   * 'background' : silent push (content-available=1) — typique pour reveiller
+   * l app Apple Watch et la faire refetch /api/watch/missions/today.
+   */
+  push_type?:  'alert' | 'background'
 }
 
 export interface PushResult {
@@ -47,10 +53,20 @@ export async function sendPushNotification(
   let invalid_tokens = 0
   const invalidIds: string[] = []
 
+  // Topic APNs Watch = ${APNS_BUNDLE_ID}.watchkitapp (registered dans Apple Developer).
+  const watchTopic = process.env.APNS_BUNDLE_ID
+    ? `${process.env.APNS_BUNDLE_ID}.watchkitapp`
+    : undefined
+
   await Promise.all(tokens.map(async (t) => {
-    const res = t.platform === 'ios'
-      ? await sendApnsPush(t.token, payload as ApnsPayload)
-      : await sendFcmPush(t.token, payload as FcmPayload)
+    let res
+    if (t.platform === 'ios') {
+      res = await sendApnsPush(t.token, payload as ApnsPayload)
+    } else if (t.platform === 'watchos') {
+      res = await sendApnsPush(t.token, payload as ApnsPayload, { topic: watchTopic })
+    } else {
+      res = await sendFcmPush(t.token, payload as FcmPayload)
+    }
 
     if (res.ok) sent++
     else {

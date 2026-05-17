@@ -53,6 +53,20 @@ export interface ApnsPayload {
   mission_id?: string
   notif_type?: string
   data?:       Record<string, any>
+  /**
+   * 'alert' (default) : notif visible avec son.
+   * 'background' : silent push (content-available=1, no alert) — utilise
+   * pour reveiller l app Watch et la faire refetch /api/watch/missions/today.
+   */
+  push_type?: 'alert' | 'background'
+}
+
+export interface ApnsOptions {
+  /**
+   * Override du topic APNs. Default = APNS_BUNDLE_ID. Pour la Watch,
+   * passer `${APNS_BUNDLE_ID}.watchkitapp`.
+   */
+  topic?: string
 }
 
 export interface ApnsResult {
@@ -62,12 +76,17 @@ export interface ApnsResult {
   invalid_token?: boolean
 }
 
-export async function sendApnsPush(token: string, payload: ApnsPayload): Promise<ApnsResult> {
+export async function sendApnsPush(
+  token:    string,
+  payload:  ApnsPayload,
+  options?: ApnsOptions,
+): Promise<ApnsResult> {
   const bundleId  = process.env.APNS_BUNDLE_ID
   const sandbox   = process.env.APNS_USE_SANDBOX === 'true'
   if (!bundleId) {
     return { ok: false, status: 0, reason: 'APNS_BUNDLE_ID manquant' }
   }
+  const topic = options?.topic || bundleId
 
   let jwt: string
   try { jwt = await getApnsJwt() }
@@ -97,17 +116,28 @@ export async function sendApnsPush(token: string, payload: ApnsPayload): Promise
   }
   const sound = (payload.notif_type && SOUND_BY_TYPE[payload.notif_type]) || 'sounds.caf'
 
-  const apsBody = {
-    aps: {
-      alert: { title: payload.title, body: payload.body },
-      sound,
-      'mutable-content': 1,
-    },
-    notif_type: payload.notif_type,
-    action_url: payload.action_url,
-    mission_id: payload.mission_id,
-    ...payload.data,
-  }
+  const isBackground = payload.push_type === 'background'
+  const apsBody = isBackground
+    ? {
+        // Silent push : pas d alert visible, juste content-available=1
+        // pour reveiller l app et lui permettre de refetch.
+        aps: { 'content-available': 1 },
+        notif_type: payload.notif_type,
+        action_url: payload.action_url,
+        mission_id: payload.mission_id,
+        ...payload.data,
+      }
+    : {
+        aps: {
+          alert: { title: payload.title, body: payload.body },
+          sound,
+          'mutable-content': 1,
+        },
+        notif_type: payload.notif_type,
+        action_url: payload.action_url,
+        mission_id: payload.mission_id,
+        ...payload.data,
+      }
   const bodyBuf = Buffer.from(JSON.stringify(apsBody))
 
   return new Promise<ApnsResult>((resolve) => {
@@ -136,9 +166,10 @@ export async function sendApnsPush(token: string, payload: ApnsPayload): Promise
       ':method':         'POST',
       ':path':           `/3/device/${token}`,
       'authorization':   `bearer ${jwt}`,
-      'apns-topic':      bundleId,
-      'apns-push-type':  'alert',
-      'apns-priority':   '10',
+      'apns-topic':      topic,
+      'apns-push-type':  isBackground ? 'background' : 'alert',
+      // Background push : priority 5 obligatoire (priority 10 = bloque par Apple).
+      'apns-priority':   isBackground ? '5' : '10',
       'content-type':    'application/json',
       'content-length':  bodyBuf.length,
     })
