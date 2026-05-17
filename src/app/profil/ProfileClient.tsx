@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { signOutCascade as signOut } from '@/lib/auth-signout'
 import AppShell      from '@/components/layout/AppShell'
 import NavOrderEditor from '@/components/profil/NavOrderEditor'
 import AuthProvidersSection from '@/components/profile/AuthProvidersSection'

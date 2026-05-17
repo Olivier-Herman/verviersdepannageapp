@@ -2,7 +2,8 @@
 
 import { useState }  from 'react'
 import { useRouter }  from 'next/navigation'
-import { signOut, signIn } from 'next-auth/react'
+import { signIn } from 'next-auth/react'
+import { signOutCascade as signOut } from '@/lib/auth-signout'
 
 const LIST_TYPES = [
   { key: 'motif',        label: 'Motifs d\'intervention' },

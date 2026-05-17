@@ -26,18 +26,10 @@ interface WatchBridgePlugin {
 }
 
 function getPlugin(): WatchBridgePlugin | null {
-  if (typeof window === 'undefined') {
-    console.log('[WatchBridge] SSR (no window) — skip')
-    return null
-  }
+  if (typeof window === 'undefined') return null
   const w = window as any
-  const isNative = w.Capacitor?.isNativePlatform?.()
-  console.log('[WatchBridge] Capacitor.isNativePlatform =', isNative)
-  if (!isNative) return null
-  const plugin = w.Capacitor?.Plugins?.WatchBridge
-  console.log('[WatchBridge] Capacitor.Plugins.WatchBridge =', plugin ? 'OK' : 'undefined')
-  console.log('[WatchBridge] all plugin keys =', Object.keys(w.Capacitor?.Plugins ?? {}))
-  return plugin ?? null
+  if (!w.Capacitor?.isNativePlatform?.()) return null
+  return w.Capacitor?.Plugins?.WatchBridge ?? null
 }
 
 export default function WatchPairingBridge() {
@@ -45,46 +37,29 @@ export default function WatchPairingBridge() {
   const lastUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    console.log('[WatchBridge] useEffect status =', status)
-    if (status !== 'authenticated') {
-      console.log('[WatchBridge] not authenticated yet, skip')
-      return
-    }
+    if (status !== 'authenticated') return
     const plugin = getPlugin()
-    if (!plugin) {
-      console.log('[WatchBridge] no plugin available, skip')
-      return
-    }
+    if (!plugin) return
 
     const userId = (session?.user as any)?.id || session?.user?.email || ''
-    console.log('[WatchBridge] userId =', userId)
     if (!userId) return
-    if (lastUserIdRef.current === userId) {
-      console.log('[WatchBridge] same userId already paired, skip')
-      return
-    }
+    if (lastUserIdRef.current === userId) return
 
     let cancelled = false
     ;(async () => {
       try {
-        console.log('[WatchBridge] checking isWatchPaired...')
         const { paired } = await plugin.isWatchPaired()
-        console.log('[WatchBridge] isWatchPaired =', paired)
         if (!paired) return
-        console.log('[WatchBridge] fetching /api/watch/issue-token...')
         const resp = await fetch('/api/watch/issue-token', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
         })
-        console.log('[WatchBridge] issue-token HTTP', resp.status)
         if (!resp.ok) return
         const { token, expires_at } = await resp.json() as { token: string; expires_at: string }
-        console.log('[WatchBridge] token recu, length =', token?.length)
         if (!token || cancelled) return
         await plugin.forwardToken({ token, expires_at })
         lastUserIdRef.current = userId
-        console.log('[WatchBridge] forwardToken OK')
       } catch (e) {
         console.warn('[WatchBridge] error:', e)
       }

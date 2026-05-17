@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { signOutCascade } from '@/lib/auth-signout'
 import { useState } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
@@ -316,7 +317,7 @@ export function FooterActions({
       </button>
       <button
         type="button"
-        onClick={() => signOut({ callbackUrl: '/login' })}
+        onClick={() => signOutCascade({ callbackUrl: '/login' })}
         title={collapsed ? '' : 'Déconnexion'}
         aria-label="Déconnexion"
         className={btnCls}

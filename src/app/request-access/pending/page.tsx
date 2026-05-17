@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { signOutCascade as signOut } from '@/lib/auth-signout'
 import Image from 'next/image'
 
 export default function PendingPage() {

@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { signOutCascade as signOut } from '@/lib/auth-signout'
 import { Moon, Sun, LogOut } from 'lucide-react'
 import { filterNavItems } from '@/components/layout/nav-items'
 import { useTheme } from '@/components/theme/ThemeProvider'
