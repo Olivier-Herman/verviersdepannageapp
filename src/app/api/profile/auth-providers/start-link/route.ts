@@ -35,11 +35,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Provider invalide' }, { status: 400 })
   }
 
-  // Cookie HttpOnly, 5 min, secure en prod
+  // Cookie HttpOnly, 5 min, SameSite=None (+ Secure) obligatoire pour Apple :
+  // Apple Sign In utilise response_mode=form_post → POST cross-site sur le
+  // callback. Avec SameSite=Lax, le cookie n est PAS envoye sur ce POST,
+  // donc le signIn callback ne detecterait pas le mode linking et le row
+  // Apple ne serait pas insere.
   cookies().set(LINKING_COOKIE, userId, {
     httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure:   true,           // obligatoire avec SameSite=None
+    sameSite: 'none',
     path:     '/',
     maxAge:   5 * 60,
   })

@@ -55,8 +55,7 @@ async function upsertAuthProviderLink(
   providerEmail: string | null | undefined,
 ) {
   const sb = createAdminClient()
-  // upsert sur (provider, provider_account_id) - si deja lie, no-op
-  await sb.from('user_auth_providers').upsert(
+  const { error } = await sb.from('user_auth_providers').upsert(
     {
       user_id:             userId,
       provider,
@@ -65,6 +64,11 @@ async function upsertAuthProviderLink(
     },
     { onConflict: 'provider,provider_account_id' }
   )
+  if (error) {
+    console.error('[upsertAuthProviderLink] FAILED', { userId, provider, providerAccountId, error: error.message })
+  } else {
+    console.log('[upsertAuthProviderLink] OK', { userId, provider, providerAccountId })
+  }
 }
 
 /** Lookup d un user existant via la table user_auth_providers (multi-provider). */
@@ -209,6 +213,7 @@ export const authOptions: NextAuthOptions = {
       try {
         const { cookies } = await import('next/headers')
         const linkingUserId = cookies().get('vd_linking_user_id')?.value
+        console.log('[Auth.signIn]', { provider: normProvider, hasLinkingCookie: !!linkingUserId, providerAccountId, email })
         if (linkingUserId) {
           // Verifier que ce provider_account_id n est pas deja lie a un AUTRE user
           const conflict = await findUserByProviderAccount(normProvider, providerAccountId)
