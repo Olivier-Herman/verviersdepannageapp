@@ -21,7 +21,7 @@ export interface WatchActionResult {
 
 const ALLOWED_FROM: Record<WatchAction, string[]> = {
   accept:  ['assigned'],
-  refuse:  ['assigned', 'accepted'],   // un chauffeur peut refuser apres accept tant qu il a pas commence
+  refuse:  ['assigned'],   // refus uniquement avant accept. Apres accept, contacter dispatcher.
   on_way:  ['accepted'],
   on_site: ['in_progress'],
 }
