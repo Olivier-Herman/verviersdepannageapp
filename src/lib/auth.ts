@@ -18,8 +18,10 @@ function buildAppleClientSecret(): string {
   const teamId     = process.env.APPLE_TEAM_ID
   const clientId   = process.env.APPLE_ID  // = Service ID (com.verviersdepannage.app.signinwithapple)
   const keyId      = process.env.APPLE_KEY_ID
-  const privateKey = process.env.APPLE_PRIVATE_KEY
+  let   privateKey = process.env.APPLE_PRIVATE_KEY
   if (!teamId || !clientId || !keyId || !privateKey) return ''
+  // Vercel UI peut echapper les sauts de ligne en \n litteraux → on les remet en vrais sauts
+  if (privateKey.includes('\\n')) privateKey = privateKey.replace(/\\n/g, '\n')
   try {
     return jwt.sign({}, privateKey, {
       algorithm: 'ES256',
