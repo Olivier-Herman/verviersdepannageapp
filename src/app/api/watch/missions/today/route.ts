@@ -69,18 +69,14 @@ export async function GET(req: Request) {
   // Driver : missions du jour assignees a moi
   let driver_missions: WatchMissionLite[] = []
   if (isDriver) {
-    const { data, error: driverErr } = await sb
-      .from('incoming_missions')
-      .select(MISSION_FIELDS)
-      .eq('assigned_to', userId)
-      .in('status', DRIVER_STATUSES)
-      .order('intervention_date', { ascending: true, nullsFirst: false })
-      .limit(50)
-    console.log('[watch/today] driver fetch userId=', userId,
-                'rawCount=', data?.length,
-                'statuses=', (data || []).map((m: any) => m.status),
-                'error=', driverErr)
-    driver_missions = ((data || []) as unknown) as WatchMissionLite[]
+    // DEBUG: 3 queries pour isoler
+    const q1 = await sb.from('incoming_missions').select('id, status').eq('assigned_to', userId)
+    const q2 = await sb.from('incoming_missions').select('id, status').eq('assigned_to', userId).in('status', DRIVER_STATUSES)
+    const q3 = await sb.from('incoming_missions').select(MISSION_FIELDS).eq('assigned_to', userId).in('status', DRIVER_STATUSES).order('intervention_date', { ascending: true, nullsFirst: false }).limit(50)
+    console.log('[watch/today] DEBUG q1 (all assigned):', q1.data?.length, q1.data?.map((m: any) => m.status))
+    console.log('[watch/today] DEBUG q2 (with .in):', q2.data?.length, q2.data?.map((m: any) => m.status))
+    console.log('[watch/today] DEBUG q3 (full):', q3.data?.length, (q3.data || []).map((m: any) => m.status))
+    driver_missions = ((q3.data || []) as unknown) as WatchMissionLite[]
   }
 
   // Dispatcher : compteur + 5 missions en attente les plus urgentes
