@@ -868,6 +868,15 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
     return new File([arr], name, { type: mime })
   }
+  // Detecte si une exception Capacitor Camera correspond a un click "Annuler"
+  // (vs une vraie erreur permission/hardware). Patterns connus iOS/Android.
+  const isUserCancellation = (e: any): boolean => {
+    const msg = String(e?.message || e || '').toLowerCase()
+    return msg.includes('cancel')        // "User cancelled photos app", "cancelled"
+        || msg.includes('cancell')       // "cancelled"
+        || msg.includes('dismiss')       // certains plugins disent "User dismissed"
+        || msg.includes('no image')      // "No image picked"
+  }
   const capCameraLoop = async () => {
     try {
       const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
@@ -892,6 +901,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         }
       }
     } catch (e: any) {
+      // L user a annule la prise de photo → silent (pas une erreur)
+      if (isUserCancellation(e)) return
       setErr(`Camera : ${e.message || 'erreur'}`)
     }
   }
@@ -918,6 +929,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         } catch {}
       }
     } catch (e: any) {
+      // L user a annule la selection → silent
+      if (isUserCancellation(e)) return
       setErr(`Galerie : ${e.message || 'erreur'}`)
     }
   }
@@ -1366,7 +1379,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                         setDPhotos(prev => [...prev, photo.dataUrl!])
                       } catch { break }
                     }
-                  } catch (e: any) { setErr(`Camera : ${e.message || 'erreur'}`) }
+                  } catch (e: any) {
+                    if (isUserCancellation(e)) return
+                    setErr(`Camera : ${e.message || 'erreur'}`)
+                  }
                 } else {
                   // Web fallback : input file
                   const input = document.createElement('input')
