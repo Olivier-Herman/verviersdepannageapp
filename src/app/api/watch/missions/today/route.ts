@@ -52,20 +52,12 @@ export async function GET(req: Request) {
 
   const sb = createAdminClient()
 
-  const { data: user, error: userErr } = await sb
+  const { data: user } = await sb
     .from('users')
-    .select('id, role, roles, email')
+    .select('id, role, roles')
     .eq('id', userId)
     .single()
   if (!user) return NextResponse.json({ error: 'User introuvable' }, { status: 404 })
-
-  console.log('[watch/today] DEBUG userErr=', userErr,
-              'typeof roles=', typeof user.roles,
-              'isArray=', Array.isArray(user.roles),
-              'rolesLen=', (user.roles as any)?.length,
-              'rolesJSON=', JSON.stringify(user.roles),
-              'role=', user.role,
-              'email=', user.email)
 
   const rawRoles = Array.isArray(user.roles) ? user.roles as string[] : [user.role].filter(Boolean) as string[]
   const normalizedRoles = rawRoles.map(r => String(r ?? '').trim().toLowerCase())
