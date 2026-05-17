@@ -69,13 +69,17 @@ export async function GET(req: Request) {
   // Driver : missions du jour assignees a moi
   let driver_missions: WatchMissionLite[] = []
   if (isDriver) {
-    const { data } = await sb
+    const { data, error: driverErr } = await sb
       .from('incoming_missions')
       .select(MISSION_FIELDS)
       .eq('assigned_to', userId)
       .in('status', DRIVER_STATUSES)
       .order('intervention_date', { ascending: true, nullsFirst: false })
       .limit(50)
+    console.log('[watch/today] driver fetch userId=', userId,
+                'rawCount=', data?.length,
+                'statuses=', (data || []).map((m: any) => m.status),
+                'error=', driverErr)
     driver_missions = ((data || []) as unknown) as WatchMissionLite[]
   }
 
