@@ -66,8 +66,6 @@ async function upsertAuthProviderLink(
   )
   if (error) {
     console.error('[upsertAuthProviderLink] FAILED', { userId, provider, providerAccountId, error: error.message })
-  } else {
-    console.log('[upsertAuthProviderLink] OK', { userId, provider, providerAccountId })
   }
 }
 
@@ -213,7 +211,6 @@ export const authOptions: NextAuthOptions = {
       try {
         const { cookies } = await import('next/headers')
         const linkingUserId = cookies().get('vd_linking_user_id')?.value
-        console.log('[Auth.signIn]', { provider: normProvider, hasLinkingCookie: !!linkingUserId, providerAccountId, email })
         if (linkingUserId) {
           // Verifier que ce provider_account_id n est pas deja lie a un AUTRE user
           const conflict = await findUserByProviderAccount(normProvider, providerAccountId)
