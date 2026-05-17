@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import NotificationsProvider from '@/components/notifications/NotificationsProvider'
+import WatchPairingBridge from '@/components/watch/WatchPairingBridge'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
 import GlobalSearch from '@/components/GlobalSearch'
@@ -59,6 +60,7 @@ export default function AppShell({
 
   return (
    <NotificationsProvider userId={userId || null}>
+    <WatchPairingBridge />
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}
