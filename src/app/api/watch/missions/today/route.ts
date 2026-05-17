@@ -69,16 +69,13 @@ export async function GET(req: Request) {
   // Driver : missions du jour assignees a moi
   let driver_missions: WatchMissionLite[] = []
   if (isDriver) {
-    // DEBUG: isoler le bug q2 (3 rows) vs q3 (1 row)
-    const q2 = await sb.from('incoming_missions').select('id, status').eq('assigned_to', userId).in('status', DRIVER_STATUSES)
-    const q4_select = await sb.from('incoming_missions').select(MISSION_FIELDS).eq('assigned_to', userId).in('status', DRIVER_STATUSES)
-    const q5_order = await sb.from('incoming_missions').select('id, status').eq('assigned_to', userId).in('status', DRIVER_STATUSES).order('intervention_date', { ascending: true, nullsFirst: false })
-    const q3_full = await sb.from('incoming_missions').select(MISSION_FIELDS).eq('assigned_to', userId).in('status', DRIVER_STATUSES).order('intervention_date', { ascending: true, nullsFirst: false }).limit(50)
-    console.log('[watch/today] q2 simple:', q2.data?.length)
-    console.log('[watch/today] q4 with MISSION_FIELDS only:', q4_select.data?.length, 'err=', q4_select.error)
-    console.log('[watch/today] q5 with order only:', q5_order.data?.length, 'err=', q5_order.error)
-    console.log('[watch/today] q3 full:', q3_full.data?.length, 'err=', q3_full.error)
-    driver_missions = ((q3_full.data || []) as unknown) as WatchMissionLite[]
+    const { data } = await sb
+      .from('incoming_missions')
+      .select(MISSION_FIELDS)
+      .eq('assigned_to', userId)
+      .in('status', DRIVER_STATUSES)
+      .order('intervention_date', { ascending: true, nullsFirst: false })
+    driver_missions = ((data || []) as unknown) as WatchMissionLite[]
   }
 
   // Dispatcher : compteur + 5 missions en attente les plus urgentes
