@@ -26,10 +26,18 @@ interface WatchBridgePlugin {
 }
 
 function getPlugin(): WatchBridgePlugin | null {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined') {
+    console.log('[WatchBridge] SSR (no window) — skip')
+    return null
+  }
   const w = window as any
-  if (!w.Capacitor?.isNativePlatform?.()) return null
-  return w.Capacitor?.Plugins?.WatchBridge ?? null
+  const isNative = w.Capacitor?.isNativePlatform?.()
+  console.log('[WatchBridge] Capacitor.isNativePlatform =', isNative)
+  if (!isNative) return null
+  const plugin = w.Capacitor?.Plugins?.WatchBridge
+  console.log('[WatchBridge] Capacitor.Plugins.WatchBridge =', plugin ? 'OK' : 'undefined')
+  console.log('[WatchBridge] all plugin keys =', Object.keys(w.Capacitor?.Plugins ?? {}))
+  return plugin ?? null
 }
 
 export default function WatchPairingBridge() {
@@ -37,38 +45,46 @@ export default function WatchPairingBridge() {
   const lastUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (status !== 'authenticated') return
+    console.log('[WatchBridge] useEffect status =', status)
+    if (status !== 'authenticated') {
+      console.log('[WatchBridge] not authenticated yet, skip')
+      return
+    }
     const plugin = getPlugin()
-    if (!plugin) return  // Pas Capacitor ou plugin absent (build sans Watch bridge)
+    if (!plugin) {
+      console.log('[WatchBridge] no plugin available, skip')
+      return
+    }
 
-    // Eviter de re-fetch si on a deja forward le token pour ce user.
     const userId = (session?.user as any)?.id || session?.user?.email || ''
+    console.log('[WatchBridge] userId =', userId)
     if (!userId) return
-    if (lastUserIdRef.current === userId) return
+    if (lastUserIdRef.current === userId) {
+      console.log('[WatchBridge] same userId already paired, skip')
+      return
+    }
 
     let cancelled = false
     ;(async () => {
       try {
+        console.log('[WatchBridge] checking isWatchPaired...')
         const { paired } = await plugin.isWatchPaired()
-        if (!paired) {
-          console.log('[WatchBridge] Pas d Apple Watch couplee — skip')
-          return
-        }
+        console.log('[WatchBridge] isWatchPaired =', paired)
+        if (!paired) return
+        console.log('[WatchBridge] fetching /api/watch/issue-token...')
         const resp = await fetch('/api/watch/issue-token', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
         })
-        if (!resp.ok) {
-          console.warn('[WatchBridge] issue-token HTTP', resp.status)
-          return
-        }
+        console.log('[WatchBridge] issue-token HTTP', resp.status)
+        if (!resp.ok) return
         const { token, expires_at } = await resp.json() as { token: string; expires_at: string }
-        if (!token) return
-        if (cancelled) return
+        console.log('[WatchBridge] token recu, length =', token?.length)
+        if (!token || cancelled) return
         await plugin.forwardToken({ token, expires_at })
         lastUserIdRef.current = userId
-        console.log('[WatchBridge] Token forwarde a la Watch')
+        console.log('[WatchBridge] forwardToken OK')
       } catch (e) {
         console.warn('[WatchBridge] error:', e)
       }
