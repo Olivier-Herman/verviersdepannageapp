@@ -195,22 +195,13 @@ export const authOptions: NextAuthOptions = {
           }
           await upsertAuthProviderLink(linkingUserId, normProvider, providerAccountId, email)
           cookies().delete('vd_linking_user_id')
-          // Reuse la session de l user d origine (linkingUserId) - on continue
-          // le signIn comme si c etait lui qui se connectait avec ce provider.
-          // Du coup il faut renseigner les user fields pour le JWT callback.
-          const { data: existing } = await supabase.from('users')
-            .select('id, role, roles, active, must_change_password, has_odoo_access')
-            .eq('id', linkingUserId)
-            .maybeSingle()
-          if (existing) {
-            ;(user as any).dbId               = existing.id
-            ;(user as any).role               = existing.role
-            ;(user as any).roles              = existing.roles || [existing.role]
-            ;(user as any).mustChangePassword = existing.must_change_password || false
-            ;(user as any).hasOdooAccess      = !!existing.has_odoo_access
-            ;(user as any).pending            = !existing.active
-            return true
-          }
+          // IMPORTANT : return d une URL au lieu de `true`.
+          // Avec `true`, NextAuth cree une nouvelle session pour l user Apple
+          // (different de l user Microsoft connecte) et ecrase la session
+          // existante → user deconnecte, redirige sur /login.
+          // En retournant une URL, NextAuth redirige sans creer de session :
+          // la session Microsoft d origine reste intacte, le lien est persiste.
+          return `/profil?linked=${normProvider}`
         }
       } catch (e: any) {
         console.error('[Auth] Linking mode error:', e.message)
