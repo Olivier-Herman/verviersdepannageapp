@@ -906,27 +906,61 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       setErr(`Camera : ${e.message || 'erreur'}`)
     }
   }
+  /** Force la conversion d un blob image en JPEG via canvas (gere HEIC/HEIF iPhone). */
+  const blobToJpegDataUrl = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        // Cap a 1920px de largeur max pour limiter le poids upload (mobile data)
+        const maxW = 1920
+        const ratio = img.width > maxW ? maxW / img.width : 1
+        canvas.width  = Math.round(img.width  * ratio)
+        canvas.height = Math.round(img.height * ratio)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { URL.revokeObjectURL(url); reject(new Error('canvas ctx')); return }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(url)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url)
+        reject(new Error('Image non lisible (HEIC/HEIF?)'))
+      }
+      img.src = url
+    })
+  }
   const capPickGallery = async () => {
     try {
       const { Camera } = await import('@capacitor/camera')
       const result = await Camera.pickImages({ quality: 80, limit: 20 })
       if (!result.photos || result.photos.length === 0) return
-      // pickImages renvoie webPath (file:// ou blob://) → fetch + convert en File
+      let okCount = 0
+      let failCount = 0
+      const errors: string[] = []
+      // pickImages renvoie webPath (file:// ou blob://) → fetch + conversion JPEG via canvas
       for (const p of result.photos) {
         try {
           const res = await fetch(p.webPath)
+          if (!res.ok) throw new Error(`fetch ${res.status}`)
           const blob = await res.blob()
-          const file = new File([blob], `pick-${Date.now()}.${p.format || 'jpg'}`, { type: blob.type || 'image/jpeg' })
-          const reader = new FileReader()
-          await new Promise<void>((resolve) => {
-            reader.onload = e => {
-              setPhotos(prev => [...prev, file])
-              setPreviews(prev => [...prev, e.target?.result as string])
-              resolve()
-            }
-            reader.readAsDataURL(file)
-          })
-        } catch {}
+          // Conversion systematique en JPEG via canvas (regle HEIC + redim 1920px max)
+          const dataUrl = await blobToJpegDataUrl(blob)
+          const file = dataUrlToFile(dataUrl, `pick-${Date.now()}-${okCount}.jpg`)
+          setPhotos(prev => [...prev, file])
+          setPreviews(prev => [...prev, dataUrl])
+          okCount++
+        } catch (e: any) {
+          failCount++
+          errors.push(e?.message || 'erreur')
+          console.error('[capPickGallery] photo failed:', e)
+        }
+      }
+      if (failCount > 0 && okCount === 0) {
+        setErr(`Aucune photo n'a pu être importée. ${errors[0] || ''}`)
+      } else if (failCount > 0) {
+        setErr(`${failCount}/${result.photos.length} photo${failCount > 1 ? 's' : ''} n'ont pas pu être importées (${errors[0]})`)
       }
     } catch (e: any) {
       // L user a annule la selection → silent
