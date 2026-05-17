@@ -41,7 +41,11 @@ export async function GET(req: Request) {
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
     .order(sortField, { ascending: false, nullsFirst: false })
-    .limit(mapMode ? 500 : 100)
+    // .range() au lieu de .limit() pour eviter un bug Supabase JS observe
+    // sur /api/watch/missions/today (combo select-long + order + limit
+    // filtrait incorrectement a 1 row au lieu de 3). .range utilise un
+    // Range header HTTP plus predictible.
+    .range(0, mapMode ? 499 : 99)
 
   // Filtrer les entrées parasites (corps vides, PROCESSING, etc.)
   query = query
