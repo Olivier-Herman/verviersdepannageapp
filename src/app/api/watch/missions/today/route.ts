@@ -61,8 +61,10 @@ export async function GET(req: Request) {
 
   const rawRoles = Array.isArray(user.roles) ? user.roles as string[] : [user.role].filter(Boolean) as string[]
   const normalizedRoles = rawRoles.map(r => String(r ?? '').trim().toLowerCase())
-  const isDispatcher = normalizedRoles.some(r => r === 'dispatcher' || r === 'admin' || r === 'superadmin')
-  const isDriver     = normalizedRoles.includes('chauffeur') || normalizedRoles.includes('driver')
+  // superadmin = super-role qui implique tous les autres (dispatcher + driver)
+  const isSuperadmin = normalizedRoles.includes('superadmin')
+  const isDispatcher = isSuperadmin || normalizedRoles.some(r => r === 'dispatcher' || r === 'admin')
+  const isDriver     = isSuperadmin || normalizedRoles.includes('chauffeur') || normalizedRoles.includes('driver')
 
   // Driver : missions du jour assignees a moi
   let driver_missions: WatchMissionLite[] = []
