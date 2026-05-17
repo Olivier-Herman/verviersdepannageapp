@@ -372,6 +372,48 @@ export const authOptions: NextAuthOptions = {
 
   pages:   { signIn: '/login', error: '/login' },
   session: { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60, updateAge: 24 * 60 * 60 },
+
+  // Apple Sign In utilise response_mode=form_post qui POST cross-site sur le
+  // callback. Les cookies PKCE et state NextAuth par defaut sont en SameSite=Lax
+  // donc NON envoyes sur un POST cross-site → erreur "PKCE code_verifier cookie
+  // was missing" cote serveur. On override ces 2 cookies en SameSite=None.
+  // (Microsoft / Google utilisent query mode, donc SameSite=Lax suffit pour eux
+  // - mais SameSite=None marche aussi, plus permissif sans risque.)
+  cookies: {
+    pkceCodeVerifier: {
+      name: process.env.NODE_ENV === 'production'
+        ? '__Secure-next-auth.pkce.code_verifier'
+        : 'next-auth.pkce.code_verifier',
+      options: {
+        httpOnly: true,
+        sameSite: 'none',
+        path:     '/',
+        secure:   true,
+      },
+    },
+    state: {
+      name: process.env.NODE_ENV === 'production'
+        ? '__Secure-next-auth.state'
+        : 'next-auth.state',
+      options: {
+        httpOnly: true,
+        sameSite: 'none',
+        path:     '/',
+        secure:   true,
+      },
+    },
+    nonce: {
+      name: process.env.NODE_ENV === 'production'
+        ? '__Secure-next-auth.nonce'
+        : 'next-auth.nonce',
+      options: {
+        httpOnly: true,
+        sameSite: 'none',
+        path:     '/',
+        secure:   true,
+      },
+    },
+  },
 }
 
 // ── Helpers de vérification de rôle ───────────────────────
