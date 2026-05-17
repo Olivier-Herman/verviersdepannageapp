@@ -97,7 +97,9 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    role: isDispatcher ? 'dispatcher' : 'driver',
+    role: isDispatcher ? 'dispatcher' : 'driver',  // legacy, encore lu pour fallback
+    is_driver: isDriver,
+    is_dispatcher: isDispatcher,
     driver_missions,
     dispatcher_pending_count,
     dispatcher_top,
