@@ -59,9 +59,11 @@ export async function GET(req: Request) {
     .single()
   if (!user) return NextResponse.json({ error: 'User introuvable' }, { status: 404 })
 
-  const roles = Array.isArray(user.roles) ? user.roles as string[] : [user.role].filter(Boolean) as string[]
-  const isDispatcher = roles.some(r => r === 'dispatcher' || r === 'admin' || r === 'superadmin')
-  const isDriver     = roles.includes('chauffeur') || roles.includes('driver')
+  const rawRoles = Array.isArray(user.roles) ? user.roles as string[] : [user.role].filter(Boolean) as string[]
+  const normalizedRoles = rawRoles.map(r => String(r ?? '').trim().toLowerCase())
+  const isDispatcher = normalizedRoles.some(r => r === 'dispatcher' || r === 'admin' || r === 'superadmin')
+  const isDriver     = normalizedRoles.includes('chauffeur') || normalizedRoles.includes('driver')
+  console.log('[watch/today] user', userId, 'rawRoles=', JSON.stringify(user.roles), 'norm=', normalizedRoles, 'isDriver=', isDriver, 'isDispatcher=', isDispatcher)
 
   // Driver : missions du jour assignees a moi
   let driver_missions: WatchMissionLite[] = []
