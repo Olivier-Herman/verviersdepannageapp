@@ -6,6 +6,35 @@ import { createAdminClient }             from '@/lib/supabase'
 import { sendAccessRequestNotification } from '@/lib/emails'
 import type { NextAuthOptions }          from 'next-auth'
 import bcrypt                            from 'bcryptjs'
+import jwt                               from 'jsonwebtoken'
+
+/**
+ * Apple Sign In : NextAuth Apple provider attend un clientSecret en JWT signe
+ * (ES256, valable max 6 mois). On le genere au load du module a partir des
+ * env vars APPLE_TEAM_ID + APPLE_KEY_ID + APPLE_PRIVATE_KEY (.p8 content).
+ * Si une env var manque, on retourne string vide → le provider sera desactive.
+ */
+function buildAppleClientSecret(): string {
+  const teamId     = process.env.APPLE_TEAM_ID
+  const clientId   = process.env.APPLE_ID  // = Service ID (com.verviersdepannage.app.signinwithapple)
+  const keyId      = process.env.APPLE_KEY_ID
+  const privateKey = process.env.APPLE_PRIVATE_KEY
+  if (!teamId || !clientId || !keyId || !privateKey) return ''
+  try {
+    return jwt.sign({}, privateKey, {
+      algorithm: 'ES256',
+      keyid:     keyId,
+      issuer:    teamId,
+      audience:  'https://appleid.apple.com',
+      subject:   clientId,
+      expiresIn: '180d',  // Apple accepte jusqu a 6 mois
+    })
+  } catch (e: any) {
+    console.error('[Apple Sign In] JWT generation failed:', e.message)
+    return ''
+  }
+}
+const APPLE_CLIENT_SECRET = buildAppleClientSecret()
 
 /** Mapping NextAuth account.provider → notre nomenclature DB user_auth_providers.provider */
 function normalizeProvider(p: string | undefined): 'apple' | 'google' | 'azure-ad' | 'credentials' | null {
@@ -149,20 +178,13 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
 
-    // Sign in with Apple — utilise le Service ID + cle .p8 (JWT signe par
-    // NextAuth a chaque exchange). Apple ne renvoie l email QUE la 1ere
-    // connexion, donc on doit memoriser l identite via le subject (sub)
-    // stocke dans user_auth_providers.provider_account_id.
+    // Sign in with Apple — clientSecret = JWT ES256 pre-signe (voir buildAppleClientSecret).
+    // Apple ne renvoie l email QUE la 1ere connexion, donc on memorise l identite
+    // via le subject (sub) stocke dans user_auth_providers.provider_account_id.
     AppleProvider({
-      clientId:     process.env.APPLE_ID!,         // Service ID
-      clientSecret: process.env.APPLE_PRIVATE_KEY  // contenu du .p8
-        ? {
-            teamId:     process.env.APPLE_TEAM_ID!,
-            privateKey: process.env.APPLE_PRIVATE_KEY,
-            keyId:      process.env.APPLE_KEY_ID!,
-          } as any  // next-auth AppleProvider accepte le format objet en v4 recent
-        : '',
-      authorization: { params: { scope: 'name email' } },
+      clientId:     process.env.APPLE_ID!,  // Service ID
+      clientSecret: APPLE_CLIENT_SECRET,    // JWT signe ES256
+      authorization: { params: { scope: 'name email', response_mode: 'form_post' } },
     }),
   ],
 
