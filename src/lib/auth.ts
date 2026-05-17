@@ -347,14 +347,23 @@ export const authOptions: NextAuthOptions = {
         // reconnexion). Cout : 2 queries Supabase par render — negligeable.
         if (token.id) {
           try {
-            const [fresh, odooAccess, navOrder] = await Promise.all([
+            const supabase = createAdminClient()
+            // Force name/email/avatar depuis DB (sinon login Apple ecrase avec
+            // user.name="Utilisateur" et email="xxx@privaterelay.appleid.com")
+            const [fresh, odooAccess, navOrder, dbUser] = await Promise.all([
               loadModules(token.id as string),
               loadOdooAccess(token.id as string),
               loadNavOrder(token.id as string),
+              supabase.from('users').select('name, email, avatar_url').eq('id', token.id).maybeSingle(),
             ])
             ;(session.user as any).modules        = fresh
             ;(session.user as any).hasOdooAccess  = odooAccess
             ;(session.user as any).navOrder       = navOrder
+            if (dbUser.data) {
+              session.user.name  = dbUser.data.name || session.user.name
+              session.user.email = dbUser.data.email || session.user.email
+              session.user.image = dbUser.data.avatar_url || session.user.image
+            }
           } catch {
             ;(session.user as any).modules        = token.modules || []
             ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
