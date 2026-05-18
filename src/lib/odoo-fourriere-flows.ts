@@ -258,6 +258,7 @@ export interface ReprintParams {
   ticketId:   number
   tagName?:   string   // tag mensuel a ajouter sur le vehicule (optionnel)
   stateId?:   number   // forcer un nouveau state_id sur le vehicule
+  print?:     boolean  // imprimer une nouvelle etiquette (default false)
 }
 
 export interface ReprintResult {
@@ -321,13 +322,18 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
   const note = (ticket.x_studio_note_sur_etiquette && ticket.x_studio_note_sur_etiquette !== false)
     ? String(ticket.x_studio_note_sur_etiquette) : ''
 
-  const printed = await printZebraLabel({
-    ticketId: params.ticketId,
-    motif,
-    date:     formatDateForLabel(ticket.x_studio_date_dentree),
-    note,
-    plate, vin, brand, model,
-  })
+  // Impression UNIQUEMENT si demandee explicitement (default off : l inventaire
+  // sert a remettre a jour le parc, pas a re-imprimer toutes les etiquettes)
+  let printed = false
+  if (params.print) {
+    printed = await printZebraLabel({
+      ticketId: params.ticketId,
+      motif,
+      date:     formatDateForLabel(ticket.x_studio_date_dentree),
+      note,
+      plate, vin, brand, model,
+    })
+  }
 
   return { ticketId: params.ticketId, printed, tagged }
 }
@@ -340,6 +346,7 @@ export interface ProcessTowsoftParams {
   towsoftData: import('./towsoft-scrape').TowsoftMissionInfo
   stateId?:    number
   tagName?:    string  // tag mensuel inventaire (optionnel)
+  print?:      boolean // imprimer une etiquette (default false)
 }
 
 export interface ProcessTowsoftResult {
@@ -387,17 +394,20 @@ export async function processTowsoftInventory(params: ProcessTowsoftParams): Pro
     dateMission: t.dateMission,
   })
 
-  // 5. Print etiquette
-  const printed = await printZebraLabel({
-    ticketId: ticket.ticketId,
-    motif:    t.motif || '',
-    date:     formatDateForLabel(t.dateMission),
-    note:     [t.plaque, t.vin].filter(Boolean).join(' | ').slice(0, 40),
-    plate:    vehicle.plate || t.plaque || '',
-    vin:      vehicle.vin || t.vin || '',
-    brand:    t.marque || '',
-    model:    t.modele || '',
-  })
+  // 5. Print etiquette UNIQUEMENT si demandee
+  let printed = false
+  if (params.print) {
+    printed = await printZebraLabel({
+      ticketId: ticket.ticketId,
+      motif:    t.motif || '',
+      date:     formatDateForLabel(t.dateMission),
+      note:     [t.plaque, t.vin].filter(Boolean).join(' | ').slice(0, 40),
+      plate:    vehicle.plate || t.plaque || '',
+      vin:      vehicle.vin || t.vin || '',
+      brand:    t.marque || '',
+      model:    t.modele || '',
+    })
+  }
 
   return {
     vehicleId:      vehicle.vehicleId,

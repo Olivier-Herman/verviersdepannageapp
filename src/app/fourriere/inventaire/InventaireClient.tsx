@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
-import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera, Mail } from 'lucide-react'
+import { playWinSound, playLoseSound } from '@/lib/sounds'
 import dynamic from 'next/dynamic'
 
 const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })
@@ -30,7 +31,8 @@ interface ResultItem {
   zone?:          string
   printed?:       boolean
   vehicleCreated?: boolean
-  // pour CSV
+  ticketId?:      number   // pour bouton "imprimer cette etiquette" a la demande
+  // pour CSV / XLSX
   missionNum?:    string
   refDossier?:    string
   dateMission?:   string
@@ -86,6 +88,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   const [items, setItems]               = useState<ResultItem[]>([])
   const [stats, setStats]               = useState<Stats>({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 })
   const [cameraOpen, setCameraOpen]     = useState(false)
+  const [autoPrint, setAutoPrint]       = useState(false)
   const scanRef = useRef<HTMLInputElement>(null)
 
   // Auto-focus quand on entre en mode scan
@@ -102,6 +105,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
     const parsed = parseQR(trimmed)
     if (!parsed) {
+      playLoseSound()
       setCurrentItem({ status: 'error', type: 'error', label: trimmed, msg: 'QR non reconnu' })
       setItems(prev => [{ status: 'error', type: 'error', label: trimmed, msg: 'QR non reconnu', zone: selectedZone?.label }, ...prev])
       setStats(prev => ({ ...prev, total: prev.total + 1, errors: prev.errors + 1 }))
@@ -122,17 +126,20 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
             ticketId: parsed.ticketId,
             tagName,
             stateId:  selectedZone?.stateId,
+            print:    autoPrint,
           }),
         })
         const data = await res.json()
-        if (!res.ok || !data.ok) throw new Error(data.error || 'Erreur réimpression')
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Erreur')
 
+        playWinSound()
         const result: ResultItem = {
-          status:  'ok',
-          type:    'reprint',
-          label:   `Ticket #${parsed.ticketId}`,
-          printed: data.printed,
-          zone:    selectedZone?.label,
+          status:   'ok',
+          type:     'reprint',
+          label:    `Ticket #${parsed.ticketId}`,
+          printed:  data.printed,
+          zone:     selectedZone?.label,
+          ticketId: parseInt(String(parsed.ticketId), 10),
         }
         setCurrentItem(result)
         setItems(prev => [result, ...prev])
@@ -152,11 +159,17 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         const processRes = await fetch('/api/inventaire/process', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ towsoftData: td, stateId: selectedZone?.stateId, tagName }),
+          body:    JSON.stringify({
+            towsoftData: td,
+            stateId:     selectedZone?.stateId,
+            tagName,
+            print:       autoPrint,
+          }),
         })
         const processData = await processRes.json()
         if (!processRes.ok || !processData.ok) throw new Error(processData.error || 'Traitement échoué')
 
+        playWinSound()
         const result: ResultItem = {
           status:         'ok',
           type:           processData.vehicleCreated ? 'created' : 'updated',
@@ -165,6 +178,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           vehicleCreated: processData.vehicleCreated,
           printed:        processData.printed,
           zone:           selectedZone?.label,
+          ticketId:       processData.ticketId,
           missionNum:     td.missionNum,
           refDossier:     td.refDossier,
           dateMission:    td.dateMission,
@@ -185,6 +199,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         }))
       }
     } catch (err: any) {
+      playLoseSound()
       const errorItem: ResultItem = {
         status: 'error',
         type:   'error',
@@ -199,6 +214,48 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       setProcessing(false)
       setTimeout(() => scanRef.current?.focus(), 300)
     }
+  }
+
+  /** Imprime a la demande l etiquette d un ticket donne (bouton sur la carte du
+   *  vehicule en cours). Reutilise l endpoint existant de Phase 1B. */
+  async function printOnDemand(ticketId: number) {
+    try {
+      const res = await fetch(`/api/helpdesk/${ticketId}/print`, { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok || !j.ok) {
+        alert(`Erreur impression : ${j.error || 'inconnu'}`)
+        return
+      }
+      // Mise a jour visuelle : l item courant et l historique passent en printed=true
+      setCurrentItem(prev => prev && prev.ticketId === ticketId ? { ...prev, printed: true } : prev)
+      setItems(prev => prev.map(it => it.ticketId === ticketId ? { ...it, printed: true } : it))
+    } catch (e: any) {
+      alert(`Erreur impression : ${e.message || e}`)
+    }
+  }
+
+  async function sendMailReport() {
+    if (items.length === 0) {
+      alert('Aucun véhicule scanné pour cette session')
+      return
+    }
+    const ok = confirm('Envoyer le rapport à fourriere@verviersdepannage.be ?')
+    if (!ok) return
+    const res = await fetch('/api/inventaire/send-report', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        items,
+        zoneLabel: selectedZone?.fullName || selectedZone?.label,
+        tagName,
+      }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      alert(`Erreur envoi : ${j.error || 'inconnu'}`)
+      return
+    }
+    alert(`✅ Rapport envoyé à ${j.to}`)
   }
 
   async function exportXLSX() {
@@ -272,6 +329,27 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="bg-surface-2 border rounded-xl p-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoPrint}
+                  onChange={e => setAutoPrint(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-brand"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-ink flex items-center gap-1.5">
+                    <Printer size={14} />
+                    Imprimer une étiquette à chaque scan
+                  </div>
+                  <p className="text-xs text-ink-faint mt-0.5">
+                    Par défaut désactivé : l'inventaire sert à mettre à jour le parc, pas à ré-étiqueter.
+                    Active si tu veux réimprimer toutes les étiquettes. Tu pourras aussi imprimer cas par cas après chaque scan.
+                  </p>
+                </div>
+              </label>
             </div>
 
             <button
@@ -352,32 +430,41 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
             </div>
 
             {/* Item en cours */}
-            {currentItem && <CurrentCard item={currentItem} />}
+            {currentItem && <CurrentCard item={currentItem} onPrint={printOnDemand} />}
 
             {/* Boutons */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={sendMailReport}
+                disabled={items.length === 0}
+                className="py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                <Mail size={14} />
+                Envoyer par email
+              </button>
               <button
                 onClick={exportXLSX}
                 disabled={items.length === 0}
-                className="flex-1 py-2.5 bg-success hover:bg-success/90 text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
+                className="py-2.5 bg-success hover:bg-success/90 text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 <Download size={14} />
-                Exporter rapport Excel
-              </button>
-              <button
-                onClick={() => { if (confirm('Vider l\'historique de la session ?')) { setItems([]); setCurrentItem(null); setStats({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 }) } }}
-                className="px-4 py-2.5 bg-surface-hover hover:bg-critical-soft text-ink-secondary hover:text-critical border rounded-xl text-sm transition"
-                title="Vider la session"
-              >
-                <RefreshCw size={14} />
+                Télécharger Excel
               </button>
             </div>
+            <button
+              onClick={() => { if (confirm('Vider l\'historique de la session ?')) { setItems([]); setCurrentItem(null); setStats({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 }) } }}
+              className="w-full py-2 bg-surface-hover hover:bg-critical-soft text-ink-secondary hover:text-critical border rounded-xl text-xs transition flex items-center justify-center gap-1.5"
+              title="Vider la session"
+            >
+              <RefreshCw size={12} />
+              Vider la session
+            </button>
 
             {/* Historique */}
             {items.length > 0 && (
               <div className="space-y-1.5">
                 <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider px-1">Historique ({items.length})</h3>
-                {items.map((item, i) => <HistoryItem key={i} item={item} />)}
+                {items.map((item, i) => <HistoryItem key={i} item={item} onPrint={printOnDemand} />)}
               </div>
             )}
           </>
@@ -412,46 +499,80 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
   )
 }
 
-function CurrentCard({ item }: { item: ResultItem }) {
+function CurrentCard({ item, onPrint }: { item: ResultItem; onPrint: (ticketId: number) => void }) {
   const bg = item.status === 'loading' ? 'bg-brand/5 border-brand/30'
     : item.status === 'ok' ? 'bg-success-soft border-success/40'
     : 'bg-critical-soft border-critical/40'
   const icon = item.status === 'loading' ? <Loader2 className="animate-spin text-brand" size={18} />
     : item.status === 'ok' ? <CheckCircle2 className="text-success" size={18} />
     : <AlertCircle className="text-critical" size={18} />
+
+  const detailLine = [
+    item.marque && item.modele ? `${item.marque} ${item.modele}` : item.marque,
+    item.vin ? `VIN ${item.vin}` : '',
+    item.ticketId ? `Ticket #${item.ticketId}` : '',
+  ].filter(Boolean).join(' · ')
+
   return (
     <div className={`border rounded-2xl p-4 ${bg}`}>
       <div className="flex items-start gap-2 mb-1">
         {icon}
         <div className="flex-1 min-w-0">
           <div className="font-display font-bold text-sm">{item.label}</div>
-          {item.sublabel && <div className="text-xs text-ink-secondary">{item.sublabel}</div>}
+          {(detailLine || item.sublabel) && <div className="text-xs text-ink-secondary">{detailLine || item.sublabel}</div>}
           {item.msg && <div className="text-xs text-critical mt-1">{item.msg}</div>}
         </div>
       </div>
       {item.status === 'ok' && (
-        <div className="flex flex-wrap gap-1.5 mt-2 text-[10px]">
-          {item.type === 'created'  && <Badge color="brand">🆕 Créé</Badge>}
-          {item.type === 'updated'  && <Badge color="info">✏️ MAJ</Badge>}
-          {item.type === 'reprint'  && <Badge color="purple">🔁 Réimprimé</Badge>}
-          {item.printed && <Badge color="success"><Printer size={10} /> Étiquette OK</Badge>}
-          {item.printed === false && <Badge color="warning">⚠️ Impression échouée</Badge>}
-          {item.zone && <Badge color="ink">Zone : {item.zone}</Badge>}
-        </div>
+        <>
+          <div className="flex flex-wrap gap-1.5 mt-2 text-[10px]">
+            {item.type === 'created'  && <Badge color="brand">🆕 Créé</Badge>}
+            {item.type === 'updated'  && <Badge color="info">✏️ MAJ</Badge>}
+            {item.type === 'reprint'  && <Badge color="purple">🔁 Marqué présent</Badge>}
+            {item.printed && <Badge color="success"><Printer size={10} /> Étiquette imprimée</Badge>}
+            {item.zone && <Badge color="ink">Zone : {item.zone}</Badge>}
+          </div>
+          {item.ticketId && (
+            <button
+              onClick={() => onPrint(item.ticketId!)}
+              className="mt-3 w-full py-2 bg-surface hover:bg-surface-hover border rounded-lg text-xs font-medium text-ink-secondary hover:text-brand flex items-center justify-center gap-1.5 transition"
+            >
+              <Printer size={14} />
+              Imprimer une étiquette pour ce véhicule
+            </button>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-function HistoryItem({ item }: { item: ResultItem }) {
+function HistoryItem({ item, onPrint }: { item: ResultItem; onPrint: (ticketId: number) => void }) {
   const icon = item.status === 'ok' ? '✅' : item.status === 'error' ? '❌' : '⏳'
   const typeColor = item.type === 'created' ? 'text-brand' : item.type === 'reprint' ? 'text-purple-500' : item.type === 'updated' ? 'text-info' : 'text-ink-faint'
+
+  // Plaque (titre), marque/modele, VIN, ticket #
+  const hasMarque = !!item.marque
+  const detailLine = [
+    item.marque && item.modele ? `${item.marque} ${item.modele}` : (item.marque || ''),
+    item.vin ? `VIN ${item.vin}` : '',
+  ].filter(Boolean).join(' · ')
+
   return (
     <div className="bg-surface border rounded-xl px-3 py-2 flex items-center gap-3 text-sm">
       <span className="flex-shrink-0 text-base">{icon}</span>
       <div className="flex-1 min-w-0">
-        <div className="text-ink font-medium truncate">{item.label}</div>
-        {(item.sublabel || item.msg) && <div className="text-xs text-ink-faint truncate">{item.sublabel || item.msg}</div>}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-ink font-medium truncate flex-1 min-w-0">{item.label}</div>
+          {item.ticketId && (
+            <span className="text-[10px] text-ink-faint font-mono flex-shrink-0">#{item.ticketId}</span>
+          )}
+        </div>
+        {(detailLine || item.sublabel || item.msg) && (
+          <div className="text-xs text-ink-faint truncate">
+            {detailLine || item.sublabel || item.msg}
+          </div>
+        )}
       </div>
       {item.type && (
         <span className={`flex-shrink-0 text-[10px] font-semibold uppercase ${typeColor}`}>
@@ -459,6 +580,15 @@ function HistoryItem({ item }: { item: ResultItem }) {
         </span>
       )}
       {item.printed === true && <Printer size={12} className="text-success flex-shrink-0" />}
+      {item.ticketId && (
+        <button
+          onClick={() => onPrint(item.ticketId!)}
+          title="Imprimer une étiquette pour ce véhicule"
+          className="flex-shrink-0 p-1.5 text-ink-faint hover:text-brand hover:bg-brand/10 rounded transition"
+        >
+          <Printer size={14} />
+        </button>
+      )}
     </div>
   )
 }

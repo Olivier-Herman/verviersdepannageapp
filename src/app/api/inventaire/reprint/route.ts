@@ -27,7 +27,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const body = await req.json() as { ticketId?: number | string; tagName?: string; stateId?: number | string }
+  const body = await req.json() as {
+    ticketId?: number | string
+    tagName?:  string
+    stateId?:  number | string
+    print?:    boolean
+  }
   const ticketId = parseInt(String(body.ticketId), 10)
   if (!ticketId || isNaN(ticketId)) {
     return NextResponse.json({ error: 'ticketId requis' }, { status: 400 })
@@ -40,6 +45,7 @@ export async function POST(req: Request) {
         ticketId,
         tagName: body.tagName,
         stateId,
+        print:   Boolean(body.print),
       })
       return NextResponse.json({ ok: true, ...result })
     } catch (e: any) {

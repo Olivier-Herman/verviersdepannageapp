@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     towsoftData?: any
     stateId?:     number | string
     tagName?:     string
+    print?:       boolean
   }
   if (!body.towsoftData) {
     return NextResponse.json({ error: 'towsoftData requis' }, { status: 400 })
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
         towsoftData: body.towsoftData,
         stateId,
         tagName: body.tagName,
+        print:   Boolean(body.print),
       })
       return NextResponse.json({ ok: true, ...result })
     } catch (e: any) {

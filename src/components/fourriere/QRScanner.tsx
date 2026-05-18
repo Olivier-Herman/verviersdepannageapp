@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { X, Camera, RefreshCw } from 'lucide-react'
+import { playBeep } from '@/lib/sounds'
 
 interface Props {
   /** Appele a chaque QR detecte. Le scanner reste actif (continue scan). */
@@ -10,30 +11,6 @@ interface Props {
   /** Pause externe pendant traitement asynchrone (re-ouvre apres). */
   paused?: boolean
   onClose: () => void
-}
-
-/** Bip court via Web Audio API (~600 Hz, 100 ms). */
-function playBeep() {
-  try {
-    const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
-    if (!Ctx) return
-    const ctx = new Ctx()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.value = 600
-    gain.gain.setValueAtTime(0, ctx.currentTime)
-    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.01)
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.12)
-    setTimeout(() => ctx.close().catch(() => {}), 200)
-  } catch {}
-}
-
-function vibrate() {
-  try { (navigator as any).vibrate?.(40) } catch {}
 }
 
 const SCANNER_ID = 'qr-scanner-region'
@@ -121,8 +98,10 @@ export default function QRScanner({ onScan, paused, onClose }: Props) {
           for (const [k, t] of lastScansRef.current.entries()) {
             if (now - t > DEDUP_MS * 2) lastScansRef.current.delete(k)
           }
+          // Bip neutre court : indique simplement que le QR est detecte.
+          // Le composant parent jouera ensuite le son WIN ou LOSE selon le
+          // resultat du traitement async.
           playBeep()
-          vibrate()
           onScan(decodedText)
         },
         () => {}  // ignore scan failures
