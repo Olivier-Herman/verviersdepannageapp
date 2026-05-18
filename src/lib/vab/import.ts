@@ -155,8 +155,13 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
                           : null,
         incident_type:      detail.codesDePanne,
         incident_description: detail.codesDePanne,
-        client_name:        detail.clientName,
-        client_phone:       detail.clientPhone,
+        // Sémantique VD Soft : client_name = "personne sur place" (lu partout
+        // dans l app : DispatchClient, DetailClient "Client assisté"...). Pour
+        // VAB pre-acceptation, l assurance (detail.clientName) est vide -> on
+        // utilise fromName comme client_name principal. On preserve aussi
+        // assisted_name pour traçabilite.
+        client_name:        detail.clientName || detail.fromName,
+        client_phone:       detail.clientPhone || detail.fromPhone,
         assisted_name:      detail.fromName,
         assisted_phone:     detail.fromPhone,
         vehicle_plate:      detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,

@@ -39,6 +39,8 @@ interface Mission {
   incident_type: string | null
   client_name: string | null
   client_phone: string | null
+  assisted_name: string | null
+  assisted_phone: string | null
   vehicle_plate: string | null
   vehicle_brand: string | null
   vehicle_model: string | null
@@ -566,14 +568,23 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
         )}
       </div>
 
-      {/* Client */}
+      {/* Client : fallback assisté si pas de client (cas VAB pre-acceptation) */}
       <p className="text-ink font-semibold text-sm mb-1 leading-tight">
-        {mission.client_name || <span className="text-ink-muted">Client inconnu</span>}
+        {mission.client_name ? (
+          mission.client_name
+        ) : mission.assisted_name ? (
+          <>
+            {mission.assisted_name}
+            <span className="text-ink-muted text-xs font-normal ml-1.5">(sur place)</span>
+          </>
+        ) : (
+          <span className="text-ink-muted">Client inconnu</span>
+        )}
       </p>
-      {mission.client_phone && (
-        <a href={`tel:${mission.client_phone}`} onClick={e => e.stopPropagation()}
+      {(mission.client_phone || mission.assisted_phone) && (
+        <a href={`tel:${mission.client_phone || mission.assisted_phone}`} onClick={e => e.stopPropagation()}
           className="text-brand text-xs hover:underline block mb-2">
-          📞 {mission.client_phone}
+          📞 {mission.client_phone || mission.assisted_phone}
         </a>
       )}
 

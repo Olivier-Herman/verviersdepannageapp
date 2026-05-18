@@ -29,6 +29,7 @@ export async function GET(req: Request) {
       id, external_id, dossier_number, source, source_format,
       mission_type, incident_type, incident_description,
       client_name, client_phone,
+      assisted_name, assisted_phone,
       vehicle_plate, vehicle_brand, vehicle_model,
       incident_address, incident_city, incident_country,
       incident_lat, incident_lng,
