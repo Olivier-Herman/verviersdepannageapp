@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Users, FileText, DollarSign, Settings, ClipboardCheck, Radio, Bell, ShieldCheck, Receipt } from 'lucide-react'
+import { Users, FileText, DollarSign, Settings, ClipboardCheck, Radio, Bell, ShieldCheck, Receipt, Map } from 'lucide-react'
 
 const NAV_ITEMS = [
   { href: '/admin/users',          label: 'Utilisateurs',   icon: Users },
   { href: '/admin/documents',      label: 'Documents',      icon: FileText },
   { href: '/admin/dispatch',       label: 'Dispatch',       icon: Radio },
+  { href: '/admin/parc',           label: 'Parc fourrière', icon: Map },
   { href: '/admin/decharges',      label: 'Décharges',      icon: ShieldCheck },
   { href: '/admin/check-vehicule', label: 'Check Véhicule', icon: ClipboardCheck },
   { href: '/admin/cash',           label: 'Caisses',        icon: DollarSign },

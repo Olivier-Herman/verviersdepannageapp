@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon } from 'lucide-react'
 import Link from 'next/link'
 
 interface Zone {
@@ -117,6 +117,11 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
             <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {vehicles.length} total</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/fourriere/plan"
+              className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition">
+              <MapIcon size={14} />
+              Plan du parc
+            </Link>
             <Link href="/fourriere/inventaire"
               className="flex items-center gap-2 px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition">
               <ScanLine size={14} />

@@ -1,0 +1,35 @@
+// src/app/admin/parc/page.tsx
+//
+// Configuration des lignes du parc fourriere : pour chaque zone (figee),
+// l'admin peut ajouter/modifier/supprimer des lignes (auto-incrementees
+// A1, A2, ...) avec leur capacite.
+
+import { getServerSession }  from 'next-auth'
+import { authOptions }       from '@/lib/auth'
+import { redirect }          from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase'
+import ParcAdminClient       from './ParcAdminClient'
+
+export const dynamic = 'force-dynamic'
+
+export default async function ParcAdminPage() {
+  const session = await getServerSession(authOptions)
+  if (!session) redirect('/login')
+  const user = session.user as any
+  const roles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
+  const ok = ['admin', 'superadmin'].some(r => roles.includes(r) || user.role === r)
+  if (!ok) redirect('/')
+
+  const sb = createAdminClient()
+  const [{ data: zones }, { data: rows }] = await Promise.all([
+    sb.from('parc_zones').select('*').order('sort_order'),
+    sb.from('parc_rows').select('*').order('zone_key').order('row_number'),
+  ])
+
+  return (
+    <ParcAdminClient
+      initialZones={zones || []}
+      initialRows={rows  || []}
+    />
+  )
+}
