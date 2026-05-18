@@ -2,9 +2,13 @@
 // Fiche fourriere mobile, accedee depuis le QR code colle sur le vehicule.
 // Format URL : /v/{helpdesk_ticket_id}
 //
-// Accessible aux users authentifies avec permission "fourriere" (ou admin/
-// superadmin). Pas de PIN comme dans Verviers-QR : permissions module a la
-// place.
+// Autorisation :
+//  - Lecture (page + GET /api/helpdesk/[id]) : tout user authentifie. Permet
+//    a n importe quel chauffeur de scanner et consulter les infos.
+//  - Actions (transfert / Domaine / Scratch / impression) : reservees aux
+//    users avec le module "fourriere" actif (ou admin / superadmin). Les
+//    boutons sont masques cote UI pour les autres + les endpoints POST
+//    refusent eux-memes en cas d acces direct (defense in depth).
 
 import { getServerSession } from 'next-auth'
 import { redirect }         from 'next/navigation'
@@ -20,16 +24,16 @@ export default async function VehicleFourrierePage({ params }: { params: { id: s
   const user = session.user as any
   const role: string = user.role || ''
   const modules: string[] = user.modules || []
-  const hasAccess =
+  const canEdit =
     ['admin', 'superadmin'].includes(role) ||
     modules.includes('fourriere')
-  if (!hasAccess) redirect('/dashboard?error=fourriere_required')
 
   return (
     <VehicleFourriereClient
       ticketId={params.id}
       userName={user.name || ''}
       userEmail={user.email || ''}
+      canEdit={canEdit}
     />
   )
 }

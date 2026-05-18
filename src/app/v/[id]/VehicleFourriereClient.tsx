@@ -35,6 +35,7 @@ interface Props {
   ticketId:  string
   userName:  string
   userEmail: string
+  canEdit:   boolean   // false → mode lecture seule (pas d'actions, pas d'impression)
 }
 
 const DOMAINE_STATE_ID = 13   // Zone I — Domaine (cf FOURRIERE_ZONES)
@@ -46,7 +47,7 @@ const fmtDate = (iso: string | null) => {
   } catch { return '—' }
 }
 
-export default function VehicleFourriereClient({ ticketId, userName }: Props) {
+export default function VehicleFourriereClient({ ticketId, userName, canEdit }: Props) {
   const router = useRouter()
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null)
   const [ticket, setTicket]   = useState<TicketInfo | null>(null)
@@ -198,37 +199,48 @@ export default function VehicleFourriereClient({ ticketId, userName }: Props) {
               </div>
             </div>
 
-            {/* Actions principales */}
-            <div className="bg-surface border rounded-2xl p-4 space-y-2">
-              <ActionButton
-                icon={<Truck size={18} />}
-                label="Transférer vers une zone"
-                accent="brand"
-                onClick={() => setActionMenu('transfer')}
-              />
-              <ActionButton
-                icon={<Building2 size={18} />}
-                label="Envoyer au Domaine"
-                accent="warning"
-                onClick={() => setActionMenu('domaine')}
-              />
-              <ActionButton
-                icon={<AlertOctagon size={18} />}
-                label="Scratch / Mettre en épave"
-                accent="critical"
-                onClick={() => setActionMenu('scratch')}
-              />
-            </div>
+            {/* Actions principales — visible seulement si canEdit */}
+            {canEdit && (
+              <div className="bg-surface border rounded-2xl p-4 space-y-2">
+                <ActionButton
+                  icon={<Truck size={18} />}
+                  label="Transférer vers une zone"
+                  accent="brand"
+                  onClick={() => setActionMenu('transfer')}
+                />
+                <ActionButton
+                  icon={<Building2 size={18} />}
+                  label="Envoyer au Domaine"
+                  accent="warning"
+                  onClick={() => setActionMenu('domaine')}
+                />
+                <ActionButton
+                  icon={<AlertOctagon size={18} />}
+                  label="Scratch / Mettre en épave"
+                  accent="critical"
+                  onClick={() => setActionMenu('scratch')}
+                />
+              </div>
+            )}
+
+            {/* Bandeau mode lecture seule (sans le module fourriere) */}
+            {!canEdit && (
+              <div className="bg-surface-2 border rounded-2xl p-4 text-xs text-ink-muted text-center">
+                Consultation seule — contacter un dispatcher pour déplacer ce véhicule.
+              </div>
+            )}
 
             {/* Impression + lien Odoo */}
             <div className="bg-surface border rounded-2xl p-4 space-y-2">
-              <ActionButton
-                icon={printing ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
-                label={printing ? 'Impression en cours…' : 'Imprimer une étiquette'}
-                accent="default"
-                onClick={doPrint}
-                disabled={printing}
-              />
+              {canEdit && (
+                <ActionButton
+                  icon={printing ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
+                  label={printing ? 'Impression en cours…' : 'Imprimer une étiquette'}
+                  accent="default"
+                  onClick={doPrint}
+                  disabled={printing}
+                />
+              )}
               <a
                 href={`https://verviers-depannage.odoo.com/web#id=${ticket.id}&model=helpdesk.ticket&view_type=form`}
                 target="_blank"
