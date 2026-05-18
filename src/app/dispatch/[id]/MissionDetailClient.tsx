@@ -1279,11 +1279,6 @@ export default function MissionDetailClient({
         </div>
         <div className="relative z-10">
 
-        {/* Estimation tarif — encart compact en haut */}
-        <div className="px-4 lg:px-8 pt-6">
-          <PriceEstimateCard missionId={initialMission.id} />
-        </div>
-
         {/* Dérogation paiement en attente — encart prioritaire pour le dispatcher */}
         {pendingDerog && (
           <div className="px-4 lg:px-8 pt-6">
@@ -2414,6 +2409,11 @@ export default function MissionDetailClient({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Estimation tarif — tout en bas (non prioritaire) */}
+        <div className="px-4 lg:px-8 pt-4 pb-8">
+          <PriceEstimateCard missionId={initialMission.id} />
         </div>
         </div>
       </div>

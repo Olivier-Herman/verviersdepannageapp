@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import RulesPanel from './RulesPanel'
 
 interface Props {
   userRole:    string
@@ -62,6 +63,7 @@ export default function TarifsClient(props: Props) {
   const [tariffs, setTariffs] = useState<Tariff[]>([])
   const [loading, setLoading] = useState(true)
   const [filterSource, setFilterSource] = useState<string>('')
+  const [view, setView] = useState<'tariffs' | 'rules'>('tariffs')
 
   // Upload modal state
   const [showUpload, setShowUpload] = useState(false)
@@ -215,6 +217,25 @@ export default function TarifsClient(props: Props) {
       userModules={props.userModules}
     >
       <div className="space-y-4 max-w-6xl mx-auto p-4">
+        {/* ── Toggle Tarifs / Règles dynamiques ─────────────── */}
+        <div className="flex gap-2 border-b border-surface-hover">
+          <button
+            onClick={() => setView('tariffs')}
+            className={`px-4 py-2 text-sm font-medium ${view === 'tariffs' ? 'text-brand border-b-2 border-brand' : 'text-ink-faint'}`}
+          >
+            📋 Tarifs de base
+          </button>
+          <button
+            onClick={() => setView('rules')}
+            className={`px-4 py-2 text-sm font-medium ${view === 'rules' ? 'text-brand border-b-2 border-brand' : 'text-ink-faint'}`}
+          >
+            🤖 Règles dynamiques
+          </button>
+        </div>
+
+        {view === 'rules' && <RulesPanel />}
+
+        {view === 'tariffs' && <>
         {/* ── Onglets par source ─────────────────────────────── */}
         <div className="flex gap-1 overflow-x-auto pb-1">
           <SourceTab active={filterSource === ''} label="Toutes" count={null} onClick={() => setFilterSource('')} />
@@ -413,6 +434,8 @@ export default function TarifsClient(props: Props) {
             </div>
           </div>
         )}
+        </>}
+
         {/* ── Edit modal ────────────────────────────────────── */}
         {editTariff && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !editSaving && setEditTariff(null)}>

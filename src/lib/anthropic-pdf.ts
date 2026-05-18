@@ -66,6 +66,94 @@ function getClient(): Anthropic {
   return cachedClient
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Regles dynamiques : interpretation texte libre -> regles structurees
+// ─────────────────────────────────────────────────────────────────────
+
+export interface ExtractedRule {
+  description:          string  // phrase originale (echo)
+  reason:               string  // raison metier extraite
+  filter_source:        string | null
+  filter_mission_type:  string | null
+  filter_date_from:     string | null
+  filter_date_to:       string | null
+  filter_client_name:   string | null
+  operation_type:       'add_fixed' | 'add_pct' | 'set_fixed'
+  operation_value:      number
+  raw_quote:            string
+}
+
+const RULES_EXTRACTION_PROMPT = `Tu es un assistant qui transforme des règles tarifaires en langage naturel en règles structurées.
+
+L'utilisateur va écrire (en français) une ou plusieurs règles à appliquer au calcul des prix de missions de dépannage automobile. Tu dois extraire les paramètres structurés.
+
+Retourne UN ARRAY JSON avec UN OBJET par règle identifiable. Chaque objet :
+
+{
+  "description": "string — la phrase ou portion du texte qui décrit cette règle",
+  "reason": "string — raison métier (ex: 'Participation surcharge carburant')",
+  "filter_source": "string|null — source concernée en minuscules (vab, touring, ima, mondial, ethias) ou null pour toutes",
+  "filter_mission_type": "string|null — type concerné (remorquage, depannage, trajet_vide, parc) ou null pour tous",
+  "filter_date_from": "string|null — date début format YYYY-MM-DD (ex: '2026-05-01' pour 'mai 2026')",
+  "filter_date_to": "string|null — date fin format YYYY-MM-DD (ex: '2026-05-31' pour fin mai)",
+  "filter_client_name": "string|null — nom client si mentionné (ex: 'AXA') ou null",
+  "operation_type": "add_fixed | add_pct | set_fixed",
+  "operation_value": "number — montant (€ pour add_fixed/set_fixed, % pour add_pct)",
+  "raw_quote": "string — extrait textuel du prompt qui justifie la règle (max 100 chars)"
+}
+
+RÈGLES :
+- "ajouter X€" → operation_type=add_fixed, operation_value=X
+- "+X%" ou "majorer de X%" → operation_type=add_pct, operation_value=X
+- "remplacer par X€" → operation_type=set_fixed, operation_value=X
+- "mai 2026" → filter_date_from='2026-05-01', filter_date_to='2026-05-31'
+- "Q2 2026" → filter_date_from='2026-04-01', filter_date_to='2026-06-30'
+- "à partir du X" → filter_date_from=X, filter_date_to=null
+- Si un filtre n'est pas mentionné, mets null (ça veut dire "applique à tout").
+- Si plusieurs règles distinctes dans le texte, génère plusieurs objets.
+
+Retourne UNIQUEMENT le JSON, pas de markdown, pas de texte autour.
+Si rien d'extraire, retourne [].`
+
+export async function extractTariffRulesFromText(text: string): Promise<ExtractedRule[]> {
+  const client = getClient()
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    messages: [
+      { role: 'user', content: `${RULES_EXTRACTION_PROMPT}\n\n--- TEXTE DE L UTILISATEUR ---\n\n${text}` },
+    ],
+  })
+
+  const textBlock = response.content.find(b => b.type === 'text')
+  if (!textBlock || textBlock.type !== 'text') {
+    throw new Error('Aucun texte retourne par Claude')
+  }
+
+  let parsed: unknown
+  try {
+    const cleaned = textBlock.text.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
+    parsed = JSON.parse(cleaned)
+  } catch (e: any) {
+    throw new Error(`JSON Claude invalide : ${e.message}. Reponse : ${textBlock.text.slice(0, 300)}`)
+  }
+
+  if (!Array.isArray(parsed)) throw new Error('Reponse Claude n est pas un array')
+
+  return (parsed as any[]).filter(x => x && typeof x === 'object').map(item => ({
+    description:         String(item.description || ''),
+    reason:              String(item.reason || ''),
+    filter_source:       item.filter_source       || null,
+    filter_mission_type: item.filter_mission_type || null,
+    filter_date_from:    item.filter_date_from    || null,
+    filter_date_to:      item.filter_date_to      || null,
+    filter_client_name:  item.filter_client_name  || null,
+    operation_type:      (['add_fixed', 'add_pct', 'set_fixed'].includes(item.operation_type) ? item.operation_type : 'add_fixed') as ExtractedRule['operation_type'],
+    operation_value:     Number(item.operation_value || 0),
+    raw_quote:           String(item.raw_quote || ''),
+  }))
+}
+
 /**
  * Appelle Claude pour extraire les tarifs depuis un PDF (base64).
  * Retourne un array de ExtractedTariff. Throw en cas d echec API ou de JSON invalide.

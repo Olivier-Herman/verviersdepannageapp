@@ -102,7 +102,48 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     parcEur = parcJours * Number(tariff.parc_day_price || 0)
   }
 
-  const subtotal = forfait + kmExtraEur + parcEur
+  let subtotal = forfait + kmExtraEur + parcEur
+
+  // 3b. Appliquer les regles dynamiques (tariff_rules) qui matchent
+  const interventionDateStr2 = mission.intervention_date || mission.received_at
+  const interventionYmd = interventionDateStr2 ? new Date(interventionDateStr2).toISOString().slice(0, 10) : null
+
+  let rulesQuery = sb
+    .from('tariff_rules')
+    .select('*')
+    .eq('active', true)
+    .order('priority')
+  const { data: rulesAll } = await rulesQuery
+  const matchingRules: any[] = []
+  for (const r of rulesAll || []) {
+    if (r.filter_source       && r.filter_source       !== source) continue
+    if (r.filter_mission_type && r.filter_mission_type !== missionType) continue
+    if (r.filter_date_from && interventionYmd && interventionYmd < r.filter_date_from) continue
+    if (r.filter_date_to   && interventionYmd && interventionYmd > r.filter_date_to)   continue
+    if (r.filter_client_name && mission.client_name
+        && !mission.client_name.toLowerCase().includes(String(r.filter_client_name).toLowerCase())) continue
+    matchingRules.push(r)
+  }
+
+  const rulesBreakdown: { label: string; amount: number | null; note?: string }[] = []
+  for (const rule of matchingRules) {
+    let delta = 0
+    if (rule.operation_type === 'add_fixed') {
+      delta = Number(rule.operation_value || 0)
+    } else if (rule.operation_type === 'add_pct') {
+      delta = subtotal * Number(rule.operation_value || 0) / 100
+    } else if (rule.operation_type === 'set_fixed') {
+      delta = Number(rule.operation_value || 0) - subtotal
+    }
+    subtotal += delta
+    rulesBreakdown.push({
+      label: `Règle: ${rule.reason || rule.description?.slice(0, 50) || 'sans nom'}`,
+      amount: delta,
+      note: rule.operation_type === 'add_fixed' ? `+${Number(rule.operation_value).toFixed(2)} €`
+          : rule.operation_type === 'add_pct'   ? `+${rule.operation_value}%`
+          : `= ${Number(rule.operation_value).toFixed(2)} €`,
+    })
+  }
 
   // 4. Majorations via module surcharges
   let surchargePct = 0
@@ -135,7 +176,8 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     { label: 'Forfait',   amount: forfait, note: kmInclus > 0 ? `${kmInclus} km inclus` : undefined },
     { label: 'Km extra',  amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : 'aucun' },
     { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : 'non applicable' },
-    { label: 'Majoration', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
+    ...rulesBreakdown,
+    { label: 'Majoration horaire', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
   ]
 
   return {
