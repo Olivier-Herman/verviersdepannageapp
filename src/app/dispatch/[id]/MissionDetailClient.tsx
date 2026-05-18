@@ -6,6 +6,7 @@ import Link            from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
+import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import CreateClientModal from '@/components/CreateClientModal'
@@ -1277,6 +1278,11 @@ export default function MissionDetailClient({
           <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
         </div>
         <div className="relative z-10">
+
+        {/* Estimation tarif — encart compact en haut */}
+        <div className="px-4 lg:px-8 pt-6">
+          <PriceEstimateCard missionId={initialMission.id} />
+        </div>
 
         {/* Dérogation paiement en attente — encart prioritaire pour le dispatcher */}
         {pendingDerog && (
