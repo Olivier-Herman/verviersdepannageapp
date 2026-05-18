@@ -1,19 +1,13 @@
 // src/app/api/cron/vab-poll/route.ts
 //
-// Cron toutes les 5 min : login VAB COMET → liste les missions visibles
-// → pour chaque mission pas encore en BDD (dedup par AssignmentId), scrape
-// la page detail + INSERT dans incoming_missions.
-//
-// Equivalent automatise du bouton "Import VAB" cote UI, mais sans intervention
-// humaine. Garantit que les nouvelles missions VAB apparaissent dans /dispatch
-// en moins de 5 min sans avoir a cliquer.
+// Cron toutes les 5 min : appelle runVabImport({ mode: 'send' }) — meme helper
+// que le bouton "Import VAB" manuel. Garantit un mapping unique.
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-import { NextResponse }      from 'next/server'
-import { createAdminClient } from '@/lib/supabase'
-import { loginVab, listVabMissions, fetchVabMissionDetail } from '@/lib/vab/scraper'
+import { NextResponse } from 'next/server'
+import { runVabImport } from '@/lib/vab/import'
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -21,169 +15,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Kill-switch : permet de desactiver temporairement le scraper VAB
-  // (ex: pour faire une demo avec une vue propre sans que le cron ne
-  // recree les missions). Set DISABLE_VAB_POLL=true sur Vercel → no-op
-  // au prochain tick. Pas besoin de redeploy pour reactiver.
+  // Kill-switch : DISABLE_VAB_POLL=true sur Vercel pour desactiver le scraper
+  // sans redeploy (utile pour demo, debug ou maintenance Towsoft).
   if (process.env.DISABLE_VAB_POLL === 'true') {
     return NextResponse.json({ ok: true, disabled: true, reason: 'DISABLE_VAB_POLL=true' })
   }
 
   try {
-    const session = await loginVab()
-    const { missions, debug } = await listVabMissions(session)
-
-    if (missions.length === 0) {
-      return NextResponse.json({ ok: true, processed: 0, debug })
-    }
-
-    const sb = createAdminClient()
-
-    // Lookup du client par defaut pour la source VAB
-    const { data: vabCat } = await sb
-      .from('mission_source_catalog')
-      .select('default_billed_to_id, default_billed_to_name')
-      .eq('key', 'vab')
-      .maybeSingle()
-    const defaultBilledToId   = vabCat?.default_billed_to_id || null
-    const defaultBilledToName = vabCat?.default_billed_to_name || null
-
-    // Dedup par AssignmentId (= external_id en BDD pour les missions VAB)
-    const assignmentIds = missions
-      .map(m => m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1])
-      .filter((x): x is string => !!x)
-
-    const { data: existing } = assignmentIds.length > 0
-      ? await sb
-          .from('incoming_missions')
-          .select('external_id')
-          .ilike('source', 'vab')
-          .in('external_id', assignmentIds)
-      : { data: [] as { external_id: string }[] }
-
-    const existingSet = new Set((existing || []).map(e => e.external_id))
-
-    const toImport = missions.filter(m => {
-      const aid = m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1]
-      return aid && !existingSet.has(aid) && m.detailHref
-    })
-
-    if (toImport.length === 0) {
-      console.log(`[cron vab-poll] OK, total=${missions.length}, deja_importees=${existingSet.size}, nouvelles=0`)
-      return NextResponse.json({ ok: true, total: missions.length, already: existingSet.size, new: 0 })
-    }
-
-    let success = 0
-    let failed = 0
-    const errors: Array<{ missionNumber: string; error: string }> = []
-
-    for (const item of toImport) {
-      if (!item.detailHref) continue
-      try {
-        const detail = await fetchVabMissionDetail(session, item.detailHref, item.missionNumber)
-        if ('error' in detail) {
-          failed++
-          errors.push({ missionNumber: item.missionNumber, error: detail.error })
-          continue
-        }
-
-        // Parse date intervention
-        let interventionIso: string | null = null
-        if (detail.interventionAt) {
-          const m = detail.interventionAt.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/)
-          if (m) interventionIso = `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}+02:00`
-        }
-
-        const aidMatch = item.detailHref.match(/[?&]AssignmentId=(\d+)/i)
-        const assignmentId = aidMatch ? aidMatch[1] : null
-        const fullDossier = detail.dossierNumber
-          ? `${detail.missionNumber}/${detail.dossierNumber}`
-          : detail.missionNumber
-
-        // Construction de l adresse d intervention :
-        // - Si rue + code postal + ville → "Rue, code postal, Ville"
-        // - Si seulement code postal + ville → "Code postal, Ville"
-        // - Si texte libre de localisation (autoroute, "ENFACE N5", etc.)
-        //   → on l ajoute en suffixe pour aider le dispatcher
-        const addressParts: string[] = []
-        if (detail.fromStreet) addressParts.push(detail.fromStreet)
-        if (detail.fromZip || detail.fromCity) {
-          addressParts.push([detail.fromZip, detail.fromCity].filter(Boolean).join(' '))
-        }
-        let incidentAddress = addressParts.filter(Boolean).join(', ') || null
-        if (detail.fromLocationFreeText && incidentAddress) {
-          incidentAddress = `${incidentAddress} — ${detail.fromLocationFreeText}`
-        } else if (detail.fromLocationFreeText && !incidentAddress) {
-          incidentAddress = detail.fromLocationFreeText
-        }
-
-        const { error: insertErr } = await sb.from('incoming_missions').insert({
-          external_id:        assignmentId || detail.missionNumber,
-          dossier_number:     fullDossier,
-          source:             'vab',
-          status:             'new',
-          mission_type:       detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
-                            : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
-                            : detail.taskType?.toLowerCase().includes('livraison')  ? 'depannage'
-                            : null,
-          incident_type:      detail.codesDePanne,
-          incident_description: detail.codesDePanne,
-          // Client final (assurance / proprietaire vehicule) — pas dispo en
-          // pre-acceptation, sera complete par le mail VAB apres acceptation
-          client_name:        detail.clientName,
-          client_phone:       detail.clientPhone,
-          // Personne en panne sur place (extrait de "Localisation du vehicule")
-          assisted_name:      detail.fromName,
-          assisted_phone:     detail.fromPhone,
-          vehicle_plate:      detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,
-          vehicle_brand:      detail.vehicleBrand,
-          vehicle_model:      detail.vehicleModel,
-          vehicle_vin:        detail.vehicleVin,
-          vehicle_fuel:       detail.vehicleFuel,
-          incident_address:   incidentAddress,
-          incident_city:      detail.fromCity,
-          destination_name:   detail.toName,
-          destination_address: [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null,
-          parse_confidence:   0.95,
-          source_format:      'vab-scraper',
-          // Stocke un snippet de debug : permet de voir ce que le scraper a
-          // extrait (champs/labels) sans avoir besoin des logs Vercel.
-          // Visible dans la fiche mission sous "Contenu brut".
-          raw_content:        detail.rawSnippet || null,
-          received_at:        new Date().toISOString(),
-          intervention_date:  interventionIso || new Date().toISOString(),
-          // Client a facturer par defaut (configure dans /admin/sources si defini)
-          ...(defaultBilledToId ? {
-            billed_to_id:   defaultBilledToId,
-            billed_to_name: defaultBilledToName,
-          } : {}),
-        })
-
-        if (insertErr) {
-          failed++
-          errors.push({ missionNumber: item.missionNumber, error: `INSERT: ${insertErr.message}` })
-        } else {
-          success++
-        }
-      } catch (e: any) {
-        failed++
-        errors.push({ missionNumber: item.missionNumber, error: e.message || 'Erreur' })
-      }
-    }
-
-    console.log(`[cron vab-poll] OK total=${missions.length} deja=${existingSet.size} attempted=${toImport.length} success=${success} failed=${failed}`)
-
-    return NextResponse.json({
-      ok: true,
-      total:    missions.length,
-      already:  existingSet.size,
-      attempted: toImport.length,
-      success,
-      failed,
-      errors: errors.slice(0, 10),
-    })
+    const result = await runVabImport({ mode: 'send' })
+    console.log(`[cron vab-poll] total=${result.total} already=${result.already} success=${result.success} failed=${result.failed}`)
+    return NextResponse.json(result)
   } catch (e: any) {
     console.error('[cron vab-poll]', e.message)
-    return NextResponse.json({ error: e.message || 'Erreur cron VAB' }, { status: 500 })
+    return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
