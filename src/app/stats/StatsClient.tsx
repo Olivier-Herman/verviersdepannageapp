@@ -170,24 +170,62 @@ export default function StatsClient(props: StatsClientProps) {
           <>
             {/* ── KPI cards ──────────────────────────────────── */}
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <KpiCard label="Total missions"        value={data.kpi.totalMissions.current ?? 0}        delta={data.kpi.totalMissions.delta} />
-              <KpiCard label="Terminées"             value={data.kpi.completedMissions.current ?? 0}    delta={data.kpi.completedMissions.delta} />
-              <KpiCard label="Temps moyen interv."   value={data.kpi.avgInterventionMinutes.current ?? '—'} suffix=" min" delta={data.kpi.avgInterventionMinutes.delta} deltaInverse />
-              <KpiCard label="Délai accept. chauffeur" value={data.kpi.avgAcceptanceMinutes.current ?? '—'}   suffix=" min" delta={data.kpi.avgAcceptanceMinutes.delta} deltaInverse />
-              <KpiCard label="Délai confirm. dispatch" value={data.kpi.avgDispatchConfirmMinutes.current ?? '—'} suffix=" min" delta={data.kpi.avgDispatchConfirmMinutes.delta} deltaInverse />
-              <KpiCard label="Délai assignation"     value={data.kpi.avgAssignmentMinutes.current ?? '—'}   suffix=" min" delta={data.kpi.avgAssignmentMinutes.delta} deltaInverse />
+              <KpiCard
+                label="Total missions"
+                value={data.kpi.totalMissions.current ?? 0}
+                delta={data.kpi.totalMissions.delta}
+                tooltip="Missions assignées/traitées sur la période (statuts: assigned, accepted, in_progress, delivering, parked, completed, to_invoice). Exclut new/dispatching."
+              />
+              <KpiCard
+                label="Terminées"
+                value={data.kpi.completedMissions.current ?? 0}
+                delta={data.kpi.completedMissions.delta}
+                tooltip="Missions complétées par le chauffeur (statut completed ou to_invoice)."
+              />
+              <KpiCard
+                label="Temps moyen interv."
+                value={data.kpi.avgInterventionMinutes.current ?? '—'} suffix=" min"
+                delta={data.kpi.avgInterventionMinutes.delta} deltaInverse
+                tooltip="Durée moyenne entre acceptation chauffeur (accepted_at) et completion mission (completed_at). Mesure l'efficacité chauffeur sur place."
+              />
+              <KpiCard
+                label="Délai accept. chauffeur"
+                value={data.kpi.avgAcceptanceMinutes.current ?? '—'} suffix=" min"
+                delta={data.kpi.avgAcceptanceMinutes.delta} deltaInverse
+                tooltip="Durée moyenne entre réception mission (received_at) et acceptation chauffeur (accepted_at). Mesure la réactivité du chauffeur."
+              />
+              <KpiCard
+                label="Délai confirm. dispatch"
+                value={data.kpi.avgDispatchConfirmMinutes.current ?? '—'} suffix=" min"
+                delta={data.kpi.avgDispatchConfirmMinutes.delta} deltaInverse
+                tooltip="Durée moyenne entre réception mission (received_at) et confirmation par le dispatcher (action dispatched dans mission_logs). Mesure la réactivité du dispatcher."
+              />
+              <KpiCard
+                label="Délai assignation"
+                value={data.kpi.avgAssignmentMinutes.current ?? '—'} suffix=" min"
+                delta={data.kpi.avgAssignmentMinutes.delta} deltaInverse
+                tooltip="Durée moyenne entre réception mission (received_at) et assignation à un chauffeur (assigned_at). Mesure la rapidité d'affectation."
+              />
             </div>
 
             {/* ── Stats secondaires ──────────────────────────── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MiniStat label="Remorquages (REM)" value={data.byType.remorquage || 0} icon="🚛" />
-              <MiniStat label="Dépannages (DSP)"  value={data.byType.dsp || 0}        icon="🔧" />
-              <MiniStat label="Mises en parc"     value={data.byType.parc || 0}       icon="🅿️" />
-              <MiniStat label="Trajets à vide"    value={data.byType.trajet_vide || 0} icon="🛣️" />
-              <MiniStat label="DPR"               value={data.byType.dpr || 0}        icon="❌" color="text-red-500" />
-              <MiniStat label="REM → DSP"         value={data.conversions.rem_to_dsp} icon="↔️" />
-              <MiniStat label="DSP → REM"         value={data.conversions.dsp_to_rem} icon="↔️" />
-              <MiniStat label="Refus auto-disp."  value={data.refusalsAutoDispatch.current ?? 0} icon="🚫" color="text-orange-500" />
+              <MiniStat label="Remorquages (REM)" value={data.byType.remorquage || 0} icon="🚛"
+                tooltip="Missions de type REM ou remorquage (insensible à la casse)." />
+              <MiniStat label="Dépannages (DSP)"  value={data.byType.dsp || 0}        icon="🔧"
+                tooltip="Missions DSP / dépannage / réparation sur place (toutes regroupées)." />
+              <MiniStat label="Mises en parc"     value={data.byType.parc || 0}       icon="🅿️"
+                tooltip="Missions avec status = parked (véhicule mis en parc Verviers)." />
+              <MiniStat label="Trajets à vide"    value={data.byType.trajet_vide || 0} icon="🛣️"
+                tooltip="Missions de type trajet_vide (déplacement sans véhicule à dépanner)." />
+              <MiniStat label="DPR"               value={data.byType.dpr || 0}        icon="❌" color="text-red-500"
+                tooltip="Missions avec dpr_motif renseigné (Dépannage Refusé, le client ou le véhicule rejette l'intervention)." />
+              <MiniStat label="REM → DSP"         value={data.conversions.rem_to_dsp} icon="↔️"
+                tooltip="Missions où le chauffeur a changé le type initial REM en DSP (mission_logs action=change_type)." />
+              <MiniStat label="DSP → REM"         value={data.conversions.dsp_to_rem} icon="↔️"
+                tooltip="Missions où le chauffeur a changé le type initial DSP en REM." />
+              <MiniStat label="Refus auto-disp."  value={data.refusalsAutoDispatch.current ?? 0} icon="🚫" color="text-orange-500"
+                tooltip="Tentatives auto-dispatch refusées par les chauffeurs (dispatch_attempts_log status=refused)." />
             </div>
 
             {/* ── Charts ──────────────────────────────────────── */}
@@ -277,14 +315,17 @@ export default function StatsClient(props: StatsClientProps) {
   )
 }
 
-function KpiCard({ label, value, suffix = '', delta, deltaInverse = false }: { label: string; value: any; suffix?: string; delta?: number | null; deltaInverse?: boolean }) {
+function KpiCard({ label, value, suffix = '', delta, deltaInverse = false, tooltip }: { label: string; value: any; suffix?: string; delta?: number | null; deltaInverse?: boolean; tooltip?: string }) {
   const isPositive = delta != null && delta > 0
   const isNegative = delta != null && delta < 0
   const good = deltaInverse ? isNegative : isPositive
   const bad  = deltaInverse ? isPositive : isNegative
   return (
-    <div className="bg-surface p-4 rounded-lg">
-      <div className="text-xs text-ink-faint uppercase tracking-wider mb-1">{label}</div>
+    <div className="bg-surface p-4 rounded-lg relative group">
+      <div className="text-xs text-ink-faint uppercase tracking-wider mb-1 flex items-center gap-1">
+        <span>{label}</span>
+        {tooltip && <InfoIcon tooltip={tooltip} />}
+      </div>
       <div className="text-2xl font-display font-bold">{value}{suffix}</div>
       {delta != null && (
         <div className={`text-xs mt-1 ${good ? 'text-green-500' : bad ? 'text-red-500' : 'text-ink-faint'}`}>
@@ -295,15 +336,30 @@ function KpiCard({ label, value, suffix = '', delta, deltaInverse = false }: { l
   )
 }
 
-function MiniStat({ label, value, icon, color }: { label: string; value: number; icon: string; color?: string }) {
+function MiniStat({ label, value, icon, color, tooltip }: { label: string; value: number; icon: string; color?: string; tooltip?: string }) {
   return (
-    <div className="bg-surface p-3 rounded-lg flex items-center gap-2">
+    <div className="bg-surface p-3 rounded-lg flex items-center gap-2 relative">
       <span className="text-lg">{icon}</span>
       <div className="flex-1 min-w-0">
         <div className={`text-lg font-bold ${color || ''}`}>{value}</div>
-        <div className="text-xs text-ink-faint truncate">{label}</div>
+        <div className="text-xs text-ink-faint truncate flex items-center gap-1">
+          <span className="truncate">{label}</span>
+          {tooltip && <InfoIcon tooltip={tooltip} />}
+        </div>
       </div>
     </div>
+  )
+}
+
+function InfoIcon({ tooltip }: { tooltip: string }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-surface-hover text-ink-faint text-[9px] font-bold cursor-help hover:bg-brand hover:text-surface flex-shrink-0"
+      title={tooltip}
+      aria-label={tooltip}
+    >
+      ?
+    </span>
   )
 }
 
