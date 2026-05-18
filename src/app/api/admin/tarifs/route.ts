@@ -63,6 +63,7 @@ export async function POST(req: Request) {
     unit_price:            t.unit_price ?? null,
     km_inclus:             Number(t.km_inclus || 0),
     km_price:              t.km_price ?? null,
+    km_basis:              t.km_basis === 'total' ? 'total' : 'charged',
     parc_day_price:        t.parc_day_price ?? null,
     surcharge_night_pct:   Number(t.surcharge_night_pct || 0),
     surcharge_we_pct:      Number(t.surcharge_we_pct || 0),

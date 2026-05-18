@@ -8,7 +8,7 @@ interface PriceEstimate {
   source:        string
   mission_type:  string
   forfait:       number | null
-  km_total:      number
+  km_charged:    number
   km_inclus:     number
   km_extra:      number
   km_extra_eur:  number

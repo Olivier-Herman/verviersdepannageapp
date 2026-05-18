@@ -27,13 +27,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const allowed: Record<string, any> = {}
   for (const key of [
-    'source', 'mission_type', 'unit_price', 'km_inclus', 'km_price',
+    'source', 'mission_type', 'unit_price', 'km_inclus', 'km_price', 'km_basis',
     'parc_day_price', 'surcharge_night_pct', 'surcharge_we_pct',
     'surcharge_holiday_pct', 'conditions', 'is_autofac',
     'effective_from', 'effective_to', 'notes',
   ]) {
     if (body[key] !== undefined) allowed[key] = body[key]
   }
+  if (allowed.km_basis !== undefined) allowed.km_basis = allowed.km_basis === 'total' ? 'total' : 'charged'
   allowed.updated_at = new Date().toISOString()
 
   const { data, error } = await sb

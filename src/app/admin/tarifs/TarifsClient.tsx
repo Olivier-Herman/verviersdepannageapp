@@ -19,6 +19,7 @@ interface Tariff {
   unit_price:            number | null
   km_inclus:             number
   km_price:              number | null
+  km_basis:              'charged' | 'total'
   parc_day_price:        number | null
   surcharge_night_pct:   number
   surcharge_we_pct:      number
@@ -39,6 +40,7 @@ interface ExtractedTariff {
   unit_price:            number | null
   km_inclus:             number
   km_price:              number | null
+  km_basis:              'charged' | 'total'
   parc_day_price:        number | null
   surcharge_night_pct:   number
   surcharge_we_pct:      number
@@ -77,6 +79,13 @@ export default function TarifsClient(props: Props) {
   const [uploadHint, setUploadHint] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+
+  // Text describe modal state (equivalent texte du PDF)
+  const [showTextModal, setShowTextModal] = useState(false)
+  const [textInput, setTextInput] = useState('')
+  const [textHint, setTextHint] = useState<string>('')
+  const [textExtracting, setTextExtracting] = useState(false)
+  const [textError, setTextError] = useState<string | null>(null)
 
   // Validation modal state (après extraction IA)
   const [showValidation, setShowValidation] = useState(false)
@@ -131,6 +140,34 @@ export default function TarifsClient(props: Props) {
     }
   }
 
+  const handleExtractText = async () => {
+    if (!textInput.trim()) return
+    setTextExtracting(true)
+    setTextError(null)
+    try {
+      const res = await fetch('/api/admin/tarifs/extract-text', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text: textInput, hint_source: textHint || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setTextError(data.error || 'Erreur extraction'); return }
+      if (!data.extracted || data.extracted.length === 0) {
+        setTextError('Aucun tarif identifié. Reformule ou sois plus précis.')
+        return
+      }
+      setExtractedItems((data.extracted as ExtractedTariff[]).map(x => ({ ...x, _include: true })))
+      setExtractDocPath(null)
+      setExtractDocName(null)
+      setShowTextModal(false)
+      setShowValidation(true)
+    } catch (e: any) {
+      setTextError(String(e?.message || e))
+    } finally {
+      setTextExtracting(false)
+    }
+  }
+
   const handleSaveExtracted = async () => {
     const toSave = extractedItems.filter(x => x._include).map(({ _include, ...rest }) => rest)
     if (toSave.length === 0) {
@@ -173,6 +210,7 @@ export default function TarifsClient(props: Props) {
       unit_price:            null,
       km_inclus:             0,
       km_price:              null,
+      km_basis:              'charged',
       parc_day_price:        null,
       surcharge_night_pct:   0,
       surcharge_we_pct:      0,
@@ -260,6 +298,9 @@ export default function TarifsClient(props: Props) {
             <button onClick={openNewManual} className="px-4 py-2 bg-surface-hover text-ink rounded font-medium text-sm border border-surface-hover hover:border-brand transition">
               + Ajouter manuellement
             </button>
+            <button onClick={() => setShowTextModal(true)} className="px-4 py-2 bg-surface-hover text-ink rounded font-medium text-sm border border-surface-hover hover:border-brand transition">
+              📝 Décrire en texte
+            </button>
             <button onClick={() => setShowUpload(true)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
               📄 Importer un PDF
             </button>
@@ -321,6 +362,54 @@ export default function TarifsClient(props: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* ── Text describe modal ───────────────────────────── */}
+        {showTextModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-lg p-6 max-w-2xl w-full">
+              <h2 className="text-lg font-display font-bold mb-2">📝 Décrire un barème en texte</h2>
+              <p className="text-xs text-ink-faint mb-4">
+                Écris en français le barème comme tu le décrirais au téléphone. L'IA va extraire les tarifs structurés.
+                Tu pourras valider/ajuster avant enregistrement.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-ink-faint uppercase tracking-wider">Source (optionnel)</label>
+                  <select value={textHint} onChange={e => setTextHint(e.target.value)} className="w-full mt-1 px-3 py-2 bg-surface-hover rounded">
+                    <option value="">Auto (laisse l'IA détecter)</option>
+                    {sources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-ink-faint uppercase tracking-wider">Barème</label>
+                  <textarea
+                    value={textInput}
+                    onChange={e => setTextInput(e.target.value)}
+                    rows={10}
+                    placeholder={`Exemples :
+
+• "TGR Touring : remorquage 2.00€/km chargé (incident → destination), pas de forfait"
+
+• "Privé : remorquage 75€ forfait incluant 20 km, puis 2.50€/km extra sur le total parcouru. Mise en parc 10€/jour."
+
+• "AXA : DSP forfait 65€, REM forfait 95€ + 1.80€/km au-delà de 25 km inclus. Autofacturation. Valide à partir du 1er juin 2026."`}
+                    className="w-full mt-1 px-3 py-2 bg-surface-hover rounded text-sm font-mono"
+                  />
+                </div>
+                {textError && <div className="text-red-500 text-sm">{textError}</div>}
+                {textExtracting && <div className="text-ink-faint text-sm">⏳ Analyse IA en cours (5-15s)…</div>}
+              </div>
+              <div className="flex gap-2 mt-6">
+                <button onClick={() => setShowTextModal(false)} disabled={textExtracting} className="flex-1 px-4 py-2 bg-surface-hover rounded text-sm">
+                  Annuler
+                </button>
+                <button onClick={handleExtractText} disabled={!textInput.trim() || textExtracting} className="flex-1 px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
+                  {textExtracting ? '⏳ Analyse…' : '🤖 Interpréter avec IA'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -399,6 +488,17 @@ export default function TarifsClient(props: Props) {
                           <FieldNumber label="€/km extra" value={item.km_price} onChange={v => updateField(idx, 'km_price', v)} />
                           <FieldNumber label="€/jour parc" value={item.parc_day_price} onChange={v => updateField(idx, 'parc_day_price', v)} />
                           <div className="col-span-2 lg:col-span-4">
+                            <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
+                            <select
+                              value={item.km_basis || 'charged'}
+                              onChange={e => updateField(idx, 'km_basis', e.target.value)}
+                              className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                            >
+                              <option value="charged">Km chargés (incident → destination) — assurances</option>
+                              <option value="total">Km totaux (dépôt → ... → retour) — privé / garage</option>
+                            </select>
+                          </div>
+                          <div className="col-span-2 lg:col-span-4">
                             <p className="text-[10px] text-ink-faint italic">
                               💡 Les majorations nuit/week-end/jour férié sont gérées séparément par le module Surcharges (selon l'heure réelle de l'intervention).
                             </p>
@@ -455,6 +555,17 @@ export default function TarifsClient(props: Props) {
                 <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
                 <FieldNumber label="€/km extra" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
                 <FieldNumber label="€/jour parc" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+                <div className="col-span-2">
+                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
+                  <select
+                    value={editTariff.km_basis || 'charged'}
+                    onChange={e => setEditTariff(p => ({ ...p!, km_basis: e.target.value as 'charged' | 'total' }))}
+                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                  >
+                    <option value="charged">Km chargés (incident → destination) — assurances</option>
+                    <option value="total">Km totaux (dépôt → incident → destination → retour) — privé / garage</option>
+                  </select>
+                </div>
                 <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
                   💡 <strong>Majorations</strong> nuit/WE/JF gérées par le module <a href="/admin/surcharges" className="underline">Surcharges</a> (calculées selon l'heure réelle d'intervention).
                 </div>

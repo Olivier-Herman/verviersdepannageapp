@@ -14,6 +14,7 @@ export interface ExtractedTariff {
   unit_price:            number | null
   km_inclus:             number
   km_price:              number | null
+  km_basis:              'charged' | 'total'
   parc_day_price:        number | null
   surcharge_night_pct:   number
   surcharge_we_pct:      number
@@ -34,6 +35,7 @@ Analyse le document fourni et retourne UN ARRAY JSON avec UN OBJET par ligne tar
   "unit_price": "number — prix forfait HT en euros (uniquement le tarif DE BASE, sans majoration nuit/week-end)",
   "km_inclus": "number — km inclus dans le forfait, 0 si pas spécifié",
   "km_price": "number — prix par km au-delà des km inclus, ou null",
+  "km_basis": "string — 'charged' (km chargés incident→destination, défaut assurances) ou 'total' (km totaux dépôt→...→retour, défaut privé/garage)",
   "parc_day_price": "number — prix par jour de mise en parc, ou null",
   "conditions": "string — conditions notables non-tarifaires (max 100 chars)",
   "is_autofac": "boolean — true si la compagnie facture elle-même (autofacturation)",
@@ -49,6 +51,7 @@ REGLES IMPORTANTES :
 - "parc" = mise en parc / gardiennage.
 - Si une ligne couvre plusieurs types (ex: "REM + DSP : 60€"), génère 2 objets.
 - Tarifs nuit/WE = ignore, on les calcule différemment.
+- km_basis : si le texte mentionne "km chargé(s)", "km depuis chargement", "km depuis incident" → 'charged'. Si "km total", "km parcouru(s)", "depuis dépôt" → 'total'. Sinon, défaut 'charged' pour assurances (vab, touring, ima, ethias, mondial, allianz, axa, ardenne, vivium), 'total' pour 'autre', 'prive', 'garage'.
 - Si une info n'est pas dans le PDF, mets null ou 0.
 
 Retourne UNIQUEMENT le JSON valide, pas de markdown.
@@ -114,6 +117,75 @@ RÈGLES :
 
 Retourne UNIQUEMENT le JSON, pas de markdown, pas de texte autour.
 Si rien d'extraire, retourne [].`
+
+/**
+ * Variante texte libre de extractTariffsFromPdf : pas de PDF, juste un texte
+ * decrivant un bareme tarifaire (l utilisateur l ecrit a la main). Reutilise
+ * le meme prompt et la meme structure de sortie.
+ */
+export async function extractTariffsFromText(
+  text: string,
+  hintSource?: string,
+): Promise<ExtractedTariff[]> {
+  const client = getClient()
+  const userPrompt = hintSource
+    ? `${EXTRACTION_PROMPT}\n\nHint : la compagnie est probablement "${hintSource}".\n\n--- TEXTE DE L UTILISATEUR ---\n\n${text}`
+    : `${EXTRACTION_PROMPT}\n\n--- TEXTE DE L UTILISATEUR ---\n\n${text}`
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8192,
+    messages: [{ role: 'user', content: userPrompt }],
+  })
+
+  const textBlock = response.content.find(b => b.type === 'text')
+  if (!textBlock || textBlock.type !== 'text') {
+    throw new Error('Aucun texte retourne par Claude')
+  }
+
+  let parsed: unknown
+  try {
+    const cleaned = textBlock.text.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
+    parsed = JSON.parse(cleaned)
+  } catch (e: any) {
+    const trimmed = textBlock.text.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
+    const lastClosingBrace = trimmed.lastIndexOf('}')
+    if (lastClosingBrace > 0) {
+      const recovered = trimmed.slice(0, lastClosingBrace + 1) + ']'
+      try {
+        parsed = JSON.parse(recovered)
+      } catch {
+        throw new Error(`JSON Claude invalide : ${e.message}. Reponse : ${textBlock.text.slice(0, 300)}`)
+      }
+    } else {
+      throw new Error(`JSON Claude invalide : ${e.message}. Reponse : ${textBlock.text.slice(0, 300)}`)
+    }
+  }
+
+  if (!Array.isArray(parsed)) throw new Error(`Reponse Claude n est pas un array : ${typeof parsed}`)
+
+  const tariffs: ExtractedTariff[] = []
+  for (const item of parsed as any[]) {
+    if (!item || typeof item !== 'object') continue
+    tariffs.push({
+      source:                String(item.source || hintSource || 'autre').toLowerCase(),
+      mission_type:          String(item.mission_type || 'depannage').toLowerCase(),
+      unit_price:            item.unit_price != null ? Number(item.unit_price) : null,
+      km_inclus:             Number(item.km_inclus || 0),
+      km_price:              item.km_price != null ? Number(item.km_price) : null,
+      km_basis:              item.km_basis === 'total' ? 'total' : 'charged',
+      parc_day_price:        item.parc_day_price != null ? Number(item.parc_day_price) : null,
+      surcharge_night_pct:   Number(item.surcharge_night_pct || 0),
+      surcharge_we_pct:      Number(item.surcharge_we_pct || 0),
+      surcharge_holiday_pct: Number(item.surcharge_holiday_pct || 0),
+      conditions:            String(item.conditions || ''),
+      is_autofac:            Boolean(item.is_autofac),
+      effective_from:        String(item.effective_from || new Date().toISOString().slice(0, 10)),
+      raw_quote:             String(item.raw_quote || ''),
+    })
+  }
+  return tariffs
+}
 
 export async function extractTariffRulesFromText(text: string): Promise<ExtractedRule[]> {
   const client = getClient()
@@ -234,6 +306,7 @@ export async function extractTariffsFromPdf(
       unit_price:            item.unit_price != null ? Number(item.unit_price) : null,
       km_inclus:             Number(item.km_inclus || 0),
       km_price:              item.km_price != null ? Number(item.km_price) : null,
+      km_basis:              item.km_basis === 'total' ? 'total' : 'charged',
       parc_day_price:        item.parc_day_price != null ? Number(item.parc_day_price) : null,
       surcharge_night_pct:   Number(item.surcharge_night_pct || 0),
       surcharge_we_pct:      Number(item.surcharge_we_pct || 0),

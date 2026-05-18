@@ -11,15 +11,136 @@ import { createAdminClient } from '@/lib/supabase'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { normalizeType, isRemorquage, isDsp, isTrajetVide } from '@/lib/missions/mission-types'
 
+const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+type Coord = { lat: number; lng: number }
+
+async function routesDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
+  if (!GMAPS_KEY) return null
+  try {
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type':     'application/json',
+        'X-Goog-Api-Key':   GMAPS_KEY,
+        'X-Goog-FieldMask': 'routes.distanceMeters',
+      },
+      body: JSON.stringify({
+        origin:           { location: { latLng: { latitude: origin.lat,      longitude: origin.lng      } } },
+        destination:      { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode:       'DRIVE',
+        routingPreference:'TRAFFIC_UNAWARE',
+      }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const meters = data.routes?.[0]?.distanceMeters
+    return typeof meters === 'number' ? meters / 1000 : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Calcule deux notions de km pour une mission :
+ *   - chargedKm : segments incident → stops → destination (véhicule du client sur le plateau).
+ *                 Utilisé par les assurances (VAB, Touring, etc.) qui ne paient que le chargé.
+ *   - totalKm   : depot → incident → stops → destination → retour depot.
+ *                 Utilisé par les missions "autre" / privé / garage qui facturent tout.
+ *
+ * Pour DSP / réparation sur place / trajet_vide : pas de chargé, totalKm = aller/retour depot.
+ */
+async function computeMissionKm(missionId: string): Promise<{ chargedKm: number | null; totalKm: number | null }> {
+  const sb = createAdminClient()
+  const { data: m } = await sb
+    .from('incoming_missions')
+    .select('mission_type, incident_lat, incident_lng, destination_lat, destination_lng, extra_addresses, depot_depart_id')
+    .eq('id', missionId)
+    .maybeSingle()
+  if (!m) return { chargedKm: null, totalKm: null }
+
+  if (m.incident_lat == null || m.incident_lng == null) return { chargedKm: null, totalKm: null }
+  const incident: Coord = { lat: Number(m.incident_lat), lng: Number(m.incident_lng) }
+
+  // Depot : celui de la mission ou le defaut
+  let depot: Coord | null = null
+  if (m.depot_depart_id) {
+    const { data: d } = await sb.from('depots').select('lat, lng').eq('id', m.depot_depart_id).maybeSingle()
+    if (d?.lat != null && d.lng != null) depot = { lat: Number(d.lat), lng: Number(d.lng) }
+  }
+  if (!depot) {
+    const { data: d } = await sb.from('depots').select('lat, lng').eq('is_default', true).eq('active', true).maybeSingle()
+    if (d?.lat != null && d.lng != null) depot = { lat: Number(d.lat), lng: Number(d.lng) }
+  }
+
+  // Stops intermediaires
+  const rawStops: any[] = Array.isArray(m.extra_addresses) ? m.extra_addresses : []
+  const stops: Coord[] = [...rawStops]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .filter(s => s.lat != null && s.lng != null)
+    .map(s => ({ lat: Number(s.lat), lng: Number(s.lng) }))
+
+  const destinationCoord: Coord | null = m.destination_lat != null && m.destination_lng != null
+    ? { lat: Number(m.destination_lat), lng: Number(m.destination_lng) }
+    : null
+
+  const type = (m.mission_type || '').toLowerCase()
+  const isNonTow = isDsp(type) || isTrajetVide(type)
+
+  // Charged = segments avec le vehicule du client (incident → stops → destination)
+  let chargedKm: number | null
+  if (isNonTow) {
+    chargedKm = 0
+  } else {
+    const chain: Coord[] = [incident, ...stops]
+    if (destinationCoord) chain.push(destinationCoord)
+    if (chain.length < 2) {
+      chargedKm = 0
+    } else {
+      let acc = 0
+      let ok = true
+      for (let i = 0; i < chain.length - 1; i++) {
+        const km = await routesDistanceKm(chain[i], chain[i + 1])
+        if (km == null) { ok = false; break }
+        acc += km
+      }
+      chargedKm = ok ? acc : null
+    }
+  }
+
+  // Total = depot → incident → stops → (destination | retour depot pour DSP)
+  let totalKm: number | null
+  if (!depot) {
+    totalKm = null
+  } else {
+    const chain: Coord[] = [depot, incident, ...stops]
+    if (destinationCoord && !isNonTow) chain.push(destinationCoord)
+    chain.push(depot)  // retour depot
+    let acc = 0
+    let ok = true
+    for (let i = 0; i < chain.length - 1; i++) {
+      const km = await routesDistanceKm(chain[i], chain[i + 1])
+      if (km == null) { ok = false; break }
+      acc += km
+    }
+    totalKm = ok ? acc : null
+  }
+
+  return {
+    chargedKm: chargedKm != null ? Math.round(chargedKm * 10) / 10 : null,
+    totalKm:   totalKm   != null ? Math.round(totalKm   * 10) / 10 : null,
+  }
+}
+
 export interface PriceEstimate {
   ok:            boolean
   reason?:       string  // si pas de tarif trouve
   source:        string  // source utilisee pour le lookup
   mission_type:  string  // type canonical
   forfait:       number | null
-  km_total:      number  // km total estime (vehicle_mileage ou null)
+  km_charged:    number  // km charges (incident -> destination, sans depot ni retour)
   km_inclus:     number
-  km_extra:      number  // max(0, km_total - km_inclus)
+  km_extra:      number  // max(0, km_charged - km_inclus)
   km_extra_eur:  number  // km_extra * km_price
   parc_jours:    number
   parc_eur:      number
@@ -85,10 +206,21 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   }
 
   // 2. Calcul forfait + km extra
+  //    Le tarif spec quelle base de km utiliser (km_basis) :
+  //      - 'charged' (default) : incident → destination (assurances)
+  //      - 'total'             : depot → incident → ... → retour depot (priv/garage)
   const forfait = Number(tariff.unit_price || 0)
-  const kmTotal = Number(mission.vehicle_mileage || 0)
+  const kmBasis: 'charged' | 'total' = tariff.km_basis === 'total' ? 'total' : 'charged'
+  let kmCharged = 0
+  let kmTotalRoute = 0
+  if (mission.id) {
+    const km = await computeMissionKm(mission.id)
+    kmCharged    = km.chargedKm ?? 0
+    kmTotalRoute = km.totalKm   ?? 0
+  }
+  const kmBase = kmBasis === 'total' ? kmTotalRoute : kmCharged
   const kmInclus = Number(tariff.km_inclus || 0)
-  const kmExtra = Math.max(0, kmTotal - kmInclus)
+  const kmExtra = Math.max(0, kmBase - kmInclus)
   const kmExtraEur = kmExtra * Number(tariff.km_price || 0)
 
   // 3. Calcul parc si parked_at est set
@@ -172,9 +304,10 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   const surchargeEur = (subtotal * surchargePct) / 100
   const total = subtotal + surchargeEur
 
+  const kmBasisLabel = kmBasis === 'total' ? 'km totaux' : 'km chargés'
   const breakdown = [
     { label: 'Forfait',   amount: forfait, note: kmInclus > 0 ? `${kmInclus} km inclus` : undefined },
-    { label: 'Km extra',  amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : 'aucun' },
+    { label: `Km extra (${kmBasisLabel})`, amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : `base : ${kmBase} km` },
     { label: 'Parc',      amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : 'non applicable' },
     ...rulesBreakdown,
     { label: 'Majoration horaire', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
@@ -185,7 +318,7 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     source,
     mission_type:  missionType,
     forfait,
-    km_total:      kmTotal,
+    km_charged:    kmBase,
     km_inclus:     kmInclus,
     km_extra:      kmExtra,
     km_extra_eur:  kmExtraEur,
@@ -210,7 +343,7 @@ function emptyEstimate(source: string, missionType: string, reason: string): Pri
     source,
     mission_type:  missionType,
     forfait:       null,
-    km_total:      0,
+    km_charged:    0,
     km_inclus:     0,
     km_extra:      0,
     km_extra_eur:  0,
