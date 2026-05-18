@@ -10,6 +10,12 @@ import { getGraphToken, processEmailMessage } from '@/lib/missions/processor'
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 const MAX_MESSAGES   = 25
 
+// Categorie Outlook posee par le processor sur les emails traites (succes
+// ou skip definitif). Au prochain poll, on ignore les emails qui ont deja
+// cette categorie -> indempotent et resistant a la suppression manuelle
+// des missions en DB.
+const PROCESSED_CATEGORY = 'VD Soft - Mission traitée'
+
 async function graphGet(token: string, path: string): Promise<any> {
   const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     headers: { Authorization: `Bearer ${token}` }
@@ -19,6 +25,27 @@ async function graphGet(token: string, path: string): Promise<any> {
     throw new Error(`Graph GET ${res.status} ${path}: ${err.slice(0, 200)}`)
   }
   return res.json()
+}
+
+/**
+ * Ajoute la categorie PROCESSED_CATEGORY a l email (PATCH Outlook).
+ * On preserve les categories existantes. Best-effort.
+ */
+async function tagEmailAsProcessed(token: string, messageId: string, existingCategories: string[]): Promise<void> {
+  if (existingCategories.includes(PROCESSED_CATEGORY)) return
+  const newCategories = [...existingCategories, PROCESSED_CATEGORY]
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${MISSIONS_EMAIL}/messages/${messageId}`,
+    {
+      method:  'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ categories: newCategories }),
+    }
+  )
+  if (!res.ok) {
+    const err = await res.text()
+    console.warn(`[PollMissions] tag email ${messageId} fail:`, res.status, err.slice(0, 200))
+  }
 }
 
 export async function GET(req: Request) {
@@ -34,12 +61,15 @@ export async function GET(req: Request) {
   try {
     const token = await getGraphToken()
 
-    // Lire les derniers emails (lus OU non lus) — la dédup se fait via source_email_id
+    // Lire les derniers emails (lus OU non lus). Dedup principale via
+    // source_email_id en DB + dedup defensive via categorie Outlook
+    // (PROCESSED_CATEGORY) pour resister a la suppression manuelle
+    // des missions en DB.
     const messagesData = await graphGet(
       token,
       `/users/${MISSIONS_EMAIL}/mailFolders/inbox/messages` +
       `?$top=${MAX_MESSAGES}` +
-      `&$select=id,subject,receivedDateTime,isRead` +
+      `&$select=id,subject,receivedDateTime,isRead,categories` +
       `&$orderby=receivedDateTime desc`
     )
 
@@ -47,10 +77,23 @@ export async function GET(req: Request) {
     console.log(`[PollMissions] ${messages.length} message(s) récupéré(s)`)
 
     for (const message of messages) {
+      // Skip si l email a deja la categorie "traite" (defensive : empeche
+      // le re-parse meme si la mission a ete supprimee/cancelled en DB).
+      if (Array.isArray(message.categories) && message.categories.includes(PROCESSED_CATEGORY)) {
+        results.skipped++
+        continue
+      }
       try {
         const result = await processEmailMessage(message.id)
         results[result.status] = (results[result.status] || 0) + 1
         if (result.status === 'inserted') results.inserted++
+
+        // Tag l email avec la categorie "traite" si le processing s est
+        // bien passe (inserted ou duplicate). Best-effort : si l ajout
+        // de categorie echoue, on ignore (la dedup DB prend le relais).
+        if (result.status === 'inserted' || result.status === 'duplicate') {
+          await tagEmailAsProcessed(token, message.id, message.categories || []).catch(() => {})
+        }
       } catch (err: any) {
         console.error(`[PollMissions] Erreur:`, err.message)
         results.error++
