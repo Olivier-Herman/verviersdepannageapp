@@ -1,9 +1,8 @@
 // src/app/api/admin/tarifs/sources/route.ts
 //
 // GET /api/admin/tarifs/sources
-// Retourne la liste dynamique des sources connues (mission_sources +
-// incoming_missions.source distinctes). Utilise par TarifsClient pour
-// peupler les dropdowns et onglets sans hardcoder.
+// Liste les sources actives du catalogue central (mission_source_catalog),
+// utilisee par TarifsClient pour peupler onglets et dropdowns sans hardcoder.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -28,28 +27,15 @@ export async function GET() {
 
   const sb = createAdminClient()
 
-  const [{ data: mapped }, { data: missionsSampled }] = await Promise.all([
-    sb.from('mission_sources').select('source, label'),
-    // Pour les sources qui n existent pas encore dans mission_sources mais
-    // qui apparaissent en pratique dans les missions (cas legacy).
-    sb.from('incoming_missions').select('source').not('source', 'is', null).limit(5000),
-  ])
+  const { data, error } = await sb
+    .from('mission_source_catalog')
+    .select('key, label, active, sort_order')
+    .eq('active', true)
+    .order('sort_order')
+    .order('label')
 
-  const sourceMap = new Map<string, string>()
-  for (const m of mapped || []) {
-    const key = (m.source || '').toLowerCase().trim()
-    if (key) sourceMap.set(key, m.label || key)
-  }
-  for (const m of missionsSampled || []) {
-    const key = (m.source || '').toLowerCase().trim()
-    if (key && !sourceMap.has(key)) sourceMap.set(key, key)
-  }
-  // Toujours inclure "autre" comme fallback
-  if (!sourceMap.has('autre')) sourceMap.set('autre', 'Autre')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const sources = Array.from(sourceMap.entries())
-    .map(([source, label]) => ({ source, label }))
-    .sort((a, b) => a.label.localeCompare(b.label))
-
+  const sources = (data || []).map(s => ({ source: s.key, label: s.label }))
   return NextResponse.json({ ok: true, sources })
 }
