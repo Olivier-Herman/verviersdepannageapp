@@ -127,7 +127,11 @@ export default function StatsClient(props: StatsClientProps) {
   }
 
   const sources = ['vab', 'touring', 'ima', 'mondial', 'ethias', 'autre']
-  const types = ['remorquage', 'depannage', 'reparation_place', 'trajet_vide']
+  const types: { value: string; label: string }[] = [
+    { value: 'remorquage',  label: 'Remorquage (REM)' },
+    { value: 'depannage',   label: 'Dépannage (DSP)' },
+    { value: 'trajet_vide', label: 'Trajet à vide' },
+  ]
 
   return (
     <AppShell
@@ -154,7 +158,7 @@ export default function StatsClient(props: StatsClientProps) {
           </select>
           <select value={type} onChange={e => setType(e.target.value)} className="px-3 py-2 bg-surface-hover rounded text-sm">
             <option value="">Tous types</option>
-            {types.map(t => <option key={t} value={t}>{t}</option>)}
+            {types.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
           <div className="ml-auto flex gap-2">
             <button onClick={handleExportCsv} disabled={!data} className="px-3 py-2 bg-brand text-surface rounded text-sm font-medium disabled:opacity-50">

@@ -173,6 +173,13 @@ export async function GET(req: Request) {
     }
   }
 
+  // Mapping type canonique → variantes DB (gere DSP/REM majuscules et synonymes)
+  const TYPE_VARIANTS: Record<string, string[]> = {
+    remorquage:  ['rem', 'REM', 'Rem', 'remorquage', 'Remorquage', 'REMORQUAGE'],
+    depannage:   ['dsp', 'DSP', 'Dsp', 'depannage', 'Depannage', 'DEPANNAGE', 'reparation_place', 'REPARATION_PLACE'],
+    trajet_vide: ['trajet_vide', 'TRAJET_VIDE'],
+  }
+
   // Fetch missions de la periode courante
   let qCurrent = sb.from('incoming_missions')
     .select('id, source, mission_type, status, assigned_to, received_at, intervention_date, assigned_at, accepted_at, on_way_at, on_site_at, completed_at, parked_at, dpr_motif, incident_city')
@@ -181,7 +188,8 @@ export async function GET(req: Request) {
     .in('status', ELIGIBLE_STATUSES)
   if (source)    qCurrent = qCurrent.eq('source', source)
   if (chauffeur) qCurrent = qCurrent.eq('assigned_to', chauffeur)
-  if (type)      qCurrent = qCurrent.eq('mission_type', type)
+  if (type && TYPE_VARIANTS[type]) qCurrent = qCurrent.in('mission_type', TYPE_VARIANTS[type])
+  else if (type)                   qCurrent = qCurrent.eq('mission_type', type)
   const { data: currentMissions } = await qCurrent
   const current: MissionRow[] = (currentMissions || []) as any
 
@@ -193,7 +201,8 @@ export async function GET(req: Request) {
     .in('status', ELIGIBLE_STATUSES)
   if (source)    qPrev = qPrev.eq('source', source)
   if (chauffeur) qPrev = qPrev.eq('assigned_to', chauffeur)
-  if (type)      qPrev = qPrev.eq('mission_type', type)
+  if (type && TYPE_VARIANTS[type]) qPrev = qPrev.in('mission_type', TYPE_VARIANTS[type])
+  else if (type)                   qPrev = qPrev.eq('mission_type', type)
   const { data: prevMissionsRaw } = await qPrev
   const previous: MissionRow[] = (prevMissionsRaw || []) as any
 
