@@ -187,6 +187,34 @@ const sourceTools: ToolDef[] = [
     },
   },
   {
+    name:        'update_source',
+    description: 'Modifie une source existante : label, sort_order, notes, client par defaut. ATTENTION : la cle technique (key) n est PAS modifiable (referencee par les missions historiques).',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        key:                    { type: 'string', description: 'Cle technique de la source a modifier (ex: "ardenne")' },
+        label:                  { type: 'string', description: 'Nouveau libelle' },
+        sort_order:             { type: 'number' },
+        notes:                  { type: 'string' },
+        default_billed_to_id:   { type: 'number' },
+        default_billed_to_name: { type: 'string' },
+      },
+      required: ['key'],
+    },
+    async execute(args) {
+      const update: any = { updated_at: new Date().toISOString() }
+      if (args.label !== undefined)                  update.label                  = String(args.label).trim()
+      if (args.sort_order !== undefined)             update.sort_order             = args.sort_order
+      if (args.notes !== undefined)                  update.notes                  = args.notes || null
+      if (args.default_billed_to_id !== undefined)   update.default_billed_to_id   = args.default_billed_to_id ?? null
+      if (args.default_billed_to_name !== undefined) update.default_billed_to_name = args.default_billed_to_name || null
+      const { data, error } = await sb().from('mission_source_catalog').update(update).eq('key', args.key).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, source: data }
+    },
+  },
+  {
     name:        'toggle_source',
     description: 'Active ou desactive une source (par cle).',
     destructive: true,
@@ -201,6 +229,26 @@ const sourceTools: ToolDef[] = [
     async execute(args) {
       const { error } = await sb().from('mission_source_catalog')
         .update({ active: args.active, updated_at: new Date().toISOString() }).eq('key', args.key)
+      if (error) throw new Error(error.message)
+      return { ok: true }
+    },
+  },
+  {
+    name:        'delete_source',
+    description: 'Supprime une source du catalogue. NB : echoue si des missions historiques l utilisent (refuse soft, propose toggle_source(active=false)).',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: { key: { type: 'string' } },
+      required: ['key'],
+    },
+    async execute(args) {
+      const { count } = await sb().from('incoming_missions')
+        .select('id', { count: 'exact', head: true }).eq('source', args.key)
+      if ((count || 0) > 0) {
+        throw new Error(`${count} mission(s) historique(s) utilisent cette source. Utilise toggle_source(active=false) pour la cacher sans casser l historique.`)
+      }
+      const { error } = await sb().from('mission_source_catalog').delete().eq('key', args.key)
       if (error) throw new Error(error.message)
       return { ok: true }
     },
@@ -258,6 +306,52 @@ const ruleTools: ToolDef[] = [
       }).select().single()
       if (error) throw new Error(error.message)
       return { ok: true, rule: data }
+    },
+  },
+  {
+    name:        'update_tariff_rule',
+    description: 'Modifie une regle dynamique existante. Specifie l id et les champs a changer.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:                  { type: 'string' },
+        description:         { type: 'string' },
+        reason:              { type: 'string' },
+        filter_source:       { type: 'string' },
+        filter_mission_type: { type: 'string' },
+        filter_date_from:    { type: 'string' },
+        filter_date_to:      { type: 'string' },
+        filter_client_name:  { type: 'string' },
+        operation_type:      { type: 'string', enum: ['add_fixed', 'add_pct', 'set_fixed'] },
+        operation_value:     { type: 'number' },
+        priority:            { type: 'number' },
+      },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { id, ...rest } = args
+      const { data, error } = await sb().from('tariff_rules').update(rest).eq('id', id).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, rule: data }
+    },
+  },
+  {
+    name:        'toggle_tariff_rule',
+    description: 'Active ou desactive une regle dynamique sans la supprimer.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:     { type: 'string' },
+        active: { type: 'boolean' },
+      },
+      required: ['id', 'active'],
+    },
+    async execute(args) {
+      const { error } = await sb().from('tariff_rules').update({ active: args.active }).eq('id', args.id)
+      if (error) throw new Error(error.message)
+      return { ok: true }
     },
   },
   {
@@ -329,6 +423,49 @@ const missionTools: ToolDef[] = [
     },
   },
   {
+    name:        'update_mission',
+    description: 'Modifie les champs d une mission (PATCH). Tous les champs sont optionnels — specifie uniquement ceux a changer. ATTENTION : modifier le statut peut casser le workflow, prefere les actions dediees.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:                   { type: 'string' },
+        source:               { type: 'string' },
+        mission_type:         { type: 'string' },
+        incident_type:        { type: 'string' },
+        incident_description: { type: 'string' },
+        client_name:          { type: 'string' },
+        client_phone:         { type: 'string' },
+        client_address:       { type: 'string' },
+        assisted_name:        { type: 'string' },
+        assisted_phone:       { type: 'string' },
+        vehicle_plate:        { type: 'string' },
+        vehicle_brand:        { type: 'string' },
+        vehicle_model:        { type: 'string' },
+        vehicle_vin:          { type: 'string' },
+        incident_address:     { type: 'string' },
+        incident_city:        { type: 'string' },
+        destination_name:     { type: 'string' },
+        destination_address:  { type: 'string' },
+        amount_guaranteed:    { type: 'number' },
+        amount_to_collect:    { type: 'number' },
+        intervention_date:    { type: 'string', description: 'YYYY-MM-DD HH:MM:SS' },
+        remarks_general:      { type: 'string' },
+      },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { id, ...fields } = args
+      const updates: any = { updated_at: new Date().toISOString() }
+      for (const [k, v] of Object.entries(fields)) {
+        updates[k] = v === '' ? null : v
+      }
+      const { data, error } = await sb().from('incoming_missions').update(updates).eq('id', id).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, mission: data }
+    },
+  },
+  {
     name:        'add_mission_remark',
     description: 'Ajoute une remarque dispatcher (note texte) sur une mission.',
     destructive: false,
@@ -350,10 +487,44 @@ const missionTools: ToolDef[] = [
       return { ok: true, remark: data }
     },
   },
+  {
+    name:        'list_mission_remarks',
+    description: 'Liste les remarques (notes dispatcher) d une mission.',
+    destructive: false,
+    input_schema: {
+      type: 'object',
+      properties: { mission_id: { type: 'string' } },
+      required: ['mission_id'],
+    },
+    async execute(args) {
+      const { data, error } = await sb()
+        .from('mission_remarks')
+        .select('id, text, created_at, updated_at, author:users!created_by(name, email)')
+        .eq('mission_id', args.mission_id)
+        .order('created_at', { ascending: false })
+      if (error) throw new Error(error.message)
+      return { count: data?.length || 0, remarks: data || [] }
+    },
+  },
+  {
+    name:        'delete_mission_remark',
+    description: 'Supprime une remarque par id.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { error } = await sb().from('mission_remarks').delete().eq('id', args.id)
+      if (error) throw new Error(error.message)
+      return { ok: true }
+    },
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────
-// SURCHARGES (read-only Phase 1)
+// SURCHARGES (majorations horaires : nuit / WE / JF)
 // ─────────────────────────────────────────────────────────────────────
 
 const surchargeTools: ToolDef[] = [
@@ -368,24 +539,252 @@ const surchargeTools: ToolDef[] = [
       return { count: data?.length || 0, surcharges: data || [] }
     },
   },
+  {
+    name:        'create_surcharge',
+    description: 'Cree une majoration horaire (nuit/WE/JF). days est un array de 0-6 (0=lundi, 6=dimanche). holiday_only: applique aux jours feries beges uniquement.',
+    destructive: false,
+    input_schema: {
+      type: 'object',
+      properties: {
+        label:        { type: 'string' },
+        rate_pct:     { type: 'number', description: '% de majoration (ex: 50 pour +50%)' },
+        time_from:    { type: 'string', description: 'HH:MM (ex: "22:00")' },
+        time_to:      { type: 'string', description: 'HH:MM (ex: "06:00"). Si time_to < time_from -> traverse minuit' },
+        days:         { type: 'array', items: { type: 'number', minimum: 0, maximum: 6 } },
+        holiday_only: { type: 'boolean' },
+        priority:     { type: 'number', default: 100 },
+        active:       { type: 'boolean', default: true },
+      },
+      required: ['label', 'rate_pct'],
+    },
+    async execute(args) {
+      const { data, error } = await sb().from('surcharges').insert({
+        label:        args.label,
+        rate_pct:     args.rate_pct,
+        time_from:    args.time_from || null,
+        time_to:      args.time_to || null,
+        days:         args.days || null,
+        holiday_only: Boolean(args.holiday_only),
+        priority:     args.priority ?? 100,
+        active:       args.active !== false,
+      }).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, surcharge: data }
+    },
+  },
+  {
+    name:        'update_surcharge',
+    description: 'Modifie une surcharge.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:           { type: 'string' },
+        label:        { type: 'string' },
+        rate_pct:     { type: 'number' },
+        time_from:    { type: 'string' },
+        time_to:      { type: 'string' },
+        days:         { type: 'array', items: { type: 'number' } },
+        holiday_only: { type: 'boolean' },
+        priority:     { type: 'number' },
+        active:       { type: 'boolean' },
+      },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { id, ...rest } = args
+      const { data, error } = await sb().from('surcharges').update(rest).eq('id', id).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, surcharge: data }
+    },
+  },
+  {
+    name:        'delete_surcharge',
+    description: 'Supprime une surcharge.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { error } = await sb().from('surcharges').delete().eq('id', args.id)
+      if (error) throw new Error(error.message)
+      return { ok: true }
+    },
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────
-// USERS (read)
+// USERS
 // ─────────────────────────────────────────────────────────────────────
 
 const userTools: ToolDef[] = [
   {
     name:        'list_users',
-    description: 'Liste tous les utilisateurs avec leur role et leurs modules autorises.',
+    description: 'Liste tous les utilisateurs avec leur role.',
     destructive: false,
-    input_schema: { type: 'object', properties: {} },
-    async execute() {
+    input_schema: {
+      type: 'object',
+      properties: {
+        with_modules: { type: 'boolean', description: 'Inclure les modules autorises de chaque user' },
+      },
+    },
+    async execute(args) {
       const { data, error } = await sb().from('users')
         .select('id, name, email, role, is_driver, is_dispatcher, active')
         .order('name')
       if (error) throw new Error(error.message)
-      return { count: data?.length || 0, users: data || [] }
+      let users: any[] = data || []
+      if (args.with_modules) {
+        const { data: ums } = await sb().from('user_modules').select('user_id, module_id, granted')
+        const byUser: Record<string, string[]> = {}
+        for (const u of ums || []) {
+          if (u.granted) (byUser[u.user_id] ??= []).push(u.module_id)
+        }
+        users = users.map(u => ({ ...u, modules: byUser[u.id] || [] }))
+      }
+      return { count: users.length, users }
+    },
+  },
+  {
+    name:        'update_user',
+    description: 'Modifie un utilisateur : role (driver, dispatcher, admin, superadmin), is_driver, is_dispatcher, active, name.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:            { type: 'string' },
+        name:          { type: 'string' },
+        role:          { type: 'string', enum: ['driver', 'dispatcher', 'admin', 'superadmin'] },
+        is_driver:     { type: 'boolean' },
+        is_dispatcher: { type: 'boolean' },
+        active:        { type: 'boolean' },
+      },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { id, ...rest } = args
+      const { data, error } = await sb().from('users').update(rest).eq('id', id).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, user: data }
+    },
+  },
+  {
+    name:        'set_user_module',
+    description: 'Active ou desactive un module pour un utilisateur. Module ids courants : missions, driver_missions, tgr, admin, facturation, encaissement, fourriere, check_vehicle, stats, etc.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        user_id:   { type: 'string' },
+        module_id: { type: 'string' },
+        granted:   { type: 'boolean' },
+      },
+      required: ['user_id', 'module_id', 'granted'],
+    },
+    async execute(args) {
+      const { error } = await sb().from('user_modules').upsert({
+        user_id:   args.user_id,
+        module_id: args.module_id,
+        granted:   args.granted,
+      }, { onConflict: 'user_id,module_id' })
+      if (error) throw new Error(error.message)
+      return { ok: true }
+    },
+  },
+  {
+    name:        'list_modules',
+    description: 'Liste tous les modules definis dans le systeme (avec leur ordre dans la nav).',
+    destructive: false,
+    input_schema: { type: 'object', properties: {} },
+    async execute() {
+      const { data, error } = await sb().from('modules').select('id, label, description, nav_order').order('nav_order')
+      if (error) throw new Error(error.message)
+      return { count: data?.length || 0, modules: data || [] }
+    },
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────
+// CHAUFFEURS et DEPOTS
+// ─────────────────────────────────────────────────────────────────────
+
+const fleetTools: ToolDef[] = [
+  {
+    name:        'list_drivers',
+    description: 'Liste les chauffeurs (users avec is_driver=true).',
+    destructive: false,
+    input_schema: { type: 'object', properties: {} },
+    async execute() {
+      const { data, error } = await sb().from('users')
+        .select('id, name, email, role, active, is_driver, is_dispatcher')
+        .eq('is_driver', true).eq('active', true).order('name')
+      if (error) throw new Error(error.message)
+      return { count: data?.length || 0, drivers: data || [] }
+    },
+  },
+  {
+    name:        'list_depots',
+    description: 'Liste les depots (points de depart des chauffeurs).',
+    destructive: false,
+    input_schema: { type: 'object', properties: {} },
+    async execute() {
+      const { data, error } = await sb().from('depots').select('*').order('name')
+      if (error) throw new Error(error.message)
+      return { count: data?.length || 0, depots: data || [] }
+    },
+  },
+  {
+    name:        'create_depot',
+    description: 'Cree un nouveau depot (point de depart).',
+    destructive: false,
+    input_schema: {
+      type: 'object',
+      properties: {
+        name:       { type: 'string' },
+        address:    { type: 'string' },
+        lat:        { type: 'number' },
+        lng:        { type: 'number' },
+        is_default: { type: 'boolean', default: false },
+      },
+      required: ['name'],
+    },
+    async execute(args) {
+      const { data, error } = await sb().from('depots').insert({
+        name:       args.name,
+        address:    args.address || null,
+        lat:        args.lat ?? null,
+        lng:        args.lng ?? null,
+        is_default: Boolean(args.is_default),
+        active:     true,
+      }).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, depot: data }
+    },
+  },
+  {
+    name:        'update_depot',
+    description: 'Modifie un depot existant.',
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:         { type: 'string' },
+        name:       { type: 'string' },
+        address:    { type: 'string' },
+        lat:        { type: 'number' },
+        lng:        { type: 'number' },
+        is_default: { type: 'boolean' },
+        active:     { type: 'boolean' },
+      },
+      required: ['id'],
+    },
+    async execute(args) {
+      const { id, ...rest } = args
+      const { data, error } = await sb().from('depots').update(rest).eq('id', id).select().single()
+      if (error) throw new Error(error.message)
+      return { ok: true, depot: data }
     },
   },
 ]
@@ -449,6 +848,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...missionTools,
   ...surchargeTools,
   ...userTools,
+  ...fleetTools,
   ...memoryTools,
 ]
 

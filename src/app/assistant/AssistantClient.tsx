@@ -343,10 +343,27 @@ function ToolUseBlock({ name, input }: { name: string; input: any }) {
     if (name === 'delete_tariff')        return `Désactive le tarif ${input?.id}`
     if (name === 'list_sources')         return 'Liste les sources'
     if (name === 'create_source')        return `Crée la source "${input?.label}"`
+    if (name === 'update_source')        return `Modifie la source "${input?.key}"`
     if (name === 'toggle_source')        return `${input?.active ? 'Active' : 'Désactive'} la source "${input?.key}"`
+    if (name === 'delete_source')        return `Supprime la source "${input?.key}"`
     if (name === 'list_tariff_rules')    return 'Liste les règles dynamiques'
     if (name === 'create_tariff_rule')   return `Crée règle : ${input?.reason}`
+    if (name === 'update_tariff_rule')   return `Modifie la règle ${input?.id}`
+    if (name === 'toggle_tariff_rule')   return `${input?.active ? 'Active' : 'Désactive'} la règle ${input?.id}`
     if (name === 'delete_tariff_rule')   return `Supprime la règle ${input?.id}`
+    if (name === 'update_mission')       return `Modifie la mission ${input?.id}`
+    if (name === 'list_mission_remarks') return `Liste remarques mission ${input?.mission_id}`
+    if (name === 'delete_mission_remark')return `Supprime remarque ${input?.id}`
+    if (name === 'create_surcharge')     return `Crée surcharge "${input?.label}" (+${input?.rate_pct}%)`
+    if (name === 'update_surcharge')     return `Modifie surcharge ${input?.id}`
+    if (name === 'delete_surcharge')     return `Supprime surcharge ${input?.id}`
+    if (name === 'update_user')          return `Modifie user ${input?.id}`
+    if (name === 'set_user_module')      return `${input?.granted ? 'Active' : 'Retire'} module "${input?.module_id}" pour user ${input?.user_id}`
+    if (name === 'list_modules')         return 'Liste les modules'
+    if (name === 'list_drivers')         return 'Liste les chauffeurs'
+    if (name === 'list_depots')          return 'Liste les dépôts'
+    if (name === 'create_depot')         return `Crée dépôt "${input?.name}"`
+    if (name === 'update_depot')         return `Modifie dépôt ${input?.id}`
     if (name === 'search_missions')      return `Recherche missions : "${input?.query || '(toutes)'}"${input?.status ? ` [${input.status}]` : ''}`
     if (name === 'get_mission')          return `Récupère mission ${input?.id}`
     if (name === 'add_mission_remark')   return `Ajoute remarque sur mission ${input?.mission_id}`
