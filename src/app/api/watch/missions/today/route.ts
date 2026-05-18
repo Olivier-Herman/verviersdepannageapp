@@ -88,12 +88,15 @@ export async function GET(req: Request) {
       .in('status', URGENT_STATUSES)
     dispatcher_pending_count = count || 0
 
+    // Top 20 (au lieu de 5) ordonnees par recu en premier (plus urgentes).
+    // Limite raisonnable pour eviter de surcharger le rendu watchOS, qui
+    // peut afficher confortablement ~20 elements en scroll vertical.
     const { data } = await sb
       .from('incoming_missions')
       .select(MISSION_FIELDS)
       .in('status', URGENT_STATUSES)
       .order('received_at', { ascending: true, nullsFirst: false })
-      .limit(5)
+      .limit(20)
     dispatcher_top = ((data || []) as unknown) as WatchMissionLite[]
   }
 
