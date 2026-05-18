@@ -21,6 +21,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Kill-switch : permet de desactiver temporairement le scraper VAB
+  // (ex: pour faire une demo avec une vue propre sans que le cron ne
+  // recree les missions). Set DISABLE_VAB_POLL=true sur Vercel → no-op
+  // au prochain tick. Pas besoin de redeploy pour reactiver.
+  if (process.env.DISABLE_VAB_POLL === 'true') {
+    return NextResponse.json({ ok: true, disabled: true, reason: 'DISABLE_VAB_POLL=true' })
+  }
+
   try {
     const session = await loginVab()
     const { missions, debug } = await listVabMissions(session)
