@@ -12,7 +12,7 @@ export interface NavItem {
   label:    string
   icon:     string
   moduleId: string | null
-  role?:    'dispatcher_or_admin'
+  role?:    'dispatcher_or_admin' | 'superadmin'
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -30,6 +30,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔧', moduleId: 'check_vehicle' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
+  { href: '/assistant',     label: 'Assistant IA',     icon: '🤖', moduleId: null, role: 'superadmin' },
   // 'Mon Profil' retire de la sidebar : doublon avec le UserBlock cliquable
   // en bas qui pointe deja vers /profil.
 ]
@@ -51,8 +52,10 @@ export function filterNavItems(opts: {
   const { userModules, userRole, userNavOrder } = opts
   const isAdmin      = ['admin', 'superadmin'].includes(userRole)
   const isDispatcher = ['dispatcher', 'admin', 'superadmin'].includes(userRole)
+  const isSuperadmin = userRole === 'superadmin'
 
   const visible = NAV_ITEMS.filter(item => {
+    if (item.role === 'superadmin')          return isSuperadmin
     if (item.role === 'dispatcher_or_admin') return isDispatcher
     if (item.moduleId === null) return true
     if (item.moduleId === 'admin') return isAdmin
