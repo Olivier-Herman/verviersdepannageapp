@@ -1,8 +1,16 @@
 // src/lib/push.ts
-// Helper pour envoyer des notifications push Web Push (VAPID)
+// Helper pour envoyer des notifications push.
+// Couvre 2 canaux distincts pour qu un user recoive la notif quel que soit
+// son installation :
+//   1. Web Push (VAPID) -> push_subscriptions (users PWA Safari/Chrome)
+//   2. APNs / FCM       -> device_tokens (users iOS/Android via Capacitor)
+//
+// sendPushToUser / sendPushToRole envoient sur les DEUX canaux pour chaque
+// destinataire, garantissant la livraison peu importe le device.
 
 import webpush from 'web-push'
 import { createAdminClient } from '@/lib/supabase'
+import { sendPushNotification } from './notifications/push'
 
 // Configuration VAPID
 webpush.setVapidDetails(
@@ -21,8 +29,10 @@ export interface PushPayload {
 }
 
 /**
- * Envoie une notification push à un utilisateur spécifique.
- * Supprime automatiquement les abonnements invalides (expirés/révoqués).
+ * Envoie une notification push à un utilisateur spécifique sur TOUS ses canaux :
+ *   - Web Push (PWA Safari/Chrome) via push_subscriptions
+ *   - APNs/FCM (Capacitor iOS/Android + Apple Watch) via device_tokens
+ * Supprime automatiquement les abonnements Web Push révoqués (410/404).
  */
 export async function sendPushToUser(
   userId:  string,
@@ -30,16 +40,15 @@ export async function sendPushToUser(
 ): Promise<{ sent: number; failed: number }> {
   const supabase = createAdminClient()
 
+  let sent = 0, failed = 0
+
+  // 1. Web Push (PWA)
   const { data: subs } = await supabase
     .from('push_subscriptions')
     .select('*')
     .eq('user_id', userId)
 
-  if (!subs?.length) return { sent: 0, failed: 0 }
-
-  let sent = 0, failed = 0
-
-  for (const sub of subs) {
+  for (const sub of subs || []) {
     try {
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
@@ -54,18 +63,28 @@ export async function sendPushToUser(
       )
       sent++
     } catch (err: any) {
-      // 410 Gone ou 404 = abonnement révoqué → supprimer
       if (err.statusCode === 410 || err.statusCode === 404) {
-        await supabase
-          .from('push_subscriptions')
-          .delete()
-          .eq('id', sub.id)
-        console.log(`[Push] Abonnement révoqué supprimé: ${sub.id}`)
+        await supabase.from('push_subscriptions').delete().eq('id', sub.id)
+        console.log(`[Push] Web Push révoqué supprimé: ${sub.id}`)
       } else {
-        console.error(`[Push] Erreur envoi ${sub.id}:`, err.message)
+        console.error(`[Push] Web Push erreur ${sub.id}:`, err.message)
       }
       failed++
     }
+  }
+
+  // 2. APNs/FCM (Capacitor) — meme payload converti
+  try {
+    const native = await sendPushNotification(userId, {
+      title:      payload.title,
+      body:       payload.body,
+      action_url: payload.url,
+      notif_type: payload.tag || 'generic',
+    })
+    sent   += native.sent
+    failed += native.failed
+  } catch (e: any) {
+    console.error('[Push] APNs/FCM dispatch error:', e.message)
   }
 
   return { sent, failed }
