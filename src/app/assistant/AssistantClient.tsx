@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import AppShell from '@/components/layout/AppShell'
 
 interface Props {
@@ -290,8 +292,10 @@ function MessageView({ message }: { message: Message }) {
         {blocks.map((b, i) => {
           if (b.type === 'text' && b.text) {
             return (
-              <div key={i} className="bg-surface border rounded-2xl rounded-bl-sm px-4 py-3 text-ink text-sm whitespace-pre-wrap break-words">
-                {b.text}
+              <div key={i} className="bg-surface border rounded-2xl rounded-bl-sm px-4 py-3 text-ink text-sm break-words assistant-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
+                  {b.text}
+                </ReactMarkdown>
               </div>
             )
           }
@@ -303,6 +307,31 @@ function MessageView({ message }: { message: Message }) {
       </div>
     </div>
   )
+}
+
+const MarkdownComponents = {
+  p:      (props: any) => <p className="my-2 first:mt-0 last:mb-0" {...props} />,
+  h1:     (props: any) => <h1 className="font-display font-bold text-lg mt-3 mb-2" {...props} />,
+  h2:     (props: any) => <h2 className="font-display font-bold text-base mt-3 mb-2" {...props} />,
+  h3:     (props: any) => <h3 className="font-semibold text-sm mt-3 mb-1.5" {...props} />,
+  ul:     (props: any) => <ul className="my-2 ml-4 list-disc space-y-1" {...props} />,
+  ol:     (props: any) => <ol className="my-2 ml-4 list-decimal space-y-1" {...props} />,
+  li:     (props: any) => <li className="leading-relaxed" {...props} />,
+  a:      (props: any) => <a className="text-brand hover:underline" target="_blank" rel="noopener" {...props} />,
+  strong: (props: any) => <strong className="font-semibold text-ink" {...props} />,
+  em:     (props: any) => <em className="italic" {...props} />,
+  blockquote: (props: any) => <blockquote className="border-l-2 border-brand/40 pl-3 my-2 text-ink-muted italic" {...props} />,
+  hr:     () => <hr className="my-3 border-surface-hover" />,
+  code:   ({ inline, className, children, ...props }: any) =>
+    inline
+      ? <code className="bg-surface-2 px-1.5 py-0.5 rounded text-[12px] font-mono text-brand" {...props}>{children}</code>
+      : <code className={className} {...props}>{children}</code>,
+  pre:    (props: any) => <pre className="bg-surface-2 border rounded-lg p-3 my-2 overflow-x-auto text-xs font-mono" {...props} />,
+  table:  (props: any) => <div className="my-3 overflow-x-auto"><table className="w-full text-xs border-collapse" {...props} /></div>,
+  thead:  (props: any) => <thead className="bg-surface-2" {...props} />,
+  th:     (props: any) => <th className="border border-surface-hover px-2 py-1.5 text-left font-semibold text-ink-secondary" {...props} />,
+  td:     (props: any) => <td className="border border-surface-hover px-2 py-1.5 align-top" {...props} />,
+  tr:     (props: any) => <tr className="hover:bg-surface-2/50" {...props} />,
 }
 
 function ToolUseBlock({ name, input }: { name: string; input: any }) {
