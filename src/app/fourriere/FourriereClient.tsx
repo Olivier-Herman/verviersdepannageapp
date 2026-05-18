@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine } from 'lucide-react'
+import Link from 'next/link'
 
 interface Zone {
   state_id:    number
@@ -115,11 +116,18 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
           <div>
             <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {vehicles.length} total</p>
           </div>
-          <button onClick={load} disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition disabled:opacity-50">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Rafraîchir
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/fourriere/inventaire"
+              className="flex items-center gap-2 px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition">
+              <ScanLine size={14} />
+              Inventaire
+            </Link>
+            <button onClick={load} disabled={loading}
+              className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition disabled:opacity-50">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Rafraîchir
+            </button>
+          </div>
         </div>
 
         {/* Filtres zones (pills) */}
