@@ -38,10 +38,10 @@ Analyse le document fourni et retourne UN ARRAY JSON avec UN OBJET par ligne tar
   "surcharge_night_pct": "number — % surcharge nuit, 0 si non applicable",
   "surcharge_we_pct": "number — % surcharge week-end, 0 si non applicable",
   "surcharge_holiday_pct": "number — % surcharge jour férié, 0 si non applicable",
-  "conditions": "string — autres conditions notables (max 200 chars)",
+  "conditions": "string — autres conditions notables (max 100 chars, concis)",
   "is_autofac": "boolean — true si la compagnie facture elle-même (souvent grandes assurances)",
   "effective_from": "string — date d'effet au format YYYY-MM-DD (date actuelle si absente)",
-  "raw_quote": "string — citation exacte du PDF qui justifie cette ligne (max 300 chars)"
+  "raw_quote": "string — citation très brève du PDF qui justifie cette ligne (max 120 chars)"
 }
 
 REGLES :
@@ -82,7 +82,7 @@ export async function extractTariffsFromPdf(
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 8192,  // PDFs tarifaires peuvent contenir 20-50+ lignes
     messages: [
       {
         role: 'user',
@@ -116,7 +116,21 @@ export async function extractTariffsFromPdf(
     const cleaned = textBlock.text.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
     parsed = JSON.parse(cleaned)
   } catch (e: any) {
-    throw new Error(`JSON Claude invalide : ${e.message}. Reponse brute : ${textBlock.text.slice(0, 300)}`)
+    // Tentative de recovery : si le JSON est tronque, essaye de fermer l array
+    // en coupant au dernier objet complet avant l erreur.
+    const trimmed = textBlock.text.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
+    const lastClosingBrace = trimmed.lastIndexOf('}')
+    if (lastClosingBrace > 0) {
+      const recovered = trimmed.slice(0, lastClosingBrace + 1) + ']'
+      try {
+        parsed = JSON.parse(recovered)
+        console.warn('[anthropic-pdf] JSON tronque, recovery applique (' + ((parsed as any[])?.length || 0) + ' lignes recuperees)')
+      } catch {
+        throw new Error(`JSON Claude invalide : ${e.message}. Stop_reason: ${response.stop_reason}. Reponse brute (debut) : ${textBlock.text.slice(0, 300)}`)
+      }
+    } else {
+      throw new Error(`JSON Claude invalide : ${e.message}. Stop_reason: ${response.stop_reason}. Reponse brute (debut) : ${textBlock.text.slice(0, 300)}`)
+    }
   }
 
   if (!Array.isArray(parsed)) {
