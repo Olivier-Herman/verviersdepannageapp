@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
-import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera } from 'lucide-react'
+import dynamic from 'next/dynamic'
+
+const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })
 
 interface Props {
   userRole:    string
@@ -82,6 +85,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   const [currentItem, setCurrentItem]   = useState<ResultItem | null>(null)
   const [items, setItems]               = useState<ResultItem[]>([])
   const [stats, setStats]               = useState<Stats>({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 })
+  const [cameraOpen, setCameraOpen]     = useState(false)
   const scanRef = useRef<HTMLInputElement>(null)
 
   // Auto-focus quand on entre en mode scan
@@ -197,23 +201,27 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     }
   }
 
-  async function exportCSV() {
-    const exportItems = items.filter(i => i.status === 'ok' && i.type !== 'reprint')
-    if (exportItems.length === 0) {
-      alert('Aucun véhicule à exporter (les réimpressions ne sont pas incluses)')
+  async function exportXLSX() {
+    // Inclut TOUS les items (y compris reprints + erreurs) pour un rapport complet
+    if (items.length === 0) {
+      alert('Aucun véhicule scanné pour cette session')
       return
     }
     const res = await fetch('/api/inventaire/export', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ items: exportItems }),
+      body:    JSON.stringify({
+        items,
+        zoneLabel: selectedZone?.fullName || selectedZone?.label,
+        tagName,
+      }),
     })
     if (!res.ok) { alert('Erreur export'); return }
     const blob = await res.blob()
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-    a.download = `inventaire-${tagName}.csv`
+    a.download = `inventaire-${tagName}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -301,8 +309,18 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               </button>
             </div>
 
-            {/* Input scan */}
-            <div className="bg-surface border-2 border-brand rounded-2xl p-4">
+            {/* Boutons scan */}
+            <button
+              onClick={() => setCameraOpen(true)}
+              className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl font-medium flex items-center justify-center gap-2 shadow-md"
+            >
+              <Camera size={18} />
+              Scanner avec la caméra
+            </button>
+
+            {/* Input scan (fallback : saisie manuelle d un n° mission Towsoft) */}
+            <div className="bg-surface border rounded-2xl p-3">
+              <p className="text-[10px] text-ink-faint uppercase tracking-wider mb-1.5">Ou saisie manuelle</p>
               <input
                 ref={scanRef}
                 value={scanInput}
@@ -314,12 +332,14 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                   }
                 }}
                 disabled={processing}
-                placeholder="Scanner un QR code ou taper un numéro de mission Towsoft…"
-                className="w-full bg-surface-2 border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand placeholder:text-ink-faint disabled:opacity-50 font-mono"
+                placeholder="N° mission Towsoft (puis Entrée)…"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint disabled:opacity-50 font-mono"
               />
-              <p className="text-[11px] text-ink-faint mt-2 flex items-center gap-1">
-                {processing ? <><Loader2 className="animate-spin" size={11} /> En cours…</> : 'Le scanner tape automatiquement puis valide avec Entrée'}
-              </p>
+              {processing && (
+                <p className="text-[11px] text-ink-faint mt-1.5 flex items-center gap-1">
+                  <Loader2 className="animate-spin" size={11} /> Traitement en cours…
+                </p>
+              )}
             </div>
 
             {/* Stats */}
@@ -337,12 +357,12 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
             {/* Boutons */}
             <div className="flex gap-2">
               <button
-                onClick={exportCSV}
-                disabled={items.filter(i => i.status === 'ok' && i.type !== 'reprint').length === 0}
-                className="flex-1 py-2.5 bg-surface-hover hover:bg-surface text-ink-secondary hover:text-ink border rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
+                onClick={exportXLSX}
+                disabled={items.length === 0}
+                className="flex-1 py-2.5 bg-success hover:bg-success/90 text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 <Download size={14} />
-                Exporter CSV
+                Exporter rapport Excel
               </button>
               <button
                 onClick={() => { if (confirm('Vider l\'historique de la session ?')) { setItems([]); setCurrentItem(null); setStats({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 }) } }}
@@ -364,6 +384,14 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         )}
 
       </div>
+
+      {cameraOpen && (
+        <QRScanner
+          paused={processing}
+          onScan={(text) => processScan(text)}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
     </AppShell>
   )
 }
