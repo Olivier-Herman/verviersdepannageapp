@@ -261,15 +261,22 @@ export async function GET(req: Request) {
   kpi.avgDispatchConfirmMinutes.delta  = pctDelta(kpi.avgDispatchConfirmMinutes.current  || 0, kpi.avgDispatchConfirmMinutes.previous  || 0)
   kpi.avgAssignmentMinutes.delta       = pctDelta(kpi.avgAssignmentMinutes.current       || 0, kpi.avgAssignmentMinutes.previous       || 0)
 
-  // Breakdown par type
+  // Breakdown par type — normalisation des valeurs DB :
+  //   REM / remorquage   → remorquage
+  //   DSP / depannage / reparation_place → dsp (= dépannage sur place)
+  //   trajet_vide        → trajet_vide
+  const normalizeType = (t: string | null): string => (t ?? '').toLowerCase().trim()
+  const isRemorquage = (t: string | null) => ['rem', 'remorquage'].includes(normalizeType(t))
+  const isTrajetVide = (t: string | null) => normalizeType(t) === 'trajet_vide'
+  const isDsp = (t: string | null) => ['dsp', 'depannage', 'reparation_place'].includes(normalizeType(t))
+
   const byType = {
-    remorquage:    current.filter(m => m.mission_type === 'remorquage').length,
-    depannage:     current.filter(m => m.mission_type === 'depannage').length,
-    parc:          current.filter(m => m.status === 'parked').length,
-    dpr:           current.filter(m => m.dpr_motif != null).length,
-    reparation_place: current.filter(m => m.mission_type === 'reparation_place').length,
-    trajet_vide:   current.filter(m => m.mission_type === 'trajet_vide').length,
-    autre:         current.filter(m => !['remorquage', 'depannage', 'reparation_place', 'trajet_vide'].includes(m.mission_type || '')).length,
+    remorquage:  current.filter(m => isRemorquage(m.mission_type)).length,
+    dsp:         current.filter(m => isDsp(m.mission_type)).length,
+    parc:        current.filter(m => m.status === 'parked').length,
+    dpr:         current.filter(m => m.dpr_motif != null).length,
+    trajet_vide: current.filter(m => isTrajetVide(m.mission_type)).length,
+    null_or_unknown: current.filter(m => !isRemorquage(m.mission_type) && !isDsp(m.mission_type) && !isTrajetVide(m.mission_type)).length,
   }
 
   // Conversions REM <-> DSP : depuis mission_logs
@@ -282,9 +289,9 @@ export async function GET(req: Request) {
       .in('mission_id', missionIds)
     for (const log of logs || []) {
       const meta = log.metadata as any
-      const newType = meta?.new_type || meta?.action_payload?.new_type
-      if (newType === 'depannage')  conversions.rem_to_dsp++
-      if (newType === 'remorquage') conversions.dsp_to_rem++
+      const newType = (meta?.new_type || meta?.action_payload?.new_type || '').toLowerCase()
+      if (['dsp', 'depannage', 'reparation_place'].includes(newType))  conversions.rem_to_dsp++
+      if (['rem', 'remorquage'].includes(newType))                      conversions.dsp_to_rem++
     }
   }
 

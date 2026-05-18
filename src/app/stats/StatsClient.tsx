@@ -40,7 +40,14 @@ interface StatsResponse {
     avgDispatchConfirmMinutes:    KpiValue
     avgAssignmentMinutes:         KpiValue
   }
-  byType: Record<string, number>
+  byType: {
+    remorquage:       number
+    dsp:              number
+    parc:             number
+    dpr:              number
+    trajet_vide:      number
+    null_or_unknown:  number
+  }
   conversions: { rem_to_dsp: number; dsp_to_rem: number }
   bySource:    { source: string; count: number; avgInterventionMinutes: number | null }[]
   byDriver:    { driver_id: string; name: string; missions_count: number; completed: number; refused: number; avg_intervention_minutes: number | null }[]
@@ -173,14 +180,14 @@ export default function StatsClient(props: StatsClientProps) {
 
             {/* ── Stats secondaires ──────────────────────────── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MiniStat label="Remorquages" value={data.byType.remorquage || 0} icon="🚛" />
-              <MiniStat label="Dépannages"  value={data.byType.depannage || 0}  icon="🔧" />
-              <MiniStat label="Mises en parc" value={data.byType.parc || 0}    icon="🅿️" />
-              <MiniStat label="DPR"          value={data.byType.dpr || 0}      icon="❌" color="text-red-500" />
-              <MiniStat label="REM → DSP"    value={data.conversions.rem_to_dsp}  icon="↔️" />
-              <MiniStat label="DSP → REM"    value={data.conversions.dsp_to_rem}  icon="↔️" />
-              <MiniStat label="Refus auto-disp." value={data.refusalsAutoDispatch.current ?? 0} icon="🚫" color="text-orange-500" />
-              <MiniStat label="Réparation place" value={data.byType.reparation_place || 0} icon="🛠️" />
+              <MiniStat label="Remorquages (REM)" value={data.byType.remorquage || 0} icon="🚛" />
+              <MiniStat label="Dépannages (DSP)"  value={data.byType.dsp || 0}        icon="🔧" />
+              <MiniStat label="Mises en parc"     value={data.byType.parc || 0}       icon="🅿️" />
+              <MiniStat label="Trajets à vide"    value={data.byType.trajet_vide || 0} icon="🛣️" />
+              <MiniStat label="DPR"               value={data.byType.dpr || 0}        icon="❌" color="text-red-500" />
+              <MiniStat label="REM → DSP"         value={data.conversions.rem_to_dsp} icon="↔️" />
+              <MiniStat label="DSP → REM"         value={data.conversions.dsp_to_rem} icon="↔️" />
+              <MiniStat label="Refus auto-disp."  value={data.refusalsAutoDispatch.current ?? 0} icon="🚫" color="text-orange-500" />
             </div>
 
             {/* ── Charts ──────────────────────────────────────── */}
