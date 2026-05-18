@@ -100,6 +100,23 @@ export async function GET(req: Request) {
           ? `${detail.missionNumber}/${detail.dossierNumber}`
           : detail.missionNumber
 
+        // Construction de l adresse d intervention :
+        // - Si rue + code postal + ville → "Rue, code postal, Ville"
+        // - Si seulement code postal + ville → "Code postal, Ville"
+        // - Si texte libre de localisation (autoroute, "ENFACE N5", etc.)
+        //   → on l ajoute en suffixe pour aider le dispatcher
+        const addressParts: string[] = []
+        if (detail.fromStreet) addressParts.push(detail.fromStreet)
+        if (detail.fromZip || detail.fromCity) {
+          addressParts.push([detail.fromZip, detail.fromCity].filter(Boolean).join(' '))
+        }
+        let incidentAddress = addressParts.filter(Boolean).join(', ') || null
+        if (detail.fromLocationFreeText && incidentAddress) {
+          incidentAddress = `${incidentAddress} — ${detail.fromLocationFreeText}`
+        } else if (detail.fromLocationFreeText && !incidentAddress) {
+          incidentAddress = detail.fromLocationFreeText
+        }
+
         const { error: insertErr } = await sb.from('incoming_missions').insert({
           external_id:        assignmentId || detail.missionNumber,
           dossier_number:     fullDossier,
@@ -111,13 +128,19 @@ export async function GET(req: Request) {
                             : null,
           incident_type:      detail.codesDePanne,
           incident_description: detail.codesDePanne,
+          // Client final (assurance / proprietaire vehicule) — pas dispo en
+          // pre-acceptation, sera complete par le mail VAB apres acceptation
           client_name:        detail.clientName,
           client_phone:       detail.clientPhone,
+          // Personne en panne sur place (extrait de "Localisation du vehicule")
+          assisted_name:      detail.fromName,
+          assisted_phone:     detail.fromPhone,
           vehicle_plate:      detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,
           vehicle_brand:      detail.vehicleBrand,
           vehicle_model:      detail.vehicleModel,
           vehicle_vin:        detail.vehicleVin,
-          incident_address:   [detail.fromStreet, detail.fromZip, detail.fromCity].filter(Boolean).join(', ') || null,
+          vehicle_fuel:       detail.vehicleFuel,
+          incident_address:   incidentAddress,
           incident_city:      detail.fromCity,
           destination_name:   detail.toName,
           destination_address: [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null,

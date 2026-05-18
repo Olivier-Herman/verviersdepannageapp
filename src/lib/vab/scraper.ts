@@ -545,8 +545,12 @@ export interface VabMissionDetail {
   vehicleVin:       string | null
   vehicleYear:      string | null
   vehicleColor:     string | null
+  vehicleFuel:      string | null
+  vehicleTraction:  string | null
   /** Categorie vehicule (Voiture / Moto / Camion / ...) */
   vehicleCategory:  string | null
+  /** Texte libre "Localisation du véhicule" (ex: "E25 PARKING HARRE (OUEST) --> DIRECTION LIEGE") */
+  fromLocationFreeText: string | null
   // Raw HTML dump for debug
   rawSnippet:       string
 }
@@ -625,31 +629,33 @@ export async function fetchVabMissionDetail(
     return fields
   }
 
-  // Trouve les conteneurs par suffixe d'id
-  function findContainerByIdSuffix(suffix: string): any {
+  // Trouve un Panel (encart .Panel > .Panel__title) par titre. Plus robuste
+  // que les ids OutSystems (`wtLocationFromContainer2` etc.) qui changent
+  // entre versions de la page VAB. Le titre, lui, est stable.
+  function findPanelByTitle(titles: string[]): any {
     let result: any = null
-    $(`[id$="${suffix}"]`).each((_idx: number, el: any) => {
+    $('.Panel').each((_idx: number, panel: any) => {
       if (result) return
-      result = $(el)
+      const $panel = $(panel)
+      const title = $panel.find('.Panel__title').first().text().trim().toLowerCase()
+      if (titles.some(t => title.includes(t.toLowerCase()))) {
+        result = $panel.find('.Panel_content').first()
+        // Fallback : si pas de .Panel_content (variation OutSystems), retourne le panel lui-même
+        if (!result || result.length === 0) result = $panel
+      }
     })
     return result
   }
 
-  const fromContainer    = findContainerByIdSuffix('wtLocationFromContainer2')
-  const toContainer      = findContainerByIdSuffix('wtLocationToContainer2')
-  const generalContainer = findContainerByIdSuffix('wtGeneralInfoContainer')
-
-  // Le panel "Informations véhicule" n'a pas d'id reconnaissable mais on peut
-  // le trouver via son titre (Heading3 contenant "Informations véhicule")
-  let vehicleContainer: any = null
-  $('.Panel').each((_idx: number, panel: any) => {
-    if (vehicleContainer) return
-    const $panel = $(panel)
-    const title = $panel.find('.Panel__title').first().text().trim()
-    if (title.includes('Informations véhicule') || title.includes('Informations vehicule')) {
-      vehicleContainer = $panel.find('.Panel_content').first()
-    }
-  })
+  // Containers par titre (stable a travers les versions OutSystems).
+  // "Localisation du véhicule" = section "from" (où se trouve le vehicule)
+  // "Emplacement à"            = section "to"   (destination, si applicable)
+  // "Informations générales"   = client + intervention date (post-acceptation)
+  // "Informations véhicule"    = plaque, marque, modèle, etc.
+  const fromContainer    = findPanelByTitle(['Localisation du véhicule', 'Localisation du vehicule', 'Emplacement de'])
+  const toContainer      = findPanelByTitle(['Emplacement à', 'Emplacement a', 'Destination'])
+  const generalContainer = findPanelByTitle(['Informations générales', 'Informations generales'])
+  const vehicleContainer = findPanelByTitle(['Informations véhicule', 'Informations vehicule'])
 
   // Extraction par section
   const fromFields    = extractFields(fromContainer)
@@ -725,6 +731,8 @@ export async function fetchVabMissionDetail(
     fromZip:        fromFields['Code postal'] || null,
     fromCity:       fromFields['Ville'] || null,
     fromPhone:      fromFields['Téléphone'] || fromFields['GSM'] || null,
+    // Texte libre type "ENFACE N5" ou "E25 PARKING HARRE (OUEST) --> DIRECTION LIEGE"
+    fromLocationFreeText: fromFields['Localisation du véhicule'] || fromFields['Localisation du vehicule'] || null,
 
     toName:         toFields['Nom'] || null,
     toStreet:       toFields['Rue'] || null,
@@ -742,6 +750,8 @@ export async function fetchVabMissionDetail(
     vehicleVin:     vehicleFields['Numéro de châssis'] || vehicleFields['VIN'] || null,
     vehicleYear:    vehicleFields['Année de construction'] || null,
     vehicleColor:   vehicleFields['Couleur'] || null,
+    vehicleFuel:    vehicleFields['Carburant'] || null,
+    vehicleTraction: vehicleFields['Traction'] || null,
     vehicleCategory: vehicleCategorie,
 
     rawSnippet: `taskType=${taskTypeRaw} | fields=from(${Object.keys(fromFields).length}) to(${Object.keys(toFields).length}) gen(${Object.keys(generalFields).length}) veh(${Object.keys(vehicleFields).length}) | codes=${codesDePanne || 'n/a'}`,
