@@ -77,6 +77,10 @@ export default function TarifsClient(props: Props) {
   const [extractDocName, setExtractDocName] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // Edit modal (édition individuelle ou création manuelle)
+  const [editTariff, setEditTariff] = useState<Partial<Tariff> | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadTariffs = () => {
@@ -154,6 +158,51 @@ export default function TarifsClient(props: Props) {
     if (res.ok) loadTariffs()
   }
 
+  const openNewManual = () => {
+    setEditTariff({
+      source:                filterSource || 'autre',
+      mission_type:          'depannage',
+      unit_price:            null,
+      km_inclus:             0,
+      km_price:              null,
+      parc_day_price:        null,
+      surcharge_night_pct:   0,
+      surcharge_we_pct:      0,
+      surcharge_holiday_pct: 0,
+      conditions:            '',
+      is_autofac:            false,
+      effective_from:        new Date().toISOString().slice(0, 10),
+    })
+  }
+
+  const handleEditSave = async () => {
+    if (!editTariff) return
+    setEditSaving(true)
+    try {
+      if (editTariff.id) {
+        // Update existant
+        const res = await fetch(`/api/admin/tarifs/${editTariff.id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(editTariff),
+        })
+        if (!res.ok) { alert('Erreur: ' + (await res.json()).error); return }
+      } else {
+        // Create new
+        const res = await fetch('/api/admin/tarifs', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ tariffs: [editTariff] }),
+        })
+        if (!res.ok) { alert('Erreur: ' + (await res.json()).error); return }
+      }
+      setEditTariff(null)
+      loadTariffs()
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   const formatPrice = (n: number | null) => n != null ? `${n.toFixed(2)} €` : '—'
 
   return (
@@ -166,12 +215,25 @@ export default function TarifsClient(props: Props) {
       userModules={props.userModules}
     >
       <div className="space-y-4 max-w-6xl mx-auto p-4">
-        <div className="bg-surface p-4 rounded-lg flex flex-wrap gap-2 items-center">
-          <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="px-3 py-2 bg-surface-hover rounded text-sm">
-            <option value="">Toutes sources</option>
-            {SOURCES.map(s => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
-          </select>
+        {/* ── Onglets par source ─────────────────────────────── */}
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          <SourceTab active={filterSource === ''} label="Toutes" count={null} onClick={() => setFilterSource('')} />
+          {SOURCES.map(s => {
+            const count = tariffs.filter(t => t.source === s).length
+            // Quand on est sur "Toutes", on affiche le count par source. Sinon, count = visible.
+            return <SourceTab key={s} active={filterSource === s} label={SOURCE_LABELS[s]} count={filterSource === '' ? count : null} onClick={() => setFilterSource(s)} />
+          })}
+        </div>
+
+        {/* ── Actions ────────────────────────────────────────── */}
+        <div className="bg-surface p-3 rounded-lg flex flex-wrap gap-2 items-center">
+          <div className="text-sm text-ink-faint">
+            {filterSource ? `${tariffs.length} tarif${tariffs.length !== 1 ? 's' : ''} ${SOURCE_LABELS[filterSource] || filterSource}` : `${tariffs.length} tarifs au total`}
+          </div>
           <div className="ml-auto flex gap-2">
+            <button onClick={openNewManual} className="px-4 py-2 bg-surface-hover text-ink rounded font-medium text-sm border border-surface-hover hover:border-brand transition">
+              + Ajouter manuellement
+            </button>
             <button onClick={() => setShowUpload(true)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
               📄 Importer un PDF
             </button>
@@ -205,7 +267,7 @@ export default function TarifsClient(props: Props) {
               </thead>
               <tbody>
                 {tariffs.map(t => (
-                  <tr key={t.id} className="border-t border-surface-hover">
+                  <tr key={t.id} className="border-t border-surface-hover hover:bg-surface-hover/50 cursor-pointer" onClick={() => setEditTariff(t)}>
                     <td className="p-2 font-medium">{SOURCE_LABELS[t.source] || t.source}</td>
                     <td className="p-2">{TYPE_LABELS[t.mission_type] || t.mission_type}</td>
                     <td className="p-2 text-right">{formatPrice(t.unit_price)}</td>
@@ -215,7 +277,7 @@ export default function TarifsClient(props: Props) {
                     <td className="p-2 text-center text-xs">{t.surcharge_night_pct || 0}/{t.surcharge_we_pct || 0}/{t.surcharge_holiday_pct || 0}</td>
                     <td className="p-2 text-center">{t.is_autofac ? '✓' : '—'}</td>
                     <td className="p-2 text-center text-xs">{t.effective_from}{t.effective_to ? ` → ${t.effective_to}` : ''}</td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 text-center" onClick={e => e.stopPropagation()}>
                       {t.source_document_path && (
                         <a
                           href={`/api/admin/tarifs/document?path=${encodeURIComponent(t.source_document_path)}`}
@@ -348,6 +410,77 @@ export default function TarifsClient(props: Props) {
             </div>
           </div>
         )}
+        {/* ── Edit modal ────────────────────────────────────── */}
+        {editTariff && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !editSaving && setEditTariff(null)}>
+            <div className="bg-surface rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <h2 className="text-lg font-display font-bold mb-4">
+                {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                <FieldSelect label="Source" value={editTariff.source || ''} options={SOURCES} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
+                <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
+                <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
+                <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
+                <FieldNumber label="€/km extra" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
+                <FieldNumber label="€/jour parc" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+                <FieldNumber label="Surcharge nuit %" value={editTariff.surcharge_night_pct ?? 0} onChange={v => setEditTariff(p => ({ ...p!, surcharge_night_pct: v ?? 0 }))} />
+                <FieldNumber label="Surcharge WE %" value={editTariff.surcharge_we_pct ?? 0} onChange={v => setEditTariff(p => ({ ...p!, surcharge_we_pct: v ?? 0 }))} />
+                <FieldNumber label="Surcharge JF %" value={editTariff.surcharge_holiday_pct ?? 0} onChange={v => setEditTariff(p => ({ ...p!, surcharge_holiday_pct: v ?? 0 }))} />
+                <div>
+                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Effective from</label>
+                  <input
+                    type="date"
+                    value={editTariff.effective_from || ''}
+                    onChange={e => setEditTariff(p => ({ ...p!, effective_from: e.target.value }))}
+                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Effective to (vide = en vigueur)</label>
+                  <input
+                    type="date"
+                    value={editTariff.effective_to || ''}
+                    onChange={e => setEditTariff(p => ({ ...p!, effective_to: e.target.value || null }))}
+                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Conditions / Notes</label>
+                  <textarea
+                    value={editTariff.conditions || ''}
+                    onChange={e => setEditTariff(p => ({ ...p!, conditions: e.target.value }))}
+                    rows={2}
+                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-ink-faint flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editTariff.is_autofac || false}
+                      onChange={e => setEditTariff(p => ({ ...p!, is_autofac: e.target.checked }))}
+                    />
+                    Autofacturation (l'assurance facture elle-même, pas de facture Odoo VD)
+                  </label>
+                </div>
+                {editTariff.notes && (
+                  <div className="col-span-2 text-xs text-ink-faint italic border-l-2 border-brand/30 pl-2">
+                    {editTariff.notes}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-6">
+                <button onClick={() => setEditTariff(null)} disabled={editSaving} className="flex-1 px-4 py-2 bg-surface-hover rounded text-sm">
+                  Annuler
+                </button>
+                <button onClick={handleEditSave} disabled={editSaving} className="flex-1 px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
+                  {editSaving ? '⏳ Enregistrement…' : (editTariff.id ? '💾 Modifier' : '➕ Créer')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   )
@@ -359,6 +492,21 @@ export default function TarifsClient(props: Props) {
       return next
     })
   }
+}
+
+function SourceTab({ active, label, count, onClick }: { active: boolean; label: string; count: number | null; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-t font-medium text-sm whitespace-nowrap transition-colors ${
+        active
+          ? 'bg-surface text-brand border-b-2 border-brand'
+          : 'bg-surface-hover text-ink-secondary hover:text-ink'
+      }`}
+    >
+      {label}{count != null && ` (${count})`}
+    </button>
+  )
 }
 
 function FieldNumber({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }) {
