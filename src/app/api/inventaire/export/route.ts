@@ -75,21 +75,6 @@ export async function POST(req: Request) {
     return { wch: Math.min(50, Math.max(10, maxLen + 2)) }
   })
 
-  // Header en gras (style direct sur les cellules)
-  for (let i = 0; i < headers.length; i++) {
-    const cellAddress = XLSX.utils.encode_cell({ r: 0, c: i })
-    if (ws[cellAddress]) {
-      ws[cellAddress].s = {
-        font: { bold: true },
-        fill: { fgColor: { rgb: 'F3F4F6' } },
-        alignment: { horizontal: 'center' },
-      }
-    }
-  }
-
-  // Freeze 1ere ligne
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 }
-
   const sheetName = body.tagName ? `Inventaire ${body.tagName}` : 'Inventaire'
   XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31))
 
@@ -116,20 +101,12 @@ export async function POST(req: Request) {
     ['Étiquettes imprimées', printed],
   ]
   const summaryWs = XLSX.utils.aoa_to_sheet(summary)
-  summaryWs['!cols'] = [{ wch: 28 }, { wch: 22 }]
-  // Titre en gras + grand
-  if (summaryWs['A1']) {
-    summaryWs['A1'].s = { font: { bold: true, sz: 14 } }
-  }
-  // Labels stats en gras
-  for (let r = 6; r < 12; r++) {
-    const addr = XLSX.utils.encode_cell({ r, c: 0 })
-    if (summaryWs[addr]) summaryWs[addr].s = { font: { bold: true } }
-  }
+  summaryWs['!cols'] = [{ wch: 28 }, { wch: 30 }]
   XLSX.utils.book_append_sheet(wb, summaryWs, 'Résumé')
 
-  // Genere le buffer
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true })
+  // Genere le buffer (sans cellStyles : la lib xlsx community ne les
+  // supporte pas a l ecriture, ca casse silencieusement le fichier).
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
 
   const date = new Date().toISOString().split('T')[0]
   const filename = `inventaire-${body.tagName || date}.xlsx`

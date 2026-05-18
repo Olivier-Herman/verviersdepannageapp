@@ -94,15 +94,6 @@ export async function POST(req: Request) {
     const maxLen = Math.max(h.length, ...rows.map(r => String((r as any)[h] || '').length))
     return { wch: Math.min(50, Math.max(10, maxLen + 2)) }
   })
-  for (let i = 0; i < headers.length; i++) {
-    const addr = XLSX.utils.encode_cell({ r: 0, c: i })
-    if (ws[addr]) ws[addr].s = {
-      font: { bold: true },
-      fill: { fgColor: { rgb: 'F3F4F6' } },
-      alignment: { horizontal: 'center' },
-    }
-  }
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 }
 
   const sheetName = body.tagName ? `Inventaire ${body.tagName}` : 'Inventaire'
   XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31))
@@ -131,14 +122,9 @@ export async function POST(req: Request) {
   ]
   const sumWs = XLSX.utils.aoa_to_sheet(summary)
   sumWs['!cols'] = [{ wch: 28 }, { wch: 30 }]
-  if (sumWs['A1']) sumWs['A1'].s = { font: { bold: true, sz: 14 } }
-  for (let r = 7; r < 13; r++) {
-    const addr = XLSX.utils.encode_cell({ r, c: 0 })
-    if (sumWs[addr]) sumWs[addr].s = { font: { bold: true } }
-  }
   XLSX.utils.book_append_sheet(wb, sumWs, 'Résumé')
 
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true }) as Buffer
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
   const filename = `inventaire-${body.tagName || new Date().toISOString().split('T')[0]}.xlsx`
 
   // ── Envoi via Graph sendMail ──────────────────────────────────────

@@ -89,7 +89,66 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   const [stats, setStats]               = useState<Stats>({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 })
   const [cameraOpen, setCameraOpen]     = useState(false)
   const [autoPrint, setAutoPrint]       = useState(false)
+  // Session DB pour synchro cross-device (iPhone scan ↔ Mac telecharge)
+  const [sessionId, setSessionId]       = useState<string | null>(null)
+  const [restoring, setRestoring]       = useState(true)
   const scanRef = useRef<HTMLInputElement>(null)
+
+  // Restore session active au mount (synchro cross-device)
+  useEffect(() => {
+    let canceled = false
+    fetch('/api/inventaire/sessions/current')
+      .then(r => r.json())
+      .then(j => {
+        if (canceled) return
+        if (j.ok && j.session) {
+          setSessionId(j.session.id)
+          setAutoPrint(Boolean(j.session.auto_print))
+          if (j.session.zone_state_id) {
+            setSelectedZone({
+              stateId:  j.session.zone_state_id,
+              code:     j.session.zone_code || '',
+              label:    j.session.zone_label || '',
+              fullName: j.session.zone_full_name || '',
+            })
+          }
+          // Restaure items depuis DB (deja tries desc par created_at)
+          const restoredItems: ResultItem[] = (j.items || []).map((it: any) => ({
+            status:         it.status,
+            type:           it.item_type,
+            label:          it.label || '',
+            sublabel:       it.sublabel || undefined,
+            msg:            it.msg || undefined,
+            zone:           it.zone || undefined,
+            printed:        it.printed === null ? undefined : it.printed,
+            ticketId:       it.ticket_id || undefined,
+            missionNum:     it.mission_num || undefined,
+            refDossier:     it.ref_dossier || undefined,
+            dateMission:    it.date_mission || undefined,
+            marque:         it.marque || undefined,
+            modele:         it.modele || undefined,
+            plaque:         it.plaque || undefined,
+            vin:            it.vin || undefined,
+            motif:          it.motif || undefined,
+            parc:           it.parc || undefined,
+          }))
+          setItems(restoredItems)
+          // Re-calcul stats
+          setStats({
+            total:     restoredItems.length,
+            created:   restoredItems.filter(i => i.type === 'created').length,
+            updated:   restoredItems.filter(i => i.type === 'updated').length,
+            reprinted: restoredItems.filter(i => i.type === 'reprint').length,
+            errors:    restoredItems.filter(i => i.status === 'error').length,
+          })
+          // Si zone definie : on saute direct au mode scan
+          if (j.session.zone_state_id) setStep('scan')
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!canceled) setRestoring(false) })
+    return () => { canceled = true }
+  }, [])
 
   // Auto-focus quand on entre en mode scan
   useEffect(() => {
@@ -97,6 +156,16 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       setTimeout(() => scanRef.current?.focus(), 100)
     }
   }, [step])
+
+  /** Persiste un item dans la session DB (async, ne bloque pas l UI). */
+  function persistItem(item: ResultItem) {
+    if (!sessionId) return
+    fetch(`/api/inventaire/sessions/${sessionId}/items`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(item),
+    }).catch(e => console.warn('[inventaire] persist item fail:', e))
+  }
 
   async function processScan(raw: string) {
     const trimmed = raw.trim()
@@ -106,9 +175,11 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     const parsed = parseQR(trimmed)
     if (!parsed) {
       playLoseSound()
-      setCurrentItem({ status: 'error', type: 'error', label: trimmed, msg: 'QR non reconnu' })
-      setItems(prev => [{ status: 'error', type: 'error', label: trimmed, msg: 'QR non reconnu', zone: selectedZone?.label }, ...prev])
+      const errItem: ResultItem = { status: 'error', type: 'error', label: trimmed, msg: 'QR non reconnu', zone: selectedZone?.label }
+      setCurrentItem(errItem)
+      setItems(prev => [errItem, ...prev])
       setStats(prev => ({ ...prev, total: prev.total + 1, errors: prev.errors + 1 }))
+      persistItem(errItem)
       setTimeout(() => scanRef.current?.focus(), 200)
       return
     }
@@ -134,16 +205,26 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
         playWinSound()
         const result: ResultItem = {
-          status:   'ok',
-          type:     'reprint',
-          label:    `Ticket #${parsed.ticketId}`,
-          printed:  data.printed,
-          zone:     selectedZone?.label,
-          ticketId: parseInt(String(parsed.ticketId), 10),
+          status:      'ok',
+          type:        'reprint',
+          // Si on a la plaque, on l affiche en titre. Sinon fallback ticket #.
+          label:       data.plate || `Ticket #${parsed.ticketId}`,
+          sublabel:    [data.brand, data.model].filter(Boolean).join(' ') || undefined,
+          printed:     data.printed,
+          zone:        selectedZone?.label,
+          ticketId:    parseInt(String(parsed.ticketId), 10),
+          plaque:      data.plate || undefined,
+          marque:      data.brand || undefined,
+          modele:      data.model || undefined,
+          vin:         data.vin || undefined,
+          motif:       data.motif || undefined,
+          missionNum:  data.missionNum || undefined,
+          dateMission: data.dateEntree || undefined,
         }
         setCurrentItem(result)
         setItems(prev => [result, ...prev])
         setStats(prev => ({ ...prev, total: prev.total + 1, reprinted: prev.reprinted + 1 }))
+        persistItem(result)
 
       } else {
         // Cas 2 : QR Towsoft → scrape + create/update + tag mensuel + print
@@ -197,6 +278,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           created: prev.created + (processData.vehicleCreated ? 1 : 0),
           updated: prev.updated + (!processData.vehicleCreated ? 1 : 0),
         }))
+        persistItem(result)
       }
     } catch (err: any) {
       playLoseSound()
@@ -210,6 +292,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       setCurrentItem(errorItem)
       setItems(prev => [errorItem, ...prev])
       setStats(prev => ({ ...prev, total: prev.total + 1, errors: prev.errors + 1 }))
+      persistItem(errorItem)
     } finally {
       setProcessing(false)
       setTimeout(() => scanRef.current?.focus(), 300)
@@ -232,6 +315,71 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     } catch (e: any) {
       alert(`Erreur impression : ${e.message || e}`)
     }
+  }
+
+  /** Cree (ou reprend) une session en DB et passe en mode scan. */
+  async function startScanSession() {
+    if (!selectedZone) return
+    try {
+      const res = await fetch('/api/inventaire/sessions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          tag_name:       tagName,
+          zone_state_id:  selectedZone.stateId,
+          zone_code:      selectedZone.code,
+          zone_label:     selectedZone.label,
+          zone_full_name: selectedZone.fullName,
+          auto_print:     autoPrint,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok || !j.ok) { alert(j.error || 'Erreur creation session'); return }
+      setSessionId(j.session.id)
+      setStep('scan')
+    } catch (e: any) {
+      alert(`Erreur : ${e.message || e}`)
+    }
+  }
+
+  /** Met a jour auto_print cote DB quand on toggle le checkbox. */
+  async function updateAutoPrint(value: boolean) {
+    setAutoPrint(value)
+    if (!sessionId) return
+    fetch(`/api/inventaire/sessions/${sessionId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ auto_print: value }),
+    }).catch(() => {})
+  }
+
+  /** Met a jour la zone cote DB quand on revient au setup pour la changer. */
+  async function updateZone(z: { stateId: number; code: string; label: string; fullName: string }) {
+    setSelectedZone(z)
+    if (!sessionId) return
+    fetch(`/api/inventaire/sessions/${sessionId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        zone_state_id:  z.stateId,
+        zone_code:      z.code,
+        zone_label:     z.label,
+        zone_full_name: z.fullName,
+      }),
+    }).catch(() => {})
+  }
+
+  /** Ferme la session active en DB et reset l etat local. */
+  async function clearSession() {
+    if (!confirm('Terminer cette session ? Tu pourras toujours consulter le rapport ensuite.')) return
+    if (sessionId) {
+      await fetch(`/api/inventaire/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => {})
+    }
+    setSessionId(null)
+    setItems([])
+    setCurrentItem(null)
+    setStats({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 })
+    setStep('setup')
   }
 
   async function sendMailReport() {
@@ -287,7 +435,14 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     <AppShell title="Inventaire fourrière" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <div className="max-w-2xl mx-auto p-4 space-y-4">
 
-        {step === 'setup' && (
+        {restoring && (
+          <div className="bg-surface border rounded-2xl p-4 text-center text-ink-faint text-sm flex items-center justify-center gap-2">
+            <Loader2 className="animate-spin" size={14} />
+            Restauration de la session…
+          </div>
+        )}
+
+        {!restoring && step === 'setup' && (
           <div className="bg-surface border rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <Settings size={18} className="text-brand" />
@@ -312,7 +467,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                 {FOURRIERE_ZONES.map(z => (
                   <button
                     key={z.state_id}
-                    onClick={() => setSelectedZone({
+                    onClick={() => updateZone({
                       stateId:  z.state_id,
                       code:     z.code,
                       label:    z.label,
@@ -336,7 +491,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                 <input
                   type="checkbox"
                   checked={autoPrint}
-                  onChange={e => setAutoPrint(e.target.checked)}
+                  onChange={e => updateAutoPrint(e.target.checked)}
                   className="mt-0.5 w-4 h-4 accent-brand"
                 />
                 <div className="flex-1">
@@ -353,17 +508,17 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
             </div>
 
             <button
-              onClick={() => setStep('scan')}
+              onClick={startScanSession}
               disabled={!selectedZone}
               className="w-full py-3 bg-brand text-white rounded-xl font-medium disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <ScanLine size={18} />
-              Démarrer le scan
+              {sessionId ? 'Reprendre la session' : 'Démarrer le scan'}
             </button>
           </div>
         )}
 
-        {step === 'scan' && selectedZone && (
+        {!restoring && step === 'scan' && selectedZone && (
           <>
             {/* Header session */}
             <div className="bg-surface border rounded-2xl p-3 flex items-center gap-3">
@@ -452,12 +607,12 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               </button>
             </div>
             <button
-              onClick={() => { if (confirm('Vider l\'historique de la session ?')) { setItems([]); setCurrentItem(null); setStats({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 }) } }}
+              onClick={clearSession}
               className="w-full py-2 bg-surface-hover hover:bg-critical-soft text-ink-secondary hover:text-critical border rounded-xl text-xs transition flex items-center justify-center gap-1.5"
-              title="Vider la session"
+              title="Terminer la session"
             >
               <RefreshCw size={12} />
-              Vider la session
+              Terminer la session
             </button>
 
             {/* Historique */}

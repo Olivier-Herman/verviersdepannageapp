@@ -262,9 +262,17 @@ export interface ReprintParams {
 }
 
 export interface ReprintResult {
-  ticketId: number
-  printed:  boolean
-  tagged:   boolean
+  ticketId:    number
+  printed:     boolean
+  tagged:      boolean
+  // Infos vehicule resolves (utiles pour l historique inventaire + export)
+  plate:       string | null
+  vin:         string | null
+  brand:       string | null
+  model:       string | null
+  motif:       string | null
+  dateEntree:  string | null
+  missionNum:  string | null
 }
 
 export async function reprintInventoryLabel(params: ReprintParams): Promise<ReprintResult> {
@@ -272,7 +280,8 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
   const tickets = await odooRpc<any[]>('helpdesk.ticket', 'search_read', [
     [['id', '=', params.ticketId]],
   ], {
-    fields: ['id', 'tag_ids', 'x_studio_fiche_vehicule', 'x_studio_date_dentree', 'x_studio_note_sur_etiquette'],
+    fields: ['id', 'tag_ids', 'x_studio_fiche_vehicule', 'x_studio_date_dentree',
+             'x_studio_note_sur_etiquette', 'x_studio_mission_towsoft'],
     limit:  1,
   })
   if (!tickets || tickets.length === 0) throw new Error('Ticket introuvable')
@@ -335,7 +344,18 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
     })
   }
 
-  return { ticketId: params.ticketId, printed, tagged }
+  return {
+    ticketId:   params.ticketId,
+    printed,
+    tagged,
+    plate:      plate || null,
+    vin:        vin || null,
+    brand:      brand || null,
+    model:      model || null,
+    motif:      motif || null,
+    dateEntree: ticket.x_studio_date_dentree || null,
+    missionNum: ticket.x_studio_mission_towsoft || null,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
