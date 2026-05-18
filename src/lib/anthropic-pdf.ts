@@ -24,36 +24,35 @@ export interface ExtractedTariff {
   raw_quote:             string   // citation du PDF qui justifie l extraction
 }
 
-const EXTRACTION_PROMPT = `Tu es un assistant qui extrait des tarifs de dépannage automobile depuis un PDF de barème tarifaire d'une compagnie d'assistance ou d'assurance.
+const EXTRACTION_PROMPT = `Tu es un assistant qui extrait des tarifs de dépannage automobile depuis un PDF de barème tarifaire d'une compagnie d'assistance.
 
 Analyse le document fourni et retourne UN ARRAY JSON avec UN OBJET par ligne tarifaire identifiable. Chaque objet doit respecter EXACTEMENT cette structure :
 
 {
   "source": "string — nom de la compagnie en minuscules (vab, touring, ima, mondial, ethias, autre)",
   "mission_type": "string — l'un de : remorquage, depannage, trajet_vide, parc",
-  "unit_price": "number — prix forfait HT en euros, ou null",
+  "unit_price": "number — prix forfait HT en euros (uniquement le tarif DE BASE, sans majoration nuit/week-end)",
   "km_inclus": "number — km inclus dans le forfait, 0 si pas spécifié",
   "km_price": "number — prix par km au-delà des km inclus, ou null",
   "parc_day_price": "number — prix par jour de mise en parc, ou null",
-  "surcharge_night_pct": "number — % surcharge nuit, 0 si non applicable",
-  "surcharge_we_pct": "number — % surcharge week-end, 0 si non applicable",
-  "surcharge_holiday_pct": "number — % surcharge jour férié, 0 si non applicable",
-  "conditions": "string — autres conditions notables (max 100 chars, concis)",
-  "is_autofac": "boolean — true si la compagnie facture elle-même (souvent grandes assurances)",
-  "effective_from": "string — date d'effet au format YYYY-MM-DD (date actuelle si absente)",
-  "raw_quote": "string — citation très brève du PDF qui justifie cette ligne (max 120 chars)"
+  "conditions": "string — conditions notables non-tarifaires (max 100 chars)",
+  "is_autofac": "boolean — true si la compagnie facture elle-même (autofacturation)",
+  "effective_from": "string — date d'effet au format YYYY-MM-DD",
+  "raw_quote": "string — citation très brève du PDF (max 100 chars)"
 }
 
-REGLES :
-- "depannage" inclut aussi "réparation sur place", "DSP", "panne", "dépannage" — TOUJOURS retourner "depannage" en canonical.
-- "remorquage" inclut "REM", "remorquage", "tractage" — TOUJOURS retourner "remorquage".
-- "trajet_vide" = déplacement sans véhicule à dépanner.
+REGLES IMPORTANTES :
+- N'extrais PAS les majorations nuit / week-end / jour férié — elles sont gérées par un module séparé. Extrais uniquement le tarif DE BASE (heures de bureau, semaine).
+- "depannage" inclut "réparation sur place", "DSP", "panne" — toujours retourner "depannage".
+- "remorquage" inclut "REM", "tractage" — toujours retourner "remorquage".
+- "trajet_vide" = déplacement sans véhicule.
 - "parc" = mise en parc / gardiennage.
-- Si une ligne tarifaire couvre plusieurs types (ex: "REM + DSP : 60€"), génère 2 objets séparés.
-- Si une info n'est pas dans le PDF, mets null ou 0 selon le type.
+- Si une ligne couvre plusieurs types (ex: "REM + DSP : 60€"), génère 2 objets.
+- Tarifs nuit/WE = ignore, on les calcule différemment.
+- Si une info n'est pas dans le PDF, mets null ou 0.
 
-Retourne UNIQUEMENT le JSON valide, pas de markdown, pas de texte autour, pas de commentaire.
-Si aucun tarif n'est identifiable, retourne un array vide [].`
+Retourne UNIQUEMENT le JSON valide, pas de markdown.
+Si aucun tarif n'est identifiable, retourne [].`
 
 let cachedClient: Anthropic | null = null
 

@@ -372,8 +372,11 @@ export default function TarifsClient(props: Props) {
                           <FieldNumber label="Km inclus" value={item.km_inclus} onChange={v => updateField(idx, 'km_inclus', v)} />
                           <FieldNumber label="€/km extra" value={item.km_price} onChange={v => updateField(idx, 'km_price', v)} />
                           <FieldNumber label="€/jour parc" value={item.parc_day_price} onChange={v => updateField(idx, 'parc_day_price', v)} />
-                          <FieldNumber label="Nuit %" value={item.surcharge_night_pct} onChange={v => updateField(idx, 'surcharge_night_pct', v)} />
-                          <FieldNumber label="WE %" value={item.surcharge_we_pct} onChange={v => updateField(idx, 'surcharge_we_pct', v)} />
+                          <div className="col-span-2 lg:col-span-4">
+                            <p className="text-[10px] text-ink-faint italic">
+                              💡 Les majorations nuit/week-end/jour férié sont gérées séparément par le module Surcharges (selon l'heure réelle de l'intervention).
+                            </p>
+                          </div>
                           <div className="col-span-2 lg:col-span-4">
                             <label className="text-xs text-ink-faint flex items-center gap-2">
                               <input
@@ -424,9 +427,9 @@ export default function TarifsClient(props: Props) {
                 <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
                 <FieldNumber label="€/km extra" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
                 <FieldNumber label="€/jour parc" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
-                <FieldNumber label="Surcharge nuit %" value={editTariff.surcharge_night_pct ?? 0} onChange={v => setEditTariff(p => ({ ...p!, surcharge_night_pct: v ?? 0 }))} />
-                <FieldNumber label="Surcharge WE %" value={editTariff.surcharge_we_pct ?? 0} onChange={v => setEditTariff(p => ({ ...p!, surcharge_we_pct: v ?? 0 }))} />
-                <FieldNumber label="Surcharge JF %" value={editTariff.surcharge_holiday_pct ?? 0} onChange={v => setEditTariff(p => ({ ...p!, surcharge_holiday_pct: v ?? 0 }))} />
+                <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
+                  💡 <strong>Majorations</strong> nuit/WE/JF gérées par le module <a href="/admin/surcharges" className="underline">Surcharges</a> (calculées selon l'heure réelle d'intervention).
+                </div>
                 <div>
                   <label className="text-[10px] text-ink-faint uppercase tracking-wider">Effective from</label>
                   <input
