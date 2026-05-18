@@ -63,6 +63,51 @@ export default function ProfileClient({ user }: { user: any }) {
   const [pushLoading,    setPushLoading]    = useState(false)
   const [pushStatus,     setPushStatus]     = useState('')
 
+  // ── Preferences notif (categories) ───────────────────────
+  const [notifPrefs, setNotifPrefs]         = useState<Record<string, boolean>>({})
+  const [notifProfile, setNotifProfile]     = useState<{ isDispatcher: boolean; isDriver: boolean } | null>(null)
+  const [notifPrefsLoading, setNotifPrefsLoading] = useState(true)
+  const [notifSavingKey, setNotifSavingKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/users/me/notif-preferences')
+      .then(r => r.json())
+      .then(j => {
+        if (j.ok) {
+          setNotifPrefs(j.preferences || {})
+          setNotifProfile(j.profile || null)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setNotifPrefsLoading(false))
+  }, [])
+
+  async function toggleNotifPref(key: string) {
+    const newVal = notifPrefs[key] === false ? true : false  // default true, on toggle vers false
+    // En realite : default = true (absent → active). Donc :
+    //   absent ou true → on met false
+    //   false         → on met true
+    setNotifSavingKey(key)
+    setNotifPrefs(p => ({ ...p, [key]: newVal }))
+    try {
+      const res = await fetch('/api/users/me/notif-preferences', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ [key]: newVal }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        // rollback
+        setNotifPrefs(p => ({ ...p, [key]: !newVal }))
+        alert(j.error || 'Erreur sauvegarde')
+      } else {
+        setNotifPrefs(j.preferences || {})
+      }
+    } finally {
+      setNotifSavingKey(null)
+    }
+  }
+
   // ── Documents ────────────────────────────────────────────
   const [documents,   setDocuments]   = useState<DriverDocument[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
@@ -405,6 +450,77 @@ export default function ProfileClient({ user }: { user: any }) {
           </div>
         )}
 
+        {/* Preferences notification — toggles par categorie */}
+        <div className="bg-surface border rounded-2xl p-5">
+          <h2 className="text-ink font-bold mb-1">Préférences de notifications</h2>
+          <p className="text-ink-muted text-xs mb-4">
+            Choisis les catégories que tu veux recevoir sur ton iPhone, ta Watch ou ton navigateur.
+          </p>
+          {notifPrefsLoading ? (
+            <p className="text-ink-faint text-sm italic">Chargement…</p>
+          ) : (
+            <div className="space-y-2">
+              {notifProfile?.isDispatcher && (
+                <>
+                  <NotifToggle
+                    label="🚨 Nouvelles missions reçues"
+                    description="Notif quand une nouvelle mission entre (Touring, VAB, etc.)"
+                    enabled={notifPrefs.dispatch_new_mission !== false}
+                    saving={notifSavingKey === 'dispatch_new_mission'}
+                    onToggle={() => toggleNotifPref('dispatch_new_mission')}
+                  />
+                </>
+              )}
+              {notifProfile?.isDriver && (
+                <>
+                  <NotifToggle
+                    label="🚗 Mission assignée"
+                    description="Notif quand un dispatcher t'assigne une mission"
+                    enabled={notifPrefs.driver_assigned !== false}
+                    saving={notifSavingKey === 'driver_assigned'}
+                    onToggle={() => toggleNotifPref('driver_assigned')}
+                  />
+                  <NotifToggle
+                    label="✏️ Mission modifiée"
+                    description="Notif quand un dispatcher modifie ta mission en cours"
+                    enabled={notifPrefs.driver_modified !== false}
+                    saving={notifSavingKey === 'driver_modified'}
+                    onToggle={() => toggleNotifPref('driver_modified')}
+                  />
+                </>
+              )}
+              <NotifToggle
+                label="💵 Transferts de caisse"
+                description="Validations et refus de transferts"
+                enabled={notifPrefs.cash_transfer !== false}
+                saving={notifSavingKey === 'cash_transfer'}
+                onToggle={() => toggleNotifPref('cash_transfer')}
+              />
+              {notifProfile?.isDispatcher && (
+                <>
+                  <NotifToggle
+                    label="⚠️ Demandes de dérogation"
+                    description="Quand un chauffeur demande une dérogation paiement"
+                    enabled={notifPrefs.derogation_request !== false}
+                    saving={notifSavingKey === 'derogation_request'}
+                    onToggle={() => toggleNotifPref('derogation_request')}
+                  />
+                  <NotifToggle
+                    label="🛠 Alertes admin"
+                    description="Erreurs système, échecs sync, alertes Towsoft"
+                    enabled={notifPrefs.alert_admin !== false}
+                    saving={notifSavingKey === 'alert_admin'}
+                    onToggle={() => toggleNotifPref('alert_admin')}
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Helper component pour les toggles notif */}
+        {/* (defini en local ci-dessous, hors render) */}
+
         {/* Documents */}
         <div className="bg-surface border border rounded-2xl p-5">
           <h2 className="text-ink font-bold mb-1">Mes Documents</h2>
@@ -560,5 +676,31 @@ export default function ProfileClient({ user }: { user: any }) {
         </div>
       )}
     </AppShell>
+  )
+}
+
+function NotifToggle({
+  label, description, enabled, saving, onToggle,
+}: {
+  label:       string
+  description: string
+  enabled:     boolean
+  saving:      boolean
+  onToggle:    () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      disabled={saving}
+      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 bg-surface-2 hover:bg-surface-hover border rounded-xl text-left transition disabled:opacity-50"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-ink text-sm font-medium">{label}</div>
+        <div className="text-ink-faint text-xs">{description}</div>
+      </div>
+      <div className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${enabled ? 'bg-brand' : 'bg-ink-faint/30'}`}>
+        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : ''}`} />
+      </div>
+    </button>
   )
 }

@@ -28,16 +28,57 @@ export interface PushPayload {
   tag?:    string  // permet de remplacer une notif existante du même tag
 }
 
+/** Categorie de notif pour respecter les preferences user. Cf migration
+ *  202605181900 sur users.notif_preferences. Si non passe, la notif est
+ *  envoyee a tous sans filtre. */
+export type NotifType =
+  | 'dispatch_new_mission'
+  | 'driver_assigned'
+  | 'driver_modified'
+  | 'cash_transfer'
+  | 'derogation_request'
+  | 'alert_admin'
+
+/**
+ * Filtre une liste d'user_ids selon les preferences notif_preferences.
+ * En l absence d entree pour la cle, le user est considere comme actif
+ * (defaut on = retro-compat).
+ */
+async function filterByNotifPref(userIds: string[], notifType?: NotifType): Promise<string[]> {
+  if (!notifType || userIds.length === 0) return userIds
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('users')
+    .select('id, notif_preferences')
+    .in('id', userIds)
+  if (!data) return userIds
+  return data
+    .filter(u => {
+      const pref = (u.notif_preferences || {}) as Record<string, unknown>
+      // explicite false → desactive, sinon active
+      return pref[notifType] !== false
+    })
+    .map(u => u.id)
+}
+
 /**
  * Envoie une notification push à un utilisateur spécifique sur TOUS ses canaux :
  *   - Web Push (PWA Safari/Chrome) via push_subscriptions
  *   - APNs/FCM (Capacitor iOS/Android + Apple Watch) via device_tokens
  * Supprime automatiquement les abonnements Web Push révoqués (410/404).
+ *
+ * Si `notifType` est passe et que l user a desactive cette categorie dans
+ * ses notif_preferences, on no-op silencieusement.
  */
 export async function sendPushToUser(
-  userId:  string,
-  payload: PushPayload
+  userId:    string,
+  payload:   PushPayload,
+  notifType?: NotifType,
 ): Promise<{ sent: number; failed: number }> {
+  if (notifType) {
+    const allowed = await filterByNotifPref([userId], notifType)
+    if (allowed.length === 0) return { sent: 0, failed: 0 }
+  }
   const supabase = createAdminClient()
 
   let sent = 0, failed = 0
@@ -94,10 +135,12 @@ export async function sendPushToUser(
  * Envoie une notification push à plusieurs utilisateurs.
  */
 export async function sendPushToUsers(
-  userIds: string[],
-  payload: PushPayload
+  userIds:   string[],
+  payload:   PushPayload,
+  notifType?: NotifType,
 ): Promise<void> {
-  await Promise.allSettled(userIds.map(id => sendPushToUser(id, payload)))
+  const filtered = notifType ? await filterByNotifPref(userIds, notifType) : userIds
+  await Promise.allSettled(filtered.map(id => sendPushToUser(id, payload)))
 }
 
 /**
@@ -108,8 +151,9 @@ export async function sendPushToUsers(
  * les notifs nouvelles missions sans devoir bouger son role principal.
  */
 export async function sendPushToRole(
-  role:    string | string[],
-  payload: PushPayload
+  role:       string | string[],
+  payload:    PushPayload,
+  notifType?: NotifType,
 ): Promise<void> {
   const supabase = createAdminClient()
   const roles    = Array.isArray(role) ? role : [role]
