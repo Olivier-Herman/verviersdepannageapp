@@ -2020,6 +2020,9 @@ export default function MissionDetailClient({
                   </pre>
                 )}
               </div>
+
+              {/* Remarques dispatcher (notes + pièces jointes) */}
+              <MissionRemarks missionId={initialMission.id} />
             </div>
 
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
@@ -2447,11 +2450,6 @@ export default function MissionDetailClient({
               )}
             </div>
           </div>
-        </div>
-
-        {/* Remarques dispatcher (notes + pièces jointes) */}
-        <div className="px-4 lg:px-8 pt-4">
-          <MissionRemarks missionId={initialMission.id} />
         </div>
 
         {/* Estimation tarif — tout en bas (non prioritaire) */}
