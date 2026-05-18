@@ -83,6 +83,10 @@ export async function sendPushToUsers(
 
 /**
  * Envoie une notification push à tous les utilisateurs ayant un rôle donné.
+ * Inclut les users dont `users.role` (champ principal) match, ainsi que ceux
+ * dont `users.roles` (array multi-roles, ex: ["driver","dispatcher"]) contient
+ * au moins un des roles demandes. Permet a un chauffeur-dispatcher de recevoir
+ * les notifs nouvelles missions sans devoir bouger son role principal.
  */
 export async function sendPushToRole(
   role:    string | string[],
@@ -91,12 +95,23 @@ export async function sendPushToRole(
   const supabase = createAdminClient()
   const roles    = Array.isArray(role) ? role : [role]
 
-  const { data: users } = await supabase
-    .from('users')
-    .select('id')
-    .in('role', roles)
-    .eq('active', true)
+  // OR sur 2 champs : `role` (string) IN [...] OR `roles` (array) overlaps [...]
+  // L operateur PostgREST pour array overlap est `overlaps` ou `&&` en raw.
+  // Ici on combine via .or() : role.in.(a,b,c) OR roles.cs.{a} (contained-set
+  // pour chaque role recherche). On simplifie en faisant 2 queries puis union.
+  const [byRole, byRolesArray] = await Promise.all([
+    supabase.from('users').select('id').in('role', roles).eq('active', true),
+    supabase.from('users').select('id, roles').eq('active', true).not('roles', 'is', null),
+  ])
 
-  if (!users?.length) return
-  await sendPushToUsers(users.map(u => u.id), payload)
+  const ids = new Set<string>()
+  for (const u of byRole.data || []) ids.add(u.id)
+  for (const u of byRolesArray.data || []) {
+    if (Array.isArray(u.roles) && u.roles.some((r: string) => roles.includes(r))) {
+      ids.add(u.id)
+    }
+  }
+
+  if (ids.size === 0) return
+  await sendPushToUsers(Array.from(ids), payload)
 }
