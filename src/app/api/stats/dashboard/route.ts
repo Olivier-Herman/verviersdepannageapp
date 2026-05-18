@@ -128,6 +128,7 @@ interface MissionRow {
   assigned_to: string | null
   received_at: string | null
   intervention_date: string | null
+  assigned_at: string | null
   accepted_at: string | null
   on_way_at: string | null
   on_site_at: string | null
@@ -174,7 +175,7 @@ export async function GET(req: Request) {
 
   // Fetch missions de la periode courante
   let qCurrent = sb.from('incoming_missions')
-    .select('id, source, mission_type, status, assigned_to, received_at, intervention_date, accepted_at, on_way_at, on_site_at, completed_at, parked_at, dpr_motif, incident_city')
+    .select('id, source, mission_type, status, assigned_to, received_at, intervention_date, assigned_at, accepted_at, on_way_at, on_site_at, completed_at, parked_at, dpr_motif, incident_city')
     .gte('intervention_date', p.from)
     .lt('intervention_date', p.to)
     .in('status', ELIGIBLE_STATUSES)
@@ -186,7 +187,7 @@ export async function GET(req: Request) {
 
   // Fetch missions de la periode precedente (pour comparaison)
   let qPrev = sb.from('incoming_missions')
-    .select('id, status, mission_type, assigned_to, received_at, accepted_at, completed_at, parked_at, dpr_motif')
+    .select('id, status, mission_type, assigned_to, received_at, assigned_at, accepted_at, completed_at, parked_at, dpr_motif')
     .gte('intervention_date', p.previousFrom)
     .lt('intervention_date', p.previousTo)
     .in('status', ELIGIBLE_STATUSES)
@@ -195,6 +196,25 @@ export async function GET(req: Request) {
   if (type)      qPrev = qPrev.eq('mission_type', type)
   const { data: prevMissionsRaw } = await qPrev
   const previous: MissionRow[] = (prevMissionsRaw || []) as any
+
+  // Recupere les mission_logs action='dispatched' pour calculer le delai
+  // dispatcher (received_at -> moment de confirmation par dispatcher).
+  const allMissionIds = [...current.map(m => m.id), ...previous.map(m => m.id)]
+  const dispatchedAtMap = new Map<string, string>()
+  if (allMissionIds.length > 0) {
+    const { data: dispatchedLogs } = await sb
+      .from('mission_logs')
+      .select('mission_id, created_at')
+      .eq('action', 'dispatched')
+      .in('mission_id', allMissionIds)
+      .order('created_at', { ascending: true })
+    for (const log of dispatchedLogs || []) {
+      // Garde le premier dispatched (le plus ancien) par mission_id
+      if (!dispatchedAtMap.has(log.mission_id)) {
+        dispatchedAtMap.set(log.mission_id, log.created_at)
+      }
+    }
+  }
 
   // KPI : totaux + comparaison
   const kpi = {
@@ -221,9 +241,25 @@ export async function GET(req: Request) {
       previous: avgMinutes(previous.map(m => diffSeconds(m.received_at, m.accepted_at))),
       delta:    null as number | null,
     },
+    // Delai dispatcher : received_at → moment ou le dispatcher confirme
+    // (passage status new -> dispatching via /api/missions/confirm).
+    avgDispatchConfirmMinutes: {
+      current:  avgMinutes(current.map(m  => diffSeconds(m.received_at, dispatchedAtMap.get(m.id) || null))),
+      previous: avgMinutes(previous.map(m => diffSeconds(m.received_at, dispatchedAtMap.get(m.id) || null))),
+      delta:    null as number | null,
+    },
+    // Delai assignation : received_at → moment ou un chauffeur est assigne
+    // (assigned_at set dans /api/missions/assign).
+    avgAssignmentMinutes: {
+      current:  avgMinutes(current.map(m  => diffSeconds(m.received_at, m.assigned_at))),
+      previous: avgMinutes(previous.map(m => diffSeconds(m.received_at, m.assigned_at))),
+      delta:    null as number | null,
+    },
   }
-  kpi.avgInterventionMinutes.delta = pctDelta(kpi.avgInterventionMinutes.current || 0, kpi.avgInterventionMinutes.previous || 0)
-  kpi.avgAcceptanceMinutes.delta   = pctDelta(kpi.avgAcceptanceMinutes.current   || 0, kpi.avgAcceptanceMinutes.previous   || 0)
+  kpi.avgInterventionMinutes.delta     = pctDelta(kpi.avgInterventionMinutes.current     || 0, kpi.avgInterventionMinutes.previous     || 0)
+  kpi.avgAcceptanceMinutes.delta       = pctDelta(kpi.avgAcceptanceMinutes.current       || 0, kpi.avgAcceptanceMinutes.previous       || 0)
+  kpi.avgDispatchConfirmMinutes.delta  = pctDelta(kpi.avgDispatchConfirmMinutes.current  || 0, kpi.avgDispatchConfirmMinutes.previous  || 0)
+  kpi.avgAssignmentMinutes.delta       = pctDelta(kpi.avgAssignmentMinutes.current       || 0, kpi.avgAssignmentMinutes.previous       || 0)
 
   // Breakdown par type
   const byType = {

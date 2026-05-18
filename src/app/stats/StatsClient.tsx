@@ -33,10 +33,12 @@ interface StatsResponse {
   period: Period
   filters: { source?: string; chauffeur?: string; type?: string }
   kpi: {
-    totalMissions:          KpiValue
-    completedMissions:      KpiValue
-    avgInterventionMinutes: KpiValue
-    avgAcceptanceMinutes:   KpiValue
+    totalMissions:                KpiValue
+    completedMissions:            KpiValue
+    avgInterventionMinutes:       KpiValue
+    avgAcceptanceMinutes:         KpiValue
+    avgDispatchConfirmMinutes:    KpiValue
+    avgAssignmentMinutes:         KpiValue
   }
   byType: Record<string, number>
   conversions: { rem_to_dsp: number; dsp_to_rem: number }
@@ -160,11 +162,13 @@ export default function StatsClient(props: StatsClientProps) {
         {data && !loading && (
           <>
             {/* ── KPI cards ──────────────────────────────────── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               <KpiCard label="Total missions"        value={data.kpi.totalMissions.current ?? 0}        delta={data.kpi.totalMissions.delta} />
               <KpiCard label="Terminées"             value={data.kpi.completedMissions.current ?? 0}    delta={data.kpi.completedMissions.delta} />
               <KpiCard label="Temps moyen interv."   value={data.kpi.avgInterventionMinutes.current ?? '—'} suffix=" min" delta={data.kpi.avgInterventionMinutes.delta} deltaInverse />
-              <KpiCard label="Délai acceptation"     value={data.kpi.avgAcceptanceMinutes.current ?? '—'}   suffix=" min" delta={data.kpi.avgAcceptanceMinutes.delta} deltaInverse />
+              <KpiCard label="Délai accept. chauffeur" value={data.kpi.avgAcceptanceMinutes.current ?? '—'}   suffix=" min" delta={data.kpi.avgAcceptanceMinutes.delta} deltaInverse />
+              <KpiCard label="Délai confirm. dispatch" value={data.kpi.avgDispatchConfirmMinutes.current ?? '—'} suffix=" min" delta={data.kpi.avgDispatchConfirmMinutes.delta} deltaInverse />
+              <KpiCard label="Délai assignation"     value={data.kpi.avgAssignmentMinutes.current ?? '—'}   suffix=" min" delta={data.kpi.avgAssignmentMinutes.delta} deltaInverse />
             </div>
 
             {/* ── Stats secondaires ──────────────────────────── */}
