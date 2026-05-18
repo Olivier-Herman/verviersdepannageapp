@@ -62,6 +62,26 @@ function normalizePlate(s: string): string {
   return s.replace(/[-.\s_/]/g, '').toUpperCase()
 }
 
+/** Genere les variations courantes d une plaque belge avec separateurs pour
+ *  matcher dans Graph $search (qui ne normalise pas). Entree : plaque collee
+ *  (ex: "2BQC452"). Sortie : array de variantes (ex: ["2-BQC-452"]). */
+function plateWithDashVariants(plate: string): string[] {
+  const out: string[] = []
+  // Format actuel : 1-ABC-123 (1 chiffre + 3 lettres + 3 chiffres = 7 chars)
+  if (plate.length === 7 && /^\d[A-Z]{3}\d{3}$/.test(plate)) {
+    out.push(`${plate[0]}-${plate.slice(1, 4)}-${plate.slice(4)}`)
+  }
+  // Format ancien : ABC-123 (3 lettres + 3 chiffres = 6 chars)
+  else if (plate.length === 6 && /^[A-Z]{3}\d{3}$/.test(plate)) {
+    out.push(`${plate.slice(0, 3)}-${plate.slice(3)}`)
+  }
+  // Format vehicules tractes : 1-ABCD-123 (1 chiffre + 4 lettres + 3 chiffres = 8 chars)
+  else if (plate.length === 8 && /^\d[A-Z]{4}\d{3}$/.test(plate)) {
+    out.push(`${plate[0]}-${plate.slice(1, 5)}-${plate.slice(5)}`)
+  }
+  return out
+}
+
 /** Détecte si la query ressemble à une date et retourne le range ISO début/fin. */
 function tryParseDate(q: string): { from: string; to: string } | null {
   const trimmed = q.trim()
@@ -433,7 +453,28 @@ export async function GET(req: Request) {
   const wantsEmails = wants('email_info') || wants('email_fourriere') || wants('email_administration')
   if (wantsEmails && isGraphConfigured() && q.length >= 3) {
     try {
-      const mailHits = await searchAllMailboxes(q, fullMode ? 12 : 6)
+      // Graph $search cherche litteralement la chaine, sans normalisation.
+      // Pour qu une plaque tapee dans n importe quel format matche les emails
+      // peu importe leur format, on envoie plusieurs variations :
+      //   - la query brute saisie
+      //   - la version normalisee (sans separateurs, majuscule)
+      //   - la version avec tirets belges (1-ABC-123) si plaque detectee
+      const queries: string[] = [q]
+      if (qPlate.length >= 3 && qPlate !== q && qPlate !== q.toUpperCase()) {
+        queries.push(qPlate)
+      }
+      for (const variant of plateWithDashVariants(qPlate)) {
+        if (!queries.includes(variant)) queries.push(variant)
+      }
+      const allResults = await Promise.all(queries.map(query => searchAllMailboxes(query, fullMode ? 12 : 6)))
+      // Dedup par (category, message id)
+      const seenMail = new Set<string>()
+      const mailHits = allResults.flat().filter(h => {
+        const key = `${h.category}::${h.id}`
+        if (seenMail.has(key)) return false
+        seenMail.add(key)
+        return true
+      })
       // Map category -> mailbox email (pour passer dans le payload au front)
       const mailboxByCategory: Record<string, string> = {}
       for (const mb of SEARCH_MAILBOXES) mailboxByCategory[mb.category] = mb.email
