@@ -133,6 +133,20 @@ export async function POST(req: Request) {
           ? `${detail.missionNumber}/${detail.dossierNumber}`
           : detail.missionNumber
 
+        // Construction de l adresse d intervention (rue + code postal + ville
+        // + texte libre type "ENFACE N5" ou autoroute si dispo)
+        const addressParts: string[] = []
+        if (detail.fromStreet) addressParts.push(detail.fromStreet)
+        if (detail.fromZip || detail.fromCity) {
+          addressParts.push([detail.fromZip, detail.fromCity].filter(Boolean).join(' '))
+        }
+        let incidentAddress = addressParts.filter(Boolean).join(', ') || null
+        if (detail.fromLocationFreeText && incidentAddress) {
+          incidentAddress = `${incidentAddress} — ${detail.fromLocationFreeText}`
+        } else if (detail.fromLocationFreeText && !incidentAddress) {
+          incidentAddress = detail.fromLocationFreeText
+        }
+
         // Map VAB fields → incoming_missions schema
         const insertPayload = {
           // external_id = AssignmentId : unique par sous-tache, sert a la dedup
@@ -140,6 +154,7 @@ export async function POST(req: Request) {
           // dossier_number = "8293644/34496031" : numero complet visible par user
           dossier_number:     fullDossier,
           source:             'vab',
+          source_format:      'vab-scraper',
           status:             'new',
           mission_type:       detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
                             : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
@@ -147,22 +162,29 @@ export async function POST(req: Request) {
                             : null,
           incident_type:      detail.codesDePanne,  // ex: "Accident de voiture"
           incident_description: detail.codesDePanne,
-          // Client (assistance) = "Général" sur VAB
+          // Client final (assurance / proprietaire) — pas dispo pre-acceptation,
+          // complete par le mail VAB plus tard
           client_name:        detail.clientName,
           client_phone:       detail.clientPhone,
+          // Personne en panne sur place (extrait de "Localisation du vehicule")
+          assisted_name:      detail.fromName,
+          assisted_phone:     detail.fromPhone,
           // Vehicule
           vehicle_plate:      detail.vehiclePlate?.replace(/\s/g, '').toUpperCase() || null,
           vehicle_brand:      detail.vehicleBrand,
           vehicle_model:      detail.vehicleModel,
           vehicle_vin:        detail.vehicleVin,
-          // Lieu intervention = "Emplacement de" (depart)
-          incident_address:   [detail.fromStreet, detail.fromZip, detail.fromCity].filter(Boolean).join(', ') || null,
+          vehicle_fuel:       detail.vehicleFuel,
+          // Lieu intervention complete
+          incident_address:   incidentAddress,
           incident_city:      detail.fromCity,
           // Destination = "Emplacement à"
           destination_name:    detail.toName,
           destination_address: [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null,
           // Meta
           parse_confidence:    0.95,
+          // Debug : snippet des fields extraits visibles dans la fiche mission
+          raw_content:         detail.rawSnippet || null,
           received_at:         new Date().toISOString(),
           intervention_date:   interventionIso || new Date().toISOString(),
           // Client a facturer par defaut (configure dans /admin/sources)
