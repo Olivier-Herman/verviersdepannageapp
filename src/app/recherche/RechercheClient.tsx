@@ -17,6 +17,7 @@ interface SearchResult {
   href:     string
   pdfUrl?:  string
   external?: boolean
+  emailMailbox?: string
 }
 
 const CATEGORY_META: Record<string, {
@@ -75,7 +76,7 @@ function clearRecent() {
 export default function RechercheClient({ initialQuery, userRole, userName, userEmail, userId, userModules }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { openVehicle, openInvoice } = useSheetStack()
+  const { openVehicle, openInvoice, openEmail } = useSheetStack()
   const { data: session } = useSession()
   const hasOdooAccess = !!(session?.user as any)?.hasOdooAccess
   const [query,         setQuery]         = useState(initialQuery)
@@ -151,9 +152,13 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
   }
 
   function navigate(r: SearchResult) {
-    // Sheets in-app pour vehicules et factures Odoo
+    // Sheets in-app pour vehicules, factures Odoo et emails M365
     if (r.category === 'vehicle') { openVehicle(parseInt(r.id, 10)); return }
     if (r.category === 'invoice') { openInvoice(parseInt(r.id, 10)); return }
+    if (r.category.startsWith('email_') && r.emailMailbox) {
+      openEmail(r.emailMailbox, r.id)
+      return
+    }
     const isExternal = /^https?:\/\//.test(r.href)
     if (isExternal) {
       window.open(r.href, '_blank', 'noopener,noreferrer')

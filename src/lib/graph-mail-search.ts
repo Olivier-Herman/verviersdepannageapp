@@ -162,3 +162,131 @@ export async function searchAllMailboxes(query: string, top = 6): Promise<MailHi
   )
   return results.flat()
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Lecture inline du contenu complet d un email + pieces jointes
+// ─────────────────────────────────────────────────────────────────────
+
+export interface MailAttachment {
+  id:            string
+  name:          string
+  contentType:   string
+  size:          number
+  isInline:      boolean
+  contentId?:    string
+}
+
+export interface MailFull {
+  id:              string
+  subject:         string
+  from:            { name: string; email: string } | null
+  to:              { name: string; email: string }[]
+  cc:              { name: string; email: string }[]
+  receivedAt:      string
+  bodyContentType: 'html' | 'text'
+  body:            string
+  hasAttachments:  boolean
+  attachments:     MailAttachment[]
+  webLink:         string
+}
+
+/** Verifie que le mailbox demande fait bien partie de la liste autorisee. */
+export function isAllowedMailbox(email: string): boolean {
+  const lower = email.toLowerCase()
+  return SEARCH_MAILBOXES.some(mb => mb.email.toLowerCase() === lower)
+}
+
+/** Lit le contenu complet d un email (avec pieces jointes metadata). */
+export async function fetchMailFull(opts: {
+  mailbox:   string
+  messageId: string
+}): Promise<MailFull | null> {
+  if (!isAllowedMailbox(opts.mailbox)) {
+    throw new Error(`Mailbox non autorisee : ${opts.mailbox}`)
+  }
+  const token = await getAppOnlyToken()
+  if (!token) return null
+
+  // 1. Recupere le message + attachments (metadata uniquement, pas le contenu)
+  const url = new URL(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(opts.mailbox)}/messages/${encodeURIComponent(opts.messageId)}`)
+  url.searchParams.set('$select', 'id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments,webLink')
+
+  const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    console.error(`[graph-mail] fetchMailFull ${res.status}: ${text.slice(0, 300)}`)
+    return null
+  }
+  const m = await res.json()
+
+  // 2. Si pieces jointes : recupere la liste (id, name, size, contentType, isInline)
+  let attachments: MailAttachment[] = []
+  if (m.hasAttachments) {
+    const attUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(opts.mailbox)}/messages/${encodeURIComponent(opts.messageId)}/attachments?$select=id,name,contentType,size,isInline,contentId`
+    const attRes = await fetch(attUrl, { headers: { Authorization: `Bearer ${token}` } })
+    if (attRes.ok) {
+      const data = await attRes.json() as { value?: any[] }
+      attachments = (data.value || []).map(a => ({
+        id:          a.id,
+        name:        a.name,
+        contentType: a.contentType || 'application/octet-stream',
+        size:        a.size || 0,
+        isInline:    Boolean(a.isInline),
+        contentId:   a.contentId || undefined,
+      }))
+    }
+  }
+
+  const parsePerson = (p: any) => p?.emailAddress ? ({
+    name:  p.emailAddress.name  || '',
+    email: p.emailAddress.address || '',
+  }) : null
+
+  return {
+    id:              m.id,
+    subject:         m.subject || '(sans objet)',
+    from:            parsePerson(m.from),
+    to:              (m.toRecipients || []).map(parsePerson).filter(Boolean) as any,
+    cc:              (m.ccRecipients || []).map(parsePerson).filter(Boolean) as any,
+    receivedAt:      m.receivedDateTime || '',
+    bodyContentType: m.body?.contentType === 'html' ? 'html' : 'text',
+    body:            m.body?.content || '',
+    hasAttachments:  Boolean(m.hasAttachments),
+    attachments,
+    webLink:         m.webLink || '',
+  }
+}
+
+/** Recupere le contenu binaire d une piece jointe. Retourne null si pas trouve. */
+export async function fetchAttachmentBytes(opts: {
+  mailbox:      string
+  messageId:    string
+  attachmentId: string
+}): Promise<{ bytes: ArrayBuffer; name: string; contentType: string } | null> {
+  if (!isAllowedMailbox(opts.mailbox)) {
+    throw new Error(`Mailbox non autorisee : ${opts.mailbox}`)
+  }
+  const token = await getAppOnlyToken()
+  if (!token) return null
+
+  // /$value renvoie le contenu brut pour une FileAttachment
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(opts.mailbox)}/messages/${encodeURIComponent(opts.messageId)}/attachments/${encodeURIComponent(opts.attachmentId)}`
+
+  // D abord les metadata pour le nom/type
+  const metaRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!metaRes.ok) return null
+  const meta = await metaRes.json()
+
+  // contentBytes est base64 dans l API Graph
+  if (meta['@odata.type'] === '#microsoft.graph.fileAttachment' && meta.contentBytes) {
+    const buf = Buffer.from(meta.contentBytes, 'base64')
+    return {
+      bytes:       buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+      name:        meta.name || 'attachment',
+      contentType: meta.contentType || 'application/octet-stream',
+    }
+  }
+
+  // ItemAttachment ou ReferenceAttachment : non supporte pour V1
+  return null
+}

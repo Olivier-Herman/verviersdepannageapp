@@ -14,7 +14,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { FOURRIERE_ZONE_BY_ID } from '@/lib/fourriere'
-import { searchAllMailboxes, isGraphConfigured } from '@/lib/graph-mail-search'
+import { searchAllMailboxes, isGraphConfigured, SEARCH_MAILBOXES } from '@/lib/graph-mail-search'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
@@ -54,6 +54,7 @@ interface SearchResult {
   href:         string                 // navigation principale (Consulter)
   pdfUrl?:      string                 // si dispo : telechargement PDF direct
   external?:    boolean                // true si lien externe (Outlook, Odoo, etc.)
+  emailMailbox?: string                // pour categories email_* : email du mailbox source
 }
 
 /** Normalise une plaque pour comparaison : retire séparateurs, MAJUSCULES. */
@@ -433,17 +434,22 @@ export async function GET(req: Request) {
   if (wantsEmails && isGraphConfigured() && q.length >= 3) {
     try {
       const mailHits = await searchAllMailboxes(q, fullMode ? 12 : 6)
+      // Map category -> mailbox email (pour passer dans le payload au front)
+      const mailboxByCategory: Record<string, string> = {}
+      for (const mb of SEARCH_MAILBOXES) mailboxByCategory[mb.category] = mb.email
+
       for (const h of mailHits) {
         // Filtre par mailbox si l user a demande une categorie email specifique
         if (!wants(h.category)) continue
         out.push({
-          category: h.category,
-          id:       h.id,
-          title:    `📧 ${h.subject}`,
-          subtitle: `De : ${h.from}`,
-          meta:     `${h.mailboxLabel} · ${fmtDateShort(h.receivedAt)}${h.bodyPreview ? ' · ' + h.bodyPreview.slice(0, 80) : ''}`,
-          href:     h.webLink,
-          external: true,
+          category:     h.category,
+          id:           h.id,
+          title:        `📧 ${h.subject}`,
+          subtitle:     `De : ${h.from}`,
+          meta:         `${h.mailboxLabel} · ${fmtDateShort(h.receivedAt)}${h.bodyPreview ? ' · ' + h.bodyPreview.slice(0, 80) : ''}`,
+          href:         h.webLink,
+          external:     true,
+          emailMailbox: mailboxByCategory[h.category],
         })
       }
     } catch (e: any) {

@@ -10,14 +10,17 @@ import dynamic from 'next/dynamic'
 
 const VehicleSheet = dynamic(() => import('./VehicleSheet'), { ssr: false })
 const InvoiceSheet = dynamic(() => import('./InvoiceSheet'), { ssr: false })
+const EmailSheet   = dynamic(() => import('./EmailSheet'),   { ssr: false })
 
 type SheetItem =
   | { kind: 'vehicle'; id: number }
   | { kind: 'invoice'; id: number }
+  | { kind: 'email';   mailbox: string; messageId: string }
 
 interface SheetStackCtx {
   openVehicle: (id: number) => void
   openInvoice: (id: number) => void
+  openEmail:   (mailbox: string, messageId: string) => void
   closeTop:    () => void
   closeAll:    () => void
 }
@@ -25,6 +28,7 @@ interface SheetStackCtx {
 const Ctx = createContext<SheetStackCtx>({
   openVehicle: () => {},
   openInvoice: () => {},
+  openEmail:   () => {},
   closeTop:    () => {},
   closeAll:    () => {},
 })
@@ -40,6 +44,9 @@ export default function SheetStackProvider({ children }: { children: React.React
 
   const openVehicle = useCallback((id: number) => setStack(s => [...s, { kind: 'vehicle', id }]), [])
   const openInvoice = useCallback((id: number) => setStack(s => [...s, { kind: 'invoice', id }]), [])
+  const openEmail   = useCallback((mailbox: string, messageId: string) =>
+    setStack(s => [...s, { kind: 'email', mailbox, messageId }]),
+  [])
   const closeTop    = useCallback(() => setStack(s => s.slice(0, -1)), [])
   const closeAll    = useCallback(() => setStack([]), [])
 
@@ -66,7 +73,7 @@ export default function SheetStackProvider({ children }: { children: React.React
   }, [stack.length, closeTop])
 
   return (
-    <Ctx.Provider value={{ openVehicle, openInvoice, closeTop, closeAll }}>
+    <Ctx.Provider value={{ openVehicle, openInvoice, openEmail, closeTop, closeAll }}>
       {children}
       {stack.map((item, i) => {
         const isTop = i === stack.length - 1
@@ -84,13 +91,25 @@ export default function SheetStackProvider({ children }: { children: React.React
             />
           )
         }
+        if (item.kind === 'invoice') {
+          return (
+            <InvoiceSheet
+              key={`invoice-${item.id}-${i}`}
+              id={item.id}
+              isTop={isTop}
+              zIndex={zIndex}
+              hasOdooAccess={hasOdooAccess}
+              onClose={closeTop}
+            />
+          )
+        }
         return (
-          <InvoiceSheet
-            key={`invoice-${item.id}-${i}`}
-            id={item.id}
+          <EmailSheet
+            key={`email-${item.mailbox}-${item.messageId}-${i}`}
+            mailbox={item.mailbox}
+            messageId={item.messageId}
             isTop={isTop}
             zIndex={zIndex}
-            hasOdooAccess={hasOdooAccess}
             onClose={closeTop}
           />
         )
