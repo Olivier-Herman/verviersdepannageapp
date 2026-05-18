@@ -44,6 +44,7 @@ export async function PATCH(
   const supabase = createAdminClient()
 
   const allowed = [
+    'source',
     'mission_type', 'incident_type', 'incident_description',
     'billed_to_name', 'billed_to_id',
     'odoo_vehicle_id',

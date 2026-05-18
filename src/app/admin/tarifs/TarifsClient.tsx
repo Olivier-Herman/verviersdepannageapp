@@ -49,12 +49,8 @@ interface ExtractedTariff {
   raw_quote:             string
 }
 
-const SOURCES = ['vab', 'touring', 'ima', 'mondial', 'ethias', 'autre']
 const MISSION_TYPES = ['remorquage', 'depannage', 'trajet_vide', 'parc']
 
-const SOURCE_LABELS: Record<string, string> = {
-  vab: 'VAB', touring: 'Touring', ima: 'IMA', mondial: 'Mondial', ethias: 'Ethias', autre: 'Autre',
-}
 const TYPE_LABELS: Record<string, string> = {
   remorquage: '🚛 Remorquage', depannage: '🔧 Dépannage', trajet_vide: '📍 Trajet vide', parc: '🅿️ Mise en parc',
 }
@@ -64,6 +60,16 @@ export default function TarifsClient(props: Props) {
   const [loading, setLoading] = useState(true)
   const [filterSource, setFilterSource] = useState<string>('')
   const [view, setView] = useState<'tariffs' | 'rules'>('tariffs')
+  const [sources, setSources] = useState<{ source: string; label: string }[]>([])
+  const SOURCE_LABELS = Object.fromEntries(sources.map(s => [s.source, s.label]))
+
+  // Fetch dynamique des sources connues (mission_sources + incoming_missions)
+  useEffect(() => {
+    fetch('/api/admin/tarifs/sources')
+      .then(r => r.json())
+      .then(j => setSources(j.sources || []))
+      .catch(() => setSources([]))
+  }, [])
 
   // Upload modal state
   const [showUpload, setShowUpload] = useState(false)
@@ -239,10 +245,9 @@ export default function TarifsClient(props: Props) {
         {/* ── Onglets par source ─────────────────────────────── */}
         <div className="flex gap-1 overflow-x-auto pb-1">
           <SourceTab active={filterSource === ''} label="Toutes" count={null} onClick={() => setFilterSource('')} />
-          {SOURCES.map(s => {
-            const count = tariffs.filter(t => t.source === s).length
-            // Quand on est sur "Toutes", on affiche le count par source. Sinon, count = visible.
-            return <SourceTab key={s} active={filterSource === s} label={SOURCE_LABELS[s]} count={filterSource === '' ? count : null} onClick={() => setFilterSource(s)} />
+          {sources.map(s => {
+            const count = tariffs.filter(t => t.source === s.source).length
+            return <SourceTab key={s.source} active={filterSource === s.source} label={s.label} count={filterSource === '' ? count : null} onClick={() => setFilterSource(s.source)} />
           })}
         </div>
 
@@ -329,7 +334,7 @@ export default function TarifsClient(props: Props) {
                   <label className="text-xs text-ink-faint uppercase tracking-wider">Source (optionnel, aide l'IA)</label>
                   <select value={uploadHint} onChange={e => setUploadHint(e.target.value)} className="w-full mt-1 px-3 py-2 bg-surface-hover rounded">
                     <option value="">Auto (laisse l'IA détecter)</option>
-                    {SOURCES.map(s => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
+                    {sources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -387,7 +392,7 @@ export default function TarifsClient(props: Props) {
                           className="mt-1"
                         />
                         <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                          <FieldSelect label="Source" value={item.source} options={SOURCES} onChange={v => updateField(idx, 'source', v)} />
+                          <FieldSelect label="Source" value={item.source} options={sources.map(s => s.source)} onChange={v => updateField(idx, 'source', v)} />
                           <FieldSelect label="Type" value={item.mission_type} options={MISSION_TYPES} onChange={v => updateField(idx, 'mission_type', v)} />
                           <FieldNumber label="Forfait €" value={item.unit_price} onChange={v => updateField(idx, 'unit_price', v)} />
                           <FieldNumber label="Km inclus" value={item.km_inclus} onChange={v => updateField(idx, 'km_inclus', v)} />
@@ -444,7 +449,7 @@ export default function TarifsClient(props: Props) {
                 {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}
               </h2>
               <div className="grid grid-cols-2 gap-3">
-                <FieldSelect label="Source" value={editTariff.source || ''} options={SOURCES} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
+                <FieldSelect label="Source" value={editTariff.source || ''} options={sources.map(s => s.source)} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
                 <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
                 <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
                 <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />

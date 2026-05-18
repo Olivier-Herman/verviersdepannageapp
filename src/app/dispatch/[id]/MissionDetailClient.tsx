@@ -475,6 +475,39 @@ function Select({ value, onChange, options }: {
   )
 }
 
+function DynamicSourceSelect({ value, onChange }: {
+  value: string; onChange: (v: string) => void
+}) {
+  const [sources, setSources] = useState<{ source: string; label: string }[]>([])
+
+  useEffect(() => {
+    fetch('/api/missions/sources')
+      .then(r => r.json())
+      .then(j => setSources(j.sources || []))
+      .catch(() => {})
+  }, [])
+
+  // Si la source courante n'est pas (encore) dans la liste fetched, l'inclure
+  // pour eviter d'afficher un dropdown vide pendant le load ou si la valeur
+  // est inconnue (legacy).
+  const currentKey = (value || '').toLowerCase().trim()
+  const hasCurrent = !currentKey || sources.some(s => s.source === currentKey)
+  const options = hasCurrent ? sources : [{ source: currentKey, label: currentKey }, ...sources]
+
+  return (
+    <select
+      value={currentKey}
+      onChange={e => onChange(e.target.value)}
+      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+    >
+      <option value="">— Sélectionner —</option>
+      {options.map(s => (
+        <option key={s.source} value={s.source}>{s.label}</option>
+      ))}
+    </select>
+  )
+}
+
 // ── Composant principal ───────────────────────────────────────────────────────
 
 interface LinkedMissionLight {
@@ -535,6 +568,7 @@ export default function MissionDetailClient({
 
   // Formulaire éditable
   const [form, setForm] = useState({
+    source:               initialMission.source               || '',
     mission_type:         initialMission.mission_type         || '',
     incident_type:        initialMission.incident_type        || '',
     incident_description: initialMission.incident_description || '',
@@ -1660,6 +1694,9 @@ export default function MissionDetailClient({
                     <span>📋</span> Intervention
                   </h2>
                   <div className="grid grid-cols-2 gap-4">
+                    <Field label="Source (apporteur)">
+                      <DynamicSourceSelect value={form.source} onChange={f('source')} />
+                    </Field>
                     <Field label="Type de mission">
                       <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
                     </Field>
