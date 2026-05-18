@@ -14,6 +14,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { FOURRIERE_ZONE_BY_ID } from '@/lib/fourriere'
+import { searchAllMailboxes, isGraphConfigured } from '@/lib/graph-mail-search'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
@@ -45,12 +46,14 @@ const PER_CATEGORY_LIMIT_FULL    = 30
 
 interface SearchResult {
   category:     'mission' | 'encaissement' | 'avance' | 'invoice' | 'driver' | 'user' | 'vehicle'
+              | 'email_info' | 'email_fourriere' | 'email_administration'
   id:           string
   title:        string
   subtitle:     string
   meta:         string                 // info contextuelle (date, statut, source...)
   href:         string                 // navigation principale (Consulter)
   pdfUrl?:      string                 // si dispo : telechargement PDF direct
+  external?:    boolean                // true si lien externe (Outlook, Odoo, etc.)
 }
 
 /** Normalise une plaque pour comparaison : retire séparateurs, MAJUSCULES. */
@@ -419,6 +422,32 @@ export async function GET(req: Request) {
       }
     } catch (e: any) {
       console.error('[search] Odoo vehicles render fail (non bloquant):', e.message)
+    }
+  }
+
+  // ── Emails M365 (boites partagees info / fourriere / administration) ─────
+  // Lance la recherche Graph en parallele si configuree. Inclus seulement
+  // si l user veut email_* (ou ne filtre pas). Best-effort : si Graph echoue
+  // ou non configure, on log et continue silencieusement.
+  const wantsEmails = wants('email_info') || wants('email_fourriere') || wants('email_administration')
+  if (wantsEmails && isGraphConfigured() && q.length >= 3) {
+    try {
+      const mailHits = await searchAllMailboxes(q, fullMode ? 12 : 6)
+      for (const h of mailHits) {
+        // Filtre par mailbox si l user a demande une categorie email specifique
+        if (!wants(h.category)) continue
+        out.push({
+          category: h.category,
+          id:       h.id,
+          title:    `📧 ${h.subject}`,
+          subtitle: `De : ${h.from}`,
+          meta:     `${h.mailboxLabel} · ${fmtDateShort(h.receivedAt)}${h.bodyPreview ? ' · ' + h.bodyPreview.slice(0, 80) : ''}`,
+          href:     h.webLink,
+          external: true,
+        })
+      }
+    } catch (e: any) {
+      console.error('[search] mailboxes search fail (non bloquant):', e.message)
     }
   }
 

@@ -16,6 +16,7 @@ interface SearchResult {
   meta:     string
   href:     string
   pdfUrl?:  string
+  external?: boolean
 }
 
 const CATEGORY_META: Record<string, {
@@ -31,9 +32,12 @@ const CATEGORY_META: Record<string, {
   avance:       { label: 'Avances de fonds', emoji: '📄', gradient: 'from-warning/30 to-warning/5',    accent: 'bg-warning/15 text-warning border-warning/30', ring: 'ring-warning/40',  text: 'text-warning' },
   invoice:      { label: 'Factures',         emoji: '🧾', gradient: 'from-purple-500/30 to-purple-500/5', accent: 'bg-purple-500/15 text-purple-500 border-purple-500/30', ring: 'ring-purple-500/40', text: 'text-purple-500' },
   vehicle:      { label: 'Véhicules',        emoji: '🚘', gradient: 'from-critical/30 to-critical/5',    accent: 'bg-critical/15 text-critical border-critical/30',         ring: 'ring-critical/40',   text: 'text-critical' },
+  email_info:           { label: 'Email · Info',           emoji: '📧', gradient: 'from-blue-500/30 to-blue-500/5',   accent: 'bg-blue-500/15 text-blue-500 border-blue-500/30',     ring: 'ring-blue-500/40',   text: 'text-blue-500' },
+  email_fourriere:      { label: 'Email · Fourrière',      emoji: '📧', gradient: 'from-orange-500/30 to-orange-500/5', accent: 'bg-orange-500/15 text-orange-500 border-orange-500/30', ring: 'ring-orange-500/40', text: 'text-orange-500' },
+  email_administration: { label: 'Email · Administration', emoji: '📧', gradient: 'from-teal-500/30 to-teal-500/5',   accent: 'bg-teal-500/15 text-teal-500 border-teal-500/30',     ring: 'ring-teal-500/40',   text: 'text-teal-500' },
 }
 
-const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle']
+const CATEGORY_ORDER = ['mission', 'encaissement', 'avance', 'invoice', 'vehicle', 'email_info', 'email_fourriere', 'email_administration']
 
 const RECENT_KEY     = 'verviers:recent-searches'
 const RECENT_MAX     = 8
