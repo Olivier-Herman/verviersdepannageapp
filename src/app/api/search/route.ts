@@ -55,6 +55,14 @@ interface SearchResult {
   pdfUrl?:      string                 // si dispo : telechargement PDF direct
   external?:    boolean                // true si lien externe (Outlook, Odoo, etc.)
   emailMailbox?: string                // pour categories email_* : email du mailbox source
+  /** Si vehicle en fourriere : metadata pour proposer bouton "Restituer". */
+  fourriere?: {
+    zone_code:  string
+    zone_label: string
+    ticket_id:  number | null   // helpdesk.ticket le plus recent lie (pour /v/{id} + date entree)
+    entry_date: string | null
+    days:       number | null   // nb jours depuis entry_date
+  }
 }
 
 /** Normalise une plaque pour comparaison : retire séparateurs, MAJUSCULES. */
@@ -424,21 +432,77 @@ export async function GET(req: Request) {
         for (const m of models) modelMap.set(m.id, m.name)
       }
 
+      // Pour les vehicules EN FOURRIERE, on recupere en batch le helpdesk.ticket
+      // le plus recent lie (pour le ticket_id + entry_date). Permet ensuite de
+      // proposer le bouton "Restituer" prerempli avec la duree de garde.
+      const vehiclesInFourriere = vehiclesFound.filter(v => {
+        const stateId = v.state_id?.[0]
+        return stateId && FOURRIERE_ZONE_BY_ID[stateId]
+      })
+      const ticketsByVehicle = new Map<number, { id: number; date_entree: string | null }>()
+      if (vehiclesInFourriere.length > 0) {
+        try {
+          const vIds = vehiclesInFourriere.map(v => v.id)
+          const tickets = await odooCall<any[]>('helpdesk.ticket', 'search_read', [
+            [['x_studio_fiche_vehicule', 'in', vIds]],
+          ], {
+            fields: ['id', 'x_studio_fiche_vehicule', 'x_studio_date_dentree', 'create_date'],
+            order:  'create_date desc',
+            limit:  vehiclesInFourriere.length * 5,
+          })
+          // Garde le plus recent par vehicule
+          for (const t of tickets || []) {
+            const fleetId = typeof t.x_studio_fiche_vehicule === 'number' ? t.x_studio_fiche_vehicule : null
+            if (!fleetId || ticketsByVehicle.has(fleetId)) continue
+            ticketsByVehicle.set(fleetId, {
+              id:          t.id,
+              date_entree: t.x_studio_date_dentree || t.create_date || null,
+            })
+          }
+        } catch (e: any) {
+          console.warn('[search] helpdesk tickets fourriere fail (non bloquant):', e.message)
+        }
+      }
+
+      const today = new Date()
       for (const v of vehiclesFound) {
         const brand = v.brand_id?.[1] || ''
         const model = v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : ''
         const stateId = v.state_id?.[0]
         const fourriereZone = stateId ? FOURRIERE_ZONE_BY_ID[stateId] : null
         const fourrierePrefix = fourriereZone ? `🚓 ${fourriereZone.label} · ` : ''
+
+        // Enrichissement fourriere si applicable
+        let fourriereMeta: SearchResult['fourriere'] | undefined
+        let daysExtra = ''
+        if (fourriereZone) {
+          const ticket = ticketsByVehicle.get(v.id) || null
+          let days: number | null = null
+          if (ticket?.date_entree) {
+            const entry = new Date(ticket.date_entree)
+            const diffMs = Math.max(0, today.getTime() - entry.getTime())
+            days = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+            daysExtra = ` · ${days} jour${days > 1 ? 's' : ''}`
+          }
+          fourriereMeta = {
+            zone_code:  fourriereZone.code,
+            zone_label: fourriereZone.label,
+            ticket_id:  ticket?.id || null,
+            entry_date: ticket?.date_entree || null,
+            days,
+          }
+        }
+
         out.push({
           category: 'vehicle',
           id:       String(v.id),
           title:    `${fourrierePrefix}${v.license_plate || '—'} · ${brand} ${model}`.trim(),
           subtitle: v.vin_sn ? `VIN ${v.vin_sn}` : '',
           meta:     fourriereZone
-            ? `EN FOURRIÈRE · ${fourriereZone.full_name}`
+            ? `EN FOURRIÈRE · ${fourriereZone.full_name}${daysExtra}`
             : `Fiche véhicule · factures · ticket assistance`,
           href:     `${ODOO_URL}/web#id=${v.id}&model=fleet.vehicle&view_type=form`,
+          fourriere: fourriereMeta,
         })
       }
     } catch (e: any) {

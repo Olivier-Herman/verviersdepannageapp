@@ -20,14 +20,24 @@ export default async function EncaissementPage({
     supabase.from('list_items').select('value, label').eq('list_type', 'payment_mode').eq('active', true).order('sort_order'),
   ])
 
-  // Prefill depuis mission (lien depuis DriverClient)
-  const prefill = (searchParams?.prefill_mission_id) ? {
-    mission_id: searchParams.prefill_mission_id,
-    plate:      searchParams.prefill_plate      || '',
-    brand:      searchParams.prefill_brand      || '',
-    model:      searchParams.prefill_model      || '',
-    amount:     searchParams.prefill_amount     ? parseFloat(searchParams.prefill_amount) : undefined,
-    return_to:  searchParams.return_to          || '/mission',
+  // Prefill : depuis mission (lien DriverClient) OU depuis fourriere
+  // (bouton "Restituer" dans /recherche). Les deux peuvent co-exister.
+  const hasMissionPrefill   = !!searchParams?.prefill_mission_id
+  const hasFourrierePrefill = searchParams?.prefill_type === 'fourriere'
+
+  const prefill = (hasMissionPrefill || hasFourrierePrefill) ? {
+    mission_id:        searchParams?.prefill_mission_id,
+    plate:             searchParams?.prefill_plate      || '',
+    brand:             searchParams?.prefill_brand      || '',
+    model:             searchParams?.prefill_model      || '',
+    amount:            searchParams?.prefill_amount     ? parseFloat(searchParams.prefill_amount) : undefined,
+    return_to:         searchParams?.return_to          || (hasFourrierePrefill ? '/recherche' : '/mission'),
+    // Fourriere
+    type:              searchParams?.prefill_type as 'fourriere' | undefined,
+    vehicle_id:        searchParams?.prefill_vehicle_id,
+    ticket_id:         searchParams?.prefill_ticket_id,
+    entry_date:        searchParams?.prefill_entry_date,
+    days:              searchParams?.prefill_days ? parseInt(searchParams.prefill_days, 10) : undefined,
   } : undefined
 
   const sessionUser = session.user as any

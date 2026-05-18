@@ -55,7 +55,7 @@ declare global {
 
 // ── Composants UI définis HORS du composant principal ──────
 function BaseShell({
-  children, title, page, totalPages, onBack,
+  children, title, page, totalPages, onBack, topNotice,
   userRole = '', userName = '', userModules = [],
 }: {
   children:     React.ReactNode
@@ -63,6 +63,7 @@ function BaseShell({
   page:         number
   totalPages:   number
   onBack?:      () => void
+  topNotice?:   React.ReactNode  // banner contextuel (ex: restitution fourriere)
   userRole?:    string
   userName?:    string
   userModules?: string[]
@@ -91,6 +92,12 @@ function BaseShell({
             <ArrowLeft size={14} />
             Retour
           </button>
+        </div>
+      )}
+
+      {topNotice && (
+        <div className="px-5 lg:px-8 pt-3 max-w-md lg:max-w-2xl mx-auto w-full">
+          {topNotice}
         </div>
       )}
 
@@ -144,6 +151,12 @@ interface Prefill {
   model?:      string
   amount?:     number
   return_to?:  string
+  // Prefill fourriere (bouton "Restituer" depuis /recherche)
+  type?:       'fourriere'
+  vehicle_id?: string
+  ticket_id?:  string
+  entry_date?: string
+  days?:       number
 }
 
 export default function EncaissementClient({
@@ -164,6 +177,36 @@ export default function EncaissementClient({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const TOTAL = 9
+  // Banner contextuel pour restitution fourriere : visible sur toutes les pages
+  // du wizard pour rappeler le contexte. Calcule la duree de garde.
+  const fourriereBanner = useMemo(() => {
+    if (prefill?.type !== 'fourriere') return null
+    const days = prefill.days ?? null
+    const entryDate = prefill.entry_date
+      ? new Date(prefill.entry_date).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : null
+    return (
+      <div className="bg-warning-soft border border-warning/40 rounded-xl p-3 text-xs">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-base">🚓</span>
+          <span className="font-semibold text-warning">Restitution fourrière</span>
+        </div>
+        <div className="text-ink-secondary space-y-0.5">
+          <div>
+            <span className="font-medium">{prefill.plate}</span>
+            {prefill.brand || prefill.model ? ` · ${[prefill.brand, prefill.model].filter(Boolean).join(' ')}` : ''}
+          </div>
+          {(entryDate || days != null) && (
+            <div className="text-ink-faint">
+              {entryDate && `Entrée le ${entryDate}`}
+              {days != null && ` · ${days} jour${days > 1 ? 's' : ''} de garde`}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }, [prefill])
+
   // Wrapper local stable : injecte les props utilisateur dans BaseShell
   // Mémoisé pour garder la même identité de composant entre rendus (sinon les
   // enfants — inputs du wizard — seraient remontés à chaque render et perdraient le focus).
@@ -171,9 +214,9 @@ export default function EncaissementClient({
     return function Shell(props: {
       children: React.ReactNode; title: string; page: number; totalPages: number; onBack?: () => void
     }) {
-      return <BaseShell {...props} userRole={userRole} userName={userName} userModules={userModules} />
+      return <BaseShell {...props} topNotice={fourriereBanner} userRole={userRole} userName={userName} userModules={userModules} />
     }
-  }, [userRole, userName, userModules])
+  }, [userRole, userName, userModules, fourriereBanner])
 
   // Auto-redirect après sauvegarde
   //  - return_to explicite (passe en query) prime
@@ -203,9 +246,16 @@ export default function EncaissementClient({
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [modelOther, setModelOther] = useState('')
 
-  // Page 2
-  const [motif, setMotif] = useState('')
-  const [motifLabel, setMotifLabel] = useState('')
+  // Page 2 — motif (pre-selectionne "fourriere" si prefill type=fourriere)
+  const fourriereMotif = useMemo(() => {
+    if (prefill?.type !== 'fourriere') return null
+    return motifs.find(m =>
+      m.value.toLowerCase().includes('fourri') ||
+      m.label.toLowerCase().includes('fourri')
+    ) || null
+  }, [prefill?.type, motifs])
+  const [motif, setMotif] = useState(fourriereMotif?.value || '')
+  const [motifLabel, setMotifLabel] = useState(fourriereMotif?.label || '')
   const [motifPrecision, setMotifPrecision] = useState('')
 
   // Page 3

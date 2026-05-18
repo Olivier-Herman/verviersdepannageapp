@@ -18,6 +18,13 @@ interface SearchResult {
   pdfUrl?:  string
   external?: boolean
   emailMailbox?: string
+  fourriere?: {
+    zone_code:  string
+    zone_label: string
+    ticket_id:  number | null
+    entry_date: string | null
+    days:       number | null
+  }
 }
 
 const CATEGORY_META: Record<string, {
@@ -165,6 +172,33 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
     } else {
       router.push(r.href)
     }
+  }
+
+  /** Ouvre /encaissement preremplit pour restituer un vehicule en fourriere.
+   *  Extrait plaque/marque/modele depuis le titre de result (format
+   *  "🚓 Zone X · PLATE · BRAND MODEL"). */
+  function restituer(r: SearchResult) {
+    if (!r.fourriere) return
+    // Le titre contient "🚓 Zone X · PLAQUE · BRAND MODEL"
+    const cleaned = r.title.replace(/^🚓\s+[^·]+·\s*/, '').trim()
+    const parts = cleaned.split('·').map(s => s.trim())
+    const plate = parts[0] || ''
+    const veh   = parts[1] || ''
+    const [brand, ...modelParts] = veh.split(/\s+/)
+    const model = modelParts.join(' ')
+
+    const params = new URLSearchParams()
+    params.set('prefill_type',       'fourriere')
+    params.set('prefill_vehicle_id', r.id)
+    params.set('prefill_plate',      plate)
+    params.set('prefill_brand',      brand || '')
+    params.set('prefill_model',      model || '')
+    if (r.fourriere.ticket_id)  params.set('prefill_ticket_id',  String(r.fourriere.ticket_id))
+    if (r.fourriere.entry_date) params.set('prefill_entry_date', r.fourriere.entry_date)
+    if (r.fourriere.days != null) params.set('prefill_days',     String(r.fourriere.days))
+    params.set('return_to', '/recherche?q=' + encodeURIComponent(query))
+
+    router.push(`/encaissement?${params.toString()}`)
   }
 
   function handleRecentClick(q: string) {
@@ -457,6 +491,26 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                                 >
                                   <FileText size={11} /> PDF
                                 </a>
+                              </div>
+                            )}
+                            {r.fourriere && (
+                              <div className="flex items-center gap-1.5 mt-2 pt-2 border-t">
+                                {r.fourriere.ticket_id && (
+                                  <a
+                                    href={`/v/${r.fourriere.ticket_id}`}
+                                    onClick={e => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-2 hover:bg-surface text-ink-secondary hover:text-ink border rounded-md transition"
+                                  >
+                                    <FileText size={11} /> Fiche parc
+                                  </a>
+                                )}
+                                <button
+                                  onClick={e => { e.stopPropagation(); restituer(r) }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-gradient-to-r from-success to-emerald-500 hover:opacity-90 text-white rounded-md transition shadow-sm font-medium"
+                                  title="Ouvrir l'encaissement pour restituer ce véhicule"
+                                >
+                                  🚗 Restituer
+                                </button>
                               </div>
                             )}
                           </div>
