@@ -28,6 +28,7 @@ export interface VabImportResult {
   mode:     VabImportMode
   total:    number       // nombre de missions visibles sur VAB
   already:  number       // deja en BDD
+  newCount: number       // total - already (pour UI)
   attempted: number      // nombre tentees a importer (mode send uniquement)
   success:  number       // nombre inserees avec succes
   failed:   number
@@ -79,6 +80,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       mode:      'preview',
       total:     items.length,
       already,
+      newCount:  items.length - already,
       attempted: 0,
       success:   0,
       failed:    0,
@@ -194,6 +196,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
     mode:      'send',
     total:     items.length,
     already,
+    newCount:  items.length - already,
     attempted: toImport.length,
     success,
     failed,

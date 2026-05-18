@@ -25,7 +25,7 @@ interface PreviewResponse {
   ok:    boolean
   mode:  'preview'
   total: number
-  new:   number
+  newCount: number
   items: PreviewItem[]
   debug?: string
 }
@@ -172,7 +172,7 @@ export default function VabImportButton({ onImportDone }: Props) {
                     </div>
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
                       <p className="text-amber-600 text-xs uppercase tracking-wider font-semibold">À importer</p>
-                      <p className="text-amber-600 text-2xl font-bold">{preview.new}</p>
+                      <p className="text-amber-600 text-2xl font-bold">{preview.newCount}</p>
                     </div>
                   </div>
 
@@ -214,7 +214,7 @@ export default function VabImportButton({ onImportDone }: Props) {
                     </details>
                   )}
 
-                  {preview.new === 0 && preview.total > 0 && (
+                  {preview.newCount === 0 && preview.total > 0 && (
                     <div className="bg-success-soft border border-success/30 rounded-xl p-4 text-center text-success">
                       <p className="font-semibold">Tout est à jour 🎉</p>
                       <p className="text-xs mt-1 opacity-80">Aucune nouvelle mission VAB à importer.</p>
@@ -273,7 +273,7 @@ export default function VabImportButton({ onImportDone }: Props) {
 
             {/* Footer */}
             <div className="px-5 py-3 border-t bg-surface-2 flex items-center justify-end gap-2">
-              {phase === 'preview' && preview && !loading && preview.new > 0 && (
+              {phase === 'preview' && preview && !loading && preview.newCount > 0 && (
                 <>
                   <button onClick={close} className="px-3 py-2 text-ink-secondary hover:text-ink text-sm transition">
                     Annuler
@@ -282,11 +282,11 @@ export default function VabImportButton({ onImportDone }: Props) {
                     onClick={triggerSend}
                     className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-90 text-white rounded-xl font-semibold text-sm transition"
                   >
-                    📨 Déclencher l'envoi ({preview.new})
+                    📨 Déclencher l'envoi ({preview.newCount})
                   </button>
                 </>
               )}
-              {(phase === 'done' || (phase === 'preview' && preview?.new === 0)) && (
+              {(phase === 'done' || (phase === 'preview' && preview?.newCount === 0)) && (
                 <button
                   onClick={close}
                   className="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl font-semibold text-sm transition"
