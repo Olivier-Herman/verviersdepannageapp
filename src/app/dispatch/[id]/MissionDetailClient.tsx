@@ -129,6 +129,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   axa:      { label: 'IPA',      color: 'bg-red-600' },
   ardenne:  { label: 'ARDENNE (IPA)', color: 'bg-orange-600' },
   mondial:  { label: 'MONDIAL',  color: 'bg-teal-600' },
+  aginsurance: { label: 'AG INSURANCE', color: 'bg-indigo-600' },
   vab:      { label: 'VAB',      color: 'bg-yellow-600' },
   police:   { label: 'POLICE',   color: 'bg-blue-900' },
   prive:    { label: 'PRIVÉ',    color: 'bg-zinc-700' },

@@ -13,7 +13,7 @@ export async function GET() {
   const supabase = createAdminClient()
   const { data: missions } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, source, source_format, status, received_at, raw_content')
+    .select('id, external_id, source, source_format, status, received_at, raw_content, sender_email')
     .or('status.eq.parse_error,source.eq.unknown,external_id.like.UNKNOWN_SENDER_%')
     .order('received_at', { ascending: false })
     .limit(50)

@@ -546,6 +546,32 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'skipped', reason: 'OTP Allianz intercepté et traité' }
     }
 
+    // ── Mondial/Allianz : ignorer les notifications "verlopen" (expirées) ───
+    // Quand une mission Mondial expire, ils renvoient un mail dont le sujet
+    // contient "verlopen" (NL = "expiré"). Sans filtre, on créait une mission
+    // vide en BDD. Cf. user feedback 2026-05-18.
+    if (source === 'mondial' && subject.toLowerCase().includes('verlopen')) {
+      console.log(`[Processor] Mail Mondial "verlopen" ignoré: ${subject.slice(0, 80)}`)
+      await markAsRead(token, messageId)
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      return { status: 'skipped', reason: 'Mondial verlopen (mission expirée)' }
+    }
+
+    // ── AG Insurance : uniquement "Remorquage frontalier" ───────────────────
+    // Touring assistance route certains AG Insurance via aginsurance@... mais
+    // VD ne traite QUE les remorquages frontaliers de cette source. Tout
+    // autre type (depannage local, etc.) est ignoré.
+    if (source === 'aginsurance') {
+      const bodyText = String(message.body?.content || '')
+      const haystack = `${subject} ${bodyText}`.toLowerCase()
+      if (!haystack.includes('remorquage frontalier')) {
+        console.log(`[Processor] AG Insurance hors scope (pas "Remorquage frontalier"): ${subject.slice(0, 80)}`)
+        await markAsRead(token, messageId)
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        return { status: 'skipped', reason: 'AG Insurance hors scope (pas Remorquage frontalier)' }
+      }
+    }
+
     // Récupérer les pièces jointes avec contentBytes
     let attachments: any[] = []
     if (message.hasAttachments) {
@@ -572,6 +598,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
           source_format:     content.sourceFormat,
           status:            'new',
           raw_content:       content.rawContent.slice(0, 10000),
+          sender_email:      fromEmail,
           received_at:       receivedAt,
           intervention_date: receivedAt,
         }).eq('id', placeholderId)
@@ -609,6 +636,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
           source_format:     content.sourceFormat,
           status:            'parse_error',
           raw_content:       content.rawContent.slice(0, 10000),
+          sender_email:      fromEmail,
           received_at:       receivedAt,
           intervention_date: receivedAt,
         }).eq('id', placeholderId)
@@ -736,6 +764,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       raw_content:          content.rawContent.slice(0, 10000),
       parsed_data:          parsed,
       parse_confidence:     parsed.confidence,
+      sender_email:         fromEmail,
     }
     // Pre-remplissage du client a facturer si la source a un default defini
     // ET que la mission est nouvelle (on n'ecrase pas si le dispatcher a deja

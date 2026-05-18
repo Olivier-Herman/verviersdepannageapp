@@ -79,6 +79,19 @@ RÈGLES D'EXTRACTION:
   ardenne: `SOURCE: L'Ardenne Prévoyante via Inter Partner Assistance. Format identique à AXA.
 RÈGLES D'EXTRACTION: identiques à AXA.`,
 
+  aginsurance: `SOURCE: AG Insurance via Touring Assistance (RTF "REMORQUAGE FRONTALIER").
+RÈGLES D'EXTRACTION:
+- Format identique a Touring (meme infrastructure d'assistance).
+- external_id = Case Number (ex: 2026BX195768) ou a defaut Reference (L645155467001)
+- dossier_number = Reference (L645155467001) ou Case Number
+- mission_type = remorquage (REMORQUAGE FRONTALIER explicite dans le titre)
+- client_name = champ "Name" (nom de la personne assistee, ex: STAV)
+- vehicle_plate = champ "Plaque", vehicle_brand = "Marque", vehicle_model = "Modele"
+- vehicle_fuel = champ "Carburant"
+- "Localisation du vehicule" = incident_address + incident_city (souvent etranger ex: Allemagne)
+- "Adresse de livraison" = destination_name + destination_address (garage Belgique)
+- incident_at = champ "Date" format "JJ-MM-AAAA HH:MM:SS" -> ISO 8601`,
+
   mondial: `SOURCE: Mondial Assistance / Allianz Partners (document PDF).
 RÈGLES D'EXTRACTION:
 - external_id = No de Mission (ex: 39260713724101)

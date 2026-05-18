@@ -108,6 +108,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   axa:      { label: 'IPA',      color: 'bg-red-600'    },
   ardenne:  { label: 'ARDENNE',  color: 'bg-orange-600' },
   mondial:  { label: 'MONDIAL',  color: 'bg-teal-600'   },
+  aginsurance: { label: 'AG INSURANCE', color: 'bg-indigo-600' },
   vab:      { label: 'VAB',      color: 'bg-yellow-600' },
   police:   { label: 'POLICE',   color: 'bg-blue-900'   },
   prive:    { label: 'PRIVÉ',    color: 'bg-zinc-700'   },
@@ -140,7 +141,7 @@ const TABS = [
 // Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees
 // qui offre une vue plus riche (chips de filtre, tampons, toggle archives).
 
-const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','vab','police','prive','garage']
+const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','aginsurance','vab','police','prive','garage']
 
 
 type SortMode = 'intervention_date' | 'received_at'

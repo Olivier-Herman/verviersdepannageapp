@@ -21,9 +21,10 @@ interface ErrorMission {
   status: string
   received_at: string
   raw_content: string | null
+  sender_email: string | null
 }
 
-const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'vab', 'police', 'prive', 'garage', 'unknown']
+const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'aginsurance', 'vab', 'police', 'prive', 'garage', 'unknown']
 
 export default function AdminMissionsPage() {
   const [senders,       setSenders]       = useState<Sender[]>([])
@@ -34,6 +35,30 @@ export default function AdminMissionsPage() {
   const [newLabel,      setNewLabel]      = useState('')
   const [saving,        setSaving]        = useState(false)
   const [activeTab,     setActiveTab]     = useState<'senders'|'errors'>('senders')
+  const [linkTarget,    setLinkTarget]    = useState<ErrorMission | null>(null)
+  const [linkSource,    setLinkSource]    = useState('touring')
+  const [linkLoading,   setLinkLoading]   = useState(false)
+
+  async function handleLinkSource() {
+    if (!linkTarget?.sender_email) return
+    setLinkLoading(true)
+    try {
+      const res = await fetch('/api/admin/missions/link-source', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sender_email: linkTarget.sender_email, source: linkSource })
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setLinkTarget(null)
+      await load()
+      alert(`✓ Expéditeur ${j.pattern} lié à ${linkSource.toUpperCase()}. ${j.deleted} mission(s) UNKNOWN supprimée(s). Les prochains mails de cet expéditeur seront parsés automatiquement.`)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    } finally {
+      setLinkLoading(false)
+    }
+  }
 
   useEffect(() => {
     load()
@@ -91,6 +116,7 @@ export default function AdminMissionsPage() {
   const SOURCE_COLORS: Record<string, string> = {
     touring: 'bg-blue-600',  ethias: 'bg-green-600', vivium: 'bg-purple-600',
     axa: 'bg-red-600', ardenne: 'bg-orange-600', mondial: 'bg-teal-600',
+    aginsurance: 'bg-indigo-600',
     vab: 'bg-yellow-600', police: 'bg-blue-900', prive: 'bg-zinc-700',
     garage: 'bg-amber-700', unknown: 'bg-zinc-600',
   }
@@ -221,15 +247,17 @@ export default function AdminMissionsPage() {
               <p>Aucune mission en erreur</p>
             </div>
           ) : (
+            <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border text-ink-muted text-xs uppercase">
                   <th className="px-4 py-3 text-left font-medium">ID</th>
                   <th className="px-4 py-3 text-left font-medium">Source</th>
-                  <th className="px-4 py-3 text-left font-medium">Format</th>
+                  <th className="px-4 py-3 text-left font-medium">Expéditeur</th>
                   <th className="px-4 py-3 text-left font-medium">Statut</th>
                   <th className="px-4 py-3 text-left font-medium">Reçu</th>
                   <th className="px-4 py-3 text-left font-medium">Contenu</th>
+                  <th className="px-4 py-3 text-left font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#222]">
@@ -240,8 +268,11 @@ export default function AdminMissionsPage() {
                       <span className={`px-2 py-0.5 rounded text-xs font-bold text-ink ${SOURCE_COLORS[m.source] || 'bg-zinc-600'}`}>
                         {m.source.toUpperCase()}
                       </span>
+                      <div className="text-ink-faint text-[10px] mt-1 uppercase">{m.source_format}</div>
                     </td>
-                    <td className="px-4 py-3 text-ink-muted text-xs uppercase">{m.source_format}</td>
+                    <td className="px-4 py-3 font-mono text-ink-secondary text-xs">
+                      {m.sender_email || <span className="text-ink-muted italic">—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-medium ${m.status === 'parse_error' ? 'text-critical' : 'text-warning'}`}>
                         {m.status}
@@ -253,10 +284,53 @@ export default function AdminMissionsPage() {
                     <td className="px-4 py-3 text-ink-muted text-xs max-w-xs truncate">
                       {m.raw_content?.slice(0, 80) || '—'}
                     </td>
+                    <td className="px-4 py-3">
+                      {m.sender_email && m.source === 'unknown' ? (
+                        <button
+                          onClick={() => { setLinkTarget(m); setLinkSource('touring') }}
+                          className="px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition whitespace-nowrap"
+                        >
+                          🔗 Lier à une source
+                        </button>
+                      ) : <span className="text-ink-faint text-xs">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {/* Modal "Lier à une source" */}
+            {linkTarget && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                   onClick={!linkLoading ? () => setLinkTarget(null) : undefined}>
+                <div onClick={e => e.stopPropagation()}
+                     className="bg-surface border rounded-2xl max-w-md w-full p-5 shadow-2xl">
+                  <h3 className="text-ink font-bold text-lg mb-1">🔗 Lier à une source</h3>
+                  <p className="text-ink-muted text-sm mb-4">
+                    Tous les futurs mails de <code className="text-ink-secondary bg-surface-2 px-1.5 py-0.5 rounded">{linkTarget.sender_email}</code> seront automatiquement classés comme cette source. Les missions UNKNOWN existantes de cet expéditeur seront supprimées.
+                  </p>
+                  <label className="text-ink-muted text-xs mb-1.5 block">Source à associer</label>
+                  <select value={linkSource} onChange={e => setLinkSource(e.target.value)}
+                          disabled={linkLoading}
+                          className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm mb-5">
+                    {SOURCES.filter(s => s !== 'unknown').map(s => (
+                      <option key={s} value={s}>{s.toUpperCase()}</option>
+                    ))}
+                  </select>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setLinkTarget(null)} disabled={linkLoading}
+                            className="px-3 py-2 text-ink-secondary hover:text-ink text-sm">
+                      Annuler
+                    </button>
+                    <button onClick={handleLinkSource} disabled={linkLoading}
+                            className="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl font-semibold text-sm disabled:opacity-50">
+                      {linkLoading ? 'Lien en cours…' : 'Confirmer'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </div>
       )}

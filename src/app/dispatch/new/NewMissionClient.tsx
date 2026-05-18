@@ -28,6 +28,7 @@ const ALL_SOURCES = [
   { value: 'touring', label: 'TOURING' }, { value: 'ethias', label: 'ETHIAS' },
   { value: 'vivium',  label: 'VIVIUM'  }, { value: 'ipa',    label: 'IPA (AXA)' },
   { value: 'ardenne', label: 'ARDENNE (IPA)' }, { value: 'mondial', label: 'MONDIAL' },
+  { value: 'aginsurance', label: 'AG INSURANCE' },
   { value: 'vab',     label: 'VAB'     }, { value: 'police', label: 'POLICE' },
   { value: 'prive',   label: 'PRIVÉ'   }, { value: 'garage', label: 'GARAGE' },
 ]

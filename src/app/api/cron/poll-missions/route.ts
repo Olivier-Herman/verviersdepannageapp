@@ -91,7 +91,7 @@ export async function GET(req: Request) {
         // Tag l email avec la categorie "traite" si le processing s est
         // bien passe (inserted ou duplicate). Best-effort : si l ajout
         // de categorie echoue, on ignore (la dedup DB prend le relais).
-        if (result.status === 'inserted' || result.status === 'duplicate') {
+        if (result.status === 'inserted' || result.status === 'duplicate' || result.status === 'skipped') {
           await tagEmailAsProcessed(token, message.id, message.categories || []).catch(() => {})
         }
       } catch (err: any) {

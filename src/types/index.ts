@@ -239,6 +239,7 @@ export type MissionSource =
   | 'axa'
   | 'ardenne'
   | 'mondial'
+  | 'aginsurance'
   | 'vab'
   | 'police'
   | 'prive'
