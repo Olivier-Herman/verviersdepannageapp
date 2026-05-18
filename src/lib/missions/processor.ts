@@ -729,8 +729,10 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       amount_guaranteed:    parsed.amount_guaranteed,
       incident_at:          parsed.incident_at,
       received_at:          receivedAt,
-      status:               'new',
-      dispatch_mode:        'manual',
+      // status/dispatch_mode : set UNIQUEMENT pour nouvelles missions (cf. block
+      // conditionnel ci-dessous). Sinon les emails redondants Touring/IMA/etc.
+      // ecrasaient le statut d une mission deja avancee (bug 2026-05-18 :
+      // mission to_invoice -> remise a new par un email redondant 2h plus tard).
       raw_content:          content.rawContent.slice(0, 10000),
       parsed_data:          parsed,
       parse_confidence:     parsed.confidence,
@@ -743,11 +745,13 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       updatePayload.billed_to_name = defaultBilledToName
     }
 
-    // Nouvelle mission (placeholder) → init intervention_date = receivedAt.
-    // Mise à jour d'un dossier existant → ne pas écraser la valeur saisie
-    // par le dispatcher.
+    // Nouvelle mission (placeholder) → init intervention_date + status + dispatch_mode.
+    // Mise à jour d'un dossier existant → ne pas écraser ces valeurs (le
+    // dispatcher peut avoir deja confirme/assigne/complete la mission).
     if (!existingMissionId) {
       updatePayload.intervention_date = receivedAt
+      updatePayload.status            = 'new'
+      updatePayload.dispatch_mode     = 'manual'
     }
     await supabase.from('incoming_missions').update(updatePayload).eq('id', targetId)
 
