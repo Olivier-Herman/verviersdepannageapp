@@ -12,6 +12,7 @@ import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { odooRpc, withOdooActor }  from '@/lib/odoo'
 import { FOURRIERE_ZONE_BY_ID, SCRATCH_STATE_ID } from '@/lib/fourriere'
+import { triggerTowsoftParcChange } from '@/lib/towsoft-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,10 +84,40 @@ export async function POST(req: Request) {
         notes:         body.notes || null,
       })
 
+      // Sync Towsoft : on retrouve le helpdesk.ticket le plus recent lie a ce
+      // vehicule pour extraire le n° mission Towsoft, puis on declenche le
+      // workflow GitHub Action (best-effort).
+      let towsoft: { triggered: boolean; reason?: string } = { triggered: false, reason: 'pas de helpdesk ticket lie' }
+      try {
+        const tickets = await odooRpc<any[]>('helpdesk.ticket', 'search_read', [
+          [['x_studio_fiche_vehicule', '=', odoo_vehicle_id]],
+        ], {
+          fields: ['id', 'x_studio_mission_towsoft', 'create_date'],
+          order:  'create_date desc',
+          limit:  1,
+        })
+        const missionTowsoft = tickets?.[0]?.x_studio_mission_towsoft
+        if (missionTowsoft) {
+          towsoft = await triggerTowsoftParcChange({
+            missionNumber: missionTowsoft,
+            toStateId:     to_state_id,
+          })
+          if (towsoft.triggered) {
+            console.log(`[fourriere/move] Towsoft sync triggered for mission ${missionTowsoft} → ${to_state_id}`)
+          } else {
+            console.warn(`[fourriere/move] Towsoft sync NOT triggered: ${towsoft.reason}`)
+          }
+        }
+      } catch (e: any) {
+        console.warn('[fourriere/move] Towsoft lookup fail (non bloquant):', e.message)
+        towsoft = { triggered: false, reason: e?.message || 'lookup fail' }
+      }
+
       return NextResponse.json({
         ok: true,
         from_state_id, from_state_name,
         to_state_id, to_state_name: toName,
+        towsoft,
       })
     } catch (e: any) {
       console.error('[fourriere/move]', e.message)

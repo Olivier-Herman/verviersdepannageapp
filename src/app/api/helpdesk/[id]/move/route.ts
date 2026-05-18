@@ -15,6 +15,7 @@ import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { odooRpc, withOdooActor }  from '@/lib/odoo'
 import { FOURRIERE_ZONE_BY_ID, SCRATCH_STATE_ID } from '@/lib/fourriere'
+import { triggerTowsoftParcChange } from '@/lib/towsoft-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,11 +49,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return withOdooActor(user.id as string | undefined, async () => {
     try {
-      // 1. Lit le ticket pour trouver le fleet vehicle lie
+      // 1. Lit le ticket pour trouver le fleet vehicle lie + n° mission Towsoft
       const tickets = await odooRpc<any[]>('helpdesk.ticket', 'search_read', [
         [['id', '=', ticketId]],
       ], {
-        fields: ['id', 'x_studio_vehicule', 'x_studio_fiche_vehicule'],
+        fields: ['id', 'x_studio_vehicule', 'x_studio_fiche_vehicule', 'x_studio_mission_towsoft'],
         limit: 1,
       })
       if (!tickets || tickets.length === 0) {
@@ -107,10 +108,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         notes:           body.notes || `Via /v/${ticketId}`,
       })
 
+      // 5. Sync Towsoft (best-effort, async, ne bloque pas la response)
+      const missionTowsoft = t.x_studio_mission_towsoft
+      let towsoft: { triggered: boolean; reason?: string } = { triggered: false, reason: 'pas de mission Towsoft' }
+      if (missionTowsoft) {
+        towsoft = await triggerTowsoftParcChange({
+          missionNumber: missionTowsoft,
+          toStateId:     to_state_id,
+        })
+        if (towsoft.triggered) {
+          console.log(`[helpdesk/move] Towsoft sync triggered for mission ${missionTowsoft} → ${to_state_id}`)
+        } else {
+          console.warn(`[helpdesk/move] Towsoft sync NOT triggered: ${towsoft.reason}`)
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         from_state_id, from_state_name,
         to_state_id,   to_state_name: toName,
+        towsoft,
       })
     } catch (e: any) {
       console.error('[helpdesk/:id/move]', e.message)
