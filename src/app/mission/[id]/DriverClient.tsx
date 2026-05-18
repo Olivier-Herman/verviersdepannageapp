@@ -42,7 +42,12 @@ interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const plate = (v = '') => v.replace(/[-.\s]/g, '').toUpperCase()
-const isREM = (t = '') => ['REM', 'remorquage', 'transport'].includes(t)
+// REM ou Transport (les 2 impliquent un transport vehicule). Insensible casse,
+// gere les variants REM/REMORQUAGE/rem/remorquage.
+const isREM = (t: string | null | undefined = '') => {
+  const n = (t ?? '').toLowerCase().trim()
+  return ['rem', 'remorquage', 'transport'].includes(n)
+}
 // REL = mission de relivraison (vehicule en parc -> client). Detect via incident_type ou
 // parent_mission_id (auto-cree par createRelivraisonMission). C est techniquement une REM
 // mais avec un workflow legerement adapte (skip "Sur place", on demarre du parc charge).

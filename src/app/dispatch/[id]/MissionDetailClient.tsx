@@ -1687,7 +1687,7 @@ export default function MissionDetailClient({
                 //  - DSP / Réparation sur place : pas de remorquage
                 //  - Trajet vide / DPR (déplacement) : la destination est le prochain point
                 //    d'intervention, géré séparément
-                const noDestination = ['depannage', 'reparation_place', 'trajet_vide'].includes(form.mission_type)
+                const noDestination = ['depannage', 'dsp', 'reparation_place', 'trajet_vide'].includes((form.mission_type || '').toLowerCase().trim())
                 return (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
@@ -1775,7 +1775,7 @@ export default function MissionDetailClient({
               })()}
 
               {/* Stops intermédiaires (REM uniquement) */}
-              {!['depannage', 'reparation_place', 'trajet_vide'].includes(form.mission_type) && (
+              {!['depannage', 'dsp', 'reparation_place', 'trajet_vide'].includes((form.mission_type || '').toLowerCase().trim()) && (
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-ink font-semibold text-sm flex items-center gap-2">

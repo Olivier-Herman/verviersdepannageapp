@@ -10,6 +10,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { startAttempt }      from '@/lib/auto-dispatch/orchestrator'
+import { isRemorquage, isDsp } from '@/lib/missions/mission-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,10 +37,10 @@ export async function POST(req: Request) {
     .maybeSingle()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
-  // 2. Filtre type mission
-  if (!['remorquage', 'depannage'].includes(mission.mission_type || '')) {
+  // 2. Filtre type mission (insensible casse + alias REM/DSP/reparation_place)
+  if (!isRemorquage(mission.mission_type) && !isDsp(mission.mission_type)) {
     return NextResponse.json({
-      error: `Auto-dispatch reserve aux remorquage/depannage. Type recu: ${mission.mission_type}`,
+      error: `Auto-dispatch reserve aux REM/DSP. Type recu: ${mission.mission_type}`,
     }, { status: 400 })
   }
 

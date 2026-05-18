@@ -99,9 +99,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Notifier le chauffeur
-    const typeLabel    = mission.mission_type === 'remorquage' ? '🚛 Remorquage'
-                       : mission.mission_type === 'depannage'  ? '🔧 Dépannage'
+    // Notifier le chauffeur (insensible casse + alias REM/DSP)
+    const mtNorm = (mission.mission_type || '').toLowerCase().trim()
+    const typeLabel    = ['rem', 'remorquage'].includes(mtNorm)                          ? '🚛 Remorquage'
+                       : ['dsp', 'depannage', 'reparation_place'].includes(mtNorm)        ? '🔧 Dépannage'
                        : '📋 Mission'
     const vehicleLabel = [mission.vehicle_brand, mission.vehicle_model, mission.vehicle_plate]
       .filter(Boolean).join(' ')
