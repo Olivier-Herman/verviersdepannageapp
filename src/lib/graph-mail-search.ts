@@ -7,14 +7,18 @@
 // Architecture : Option B (App registration + Application Access Policy).
 // Une seule app Azure AD, restreinte par policy aux 3 mailboxes cibles.
 //
-// Env vars requises :
-//   MS_GRAPH_TENANT_ID
-//   MS_GRAPH_CLIENT_ID
-//   MS_GRAPH_CLIENT_SECRET
+// Env vars requises (deja configurees pour l envoi d emails et NextAuth) :
+//   AZURE_AD_TENANT_ID
+//   AZURE_AD_CLIENT_ID
+//   AZURE_AD_CLIENT_SECRET
 //
-// Si une de ces vars est absente, la recherche email est desactivee
-// silencieusement (no-op). Permet de deployer le code sans casser /search
-// avant que Olivier ait fini les prerequis Azure.
+// L app Azure doit avoir la permission Microsoft Graph application
+// Mail.Read (ou Mail.ReadWrite). Et une Application Access Policy doit
+// restreindre l app aux 3 mailboxes cibles (sinon par defaut elle aurait
+// acces a toutes les mailboxes du tenant).
+//
+// Si une env var est absente, la recherche email est desactivee
+// silencieusement (no-op).
 
 const TOKEN_TTL_MS = 55 * 60 * 1000  // 55 min (token Graph dure 1h)
 
@@ -40,9 +44,9 @@ export interface MailHit {
 }
 
 function readEnv() {
-  const tenant = process.env.MS_GRAPH_TENANT_ID
-  const client = process.env.MS_GRAPH_CLIENT_ID
-  const secret = process.env.MS_GRAPH_CLIENT_SECRET
+  const tenant = process.env.AZURE_AD_TENANT_ID
+  const client = process.env.AZURE_AD_CLIENT_ID
+  const secret = process.env.AZURE_AD_CLIENT_SECRET
   if (!tenant || !client || !secret) return null
   return { tenant, client, secret }
 }
