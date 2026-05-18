@@ -663,6 +663,43 @@ export async function fetchVabMissionDetail(
   const generalFields = extractFields(generalContainer)
   const vehicleFields = extractFields(vehicleContainer)
 
+  // Fallback Telephone : la valeur peut etre dans <a href="tel:..."> au lieu
+  // du .SpacerBottom5 du label (pattern OutSystems sur certains champs).
+  function findPhoneIn(scope: any): string | null {
+    if (!scope || scope.length === 0) return null
+    let phone: string | null = null
+    scope.find('a[href^="tel:"]').each((_idx: number, el: any) => {
+      if (phone) return
+      const href = $(el).attr('href') || ''
+      const tel = href.replace(/^tel:/i, '').trim()
+      if (tel) phone = tel
+    })
+    if (!phone) {
+      scope.find('.Telephone, span.Telephone').each((_idx: number, el: any) => {
+        if (phone) return
+        const t = $(el).text().trim()
+        if (t && /\d/.test(t)) phone = t
+      })
+    }
+    return phone
+  }
+
+  const fromPhoneFinal = (fromFields['Téléphone'] && /\d/.test(fromFields['Téléphone']))
+    ? fromFields['Téléphone']
+    : (fromFields['GSM'] && /\d/.test(fromFields['GSM']))
+      ? fromFields['GSM']
+      : findPhoneIn(fromContainer)
+  const toPhoneFinal = (toFields['Téléphone'] && /\d/.test(toFields['Téléphone']))
+    ? toFields['Téléphone']
+    : (toFields['GSM'] && /\d/.test(toFields['GSM']))
+      ? toFields['GSM']
+      : findPhoneIn(toContainer)
+  const generalPhoneFinal = (generalFields['Téléphone'] && /\d/.test(generalFields['Téléphone']))
+    ? generalFields['Téléphone']
+    : (generalFields['GSM'] && /\d/.test(generalFields['GSM']))
+      ? generalFields['GSM']
+      : findPhoneIn(generalContainer)
+
   // Type de tache extrait du <title> "Détails du remorquage" → "remorquage"
   const titleEl = $('title').text().trim()
   let taskTypeRaw: string | null = null
@@ -726,22 +763,22 @@ export async function fetchVabMissionDetail(
     taskType:       taskTypeRaw,
     codesDePanne,
 
-    fromName:       fromFields['Nom'] || null,
+    fromName:       fromFields['Nom'] || fromFields['Nom contact'] || fromFields['Personne'] || null,
     fromStreet:     fromFields['Rue'] || null,
     fromZip:        fromFields['Code postal'] || null,
     fromCity:       fromFields['Ville'] || null,
-    fromPhone:      fromFields['Téléphone'] || fromFields['GSM'] || null,
+    fromPhone:      fromPhoneFinal,
     // Texte libre type "ENFACE N5" ou "E25 PARKING HARRE (OUEST) --> DIRECTION LIEGE"
     fromLocationFreeText: fromFields['Localisation du véhicule'] || fromFields['Localisation du vehicule'] || null,
 
-    toName:         toFields['Nom'] || null,
+    toName:         toFields['Nom'] || toFields['Nom contact'] || null,
     toStreet:       toFields['Rue'] || null,
     toZip:          toFields['Code postal'] || null,
     toCity:         toFields['Ville'] || null,
-    toPhone:        toFields['Téléphone'] || toFields['GSM'] || null,
+    toPhone:        toPhoneFinal,
 
-    clientName:     generalFields['Nom du client'] || null,
-    clientPhone:    generalFields['Téléphone'] || generalFields['GSM'] || null,
+    clientName:     generalFields['Nom du client'] || generalFields['Client'] || null,
+    clientPhone:    generalPhoneFinal,
     interventionAt: generalFields['À'] || generalFields['A'] || null,
 
     vehiclePlate:   vehicleFields['Immatriculation'] || null,
@@ -754,7 +791,14 @@ export async function fetchVabMissionDetail(
     vehicleTraction: vehicleFields['Traction'] || null,
     vehicleCategory: vehicleCategorie,
 
-    rawSnippet: `taskType=${taskTypeRaw} | fields=from(${Object.keys(fromFields).length}) to(${Object.keys(toFields).length}) gen(${Object.keys(generalFields).length}) veh(${Object.keys(vehicleFields).length}) | codes=${codesDePanne || 'n/a'}`,
+    rawSnippet: [
+      `taskType=${taskTypeRaw} codes=${codesDePanne || 'n/a'}`,
+      `from(${Object.keys(fromFields).length}): ${JSON.stringify(fromFields)}`,
+      `to(${Object.keys(toFields).length}): ${JSON.stringify(toFields)}`,
+      `gen(${Object.keys(generalFields).length}): ${JSON.stringify(generalFields)}`,
+      `veh(${Object.keys(vehicleFields).length}): ${JSON.stringify(vehicleFields)}`,
+      `phones: from=${fromPhoneFinal || '∅'} to=${toPhoneFinal || '∅'} gen=${generalPhoneFinal || '∅'}`,
+    ].join('\n').slice(0, 3000),
   }
 
   return detail

@@ -145,6 +145,11 @@ export async function GET(req: Request) {
           destination_name:   detail.toName,
           destination_address: [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null,
           parse_confidence:   0.95,
+          source_format:      'vab-scraper',
+          // Stocke un snippet de debug : permet de voir ce que le scraper a
+          // extrait (champs/labels) sans avoir besoin des logs Vercel.
+          // Visible dans la fiche mission sous "Contenu brut".
+          raw_content:        detail.rawSnippet || null,
           received_at:        new Date().toISOString(),
           intervention_date:  interventionIso || new Date().toISOString(),
           // Client a facturer par defaut (configure dans /admin/sources si defini)
