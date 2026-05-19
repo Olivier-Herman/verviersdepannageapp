@@ -26,6 +26,10 @@ export default async function ParcPlanPage() {
     <ParcPlanClient
       isDispatcher={isDispatcher}
       isDriver={isDriver}
+      userRole={user.role || ''}
+      userName={user.name || ''}
+      userEmail={user.email || undefined}
+      userModules={user.modules || []}
     />
   )
 }

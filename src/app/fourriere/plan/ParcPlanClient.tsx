@@ -14,6 +14,7 @@ import {
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
 import { RefreshCw, Car, AlertTriangle, X } from 'lucide-react'
+import AppShell from '@/components/layout/AppShell'
 
 interface Zone {
   key:        string
@@ -51,9 +52,13 @@ interface State {
 
 const UNPLACED_DROP_ID = 'unplaced'
 
-export default function ParcPlanClient({ isDispatcher, isDriver }: {
+export default function ParcPlanClient({ isDispatcher, isDriver, userRole, userName, userEmail, userModules }: {
   isDispatcher: boolean
   isDriver:     boolean
+  userRole:     string
+  userName:     string
+  userEmail?:   string
+  userModules:  string[]
 }) {
   const [state, setState] = useState<State | null>(null)
   const [loading, setLoading] = useState(true)
@@ -141,14 +146,17 @@ export default function ParcPlanClient({ isDispatcher, isDriver }: {
     }
   }
 
-  if (loading && !state) return <div className="p-8 text-ink-muted text-center"><RefreshCw className="inline animate-spin mr-2" size={16} /> Chargement…</div>
-  if (error && !state)   return <div className="p-8 text-critical">⚠ {error}</div>
-  if (!state)            return null
+  const shellProps = { title: 'Plan du parc', userRole, userName, userEmail, userModules }
+
+  if (loading && !state) return <AppShell {...shellProps}><div className="p-8 text-ink-muted text-center"><RefreshCw className="inline animate-spin mr-2" size={16} /> Chargement…</div></AppShell>
+  if (error && !state)   return <AppShell {...shellProps}><div className="p-8 text-critical">⚠ {error}</div></AppShell>
+  if (!state)            return <AppShell {...shellProps}><div /></AppShell>
 
   const allMissions: Record<string, PlacedMission> = {}
   for (const m of [...state.placed, ...state.toPlace]) allMissions[m.id] = m
 
   return (
+    <AppShell {...shellProps}>
     <DndContext
       sensors={sensors}
       onDragStart={ev => setActiveMission(allMissions[String(ev.active.id)] || null)}
@@ -210,6 +218,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver }: {
         {activeMission && <VehicleCard mission={activeMission} dragging />}
       </DragOverlay>
     </DndContext>
+    </AppShell>
   )
 }
 
