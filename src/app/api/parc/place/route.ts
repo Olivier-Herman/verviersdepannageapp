@@ -46,14 +46,40 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
 
   // Validation des coordonnees si placement (zoneKey != null)
+  let finalZone = zoneKey
+  let finalRow  = rowNumber
+  let finalSlot = slotIndex
   if (zoneKey) {
     if (!Number.isInteger(rowNumber) || rowNumber == null || rowNumber <= 0 ||
         !Number.isInteger(slotIndex) || slotIndex == null || slotIndex <= 0) {
       return NextResponse.json({ error: 'row_number et slot_index requis si zone_key' }, { status: 400 })
     }
 
+    // Si le slot cible est dans un groupe fusionne, rerouter vers le primary
+    // (selection_order=1) pour qu une seule mission "occupe" tout le groupe.
+    const { data: groupHit } = await sb
+      .from('parc_slot_groups')
+      .select('group_uuid')
+      .eq('zone_key',   zoneKey)
+      .eq('row_number', rowNumber)
+      .eq('slot_index', slotIndex)
+      .maybeSingle()
+    if (groupHit) {
+      const { data: primary } = await sb
+        .from('parc_slot_groups')
+        .select('zone_key, row_number, slot_index')
+        .eq('group_uuid', groupHit.group_uuid)
+        .eq('selection_order', 1)
+        .maybeSingle()
+      if (primary) {
+        finalZone = primary.zone_key
+        finalRow  = primary.row_number
+        finalSlot = primary.slot_index
+      }
+    }
+
     // Permission chauffeur restreinte aux zones autorisees
-    if (!isDispatcher && isDriver && !DRIVER_ALLOWED_ZONES.includes(zoneKey)) {
+    if (!isDispatcher && isDriver && !DRIVER_ALLOWED_ZONES.includes(finalZone as string)) {
       return NextResponse.json({
         error: `Les chauffeurs ne peuvent placer que dans ${DRIVER_ALLOWED_ZONES.join(' ou ')}`,
       }, { status: 403 })
@@ -63,22 +89,22 @@ export async function POST(req: Request) {
     const { data: row } = await sb
       .from('parc_rows')
       .select('id, capacity')
-      .eq('zone_key', zoneKey)
-      .eq('row_number', rowNumber)
+      .eq('zone_key', finalZone)
+      .eq('row_number', finalRow)
       .maybeSingle()
     if (!row) {
-      return NextResponse.json({ error: `Ligne ${zoneKey}${rowNumber} inexistante` }, { status: 400 })
+      return NextResponse.json({ error: `Ligne ${finalZone}${finalRow} inexistante` }, { status: 400 })
     }
 
     // Si la zone est strict_capacity, refuse l overflow
     const { data: zone } = await sb
       .from('parc_zones')
       .select('strict_capacity')
-      .eq('key', zoneKey)
+      .eq('key', finalZone)
       .maybeSingle()
-    if (zone?.strict_capacity && slotIndex > row.capacity) {
+    if (zone?.strict_capacity && (finalSlot as number) > row.capacity) {
       return NextResponse.json({
-        error: `Zone ${zoneKey} en mode strict : capacite ${row.capacity}, pas d overflow.`,
+        error: `Zone ${finalZone} en mode strict : capacite ${row.capacity}, pas d overflow.`,
       }, { status: 409 })
     }
 
@@ -86,14 +112,14 @@ export async function POST(req: Request) {
     const { data: blocked } = await sb
       .from('parc_blocked_slots')
       .select('reason')
-      .eq('zone_key',   zoneKey)
-      .eq('row_number', rowNumber)
-      .eq('slot_index', slotIndex)
+      .eq('zone_key',   finalZone)
+      .eq('row_number', finalRow)
+      .eq('slot_index', finalSlot)
       .maybeSingle()
     if (blocked) {
       const motif = blocked.reason ? ` (${blocked.reason})` : ''
       return NextResponse.json({
-        error: `Emplacement ${zoneKey}${rowNumber}-${slotIndex} bloqué${motif}.`,
+        error: `Emplacement ${finalZone}${finalRow}-${finalSlot} bloqué${motif}.`,
       }, { status: 409 })
     }
 
@@ -102,9 +128,9 @@ export async function POST(req: Request) {
     const { data: currentOccupant } = await sb
       .from('incoming_missions')
       .select('id, parc_zone_key, parc_row_number, parc_slot_index')
-      .eq('parc_zone_key', zoneKey)
-      .eq('parc_row_number', rowNumber)
-      .eq('parc_slot_index', slotIndex)
+      .eq('parc_zone_key', finalZone)
+      .eq('parc_row_number', finalRow)
+      .eq('parc_slot_index', finalSlot)
       .neq('id', missionId)
       .maybeSingle()
 
@@ -126,9 +152,9 @@ export async function POST(req: Request) {
   }
 
   const { error } = await sb.from('incoming_missions').update({
-    parc_zone_key:   zoneKey,
-    parc_row_number: zoneKey ? rowNumber : null,
-    parc_slot_index: zoneKey ? slotIndex : null,
+    parc_zone_key:   finalZone,
+    parc_row_number: finalZone ? finalRow : null,
+    parc_slot_index: finalZone ? finalSlot : null,
   }).eq('id', missionId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

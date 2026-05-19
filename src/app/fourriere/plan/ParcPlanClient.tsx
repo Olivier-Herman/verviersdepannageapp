@@ -13,7 +13,7 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'
 
@@ -98,13 +98,33 @@ interface BlockedSlot {
   reason:      string | null
 }
 
+interface SlotRef {
+  zone_key:    string
+  row_number:  number
+  slot_index:  number
+}
+
+interface MergedGroup {
+  group_uuid:  string
+  primary:     SlotRef
+  members:     SlotRef[]
+}
+
 interface State {
   zones:           Zone[]
   rows:            Row[]
   placed:          PlacedMission[]
   toPlace:         PlacedMission[]
   blocked:         BlockedSlot[]
+  merged_groups:   MergedGroup[]
   canvasHeightPx:  number
+}
+
+type Mode = 'normal' | 'edit' | 'block' | 'link'
+
+/** Cle "zone-row-slot" utilisee dans les Sets / Maps de pending state. */
+function slotKey(s: SlotRef | { zone_key: string; row_number: number; slot_index: number }): string {
+  return `${s.zone_key}-${s.row_number}-${s.slot_index}`
 }
 
 const UNPLACED_DROP_ID = 'unplaced'
@@ -123,10 +143,21 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeMission, setActiveMission] = useState<PlacedMission | null>(null)
-  const [editMode, setEditMode]   = useState(false)
-  const [blockMode, setBlockMode] = useState(false)
+  const [mode, setMode] = useState<Mode>('normal')
+  // Batch block : sets de cles "zone-row-slot"
+  const [pendingBlocks, setPendingBlocks]     = useState<Set<string>>(new Set())
+  const [pendingUnblocks, setPendingUnblocks] = useState<Set<string>>(new Set())
+  const [blockReason, setBlockReason]         = useState<string>('')
+  // Batch link : ordre de selection + groupes a defaire
+  const [pendingMerge, setPendingMerge]         = useState<SlotRef[]>([])
+  const [pendingUnmerges, setPendingUnmerges]   = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const canvasRef = useRef<HTMLDivElement>(null)
+
+  // Convenience flags pour le legacy code (editMode / blockMode toujours utilises)
+  const editMode  = mode === 'edit'
+  const blockMode = mode === 'block'
+  const linkMode  = mode === 'link'
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -157,6 +188,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_zones' },           () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_rows' },            () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_blocked_slots' },   () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_slot_groups' },     () => load())
       .subscribe()
     return () => { sbClient.removeChannel(channel) }
   }, [load])
@@ -185,6 +217,40 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   }, [state])
 
   const blockedCount = state?.blocked.length ?? 0
+
+  // Map slot -> { group_uuid, isPrimary, primaryLabel } pour rendu rapide
+  const mergedMap = useMemo<Map<string, { group_uuid: string; isPrimary: boolean; primaryLabel: string }>>(() => {
+    const out = new Map<string, { group_uuid: string; isPrimary: boolean; primaryLabel: string }>()
+    if (!state) return out
+    for (const g of state.merged_groups || []) {
+      const primaryLabel = `${g.primary.zone_key}${g.primary.row_number}-${g.primary.slot_index}`
+      out.set(slotKey(g.primary), { group_uuid: g.group_uuid, isPrimary: true, primaryLabel })
+      for (const m of g.members) {
+        out.set(slotKey(m), { group_uuid: g.group_uuid, isPrimary: false, primaryLabel })
+      }
+    }
+    return out
+  }, [state])
+
+  // Sets de groupes a defaire (= leurs members en visuel rouge pendant)
+  const pendingUnmergeMembersSet = useMemo<Set<string>>(() => {
+    const out = new Set<string>()
+    if (!state) return out
+    for (const g of state.merged_groups || []) {
+      if (pendingUnmerges.has(g.group_uuid)) {
+        out.add(slotKey(g.primary))
+        for (const m of g.members) out.add(slotKey(m))
+      }
+    }
+    return out
+  }, [state, pendingUnmerges])
+
+  // Set des cles dans pendingMerge (pour visuel + ordre)
+  const pendingMergeMap = useMemo<Map<string, number>>(() => {
+    const out = new Map<string, number>()
+    pendingMerge.forEach((s, i) => out.set(slotKey(s), i + 1))
+    return out
+  }, [pendingMerge])
 
   const rowsByZone = useMemo<Record<string, Row[]>>(() => {
     if (!state) return {}
@@ -246,32 +312,161 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     }
   }
 
-  async function toggleBlock(zoneKey: string, rowNumber: number, slotIndex: number) {
-    const key       = `${zoneKey}-${rowNumber}-${slotIndex}`
-    const isBlocked = blockedMap.has(key)
-    let reason: string | null = null
-    if (!isBlocked) {
-      // Prompt motif optionnel (vide accepte)
-      const input = window.prompt(
-        `Bloquer l'emplacement ${zoneKey}${rowNumber}-${slotIndex}.\nMotif (optionnel) :`,
-        '',
-      )
-      // null = annulation, '' = pas de motif mais on bloque
-      if (input === null) return
-      reason = input.trim() || null
+  /** Click sur un slot. Comportement varie selon le mode courant. */
+  function handleSlotClick(zoneKey: string, rowNumber: number, slotIndex: number) {
+    const k          = `${zoneKey}-${rowNumber}-${slotIndex}`
+    const isBlocked  = blockedMap.has(k)
+    const merged     = mergedMap.get(k)
+    const isMissionHere = (state?.placed || []).some(m =>
+      m.parc_zone_key === zoneKey && m.parc_row_number === rowNumber && m.parc_slot_index === slotIndex)
+
+    if (mode === 'block') {
+      if (isMissionHere) {
+        alert('Slot occupé par un véhicule. Retire-le avant de bloquer.')
+        return
+      }
+      if (merged) {
+        alert(`Slot dans un emplacement fusionné (${merged.primaryLabel}). Défusionne d'abord.`)
+        return
+      }
+      // Toggle :
+      // - slot libre cliqué -> pendingBlocks (ou retire si déjà en attente)
+      // - slot bloqué cliqué -> pendingUnblocks (ou retire si déjà en attente)
+      if (pendingBlocks.has(k)) {
+        setPendingBlocks(prev => { const n = new Set(prev); n.delete(k); return n })
+      } else if (pendingUnblocks.has(k)) {
+        setPendingUnblocks(prev => { const n = new Set(prev); n.delete(k); return n })
+      } else if (isBlocked) {
+        setPendingUnblocks(prev => new Set(prev).add(k))
+      } else {
+        setPendingBlocks(prev => new Set(prev).add(k))
+      }
+      return
+    }
+
+    if (mode === 'link') {
+      // Click sur slot deja dans un groupe -> toggle le groupe dans pendingUnmerges
+      if (merged) {
+        setPendingUnmerges(prev => {
+          const n = new Set(prev)
+          if (n.has(merged.group_uuid)) n.delete(merged.group_uuid)
+          else n.add(merged.group_uuid)
+          return n
+        })
+        return
+      }
+      if (isBlocked) {
+        alert('Slot bloqué : débloque-le avant de fusionner.')
+        return
+      }
+      if (isMissionHere) {
+        alert('Slot occupé par un véhicule. Retire-le avant de fusionner.')
+        return
+      }
+      // Toggle dans pendingMerge (en preservant l'ordre)
+      if (pendingMergeMap.has(k)) {
+        setPendingMerge(prev => prev.filter(s => slotKey(s) !== k))
+      } else {
+        if (pendingMerge.length >= 4) {
+          alert('Maximum 4 emplacements fusionnés.')
+          return
+        }
+        setPendingMerge(prev => [...prev, { zone_key: zoneKey, row_number: rowNumber, slot_index: slotIndex }])
+      }
+      return
+    }
+  }
+
+  /** Valide le batch de blocage + deblocage. */
+  async function commitBlockBatch() {
+    if (pendingBlocks.size === 0 && pendingUnblocks.size === 0) {
+      // Sortie sans aucune action -> juste reset mode
+      resetBlockMode()
+      return
+    }
+    function parseKey(k: string): SlotRef {
+      const [zone_key, r, s] = k.split('-')
+      return { zone_key, row_number: parseInt(r, 10), slot_index: parseInt(s, 10) }
     }
     try {
-      const res = await fetch('/api/parc/block', {
+      const res = await fetch('/api/parc/block/batch', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ zone_key: zoneKey, row_number: rowNumber, slot_index: slotIndex, reason }),
+        body:    JSON.stringify({
+          to_block:   Array.from(pendingBlocks).map(parseKey),
+          to_unblock: Array.from(pendingUnblocks).map(parseKey),
+          reason:     blockReason.trim() || null,
+        }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      resetBlockMode()
       await load()
     } catch (e: any) {
       alert(`Erreur : ${e.message}`)
     }
+  }
+
+  /** Valide le batch de fusion + defusion. */
+  async function commitLinkBatch() {
+    const hasMerge   = pendingMerge.length >= 2
+    const hasUnmerge = pendingUnmerges.size > 0
+    if (!hasMerge && !hasUnmerge) {
+      resetLinkMode()
+      return
+    }
+    try {
+      // 1) Defusionner d abord les groupes marques
+      for (const groupUuid of pendingUnmerges) {
+        const res = await fetch(`/api/parc/merge/${encodeURIComponent(groupUuid)}`, { method: 'DELETE' })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(j.error || `Erreur défusion ${res.status}`)
+        }
+      }
+      // 2) Fusionner la nouvelle selection (si >= 2)
+      if (hasMerge) {
+        const res = await fetch('/api/parc/merge', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ slots: pendingMerge }),
+        })
+        const j = await res.json()
+        if (!res.ok) throw new Error(j.error || `Erreur fusion ${res.status}`)
+      } else if (pendingMerge.length === 1) {
+        alert('Sélectionne au moins 2 emplacements pour fusionner.')
+        return
+      }
+      resetLinkMode()
+      await load()
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    }
+  }
+
+  function resetBlockMode() {
+    setPendingBlocks(new Set())
+    setPendingUnblocks(new Set())
+    setBlockReason('')
+    setMode('normal')
+  }
+  function resetLinkMode() {
+    setPendingMerge([])
+    setPendingUnmerges(new Set())
+    setMode('normal')
+  }
+  function enterBlockMode() {
+    const motif = window.prompt('Motif du blocage (optionnel) :', '')
+    if (motif === null) return  // annulation
+    setBlockReason(motif.trim())
+    setPendingBlocks(new Set())
+    setPendingUnblocks(new Set())
+    setMode('block')
+  }
+  function enterLinkMode() {
+    setPendingMerge([])
+    setPendingUnmerges(new Set())
+    setMode('link')
   }
 
   const shellProps = { title: 'Plan du parc', userRole, userName, userEmail, userModules }
@@ -293,7 +488,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     >
       <div className="flex flex-col lg:flex-row gap-4 p-4 max-w-[1600px] mx-auto">
         {/* Sidebar : a placer */}
-        <UnplacedSidebar missions={state.toPlace} matchingIds={matchingIds} blockMode={blockMode} />
+        <UnplacedSidebar missions={state.toPlace} matchingIds={matchingIds} blockMode={blockMode || linkMode} />
 
         {/* Canvas des zones */}
         <div className="flex-1 space-y-3">
@@ -301,18 +496,30 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
             <div>
               <h1 className="text-ink font-bold text-xl">Plan du parc</h1>
               <p className="text-ink-muted text-xs mt-0.5">
-                {editMode
-                  ? 'Glisse les zones pour les positionner, coin bas-droit pour redimensionner.'
-                  : blockMode
-                    ? 'Clique sur un emplacement libre pour le bloquer/débloquer. Le drag&drop est désactivé.'
-                    : `Glisse les véhicules entre les slots. ${isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}`}
-                {!editMode && !blockMode && blockedCount > 0 && (
-                  <span className="ml-2 text-critical">— {blockedCount} emplacement{blockedCount > 1 ? 's' : ''} bloqué{blockedCount > 1 ? 's' : ''}.</span>
+                {mode === 'edit' && 'Glisse les zones pour les positionner, coin bas-droit pour redimensionner.'}
+                {mode === 'block' && (
+                  <>
+                    Sélectionne les emplacements à bloquer{blockReason ? ` (motif : « ${blockReason} »)` : ''}. Clic sur un slot déjà rouge = marqué pour déblocage.
+                  </>
+                )}
+                {mode === 'link' && (
+                  <>
+                    Sélectionne 2 à 4 emplacements à fusionner — le 1er sélectionné garde le label. Clic sur un emplacement fusionné existant = marqué pour défusion.
+                  </>
+                )}
+                {mode === 'normal' && (
+                  <>Glisse les véhicules entre les slots. {isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}</>
+                )}
+                {mode === 'normal' && blockedCount > 0 && (
+                  <span className="ml-2 text-critical">— {blockedCount} bloqué{blockedCount > 1 ? 's' : ''}.</span>
+                )}
+                {mode === 'normal' && state.merged_groups && state.merged_groups.length > 0 && (
+                  <span className="ml-2 text-info">— {state.merged_groups.length} fusion{state.merged_groups.length > 1 ? 's' : ''}.</span>
                 )}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {!editMode && !blockMode && (
+              {mode === 'normal' && (
                 <div className="relative">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
                   <input
@@ -335,29 +542,81 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   )}
                 </div>
               )}
-              {canBlock && !editMode && (
+              {/* Mode Block actif : Valider / Annuler */}
+              {mode === 'block' && (
+                <>
+                  <span className="text-xs text-ink-muted">
+                    {pendingBlocks.size + pendingUnblocks.size} sélectionné{pendingBlocks.size + pendingUnblocks.size > 1 ? 's' : ''}
+                    {pendingBlocks.size > 0 && ` · ${pendingBlocks.size} à bloquer`}
+                    {pendingUnblocks.size > 0 && ` · ${pendingUnblocks.size} à débloquer`}
+                  </span>
+                  <button
+                    onClick={commitBlockBatch}
+                    disabled={pendingBlocks.size === 0 && pendingUnblocks.size === 0}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-critical hover:bg-critical/80 text-white transition disabled:opacity-40"
+                  >
+                    <Check size={14} /> Valider
+                  </button>
+                  <button onClick={resetBlockMode}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-surface-2 border text-ink-secondary hover:text-ink transition">
+                    <X size={14} /> Annuler
+                  </button>
+                </>
+              )}
+              {/* Mode Link actif : Valider / Annuler */}
+              {mode === 'link' && (
+                <>
+                  <span className="text-xs text-ink-muted">
+                    {pendingMerge.length > 0 && `${pendingMerge.length}/4 à fusionner`}
+                    {pendingMerge.length > 0 && pendingUnmerges.size > 0 && ' · '}
+                    {pendingUnmerges.size > 0 && `${pendingUnmerges.size} à défusionner`}
+                  </span>
+                  <button
+                    onClick={commitLinkBatch}
+                    disabled={pendingMerge.length < 2 && pendingUnmerges.size === 0}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-info hover:bg-info/80 text-white transition disabled:opacity-40"
+                  >
+                    <Check size={14} /> Valider
+                  </button>
+                  <button onClick={resetLinkMode}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-surface-2 border text-ink-secondary hover:text-ink transition">
+                    <X size={14} /> Annuler
+                  </button>
+                </>
+              )}
+              {/* Modes accessibles en normal */}
+              {canBlock && mode === 'normal' && (
                 <button
-                  onClick={() => setBlockMode(m => !m)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
-                    blockMode
-                      ? 'bg-critical hover:bg-critical/80 text-white'
-                      : 'bg-surface-2 border text-ink-secondary hover:text-ink'
-                  }`}
-                  title="Bloquer manuellement des emplacements"
+                  onClick={enterBlockMode}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-surface-2 border text-ink-secondary hover:text-ink transition"
+                  title="Bloquer manuellement des emplacements (batch avec motif unique)"
                 >
-                  {blockMode ? <><Check size={14} /> Terminer</> : <><Ban size={14} /> Bloquer</>}
+                  <Ban size={14} /> Bloquer
                 </button>
               )}
-              {canEditLayout && !blockMode && (
+              {canBlock && mode === 'normal' && (
                 <button
-                  onClick={() => setEditMode(m => !m)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
-                    editMode
-                      ? 'bg-success hover:bg-success-soft text-white'
-                      : 'bg-surface-2 border text-ink-secondary hover:text-ink'
-                  }`}
+                  onClick={enterLinkMode}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-surface-2 border text-ink-secondary hover:text-ink transition"
+                  title="Fusionner 2-4 emplacements (camions, larges, 2x2)"
                 >
-                  {editMode ? <><Check size={14} /> Terminer l&apos;édition</> : <><Edit3 size={14} /> Éditer le plan</>}
+                  <Link2 size={14} /> Lier
+                </button>
+              )}
+              {canEditLayout && mode === 'normal' && (
+                <button
+                  onClick={() => setMode('edit')}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-surface-2 border text-ink-secondary hover:text-ink transition"
+                >
+                  <Edit3 size={14} /> Éditer le plan
+                </button>
+              )}
+              {mode === 'edit' && (
+                <button
+                  onClick={() => setMode('normal')}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-success hover:bg-success-soft text-white transition"
+                >
+                  <Check size={14} /> Terminer l&apos;édition
                 </button>
               )}
               <button onClick={load} disabled={loading}
@@ -384,8 +643,13 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   missionsOnRow={missionsOnRow}
                   matchingIds={matchingIds}
                   blockedMap={blockedMap}
-                  blockMode={blockMode}
-                  onToggleBlock={toggleBlock}
+                  mergedMap={mergedMap}
+                  pendingBlocks={pendingBlocks}
+                  pendingUnblocks={pendingUnblocks}
+                  pendingMergeMap={pendingMergeMap}
+                  pendingUnmergeMembersSet={pendingUnmergeMembersSet}
+                  mode={mode}
+                  onSlotClick={handleSlotClick}
                   canDriverDrop={canDriverDrop}
                   editMode={editMode}
                   canvasRef={canvasRef}
@@ -424,18 +688,23 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zone positionnée sur le canvas (auto-size selon contenu, drag en édition)
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, blockMode, onToggleBlock, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
-  zone:          Zone
-  rows:          Row[]
-  missionsOnRow: (zoneKey: string, rowNumber: number) => PlacedMission[]
-  matchingIds:   Set<string>
-  blockedMap:    Map<string, string | null>
-  blockMode:     boolean
-  onToggleBlock: (zoneKey: string, rowNumber: number, slotIndex: number) => void
-  canDriverDrop: boolean
-  editMode:      boolean
-  canvasRef:     React.RefObject<HTMLDivElement>
-  onPositionCommit: (coords: { pos_x: number; pos_y: number }) => void
+function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, mergedMap, pendingBlocks, pendingUnblocks, pendingMergeMap, pendingUnmergeMembersSet, mode, onSlotClick, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
+  zone:                     Zone
+  rows:                     Row[]
+  missionsOnRow:            (zoneKey: string, rowNumber: number) => PlacedMission[]
+  matchingIds:              Set<string>
+  blockedMap:               Map<string, string | null>
+  mergedMap:                Map<string, { group_uuid: string; isPrimary: boolean; primaryLabel: string }>
+  pendingBlocks:            Set<string>
+  pendingUnblocks:          Set<string>
+  pendingMergeMap:          Map<string, number>
+  pendingUnmergeMembersSet: Set<string>
+  mode:                     Mode
+  onSlotClick:              (zoneKey: string, rowNumber: number, slotIndex: number) => void
+  canDriverDrop:            boolean
+  editMode:                 boolean
+  canvasRef:                React.RefObject<HTMLDivElement>
+  onPositionCommit:         (coords: { pos_x: number; pos_y: number }) => void
 }) {
   const [localPos, setLocalPos] = useState<{ pos_x: number; pos_y: number } | null>(null)
   const pos_x = localPos?.pos_x ?? zone.pos_x
@@ -526,8 +795,13 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, bloc
               missions={missionsOnRow(zone.key, row.row_number)}
               matchingIds={matchingIds}
               blockedMap={blockedMap}
-              blockMode={blockMode}
-              onToggleBlock={onToggleBlock}
+              mergedMap={mergedMap}
+              pendingBlocks={pendingBlocks}
+              pendingUnblocks={pendingUnblocks}
+              pendingMergeMap={pendingMergeMap}
+              pendingUnmergeMembersSet={pendingUnmergeMembersSet}
+              mode={mode}
+              onSlotClick={onSlotClick}
               direction={zone.slot_direction}
               layout={zone.row_layout}
               strict={zone.strict_capacity}
@@ -574,16 +848,21 @@ function UnplacedSidebar({ missions, matchingIds, blockMode }: { missions: Place
 // ─────────────────────────────────────────────────────────────────────────────
 // Ligne avec ses slots (+ overflow si vehicules > capacite)
 // ─────────────────────────────────────────────────────────────────────────────
-function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleBlock, direction, layout, strict }: {
-  row:           Row
-  missions:      PlacedMission[]
-  matchingIds:   Set<string>
-  blockedMap:    Map<string, string | null>
-  blockMode:     boolean
-  onToggleBlock: (zoneKey: string, rowNumber: number, slotIndex: number) => void
-  direction:     'ltr' | 'rtl'
-  layout:        'horizontal' | 'vertical'
-  strict:        boolean
+function RowSlots({ row, missions, matchingIds, blockedMap, mergedMap, pendingBlocks, pendingUnblocks, pendingMergeMap, pendingUnmergeMembersSet, mode, onSlotClick, direction, layout, strict }: {
+  row:                      Row
+  missions:                 PlacedMission[]
+  matchingIds:              Set<string>
+  blockedMap:               Map<string, string | null>
+  mergedMap:                Map<string, { group_uuid: string; isPrimary: boolean; primaryLabel: string }>
+  pendingBlocks:            Set<string>
+  pendingUnblocks:          Set<string>
+  pendingMergeMap:          Map<string, number>
+  pendingUnmergeMembersSet: Set<string>
+  mode:                     Mode
+  onSlotClick:              (zoneKey: string, rowNumber: number, slotIndex: number) => void
+  direction:                'ltr' | 'rtl'
+  layout:                   'horizontal' | 'vertical'
+  strict:                   boolean
 }) {
   const slot = slotDims(layout)
   const overflow = missions.length > row.capacity
@@ -611,8 +890,9 @@ function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleB
         <div className={`flex gap-[2px] ${direction === 'rtl' ? 'flex-row-reverse' : ''}`}>
           {slots.map((mission, i) => {
             const slotIdx = i + 1
-            const blockedKey = `${row.zone_key}-${row.row_number}-${slotIdx}`
-            const blockedReason = blockedMap.has(blockedKey) ? blockedMap.get(blockedKey) ?? null : undefined
+            const k = `${row.zone_key}-${row.row_number}-${slotIdx}`
+            const blockedReason = blockedMap.has(k) ? blockedMap.get(k) ?? null : undefined
+            const merged = mergedMap.get(k)
             return (
               <Slot
                 key={i}
@@ -625,8 +905,13 @@ function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleB
                 slotW={slot.w}
                 slotH={slot.h}
                 blockedReason={blockedReason}
-                blockMode={blockMode}
-                onToggleBlock={onToggleBlock}
+                merged={merged}
+                pendingBlock={pendingBlocks.has(k)}
+                pendingUnblock={pendingUnblocks.has(k)}
+                pendingMergeOrder={pendingMergeMap.get(k)}
+                pendingUnmerge={pendingUnmergeMembersSet.has(k)}
+                mode={mode}
+                onSlotClick={onSlotClick}
               />
             )
           })}
@@ -644,8 +929,9 @@ function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleB
       <div className={`flex flex-col gap-[2px] ${direction === 'rtl' ? 'flex-col-reverse' : ''}`}>
         {slots.map((mission, i) => {
           const slotIdx = i + 1
-          const blockedKey = `${row.zone_key}-${row.row_number}-${slotIdx}`
-          const blockedReason = blockedMap.has(blockedKey) ? blockedMap.get(blockedKey) ?? null : undefined
+          const k = `${row.zone_key}-${row.row_number}-${slotIdx}`
+          const blockedReason = blockedMap.has(k) ? blockedMap.get(k) ?? null : undefined
+          const merged = mergedMap.get(k)
           return (
             <Slot
               key={i}
@@ -658,8 +944,13 @@ function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleB
               slotW={slot.w}
               slotH={slot.h}
               blockedReason={blockedReason}
-              blockMode={blockMode}
-              onToggleBlock={onToggleBlock}
+              merged={merged}
+              pendingBlock={pendingBlocks.has(k)}
+              pendingUnblock={pendingUnblocks.has(k)}
+              pendingMergeOrder={pendingMergeMap.get(k)}
+              pendingUnmerge={pendingUnmergeMembersSet.has(k)}
+              mode={mode}
+              onSlotClick={onSlotClick}
             />
           )
         })}
@@ -671,64 +962,91 @@ function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleB
 // ─────────────────────────────────────────────────────────────────────────────
 // Un slot droppable (avec ou sans vehicule)
 // ─────────────────────────────────────────────────────────────────────────────
-function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted, slotW, slotH, blockedReason, blockMode, onToggleBlock }: {
-  zoneKey:       string
-  rowNumber:     number
-  slotIndex:     number
-  isOverflow:    boolean
-  mission:       PlacedMission | null
-  highlighted:   boolean
-  slotW:         number
-  slotH:         number
-  blockedReason: string | null | undefined  // undefined = pas bloqué, null = bloqué sans motif, string = motif
-  blockMode:     boolean
-  onToggleBlock: (zoneKey: string, rowNumber: number, slotIndex: number) => void
+function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted, slotW, slotH, blockedReason, merged, pendingBlock, pendingUnblock, pendingMergeOrder, pendingUnmerge, mode, onSlotClick }: {
+  zoneKey:           string
+  rowNumber:         number
+  slotIndex:         number
+  isOverflow:        boolean
+  mission:           PlacedMission | null
+  highlighted:       boolean
+  slotW:             number
+  slotH:             number
+  blockedReason:     string | null | undefined  // undefined = pas bloqué, null = bloqué sans motif, string = motif
+  merged:            { group_uuid: string; isPrimary: boolean; primaryLabel: string } | undefined
+  pendingBlock:      boolean
+  pendingUnblock:    boolean
+  pendingMergeOrder: number | undefined  // 1 = primary, 2-4 = members; undefined = pas en pending merge
+  pendingUnmerge:    boolean
+  mode:              Mode
+  onSlotClick:       (zoneKey: string, rowNumber: number, slotIndex: number) => void
 }) {
   const id = `slot-${zoneKey}-${rowNumber}-${slotIndex}`
   const isBlocked = blockedReason !== undefined
-  // En mode bloquer OU si deja bloque, le slot n est plus une cible drop.
-  const droppable = !blockMode && !isBlocked
+  const isMerged  = !!merged
+  // En mode autre que normal/edit, ou si bloque/membre non-primary, le slot n est plus drop target.
+  const inActionMode = mode === 'block' || mode === 'link'
+  const droppable = !inActionMode && !isBlocked && !(isMerged && !merged?.isPrimary)
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable })
 
   const tooltip = isBlocked
     ? `Bloqué : ${zoneKey}${rowNumber}-${slotIndex}${blockedReason ? ` — ${blockedReason}` : ''}`
-    : isOverflow
-      ? `Slot overflow ${zoneKey}${rowNumber}-${slotIndex}`
-      : `${zoneKey}${rowNumber}-${slotIndex}`
+    : isMerged
+      ? `${merged!.isPrimary ? 'Primary' : 'Membre'} de fusion ${merged!.primaryLabel}`
+      : isOverflow
+        ? `Slot overflow ${zoneKey}${rowNumber}-${slotIndex}`
+        : `${zoneKey}${rowNumber}-${slotIndex}`
 
   const baseClass = isBlocked
     ? 'border-critical bg-critical/20'
-    : highlighted
-      ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'
-      : mission
-        ? isOverflow
-          ? 'border-critical bg-critical/10'
-          : 'border-zinc-700 bg-surface'
-        : isOver
-          ? 'border-brand bg-brand/10 border-2'
-          : isOverflow
-            ? 'border-dashed border-critical/40 bg-critical/5'
-            : 'border-dashed border-zinc-700/60 bg-surface/40'
+    : isMerged
+      ? 'border-info bg-info/10'
+      : highlighted
+        ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'
+        : mission
+          ? isOverflow
+            ? 'border-critical bg-critical/10'
+            : 'border-zinc-700 bg-surface'
+          : isOver
+            ? 'border-brand bg-brand/10 border-2'
+            : isOverflow
+              ? 'border-dashed border-critical/40 bg-critical/5'
+              : 'border-dashed border-zinc-700/60 bg-surface/40'
 
-  const clickable = blockMode && !mission
-  const handleClick = clickable ? () => onToggleBlock(zoneKey, rowNumber, slotIndex) : undefined
+  // Overlay pending (dashed ring) selon le mode
+  const pendingRing =
+    pendingBlock      ? 'ring-2 ring-critical ring-dashed ring-offset-1' :
+    pendingUnblock    ? 'ring-2 ring-success ring-dashed ring-offset-1' :
+    pendingMergeOrder ? 'ring-2 ring-info ring-offset-1' :
+    pendingUnmerge    ? 'ring-2 ring-warning ring-dashed ring-offset-1' :
+    ''
+
+  const clickable = inActionMode
+  const handleClick = clickable ? () => onSlotClick(zoneKey, rowNumber, slotIndex) : undefined
 
   return (
     <div
       ref={setNodeRef}
       style={{ width: slotW, height: slotH }}
-      className={`flex-shrink-0 rounded border flex items-center justify-center text-[10px] transition-colors relative ${baseClass} ${
-        clickable ? 'cursor-pointer hover:ring-2 hover:ring-critical' : ''
-      } ${blockMode && mission ? 'opacity-60' : ''}`}
+      className={`flex-shrink-0 rounded border flex items-center justify-center text-[10px] transition-colors relative ${baseClass} ${pendingRing} ${
+        clickable ? 'cursor-pointer hover:ring-2 hover:ring-ink-muted' : ''
+      } ${inActionMode && mission ? 'opacity-60' : ''}`}
       title={tooltip}
       onClick={handleClick}
     >
       {mission ? (
-        <VehicleCard mission={mission} compact highlighted={highlighted} disableDrag={blockMode} />
+        <VehicleCard mission={mission} compact highlighted={highlighted} disableDrag={inActionMode} />
       ) : isBlocked ? (
         <Ban size={Math.min(slotW, slotH) - 12} className="text-critical" strokeWidth={2.5} />
+      ) : isMerged && !merged!.isPrimary ? (
+        <Link2 size={Math.min(slotW, slotH) - 14} className="text-info" strokeWidth={2.2} />
       ) : (
         <span className="text-ink-faint">{slotIndex}</span>
+      )}
+      {/* Badge "n" pour le pending merge (ordre de selection) */}
+      {pendingMergeOrder && (
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-info text-white text-[9px] font-bold rounded-full flex items-center justify-center shadow">
+          {pendingMergeOrder}
+        </span>
       )}
       {/* Surcouche barré rouge sur slot occupé ET bloqué (rare mais possible) */}
       {isBlocked && mission && (

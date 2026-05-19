@@ -24,7 +24,7 @@ export async function GET() {
 
   const sb = createAdminClient()
 
-  const [{ data: zones }, { data: rows }, { data: missions }, { data: settings }, { data: blocked }] = await Promise.all([
+  const [{ data: zones }, { data: rows }, { data: missions }, { data: settings }, { data: blocked }, { data: groupRows }] = await Promise.all([
     sb.from('parc_zones').select('*').eq('active', true).order('sort_order'),
     sb.from('parc_rows').select('*').order('zone_key').order('row_number'),
     sb.from('incoming_missions')
@@ -32,10 +32,23 @@ export async function GET() {
       .in('status', PARKED_STATUSES),
     sb.from('parc_settings').select('canvas_height_px').eq('id', 1).maybeSingle(),
     sb.from('parc_blocked_slots').select('zone_key, row_number, slot_index, reason'),
+    sb.from('parc_slot_groups').select('group_uuid, zone_key, row_number, slot_index, selection_order').order('selection_order'),
   ])
 
   const placed   = (missions || []).filter(m => m.parc_zone_key && m.parc_row_number)
   const toPlace  = (missions || []).filter(m => !m.parc_zone_key || !m.parc_row_number)
+
+  // Regroupe les lignes parc_slot_groups par group_uuid (members + primary)
+  const groupsMap = new Map<string, { group_uuid: string; primary: any; members: any[] }>()
+  for (const g of (groupRows || [])) {
+    const slot = { zone_key: g.zone_key, row_number: g.row_number, slot_index: g.slot_index }
+    if (!groupsMap.has(g.group_uuid)) {
+      groupsMap.set(g.group_uuid, { group_uuid: g.group_uuid, primary: slot, members: [] })
+    } else {
+      groupsMap.get(g.group_uuid)!.members.push(slot)
+    }
+  }
+  const merged_groups = Array.from(groupsMap.values())
 
   return NextResponse.json({
     zones:           zones || [],
@@ -43,6 +56,7 @@ export async function GET() {
     placed,
     toPlace,
     blocked:         blocked || [],
+    merged_groups,
     canvasHeightPx:  settings?.canvas_height_px || 2400,
   })
 }
