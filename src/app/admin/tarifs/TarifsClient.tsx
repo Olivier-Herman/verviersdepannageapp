@@ -32,6 +32,21 @@ interface Tariff {
   source_document_name:  string | null
   notes:                 string | null
   created_at:            string
+  // Mode brackets (IPA: AXA + Ardenne Prevoyante)
+  pricing_mode:          'forfait' | 'brackets'
+  beyond_max_km:         number | null
+  beyond_max_step_km:    number | null
+  beyond_max_step_price: number | null
+}
+
+interface Bracket {
+  id:            number
+  from_km:       number
+  to_km:         number
+  price_normal:  number
+  price_majore:  number
+  effective_from: string
+  effective_to:  string | null
 }
 
 interface ExtractedTariff {
@@ -97,6 +112,23 @@ export default function TarifsClient(props: Props) {
   // Edit modal (édition individuelle ou création manuelle)
   const [editTariff, setEditTariff] = useState<Partial<Tariff> | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+
+  // Brackets viewer modal (pour les tarifs en mode "brackets" IPA)
+  const [bracketsModal, setBracketsModal] = useState<Tariff | null>(null)
+  const [bracketsList, setBracketsList] = useState<Bracket[]>([])
+  const [bracketsLoading, setBracketsLoading] = useState(false)
+
+  async function openBrackets(t: Tariff) {
+    setBracketsModal(t)
+    setBracketsLoading(true)
+    setBracketsList([])
+    try {
+      const res = await fetch(`/api/admin/tarifs/${t.id}/brackets`)
+      const j = await res.json()
+      if (res.ok) setBracketsList(j.brackets || [])
+    } catch {}
+    setBracketsLoading(false)
+  }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -333,33 +365,50 @@ export default function TarifsClient(props: Props) {
                 </tr>
               </thead>
               <tbody>
-                {tariffs.map(t => (
-                  <tr key={t.id} className="border-t border-surface-hover hover:bg-surface-hover/50 cursor-pointer" onClick={() => setEditTariff(t)}>
-                    <td className="p-2 font-medium">{SOURCE_LABELS[t.source] || t.source}</td>
-                    <td className="p-2">{TYPE_LABELS[t.mission_type] || t.mission_type}</td>
-                    <td className="p-2 text-right">{formatPrice(t.unit_price)}</td>
-                    <td className="p-2 text-right">{t.km_inclus || '—'}</td>
-                    <td className="p-2 text-right">{formatPrice(t.km_price)}</td>
-                    <td className="p-2 text-right">{formatPrice(t.parc_day_price)}</td>
-                    <td className="p-2 text-center text-xs">{t.surcharge_night_pct || 0}/{t.surcharge_we_pct || 0}/{t.surcharge_holiday_pct || 0}</td>
-                    <td className="p-2 text-center">{t.is_autofac ? '✓' : '—'}</td>
-                    <td className="p-2 text-center text-xs">{t.effective_from}{t.effective_to ? ` → ${t.effective_to}` : ''}</td>
-                    <td className="p-2 text-center" onClick={e => e.stopPropagation()}>
-                      {t.source_document_path && (
-                        <a
-                          href={`/api/admin/tarifs/document?path=${encodeURIComponent(t.source_document_path)}`}
-                          target="_blank"
-                          rel="noopener"
-                          title="Voir le PDF source"
-                          className="inline-block mr-2"
-                        >
-                          📄
-                        </a>
+                {tariffs.map(t => {
+                  const isBrackets = t.pricing_mode === 'brackets'
+                  return (
+                    <tr key={t.id} className="border-t border-surface-hover hover:bg-surface-hover/50 cursor-pointer"
+                        onClick={() => isBrackets ? openBrackets(t) : setEditTariff(t)}>
+                      <td className="p-2 font-medium">{SOURCE_LABELS[t.source] || t.source}</td>
+                      <td className="p-2">{TYPE_LABELS[t.mission_type] || t.mission_type}</td>
+                      {isBrackets ? (
+                        <td colSpan={5} className="p-2 text-center">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-info/15 text-info border border-info/30 rounded-md text-xs font-semibold">
+                            📊 Tarif par tranches de km
+                          </span>
+                          <span className="text-ink-faint text-xs ml-2">
+                            Au-delà de {t.beyond_max_km} km : +{Number(t.beyond_max_step_price || 0).toFixed(2)} €/{t.beyond_max_step_km} km
+                          </span>
+                        </td>
+                      ) : (
+                        <>
+                          <td className="p-2 text-right">{formatPrice(t.unit_price)}</td>
+                          <td className="p-2 text-right">{t.km_inclus || '—'}</td>
+                          <td className="p-2 text-right">{formatPrice(t.km_price)}</td>
+                          <td className="p-2 text-right">{formatPrice(t.parc_day_price)}</td>
+                          <td className="p-2 text-center text-xs">{t.surcharge_night_pct || 0}/{t.surcharge_we_pct || 0}/{t.surcharge_holiday_pct || 0}</td>
+                        </>
                       )}
-                      <button onClick={() => handleDelete(t.id)} title="Désactiver" className="text-red-500">🗑️</button>
-                    </td>
-                  </tr>
-                ))}
+                      <td className="p-2 text-center">{t.is_autofac ? '✓' : '—'}</td>
+                      <td className="p-2 text-center text-xs">{t.effective_from}{t.effective_to ? ` → ${t.effective_to}` : ''}</td>
+                      <td className="p-2 text-center" onClick={e => e.stopPropagation()}>
+                        {t.source_document_path && (
+                          <a
+                            href={`/api/admin/tarifs/document?path=${encodeURIComponent(t.source_document_path)}`}
+                            target="_blank"
+                            rel="noopener"
+                            title="Voir le PDF source"
+                            className="inline-block mr-2"
+                          >
+                            📄
+                          </a>
+                        )}
+                        <button onClick={() => handleDelete(t.id)} title="Désactiver" className="text-red-500">🗑️</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -618,6 +667,72 @@ export default function TarifsClient(props: Props) {
                 </button>
                 <button onClick={handleEditSave} disabled={editSaving} className="flex-1 px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
                   {editSaving ? '⏳ Enregistrement…' : (editTariff.id ? '💾 Modifier' : '➕ Créer')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Brackets viewer modal (tarifs IPA en mode "brackets") ─────────── */}
+        {bracketsModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-lg p-6 max-w-3xl w-full max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-display font-bold">
+                    📊 Tarif par tranches — {SOURCE_LABELS[bracketsModal.source] || bracketsModal.source} · {TYPE_LABELS[bracketsModal.mission_type] || bracketsModal.mission_type}
+                  </h2>
+                  <p className="text-xs text-ink-faint mt-1">
+                    En vigueur depuis {bracketsModal.effective_from} ·
+                    Au-delà de {bracketsModal.beyond_max_km} km : +{Number(bracketsModal.beyond_max_step_price || 0).toFixed(2).replace('.', ',')} € par tranche de {bracketsModal.beyond_max_step_km} km
+                  </p>
+                  {bracketsModal.notes && (
+                    <p className="text-xs text-ink-secondary mt-1 italic">{bracketsModal.notes}</p>
+                  )}
+                </div>
+                <button onClick={() => setBracketsModal(null)} className="text-ink-faint hover:text-ink text-xl">×</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {bracketsLoading ? (
+                  <p className="text-center text-ink-faint py-8">⏳ Chargement…</p>
+                ) : bracketsList.length === 0 ? (
+                  <p className="text-center text-ink-faint py-8">Aucune tranche trouvée.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-ink-faint uppercase tracking-wider bg-surface-hover sticky top-0">
+                      <tr>
+                        <th className="text-left p-2">Tranche</th>
+                        <th className="text-right p-2">Prix normal (HT)</th>
+                        <th className="text-right p-2">Prix majoré (HT)</th>
+                        <th className="text-right p-2">Différence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bracketsList.map(b => {
+                        const diff = Number(b.price_majore) - Number(b.price_normal)
+                        return (
+                          <tr key={b.id} className="border-t border-surface-hover">
+                            <td className="p-2 font-mono">{b.from_km} - {b.to_km} km</td>
+                            <td className="p-2 text-right">{Number(b.price_normal).toFixed(2).replace('.', ',')} €</td>
+                            <td className="p-2 text-right text-warning">{Number(b.price_majore).toFixed(2).replace('.', ',')} €</td>
+                            <td className="p-2 text-right text-ink-muted text-xs">+{diff.toFixed(2).replace('.', ',')} €</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-surface-hover text-xs text-ink-faint">
+                Majoration appliquée si : heure d'appel &lt; 7h, ≥ 18h, samedi, dimanche, ou jour férié BE.
+                Édition manuelle non implémentée (modifier directement en SQL si besoin).
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button onClick={() => setBracketsModal(null)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
+                  Fermer
                 </button>
               </div>
             </div>
