@@ -255,16 +255,6 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                       <td className="px-3 py-2 text-xs text-ink-muted">{fmtDate(v.last_update)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
-                          {toPlace && v.plate && (
-                            <Link
-                              href={`/fourriere/plan?search=${encodeURIComponent(v.plate)}`}
-                              className="flex items-center gap-1 px-2.5 py-1 bg-warning hover:bg-warning/80 text-white rounded-md text-xs font-semibold transition"
-                              title="Placer ce véhicule sur le plan"
-                            >
-                              <MapPin size={12} />
-                              Placer
-                            </Link>
-                          )}
                           <a href={v.odoo_url} target="_blank" rel="noreferrer"
                             className="p-1.5 text-ink-faint hover:text-brand transition rounded"
                             title="Voir fiche Odoo">

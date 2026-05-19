@@ -308,11 +308,27 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     rowNumber: number | null,
     slotIndex: number | null,
   ) {
+    // Pour un drop d entree virtuelle Odoo (id "odoo-<X>"), on envoie aussi
+    // plate/brand/model pour permettre la creation du incoming_missions stub.
+    let extras: Record<string, any> = {}
+    if (missionId.startsWith('odoo-') && state) {
+      const m = state.toPlace.find(x => x.id === missionId)
+      if (m) {
+        extras = {
+          vehicle_plate: m.vehicle_plate,
+          vehicle_brand: m.vehicle_brand,
+          vehicle_model: m.vehicle_model,
+        }
+      }
+    }
     try {
       const res = await fetch('/api/parc/place', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ mission_id: missionId, zone_key: zoneKey, row_number: rowNumber, slot_index: slotIndex }),
+        body:    JSON.stringify({
+          mission_id: missionId, zone_key: zoneKey, row_number: rowNumber, slot_index: slotIndex,
+          ...extras,
+        }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)

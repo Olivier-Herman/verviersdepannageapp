@@ -34,16 +34,65 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const missionId = String(body.mission_id || '')
+  let   missionId = String(body.mission_id || '')
   const zoneKey   = body.zone_key != null ? String(body.zone_key).trim() : null
   const rowNumber = body.row_number != null ? Number(body.row_number) : null
   const slotIndex = body.slot_index != null ? Number(body.slot_index) : null
+  // Pour les drops d entrees virtuelles "odoo-<id>" : on attend la plaque +
+  // marque + modele pour pouvoir creer le incoming_missions stub.
+  const vehiclePlate = body.vehicle_plate != null ? String(body.vehicle_plate).trim().toUpperCase() : null
+  const vehicleBrand = body.vehicle_brand != null ? String(body.vehicle_brand).trim() : null
+  const vehicleModel = body.vehicle_model != null ? String(body.vehicle_model).trim() : null
 
   if (!missionId) {
     return NextResponse.json({ error: 'mission_id requis' }, { status: 400 })
   }
 
   const sb = createAdminClient()
+
+  // Detect drop d une entree virtuelle Odoo -> on cree la mission VD Soft
+  // a la volee avant de la placer normalement.
+  if (missionId.startsWith('odoo-')) {
+    if (!zoneKey) {
+      return NextResponse.json({ error: 'Ce véhicule doit être placé sur le plan (zone requise).' }, { status: 400 })
+    }
+    if (!vehiclePlate) {
+      return NextResponse.json({ error: 'vehicle_plate requis pour un drop Odoo virtuel.' }, { status: 400 })
+    }
+    const odooId = parseInt(missionId.slice(5), 10)
+    if (!Number.isFinite(odooId)) {
+      return NextResponse.json({ error: 'ID Odoo invalide.' }, { status: 400 })
+    }
+    const externalId = `odoo-${odooId}`
+    // Idempotent : si une mission stub existe deja (drop precedent), on la reutilise.
+    const { data: existing } = await sb
+      .from('incoming_missions')
+      .select('id')
+      .eq('external_id', externalId)
+      .maybeSingle()
+    if (existing) {
+      missionId = existing.id
+    } else {
+      const { data: created, error: createErr } = await sb
+        .from('incoming_missions')
+        .insert({
+          external_id:    externalId,
+          source:         'fourriere_parc',
+          source_format:  'odoo_parc',
+          mission_type:   'fourriere',
+          status:         'parked',
+          vehicle_plate:  vehiclePlate,
+          vehicle_brand:  vehicleBrand || null,
+          vehicle_model:  vehicleModel || null,
+        })
+        .select('id')
+        .single()
+      if (createErr || !created) {
+        return NextResponse.json({ error: `Création mission échouée : ${createErr?.message}` }, { status: 500 })
+      }
+      missionId = created.id
+    }
+  }
 
   // Validation des coordonnees si placement (zoneKey != null)
   let finalZone = zoneKey
