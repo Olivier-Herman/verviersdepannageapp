@@ -123,9 +123,18 @@ function Copyable({ value, label, mono }: { value: string; label?: string; mono?
   )
 }
 
+interface TemplateLineData {
+  kind:             'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
+  name:             string
+  default_qty:      number | null
+  default_price:    number | null
+  apply_surcharges: boolean
+}
+
 interface PriceEstimateData {
   ok:            boolean
   reason?:       string
+  pricing_mode?: 'forfait' | 'brackets' | 'lines'
   forfait:       number | null
   km_extra:      number
   km_extra_eur:  number
@@ -135,6 +144,7 @@ interface PriceEstimateData {
   surcharge_eur: number
   subtotal_eur:  number
   total_eur:     number
+  template_lines?: TemplateLineData[]
 }
 
 interface QuoteStatusData {
@@ -202,7 +212,30 @@ function MissionBlock({
       .catch(() => {})
     fetch(`/api/missions/${m.id}/price-estimate`)
       .then(r => r.json())
-      .then(d => { if (!cancelled) setEstimate(d) })
+      .then((d: PriceEstimateData) => {
+        if (cancelled) return
+        setEstimate(d)
+        // Mode 'lines' : on initialise auto les customLines a partir du template
+        // (l employe doit ajuster qty/PU pour chaque ligne)
+        if (d?.ok && d.pricing_mode === 'lines' && d.template_lines && d.template_lines.length > 0) {
+          const initialLines: CustomLine[] = d.template_lines.map(tl => ({
+            kind:       tl.kind,
+            name:       tl.name,
+            qty:        tl.default_qty ?? 0,
+            price_unit: tl.default_price ?? 0,
+          }))
+          // Ajoute la ligne SERV-MAJ si surcharge applicable
+          if (d.surcharge_pct > 0) {
+            initialLines.push({
+              kind:       'SERV-MAJ',
+              name:       `Majoration ${d.surcharge_pct}%`,
+              qty:        Math.round(d.surcharge_pct) / 100,
+              price_unit: 0,  // PU = subtotal majorable, a recalculer apres edition
+            })
+          }
+          setCustomLines(initialLines)
+        }
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setEstimateLoading(false) })
     fetch(`/api/missions/${m.id}/quote-status`)

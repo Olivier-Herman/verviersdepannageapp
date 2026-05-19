@@ -165,11 +165,20 @@ async function computeMissionKm(missionId: string): Promise<{ chargedKm: number 
   }
 }
 
+export interface TemplateLine {
+  kind:             'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
+  name:             string
+  default_qty:      number | null
+  default_price:    number | null
+  apply_surcharges: boolean
+}
+
 export interface PriceEstimate {
   ok:            boolean
   reason?:       string  // si pas de tarif trouve
   source:        string  // source utilisee pour le lookup
   mission_type:  string  // type canonical
+  pricing_mode:  'forfait' | 'brackets' | 'lines'
   forfait:       number | null
   km_charged:    number  // km charges (incident -> destination, sans depot ni retour)
   km_inclus:     number
@@ -186,6 +195,8 @@ export interface PriceEstimate {
   tariff_doc_path: string | null
   tariff_doc_name: string | null
   breakdown:     { label: string; amount: number | null; note?: string }[]
+  // Mode 'lines' uniquement : lignes pre-configurees a editer cote UI
+  template_lines?: TemplateLine[]
 }
 
 interface MissionLike {
@@ -241,6 +252,12 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   // Branche "brackets" (IPA) : tarif par tranche de km, majoration horaire integree.
   if (tariff.pricing_mode === 'brackets') {
     return estimateBrackets(mission, source, missionType, tariff, sb)
+  }
+
+  // Branche "lines" : lignes pre-configurees (template). L app remplit les
+  // defauts, l employe ajuste les qty/PU avant push.
+  if (tariff.pricing_mode === 'lines') {
+    return estimateLinesTemplate(mission, source, missionType, tariff, sb)
   }
 
   // 2. Calcul forfait + km extra
@@ -357,6 +374,7 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     ok:            true,
     source,
     mission_type:  missionType,
+    pricing_mode:  'forfait',
     forfait,
     km_charged:    kmBase,
     km_inclus:     kmInclus,
@@ -470,6 +488,7 @@ async function estimateBrackets(
     ok:            true,
     source,
     mission_type:  missionType,
+    pricing_mode:  'brackets',
     forfait:       tariffTotal,        // On expose le total IPA comme "forfait" pour compat UI/devis
     km_charged:    kmBase,
     km_inclus:     0,                  // Pas applicable en mode brackets
@@ -489,12 +508,117 @@ async function estimateBrackets(
   }
 }
 
+/**
+ * Branche "lines" : retourne les lignes pre-configurees du template (source +
+ * mission_type) + calcule la majoration applicable via getApplicableSurcharges.
+ * L employe ajuste les qty/PU cote UI avant le push Odoo.
+ */
+async function estimateLinesTemplate(
+  mission:     MissionLike,
+  source:      string,
+  missionType: string,
+  tariff:      any,
+  sb:          ReturnType<typeof createAdminClient>,
+): Promise<PriceEstimate> {
+  const today = new Date().toISOString().slice(0, 10)
+  const { data: lines } = await sb
+    .from('source_tariff_lines')
+    .select('id, position, kind, name, default_qty, default_price, apply_surcharges')
+    .eq('source', source)
+    .eq('mission_type', missionType)
+    .lte('effective_from', today)
+    .or(`effective_to.is.null,effective_to.gte.${today}`)
+    .order('position', { ascending: true })
+
+  const templateLines: TemplateLine[] = (lines || []).map(l => ({
+    kind:             l.kind as TemplateLine['kind'],
+    name:             l.name,
+    default_qty:      l.default_qty != null ? Number(l.default_qty) : null,
+    default_price:    l.default_price != null ? Number(l.default_price) : null,
+    apply_surcharges: !!l.apply_surcharges,
+  }))
+
+  if (templateLines.length === 0) {
+    return emptyEstimate(source, missionType,
+      `Aucune ligne configuree pour ${source}/${missionType} en mode "lines". Ajoute des lignes dans /admin/tarifs.`)
+  }
+
+  // Calcule un subtotal indicatif (sur les defauts existants) pour estimation
+  let subtotalIndicatif = 0
+  let subtotalMajorable = 0
+  for (const l of templateLines) {
+    if (l.default_qty != null && l.default_price != null) {
+      const t = l.default_qty * l.default_price
+      subtotalIndicatif += t
+      if (l.apply_surcharges) subtotalMajorable += t
+    }
+  }
+
+  // Majoration applicable selon heure d'intervention
+  let surchargePct = 0
+  let surchargeNote = ''
+  const interventionDateStr = mission.intervention_date || mission.received_at
+  if (interventionDateStr) {
+    const interventionDate = new Date(interventionDateStr)
+    try {
+      const applicable = await getApplicableSurcharges({
+        source:            mission.source,
+        client_name:       mission.client_name,
+        mission_type:      mission.mission_type,
+        incident_type:     mission.incident_type || null,
+        parent_mission_id: mission.parent_mission_id || null,
+      }, interventionDate)
+      if (applicable.length > 0) {
+        surchargePct = applicable.reduce((s, x) => s + Number(x.rate_pct || 0), 0)
+        surchargeNote = applicable.map(x => `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`).join(', ')
+      }
+    } catch {}
+  }
+
+  const surchargeEur = (subtotalMajorable * surchargePct) / 100
+  const total = subtotalIndicatif + surchargeEur
+
+  const breakdown = [
+    ...templateLines.map(l => ({
+      label: `${l.kind} — ${l.name}`,
+      amount: (l.default_qty != null && l.default_price != null) ? l.default_qty * l.default_price : null,
+      note:  (l.default_qty == null || l.default_price == null) ? 'qty/PU à saisir' : undefined,
+    })),
+    { label: 'Majoration horaire', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
+  ]
+
+  return {
+    ok:               true,
+    source,
+    mission_type:     missionType,
+    pricing_mode:     'lines',
+    forfait:          null,
+    km_charged:       0,
+    km_inclus:        0,
+    km_extra:         0,
+    km_extra_eur:     0,
+    parc_jours:       0,
+    parc_eur:         0,
+    subtotal_eur:     subtotalIndicatif,
+    surcharge_pct:    surchargePct,
+    surcharge_eur:    surchargeEur,
+    total_eur:        total,
+    is_autofac:       Boolean(tariff.is_autofac),
+    tariff_id:        tariff.id,
+    tariff_doc_path:  tariff.source_document_path,
+    tariff_doc_name:  tariff.source_document_name,
+    breakdown,
+    template_lines:   templateLines,
+  }
+}
+
 function emptyEstimate(source: string, missionType: string, reason: string): PriceEstimate {
   return {
     ok:            false,
     reason,
     source,
     mission_type:  missionType,
+    pricing_mode:  'forfait',
     forfait:       null,
     km_charged:    0,
     km_inclus:     0,

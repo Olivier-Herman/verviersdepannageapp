@@ -32,8 +32,8 @@ interface Tariff {
   source_document_name:  string | null
   notes:                 string | null
   created_at:            string
-  // Mode brackets (IPA: AXA + Ardenne Prevoyante)
-  pricing_mode:          'forfait' | 'brackets'
+  // Mode brackets (IPA: AXA + Ardenne Prevoyante) | lines (lignes pre-configurees)
+  pricing_mode:          'forfait' | 'brackets' | 'lines'
   beyond_max_km:         number | null
   beyond_max_step_km:    number | null
   beyond_max_step_price: number | null
@@ -47,6 +47,28 @@ interface Bracket {
   price_majore:  number
   effective_from: string
   effective_to:  string | null
+}
+
+type LineKind = 'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
+
+interface TariffLine {
+  id:               number
+  position:         number
+  kind:             LineKind
+  name:             string
+  default_qty:      number | null
+  default_price:    number | null
+  apply_surcharges: boolean
+  effective_from:   string
+  effective_to:     string | null
+}
+
+const LINE_KIND_LABELS: Record<LineKind, string> = {
+  'SERV-PEC':  'Prise en charge',
+  'SERV-KM':   'Kilomètre',
+  'SERV-PARC': 'Frais de parc',
+  'SERV-MAJ':  'Majoration',
+  'SERV-DIV':  'Divers',
 }
 
 interface ExtractedTariff {
@@ -217,6 +239,80 @@ export default function TarifsClient(props: Props) {
     } catch (e: any) {
       alert(`Erreur : ${e.message}`)
     }
+  }
+
+  // Lines viewer + editor modal (mode "lines" template)
+  const [linesModal, setLinesModal] = useState<Tariff | null>(null)
+  const [linesList, setLinesList] = useState<TariffLine[]>([])
+  const [linesLoading, setLinesLoading] = useState(false)
+  const [showAddLine, setShowAddLine] = useState(false)
+  const [newLine, setNewLine] = useState<Partial<TariffLine>>({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true })
+
+  async function openLines(t: Tariff) {
+    setLinesModal(t)
+    setLinesLoading(true)
+    setLinesList([])
+    setShowAddLine(false)
+    try {
+      const res = await fetch(`/api/admin/tarifs/${t.id}/lines`)
+      const j = await res.json()
+      if (res.ok) setLinesList(j.lines || [])
+    } catch {}
+    setLinesLoading(false)
+  }
+
+  async function reloadLines() {
+    if (!linesModal) return
+    try {
+      const res = await fetch(`/api/admin/tarifs/${linesModal.id}/lines`)
+      const j = await res.json()
+      if (res.ok) setLinesList(j.lines || [])
+    } catch {}
+  }
+
+  async function updateLine(line: TariffLine, patch: Partial<TariffLine>) {
+    const res = await fetch(`/api/admin/tarifs/lines/${line.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(patch),
+    })
+    const j = await res.json()
+    if (!res.ok) { alert(`Erreur : ${j.error}`); return }
+    await reloadLines()
+  }
+
+  async function deleteLine(line: TariffLine) {
+    if (!confirm(`Supprimer la ligne "${line.name}" ?`)) return
+    const res = await fetch(`/api/admin/tarifs/lines/${line.id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      alert(`Erreur : ${j.error}`); return
+    }
+    await reloadLines()
+  }
+
+  async function createLine() {
+    if (!linesModal) return
+    if (!newLine.name || !newLine.kind) { alert('Kind + nom requis'); return }
+    const res = await fetch('/api/admin/tarifs/lines', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        source:           linesModal.source,
+        mission_type:     linesModal.mission_type,
+        position:         newLine.position ?? (linesList.length),
+        kind:             newLine.kind,
+        name:             newLine.name,
+        default_qty:      newLine.default_qty,
+        default_price:    newLine.default_price,
+        apply_surcharges: newLine.apply_surcharges,
+      }),
+    })
+    const j = await res.json()
+    if (!res.ok) { alert(`Erreur : ${j.error}`); return }
+    setShowAddLine(false)
+    setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true })
+    await reloadLines()
   }
 
   async function saveBeyondMax() {
@@ -482,9 +578,10 @@ export default function TarifsClient(props: Props) {
               <tbody>
                 {tariffs.map(t => {
                   const isBrackets = t.pricing_mode === 'brackets'
+                  const isLines    = t.pricing_mode === 'lines'
                   return (
                     <tr key={t.id} className="border-t border-surface-hover hover:bg-surface-hover/50 cursor-pointer"
-                        onClick={() => isBrackets ? openBrackets(t) : setEditTariff(t)}>
+                        onClick={() => isBrackets ? openBrackets(t) : isLines ? openLines(t) : setEditTariff(t)}>
                       <td className="p-2 font-medium">{SOURCE_LABELS[t.source] || t.source}</td>
                       <td className="p-2">{TYPE_LABELS[t.mission_type] || t.mission_type}</td>
                       {isBrackets ? (
@@ -494,6 +591,15 @@ export default function TarifsClient(props: Props) {
                           </span>
                           <span className="text-ink-faint text-xs ml-2">
                             Au-delà de {t.beyond_max_km} km : +{Number(t.beyond_max_step_price || 0).toFixed(2)} €/{t.beyond_max_step_km} km
+                          </span>
+                        </td>
+                      ) : isLines ? (
+                        <td colSpan={5} className="p-2 text-center">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/15 text-purple-600 border border-purple-500/30 rounded-md text-xs font-semibold">
+                            📋 Lignes pré-configurées
+                          </span>
+                          <span className="text-ink-faint text-xs ml-2">
+                            Set de prestations — qty/PU édités à la facturation
                           </span>
                         </td>
                       ) : (
@@ -716,11 +822,11 @@ export default function TarifsClient(props: Props) {
                 <FieldSelect label="Source" value={editTariff.source || ''} options={sources.map(s => s.source)} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
                 <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
 
-                {/* Toggle pricing mode : forfait vs brackets */}
+                {/* Toggle pricing mode : forfait vs brackets vs lines */}
                 <div className="col-span-2 bg-info/5 border border-info/30 rounded p-2">
                   <label className="text-[10px] text-info uppercase tracking-wider font-semibold">Mode de tarification</label>
-                  <div className="flex gap-2 mt-1.5 text-xs">
-                    <label className="flex items-center gap-1.5 cursor-pointer flex-1">
+                  <div className="flex flex-col gap-1.5 mt-1.5 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="radio"
                         name="pricing_mode"
@@ -729,7 +835,7 @@ export default function TarifsClient(props: Props) {
                       />
                       <span>📐 <strong>Forfait</strong> (forfait + km supp + majorations classiques)</span>
                     </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer flex-1">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="radio"
                         name="pricing_mode"
@@ -737,6 +843,15 @@ export default function TarifsClient(props: Props) {
                         onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'brackets' }))}
                       />
                       <span>📊 <strong>Tranches de km</strong> (IPA style, majoration intégrée)</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="pricing_mode"
+                        checked={editTariff.pricing_mode === 'lines'}
+                        onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'lines' }))}
+                      />
+                      <span>📋 <strong>Lignes pré-configurées</strong> (set de prestations, qty/PU saisies à la facturation)</span>
                     </label>
                   </div>
                 </div>
@@ -762,6 +877,14 @@ export default function TarifsClient(props: Props) {
                       ⚠️ Après création, clique sur la ligne dans le tableau pour ajouter les tranches (from_km, to_km, prix normal, prix majoré).
                     </div>
                   </>
+                )}
+
+                {/* Mode lines : pas de champ structurel, juste un hint */}
+                {editTariff.pricing_mode === 'lines' && (
+                  <div className="col-span-2 bg-warning/5 border border-warning/30 rounded p-2 text-xs text-ink-faint">
+                    ⚠️ Après création, clique sur la ligne dans le tableau pour ajouter les lignes pré-configurées (kind + nom + qty/PU par défaut).
+                    La ligne <strong>SERV-MAJ</strong> sera ajoutée automatiquement à la facturation si une majoration est applicable (matrice surcharges).
+                  </div>
                 )}
 
                 <div className="col-span-2">
@@ -980,6 +1103,160 @@ export default function TarifsClient(props: Props) {
 
               <div className="mt-3 flex justify-end">
                 <button onClick={() => setBracketsModal(null)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Lines editor modal (mode "lines" template) ──────────── */}
+        {linesModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-lg p-6 max-w-4xl w-full max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-display font-bold">
+                    📋 Lignes pré-configurées — {SOURCE_LABELS[linesModal.source] || linesModal.source} · {TYPE_LABELS[linesModal.mission_type] || linesModal.mission_type}
+                  </h2>
+                  <p className="text-xs text-ink-faint mt-1">
+                    Ces lignes seront pré-chargées dans le devis Odoo. L'employé ajustera qty / PU lors de la facturation.
+                    La ligne <strong>SERV-MAJ</strong> est ajoutée automatiquement si majoration applicable.
+                  </p>
+                </div>
+                <button onClick={() => setLinesModal(null)} className="text-ink-faint hover:text-ink text-xl">×</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {linesLoading ? (
+                  <p className="text-center text-ink-faint py-8">⏳ Chargement…</p>
+                ) : linesList.length === 0 && !showAddLine ? (
+                  <p className="text-center text-ink-faint py-8">Aucune ligne. Clique "+ Ajouter" ci-dessous.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-ink-faint uppercase tracking-wider bg-surface-hover sticky top-0 z-10">
+                      <tr>
+                        <th className="text-center p-2 w-12">#</th>
+                        <th className="text-left p-2 w-28">Kind</th>
+                        <th className="text-left p-2">Description</th>
+                        <th className="text-right p-2 w-20">Qté défaut</th>
+                        <th className="text-right p-2 w-24">PU défaut</th>
+                        <th className="text-center p-2 w-20">Majorable ?</th>
+                        <th className="text-right p-2 w-16"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linesList.map(line => (
+                        <tr key={line.id} className="border-t border-surface-hover hover:bg-surface-hover/30">
+                          <td className="p-2 text-center text-ink-faint">{line.position}</td>
+                          <td className="p-2">
+                            <select
+                              value={line.kind}
+                              onChange={e => updateLine(line, { kind: e.target.value as LineKind })}
+                              className="bg-surface border rounded px-1 py-0.5 text-xs w-full"
+                            >
+                              {(Object.keys(LINE_KIND_LABELS) as LineKind[]).map(k => (
+                                <option key={k} value={k}>{k} — {LINE_KIND_LABELS[k]}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              defaultValue={line.name}
+                              onBlur={e => e.target.value !== line.name && updateLine(line, { name: e.target.value })}
+                              className="bg-surface border rounded px-2 py-0.5 text-xs w-full"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              defaultValue={line.default_qty ?? ''}
+                              onBlur={e => {
+                                const v = e.target.value === '' ? null : parseFloat(e.target.value)
+                                if (v !== line.default_qty) updateLine(line, { default_qty: v })
+                              }}
+                              placeholder="—"
+                              className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              defaultValue={line.default_price ?? ''}
+                              onBlur={e => {
+                                const v = e.target.value === '' ? null : parseFloat(e.target.value)
+                                if (v !== line.default_price) updateLine(line, { default_price: v })
+                              }}
+                              placeholder="—"
+                              className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right"
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={line.apply_surcharges}
+                              onChange={e => updateLine(line, { apply_surcharges: e.target.checked })}
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <button onClick={() => deleteLine(line)} className="text-red-500 hover:underline text-xs">🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Ligne d'ajout */}
+                      {showAddLine && (
+                        <tr className="border-t border-surface-hover bg-success/5">
+                          <td className="p-2">
+                            <input type="number" value={newLine.position ?? 0} onChange={e => setNewLine({ ...newLine, position: parseInt(e.target.value, 10) || 0 })} className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-center" />
+                          </td>
+                          <td className="p-2">
+                            <select value={newLine.kind} onChange={e => setNewLine({ ...newLine, kind: e.target.value as LineKind })} className="bg-surface border rounded px-1 py-0.5 text-xs w-full">
+                              {(Object.keys(LINE_KIND_LABELS) as LineKind[]).map(k => (
+                                <option key={k} value={k}>{k} — {LINE_KIND_LABELS[k]}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-2">
+                            <input type="text" placeholder="Description" value={newLine.name || ''} onChange={e => setNewLine({ ...newLine, name: e.target.value })} className="bg-surface border rounded px-2 py-0.5 text-xs w-full" />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input type="number" step="0.01" placeholder="qty" value={newLine.default_qty ?? ''} onChange={e => setNewLine({ ...newLine, default_qty: e.target.value === '' ? null : parseFloat(e.target.value) })} className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right" />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input type="number" step="0.01" placeholder="PU" value={newLine.default_price ?? ''} onChange={e => setNewLine({ ...newLine, default_price: e.target.value === '' ? null : parseFloat(e.target.value) })} className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right" />
+                          </td>
+                          <td className="p-2 text-center">
+                            <input type="checkbox" checked={newLine.apply_surcharges ?? true} onChange={e => setNewLine({ ...newLine, apply_surcharges: e.target.checked })} />
+                          </td>
+                          <td className="p-2 text-right">
+                            <button onClick={createLine} className="text-xs px-2 py-1 bg-brand text-surface rounded mr-1">✓</button>
+                            <button onClick={() => { setShowAddLine(false); setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true }) }} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-surface-hover flex items-center justify-between">
+                <p className="text-xs text-ink-faint">
+                  💡 Tip : laisse <em>qty défaut</em> ou <em>PU défaut</em> vide si l'employé doit toujours saisir la valeur.
+                </p>
+                <button
+                  onClick={() => setShowAddLine(true)}
+                  disabled={showAddLine}
+                  className="px-3 py-1.5 bg-success/15 text-success border border-success/30 rounded text-xs font-medium hover:bg-success/25 disabled:opacity-50"
+                >
+                  + Ajouter une ligne
+                </button>
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button onClick={() => setLinesModal(null)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
                   Fermer
                 </button>
               </div>
