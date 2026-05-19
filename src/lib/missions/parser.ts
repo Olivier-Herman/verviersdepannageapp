@@ -108,6 +108,26 @@ RÈGLES D'EXTRACTION:
 - amount_guaranteed = montant numérique seul (sans "EUR" ni "TVA")
 - incident_at = "Date de l'incident : JJ/MM/AAAA HH:MM" → ISO 8601`,
 
+  eurocross: `SOURCE: Eurocross Assistance Netherlands (PDF "Emergency service guarantee", anglais).
+RÈGLES D'EXTRACTION:
+- Le PDF a une structure libellé/valeur en colonnes. L'assureur final ("Label") n'est PAS le payeur — c'est Eurocross qui garantit et paye.
+- external_id = champ "Our reference" (format NL5870931, possiblement suivi du nom entre parenthèses → garder uniquement la partie avant l'espace)
+- dossier_number = même valeur que external_id (Eurocross n'a qu'une seule ref)
+- mission_type = "remorquage" par défaut (Emergency service guarantee = remorquage assistance). Si "Vehicle problem" contient "tire/tyre/wheel" ET pas de transport vers garage → "depannage"
+- incident_type = champ "Vehicle problem" traduit en français court (Engine malfunction → moteur, Tire flat → pneu crevé, etc.)
+- incident_description = "Vehicle problem" + ligne "Additional comments" si présente (sans les coords lat/long techniques)
+- client_name = champ "Name" sous Customer details (peut commencer par Mr/Mrs/Mme — conserver tel quel)
+- client_phone = champ "Telephone number" sous Customer details (format international, ex +31 6 21 22 27 80)
+- client_address = champ "Address" sous Customer details (multi-lignes : rue, code postal + ville)
+- vehicle_plate = champ "Number plate" (ex V580FX, sans espace, majuscules)
+- "Make & Model" est un seul champ (ex "Ford Transit connect") : 1er mot = vehicle_brand (en majuscules) → "FORD", reste = vehicle_model → "Transit connect"
+- vehicle_vin = null (Eurocross ne donne pas le VIN dans ce template)
+- vehicle_fuel + vehicle_gearbox : ne sont pas présents → null. NB: "Automatic transmission: Yes/No" → si Yes → "Automatique" sinon "Manuelle"
+- "Pick-up address details" = incident_address + incident_city + incident_country (code ISO 2 lettres, "Belgium" → "BE")
+- destination_name = null, destination_address = null (Eurocross ne fournit pas la destination ; à déterminer par dispatch)
+- amount_guaranteed = null (la "Limited amount" est "Costprice" = pas un montant fixe, c'est une garantie au coût réel)
+- incident_at = champ "Date" en haut du PDF (format DD-MM-YYYY) converti en ISO 8601 UTC à 00:00 (Eurocross demande "As soon as possible" donc pas d'heure précise — on prend la date d'émission du message)`,
+
   vab: `SOURCE: VAB Belgium (texte issu d'un DOCX).
 RÈGLES D'EXTRACTION:
 - external_id = 2ème partie du N° dossier VAB (format "X/Y" → prendre Y, ex: "8244988/34267313" → "34267313")

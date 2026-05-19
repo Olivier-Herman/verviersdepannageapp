@@ -57,6 +57,7 @@ function detectSourceFallback(fromEmail: string, subject: string): MissionSource
   if (from.includes('@allianz') || from.includes('automotive.be@allianz') ||
       from.includes('@mondial-assistance') || from.includes('awp')) return 'mondial'
   if (from.includes('@vab.be')) return 'vab'
+  if (from.includes('@eurocross.nl') || from.includes('eurocross')) return 'eurocross'
   return 'unknown'
 }
 
@@ -266,8 +267,8 @@ export async function extractContent(
     return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
-  // === MONDIAL / ALLIANZ → PDF joint ===
-  if (source === 'mondial') {
+  // === MONDIAL / ALLIANZ + EUROCROSS → PDF joint ===
+  if (source === 'mondial' || source === 'eurocross') {
     const pdfAtt = attachments.find(a =>
       a.contentBytes &&
       (a.name?.toLowerCase().endsWith('.pdf') ||

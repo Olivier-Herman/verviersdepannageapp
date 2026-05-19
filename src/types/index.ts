@@ -241,6 +241,7 @@ export type MissionSource =
   | 'mondial'
   | 'aginsurance'
   | 'vab'
+  | 'eurocross'
   | 'police'
   | 'prive'
   | 'garage'
