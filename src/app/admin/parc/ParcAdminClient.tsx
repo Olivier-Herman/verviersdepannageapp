@@ -15,15 +15,16 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw } from 'lucide-react'
+import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw, Lock, Unlock } from 'lucide-react'
 
 interface Zone {
-  key:            string
-  label:          string
-  active:         boolean
-  sort_order:     number
-  slot_direction: 'ltr' | 'rtl'
-  row_layout:     'horizontal' | 'vertical'
+  key:             string
+  label:           string
+  active:          boolean
+  sort_order:      number
+  slot_direction:  'ltr' | 'rtl'
+  row_layout:      'horizontal' | 'vertical'
+  strict_capacity: boolean
 }
 
 interface Row {
@@ -31,6 +32,7 @@ interface Row {
   zone_key:    string
   row_number:  number
   capacity:    number
+  sort_order:  number
 }
 
 export default function ParcAdminClient({ initialZones, initialRows, initialCanvasHeight }: {
@@ -49,7 +51,7 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout'>>) {
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity'>>) {
     setBusy(true)
     setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
     try {
@@ -83,11 +85,11 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
     reordered.splice(newIdx, 0, moved)
     const orderedIds = reordered.map(r => r.id)
 
-    // Update local state (renumerotation visuelle)
+    // Update local state : on ne touche QUE sort_order (row_number reste fige)
     setRows(prev => {
       const others = prev.filter(r => r.zone_key !== zoneKey)
-      const renumbered = reordered.map((r, i) => ({ ...r, row_number: i + 1 }))
-      return [...others, ...renumbered]
+      const resorted = reordered.map((r, i) => ({ ...r, sort_order: i + 1 }))
+      return [...others, ...resorted]
     })
 
     setBusy(true)
@@ -133,7 +135,8 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
   }
 
   function rowsOf(zoneKey: string): Row[] {
-    return rows.filter(r => r.zone_key === zoneKey).sort((a, b) => a.row_number - b.row_number)
+    return rows.filter(r => r.zone_key === zoneKey)
+      .sort((a, b) => (a.sort_order || a.row_number) - (b.sort_order || b.row_number))
   }
 
   async function addRow(zoneKey: string) {
@@ -261,6 +264,19 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
                     title="Sens des voitures dans la rangée"
                   >
                     <ArrowLeftRight size={11} /> {zone.slot_direction === 'ltr' ? '→' : '←'}
+                  </button>
+                  <button
+                    onClick={() => toggleZoneOption(zone.key, { strict_capacity: !zone.strict_capacity })}
+                    disabled={busy}
+                    className={`flex items-center gap-1 px-2 py-1 rounded border transition disabled:opacity-50 ${
+                      zone.strict_capacity
+                        ? 'bg-critical/10 border-critical/40 text-critical'
+                        : 'bg-surface text-ink-secondary hover:text-ink'
+                    }`}
+                    title={zone.strict_capacity ? 'Zone strict : pas d overflow autorise' : 'Zone tolerante (overflow +N OK)'}
+                  >
+                    {zone.strict_capacity ? <Lock size={11} /> : <Unlock size={11} />}
+                    {zone.strict_capacity ? 'Strict' : 'Tolerant'}
                   </button>
                 </div>
               </div>

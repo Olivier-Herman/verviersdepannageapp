@@ -23,39 +23,49 @@ const sbClient = createClient(
 )
 
 interface Zone {
-  key:            string
-  label:          string
-  sort_order:     number
-  pos_x:          number
-  pos_y:          number
-  width:          number  // legacy, plus utilise (auto-size)
-  height:         number  // legacy, plus utilise (auto-size)
-  slot_direction: 'ltr' | 'rtl'
-  row_layout:     'horizontal' | 'vertical'
+  key:             string
+  label:           string
+  sort_order:      number
+  pos_x:           number
+  pos_y:           number
+  width:           number  // legacy, plus utilise (auto-size)
+  height:          number  // legacy, plus utilise (auto-size)
+  slot_direction:  'ltr' | 'rtl'
+  row_layout:      'horizontal' | 'vertical'
+  strict_capacity: boolean
 }
 
-// Dimensions en pixels (zones auto-sized selon contenu)
-const SLOT_W       = 52   // largeur slot
-const SLOT_H       = 38   // hauteur slot
-const ROW_LABEL_W  = 32   // largeur label de rangée (A1, A2…) en layout horizontal
+// Dimensions en pixels (zones auto-sized selon contenu).
+// La forme du slot s'oriente avec le sens de la rangée :
+// - rangée horizontale : slot LANDSCAPE (long horizontalement)
+// - rangée verticale   : slot PORTRAIT  (long verticalement)
+const SLOT_LONG    = 52   // dimension du slot dans le sens de la rangée
+const SLOT_SHORT   = 38   // dimension perpendiculaire
+const ROW_LABEL_W  = 32   // largeur label de rangée en layout horizontal
 const COL_LABEL_H  = 16   // hauteur label de rangée en layout vertical
 const ZONE_HEADER_H = 26  // hauteur header de zone
 const ZONE_PAD     = 6    // padding interne zone
 const SLOT_GAP     = 2    // gap entre slots
 
+function slotDims(layout: 'horizontal' | 'vertical'): { w: number; h: number } {
+  return layout === 'horizontal'
+    ? { w: SLOT_LONG,  h: SLOT_SHORT }
+    : { w: SLOT_SHORT, h: SLOT_LONG }
+}
+
 function zoneSize(rows: Row[], layout: 'horizontal' | 'vertical'): { w: number; h: number } {
   if (rows.length === 0) return { w: 140, h: 56 }
   const maxCap = Math.max(...rows.map(r => r.capacity)) + 1 // +1 reserve overflow
+  const slot = slotDims(layout)
   if (layout === 'horizontal') {
     return {
-      w: ROW_LABEL_W + SLOT_GAP + maxCap * SLOT_W + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
-      h: ZONE_HEADER_H + rows.length * SLOT_H + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
+      w: ROW_LABEL_W + SLOT_GAP + maxCap * slot.w + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
+      h: ZONE_HEADER_H + rows.length * slot.h + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
     }
   }
-  // vertical : chaque "rangée" = colonne verticale
   return {
-    w: rows.length * SLOT_W + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
-    h: ZONE_HEADER_H + COL_LABEL_H + SLOT_GAP + maxCap * SLOT_H + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
+    w: rows.length * slot.w + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
+    h: ZONE_HEADER_H + COL_LABEL_H + SLOT_GAP + maxCap * slot.h + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
   }
 }
 
@@ -64,6 +74,7 @@ interface Row {
   zone_key:   string
   row_number: number
   capacity:   number
+  sort_order: number
 }
 
 interface PlacedMission {
@@ -158,7 +169,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     for (const r of state.rows) {
       (out[r.zone_key] ||= []).push(r)
     }
-    for (const z of Object.keys(out)) out[z].sort((a, b) => a.row_number - b.row_number)
+    for (const z of Object.keys(out)) out[z].sort((a, b) => (a.sort_order || a.row_number) - (b.sort_order || b.row_number))
     return out
   }, [state])
 
@@ -441,6 +452,7 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, e
               matchingIds={matchingIds}
               direction={zone.slot_direction}
               layout={zone.row_layout}
+              strict={zone.strict_capacity}
             />
           ))}
         </div>
@@ -484,18 +496,21 @@ function UnplacedSidebar({ missions, matchingIds }: { missions: PlacedMission[];
 // ─────────────────────────────────────────────────────────────────────────────
 // Ligne avec ses slots (+ overflow si vehicules > capacite)
 // ─────────────────────────────────────────────────────────────────────────────
-function RowSlots({ row, missions, matchingIds, direction, layout }: {
+function RowSlots({ row, missions, matchingIds, direction, layout, strict }: {
   row:         Row
   missions:    PlacedMission[]
   matchingIds: Set<string>
   direction:   'ltr' | 'rtl'
   layout:      'horizontal' | 'vertical'
+  strict:      boolean
 }) {
+  const slot = slotDims(layout)
   const overflow = missions.length > row.capacity
-  // Nombre de slots affiches : capacite + 1 (toujours une reserve visible).
-  // Si overflow >= 2, on affiche autant que necessaire mais la zone est
-  // pre-dimensionnee pour capacity+1 — les slots supplementaires depassent.
-  const slotCount = Math.max(row.capacity + 1, missions.length + 1)
+  // Nombre de slots affiches : si strict, exactement capacity (pas d overflow).
+  // Sinon : capacity + 1 (reserve visible) ou autant que de missions + 1.
+  const slotCount = strict
+    ? row.capacity
+    : Math.max(row.capacity + 1, missions.length + 1)
   const slots: Array<PlacedMission | null> = Array.from({ length: slotCount }, () => null)
   for (const m of missions) {
     const idx = (m.parc_slot_index || 1) - 1
@@ -508,8 +523,8 @@ function RowSlots({ row, missions, matchingIds, direction, layout }: {
 
   if (layout === 'horizontal') {
     return (
-      <div className="flex items-center gap-[2px]" style={{ height: SLOT_H }}>
-        <div className={labelClass} style={{ width: ROW_LABEL_W, height: SLOT_H }}>
+      <div className="flex items-center gap-[2px]" style={{ height: slot.h }}>
+        <div className={labelClass} style={{ width: ROW_LABEL_W, height: slot.h }}>
           {row.zone_key}{row.row_number}
         </div>
         <div className={`flex gap-[2px] ${direction === 'rtl' ? 'flex-row-reverse' : ''}`}>
@@ -522,6 +537,8 @@ function RowSlots({ row, missions, matchingIds, direction, layout }: {
               isOverflow={i >= row.capacity}
               mission={mission}
               highlighted={mission ? matchingIds.has(mission.id) : false}
+              slotW={slot.w}
+              slotH={slot.h}
             />
           ))}
         </div>
@@ -531,8 +548,8 @@ function RowSlots({ row, missions, matchingIds, direction, layout }: {
 
   // Vertical : rangée = colonne, label en haut, slots empilés vers le bas
   return (
-    <div className="flex flex-col items-center gap-[2px]" style={{ width: SLOT_W }}>
-      <div className={labelClass} style={{ width: SLOT_W, height: COL_LABEL_H }}>
+    <div className="flex flex-col items-center gap-[2px]" style={{ width: slot.w }}>
+      <div className={labelClass} style={{ width: slot.w, height: COL_LABEL_H }}>
         {row.zone_key}{row.row_number}
       </div>
       <div className={`flex flex-col gap-[2px] ${direction === 'rtl' ? 'flex-col-reverse' : ''}`}>
@@ -545,6 +562,8 @@ function RowSlots({ row, missions, matchingIds, direction, layout }: {
             isOverflow={i >= row.capacity}
             mission={mission}
             highlighted={mission ? matchingIds.has(mission.id) : false}
+            slotW={slot.w}
+            slotH={slot.h}
           />
         ))}
       </div>
@@ -555,13 +574,15 @@ function RowSlots({ row, missions, matchingIds, direction, layout }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // Un slot droppable (avec ou sans vehicule)
 // ─────────────────────────────────────────────────────────────────────────────
-function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted }: {
+function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted, slotW, slotH }: {
   zoneKey:     string
   rowNumber:   number
   slotIndex:   number
   isOverflow:  boolean
   mission:     PlacedMission | null
   highlighted: boolean
+  slotW:       number
+  slotH:       number
 }) {
   const id = `slot-${zoneKey}-${rowNumber}-${slotIndex}`
   const { setNodeRef, isOver } = useDroppable({ id })
@@ -569,7 +590,7 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted 
   return (
     <div
       ref={setNodeRef}
-      style={{ width: SLOT_W, height: SLOT_H }}
+      style={{ width: slotW, height: slotH }}
       className={`flex-shrink-0 rounded border flex items-center justify-center text-[10px] transition-colors ${
         highlighted
           ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'

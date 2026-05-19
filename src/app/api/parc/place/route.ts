@@ -70,6 +70,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Ligne ${zoneKey}${rowNumber} inexistante` }, { status: 400 })
     }
 
+    // Si la zone est strict_capacity, refuse l overflow
+    const { data: zone } = await sb
+      .from('parc_zones')
+      .select('strict_capacity')
+      .eq('key', zoneKey)
+      .maybeSingle()
+    if (zone?.strict_capacity && slotIndex > row.capacity) {
+      return NextResponse.json({
+        error: `Zone ${zoneKey} en mode strict : capacite ${row.capacity}, pas d overflow.`,
+      }, { status: 409 })
+    }
+
     // Si un autre vehicule occupe deja exactement ce slot, on l'echange
     // (swap) : il prend la position precedente du vehicule deplace.
     const { data: currentOccupant } = await sb

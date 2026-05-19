@@ -47,6 +47,10 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
   if (body.row_layout === 'horizontal' || body.row_layout === 'vertical') {
     patch.row_layout = body.row_layout
   }
+  // strict_capacity : refuse overflow si true
+  if (typeof body.strict_capacity === 'boolean') {
+    patch.strict_capacity = body.strict_capacity
+  }
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction)' }, { status: 400 })
   }
