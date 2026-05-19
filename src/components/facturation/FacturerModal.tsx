@@ -194,6 +194,9 @@ function MissionBlock({
   const [quoteStatusLoading, setQuoteStatusLoading] = useState(true)
   // Edition manuelle des lignes : null = mode preview/auto, array = lignes editees a pousser
   const [customLines, setCustomLines] = useState<CustomLine[] | null>(null)
+  const [draftSaving, setDraftSaving] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
+  const [hasDraft, setHasDraft] = useState(false)
   const kind = missionKind(m)
   const isReady = m.status === 'to_invoice'
 
@@ -210,34 +213,38 @@ function MissionBlock({
       .then(r => r.json())
       .then(d => { if (!cancelled) setSurcharges(d) })
       .catch(() => {})
-    fetch(`/api/missions/${m.id}/price-estimate`)
-      .then(r => r.json())
-      .then((d: PriceEstimateData) => {
-        if (cancelled) return
-        setEstimate(d)
-        // Mode 'lines' : on initialise auto les customLines a partir du template
-        // (l employe doit ajuster qty/PU pour chaque ligne)
-        if (d?.ok && d.pricing_mode === 'lines' && d.template_lines && d.template_lines.length > 0) {
-          const initialLines: CustomLine[] = d.template_lines.map(tl => ({
-            kind:       tl.kind,
-            name:       tl.name,
-            qty:        tl.default_qty ?? 0,
-            price_unit: tl.default_price ?? 0,
-          }))
-          // Ajoute la ligne SERV-MAJ si surcharge applicable
-          if (d.surcharge_pct > 0) {
-            initialLines.push({
-              kind:       'SERV-MAJ',
-              name:       `Majoration ${d.surcharge_pct}%`,
-              qty:        Math.round(d.surcharge_pct) / 100,
-              price_unit: 0,  // PU = subtotal majorable, a recalculer apres edition
-            })
-          }
-          setCustomLines(initialLines)
+    // Charge en parallele : estimate auto + draft sauvegarde
+    Promise.all([
+      fetch(`/api/missions/${m.id}/price-estimate`).then(r => r.json()),
+      fetch(`/api/missions/${m.id}/invoice-draft`).then(r => r.json()),
+    ]).then(([d, draftRes]: [PriceEstimateData, any]) => {
+      if (cancelled) return
+      setEstimate(d)
+      // 1) Si un brouillon existe en BDD : il prend la priorite
+      if (draftRes?.draft?.lines && Array.isArray(draftRes.draft.lines)) {
+        setCustomLines(draftRes.draft.lines)
+        setHasDraft(true)
+        setDraftSavedAt(draftRes.draft.updated_at)
+      }
+      // 2) Sinon mode 'lines' : init auto depuis le template
+      else if (d?.ok && d.pricing_mode === 'lines' && d.template_lines && d.template_lines.length > 0) {
+        const initialLines: CustomLine[] = d.template_lines.map(tl => ({
+          kind:       tl.kind,
+          name:       tl.name,
+          qty:        tl.default_qty ?? 0,
+          price_unit: tl.default_price ?? 0,
+        }))
+        if (d.surcharge_pct > 0) {
+          initialLines.push({
+            kind:       'SERV-MAJ',
+            name:       `Majoration ${d.surcharge_pct}%`,
+            qty:        Math.round(d.surcharge_pct) / 100,
+            price_unit: 0,
+          })
         }
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setEstimateLoading(false) })
+        setCustomLines(initialLines)
+      }
+    }).catch(() => {}).finally(() => { if (!cancelled) setEstimateLoading(false) })
     fetch(`/api/missions/${m.id}/quote-status`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setQuoteStatus(d) })
@@ -274,8 +281,9 @@ function MissionBlock({
       // Ouvre direct le devis Odoo dans nouvel onglet
       if (j.quote?.url) window.open(j.quote.url, '_blank')
       onQuoteCreated(m.id, j.quote.id, j.quote.url)
-      // Reset le mode edition (le devis a ete pousse)
+      // Reset le mode edition (le devis a ete pousse) + cleanup le draft
       setCustomLines(null)
+      if (hasDraft) await clearDraft()
       // Recharge le statut pour reflet immediat (status devrait passer en 'draft')
       await refreshQuoteStatus()
     } catch (e: any) {
@@ -347,6 +355,32 @@ function MissionBlock({
   }
 
   const customTotal = customLines ? customLines.reduce((s, l) => s + l.qty * l.price_unit, 0) : 0
+
+  /** Sauvegarde le brouillon en BDD (les customLines courantes). */
+  async function saveDraft() {
+    if (!customLines) return
+    setDraftSaving(true)
+    try {
+      const res = await fetch(`/api/missions/${m.id}/invoice-draft`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ lines: customLines }),
+      })
+      const j = await res.json()
+      if (!res.ok) { alert(`Erreur sauvegarde : ${j.error}`); return }
+      setHasDraft(true)
+      setDraftSavedAt(j.draft?.updated_at || new Date().toISOString())
+    } finally { setDraftSaving(false) }
+  }
+
+  /** Supprime le brouillon (apres push reussi ou clic Annuler). */
+  async function clearDraft() {
+    try {
+      await fetch(`/api/missions/${m.id}/invoice-draft`, { method: 'DELETE' })
+      setHasDraft(false)
+      setDraftSavedAt(null)
+    } catch {}
+  }
 
   const totalCollected = payments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
@@ -595,13 +629,31 @@ function MissionBlock({
                 >
                   + Ajouter une ligne
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCustomLines(null)}
-                  className="text-[11px] text-ink-faint hover:text-ink"
-                >
-                  Annuler les modifs
-                </button>
+                <div className="flex items-center gap-2">
+                  {draftSavedAt && (
+                    <span className="text-[10px] text-success">✓ sauvegardé</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveDraft}
+                    disabled={draftSaving}
+                    className="text-[11px] bg-info hover:bg-info/80 disabled:opacity-50 text-white px-2.5 py-1 rounded font-medium"
+                    title="Sauvegarder le brouillon (sera rechargé à la prochaine ouverture)"
+                  >
+                    {draftSaving ? '⏳…' : '💾 Sauvegarder'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (hasDraft && !confirm('Annuler les modifs et supprimer le brouillon sauvegardé ?')) return
+                      setCustomLines(null)
+                      if (hasDraft) await clearDraft()
+                    }}
+                    className="text-[11px] text-ink-faint hover:text-ink"
+                  >
+                    Annuler
+                  </button>
+                </div>
               </div>
             </div>
           )}

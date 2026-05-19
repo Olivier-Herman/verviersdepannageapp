@@ -34,6 +34,22 @@ function missionKind(m: any): string {
   return 'AUTRE'
 }
 
+/** Description longue par type de mission, pour la section du devis Odoo. */
+function kindDescription(kind: string): string {
+  switch (kind) {
+    case 'REM':
+      return "Remorquage d'un véhicule dont référence ci-dessus de \"Lieu d'intervention\" à notre dépôt (si mise en dépôt) ou à \"Lieu de destination\" (si livraison)"
+    case 'REL':
+      return "Relivraison d'un véhicule dont référence ci-dessus de notre dépôt vers \"Lieu de destination\""
+    case 'DSP':
+      return "Dépannage d'un véhicule dont référence ci-dessus à \"Lieu d'intervention\""
+    case 'DPR':
+      return "Déplacement protocolaire d'un véhicule dont référence ci-dessus"
+    default:
+      return ''
+  }
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -117,7 +133,10 @@ export async function POST(req: Request) {
     const estimate = await estimateMissionPrice(mission as any)
     const kind = missionKind(mission)
     const ref = mission.external_id || mission.dossier_number || mission.id.slice(0, 8)
-    const sectionLabel = `${kind} #${ref}`
+    const desc = kindDescription(kind)
+    const sectionLabel = desc
+      ? `${kind} #${ref} — ${desc}`
+      : `${kind} #${ref}`
     if (estimate.ok) {
       const lines = buildLinesFromEstimate(estimate, mission)
       sections.push({ section_label: sectionLabel, lines })
