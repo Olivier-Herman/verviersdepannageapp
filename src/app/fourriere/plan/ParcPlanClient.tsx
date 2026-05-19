@@ -23,13 +23,40 @@ const sbClient = createClient(
 )
 
 interface Zone {
-  key:        string
-  label:      string
-  sort_order: number
-  pos_x:      number
-  pos_y:      number
-  width:      number
-  height:     number
+  key:            string
+  label:          string
+  sort_order:     number
+  pos_x:          number
+  pos_y:          number
+  width:          number  // legacy, plus utilise (auto-size)
+  height:         number  // legacy, plus utilise (auto-size)
+  slot_direction: 'ltr' | 'rtl'
+  row_layout:     'horizontal' | 'vertical'
+}
+
+// Dimensions en pixels (zones auto-sized selon contenu)
+const SLOT_W       = 52   // largeur slot
+const SLOT_H       = 38   // hauteur slot
+const ROW_LABEL_W  = 32   // largeur label de rangée (A1, A2…) en layout horizontal
+const COL_LABEL_H  = 16   // hauteur label de rangée en layout vertical
+const ZONE_HEADER_H = 26  // hauteur header de zone
+const ZONE_PAD     = 6    // padding interne zone
+const SLOT_GAP     = 2    // gap entre slots
+
+function zoneSize(rows: Row[], layout: 'horizontal' | 'vertical'): { w: number; h: number } {
+  if (rows.length === 0) return { w: 140, h: 56 }
+  const maxCap = Math.max(...rows.map(r => r.capacity)) + 1 // +1 reserve overflow
+  if (layout === 'horizontal') {
+    return {
+      w: ROW_LABEL_W + SLOT_GAP + maxCap * SLOT_W + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
+      h: ZONE_HEADER_H + rows.length * SLOT_H + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
+    }
+  }
+  // vertical : chaque "rangée" = colonne verticale
+  return {
+    w: rows.length * SLOT_W + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
+    h: ZONE_HEADER_H + COL_LABEL_H + SLOT_GAP + maxCap * SLOT_H + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
+  }
 }
 
 interface Row {
@@ -279,8 +306,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   canDriverDrop={canDriverDrop}
                   editMode={editMode}
                   canvasRef={canvasRef}
-                  onLayoutCommit={async (coords) => {
-                    // Optimistic update
+                  onPositionCommit={async (coords) => {
                     setState(s => s ? { ...s, zones: s.zones.map(z => z.key === zone.key ? { ...z, ...coords } : z) } : s)
                     try {
                       const res = await fetch(`/api/admin/parc/zones/${encodeURIComponent(zone.key)}`, {
@@ -294,7 +320,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                       }
                     } catch (e: any) {
                       alert(`Sauvegarde plan : ${e.message}`)
-                      load() // rollback en relisant
+                      load()
                     }
                   }}
                 />
@@ -313,9 +339,9 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zone positionnée sur le canvas (drag + resize en mode édition)
+// Zone positionnée sur le canvas (auto-size selon contenu, drag en édition)
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, editMode, canvasRef, onLayoutCommit }: {
+function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
   zone:          Zone
   rows:          Row[]
   missionsOnRow: (zoneKey: string, rowNumber: number) => PlacedMission[]
@@ -323,57 +349,45 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, e
   canDriverDrop: boolean
   editMode:      boolean
   canvasRef:     React.RefObject<HTMLDivElement>
-  onLayoutCommit: (coords: { pos_x: number; pos_y: number; width: number; height: number }) => void
+  onPositionCommit: (coords: { pos_x: number; pos_y: number }) => void
 }) {
-  // Coords locales pendant un drag/resize (commit en fin de geste seulement)
-  const [local, setLocal] = useState<{ pos_x: number; pos_y: number; width: number; height: number } | null>(null)
-  const pos_x  = local?.pos_x  ?? zone.pos_x
-  const pos_y  = local?.pos_y  ?? zone.pos_y
-  const width  = local?.width  ?? zone.width
-  const height = local?.height ?? zone.height
+  const [localPos, setLocalPos] = useState<{ pos_x: number; pos_y: number } | null>(null)
+  const pos_x = localPos?.pos_x ?? zone.pos_x
+  const pos_y = localPos?.pos_y ?? zone.pos_y
 
-  function startDrag(e: React.MouseEvent | React.TouchEvent, mode: 'move' | 'resize') {
+  const size = useMemo(() => zoneSize(rows, zone.row_layout), [rows, zone.row_layout])
+
+  function startDrag(e: React.MouseEvent | React.TouchEvent) {
     if (!editMode || !canvasRef.current) return
     e.preventDefault()
     e.stopPropagation()
     const canvas = canvasRef.current.getBoundingClientRect()
     const startX = 'touches' in e ? e.touches[0].clientX : e.clientX
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    const initial = { pos_x: zone.pos_x, pos_y: zone.pos_y, width: zone.width, height: zone.height }
+    const initial = { pos_x: zone.pos_x, pos_y: zone.pos_y }
+    const sizePctW = (size.w / canvas.width)  * 100
+    const sizePctH = (size.h / canvas.height) * 100
 
     const onMove = (mv: MouseEvent | TouchEvent) => {
       const mx = 'touches' in mv ? mv.touches[0].clientX : mv.clientX
       const my = 'touches' in mv ? mv.touches[0].clientY : mv.clientY
-      const dx = ((mx - startX) / canvas.width) * 100
+      const dx = ((mx - startX) / canvas.width)  * 100
       const dy = ((my - startY) / canvas.height) * 100
-      if (mode === 'move') {
-        setLocal({
-          pos_x:  Math.max(0, Math.min(100 - initial.width,  initial.pos_x + dx)),
-          pos_y:  Math.max(0, Math.min(100 - initial.height, initial.pos_y + dy)),
-          width:  initial.width,
-          height: initial.height,
-        })
-      } else {
-        setLocal({
-          pos_x:  initial.pos_x,
-          pos_y:  initial.pos_y,
-          width:  Math.max(5, Math.min(100 - initial.pos_x, initial.width  + dx)),
-          height: Math.max(5, Math.min(100 - initial.pos_y, initial.height + dy)),
-        })
-      }
+      setLocalPos({
+        pos_x: Math.max(0, Math.min(100 - sizePctW, initial.pos_x + dx)),
+        pos_y: Math.max(0, Math.min(100 - sizePctH, initial.pos_y + dy)),
+      })
     }
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup',   onUp)
       window.removeEventListener('touchmove', onMove)
       window.removeEventListener('touchend',  onUp)
-      setLocal(curr => {
+      setLocalPos(curr => {
         if (curr) {
-          onLayoutCommit({
-            pos_x:  Math.round(curr.pos_x * 100) / 100,
-            pos_y:  Math.round(curr.pos_y * 100) / 100,
-            width:  Math.round(curr.width  * 100) / 100,
-            height: Math.round(curr.height * 100) / 100,
+          onPositionCommit({
+            pos_x: Math.round(curr.pos_x * 100) / 100,
+            pos_y: Math.round(curr.pos_y * 100) / 100,
           })
         }
         return null
@@ -385,6 +399,8 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, e
     window.addEventListener('touchend',  onUp)
   }
 
+  const isVertical = zone.row_layout === 'vertical'
+
   return (
     <div
       className={`absolute bg-surface-2 border rounded-xl overflow-hidden flex flex-col ${
@@ -393,45 +409,41 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, e
       style={{
         left:   `${pos_x}%`,
         top:    `${pos_y}%`,
-        width:  `${width}%`,
-        height: `${height}%`,
-        transition: local ? 'none' : 'left 0.2s, top 0.2s, width 0.2s, height 0.2s',
+        width:  `${size.w}px`,
+        height: `${size.h}px`,
+        transition: localPos ? 'none' : 'left 0.2s, top 0.2s',
       }}
-      onMouseDown={editMode ? (e => startDrag(e, 'move')) : undefined}
-      onTouchStart={editMode ? (e => startDrag(e, 'move')) : undefined}
+      onMouseDown={editMode ? startDrag : undefined}
+      onTouchStart={editMode ? startDrag : undefined}
     >
-      <div className="px-2 py-1 border-b bg-surface flex items-center justify-between flex-shrink-0">
-        <h2 className="text-ink font-bold text-sm truncate">Zone {zone.label}</h2>
-        {editMode && (
-          <span className="text-ink-faint text-[9px] font-mono">{width.toFixed(0)}×{height.toFixed(0)}%</span>
-        )}
+      <div className="px-2 border-b bg-surface flex items-center justify-between flex-shrink-0" style={{ height: ZONE_HEADER_H }}>
+        <h2 className="text-ink font-bold text-xs truncate">{zone.label}</h2>
         {!editMode && !canDriverDrop && (
-          <span className="text-ink-faint text-[10px]">non autorisée</span>
+          <span className="text-ink-faint text-[9px]">non autorisée</span>
         )}
       </div>
-      {!editMode && (
-        <div className="p-2 space-y-1.5 overflow-auto flex-1">
-          {rows.length === 0 ? (
-            <p className="text-ink-faint text-[10px] italic text-center py-2">
-              Aucune ligne configurée
-            </p>
-          ) : rows.map(row => (
+      {rows.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center px-1">
+          <p className="text-ink-faint text-[9px] italic text-center">
+            {editMode ? 'À configurer' : '—'}
+          </p>
+        </div>
+      ) : (
+        <div
+          className={`flex-1 flex ${isVertical ? 'flex-row' : 'flex-col'} gap-[2px]`}
+          style={{ padding: ZONE_PAD }}
+        >
+          {rows.map(row => (
             <RowSlots
               key={row.id}
               row={row}
               missions={missionsOnRow(zone.key, row.row_number)}
               matchingIds={matchingIds}
+              direction={zone.slot_direction}
+              layout={zone.row_layout}
             />
           ))}
         </div>
-      )}
-      {editMode && (
-        <div
-          className="absolute bottom-0 right-0 w-4 h-4 bg-brand cursor-nwse-resize rounded-tl"
-          onMouseDown={e => startDrag(e, 'resize')}
-          onTouchStart={e => startDrag(e, 'resize')}
-          title="Redimensionner"
-        />
       )}
     </div>
   )
@@ -472,27 +484,58 @@ function UnplacedSidebar({ missions, matchingIds }: { missions: PlacedMission[];
 // ─────────────────────────────────────────────────────────────────────────────
 // Ligne avec ses slots (+ overflow si vehicules > capacite)
 // ─────────────────────────────────────────────────────────────────────────────
-function RowSlots({ row, missions, matchingIds }: { row: Row; missions: PlacedMission[]; matchingIds: Set<string> }) {
+function RowSlots({ row, missions, matchingIds, direction, layout }: {
+  row:         Row
+  missions:    PlacedMission[]
+  matchingIds: Set<string>
+  direction:   'ltr' | 'rtl'
+  layout:      'horizontal' | 'vertical'
+}) {
   const overflow = missions.length > row.capacity
-  // Nombre total de slots à afficher : capacité + 1 vide (pour pouvoir drop)
-  // OU si déjà en overflow, on affiche autant que de missions + 1 supplémentaire.
-  const slotCount = Math.max(row.capacity, missions.length) + 1
-
-  // Place chaque mission sur son slot_index (1-based)
+  // Nombre de slots affiches : capacite + 1 (toujours une reserve visible).
+  // Si overflow >= 2, on affiche autant que necessaire mais la zone est
+  // pre-dimensionnee pour capacity+1 — les slots supplementaires depassent.
+  const slotCount = Math.max(row.capacity + 1, missions.length + 1)
   const slots: Array<PlacedMission | null> = Array.from({ length: slotCount }, () => null)
   for (const m of missions) {
     const idx = (m.parc_slot_index || 1) - 1
     if (idx >= 0 && idx < slotCount) slots[idx] = m
   }
 
+  const labelClass = `flex-shrink-0 font-mono font-bold text-[10px] flex items-center justify-center rounded ${
+    overflow ? 'bg-critical/15 text-critical' : 'bg-brand/15 text-brand'
+  }`
+
+  if (layout === 'horizontal') {
+    return (
+      <div className="flex items-center gap-[2px]" style={{ height: SLOT_H }}>
+        <div className={labelClass} style={{ width: ROW_LABEL_W, height: SLOT_H }}>
+          {row.zone_key}{row.row_number}
+        </div>
+        <div className={`flex gap-[2px] ${direction === 'rtl' ? 'flex-row-reverse' : ''}`}>
+          {slots.map((mission, i) => (
+            <Slot
+              key={i}
+              zoneKey={row.zone_key}
+              rowNumber={row.row_number}
+              slotIndex={i + 1}
+              isOverflow={i >= row.capacity}
+              mission={mission}
+              highlighted={mission ? matchingIds.has(mission.id) : false}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Vertical : rangée = colonne, label en haut, slots empilés vers le bas
   return (
-    <div className="flex items-center gap-2">
-      <span className={`flex-shrink-0 w-10 text-center font-mono font-bold text-xs px-1.5 py-1 rounded ${
-        overflow ? 'bg-critical/15 text-critical' : 'bg-brand/15 text-brand'
-      }`}>
+    <div className="flex flex-col items-center gap-[2px]" style={{ width: SLOT_W }}>
+      <div className={labelClass} style={{ width: SLOT_W, height: COL_LABEL_H }}>
         {row.zone_key}{row.row_number}
-      </span>
-      <div className="flex-1 flex gap-1 flex-wrap">
+      </div>
+      <div className={`flex flex-col gap-[2px] ${direction === 'rtl' ? 'flex-col-reverse' : ''}`}>
         {slots.map((mission, i) => (
           <Slot
             key={i}
@@ -505,11 +548,6 @@ function RowSlots({ row, missions, matchingIds }: { row: Row; missions: PlacedMi
           />
         ))}
       </div>
-      {overflow && (
-        <span className="flex-shrink-0 text-critical text-[10px] font-bold whitespace-nowrap" title="Capacité dépassée">
-          <AlertTriangle size={12} className="inline" /> +{missions.length - row.capacity}
-        </span>
-      )}
     </div>
   )
 }
@@ -531,7 +569,8 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted 
   return (
     <div
       ref={setNodeRef}
-      className={`w-[78px] h-[46px] rounded border flex items-center justify-center text-[10px] transition-colors ${
+      style={{ width: SLOT_W, height: SLOT_H }}
+      className={`flex-shrink-0 rounded border flex items-center justify-center text-[10px] transition-colors ${
         highlighted
           ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'
           : mission

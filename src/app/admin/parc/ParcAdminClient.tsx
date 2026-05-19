@@ -7,13 +7,23 @@
 // - + Ajouter ligne / supprimer ligne (refus si vehicules dessus)
 
 import { useState } from 'react'
-import { Plus, Trash2, Check, X } from 'lucide-react'
+import {
+  DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw } from 'lucide-react'
 
 interface Zone {
-  key:        string
-  label:      string
-  active:     boolean
-  sort_order: number
+  key:            string
+  label:          string
+  active:         boolean
+  sort_order:     number
+  slot_direction: 'ltr' | 'rtl'
+  row_layout:     'horizontal' | 'vertical'
 }
 
 interface Row {
@@ -28,11 +38,74 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
   initialRows:         Row[]
   initialCanvasHeight: number
 }) {
-  const [zones]   = useState<Zone[]>(initialZones)
+  const [zones, setZones] = useState<Zone[]>(initialZones)
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [busy, setBusy] = useState(false)
   const [canvasHeight, setCanvasHeight] = useState(initialCanvasHeight)
   const [canvasInput, setCanvasInput]   = useState(String(initialCanvasHeight))
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout'>>) {
+    setBusy(true)
+    setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
+    try {
+      const res = await fetch(`/api/admin/parc/zones/${encodeURIComponent(zoneKey)}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(patch),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+      // rollback
+      setZones(initialZones.map(z => ({ ...z })))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleReorderDragEnd(zoneKey: string, ev: DragEndEvent) {
+    const { active, over } = ev
+    if (!over || active.id === over.id) return
+    const zRows = rowsOf(zoneKey)
+    const oldIdx = zRows.findIndex(r => r.id === Number(active.id))
+    const newIdx = zRows.findIndex(r => r.id === Number(over.id))
+    if (oldIdx < 0 || newIdx < 0) return
+
+    // Reordonner localement et renumeroter row_number
+    const reordered = [...zRows]
+    const [moved] = reordered.splice(oldIdx, 1)
+    reordered.splice(newIdx, 0, moved)
+    const orderedIds = reordered.map(r => r.id)
+
+    // Update local state (renumerotation visuelle)
+    setRows(prev => {
+      const others = prev.filter(r => r.zone_key !== zoneKey)
+      const renumbered = reordered.map((r, i) => ({ ...r, row_number: i + 1 }))
+      return [...others, ...renumbered]
+    })
+
+    setBusy(true)
+    try {
+      const res = await fetch('/api/admin/parc/rows/reorder', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: zoneKey, ordered_ids: orderedIds }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+      setRows(initialRows.map(r => ({ ...r })))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function saveCanvasHeight() {
     const n = parseInt(canvasInput, 10)
@@ -160,30 +233,57 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
           const zRows = rowsOf(zone.key)
           return (
             <div key={zone.key} className="bg-surface-2 border rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b flex items-center justify-between bg-surface">
-                <h2 className="text-ink font-bold text-base">Zone {zone.label}</h2>
-                <button
-                  onClick={() => addRow(zone.key)}
-                  disabled={busy}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
-                >
-                  <Plus size={14} /> Ajouter ligne
-                </button>
+              <div className="px-4 py-3 border-b bg-surface space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-ink font-bold text-base">Zone {zone.label}</h2>
+                  <button
+                    onClick={() => addRow(zone.key)}
+                    disabled={busy}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
+                  >
+                    <Plus size={14} /> Ajouter ligne
+                  </button>
+                </div>
+                {/* Options de la zone : orientation + sens */}
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button
+                    onClick={() => toggleZoneOption(zone.key, { row_layout: zone.row_layout === 'horizontal' ? 'vertical' : 'horizontal' })}
+                    disabled={busy}
+                    className="flex items-center gap-1 px-2 py-1 bg-surface border rounded text-ink-secondary hover:text-ink transition disabled:opacity-50"
+                    title="Orientation des rangées"
+                  >
+                    <RotateCw size={11} /> {zone.row_layout === 'horizontal' ? 'Horizontale' : 'Verticale'}
+                  </button>
+                  <button
+                    onClick={() => toggleZoneOption(zone.key, { slot_direction: zone.slot_direction === 'ltr' ? 'rtl' : 'ltr' })}
+                    disabled={busy}
+                    className="flex items-center gap-1 px-2 py-1 bg-surface border rounded text-ink-secondary hover:text-ink transition disabled:opacity-50"
+                    title="Sens des voitures dans la rangée"
+                  >
+                    <ArrowLeftRight size={11} /> {zone.slot_direction === 'ltr' ? '→' : '←'}
+                  </button>
+                </div>
               </div>
               <div className="divide-y divide-[#222]">
                 {zRows.length === 0 ? (
                   <p className="px-4 py-6 text-ink-muted text-sm text-center italic">
                     Aucune ligne configurée
                   </p>
-                ) : zRows.map(row => (
-                  <RowEditor
-                    key={row.id}
-                    row={row}
-                    busy={busy}
-                    onSave={cap => updateCapacity(row, cap)}
-                    onDelete={() => deleteRow(row)}
-                  />
-                ))}
+                ) : (
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={ev => handleReorderDragEnd(zone.key, ev)}>
+                    <SortableContext items={zRows.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                      {zRows.map(row => (
+                        <SortableRowEditor
+                          key={row.id}
+                          row={row}
+                          busy={busy}
+                          onSave={cap => updateCapacity(row, cap)}
+                          onDelete={() => deleteRow(row)}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                )}
               </div>
             </div>
           )
@@ -257,6 +357,39 @@ function RowEditor({ row, busy, onSave, onDelete }: {
       >
         <Trash2 size={14} />
       </button>
+    </div>
+  )
+}
+
+// Wrapper sortable autour de RowEditor : ajoute une poignee GripVertical
+// a gauche pour drag&drop de reordonnancement.
+function SortableRowEditor(props: {
+  row:      Row
+  busy:     boolean
+  onSave:   (capacity: number) => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.row.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity:   isDragging ? 0.6 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className={`flex items-center ${isDragging ? 'bg-surface-hover' : ''}`}>
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-ink-faint hover:text-ink-secondary touch-none px-2"
+        aria-label="Réordonner la ligne"
+      >
+        <GripVertical size={14} />
+      </button>
+      <div className="flex-1">
+        <RowEditor {...props} />
+      </div>
     </div>
   )
 }

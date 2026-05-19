@@ -34,13 +34,21 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const patch: Record<string, number> = {}
+  const patch: Record<string, any> = {}
   for (const f of ['pos_x', 'pos_y', 'width', 'height']) {
     const v = clampPercent(body[f])
     if (v != null) patch[f] = v
   }
+  // slot_direction : ltr ou rtl
+  if (body.slot_direction === 'ltr' || body.slot_direction === 'rtl') {
+    patch.slot_direction = body.slot_direction
+  }
+  // row_layout : horizontal ou vertical
+  if (body.row_layout === 'horizontal' || body.row_layout === 'vertical') {
+    patch.row_layout = body.row_layout
+  }
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height)' }, { status: 400 })
+    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction)' }, { status: 400 })
   }
 
   const sb = createAdminClient()
