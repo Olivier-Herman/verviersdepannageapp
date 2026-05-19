@@ -23,13 +23,41 @@ interface Row {
   capacity:    number
 }
 
-export default function ParcAdminClient({ initialZones, initialRows }: {
-  initialZones: Zone[]
-  initialRows:  Row[]
+export default function ParcAdminClient({ initialZones, initialRows, initialCanvasHeight }: {
+  initialZones:        Zone[]
+  initialRows:         Row[]
+  initialCanvasHeight: number
 }) {
   const [zones]   = useState<Zone[]>(initialZones)
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [busy, setBusy] = useState(false)
+  const [canvasHeight, setCanvasHeight] = useState(initialCanvasHeight)
+  const [canvasInput, setCanvasInput]   = useState(String(initialCanvasHeight))
+
+  async function saveCanvasHeight() {
+    const n = parseInt(canvasInput, 10)
+    if (!Number.isInteger(n) || n < 400 || n > 8000) {
+      alert('Hauteur invalide (entre 400 et 8000 px)')
+      return
+    }
+    if (n === canvasHeight) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/admin/parc/settings', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ canvas_height_px: n }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setCanvasHeight(n)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+      setCanvasInput(String(canvasHeight))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   function rowsOf(zoneKey: string): Row[] {
     return rows.filter(r => r.zone_key === zoneKey).sort((a, b) => a.row_number - b.row_number)
@@ -103,6 +131,28 @@ export default function ParcAdminClient({ initialZones, initialRows }: {
           Les zones sont figées. Pour chaque zone, configure les lignes (auto-numérotées) et leur capacité.
           Capacité = nombre de places affichées ; l&apos;overflow (+N) est accepté avec un warning visuel.
         </p>
+      </div>
+
+      {/* Canvas size config */}
+      <div className="bg-surface-2 border rounded-2xl p-4">
+        <h2 className="text-ink font-semibold text-sm mb-2">Dimensions du plan</h2>
+        <p className="text-ink-muted text-xs mb-3">
+          La largeur du canvas s&apos;adapte automatiquement à l&apos;écran. La hauteur (en pixels) permet d&apos;allonger le plan
+          verticalement si ton parking est long (ex : 50 rangées → 2400-3000px).
+        </p>
+        <div className="flex items-center gap-2">
+          <label className="text-ink-muted text-xs">Hauteur du canvas (px)</label>
+          <input
+            type="number" min={400} max={8000} step={100}
+            value={canvasInput}
+            onChange={e => setCanvasInput(e.target.value)}
+            onBlur={saveCanvasHeight}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            disabled={busy}
+            className="w-24 bg-surface border rounded px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+          <span className="text-ink-faint text-xs">actuelle : {canvasHeight}px</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -54,10 +54,11 @@ interface PlacedMission {
 }
 
 interface State {
-  zones:   Zone[]
-  rows:    Row[]
-  placed:  PlacedMission[]
-  toPlace: PlacedMission[]
+  zones:           Zone[]
+  rows:            Row[]
+  placed:          PlacedMission[]
+  toPlace:         PlacedMission[]
+  canvasHeightPx:  number
 }
 
 const UNPLACED_DROP_ID = 'unplaced'
@@ -263,7 +264,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
           <div
             ref={canvasRef}
             className={`relative w-full bg-surface border rounded-2xl overflow-hidden ${editMode ? 'bg-grid-pattern' : ''}`}
-            style={{ aspectRatio: '3 / 4', minHeight: 600, maxHeight: '80vh' }}
+            style={{ height: `${state.canvasHeightPx}px` }}
           >
             {state.zones.map(zone => {
               const zRows = rowsByZone[zone.key] || []
