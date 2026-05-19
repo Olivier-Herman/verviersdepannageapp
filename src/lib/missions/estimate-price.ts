@@ -11,6 +11,39 @@ import { createAdminClient } from '@/lib/supabase'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { normalizeType, isRemorquage, isDsp, isTrajetVide } from '@/lib/missions/mission-types'
 
+/**
+ * Determine si une date/heure tombe dans la plage "majorée" IPA :
+ *   - heure < 7 OU heure >= 18
+ *   - OU samedi/dimanche
+ *   - OU jour férié BE
+ * Utilise l heure LOCALE Belgique (timezone Europe/Brussels).
+ */
+function isIpaMajoredHour(date: Date): boolean {
+  // Reuse de la logique belgianParts via Intl pour avoir l heure locale BE
+  const isoLocal = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Brussels',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(date)
+  const [datePart, timePart] = isoLocal.split(' ')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour] = timePart.split(':').map(Number)
+
+  // Heure majoree
+  if (hour < 7 || hour >= 18) return true
+
+  // Weekend (samedi=6, dimanche=0 cote JS UTC ; on prend midi local pour eviter
+  // les ambiguites DST sur les minuits)
+  const refUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
+  const jsDay = refUtc.getUTCDay()  // 0=Dim..6=Sam
+  if (jsDay === 0 || jsDay === 6) return true
+
+  // Jour ferie BE
+  if (isBelgianHoliday(date)) return true
+
+  return false
+}
+
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
 type Coord = { lat: number; lng: number }
@@ -205,6 +238,11 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     return emptyEstimate(source, missionType, `Aucun tarif ${source}/${missionType} en vigueur`)
   }
 
+  // Branche "brackets" (IPA) : tarif par tranche de km, majoration horaire integree.
+  if (tariff.pricing_mode === 'brackets') {
+    return estimateBrackets(mission, source, missionType, tariff, sb)
+  }
+
   // 2. Calcul forfait + km extra
   //    Le tarif spec quelle base de km utiliser (km_basis) :
   //      - 'charged' (default) : incident → destination (assurances)
@@ -327,6 +365,119 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     subtotal_eur:  subtotal,
     surcharge_pct: surchargePct,
     surcharge_eur: surchargeEur,
+    total_eur:     total,
+    is_autofac:    Boolean(tariff.is_autofac),
+    tariff_id:     tariff.id,
+    tariff_doc_path: tariff.source_document_path,
+    tariff_doc_name: tariff.source_document_name,
+    breakdown,
+  }
+}
+
+/**
+ * Branche tarification "brackets" (IPA = AXA + Ardenne Prevoyante) :
+ * lookup par tranche de km + selection prix normal/majore selon heure d appel.
+ * Km utilises = totalKm (depot -> ... -> retour depot) par defaut (km_basis='total').
+ * Au-dela de beyond_max_km : prix bracket max + steps * beyond_max_step_price.
+ */
+async function estimateBrackets(
+  mission:     MissionLike,
+  source:      string,
+  missionType: string,
+  tariff:      any,
+  sb:          ReturnType<typeof createAdminClient>,
+): Promise<PriceEstimate> {
+  // 1. km de la mission (charged ou total selon km_basis)
+  const kmBasis: 'charged' | 'total' = tariff.km_basis === 'total' ? 'total' : 'charged'
+  let kmCharged = 0
+  let kmTotalRoute = 0
+  if (mission.id) {
+    const km = await computeMissionKm(mission.id)
+    kmCharged    = km.chargedKm ?? 0
+    kmTotalRoute = km.totalKm   ?? 0
+  }
+  const kmBase = kmBasis === 'total' ? kmTotalRoute : kmCharged
+  const kmRounded = Math.ceil(kmBase)  // arrondit superieur pour la tranche
+
+  // 2. Charge la grille de brackets en vigueur
+  const today = new Date().toISOString().slice(0, 10)
+  const { data: brackets } = await sb
+    .from('source_tariff_brackets')
+    .select('from_km, to_km, price_normal, price_majore, effective_from')
+    .eq('source', source)
+    .eq('mission_type', missionType)
+    .lte('effective_from', today)
+    .or(`effective_to.is.null,effective_to.gte.${today}`)
+    .order('from_km', { ascending: true })
+
+  if (!brackets || brackets.length === 0) {
+    return emptyEstimate(source, missionType, `Aucune tranche tarifaire trouvée pour ${source} (mode brackets)`)
+  }
+
+  // 3. Determine si l heure est majoree (regle IPA hardcodee pour l instant)
+  const interventionDateStr = mission.intervention_date || mission.received_at
+  const interventionDate = interventionDateStr ? new Date(interventionDateStr) : new Date()
+  const majoree = isIpaMajoredHour(interventionDate)
+
+  // 4. Trouve le bracket couvrant kmRounded
+  let matchingBracket = brackets.find(b => kmRounded >= b.from_km && kmRounded <= b.to_km)
+  let extraSteps = 0
+  let extraPrice = 0
+  if (!matchingBracket) {
+    // Au-dela du max : prix du dernier bracket + step au-dela
+    const lastBracket = brackets[brackets.length - 1]
+    if (kmRounded > lastBracket.to_km && tariff.beyond_max_km && tariff.beyond_max_step_km && tariff.beyond_max_step_price) {
+      matchingBracket = lastBracket
+      const overshoot = kmRounded - Number(tariff.beyond_max_km)
+      extraSteps = Math.ceil(overshoot / Number(tariff.beyond_max_step_km))
+      extraPrice = extraSteps * Number(tariff.beyond_max_step_price)
+    } else {
+      // Cas en dessous du min (rare car bracket commence a 0)
+      matchingBracket = brackets[0]
+    }
+  }
+
+  const bracketPrice = majoree
+    ? Number(matchingBracket.price_majore)
+    : Number(matchingBracket.price_normal)
+  const tariffTotal = bracketPrice + extraPrice
+
+  // 5. Parc si parked_at + parc_day_price (geree comme avant)
+  let parcJours = 0
+  let parcEur = 0
+  if (mission.parked_at && tariff.parc_day_price) {
+    const parcStart = new Date(mission.parked_at)
+    const parcEnd = new Date()
+    const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
+    parcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+    parcEur = parcJours * Number(tariff.parc_day_price || 0)
+  }
+
+  const total = tariffTotal + parcEur
+
+  const tariffLabel = extraSteps > 0
+    ? `Tarif IPA ${kmBase} km (tranche ${matchingBracket.from_km}-${matchingBracket.to_km} ${majoree ? 'majoré' : 'normal'} + ${extraSteps} × ${Number(tariff.beyond_max_step_price).toFixed(2).replace('.', ',')} € au-delà de ${tariff.beyond_max_km} km)`
+    : `Tarif IPA ${kmBase} km — tranche ${matchingBracket.from_km}-${matchingBracket.to_km} (${majoree ? 'heure majorée' : 'heure normale'})`
+
+  const breakdown = [
+    { label: tariffLabel, amount: tariffTotal },
+    { label: 'Parc', amount: parcEur > 0 ? parcEur : null, note: parcJours > 0 ? `${parcJours} jour(s) × ${Number(tariff.parc_day_price || 0).toFixed(2)} €` : 'non applicable' },
+  ]
+
+  return {
+    ok:            true,
+    source,
+    mission_type:  missionType,
+    forfait:       tariffTotal,        // On expose le total IPA comme "forfait" pour compat UI/devis
+    km_charged:    kmBase,
+    km_inclus:     0,                  // Pas applicable en mode brackets
+    km_extra:      0,
+    km_extra_eur:  0,
+    parc_jours:    parcJours,
+    parc_eur:      parcEur,
+    subtotal_eur:  total,
+    surcharge_pct: 0,                  // Majoration deja integree
+    surcharge_eur: 0,
     total_eur:     total,
     is_autofac:    Boolean(tariff.is_autofac),
     tariff_id:     tariff.id,
