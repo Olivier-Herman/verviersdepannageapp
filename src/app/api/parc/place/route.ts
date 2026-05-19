@@ -145,16 +145,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Ligne ${finalZone}${finalRow} inexistante` }, { status: 400 })
     }
 
-    // Si la zone est strict_capacity, refuse l overflow
+    // Si la zone est strict_capacity, refuse tout depassement de capacite.
+    // Sinon (mode flexible), tolere UN seul slot d overflow : on plafonne
+    // a capacity + 1 (au-dela, l affichage limite et la cible devient
+    // invisible -> refus pour eviter les vehicules fantomes).
     const { data: zone } = await sb
       .from('parc_zones')
       .select('strict_capacity')
       .eq('key', finalZone)
       .maybeSingle()
-    if (zone?.strict_capacity && (finalSlot as number) > row.capacity) {
-      return NextResponse.json({
-        error: `Zone ${finalZone} en mode strict : capacite ${row.capacity}, pas d overflow.`,
-      }, { status: 409 })
+    const maxSlot = zone?.strict_capacity ? row.capacity : row.capacity + 1
+    if ((finalSlot as number) > maxSlot) {
+      const msg = zone?.strict_capacity
+        ? `Zone ${finalZone} en mode strict : capacité ${row.capacity}, pas d overflow.`
+        : `Zone ${finalZone} : 1 seul overflow autorisé (capacité ${row.capacity} + 1).`
+      return NextResponse.json({ error: msg }, { status: 409 })
     }
 
     // Refuse si le slot est marque bloque par un gestionnaire fourriere

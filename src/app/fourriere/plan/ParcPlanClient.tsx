@@ -1183,10 +1183,8 @@ function RowSlots({ row, missions, matchingIds, blockedMap, mergedMap, pendingBl
   const slot = slotDims(layout)
   const overflow = missions.length > row.capacity
   // Nombre de slots affiches : si strict, exactement capacity (pas d overflow).
-  // Sinon : capacity + 1 (reserve visible) ou autant que de missions + 1.
-  const slotCount = strict
-    ? row.capacity
-    : Math.max(row.capacity + 1, missions.length + 1)
+  // Sinon : capacity + 1 (un seul slot d overflow visible, jamais plus).
+  const slotCount = strict ? row.capacity : row.capacity + 1
   const slots: Array<PlacedMission | null> = Array.from({ length: slotCount }, () => null)
   for (const m of missions) {
     const idx = (m.parc_slot_index || 1) - 1
