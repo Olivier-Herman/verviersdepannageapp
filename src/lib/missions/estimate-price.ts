@@ -258,7 +258,9 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   }
   const kmBase = kmBasis === 'total' ? kmTotalRoute : kmCharged
   const kmInclus = Number(tariff.km_inclus || 0)
-  const kmExtra = Math.max(0, kmBase - kmInclus)
+  // Km supplementaires arrondis a l unite superieure (pas de decimales sur les
+  // quantites facturables : "12,4 km extras" devient "13 km")
+  const kmExtra = Math.ceil(Math.max(0, kmBase - kmInclus))
   const kmExtraEur = kmExtra * Number(tariff.km_price || 0)
 
   // 3. Calcul parc si parked_at est set

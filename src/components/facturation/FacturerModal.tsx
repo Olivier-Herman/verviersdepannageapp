@@ -144,6 +144,22 @@ interface QuoteStatusData {
   fully_invoiced?: boolean
 }
 
+type ProductKind = 'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ'
+
+interface CustomLine {
+  kind:        ProductKind
+  name:        string
+  qty:         number
+  price_unit:  number
+}
+
+const KIND_LABELS: Record<ProductKind, string> = {
+  'SERV-PEC':  'Prise en charge',
+  'SERV-KM':   'Kilomètre',
+  'SERV-PARC': 'Frais de parc',
+  'SERV-MAJ':  'Majoration',
+}
+
 function MissionBlock({
   m, payments, driverName, busy, onValidate, onAuto, onNoCharge, onQuoteCreated,
 }: {
@@ -165,6 +181,8 @@ function MissionBlock({
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatusData | null>(null)
   const [quoteStatusLoading, setQuoteStatusLoading] = useState(true)
+  // Edition manuelle des lignes : null = mode preview/auto, array = lignes editees a pousser
+  const [customLines, setCustomLines] = useState<CustomLine[] | null>(null)
   const kind = missionKind(m)
   const isReady = m.status === 'to_invoice'
 
@@ -206,7 +224,14 @@ function MissionBlock({
   async function pushQuoteOdoo() {
     setQuoteBusy(true); setQuoteError(null)
     try {
-      const res = await fetch(`/api/missions/${m.id}/quote`, { method: 'POST' })
+      // Si l employe a personnalise les lignes, on les envoie. Sinon, calcul auto.
+      const body = customLines && customLines.length > 0
+        ? JSON.stringify({ lines: customLines })
+        : undefined
+      const res = await fetch(`/api/missions/${m.id}/quote`, {
+        method:  'POST',
+        ...(body ? { headers: { 'Content-Type': 'application/json' }, body } : {}),
+      })
       const j = await res.json()
       if (!res.ok || !j.ok) {
         setQuoteError(j.error || `Erreur ${res.status}`)
@@ -215,6 +240,8 @@ function MissionBlock({
       // Ouvre direct le devis Odoo dans nouvel onglet
       if (j.quote?.url) window.open(j.quote.url, '_blank')
       onQuoteCreated(m.id, j.quote.id, j.quote.url)
+      // Reset le mode edition (le devis a ete pousse)
+      setCustomLines(null)
       // Recharge le statut pour reflet immediat (status devrait passer en 'draft')
       await refreshQuoteStatus()
     } catch (e: any) {
@@ -223,6 +250,64 @@ function MissionBlock({
       setQuoteBusy(false)
     }
   }
+
+  /** Initialise customLines a partir de l estimation auto pour edition. */
+  function startEditingLines() {
+    if (!estimate || !estimate.ok) return
+    const lines: CustomLine[] = []
+    if (estimate.forfait && estimate.forfait > 0) {
+      lines.push({
+        kind: 'SERV-PEC',
+        name: `Prise en charge — ${m.external_id || m.id.slice(0, 8)}`,
+        qty: 1,
+        price_unit: estimate.forfait,
+      })
+    }
+    if (estimate.km_extra > 0 && estimate.km_extra_eur > 0) {
+      lines.push({
+        kind: 'SERV-KM',
+        name: `Km supplémentaires`,
+        qty: estimate.km_extra,
+        price_unit: Math.round((estimate.km_extra_eur / estimate.km_extra) * 100) / 100,
+      })
+    }
+    if (estimate.parc_jours > 0 && estimate.parc_eur > 0) {
+      lines.push({
+        kind: 'SERV-PARC',
+        name: `Frais de parc (${estimate.parc_jours} jour${estimate.parc_jours > 1 ? 's' : ''})`,
+        qty: estimate.parc_jours,
+        price_unit: Math.round((estimate.parc_eur / estimate.parc_jours) * 100) / 100,
+      })
+    }
+    if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
+      lines.push({
+        kind: 'SERV-MAJ',
+        name: `Majoration ${estimate.surcharge_pct}%`,
+        qty: Math.round(estimate.surcharge_pct) / 100,
+        price_unit: Math.round(estimate.subtotal_eur * 100) / 100,
+      })
+    }
+    setCustomLines(lines)
+  }
+
+  function updateLine(idx: number, patch: Partial<CustomLine>) {
+    if (!customLines) return
+    const next = [...customLines]
+    next[idx] = { ...next[idx], ...patch }
+    setCustomLines(next)
+  }
+
+  function removeLine(idx: number) {
+    if (!customLines) return
+    setCustomLines(customLines.filter((_, i) => i !== idx))
+  }
+
+  function addLine() {
+    if (!customLines) return
+    setCustomLines([...customLines, { kind: 'SERV-PEC', name: '', qty: 1, price_unit: 0 }])
+  }
+
+  const customTotal = customLines ? customLines.reduce((s, l) => s + l.qty * l.price_unit, 0) : 0
 
   const totalCollected = payments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
@@ -328,13 +413,19 @@ function MissionBlock({
         </div>
       )}
 
-      {/* Section devis Odoo : preview montant + bouton creer/ouvrir */}
+      {/* Section devis Odoo : preview ou edition selon mode */}
       {isReady && (
         <div className="bg-info/5 border border-info/30 rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-info text-xs font-semibold uppercase tracking-wide">Devis Odoo</p>
+            <p className="text-info text-xs font-semibold uppercase tracking-wide">
+              Devis Odoo {customLines ? '— Édition' : ''}
+            </p>
             {estimateLoading ? (
               <span className="text-ink-faint text-xs">⏳ calcul…</span>
+            ) : customLines ? (
+              <span className="text-ink font-bold text-sm">
+                Total : {customTotal.toFixed(2).replace('.', ',')} €
+              </span>
             ) : estimate?.ok ? (
               <span className="text-ink font-bold text-sm">
                 Total estimé : {estimate.total_eur.toFixed(2).replace('.', ',')} €
@@ -343,7 +434,9 @@ function MissionBlock({
               <span className="text-warning text-xs" title={estimate?.reason || ''}>⚠ Tarif introuvable</span>
             )}
           </div>
-          {estimate?.ok && (
+
+          {/* Mode preview (lecture seule) */}
+          {!customLines && estimate?.ok && (
             <div className="text-[11px] text-ink-secondary space-y-0.5">
               {estimate.forfait != null && estimate.forfait > 0 && (
                 <p>• Forfait : {estimate.forfait.toFixed(2).replace('.', ',')} €</p>
@@ -357,6 +450,108 @@ function MissionBlock({
               {estimate.surcharge_pct > 0 && (
                 <p>• Majoration {estimate.surcharge_pct}% : {estimate.surcharge_eur.toFixed(2).replace('.', ',')} €</p>
               )}
+              <button
+                type="button"
+                onClick={startEditingLines}
+                className="mt-1 text-info hover:underline font-medium"
+              >
+                🔧 Modifier les lignes
+              </button>
+            </div>
+          )}
+
+          {/* Pas de tarif : message + push possible quand même (devis "shell") */}
+          {!customLines && !estimateLoading && estimate && !estimate.ok && (
+            <div className="text-[11px] text-warning bg-warning/5 border border-warning/20 rounded p-2">
+              ⚠ <strong>Aucune grille tarifaire</strong> pour cette source / type. Le devis sera créé dans Odoo avec le client, la référence dossier et le véhicule pré-remplis, mais <strong>sans lignes</strong>. Tu complèteras les lignes manuellement dans Odoo.
+            </div>
+          )}
+
+          {/* Mode edition */}
+          {customLines && (
+            <div className="space-y-1.5">
+              <table className="w-full text-[11px]">
+                <thead className="text-ink-faint">
+                  <tr>
+                    <th className="text-left pb-1">Type</th>
+                    <th className="text-left pb-1">Description</th>
+                    <th className="text-right pb-1 w-16">Qté</th>
+                    <th className="text-right pb-1 w-20">PU €</th>
+                    <th className="text-right pb-1 w-20">Total</th>
+                    <th className="pb-1 w-6"></th>
+                  </tr>
+                </thead>
+                <tbody className="text-ink">
+                  {customLines.map((l, idx) => (
+                    <tr key={idx} className="border-t border-info/20">
+                      <td className="py-1 pr-1">
+                        <select
+                          value={l.kind}
+                          onChange={e => updateLine(idx, { kind: e.target.value as ProductKind })}
+                          className="bg-surface-2 border rounded px-1 py-0.5 text-[10px] w-full"
+                        >
+                          {(Object.keys(KIND_LABELS) as ProductKind[]).map(k => (
+                            <option key={k} value={k}>{KIND_LABELS[k]}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-1 pr-1">
+                        <input
+                          type="text"
+                          value={l.name}
+                          onChange={e => updateLine(idx, { name: e.target.value })}
+                          className="bg-surface-2 border rounded px-1 py-0.5 text-[11px] w-full"
+                        />
+                      </td>
+                      <td className="py-1 pr-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={l.qty}
+                          onChange={e => updateLine(idx, { qty: parseFloat(e.target.value) || 0 })}
+                          className="bg-surface-2 border rounded px-1 py-0.5 text-[11px] w-full text-right"
+                        />
+                      </td>
+                      <td className="py-1 pr-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={l.price_unit}
+                          onChange={e => updateLine(idx, { price_unit: parseFloat(e.target.value) || 0 })}
+                          className="bg-surface-2 border rounded px-1 py-0.5 text-[11px] w-full text-right"
+                        />
+                      </td>
+                      <td className="py-1 pr-1 text-right text-ink-secondary">
+                        {(l.qty * l.price_unit).toFixed(2).replace('.', ',')}
+                      </td>
+                      <td className="py-1">
+                        <button
+                          type="button"
+                          onClick={() => removeLine(idx)}
+                          title="Supprimer cette ligne"
+                          className="text-critical hover:text-critical/70"
+                        >×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={addLine}
+                  className="text-[11px] text-info hover:underline font-medium"
+                >
+                  + Ajouter une ligne
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomLines(null)}
+                  className="text-[11px] text-ink-faint hover:text-ink"
+                >
+                  Annuler les modifs
+                </button>
+              </div>
             </div>
           )}
           {!m.billed_to_id && (
@@ -386,7 +581,7 @@ function MissionBlock({
               <>
                 <button
                   type="button"
-                  disabled={quoteBusy || !m.billed_to_id || !estimate?.ok}
+                  disabled={quoteBusy || !m.billed_to_id}
                   onClick={pushQuoteOdoo}
                   className="flex-1 py-2 bg-info hover:bg-info/90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition"
                 >

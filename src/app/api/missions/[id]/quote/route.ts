@@ -23,7 +23,7 @@ function fmtEur(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`
 }
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
@@ -32,6 +32,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation')) {
     return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
   }
+
+  // Body optionnel : { lines: [{ kind, name, qty, price_unit }] }
+  // Si fourni, on saute le calcul auto et on pousse ces lignes telles quelles.
+  const body = await req.json().catch(() => ({}))
+  const customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
+    ? body.lines.map((l: any): QuoteLine => ({
+        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ'].includes(l.kind) ? l.kind : 'SERV-PEC') as any,
+        name:       String(l.name || ''),
+        qty:        Number(l.qty || 0),
+        price_unit: Number(l.price_unit || 0),
+      })).filter((l: QuoteLine) => l.name && l.qty > 0)
+    : null
 
   const sb = createAdminClient()
   const { data: mission, error: missionErr } = await sb
@@ -56,17 +68,28 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }, { status: 400 })
   }
 
-  // 1) Calcule le devis via le module estimate-price existant
-  const estimate = await estimateMissionPrice(mission as any)
-  if (!estimate.ok) {
-    return NextResponse.json({
-      error: `Impossible de calculer le devis : ${estimate.reason || 'tarif introuvable'}`,
-    }, { status: 400 })
-  }
+  const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
+
+  // Si l employe a personnalise les lignes cote UI, on les utilise directement.
+  let lines: QuoteLine[] = []
+  let totalForResponse = 0
+
+  if (customLines) {
+    lines = customLines
+    totalForResponse = customLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
+  } else {
+    // 1) Calcule le devis via le module estimate-price existant.
+    //    Si pas de tarif applicable, on pousse un devis SHELL (sans lignes) :
+    //    l employe completera les lignes manuellement dans Odoo. L app sert
+    //    au moins a pre-remplir partner + ref dossier + vehicule.
+    const estimate = await estimateMissionPrice(mission as any)
+    if (!estimate.ok) {
+      // Pas de tarif -> devis vide (shell), on saute le calcul des lignes
+      totalForResponse = 0
+    } else {
+    totalForResponse = estimate.total_eur
 
   // 2) Construit les lignes a partir du breakdown
-  const lines: QuoteLine[] = []
-  const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
 
   if (estimate.forfait && estimate.forfait > 0) {
     lines.push({
@@ -106,12 +129,11 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       price_unit: Math.round(estimate.subtotal_eur * 100) / 100,
     })
   }
+    }  // fin else (estimate.ok)
+  }  // fin else (pas de customLines)
 
-  if (lines.length === 0) {
-    return NextResponse.json({
-      error: 'Aucune ligne calculée (montants à 0). Vérifie la grille tarifaire de cette source/type.',
-    }, { status: 400 })
-  }
+  // Note : on accepte de pousser un devis VIDE (lines=[]) si pas de tarif et
+  // pas de customLines. L employe completera dans Odoo (cf Olivier 2026-05-20).
 
   // 3) Lookup fleet.vehicle Odoo par plaque (optionnel, best-effort)
   let fleetVehicleId: number | null = null
@@ -173,9 +195,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       mission_ref:   missionRef,
       partner_id:    mission.billed_to_id,
       partner_name:  mission.billed_to_name,
-      total_eur:     estimate.total_eur,
+      total_eur:     totalForResponse,
       lines_count:   lines.length,
-      total_label:   fmtEur(estimate.total_eur),
+      total_label:   fmtEur(totalForResponse),
     },
   })
 }
