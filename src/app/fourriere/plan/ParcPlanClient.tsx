@@ -14,7 +14,7 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink, Sparkles } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'
 
@@ -152,6 +152,14 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   // Batch link : ordre de selection + groupes a defaire
   const [pendingMerge, setPendingMerge]         = useState<SlotRef[]>([])
   const [pendingUnmerges, setPendingUnmerges]   = useState<Set<string>>(new Set())
+  // Bulk assign initial : etat de loading + dialog resultat
+  const [bulkAssigning, setBulkAssigning]       = useState(false)
+  const [bulkResult, setBulkResult]             = useState<null | {
+    summary: Array<{ zone: string; placed: number; total: number; shortage: number }>
+    total_placed: number
+    total_shortage: number
+    unmapped_zones: string[]
+  }>(null)
   const [search, setSearch] = useState('')
   const canvasRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
@@ -495,6 +503,24 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     setMode('link')
   }
 
+  /** Lance le placement initial automatique : remplit zone par zone selon
+   *  les premiers slots libres. Idempotent (skip les déjà placés). */
+  async function runBulkAssignInitial() {
+    if (!confirm('Attribuer auto une rangée + emplacement à chaque véhicule sans position selon sa zone Odoo ?\n\nLes véhicules déjà placés ne seront pas déplacés. Tu pourras corriger les emplacements à l\'inventaire.')) return
+    setBulkAssigning(true)
+    try {
+      const res = await fetch('/api/parc/bulk-assign-initial', { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setBulkResult(j)
+      await load()
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    } finally {
+      setBulkAssigning(false)
+    }
+  }
+
   const shellProps = { title: 'Plan du parc', userRole, userName, userEmail, userModules }
 
   if (loading && !state) return <AppShell {...shellProps}><div className="p-8 text-ink-muted text-center"><RefreshCw className="inline animate-spin mr-2" size={16} /> Chargement…</div></AppShell>
@@ -629,6 +655,17 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   <Link2 size={14} /> Lier
                 </button>
               )}
+              {canBlock && mode === 'normal' && (
+                <button
+                  onClick={runBulkAssignInitial}
+                  disabled={bulkAssigning}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-surface-2 border text-ink-secondary hover:text-ink transition disabled:opacity-50"
+                  title="Attribuer auto un slot à chaque véhicule selon sa zone (initialisation)"
+                >
+                  {bulkAssigning ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Attribution initiale
+                </button>
+              )}
               {canEditLayout && mode === 'normal' && (
                 <button
                   onClick={() => setMode('edit')}
@@ -711,6 +748,75 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
       <DragOverlay>
         {activeMission && <VehicleCard mission={activeMission} dragging />}
       </DragOverlay>
+
+      {/* Récap après attribution initiale */}
+      {bulkResult && (
+        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
+          <div className="bg-surface border rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col">
+            <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                  <Sparkles className="text-info" size={18} />
+                  Attribution initiale terminée
+                </h3>
+                <p className="text-xs text-ink-muted mt-0.5">
+                  {bulkResult.total_placed} véhicule{bulkResult.total_placed > 1 ? 's' : ''} placé{bulkResult.total_placed > 1 ? 's' : ''}
+                  {bulkResult.total_shortage > 0 && (
+                    <span className="text-critical font-semibold">
+                      {' · '}{bulkResult.total_shortage} sans place
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button onClick={() => setBulkResult(null)} className="p-1.5 text-ink-faint hover:text-ink" title="Fermer">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+              {bulkResult.summary
+                .filter(s => s.total > 0)
+                .sort((a, b) => b.shortage - a.shortage || a.zone.localeCompare(b.zone))
+                .map(s => (
+                  <div key={s.zone} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${
+                    s.shortage > 0 ? 'bg-critical/10 border-critical/30' : 'bg-surface-2 border-surface-hover'
+                  }`}>
+                    <span className="font-mono font-bold text-ink">{s.zone}</span>
+                    <span className="text-xs">
+                      <span className="text-ink">{s.placed}</span>
+                      <span className="text-ink-muted"> / {s.total} placés</span>
+                      {s.shortage > 0 && (
+                        <span className="text-critical font-semibold"> · ⚠ {s.shortage} sans place</span>
+                      )}
+                    </span>
+                  </div>
+              ))}
+              {bulkResult.unmapped_zones.length > 0 && (
+                <div className="mt-3 bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs">
+                  <p className="font-semibold text-warning mb-1">⚠ Zones Odoo sans plan visuel :</p>
+                  <p className="text-ink-secondary">{bulkResult.unmapped_zones.join(', ')}</p>
+                  <p className="text-ink-faint mt-1">Les véhicules de ces zones n'ont pas été placés (zone non configurée dans <a href="/admin/parc" className="underline">/admin/parc</a>).</p>
+                </div>
+              )}
+              {bulkResult.total_shortage > 0 && (
+                <div className="mt-3 bg-critical/10 border border-critical/30 rounded-lg p-3 text-xs text-ink-secondary">
+                  <p className="font-semibold text-critical mb-1">Pour les véhicules sans place :</p>
+                  <p>Augmente la capacité des rangées concernées ou ajoute des rangées dans <a href="/admin/parc" className="underline">/admin/parc</a>, puis relance l'attribution.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t flex items-center justify-end flex-shrink-0">
+              <button
+                onClick={() => setBulkResult(null)}
+                className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DndContext>
     </AppShell>
   )
