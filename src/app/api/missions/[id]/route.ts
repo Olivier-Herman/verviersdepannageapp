@@ -87,7 +87,11 @@ export async function PATCH(
 
   // Notification push au chauffeur si demandé (modifications dispatcher après assignation).
   // Ne pas spammer pour les changements automatiques (ping silencieux d'adresse, etc).
-  if (body._notify_driver && data.assigned_to) {
+  // Skippé aussi si la mission n est plus dans le flux du chauffeur : statuts
+  // 'parked' / 'to_invoice' / 'completed' / 'cancelled' / 'ignored' = ajustements
+  // post-execution (souvent pour facturation) qui ne concernent plus le chauffeur.
+  const DRIVER_ACTIVE_STATUSES = ['assigned', 'accepted', 'in_progress', 'delivering']
+  if (body._notify_driver && data.assigned_to && DRIVER_ACTIVE_STATUSES.includes(data.status)) {
     sendPushToUser(data.assigned_to, {
       title: '✏️ Mission modifiée',
       body:  `${data.client_name || 'Mission'} — vérifie les nouvelles infos`,
