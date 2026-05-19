@@ -53,9 +53,10 @@ interface Stats {
 }
 
 interface ParcZone {
-  key:        string
-  label:      string
-  sort_order: number
+  key:              string
+  label:            string
+  sort_order:       number
+  strict_capacity?: boolean
 }
 
 interface ParcRow {
@@ -143,6 +144,13 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       .filter(r => r.zone_key === parcZoneKey)
       .sort((a, b) => (a.sort_order || a.row_number) - (b.sort_order || b.row_number))
   }, [parcZoneKey, parcRows])
+
+  // Mode strict de la zone courante : si non-strict, l affichage de la capacite
+  // ajoute "+1" pour signaler l overflow tolere.
+  const currentZoneStrict = useMemo<boolean>(() => {
+    if (!parcZoneKey) return true
+    return parcZones.find(z => z.key === parcZoneKey)?.strict_capacity ?? false
+  }, [parcZoneKey, parcZones])
 
   const currentRow = useMemo<ParcRow | null>(() => {
     if (parcRowNumber == null || !parcZoneKey) return null
@@ -779,7 +787,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                       }`}
                     >
                       <div className="font-mono font-bold text-base">{parcZoneKey}{r.row_number}</div>
-                      <div className="text-[10px] opacity-80">cap. {r.capacity}</div>
+                      <div className="text-[10px] opacity-80">cap. {r.capacity}{!currentZoneStrict ? '+1' : ''}</div>
                     </button>
                   ))}
                 </div>
