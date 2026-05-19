@@ -263,7 +263,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
           <div
             ref={canvasRef}
             className={`relative w-full bg-surface border rounded-2xl overflow-hidden ${editMode ? 'bg-grid-pattern' : ''}`}
-            style={{ aspectRatio: '4 / 3', minHeight: 400 }}
+            style={{ aspectRatio: '3 / 4', minHeight: 600, maxHeight: '80vh' }}
           >
             {state.zones.map(zone => {
               const zRows = rowsByZone[zone.key] || []
