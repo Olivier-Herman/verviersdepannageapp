@@ -13,7 +13,7 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'
 
@@ -91,20 +91,29 @@ interface PlacedMission {
   parc_slot_index:     number | null
 }
 
+interface BlockedSlot {
+  zone_key:    string
+  row_number:  number
+  slot_index:  number
+  reason:      string | null
+}
+
 interface State {
   zones:           Zone[]
   rows:            Row[]
   placed:          PlacedMission[]
   toPlace:         PlacedMission[]
+  blocked:         BlockedSlot[]
   canvasHeightPx:  number
 }
 
 const UNPLACED_DROP_ID = 'unplaced'
 
-export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, userRole, userName, userEmail, userModules }: {
+export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, canBlock, userRole, userName, userEmail, userModules }: {
   isDispatcher:   boolean
   isDriver:       boolean
   canEditLayout:  boolean
+  canBlock:       boolean
   userRole:       string
   userName:       string
   userEmail?:     string
@@ -114,7 +123,8 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeMission, setActiveMission] = useState<PlacedMission | null>(null)
-  const [editMode, setEditMode] = useState(false)
+  const [editMode, setEditMode]   = useState(false)
+  const [blockMode, setBlockMode] = useState(false)
   const [search, setSearch] = useState('')
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -143,9 +153,10 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   useEffect(() => {
     const channel = sbClient
       .channel('parc-plan-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_missions' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_zones' },        () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_rows' },         () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_missions' },    () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_zones' },           () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_rows' },            () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_blocked_slots' },   () => load())
       .subscribe()
     return () => { sbClient.removeChannel(channel) }
   }, [load])
@@ -162,6 +173,18 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     }
     return out
   }, [search, state])
+
+  // Map slot bloque -> reason (cle "zone-row-slot")
+  const blockedMap = useMemo<Map<string, string | null>>(() => {
+    const out = new Map<string, string | null>()
+    if (!state) return out
+    for (const b of state.blocked) {
+      out.set(`${b.zone_key}-${b.row_number}-${b.slot_index}`, b.reason)
+    }
+    return out
+  }, [state])
+
+  const blockedCount = state?.blocked.length ?? 0
 
   const rowsByZone = useMemo<Record<string, Row[]>>(() => {
     if (!state) return {}
@@ -223,6 +246,34 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     }
   }
 
+  async function toggleBlock(zoneKey: string, rowNumber: number, slotIndex: number) {
+    const key       = `${zoneKey}-${rowNumber}-${slotIndex}`
+    const isBlocked = blockedMap.has(key)
+    let reason: string | null = null
+    if (!isBlocked) {
+      // Prompt motif optionnel (vide accepte)
+      const input = window.prompt(
+        `Bloquer l'emplacement ${zoneKey}${rowNumber}-${slotIndex}.\nMotif (optionnel) :`,
+        '',
+      )
+      // null = annulation, '' = pas de motif mais on bloque
+      if (input === null) return
+      reason = input.trim() || null
+    }
+    try {
+      const res = await fetch('/api/parc/block', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: zoneKey, row_number: rowNumber, slot_index: slotIndex, reason }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      await load()
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    }
+  }
+
   const shellProps = { title: 'Plan du parc', userRole, userName, userEmail, userModules }
 
   if (loading && !state) return <AppShell {...shellProps}><div className="p-8 text-ink-muted text-center"><RefreshCw className="inline animate-spin mr-2" size={16} /> Chargement…</div></AppShell>
@@ -242,7 +293,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     >
       <div className="flex flex-col lg:flex-row gap-4 p-4 max-w-[1600px] mx-auto">
         {/* Sidebar : a placer */}
-        <UnplacedSidebar missions={state.toPlace} matchingIds={matchingIds} />
+        <UnplacedSidebar missions={state.toPlace} matchingIds={matchingIds} blockMode={blockMode} />
 
         {/* Canvas des zones */}
         <div className="flex-1 space-y-3">
@@ -252,11 +303,16 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
               <p className="text-ink-muted text-xs mt-0.5">
                 {editMode
                   ? 'Glisse les zones pour les positionner, coin bas-droit pour redimensionner.'
-                  : `Glisse les véhicules entre les slots. ${isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}`}
+                  : blockMode
+                    ? 'Clique sur un emplacement libre pour le bloquer/débloquer. Le drag&drop est désactivé.'
+                    : `Glisse les véhicules entre les slots. ${isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}`}
+                {!editMode && !blockMode && blockedCount > 0 && (
+                  <span className="ml-2 text-critical">— {blockedCount} emplacement{blockedCount > 1 ? 's' : ''} bloqué{blockedCount > 1 ? 's' : ''}.</span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {!editMode && (
+              {!editMode && !blockMode && (
                 <div className="relative">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
                   <input
@@ -279,7 +335,20 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   )}
                 </div>
               )}
-              {canEditLayout && (
+              {canBlock && !editMode && (
+                <button
+                  onClick={() => setBlockMode(m => !m)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
+                    blockMode
+                      ? 'bg-critical hover:bg-critical/80 text-white'
+                      : 'bg-surface-2 border text-ink-secondary hover:text-ink'
+                  }`}
+                  title="Bloquer manuellement des emplacements"
+                >
+                  {blockMode ? <><Check size={14} /> Terminer</> : <><Ban size={14} /> Bloquer</>}
+                </button>
+              )}
+              {canEditLayout && !blockMode && (
                 <button
                   onClick={() => setEditMode(m => !m)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
@@ -314,6 +383,9 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   rows={zRows}
                   missionsOnRow={missionsOnRow}
                   matchingIds={matchingIds}
+                  blockedMap={blockedMap}
+                  blockMode={blockMode}
+                  onToggleBlock={toggleBlock}
                   canDriverDrop={canDriverDrop}
                   editMode={editMode}
                   canvasRef={canvasRef}
@@ -352,11 +424,14 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zone positionnée sur le canvas (auto-size selon contenu, drag en édition)
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
+function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, blockMode, onToggleBlock, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
   zone:          Zone
   rows:          Row[]
   missionsOnRow: (zoneKey: string, rowNumber: number) => PlacedMission[]
   matchingIds:   Set<string>
+  blockedMap:    Map<string, string | null>
+  blockMode:     boolean
+  onToggleBlock: (zoneKey: string, rowNumber: number, slotIndex: number) => void
   canDriverDrop: boolean
   editMode:      boolean
   canvasRef:     React.RefObject<HTMLDivElement>
@@ -450,6 +525,9 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, e
               row={row}
               missions={missionsOnRow(zone.key, row.row_number)}
               matchingIds={matchingIds}
+              blockedMap={blockedMap}
+              blockMode={blockMode}
+              onToggleBlock={onToggleBlock}
               direction={zone.slot_direction}
               layout={zone.row_layout}
               strict={zone.strict_capacity}
@@ -464,8 +542,8 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, e
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidebar "À placer"
 // ─────────────────────────────────────────────────────────────────────────────
-function UnplacedSidebar({ missions, matchingIds }: { missions: PlacedMission[]; matchingIds: Set<string> }) {
-  const { setNodeRef, isOver } = useDroppable({ id: UNPLACED_DROP_ID })
+function UnplacedSidebar({ missions, matchingIds, blockMode }: { missions: PlacedMission[]; matchingIds: Set<string>; blockMode: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: UNPLACED_DROP_ID, disabled: blockMode })
 
   return (
     <div
@@ -483,7 +561,7 @@ function UnplacedSidebar({ missions, matchingIds }: { missions: PlacedMission[];
         </p>
       ) : (
         <div className="space-y-2">
-          {missions.map(m => <VehicleCard key={m.id} mission={m} highlighted={matchingIds.has(m.id)} />)}
+          {missions.map(m => <VehicleCard key={m.id} mission={m} highlighted={matchingIds.has(m.id)} disableDrag={blockMode} />)}
         </div>
       )}
       <p className="text-ink-faint text-[10px] mt-3 italic">
@@ -496,13 +574,16 @@ function UnplacedSidebar({ missions, matchingIds }: { missions: PlacedMission[];
 // ─────────────────────────────────────────────────────────────────────────────
 // Ligne avec ses slots (+ overflow si vehicules > capacite)
 // ─────────────────────────────────────────────────────────────────────────────
-function RowSlots({ row, missions, matchingIds, direction, layout, strict }: {
-  row:         Row
-  missions:    PlacedMission[]
-  matchingIds: Set<string>
-  direction:   'ltr' | 'rtl'
-  layout:      'horizontal' | 'vertical'
-  strict:      boolean
+function RowSlots({ row, missions, matchingIds, blockedMap, blockMode, onToggleBlock, direction, layout, strict }: {
+  row:           Row
+  missions:      PlacedMission[]
+  matchingIds:   Set<string>
+  blockedMap:    Map<string, string | null>
+  blockMode:     boolean
+  onToggleBlock: (zoneKey: string, rowNumber: number, slotIndex: number) => void
+  direction:     'ltr' | 'rtl'
+  layout:        'horizontal' | 'vertical'
+  strict:        boolean
 }) {
   const slot = slotDims(layout)
   const overflow = missions.length > row.capacity
@@ -528,19 +609,27 @@ function RowSlots({ row, missions, matchingIds, direction, layout, strict }: {
           {row.zone_key}{row.row_number}
         </div>
         <div className={`flex gap-[2px] ${direction === 'rtl' ? 'flex-row-reverse' : ''}`}>
-          {slots.map((mission, i) => (
-            <Slot
-              key={i}
-              zoneKey={row.zone_key}
-              rowNumber={row.row_number}
-              slotIndex={i + 1}
-              isOverflow={i >= row.capacity}
-              mission={mission}
-              highlighted={mission ? matchingIds.has(mission.id) : false}
-              slotW={slot.w}
-              slotH={slot.h}
-            />
-          ))}
+          {slots.map((mission, i) => {
+            const slotIdx = i + 1
+            const blockedKey = `${row.zone_key}-${row.row_number}-${slotIdx}`
+            const blockedReason = blockedMap.has(blockedKey) ? blockedMap.get(blockedKey) ?? null : undefined
+            return (
+              <Slot
+                key={i}
+                zoneKey={row.zone_key}
+                rowNumber={row.row_number}
+                slotIndex={slotIdx}
+                isOverflow={i >= row.capacity}
+                mission={mission}
+                highlighted={mission ? matchingIds.has(mission.id) : false}
+                slotW={slot.w}
+                slotH={slot.h}
+                blockedReason={blockedReason}
+                blockMode={blockMode}
+                onToggleBlock={onToggleBlock}
+              />
+            )
+          })}
         </div>
       </div>
     )
@@ -553,19 +642,27 @@ function RowSlots({ row, missions, matchingIds, direction, layout, strict }: {
         {row.zone_key}{row.row_number}
       </div>
       <div className={`flex flex-col gap-[2px] ${direction === 'rtl' ? 'flex-col-reverse' : ''}`}>
-        {slots.map((mission, i) => (
-          <Slot
-            key={i}
-            zoneKey={row.zone_key}
-            rowNumber={row.row_number}
-            slotIndex={i + 1}
-            isOverflow={i >= row.capacity}
-            mission={mission}
-            highlighted={mission ? matchingIds.has(mission.id) : false}
-            slotW={slot.w}
-            slotH={slot.h}
-          />
-        ))}
+        {slots.map((mission, i) => {
+          const slotIdx = i + 1
+          const blockedKey = `${row.zone_key}-${row.row_number}-${slotIdx}`
+          const blockedReason = blockedMap.has(blockedKey) ? blockedMap.get(blockedKey) ?? null : undefined
+          return (
+            <Slot
+              key={i}
+              zoneKey={row.zone_key}
+              rowNumber={row.row_number}
+              slotIndex={slotIdx}
+              isOverflow={i >= row.capacity}
+              mission={mission}
+              highlighted={mission ? matchingIds.has(mission.id) : false}
+              slotW={slot.w}
+              slotH={slot.h}
+              blockedReason={blockedReason}
+              blockMode={blockMode}
+              onToggleBlock={onToggleBlock}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -574,39 +671,71 @@ function RowSlots({ row, missions, matchingIds, direction, layout, strict }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // Un slot droppable (avec ou sans vehicule)
 // ─────────────────────────────────────────────────────────────────────────────
-function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted, slotW, slotH }: {
-  zoneKey:     string
-  rowNumber:   number
-  slotIndex:   number
-  isOverflow:  boolean
-  mission:     PlacedMission | null
-  highlighted: boolean
-  slotW:       number
-  slotH:       number
+function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted, slotW, slotH, blockedReason, blockMode, onToggleBlock }: {
+  zoneKey:       string
+  rowNumber:     number
+  slotIndex:     number
+  isOverflow:    boolean
+  mission:       PlacedMission | null
+  highlighted:   boolean
+  slotW:         number
+  slotH:         number
+  blockedReason: string | null | undefined  // undefined = pas bloqué, null = bloqué sans motif, string = motif
+  blockMode:     boolean
+  onToggleBlock: (zoneKey: string, rowNumber: number, slotIndex: number) => void
 }) {
   const id = `slot-${zoneKey}-${rowNumber}-${slotIndex}`
-  const { setNodeRef, isOver } = useDroppable({ id })
+  const isBlocked = blockedReason !== undefined
+  // En mode bloquer OU si deja bloque, le slot n est plus une cible drop.
+  const droppable = !blockMode && !isBlocked
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable })
+
+  const tooltip = isBlocked
+    ? `Bloqué : ${zoneKey}${rowNumber}-${slotIndex}${blockedReason ? ` — ${blockedReason}` : ''}`
+    : isOverflow
+      ? `Slot overflow ${zoneKey}${rowNumber}-${slotIndex}`
+      : `${zoneKey}${rowNumber}-${slotIndex}`
+
+  const baseClass = isBlocked
+    ? 'border-critical bg-critical/20'
+    : highlighted
+      ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'
+      : mission
+        ? isOverflow
+          ? 'border-critical bg-critical/10'
+          : 'border-zinc-700 bg-surface'
+        : isOver
+          ? 'border-brand bg-brand/10 border-2'
+          : isOverflow
+            ? 'border-dashed border-critical/40 bg-critical/5'
+            : 'border-dashed border-zinc-700/60 bg-surface/40'
+
+  const clickable = blockMode && !mission
+  const handleClick = clickable ? () => onToggleBlock(zoneKey, rowNumber, slotIndex) : undefined
 
   return (
     <div
       ref={setNodeRef}
       style={{ width: slotW, height: slotH }}
-      className={`flex-shrink-0 rounded border flex items-center justify-center text-[10px] transition-colors ${
-        highlighted
-          ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'
-          : mission
-            ? isOverflow
-              ? 'border-critical bg-critical/10'
-              : 'border-zinc-700 bg-surface'
-            : isOver
-              ? 'border-brand bg-brand/10 border-2'
-              : isOverflow
-                ? 'border-dashed border-critical/40 bg-critical/5'
-                : 'border-dashed border-zinc-700/60 bg-surface/40'
-      }`}
-      title={isOverflow ? `Slot overflow ${zoneKey}${rowNumber}-${slotIndex}` : `${zoneKey}${rowNumber}-${slotIndex}`}
+      className={`flex-shrink-0 rounded border flex items-center justify-center text-[10px] transition-colors relative ${baseClass} ${
+        clickable ? 'cursor-pointer hover:ring-2 hover:ring-critical' : ''
+      } ${blockMode && mission ? 'opacity-60' : ''}`}
+      title={tooltip}
+      onClick={handleClick}
     >
-      {mission ? <VehicleCard mission={mission} compact highlighted={highlighted} /> : <span className="text-ink-faint">{slotIndex}</span>}
+      {mission ? (
+        <VehicleCard mission={mission} compact highlighted={highlighted} disableDrag={blockMode} />
+      ) : isBlocked ? (
+        <Ban size={Math.min(slotW, slotH) - 12} className="text-critical" strokeWidth={2.5} />
+      ) : (
+        <span className="text-ink-faint">{slotIndex}</span>
+      )}
+      {/* Surcouche barré rouge sur slot occupé ET bloqué (rare mais possible) */}
+      {isBlocked && mission && (
+        <div className="absolute inset-0 flex items-center justify-center bg-critical/30 pointer-events-none">
+          <Ban size={Math.min(slotW, slotH) - 8} className="text-critical" strokeWidth={3} />
+        </div>
+      )}
     </div>
   )
 }
@@ -614,13 +743,14 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted,
 // ─────────────────────────────────────────────────────────────────────────────
 // Carte vehicule draggable
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleCard({ mission, compact, dragging, highlighted }: {
+function VehicleCard({ mission, compact, dragging, highlighted, disableDrag }: {
   mission: PlacedMission
   compact?: boolean
   dragging?: boolean
   highlighted?: boolean
+  disableDrag?: boolean
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: mission.id })
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: mission.id, disabled: disableDrag })
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
 
   return (

@@ -82,6 +82,21 @@ export async function POST(req: Request) {
       }, { status: 409 })
     }
 
+    // Refuse si le slot est marque bloque par un gestionnaire fourriere
+    const { data: blocked } = await sb
+      .from('parc_blocked_slots')
+      .select('reason')
+      .eq('zone_key',   zoneKey)
+      .eq('row_number', rowNumber)
+      .eq('slot_index', slotIndex)
+      .maybeSingle()
+    if (blocked) {
+      const motif = blocked.reason ? ` (${blocked.reason})` : ''
+      return NextResponse.json({
+        error: `Emplacement ${zoneKey}${rowNumber}-${slotIndex} bloqué${motif}.`,
+      }, { status: 409 })
+    }
+
     // Si un autre vehicule occupe deja exactement ce slot, on l'echange
     // (swap) : il prend la position precedente du vehicule deplace.
     const { data: currentOccupant } = await sb

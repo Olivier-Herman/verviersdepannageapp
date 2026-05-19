@@ -24,13 +24,14 @@ export async function GET() {
 
   const sb = createAdminClient()
 
-  const [{ data: zones }, { data: rows }, { data: missions }, { data: settings }] = await Promise.all([
+  const [{ data: zones }, { data: rows }, { data: missions }, { data: settings }, { data: blocked }] = await Promise.all([
     sb.from('parc_zones').select('*').eq('active', true).order('sort_order'),
     sb.from('parc_rows').select('*').order('zone_key').order('row_number'),
     sb.from('incoming_missions')
       .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type')
       .in('status', PARKED_STATUSES),
     sb.from('parc_settings').select('canvas_height_px').eq('id', 1).maybeSingle(),
+    sb.from('parc_blocked_slots').select('zone_key, row_number, slot_index, reason'),
   ])
 
   const placed   = (missions || []).filter(m => m.parc_zone_key && m.parc_row_number)
@@ -41,6 +42,7 @@ export async function GET() {
     rows:            rows  || [],
     placed,
     toPlace,
+    blocked:         blocked || [],
     canvasHeightPx:  settings?.canvas_height_px || 2400,
   })
 }
