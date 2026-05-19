@@ -17,7 +17,7 @@ const ODOO_DB      = process.env.ODOO_DB!
 const ODOO_UID     = parseInt(process.env.ODOO_UID || '8')
 const ODOO_API_KEY = process.env.ODOO_API_KEY!
 
-const PRODUCT_CODES = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ'] as const
+const PRODUCT_CODES = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'] as const
 type ProductCode = typeof PRODUCT_CODES[number]
 
 const VEHICLE_FIELD = 'x_studio_many2one_field_78n_1j6fmmeom'
@@ -62,10 +62,10 @@ async function getProductIds(): Promise<Map<ProductCode, number>> {
       map.set(p.default_code as ProductCode, p.id)
     }
   }
-  // Verifie qu on a bien les 4
+  // Verifie qu on a bien les 5 produits generiques
   for (const code of PRODUCT_CODES) {
     if (!map.has(code)) {
-      throw new Error(`Produit Odoo "${code}" introuvable (default_code). Verifie que les 4 produits generiques SERV-PEC/KM/PARC/MAJ sont crees.`)
+      throw new Error(`Produit Odoo "${code}" introuvable (default_code). Verifie que les 5 produits generiques SERV-PEC/KM/PARC/MAJ/DIV sont crees.`)
     }
   }
   _productIdCache = map

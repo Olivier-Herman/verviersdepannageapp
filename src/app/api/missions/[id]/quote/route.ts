@@ -38,7 +38,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const body = await req.json().catch(() => ({}))
   const customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
     ? body.lines.map((l: any): QuoteLine => ({
-        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ'].includes(l.kind) ? l.kind : 'SERV-PEC') as any,
+        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
         name:       String(l.name || ''),
         qty:        Number(l.qty || 0),
         price_unit: Number(l.price_unit || 0),

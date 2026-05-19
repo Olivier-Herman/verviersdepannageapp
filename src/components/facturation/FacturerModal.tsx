@@ -144,7 +144,7 @@ interface QuoteStatusData {
   fully_invoiced?: boolean
 }
 
-type ProductKind = 'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ'
+type ProductKind = 'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
 
 interface CustomLine {
   kind:        ProductKind
@@ -158,6 +158,7 @@ const KIND_LABELS: Record<ProductKind, string> = {
   'SERV-KM':   'Kilomètre',
   'SERV-PARC': 'Frais de parc',
   'SERV-MAJ':  'Majoration',
+  'SERV-DIV':  'Divers',
 }
 
 function MissionBlock({
@@ -251,9 +252,14 @@ function MissionBlock({
     }
   }
 
-  /** Initialise customLines a partir de l estimation auto pour edition. */
+  /** Initialise customLines a partir de l estimation auto pour edition.
+   *  Si l estimation n est pas applicable (pas de tarif), on demarre avec un
+   *  tableau vide -> l employe ajoute les lignes manuellement. */
   function startEditingLines() {
-    if (!estimate || !estimate.ok) return
+    if (!estimate || !estimate.ok) {
+      setCustomLines([])  // Tableau vide, edition manuelle
+      return
+    }
     const lines: CustomLine[] = []
     if (estimate.forfait && estimate.forfait > 0) {
       lines.push({
@@ -304,7 +310,7 @@ function MissionBlock({
 
   function addLine() {
     if (!customLines) return
-    setCustomLines([...customLines, { kind: 'SERV-PEC', name: '', qty: 1, price_unit: 0 }])
+    setCustomLines([...customLines, { kind: 'SERV-DIV', name: '', qty: 1, price_unit: 0 }])
   }
 
   const customTotal = customLines ? customLines.reduce((s, l) => s + l.qty * l.price_unit, 0) : 0
@@ -460,10 +466,22 @@ function MissionBlock({
             </div>
           )}
 
-          {/* Pas de tarif : message + push possible quand même (devis "shell") */}
+          {/* Pas de tarif : message + bouton pour créer les lignes manuellement OU push shell */}
           {!customLines && !estimateLoading && estimate && !estimate.ok && (
-            <div className="text-[11px] text-warning bg-warning/5 border border-warning/20 rounded p-2">
-              ⚠ <strong>Aucune grille tarifaire</strong> pour cette source / type. Le devis sera créé dans Odoo avec le client, la référence dossier et le véhicule pré-remplis, mais <strong>sans lignes</strong>. Tu complèteras les lignes manuellement dans Odoo.
+            <div className="text-[11px] text-warning bg-warning/5 border border-warning/20 rounded p-2 space-y-1.5">
+              <p>⚠ <strong>Aucune grille tarifaire</strong> pour cette source / type.</p>
+              <p>Tu peux soit :</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Cliquer <strong>« Créer les lignes manuellement »</strong> pour saisir les lignes dans l'app avant push</li>
+                <li>Cliquer directement <strong>« Créer le devis »</strong> ci-dessous : devis Odoo créé avec client + véhicule + référence pré-remplis, sans lignes (à compléter dans Odoo)</li>
+              </ul>
+              <button
+                type="button"
+                onClick={startEditingLines}
+                className="text-warning hover:underline font-semibold"
+              >
+                🔧 Créer les lignes manuellement
+              </button>
             </div>
           )}
 
@@ -831,6 +849,39 @@ export default function FacturerModal({
               <p className="text-ink-secondary text-xs">
                 Touring (et compagnies similaires) facturent souvent REM + REL ensemble avec 1 seul numéro.
               </p>
+
+              {/* Bouton creer un devis groupe Odoo (1 sale.order avec sections) */}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true); setError(null)
+                  try {
+                    const res = await fetch('/api/missions/quote-grouped', {
+                      method:  'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body:    JSON.stringify({ mission_ids: readyIds }),
+                    })
+                    const j = await res.json()
+                    if (!res.ok || !j.ok) {
+                      setError(j.error || `Erreur ${res.status}`)
+                      return
+                    }
+                    if (j.quote?.url) window.open(j.quote.url, '_blank')
+                    // Recharge la page pour rafraichir les states quote-status
+                    // des MissionBlock (qui ont leur fetch propre au mount).
+                    window.location.reload()
+                  } catch (e: any) {
+                    setError(e.message || 'Erreur réseau')
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+                className="w-full py-2.5 bg-info hover:bg-info/90 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+              >
+                {busy ? '⏳…' : `✨ Créer un devis groupé Odoo (${readyIds.length} sections)`}
+              </button>
+
               <div className="flex flex-col sm:flex-row gap-2 pt-1">
                 <button
                   type="button"
