@@ -30,13 +30,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!sess) return NextResponse.json({ error: 'Session introuvable' }, { status: 404 })
   if (sess.user_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await req.json() as { auto_print?: boolean; zone_state_id?: number; zone_code?: string; zone_label?: string; zone_full_name?: string }
+  const body = await req.json() as {
+    auto_print?:      boolean
+    zone_state_id?:   number
+    zone_code?:       string
+    zone_label?:      string
+    zone_full_name?:  string
+    parc_zone_key?:   string | null
+    parc_row_number?: number | null
+    next_slot_index?: number
+  }
   const update: any = { updated_at: new Date().toISOString() }
-  if (body.auto_print !== undefined)     update.auto_print     = Boolean(body.auto_print)
-  if (body.zone_state_id !== undefined)  update.zone_state_id  = body.zone_state_id
-  if (body.zone_code !== undefined)      update.zone_code      = body.zone_code
-  if (body.zone_label !== undefined)     update.zone_label     = body.zone_label
-  if (body.zone_full_name !== undefined) update.zone_full_name = body.zone_full_name
+  if (body.auto_print !== undefined)      update.auto_print      = Boolean(body.auto_print)
+  if (body.zone_state_id !== undefined)   update.zone_state_id   = body.zone_state_id
+  if (body.zone_code !== undefined)       update.zone_code       = body.zone_code
+  if (body.zone_label !== undefined)      update.zone_label      = body.zone_label
+  if (body.zone_full_name !== undefined)  update.zone_full_name  = body.zone_full_name
+  if (body.parc_zone_key !== undefined)   update.parc_zone_key   = body.parc_zone_key
+  if (body.parc_row_number !== undefined) update.parc_row_number = body.parc_row_number
+  if (body.next_slot_index !== undefined) update.next_slot_index = Math.max(1, Number(body.next_slot_index) || 1)
 
   const { data, error } = await sb.from('inventaire_sessions').update(update).eq('id', params.id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

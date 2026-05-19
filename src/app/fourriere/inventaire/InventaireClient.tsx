@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
-import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera, Mail } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera, Mail, MapPin, ArrowRight, X, FileSpreadsheet, Car } from 'lucide-react'
 import { playWinSound, playLoseSound } from '@/lib/sounds'
 import dynamic from 'next/dynamic'
 
@@ -52,6 +52,33 @@ interface Stats {
   errors:    number
 }
 
+interface ParcZone {
+  key:        string
+  label:      string
+  sort_order: number
+}
+
+interface ParcRow {
+  id:         number
+  zone_key:   string
+  row_number: number
+  capacity:   number
+  sort_order: number
+}
+
+interface MissingVehicle {
+  id:               string
+  external_id:      string
+  vehicle_plate:    string | null
+  vehicle_brand:    string | null
+  vehicle_model:    string | null
+  client_name:      string | null
+  status:           string
+  parc_zone_key:    string | null
+  parc_row_number:  number | null
+  parc_slot_index:  number | null
+}
+
 /** Tag mensuel format MMYYYY (ex: 052026). */
 function currentTag(): string {
   const d = new Date()
@@ -92,7 +119,57 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   // Session DB pour synchro cross-device (iPhone scan ↔ Mac telecharge)
   const [sessionId, setSessionId]       = useState<string | null>(null)
   const [restoring, setRestoring]       = useState(true)
+  // Nouveau : positionnement spatial (rangee + slot)
+  const [parcZones, setParcZones]       = useState<ParcZone[]>([])
+  const [parcRows, setParcRows]         = useState<ParcRow[]>([])
+  const [parcRowNumber, setParcRowNumber] = useState<number | null>(null)
+  const [nextSlot, setNextSlot]         = useState<number>(1)
+  // Dialog de fin d inventaire (vehicules manquants)
+  const [completing, setCompleting]     = useState(false)
+  const [missing, setMissing]           = useState<MissingVehicle[] | null>(null)
   const scanRef = useRef<HTMLInputElement>(null)
+
+  // Mapping FOURRIERE_ZONES.code -> parc_zones.key (case insensitive)
+  const parcZoneKey = useMemo(() => {
+    if (!selectedZone) return null
+    const code = selectedZone.code.toLowerCase()
+    return parcZones.find(z => z.key.toLowerCase() === code)?.key || null
+  }, [selectedZone, parcZones])
+
+  // Rangees disponibles pour la zone selectionnee, triees par sort_order
+  const availableRows = useMemo<ParcRow[]>(() => {
+    if (!parcZoneKey) return []
+    return parcRows
+      .filter(r => r.zone_key === parcZoneKey)
+      .sort((a, b) => (a.sort_order || a.row_number) - (b.sort_order || b.row_number))
+  }, [parcZoneKey, parcRows])
+
+  const currentRow = useMemo<ParcRow | null>(() => {
+    if (parcRowNumber == null || !parcZoneKey) return null
+    return parcRows.find(r => r.zone_key === parcZoneKey && r.row_number === parcRowNumber) || null
+  }, [parcRowNumber, parcZoneKey, parcRows])
+
+  // Suggere la rangee suivante (apres validation) selon sort_order
+  function suggestNextRow(): ParcRow | null {
+    if (!currentRow) return availableRows[0] || null
+    const idx = availableRows.findIndex(r => r.row_number === currentRow.row_number)
+    if (idx < 0 || idx + 1 >= availableRows.length) return null
+    return availableRows[idx + 1]
+  }
+
+  // Charge zones+rows du parc (une fois au mount)
+  useEffect(() => {
+    let canceled = false
+    fetch('/api/parc/state')
+      .then(r => r.json())
+      .then(j => {
+        if (canceled) return
+        if (Array.isArray(j.zones)) setParcZones(j.zones)
+        if (Array.isArray(j.rows))  setParcRows(j.rows)
+      })
+      .catch(() => {})
+    return () => { canceled = true }
+  }, [])
 
   // Restore session active au mount (synchro cross-device)
   useEffect(() => {
@@ -112,6 +189,8 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               fullName: j.session.zone_full_name || '',
             })
           }
+          if (j.session.parc_row_number != null) setParcRowNumber(j.session.parc_row_number)
+          if (j.session.next_slot_index != null) setNextSlot(j.session.next_slot_index)
           // Restaure items depuis DB (deja tries desc par created_at)
           const restoredItems: ResultItem[] = (j.items || []).map((it: any) => ({
             status:         it.status,
@@ -158,13 +237,59 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   }, [step])
 
   /** Persiste un item dans la session DB (async, ne bloque pas l UI). */
-  function persistItem(item: ResultItem) {
+  function persistItem(item: ResultItem, extras: Record<string, any> = {}) {
     if (!sessionId) return
     fetch(`/api/inventaire/sessions/${sessionId}/items`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(item),
+      body:    JSON.stringify({ ...item, ...extras }),
     }).catch(e => console.warn('[inventaire] persist item fail:', e))
+  }
+
+  interface PlaceScanResult {
+    ok:           boolean
+    placed:       boolean
+    mission_id?:  string
+    was_at?:      { zone_key: string; row_number: number; slot_index: number } | null
+    transferred?: boolean
+    reason?:      string
+  }
+
+  /** Appelle place-scan : positionne la voiture sur le plan au slot courant.
+   *  Retourne null si offline / pas de rangee / erreur (loguee dans la console). */
+  async function placeOnPlan(payload: { plaque?: string; ticket_id?: number; mission_num?: string }): Promise<PlaceScanResult | null> {
+    if (!parcZoneKey || parcRowNumber == null) return null
+    try {
+      const res = await fetch('/api/inventaire/place-scan', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          ...payload,
+          zone_key:   parcZoneKey,
+          row_number: parcRowNumber,
+          slot_index: nextSlot,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        console.warn('[place-scan]', j.error)
+        return null
+      }
+      return j as PlaceScanResult
+    } catch (e) {
+      console.warn('[place-scan] reseau', e)
+      return null
+    }
+  }
+
+  /** Met a jour next_slot_index cote DB. */
+  function persistNextSlot(value: number) {
+    if (!sessionId) return
+    fetch(`/api/inventaire/sessions/${sessionId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ next_slot_index: value }),
+    }).catch(() => {})
   }
 
   async function processScan(raw: string) {
@@ -204,6 +329,16 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         if (!res.ok || !data.ok) throw new Error(data.error || 'Erreur')
 
         playWinSound()
+        // Positionnement sur le plan visuel (silencieux si pas de rangee selectionnee)
+        const place = await placeOnPlan({
+          plaque:      data.plate || undefined,
+          ticket_id:   parseInt(String(parsed.ticketId), 10),
+          mission_num: data.missionNum || undefined,
+        })
+        const placedHere = place?.placed ? `${parcZoneKey}${parcRowNumber}-${nextSlot}` : undefined
+        const transferFrom = place?.transferred && place.was_at
+          ? `${place.was_at.zone_key}${place.was_at.row_number}-${place.was_at.slot_index}`
+          : undefined
         const result: ResultItem = {
           status:      'ok',
           type:        'reprint',
@@ -211,7 +346,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           label:       data.plate || `Ticket #${parsed.ticketId}`,
           sublabel:    [data.brand, data.model].filter(Boolean).join(' ') || undefined,
           printed:     data.printed,
-          zone:        selectedZone?.label,
+          zone:        placedHere || selectedZone?.label,
           ticketId:    parseInt(String(parsed.ticketId), 10),
           plaque:      data.plate || undefined,
           marque:      data.brand || undefined,
@@ -220,11 +355,25 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           motif:       data.motif || undefined,
           missionNum:  data.missionNum || undefined,
           dateMission: data.dateEntree || undefined,
+          msg:         transferFrom ? `↔ Transféré de ${transferFrom}` : undefined,
         }
         setCurrentItem(result)
         setItems(prev => [result, ...prev])
         setStats(prev => ({ ...prev, total: prev.total + 1, reprinted: prev.reprinted + 1 }))
-        persistItem(result)
+        persistItem(result, {
+          parc_zone_key:         place?.placed ? parcZoneKey : null,
+          parc_row_number:       place?.placed ? parcRowNumber : null,
+          parc_slot_index:       place?.placed ? nextSlot : null,
+          incoming_mission_id:   place?.mission_id || null,
+          transferred_from_zone: place?.was_at?.zone_key || null,
+          transferred_from_row:  place?.was_at?.row_number ?? null,
+          transferred_from_slot: place?.was_at?.slot_index ?? null,
+        })
+        if (place?.placed) {
+          const newSlot = nextSlot + 1
+          setNextSlot(newSlot)
+          persistNextSlot(newSlot)
+        }
 
       } else {
         // Cas 2 : QR Towsoft → scrape + create/update + tag mensuel + print
@@ -251,24 +400,35 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         if (!processRes.ok || !processData.ok) throw new Error(processData.error || 'Traitement échoué')
 
         playWinSound()
+        const plate = processData.plate || td.plaque
+        const place = await placeOnPlan({
+          plaque:      plate || undefined,
+          ticket_id:   processData.ticketId,
+          mission_num: td.missionNum || parsed.missionNum,
+        })
+        const placedHere = place?.placed ? `${parcZoneKey}${parcRowNumber}-${nextSlot}` : undefined
+        const transferFrom = place?.transferred && place.was_at
+          ? `${place.was_at.zone_key}${place.was_at.row_number}-${place.was_at.slot_index}`
+          : undefined
         const result: ResultItem = {
           status:         'ok',
           type:           processData.vehicleCreated ? 'created' : 'updated',
-          label:          processData.plate || td.plaque || `Mission #${parsed.missionNum}`,
+          label:          plate || `Mission #${parsed.missionNum}`,
           sublabel:       `${td.marque || ''} ${td.modele || ''}`.trim(),
           vehicleCreated: processData.vehicleCreated,
           printed:        processData.printed,
-          zone:           selectedZone?.label,
+          zone:           placedHere || selectedZone?.label,
           ticketId:       processData.ticketId,
           missionNum:     td.missionNum,
           refDossier:     td.refDossier,
           dateMission:    td.dateMission,
           marque:         td.marque,
           modele:         td.modele,
-          plaque:         processData.plate || td.plaque,
+          plaque:         plate,
           vin:            td.vin,
           motif:          td.motif,
           parc:           td.parc,
+          msg:            transferFrom ? `↔ Transféré de ${transferFrom}` : undefined,
         }
         setCurrentItem(result)
         setItems(prev => [result, ...prev])
@@ -278,7 +438,20 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           created: prev.created + (processData.vehicleCreated ? 1 : 0),
           updated: prev.updated + (!processData.vehicleCreated ? 1 : 0),
         }))
-        persistItem(result)
+        persistItem(result, {
+          parc_zone_key:         place?.placed ? parcZoneKey : null,
+          parc_row_number:       place?.placed ? parcRowNumber : null,
+          parc_slot_index:       place?.placed ? nextSlot : null,
+          incoming_mission_id:   place?.mission_id || null,
+          transferred_from_zone: place?.was_at?.zone_key || null,
+          transferred_from_row:  place?.was_at?.row_number ?? null,
+          transferred_from_slot: place?.was_at?.slot_index ?? null,
+        })
+        if (place?.placed) {
+          const newSlot = nextSlot + 1
+          setNextSlot(newSlot)
+          persistNextSlot(newSlot)
+        }
       }
     } catch (err: any) {
       playLoseSound()
@@ -320,6 +493,11 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   /** Cree (ou reprend) une session en DB et passe en mode scan. */
   async function startScanSession() {
     if (!selectedZone) return
+    // Si la zone a des rangees parc mais aucune selectionnee, force le choix
+    if (availableRows.length > 0 && parcRowNumber == null) {
+      alert('Sélectionne d\'abord la rangée à inventorier.')
+      return
+    }
     try {
       const res = await fetch('/api/inventaire/sessions', {
         method:  'POST',
@@ -336,10 +514,99 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       const j = await res.json()
       if (!res.ok || !j.ok) { alert(j.error || 'Erreur creation session'); return }
       setSessionId(j.session.id)
+      // Persiste tout de suite parc_zone_key/parc_row_number/next_slot (si rangee choisie)
+      if (parcZoneKey && parcRowNumber != null) {
+        fetch(`/api/inventaire/sessions/${j.session.id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            parc_zone_key:   parcZoneKey,
+            parc_row_number: parcRowNumber,
+            next_slot_index: nextSlot,
+          }),
+        }).catch(() => {})
+      }
       setStep('scan')
     } catch (e: any) {
       alert(`Erreur : ${e.message || e}`)
     }
+  }
+
+  /** Selectionne une rangee et persiste sur la session. */
+  function selectRow(row: ParcRow) {
+    setParcRowNumber(row.row_number)
+    setNextSlot(1)
+    if (sessionId) {
+      fetch(`/api/inventaire/sessions/${sessionId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          parc_zone_key:   parcZoneKey,
+          parc_row_number: row.row_number,
+          next_slot_index: 1,
+        }),
+      }).catch(() => {})
+    }
+  }
+
+  /** Valide la rangee courante et propose la suivante (sort_order). */
+  function validateCurrentRow() {
+    if (!currentRow) return
+    const next = suggestNextRow()
+    if (!next) {
+      if (confirm(`Rangée ${parcZoneKey}${currentRow.row_number} validée. Plus de rangée suivante dans cette zone — termine l'inventaire ou change de zone.`)) {
+        // rien a faire, l utilisateur va terminer
+      }
+      return
+    }
+    if (confirm(`Rangée ${parcZoneKey}${currentRow.row_number} validée.\nPasser à la rangée ${parcZoneKey}${next.row_number} (slot 1) ?`)) {
+      selectRow(next)
+    }
+  }
+
+  /** Termine la session et recupere la liste des vehicules manquants. */
+  async function completeSession() {
+    if (!sessionId) return
+    if (!confirm("Terminer l'inventaire ?\nLes véhicules attendus dans les zones balayées mais non scannés seront listés pour vérification.")) return
+    setCompleting(true)
+    try {
+      const res = await fetch(`/api/inventaire/sessions/${sessionId}/complete`, { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok || !j.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setMissing(j.missing || [])
+    } catch (e: any) {
+      alert(`Erreur fin d'inventaire : ${e.message || e}`)
+    } finally {
+      setCompleting(false)
+    }
+  }
+
+  /** Action sur un vehicule manquant : sortir du parc (parc_zone_key = null). */
+  async function actionSortirDuParc(missionId: string) {
+    try {
+      const res = await fetch('/api/parc/place', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_id: missionId, zone_key: null }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setMissing(prev => prev ? prev.filter(m => m.id !== missionId) : prev)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message || e}`)
+    }
+  }
+
+  /** Ferme le dialog "manquants" et reset la session locale. */
+  function closeMissingDialog() {
+    setMissing(null)
+    setSessionId(null)
+    setItems([])
+    setCurrentItem(null)
+    setStats({ total: 0, created: 0, updated: 0, reprinted: 0, errors: 0 })
+    setParcRowNumber(null)
+    setNextSlot(1)
+    setStep('setup')
   }
 
   /** Met a jour auto_print cote DB quand on toggle le checkbox. */
@@ -467,12 +734,17 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                 {FOURRIERE_ZONES.map(z => (
                   <button
                     key={z.state_id}
-                    onClick={() => updateZone({
-                      stateId:  z.state_id,
-                      code:     z.code,
-                      label:    z.label,
-                      fullName: z.full_name,
-                    })}
+                    onClick={() => {
+                      updateZone({
+                        stateId:  z.state_id,
+                        code:     z.code,
+                        label:    z.label,
+                        fullName: z.full_name,
+                      })
+                      // Changer de zone reset la rangee
+                      setParcRowNumber(null)
+                      setNextSlot(1)
+                    }}
                     className={`p-3 rounded-xl border text-left transition ${
                       selectedZone?.stateId === z.state_id
                         ? 'bg-brand text-white border-brand shadow-md'
@@ -485,6 +757,44 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                 ))}
               </div>
             </div>
+
+            {/* Row picker : visible si la zone a des rangees parc */}
+            {selectedZone && availableRows.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-ink-faint uppercase tracking-wider flex items-center gap-1.5">
+                  <MapPin size={12} /> Rangée à scanner
+                </label>
+                <p className="text-xs text-ink-muted mb-2">
+                  Tu vas scanner les véhicules dans l'ordre, en commençant au slot 1.
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {availableRows.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => selectRow(r)}
+                      className={`p-2.5 rounded-lg border text-center transition ${
+                        parcRowNumber === r.row_number
+                          ? 'bg-brand text-white border-brand shadow-md'
+                          : 'bg-surface-2 hover:bg-surface-hover border-surface-hover'
+                      }`}
+                    >
+                      <div className="font-mono font-bold text-base">{parcZoneKey}{r.row_number}</div>
+                      <div className="text-[10px] opacity-80">cap. {r.capacity}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedZone && parcZoneKey === null && (
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-ink-secondary">
+                ℹ Zone <strong>{selectedZone.code}</strong> sans plan visuel — l'inventaire se fera sans positionnement précis (tag mensuel + zone Odoo uniquement).
+              </div>
+            )}
+            {selectedZone && parcZoneKey != null && availableRows.length === 0 && (
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-ink-secondary">
+                ⚠ Zone <strong>{selectedZone.code}</strong> visible sur le plan mais aucune rangée configurée. Va sur <a href="/admin/parc" className="underline font-medium">/admin/parc</a> pour ajouter des rangées avant d'inventorier.
+              </div>
+            )}
 
             <div className="bg-surface-2 border rounded-xl p-3">
               <label className="flex items-start gap-3 cursor-pointer">
@@ -509,7 +819,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
             <button
               onClick={startScanSession}
-              disabled={!selectedZone}
+              disabled={!selectedZone || (availableRows.length > 0 && parcRowNumber == null)}
               className="w-full py-3 bg-brand text-white rounded-xl font-medium disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <ScanLine size={18} />
@@ -529,18 +839,38 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                   <span className="text-ink text-sm font-normal truncate">— {selectedZone.label}</span>
                 </div>
               </div>
+              {currentRow && (
+                <div className="flex-shrink-0 text-center px-2 border-l">
+                  <div className="text-xs text-ink-faint">Rangée</div>
+                  <div className="font-display font-bold text-brand">{parcZoneKey}{currentRow.row_number}</div>
+                  <div className="text-[10px] text-ink-muted">slot {nextSlot}</div>
+                </div>
+              )}
               <div className="flex-shrink-0 text-right">
-                <div className="text-xs text-ink-faint">Tag mensuel</div>
-                <div className="font-mono font-bold text-brand">🏷️ {tagName}</div>
+                <div className="text-xs text-ink-faint">Tag</div>
+                <div className="font-mono font-bold text-brand text-sm">🏷️ {tagName}</div>
               </div>
               <button
                 onClick={() => { setStep('setup'); setCurrentItem(null) }}
                 className="p-2 text-ink-muted hover:text-ink"
-                title="Changer de zone"
+                title="Changer de zone/rangée"
               >
                 <Settings size={16} />
               </button>
             </div>
+
+            {/* Bouton "Valider la rangée" : visible si on a une rangee active */}
+            {currentRow && (
+              <button
+                onClick={validateCurrentRow}
+                className="w-full py-2.5 bg-success/10 hover:bg-success/20 text-success border border-success/30 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition"
+              >
+                <CheckCircle2 size={16} />
+                Valider la rangée {parcZoneKey}{currentRow.row_number}
+                {suggestNextRow() && <ArrowRight size={14} className="opacity-60" />}
+                {suggestNextRow() && <span className="opacity-70 text-xs">{parcZoneKey}{suggestNextRow()!.row_number}</span>}
+              </button>
+            )}
 
             {/* Boutons scan */}
             <button
@@ -606,14 +936,25 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                 Télécharger Excel
               </button>
             </div>
-            <button
-              onClick={clearSession}
-              className="w-full py-2 bg-surface-hover hover:bg-critical-soft text-ink-secondary hover:text-critical border rounded-xl text-xs transition flex items-center justify-center gap-1.5"
-              title="Terminer la session"
-            >
-              <RefreshCw size={12} />
-              Terminer la session
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={completeSession}
+                disabled={completing}
+                className="w-full py-2 bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 rounded-xl text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                title="Terminer l'inventaire et lister les véhicules manquants"
+              >
+                {completing ? <Loader2 className="animate-spin" size={12} /> : <CheckCircle2 size={12} />}
+                Terminer l'inventaire
+              </button>
+              <button
+                onClick={clearSession}
+                className="w-full py-2 bg-surface-hover hover:bg-critical-soft text-ink-secondary hover:text-critical border rounded-xl text-xs transition flex items-center justify-center gap-1.5"
+                title="Abandonner la session sans calculer les manquants"
+              >
+                <X size={12} />
+                Abandonner
+              </button>
+            </div>
 
             {/* Historique */}
             {items.length > 0 && (
@@ -633,6 +974,74 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           onScan={(text) => processScan(text)}
           onClose={() => setCameraOpen(false)}
         />
+      )}
+
+      {/* Modal de fin d inventaire : vehicules attendus mais non scannes */}
+      {missing && (
+        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
+          <div className="bg-surface border rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+            <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                  <AlertCircle className="text-warning" size={18} />
+                  Inventaire terminé
+                </h3>
+                <p className="text-xs text-ink-muted mt-0.5">
+                  {missing.length === 0
+                    ? 'Aucun véhicule manquant — bravo, tout est concordant.'
+                    : `${missing.length} véhicule${missing.length > 1 ? 's' : ''} attendu${missing.length > 1 ? 's' : ''} dans les zones balayées mais non scanné${missing.length > 1 ? 's' : ''}.`}
+                </p>
+              </div>
+              <button onClick={closeMissingDialog} className="p-1.5 text-ink-faint hover:text-ink" title="Fermer">
+                <X size={16} />
+              </button>
+            </div>
+
+            {missing.length > 0 && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {missing.map(m => (
+                  <div key={m.id} className="bg-surface-2 border rounded-xl p-3 flex items-center gap-3">
+                    <Car size={18} className="text-ink-muted flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-ink">{m.vehicle_plate || '—'}</span>
+                        <span className="text-[10px] text-ink-faint">#{m.external_id}</span>
+                      </div>
+                      <div className="text-xs text-ink-muted truncate">
+                        {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || m.client_name || '—'}
+                      </div>
+                      <div className="text-[10px] text-ink-faint mt-0.5">
+                        Attendu en {m.parc_zone_key}{m.parc_row_number}-{m.parc_slot_index}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => actionSortirDuParc(m.id)}
+                      className="flex-shrink-0 px-2.5 py-1.5 bg-critical/10 hover:bg-critical/20 text-critical border border-critical/30 rounded-lg text-xs font-medium transition"
+                      title="Le retirer du plan (parc_zone_key = null)"
+                    >
+                      Sortir du parc
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="p-4 border-t flex items-center justify-between gap-2 flex-shrink-0">
+              <button
+                onClick={exportXLSX}
+                className="px-3 py-2 bg-success/10 hover:bg-success/20 text-success border border-success/30 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+              >
+                <FileSpreadsheet size={14} /> Exporter le rapport
+              </button>
+              <button
+                onClick={closeMissingDialog}
+                className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition"
+              >
+                Clôturer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AppShell>
   )

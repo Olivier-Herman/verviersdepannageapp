@@ -52,6 +52,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     vin:           body.vin || null,
     motif:         body.motif || null,
     parc:          body.parc || null,
+    // Tracking spatial (rangee + slot + transfert)
+    parc_zone_key:         body.parc_zone_key         || null,
+    parc_row_number:       body.parc_row_number       ?? null,
+    parc_slot_index:       body.parc_slot_index       ?? null,
+    incoming_mission_id:   body.incoming_mission_id   || null,
+    transferred_from_zone: body.transferred_from_zone || null,
+    transferred_from_row:  body.transferred_from_row  ?? null,
+    transferred_from_slot: body.transferred_from_slot ?? null,
   }).select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
