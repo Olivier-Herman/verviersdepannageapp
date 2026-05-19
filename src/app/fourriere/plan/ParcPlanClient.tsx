@@ -13,8 +13,14 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
+import { createClient } from '@supabase/supabase-js'
+
+const sbClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
 interface Zone {
   key:        string
@@ -70,6 +76,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   const [error, setError] = useState<string | null>(null)
   const [activeMission, setActiveMission] = useState<PlacedMission | null>(null)
   const [editMode, setEditMode] = useState(false)
+  const [search, setSearch] = useState('')
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
@@ -92,6 +99,30 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Realtime : reload sur tout changement parc_* ou placement vehicule
+  useEffect(() => {
+    const channel = sbClient
+      .channel('parc-plan-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_missions' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_zones' },        () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parc_rows' },         () => load())
+      .subscribe()
+    return () => { sbClient.removeChannel(channel) }
+  }, [load])
+
+  // Set des mission_id qui matchent la recherche (plate / brand / model / client / external_id)
+  const matchingIds = useMemo<Set<string>>(() => {
+    const q = search.trim().toLowerCase()
+    if (!q || !state) return new Set()
+    const out = new Set<string>()
+    for (const m of [...state.placed, ...state.toPlace]) {
+      const hay = [m.vehicle_plate, m.vehicle_brand, m.vehicle_model, m.client_name, m.external_id]
+        .filter(Boolean).join(' ').toLowerCase()
+      if (hay.includes(q)) out.add(m.id)
+    }
+    return out
+  }, [search, state])
 
   const rowsByZone = useMemo<Record<string, Row[]>>(() => {
     if (!state) return {}
@@ -172,7 +203,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     >
       <div className="flex flex-col lg:flex-row gap-4 p-4 max-w-[1600px] mx-auto">
         {/* Sidebar : a placer */}
-        <UnplacedSidebar missions={state.toPlace} />
+        <UnplacedSidebar missions={state.toPlace} matchingIds={matchingIds} />
 
         {/* Canvas des zones */}
         <div className="flex-1 space-y-3">
@@ -186,6 +217,29 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {!editMode && (
+                <div className="relative">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
+                  <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Rechercher plaque, marque, client…"
+                    className="pl-7 pr-7 py-2 bg-surface-2 border rounded-lg text-ink text-xs w-56 focus:outline-none focus:border-brand"
+                  />
+                  {search && (
+                    <button onClick={() => setSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink"
+                      title="Effacer">
+                      <X size={14} />
+                    </button>
+                  )}
+                  {search && (
+                    <span className="absolute -bottom-4 right-1 text-[10px] text-ink-muted">
+                      {matchingIds.size} match{matchingIds.size > 1 ? 'es' : ''}
+                    </span>
+                  )}
+                </div>
+              )}
               {canEditLayout && (
                 <button
                   onClick={() => setEditMode(m => !m)}
@@ -220,6 +274,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   zone={zone}
                   rows={zRows}
                   missionsOnRow={missionsOnRow}
+                  matchingIds={matchingIds}
                   canDriverDrop={canDriverDrop}
                   editMode={editMode}
                   canvasRef={canvasRef}
@@ -259,10 +314,11 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zone positionnée sur le canvas (drag + resize en mode édition)
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoneOnCanvas({ zone, rows, missionsOnRow, canDriverDrop, editMode, canvasRef, onLayoutCommit }: {
+function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, canDriverDrop, editMode, canvasRef, onLayoutCommit }: {
   zone:          Zone
   rows:          Row[]
   missionsOnRow: (zoneKey: string, rowNumber: number) => PlacedMission[]
+  matchingIds:   Set<string>
   canDriverDrop: boolean
   editMode:      boolean
   canvasRef:     React.RefObject<HTMLDivElement>
@@ -363,6 +419,7 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, canDriverDrop, editMode, canv
               key={row.id}
               row={row}
               missions={missionsOnRow(zone.key, row.row_number)}
+              matchingIds={matchingIds}
             />
           ))}
         </div>
@@ -382,7 +439,7 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, canDriverDrop, editMode, canv
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidebar "À placer"
 // ─────────────────────────────────────────────────────────────────────────────
-function UnplacedSidebar({ missions }: { missions: PlacedMission[] }) {
+function UnplacedSidebar({ missions, matchingIds }: { missions: PlacedMission[]; matchingIds: Set<string> }) {
   const { setNodeRef, isOver } = useDroppable({ id: UNPLACED_DROP_ID })
 
   return (
@@ -401,7 +458,7 @@ function UnplacedSidebar({ missions }: { missions: PlacedMission[] }) {
         </p>
       ) : (
         <div className="space-y-2">
-          {missions.map(m => <VehicleCard key={m.id} mission={m} />)}
+          {missions.map(m => <VehicleCard key={m.id} mission={m} highlighted={matchingIds.has(m.id)} />)}
         </div>
       )}
       <p className="text-ink-faint text-[10px] mt-3 italic">
@@ -414,7 +471,7 @@ function UnplacedSidebar({ missions }: { missions: PlacedMission[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Ligne avec ses slots (+ overflow si vehicules > capacite)
 // ─────────────────────────────────────────────────────────────────────────────
-function RowSlots({ row, missions }: { row: Row; missions: PlacedMission[] }) {
+function RowSlots({ row, missions, matchingIds }: { row: Row; missions: PlacedMission[]; matchingIds: Set<string> }) {
   const overflow = missions.length > row.capacity
   // Nombre total de slots à afficher : capacité + 1 vide (pour pouvoir drop)
   // OU si déjà en overflow, on affiche autant que de missions + 1 supplémentaire.
@@ -443,6 +500,7 @@ function RowSlots({ row, missions }: { row: Row; missions: PlacedMission[] }) {
             slotIndex={i + 1}
             isOverflow={i >= row.capacity}
             mission={mission}
+            highlighted={mission ? matchingIds.has(mission.id) : false}
           />
         ))}
       </div>
@@ -458,12 +516,13 @@ function RowSlots({ row, missions }: { row: Row; missions: PlacedMission[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Un slot droppable (avec ou sans vehicule)
 // ─────────────────────────────────────────────────────────────────────────────
-function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission }: {
-  zoneKey:    string
-  rowNumber:  number
-  slotIndex:  number
-  isOverflow: boolean
-  mission:    PlacedMission | null
+function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted }: {
+  zoneKey:     string
+  rowNumber:   number
+  slotIndex:   number
+  isOverflow:  boolean
+  mission:     PlacedMission | null
+  highlighted: boolean
 }) {
   const id = `slot-${zoneKey}-${rowNumber}-${slotIndex}`
   const { setNodeRef, isOver } = useDroppable({ id })
@@ -472,19 +531,21 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission }: {
     <div
       ref={setNodeRef}
       className={`w-[78px] h-[46px] rounded border flex items-center justify-center text-[10px] transition-colors ${
-        mission
-          ? isOverflow
-            ? 'border-critical bg-critical/10'
-            : 'border-zinc-700 bg-surface'
-          : isOver
-            ? 'border-brand bg-brand/10 border-2'
-            : isOverflow
-              ? 'border-dashed border-critical/40 bg-critical/5'
-              : 'border-dashed border-zinc-700/60 bg-surface/40'
+        highlighted
+          ? 'ring-4 ring-amber-400 ring-offset-1 border-amber-500 bg-amber-100 animate-pulse'
+          : mission
+            ? isOverflow
+              ? 'border-critical bg-critical/10'
+              : 'border-zinc-700 bg-surface'
+            : isOver
+              ? 'border-brand bg-brand/10 border-2'
+              : isOverflow
+                ? 'border-dashed border-critical/40 bg-critical/5'
+                : 'border-dashed border-zinc-700/60 bg-surface/40'
       }`}
       title={isOverflow ? `Slot overflow ${zoneKey}${rowNumber}-${slotIndex}` : `${zoneKey}${rowNumber}-${slotIndex}`}
     >
-      {mission ? <VehicleCard mission={mission} compact /> : <span className="text-ink-faint">{slotIndex}</span>}
+      {mission ? <VehicleCard mission={mission} compact highlighted={highlighted} /> : <span className="text-ink-faint">{slotIndex}</span>}
     </div>
   )
 }
@@ -492,10 +553,11 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // Carte vehicule draggable
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleCard({ mission, compact, dragging }: {
+function VehicleCard({ mission, compact, dragging, highlighted }: {
   mission: PlacedMission
   compact?: boolean
   dragging?: boolean
+  highlighted?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: mission.id })
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
@@ -509,7 +571,7 @@ function VehicleCard({ mission, compact, dragging }: {
       className={`cursor-grab active:cursor-grabbing select-none rounded ${
         compact
           ? `w-full h-full flex flex-col items-center justify-center text-[9px] leading-tight px-1 ${isDragging ? 'opacity-30' : ''}`
-          : `bg-surface border px-2.5 py-2 hover:border-brand text-xs ${dragging ? 'shadow-2xl border-brand bg-brand/5' : ''} ${isDragging ? 'opacity-30' : ''}`
+          : `bg-surface border px-2.5 py-2 hover:border-brand text-xs ${dragging ? 'shadow-2xl border-brand bg-brand/5' : ''} ${highlighted ? 'ring-4 ring-amber-400 border-amber-500 bg-amber-50 animate-pulse' : ''} ${isDragging ? 'opacity-30' : ''}`
       }`}
     >
       {compact ? (
