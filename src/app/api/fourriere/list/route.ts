@@ -7,6 +7,7 @@
 import { NextResponse }            from 'next/server'
 import { getServerSession }        from 'next-auth'
 import { authOptions }             from '@/lib/auth'
+import { createAdminClient }       from '@/lib/supabase'
 import { FOURRIERE_STATE_IDS, FOURRIERE_ZONE_BY_ID, FOURRIERE_ZONES } from '@/lib/fourriere'
 
 export const dynamic     = 'force-dynamic'
@@ -75,21 +76,50 @@ export async function GET(req: Request) {
       for (const m of models) modelMap.set(m.id, m.name)
     }
 
+    // Lookup positions sur le plan visuel (parc_row_number/slot) depuis
+    // incoming_missions, indexe par plaque normalisee. Permet d afficher
+    // les colonnes Rangee/Emplacement dans le tableau Fourriere.
+    const plates = Array.from(new Set(
+      (vehicles || []).map((v: any) => (v.license_plate || '').trim().toUpperCase()).filter(Boolean)
+    ))
+    const placementByPlate = new Map<string, { row: number | null; slot: number | null }>()
+    if (plates.length > 0) {
+      const sb = createAdminClient()
+      const { data: missions } = await sb
+        .from('incoming_missions')
+        .select('vehicle_plate, parc_row_number, parc_slot_index, updated_at')
+        .in('status', ['parked', 'delivering'])
+        .in('vehicle_plate', plates)
+      // Si plusieurs missions par plaque (rare), garde la plus recente
+      for (const m of (missions || [])) {
+        const k = String(m.vehicle_plate || '').trim().toUpperCase()
+        if (!k) continue
+        const existing = placementByPlate.get(k)
+        if (!existing) {
+          placementByPlate.set(k, { row: m.parc_row_number, slot: m.parc_slot_index })
+        }
+      }
+    }
+
     const enriched = (vehicles || []).map((v: any) => {
       const stateId = v.state_id?.[0]
       const zone = stateId ? FOURRIERE_ZONE_BY_ID[stateId] : null
+      const plateKey = (v.license_plate || '').trim().toUpperCase()
+      const place    = placementByPlate.get(plateKey)
       return {
-        id:           v.id,
-        plate:        v.license_plate || null,
-        vin:          v.vin_sn || null,
-        brand:        v.brand_id?.[1] || '',
-        model:        v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : '',
-        driver:       v.driver_id?.[1] || null,
-        state_id:     stateId || null,
-        zone_code:    zone?.code || null,
-        zone_label:   zone?.label || (v.state_id?.[1] || '—'),
-        last_update:  v.write_date || null,
-        odoo_url:     `${ODOO_URL}/web#id=${v.id}&model=fleet.vehicle&view_type=form`,
+        id:               v.id,
+        plate:            v.license_plate || null,
+        vin:              v.vin_sn || null,
+        brand:            v.brand_id?.[1] || '',
+        model:            v.model_id?.[0] ? (modelMap.get(v.model_id[0]) || v.model_id[1] || '') : '',
+        driver:           v.driver_id?.[1] || null,
+        state_id:         stateId || null,
+        zone_code:        zone?.code || null,
+        zone_label:       zone?.label || (v.state_id?.[1] || '—'),
+        parc_row_number:  place?.row ?? null,
+        parc_slot_index:  place?.slot ?? null,
+        last_update:      v.write_date || null,
+        odoo_url:         `${ODOO_URL}/web#id=${v.id}&model=fleet.vehicle&view_type=form`,
       }
     })
 

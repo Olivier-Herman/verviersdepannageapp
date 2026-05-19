@@ -35,8 +35,11 @@ export async function GET() {
     sb.from('parc_slot_groups').select('group_uuid, zone_key, row_number, slot_index, selection_order').order('selection_order'),
   ])
 
-  const placed   = (missions || []).filter(m => m.parc_zone_key && m.parc_row_number)
-  const toPlace  = (missions || []).filter(m => !m.parc_zone_key || !m.parc_row_number)
+  // Un vehicule n est "place" que s il a zone + rangee + slot tous determines.
+  // Sinon il appartient a "a placer" -> sidebar pour qu il soit visible
+  // et drag&drop-able vers une position complete.
+  const placed   = (missions || []).filter(m => m.parc_zone_key && m.parc_row_number && m.parc_slot_index)
+  const toPlace  = (missions || []).filter(m => !m.parc_zone_key || !m.parc_row_number || !m.parc_slot_index)
 
   // Regroupe les lignes parc_slot_groups par group_uuid (members + primary)
   const groupsMap = new Map<string, { group_uuid: string; primary: any; members: any[] }>()

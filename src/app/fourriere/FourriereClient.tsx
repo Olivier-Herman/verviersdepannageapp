@@ -15,17 +15,19 @@ interface Zone {
 }
 
 interface Vehicle {
-  id:          number
-  plate:       string | null
-  vin:         string | null
-  brand:       string
-  model:       string
-  driver:      string | null
-  state_id:    number | null
-  zone_code:   string | null
-  zone_label:  string | null
-  last_update: string | null
-  odoo_url:    string
+  id:               number
+  plate:            string | null
+  vin:              string | null
+  brand:            string
+  model:            string
+  driver:           string | null
+  state_id:         number | null
+  zone_code:        string | null
+  zone_label:       string | null
+  parc_row_number:  number | null
+  parc_slot_index:  number | null
+  last_update:      string | null
+  odoo_url:         string
 }
 
 interface Props {
@@ -191,6 +193,8 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               <thead>
                 <tr className="bg-surface-2 border-b text-ink-muted text-xs uppercase tracking-wide">
                   <th className="text-left px-3 py-2">Zone</th>
+                  <th className="text-center px-2 py-2">Rangée</th>
+                  <th className="text-center px-2 py-2">Empl.</th>
                   <th className="text-left px-3 py-2">Plaque</th>
                   <th className="text-left px-3 py-2">Véhicule</th>
                   <th className="text-left px-3 py-2">VIN</th>
@@ -207,6 +211,12 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold border ${zoneColorClass}`}>
                           {v.zone_code || '—'}
                         </span>
+                      </td>
+                      <td className="px-2 py-2 text-center font-mono text-ink-secondary">
+                        {v.parc_row_number ?? <span className="text-ink-faint">—</span>}
+                      </td>
+                      <td className="px-2 py-2 text-center font-mono text-ink-secondary">
+                        {v.parc_slot_index ?? <span className="text-ink-faint">—</span>}
                       </td>
                       <td className="px-3 py-2 font-mono text-ink font-semibold">{v.plate || '—'}</td>
                       <td className="px-3 py-2">
