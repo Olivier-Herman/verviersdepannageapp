@@ -62,6 +62,9 @@ RÈGLES D'EXTRACTION:
 RÈGLES D'EXTRACTION: identiques à ETHIAS.
 - external_id = Numéro d'intervention (format B61131891AA)`,
 
+  pv_assistance: `SOURCE: P&V Assistance via IMA Benelux. Format identique à ETHIAS.
+RÈGLES D'EXTRACTION: identiques à ETHIAS.`,
+
   axa: `SOURCE: AXA Belgium via Inter Partner Assistance (email texte plain).
 RÈGLES D'EXTRACTION:
 - external_id = N° Mission (ex: 09755179)

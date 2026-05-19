@@ -236,6 +236,7 @@ export type MissionSource =
   | 'touring'
   | 'ethias'
   | 'vivium'
+  | 'pv_assistance'
   | 'axa'
   | 'ardenne'
   | 'mondial'
