@@ -34,6 +34,8 @@ interface Zone {
   slot_direction:  'ltr' | 'rtl'
   row_layout:      'horizontal' | 'vertical'
   strict_capacity: boolean
+  is_pool?:        boolean
+  pool_capacity?:  number | null
 }
 
 // Dimensions en pixels (zones auto-sized selon contenu).
@@ -67,6 +69,21 @@ function zoneSize(rows: Row[], layout: 'horizontal' | 'vertical'): { w: number; 
   return {
     w: rows.length * slot.w + (rows.length - 1) * SLOT_GAP + 2 * ZONE_PAD,
     h: ZONE_HEADER_H + COL_LABEL_H + SLOT_GAP + maxCap * slot.h + (maxCap - 1) * SLOT_GAP + 2 * ZONE_PAD,
+  }
+}
+
+/** Taille d une zone pool : dimensionnee selon le nombre de vehicules presents
+ *  (+ marge pour les futurs). On vise une grille 5 colonnes max, hauteur 4 lignes
+ *  minimum pour la lisibilite. */
+function poolZoneSize(missionsCount: number, capacity: number | null | undefined): { w: number; h: number } {
+  const cols = 5
+  const target = Math.max(capacity ?? 0, missionsCount, 8)
+  const rowsCount = Math.max(2, Math.ceil(target / cols))
+  const cardW = SLOT_LONG
+  const cardH = SLOT_SHORT
+  return {
+    w: cols * cardW + (cols - 1) * SLOT_GAP + 2 * ZONE_PAD,
+    h: ZONE_HEADER_H + rowsCount * cardH + (rowsCount - 1) * SLOT_GAP + 2 * ZONE_PAD,
   }
 }
 
@@ -360,6 +377,15 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   function handleVehicleClick(missionId: string) {
     if (mode !== 'normal') return  // selection desactivee dans block/link/edit
     setSelectedMissionId(prev => prev === missionId ? null : missionId)
+  }
+
+  /** Click sur une zone pool (Bordel) : place la mission selectionnee dans
+   *  la zone, sans rangee/slot. Equivalent click-to-place pour zones non-grille. */
+  function handleZoneClick(zoneKey: string) {
+    if (mode !== 'normal' || !selectedMissionId) return
+    placeMission(selectedMissionId, zoneKey, null, null).then(() => {
+      setSelectedMissionId(null)
+    })
   }
 
   /** Mission selectionnee (objet complet pour acces aux donnees). */
@@ -756,7 +782,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                {selectedMission.parc_zone_key && selectedMission.parc_row_number && selectedMission.parc_slot_index && (
+                {selectedMission.parc_zone_key && (
                   <button
                     onClick={removeSelectedFromParc}
                     className="px-2.5 py-1 bg-critical/10 hover:bg-critical/20 text-critical border border-critical/30 rounded-md text-xs font-medium transition"
@@ -794,6 +820,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   zone={zone}
                   rows={zRows}
                   missionsOnRow={missionsOnRow}
+                  poolMissions={zone.is_pool ? state.placed.filter(m => m.parc_zone_key === zone.key) : []}
                   matchingIds={matchingIds}
                   blockedMap={blockedMap}
                   mergedMap={mergedMap}
@@ -803,6 +830,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   pendingUnmergeMembersSet={pendingUnmergeMembersSet}
                   mode={mode}
                   onSlotClick={handleSlotClick}
+                  onZoneClick={handleZoneClick}
                   canDriverDrop={canDriverDrop}
                   editMode={editMode}
                   canvasRef={canvasRef}
@@ -912,10 +940,11 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zone positionnée sur le canvas (auto-size selon contenu, drag en édition)
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, mergedMap, pendingBlocks, pendingUnblocks, pendingMergeMap, pendingUnmergeMembersSet, mode, onSlotClick, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
+function ZoneOnCanvas({ zone, rows, missionsOnRow, poolMissions, matchingIds, blockedMap, mergedMap, pendingBlocks, pendingUnblocks, pendingMergeMap, pendingUnmergeMembersSet, mode, onSlotClick, onZoneClick, canDriverDrop, editMode, canvasRef, onPositionCommit }: {
   zone:                     Zone
   rows:                     Row[]
   missionsOnRow:            (zoneKey: string, rowNumber: number) => PlacedMission[]
+  poolMissions:             PlacedMission[]
   matchingIds:              Set<string>
   blockedMap:               Map<string, string | null>
   mergedMap:                Map<string, { group_uuid: string; isPrimary: boolean; primaryLabel: string }>
@@ -925,6 +954,7 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, merg
   pendingUnmergeMembersSet: Set<string>
   mode:                     Mode
   onSlotClick:              (zoneKey: string, rowNumber: number, slotIndex: number) => void
+  onZoneClick:              (zoneKey: string) => void
   canDriverDrop:            boolean
   editMode:                 boolean
   canvasRef:                React.RefObject<HTMLDivElement>
@@ -933,8 +963,12 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, merg
   const [localPos, setLocalPos] = useState<{ pos_x: number; pos_y: number } | null>(null)
   const pos_x = localPos?.pos_x ?? zone.pos_x
   const pos_y = localPos?.pos_y ?? zone.pos_y
+  const { selectedId } = useContext(VehicleSelectionCtx)
 
-  const size = useMemo(() => zoneSize(rows, zone.row_layout), [rows, zone.row_layout])
+  const size = useMemo(() => {
+    if (zone.is_pool) return poolZoneSize(poolMissions.length, zone.pool_capacity)
+    return zoneSize(rows, zone.row_layout)
+  }, [rows, zone.row_layout, zone.is_pool, zone.pool_capacity, poolMissions.length])
 
   function startDrag(e: React.MouseEvent | React.TouchEvent) {
     if (!editMode || !canvasRef.current) return
@@ -996,12 +1030,52 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, merg
       onTouchStart={editMode ? startDrag : undefined}
     >
       <div className="px-2 border-b bg-surface flex items-center justify-between flex-shrink-0" style={{ height: ZONE_HEADER_H }}>
-        <h2 className="text-ink font-bold text-xs truncate">{zone.label}</h2>
+        <h2 className="text-ink font-bold text-xs truncate">
+          {zone.label}
+          {zone.is_pool && (
+            <span className={`ml-1.5 font-mono text-[10px] ${
+              zone.pool_capacity != null && poolMissions.length > zone.pool_capacity ? 'text-critical' : 'text-ink-muted'
+            }`}>
+              {poolMissions.length}{zone.pool_capacity != null ? `/${zone.pool_capacity}` : ''}
+            </span>
+          )}
+        </h2>
         {!editMode && !canDriverDrop && (
           <span className="text-ink-faint text-[9px]">non autorisée</span>
         )}
       </div>
-      {rows.length === 0 ? (
+      {zone.is_pool ? (
+        // Pool zone : flex-wrap des cartes vehicules. La zone elle-meme est clickable
+        // pour placer la mission selectionnee (handleZoneClick).
+        <div
+          className={`flex-1 flex flex-wrap content-start gap-[2px] ${
+            mode === 'normal' && selectedId && canDriverDrop ? 'cursor-pointer hover:bg-warning/10' : ''
+          }`}
+          style={{ padding: ZONE_PAD }}
+          onClick={(e) => {
+            // Ne pas declencher si on click sur une carte (VehicleCard stop propagation)
+            if (mode === 'normal' && selectedId && canDriverDrop) onZoneClick(zone.key)
+          }}
+        >
+          {poolMissions.length === 0 ? (
+            <p className="text-ink-faint text-[9px] italic w-full text-center">
+              {editMode ? 'Bordel — capacité ' + (zone.pool_capacity ?? '∞') : '—'}
+            </p>
+          ) : (
+            poolMissions.map(m => (
+              <div key={m.id}
+                className={`rounded border flex items-center justify-center ${
+                  matchingIds.has(m.id) ? 'ring-2 ring-amber-400 bg-amber-50' : 'border-zinc-700 bg-surface'
+                }`}
+                style={{ width: SLOT_LONG, height: SLOT_SHORT }}
+                title={`${m.vehicle_plate || '—'} (Bordel ${zone.key})`}
+              >
+                <VehicleCard mission={m} compact highlighted={matchingIds.has(m.id)} disableDrag={mode !== 'normal'} />
+              </div>
+            ))
+          )}
+        </div>
+      ) : rows.length === 0 ? (
         <div className="flex-1 flex items-center justify-center px-1">
           <p className="text-ink-faint text-[9px] italic text-center">
             {editMode ? 'À configurer' : '—'}

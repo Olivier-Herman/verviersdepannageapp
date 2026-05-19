@@ -51,8 +51,19 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
   if (typeof body.strict_capacity === 'boolean') {
     patch.strict_capacity = body.strict_capacity
   }
+  // is_pool : zone "Bordel" (capacite globale sans rangees)
+  if (typeof body.is_pool === 'boolean') {
+    patch.is_pool = body.is_pool
+  }
+  // pool_capacity : nombre cible (null = illimite)
+  if (body.pool_capacity === null || body.pool_capacity === '') {
+    patch.pool_capacity = null
+  } else if (body.pool_capacity !== undefined) {
+    const v = parseInt(String(body.pool_capacity), 10)
+    if (Number.isFinite(v) && v >= 0) patch.pool_capacity = v
+  }
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction)' }, { status: 400 })
+    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction/is_pool/pool_capacity)' }, { status: 400 })
   }
 
   const sb = createAdminClient()

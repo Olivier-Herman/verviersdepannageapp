@@ -15,7 +15,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw, Lock, Unlock } from 'lucide-react'
+import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw, Lock, Unlock, Grid3x3, Shuffle } from 'lucide-react'
 
 interface Zone {
   key:             string
@@ -25,6 +25,8 @@ interface Zone {
   slot_direction:  'ltr' | 'rtl'
   row_layout:      'horizontal' | 'vertical'
   strict_capacity: boolean
+  is_pool:         boolean
+  pool_capacity:   number | null
 }
 
 interface Row {
@@ -51,7 +53,7 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity'>>) {
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity'>>) {
     setBusy(true)
     setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
     try {
@@ -239,49 +241,90 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
               <div className="px-4 py-3 border-b bg-surface space-y-2">
                 <div className="flex items-center justify-between">
                   <h2 className="text-ink font-bold text-base">Zone {zone.label}</h2>
-                  <button
-                    onClick={() => addRow(zone.key)}
-                    disabled={busy}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
-                  >
-                    <Plus size={14} /> Ajouter ligne
-                  </button>
+                  {!zone.is_pool && (
+                    <button
+                      onClick={() => addRow(zone.key)}
+                      disabled={busy}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
+                    >
+                      <Plus size={14} /> Ajouter ligne
+                    </button>
+                  )}
                 </div>
-                {/* Options de la zone : orientation + sens */}
-                <div className="flex items-center gap-2 text-[11px]">
+                {/* Options de la zone : type, orientation + sens */}
+                <div className="flex items-center gap-2 text-[11px] flex-wrap">
+                  {/* Type de zone : Grille (rangees) vs Bordel (capacite globale) */}
                   <button
-                    onClick={() => toggleZoneOption(zone.key, { row_layout: zone.row_layout === 'horizontal' ? 'vertical' : 'horizontal' })}
-                    disabled={busy}
-                    className="flex items-center gap-1 px-2 py-1 bg-surface border rounded text-ink-secondary hover:text-ink transition disabled:opacity-50"
-                    title="Orientation des rangées"
-                  >
-                    <RotateCw size={11} /> {zone.row_layout === 'horizontal' ? 'Horizontale' : 'Verticale'}
-                  </button>
-                  <button
-                    onClick={() => toggleZoneOption(zone.key, { slot_direction: zone.slot_direction === 'ltr' ? 'rtl' : 'ltr' })}
-                    disabled={busy}
-                    className="flex items-center gap-1 px-2 py-1 bg-surface border rounded text-ink-secondary hover:text-ink transition disabled:opacity-50"
-                    title="Sens des voitures dans la rangée"
-                  >
-                    <ArrowLeftRight size={11} /> {zone.slot_direction === 'ltr' ? '→' : '←'}
-                  </button>
-                  <button
-                    onClick={() => toggleZoneOption(zone.key, { strict_capacity: !zone.strict_capacity })}
+                    onClick={() => toggleZoneOption(zone.key, { is_pool: !zone.is_pool })}
                     disabled={busy}
                     className={`flex items-center gap-1 px-2 py-1 rounded border transition disabled:opacity-50 ${
-                      zone.strict_capacity
-                        ? 'bg-critical/10 border-critical/40 text-critical'
+                      zone.is_pool
+                        ? 'bg-warning/15 border-warning/40 text-warning'
                         : 'bg-surface text-ink-secondary hover:text-ink'
                     }`}
-                    title={zone.strict_capacity ? 'Zone strict : pas d overflow autorise' : 'Zone tolerante (overflow +N OK)'}
+                    title={zone.is_pool ? 'Zone Bordel : capacite globale, pas de rangees' : 'Zone Grille : rangees + slots structures'}
                   >
-                    {zone.strict_capacity ? <Lock size={11} /> : <Unlock size={11} />}
-                    {zone.strict_capacity ? 'Strict' : 'Tolerant'}
+                    {zone.is_pool ? <Shuffle size={11} /> : <Grid3x3 size={11} />}
+                    {zone.is_pool ? 'Bordel' : 'Grille'}
                   </button>
+                  {/* Capacite Bordel (input inline) */}
+                  {zone.is_pool && (
+                    <input
+                      type="number"
+                      min={0}
+                      defaultValue={zone.pool_capacity ?? ''}
+                      onBlur={e => {
+                        const v = e.target.value === '' ? null : parseInt(e.target.value, 10)
+                        if (v === zone.pool_capacity) return
+                        toggleZoneOption(zone.key, { pool_capacity: v as any })
+                      }}
+                      placeholder="∞"
+                      className="w-20 px-2 py-1 bg-surface border rounded text-ink text-[11px] focus:outline-none focus:border-warning"
+                      title="Capacité totale du bordel (vide = illimité)"
+                    />
+                  )}
+                  {/* Options grille (cachees en pool) */}
+                  {!zone.is_pool && (
+                    <>
+                      <button
+                        onClick={() => toggleZoneOption(zone.key, { row_layout: zone.row_layout === 'horizontal' ? 'vertical' : 'horizontal' })}
+                        disabled={busy}
+                        className="flex items-center gap-1 px-2 py-1 bg-surface border rounded text-ink-secondary hover:text-ink transition disabled:opacity-50"
+                        title="Orientation des rangées"
+                      >
+                        <RotateCw size={11} /> {zone.row_layout === 'horizontal' ? 'Horizontale' : 'Verticale'}
+                      </button>
+                      <button
+                        onClick={() => toggleZoneOption(zone.key, { slot_direction: zone.slot_direction === 'ltr' ? 'rtl' : 'ltr' })}
+                        disabled={busy}
+                        className="flex items-center gap-1 px-2 py-1 bg-surface border rounded text-ink-secondary hover:text-ink transition disabled:opacity-50"
+                        title="Sens des voitures dans la rangée"
+                      >
+                        <ArrowLeftRight size={11} /> {zone.slot_direction === 'ltr' ? '→' : '←'}
+                      </button>
+                      <button
+                        onClick={() => toggleZoneOption(zone.key, { strict_capacity: !zone.strict_capacity })}
+                        disabled={busy}
+                        className={`flex items-center gap-1 px-2 py-1 rounded border transition disabled:opacity-50 ${
+                          zone.strict_capacity
+                            ? 'bg-critical/10 border-critical/40 text-critical'
+                            : 'bg-surface text-ink-secondary hover:text-ink'
+                        }`}
+                        title={zone.strict_capacity ? 'Zone strict : pas d overflow autorise' : 'Zone tolerante (overflow +N OK)'}
+                      >
+                        {zone.strict_capacity ? <Lock size={11} /> : <Unlock size={11} />}
+                        {zone.strict_capacity ? 'Strict' : 'Tolerant'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="divide-y divide-[#222]">
-                {zRows.length === 0 ? (
+                {zone.is_pool ? (
+                  <p className="px-4 py-6 text-ink-muted text-sm text-center italic">
+                    Zone Bordel : pas de rangées ni emplacements, capacité globale {zone.pool_capacity ?? '∞'}
+                  </p>
+                ) : zRows.length === 0 ? (
                   <p className="px-4 py-6 text-ink-muted text-sm text-center italic">
                     Aucune ligne configurée
                   </p>

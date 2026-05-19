@@ -99,13 +99,35 @@ export async function POST(req: Request) {
   let finalRow  = rowNumber
   let finalSlot = slotIndex
   if (zoneKey) {
-    if (!Number.isInteger(rowNumber) || rowNumber == null || rowNumber <= 0 ||
-        !Number.isInteger(slotIndex) || slotIndex == null || slotIndex <= 0) {
-      return NextResponse.json({ error: 'row_number et slot_index requis si zone_key' }, { status: 400 })
+    // Verifier d abord si la zone cible est de type pool (Bordel) : dans ce cas
+    // pas de rangee/slot, on attache juste a la zone.
+    const { data: targetZone } = await sb
+      .from('parc_zones')
+      .select('is_pool, pool_capacity, strict_capacity')
+      .eq('key', zoneKey)
+      .maybeSingle()
+    const isPool = !!targetZone?.is_pool
+    if (isPool) {
+      // Force row/slot a null en pool
+      finalRow  = null
+      finalSlot = null
+    } else {
+      if (!Number.isInteger(rowNumber) || rowNumber == null || rowNumber <= 0 ||
+          !Number.isInteger(slotIndex) || slotIndex == null || slotIndex <= 0) {
+        return NextResponse.json({ error: 'row_number et slot_index requis si zone_key' }, { status: 400 })
+      }
     }
 
-    // Si le slot cible est dans un groupe fusionne, rerouter vers le primary
-    // (selection_order=1) pour qu une seule mission "occupe" tout le groupe.
+    // Permission chauffeur restreinte (vaut pour grille + pool)
+    if (!isDispatcher && isDriver && !DRIVER_ALLOWED_ZONES.includes(zoneKey as string)) {
+      return NextResponse.json({
+        error: `Les chauffeurs ne peuvent placer que dans ${DRIVER_ALLOWED_ZONES.join(' ou ')}`,
+      }, { status: 403 })
+    }
+
+    // Zone pool (Bordel) : pas de validation row/slot/swap. On laisse passer
+    // (overflow tolere par design).
+    if (!isPool) {
     const { data: groupHit } = await sb
       .from('parc_slot_groups')
       .select('group_uuid')
@@ -125,13 +147,6 @@ export async function POST(req: Request) {
         finalRow  = primary.row_number
         finalSlot = primary.slot_index
       }
-    }
-
-    // Permission chauffeur restreinte aux zones autorisees
-    if (!isDispatcher && isDriver && !DRIVER_ALLOWED_ZONES.includes(finalZone as string)) {
-      return NextResponse.json({
-        error: `Les chauffeurs ne peuvent placer que dans ${DRIVER_ALLOWED_ZONES.join(' ou ')}`,
-      }, { status: 403 })
     }
 
     // Verifier que la ligne existe
@@ -211,6 +226,7 @@ export async function POST(req: Request) {
         parc_slot_index: moving!.parc_slot_index,
       }).eq('id', currentOccupant.id)
     }
+    }  // fin if (!isPool)
   }
 
   // Mise a jour du placement. Si on place (zoneKey != null), force status='parked'

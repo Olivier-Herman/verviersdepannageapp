@@ -111,11 +111,19 @@ export async function GET() {
     if (k && !missionByPlate.has(k)) missionByPlate.set(k, m)
   }
 
-  // Un vehicule n est "place" que s il a zone + rangee + slot tous determines.
-  // Sinon il appartient a "a placer" -> sidebar pour qu il soit visible
-  // et drag&drop-able vers une position complete.
-  const placed   = (parkedMissions || []).filter(m => m.parc_zone_key && m.parc_row_number && m.parc_slot_index)
-  const toPlace: any[] = (parkedMissions || []).filter(m => !m.parc_zone_key || !m.parc_row_number || !m.parc_slot_index)
+  // Set des zones pool (bordel) : pour ces zones, un vehicule est considere
+  // place des qu il a parc_zone_key (pas besoin de rangee/slot).
+  const poolZoneKeys = new Set<string>((zones || []).filter((z: any) => z.is_pool).map((z: any) => z.key))
+
+  // Un vehicule n est "place" que s il a zone + rangee + slot tous determines,
+  // sauf en zone pool ou seule la zone suffit.
+  const isFullyPlaced = (m: any) => {
+    if (!m.parc_zone_key) return false
+    if (poolZoneKeys.has(m.parc_zone_key)) return true
+    return !!(m.parc_row_number && m.parc_slot_index)
+  }
+  const placed   = (parkedMissions || []).filter(isFullyPlaced)
+  const toPlace: any[] = (parkedMissions || []).filter(m => !isFullyPlaced(m))
 
   // Pour chaque vehicule Odoo en fourriere : si on a deja sa mission dans
   // placed/toPlace par plaque, on skip (deja visible). Sinon, on regarde
