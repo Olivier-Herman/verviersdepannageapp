@@ -514,7 +514,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     >
       <div className="flex flex-col lg:flex-row gap-4 p-4 max-w-[1600px] mx-auto">
         {/* Sidebar : a placer */}
-        <UnplacedSidebar missions={state.toPlace} matchingIds={matchingIds} blockMode={blockMode || linkMode} />
+        <UnplacedSidebar missions={state.toPlace} zones={state.zones} matchingIds={matchingIds} blockMode={blockMode || linkMode} />
 
         {/* Canvas des zones */}
         <div className="flex-1 space-y-3">
@@ -840,10 +840,46 @@ function ZoneOnCanvas({ zone, rows, missionsOnRow, matchingIds, blockedMap, merg
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sidebar "À placer"
+// Sidebar "À placer" — groupee par zone + filtre + recherche locale
 // ─────────────────────────────────────────────────────────────────────────────
-function UnplacedSidebar({ missions, matchingIds, blockMode }: { missions: PlacedMission[]; matchingIds: Set<string>; blockMode: boolean }) {
+function UnplacedSidebar({ missions, zones, matchingIds, blockMode }: { missions: PlacedMission[]; zones: Zone[]; matchingIds: Set<string>; blockMode: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: UNPLACED_DROP_ID, disabled: blockMode })
+  const [zoneFilter, setZoneFilter] = useState<string>('all')
+  const [collapsed, setCollapsed]   = useState<Set<string>>(new Set())
+
+  // Regroupe missions par parc_zone_key (ou "" si null)
+  const byZone = useMemo<Map<string, PlacedMission[]>>(() => {
+    const out = new Map<string, PlacedMission[]>()
+    for (const m of missions) {
+      const k = m.parc_zone_key || ''
+      if (!out.has(k)) out.set(k, [])
+      out.get(k)!.push(m)
+    }
+    return out
+  }, [missions])
+
+  // Ordre d affichage : zones connues triees par sort_order, puis "" (sans zone) a la fin
+  const sortedZoneKeys = useMemo<string[]>(() => {
+    const known = zones.map(z => z.key).filter(k => byZone.has(k))
+    const out = [...known]
+    if (byZone.has('')) out.push('')
+    return out
+  }, [zones, byZone])
+
+  const filteredZoneKeys = zoneFilter === 'all'
+    ? sortedZoneKeys
+    : sortedZoneKeys.filter(k => k === zoneFilter)
+
+  // Total affiche apres filtre (utile pour le header)
+  const visibleTotal = filteredZoneKeys.reduce((sum, k) => sum + (byZone.get(k)?.length || 0), 0)
+
+  function toggleZone(k: string) {
+    setCollapsed(prev => {
+      const n = new Set(prev)
+      if (n.has(k)) n.delete(k); else n.add(k)
+      return n
+    })
+  }
 
   return (
     <div
@@ -852,16 +888,72 @@ function UnplacedSidebar({ missions, matchingIds, blockMode }: { missions: Place
         isOver ? 'border-brand bg-brand/5' : ''
       }`}
     >
-      <h2 className="text-ink font-semibold text-sm mb-3 flex items-center gap-2">
-        <Car size={16} /> À placer ({missions.length})
+      <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
+        <Car size={16} /> À placer ({visibleTotal}{visibleTotal !== missions.length ? ` / ${missions.length}` : ''})
       </h2>
+
+      {/* Pills filtre par zone */}
+      {sortedZoneKeys.length > 1 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          <button
+            onClick={() => setZoneFilter('all')}
+            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition ${
+              zoneFilter === 'all'
+                ? 'bg-brand text-white border-brand'
+                : 'bg-surface text-ink-secondary hover:text-ink border-zinc-700/50'
+            }`}
+          >
+            Toutes
+          </button>
+          {sortedZoneKeys.map(k => {
+            const count = byZone.get(k)?.length || 0
+            const label = k || '?'
+            return (
+              <button
+                key={k || '_none'}
+                onClick={() => setZoneFilter(zoneFilter === k ? 'all' : k)}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition ${
+                  zoneFilter === k
+                    ? 'bg-brand text-white border-brand'
+                    : 'bg-surface text-ink-secondary hover:text-ink border-zinc-700/50'
+                }`}
+              >
+                {label} · {count}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {missions.length === 0 ? (
         <p className="text-ink-faint text-xs italic text-center py-6">
           Aucun véhicule en attente
         </p>
       ) : (
         <div className="space-y-2">
-          {missions.map(m => <VehicleCard key={m.id} mission={m} highlighted={matchingIds.has(m.id)} disableDrag={blockMode} />)}
+          {filteredZoneKeys.map(k => {
+            const items = byZone.get(k) || []
+            const isCollapsed = collapsed.has(k)
+            const headerLabel = k || 'Sans zone'
+            return (
+              <div key={k || '_none'} className="space-y-1">
+                <button
+                  onClick={() => toggleZone(k)}
+                  className="w-full flex items-center justify-between px-2 py-1 bg-surface rounded text-[11px] font-semibold text-ink-secondary hover:text-ink transition"
+                >
+                  <span>{headerLabel} <span className="text-ink-faint font-normal">· {items.length}</span></span>
+                  <span className="text-ink-faint">{isCollapsed ? '▸' : '▾'}</span>
+                </button>
+                {!isCollapsed && (
+                  <div className="space-y-1.5">
+                    {items.map(m => (
+                      <VehicleCard key={m.id} mission={m} highlighted={matchingIds.has(m.id)} disableDrag={blockMode} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
       <p className="text-ink-faint text-[10px] mt-3 italic">
