@@ -8,7 +8,7 @@
 //   apparaissent avec un bord rouge + badge "+N"
 // - Drop sur sidebar = retire du parc (parc_zone_key = null)
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -130,6 +130,14 @@ function slotKey(s: SlotRef | { zone_key: string; row_number: number; slot_index
 
 const UNPLACED_DROP_ID = 'unplaced'
 
+// Contexte de selection d un vehicule (click-to-place pattern).
+// Mis a dispo de VehicleCard (n importe ou dans l arbre) pour eviter le
+// prop drilling massif a travers Slot / RowSlots / ZoneOnCanvas / Sidebar.
+const VehicleSelectionCtx = createContext<{
+  selectedId: string | null
+  onSelect:   (id: string) => void
+}>({ selectedId: null, onSelect: () => {} })
+
 export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, canBlock, userRole, userName, userEmail, userModules }: {
   isDispatcher:   boolean
   isDriver:       boolean
@@ -160,6 +168,8 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     total_shortage: number
     unmapped_zones: string[]
   }>(null)
+  // Click-to-place : on selectionne un vehicule, puis on click un slot pour l y poser
+  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const canvasRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
@@ -346,6 +356,26 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     }
   }
 
+  /** Click sur une VehicleCard : toggle la selection en mode normal. */
+  function handleVehicleClick(missionId: string) {
+    if (mode !== 'normal') return  // selection desactivee dans block/link/edit
+    setSelectedMissionId(prev => prev === missionId ? null : missionId)
+  }
+
+  /** Mission selectionnee (objet complet pour acces aux donnees). */
+  const selectedMission = useMemo<PlacedMission | null>(() => {
+    if (!state || !selectedMissionId) return null
+    return [...state.placed, ...state.toPlace].find(m => m.id === selectedMissionId) || null
+  }, [state, selectedMissionId])
+
+  /** Retire la mission selectionnee du parc (parc_zone_key = null). */
+  async function removeSelectedFromParc() {
+    if (!selectedMission) return
+    if (!confirm(`Retirer ${selectedMission.vehicle_plate || 'ce véhicule'} du parc ?`)) return
+    await placeMission(selectedMission.id, null, null, null)
+    setSelectedMissionId(null)
+  }
+
   /** Click sur un slot. Comportement varie selon le mode courant. */
   function handleSlotClick(zoneKey: string, rowNumber: number, slotIndex: number) {
     const k          = `${zoneKey}-${rowNumber}-${slotIndex}`
@@ -353,6 +383,27 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     const merged     = mergedMap.get(k)
     const isMissionHere = (state?.placed || []).some(m =>
       m.parc_zone_key === zoneKey && m.parc_row_number === rowNumber && m.parc_slot_index === slotIndex)
+
+    // Mode normal : si une mission est selectionnee, click slot = placement
+    if (mode === 'normal' && selectedMissionId) {
+      if (isBlocked) {
+        alert('Slot bloqué : débloque-le d abord.')
+        return
+      }
+      if (merged && !merged.isPrimary) {
+        // Click sur un member -> reroute vers primary cote API ; OK, on laisse passer
+      }
+      const sel = state?.toPlace.concat(state.placed).find(m => m.id === selectedMissionId)
+      const movingHasFullPos = !!(sel?.parc_zone_key && sel?.parc_row_number && sel?.parc_slot_index)
+      if (isMissionHere && !movingHasFullPos) {
+        alert('Slot occupé. Choisis un slot libre.')
+        return
+      }
+      placeMission(selectedMissionId, zoneKey, rowNumber, slotIndex).then(() => {
+        setSelectedMissionId(null)
+      })
+      return
+    }
 
     if (mode === 'block') {
       if (isMissionHere) {
@@ -532,6 +583,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 
   return (
     <AppShell {...shellProps}>
+    <VehicleSelectionCtx.Provider value={{ selectedId: selectedMissionId, onSelect: handleVehicleClick }}>
     <DndContext
       sensors={sensors}
       onDragStart={ev => setActiveMission(allMissions[String(ev.active.id)] || null)}
@@ -560,7 +612,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   </>
                 )}
                 {mode === 'normal' && (
-                  <>Glisse les véhicules entre les slots. {isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}</>
+                  <>Clique un véhicule puis un emplacement libre pour le placer. {isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}</>
                 )}
                 {mode === 'normal' && blockedCount > 0 && (
                   <span className="ml-2 text-critical">— {blockedCount} bloqué{blockedCount > 1 ? 's' : ''}.</span>
@@ -688,6 +740,40 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
               </button>
             </div>
           </div>
+
+          {/* Banner de selection actif : montre le vehicule selectionne + actions */}
+          {selectedMission && mode === 'normal' && (
+            <div className="bg-info/10 border border-info/40 rounded-xl px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-xs min-w-0">
+                <Car className="text-info flex-shrink-0" size={16} />
+                <span className="text-ink">
+                  <span className="font-semibold">{selectedMission.vehicle_plate || '—'}</span>
+                  {' — '}
+                  <span className="text-ink-muted">
+                    {[selectedMission.vehicle_brand, selectedMission.vehicle_model].filter(Boolean).join(' ') || 'véhicule sélectionné'}
+                  </span>
+                  <span className="text-info font-semibold ml-2">Clique un emplacement libre pour l&apos;y placer.</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {selectedMission.parc_zone_key && selectedMission.parc_row_number && selectedMission.parc_slot_index && (
+                  <button
+                    onClick={removeSelectedFromParc}
+                    className="px-2.5 py-1 bg-critical/10 hover:bg-critical/20 text-critical border border-critical/30 rounded-md text-xs font-medium transition"
+                    title="Retirer du parc (parc_zone_key = null)"
+                  >
+                    Retirer du parc
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedMissionId(null)}
+                  className="px-2.5 py-1 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-md text-xs transition"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Conteneur scrollable independant de la sidebar : on voit ~85vh
               de canvas a la fois et on scroll a l interieur pendant le drag
@@ -818,6 +904,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
         </div>
       )}
     </DndContext>
+    </VehicleSelectionCtx.Provider>
     </AppShell>
   )
 }
@@ -1216,6 +1303,8 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted,
   const inActionMode = mode === 'block' || mode === 'link'
   const droppable = !inActionMode && !isBlocked && !(isMerged && !merged?.isPrimary)
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable })
+  const { selectedId } = useContext(VehicleSelectionCtx)
+  const hasSelection = !!selectedId
 
   const tooltip = isBlocked
     ? `Bloqué : ${zoneKey}${rowNumber}-${slotIndex}${blockedReason ? ` — ${blockedReason}` : ''}`
@@ -1249,7 +1338,9 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted,
     pendingUnmerge    ? 'ring-2 ring-warning ring-dashed ring-offset-1' :
     ''
 
-  const clickable = inActionMode
+  // Cliquable en mode action OU en mode normal quand une mission est selectionnee
+  // (= click-to-place : on a choisi un vehicule, on clique son emplacement).
+  const clickable = inActionMode || (mode === 'normal' && hasSelection)
   const handleClick = clickable ? () => onSlotClick(zoneKey, rowNumber, slotIndex) : undefined
 
   return (
@@ -1297,19 +1388,36 @@ function VehicleCard({ mission, compact, dragging, highlighted, disableDrag }: {
   highlighted?: boolean
   disableDrag?: boolean
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: mission.id, disabled: disableDrag })
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
+  // On garde useDraggable pour la compat (overlay drag preview, etc.) mais le
+  // pattern principal est maintenant : click sur la card -> selection, puis
+  // click sur un slot -> placement. disableDrag par defaut = false ici, mais
+  // le mode actuel passe true partout sauf cas exceptionnel.
+  const { setNodeRef } = useDraggable({ id: mission.id, disabled: true })
+  const { selectedId, onSelect } = useContext(VehicleSelectionCtx)
+  const isSelected = selectedId === mission.id
+
+  function handleClick(e: React.MouseEvent) {
+    // Empeche le click de bubbler vers le slot parent (qui declencherait
+    // un placement avant meme la selection)
+    e.stopPropagation()
+    if (disableDrag) return  // dans block/link mode on n autorise pas la selection
+    onSelect(mission.id)
+  }
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className={`cursor-grab active:cursor-grabbing select-none rounded ${
+      onClick={handleClick}
+      className={`cursor-pointer select-none rounded transition ${
         compact
-          ? `w-full h-full flex flex-col items-center justify-center text-[9px] leading-tight px-1 ${isDragging ? 'opacity-30' : ''}`
-          : `bg-surface border px-2.5 py-2 hover:border-brand text-xs ${dragging ? 'shadow-2xl border-brand bg-brand/5' : ''} ${highlighted ? 'ring-4 ring-amber-400 border-amber-500 bg-amber-50 animate-pulse' : ''} ${isDragging ? 'opacity-30' : ''}`
+          ? `w-full h-full flex flex-col items-center justify-center text-[9px] leading-tight px-1 ${
+              isSelected ? 'ring-2 ring-info ring-offset-1' : ''
+            }`
+          : `bg-surface border px-2.5 py-2 hover:border-brand text-xs ${
+              dragging ? 'shadow-2xl border-brand bg-brand/5' : ''
+            } ${highlighted ? 'ring-4 ring-amber-400 border-amber-500 bg-amber-50 animate-pulse' : ''} ${
+              isSelected ? 'ring-2 ring-info border-info bg-info/5' : ''
+            }`
       }`}
     >
       {compact ? (

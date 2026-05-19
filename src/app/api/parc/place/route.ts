@@ -172,11 +172,13 @@ export async function POST(req: Request) {
       }, { status: 409 })
     }
 
-    // Si un autre vehicule occupe deja exactement ce slot, on l'echange
-    // (swap) : il prend la position precedente du vehicule deplace.
+    // Si un autre vehicule occupe deja exactement ce slot : swap UNIQUEMENT
+    // si la mission qu on bouge a deja une position complete (vrai deplacement
+    // intra-canvas). Sinon (sidebar -> slot occupe) on REFUSE pour ne pas
+    // ejecter le vehicule existant dans le vide.
     const { data: currentOccupant } = await sb
       .from('incoming_missions')
-      .select('id, parc_zone_key, parc_row_number, parc_slot_index')
+      .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index')
       .eq('parc_zone_key', finalZone)
       .eq('parc_row_number', finalRow)
       .eq('parc_slot_index', finalSlot)
@@ -184,27 +186,38 @@ export async function POST(req: Request) {
       .maybeSingle()
 
     if (currentOccupant) {
-      // Recuperer l'ancienne position du vehicule qu'on deplace
       const { data: moving } = await sb
         .from('incoming_missions')
         .select('parc_zone_key, parc_row_number, parc_slot_index')
         .eq('id', missionId)
         .maybeSingle()
 
-      // Swap : l'occupant prend l'ancienne position (ou null si nouveau placement)
+      const movingHasFullPos = !!(moving?.parc_zone_key && moving?.parc_row_number && moving?.parc_slot_index)
+      if (!movingHasFullPos) {
+        return NextResponse.json({
+          error: `Emplacement ${finalZone}${finalRow}-${finalSlot} occupé par ${currentOccupant.vehicle_plate || 'un véhicule'}. Choisis un slot libre ou retire-le d'abord.`,
+        }, { status: 409 })
+      }
+
+      // Swap : l'occupant prend l'ancienne position de moving
       await sb.from('incoming_missions').update({
-        parc_zone_key:   moving?.parc_zone_key || null,
-        parc_row_number: moving?.parc_row_number || null,
-        parc_slot_index: moving?.parc_slot_index || null,
+        parc_zone_key:   moving!.parc_zone_key,
+        parc_row_number: moving!.parc_row_number,
+        parc_slot_index: moving!.parc_slot_index,
       }).eq('id', currentOccupant.id)
     }
   }
 
-  const { error } = await sb.from('incoming_missions').update({
+  // Mise a jour du placement. Si on place (zoneKey != null), force status='parked'
+  // pour qu une mission delivering / completed devienne reellement en parc.
+  const updates: Record<string, any> = {
     parc_zone_key:   finalZone,
     parc_row_number: finalZone ? finalRow : null,
     parc_slot_index: finalZone ? finalSlot : null,
-  }).eq('id', missionId)
+  }
+  if (finalZone) updates.status = 'parked'
+
+  const { error } = await sb.from('incoming_missions').update(updates).eq('id', missionId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

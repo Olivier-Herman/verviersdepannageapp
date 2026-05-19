@@ -77,8 +77,9 @@ export async function GET() {
 
   const sb = createAdminClient()
 
+  // 1er round : tout sauf les missions par plaque Odoo (qu on fetch apres)
   const [
-    { data: zones }, { data: rows }, { data: missions }, { data: settings },
+    { data: zones }, { data: rows }, { data: parkedMissions }, { data: settings },
     { data: blocked }, { data: groupRows }, odooFourriere,
   ] = await Promise.all([
     sb.from('parc_zones').select('*').eq('active', true).order('sort_order'),
@@ -92,41 +93,80 @@ export async function GET() {
     fetchOdooFourriereVehicles(),
   ])
 
+  // 2eme round : missions matchees par plaque Odoo (toutes statuts) pour
+  // recuperer les delivering/historiques d un vehicule physiquement present.
+  const odooPlates = odooFourriere.map(v => v.plate).filter(Boolean)
+  const { data: byPlateMissions } = odooPlates.length > 0
+    ? await sb
+        .from('incoming_missions')
+        .select('id, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, parc_row_number, parc_slot_index, mission_type, updated_at')
+        .in('vehicle_plate', odooPlates)
+        .order('updated_at', { ascending: false })
+    : { data: [] as any[] }
+
+  // Lookup plaque -> mission la plus recente (toutes statuts)
+  const missionByPlate = new Map<string, any>()
+  for (const m of (byPlateMissions || [])) {
+    const k = String(m.vehicle_plate || '').trim().toUpperCase()
+    if (k && !missionByPlate.has(k)) missionByPlate.set(k, m)
+  }
+
   // Un vehicule n est "place" que s il a zone + rangee + slot tous determines.
   // Sinon il appartient a "a placer" -> sidebar pour qu il soit visible
   // et drag&drop-able vers une position complete.
-  const placed   = (missions || []).filter(m => m.parc_zone_key && m.parc_row_number && m.parc_slot_index)
-  const toPlace: any[] = (missions || []).filter(m => !m.parc_zone_key || !m.parc_row_number || !m.parc_slot_index)
+  const placed   = (parkedMissions || []).filter(m => m.parc_zone_key && m.parc_row_number && m.parc_slot_index)
+  const toPlace: any[] = (parkedMissions || []).filter(m => !m.parc_zone_key || !m.parc_row_number || !m.parc_slot_index)
 
-  // Pour chaque vehicule Odoo en fourriere : si pas de mission parked
-  // correspondante par plaque, on cree une entree virtuelle "odoo-<id>"
-  // dans toPlace. Au drop, /api/parc/place creera la vraie mission.
+  // Pour chaque vehicule Odoo en fourriere : si on a deja sa mission dans
+  // placed/toPlace par plaque, on skip (deja visible). Sinon, on regarde
+  // s il existe une mission historique (delivering / autre) pour cette
+  // plaque : si oui on l ajoute a toPlace (UI sait la traiter). Si non,
+  // on cree une entree virtuelle "odoo-<id>" (cree au drop).
   const placedPlates = new Set(
-    (missions || [])
-      .filter(m => m.parc_zone_key && m.parc_row_number && m.parc_slot_index)
-      .map(m => String(m.vehicle_plate || '').trim().toUpperCase())
-      .filter(Boolean)
+    placed.map(m => String(m.vehicle_plate || '').trim().toUpperCase()).filter(Boolean)
   )
   const toPlacePlates = new Set(
     toPlace.map(m => String(m.vehicle_plate || '').trim().toUpperCase()).filter(Boolean)
   )
   for (const v of odooFourriere) {
-    if (placedPlates.has(v.plate) || toPlacePlates.has(v.plate)) continue
-    toPlace.push({
-      id:               `odoo-${v.odoo_id}`,
-      external_id:      `odoo-${v.odoo_id}`,
-      vehicle_plate:    v.plate,
-      vehicle_brand:    v.brand,
-      vehicle_model:    v.model,
-      client_name:      null,
-      status:           'odoo_only',
-      mission_type:     null,
-      parc_zone_key:    v.zone_code,
-      parc_row_number:  null,
-      parc_slot_index:  null,
-      _virtual:         true,
-      _odoo_id:         v.odoo_id,
-    })
+    if (placedPlates.has(v.plate)) continue
+    if (toPlacePlates.has(v.plate)) continue
+
+    const existingMission = missionByPlate.get(v.plate)
+    if (existingMission) {
+      // Mission existante (souvent status='delivering' ou 'completed') -> on
+      // l ajoute en toPlace avec son id reel. Au drop, /api/parc/place fera
+      // un UPDATE (status -> parked + parc_*).
+      toPlace.push({
+        id:               existingMission.id,
+        external_id:      existingMission.external_id,
+        vehicle_plate:    existingMission.vehicle_plate,
+        vehicle_brand:    existingMission.vehicle_brand,
+        vehicle_model:    existingMission.vehicle_model,
+        client_name:      existingMission.client_name,
+        status:           existingMission.status,
+        mission_type:     existingMission.mission_type,
+        parc_zone_key:    existingMission.parc_zone_key || v.zone_code,
+        parc_row_number:  existingMission.parc_row_number,
+        parc_slot_index:  existingMission.parc_slot_index,
+      })
+    } else {
+      toPlace.push({
+        id:               `odoo-${v.odoo_id}`,
+        external_id:      `odoo-${v.odoo_id}`,
+        vehicle_plate:    v.plate,
+        vehicle_brand:    v.brand,
+        vehicle_model:    v.model,
+        client_name:      null,
+        status:           'odoo_only',
+        mission_type:     null,
+        parc_zone_key:    v.zone_code,
+        parc_row_number:  null,
+        parc_slot_index:  null,
+        _virtual:         true,
+        _odoo_id:         v.odoo_id,
+      })
+    }
   }
 
   // Regroupe les lignes parc_slot_groups par group_uuid (members + primary)
