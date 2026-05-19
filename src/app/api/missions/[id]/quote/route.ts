@@ -14,7 +14,7 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
-import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -132,7 +132,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   let result: { id: number; url: string }
   try {
     if (mission.odoo_quote_id) {
-      result = await updateSaleOrder(mission.odoo_quote_id, commonInput)
+      try {
+        result = await updateSaleOrder(mission.odoo_quote_id, commonInput)
+      } catch (e: any) {
+        if (e instanceof QuoteNotFoundError) {
+          // Devis stocke en BDD mais supprime cote Odoo -> on recree from scratch
+          console.warn(`[quote] Devis ${mission.odoo_quote_id} introuvable, recreate from scratch`)
+          result = await createSaleOrder(commonInput)
+        } else {
+          throw e
+        }
+      }
     } else {
       result = await createSaleOrder(commonInput)
     }

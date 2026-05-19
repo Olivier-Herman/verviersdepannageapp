@@ -151,11 +151,36 @@ export async function createSaleOrder(input: CreateQuoteInput): Promise<{ id: nu
   return { id, url: buildQuoteUrl(id) }
 }
 
+/** Erreur jetee si le devis cible n existe plus (supprime cote Odoo). */
+export class QuoteNotFoundError extends Error {
+  constructor(quoteId: number) {
+    super(`Devis Odoo ${quoteId} introuvable (probablement supprime)`)
+    this.name = 'QuoteNotFoundError'
+  }
+}
+
 /**
  * Update un sale.order existant : on remplace toutes les lignes (unlink + recreate).
  * Garde le partner_id / origin / fleet_vehicle_id inchanges sauf si fournis.
+ * Throws QuoteNotFoundError si le devis a ete supprime cote Odoo.
  */
 export async function updateSaleOrder(quoteId: number, input: Partial<CreateQuoteInput>): Promise<{ id: number; url: string }> {
+  // Verifie d abord l existence pour eviter d ecrire dans le vide
+  let existingLineIds: number[] = []
+  try {
+    const existing = await rpc<any[]>('sale.order', 'read', [[quoteId], ['order_line', 'state']])
+    if (!existing || existing.length === 0) {
+      throw new QuoteNotFoundError(quoteId)
+    }
+    existingLineIds = existing[0].order_line || []
+  } catch (e: any) {
+    const msg = String(e.message || '')
+    if (msg.includes('does not exist') || msg.includes('Missing') || msg.includes('AccessError')) {
+      throw new QuoteNotFoundError(quoteId)
+    }
+    throw e
+  }
+
   const vals: any = {}
   if (input.partner_id != null)        vals.partner_id        = input.partner_id
   if (input.origin != null)            vals.origin            = input.origin
@@ -163,10 +188,6 @@ export async function updateSaleOrder(quoteId: number, input: Partial<CreateQuot
   if (input.fleet_vehicle_id != null)  vals[VEHICLE_FIELD]    = input.fleet_vehicle_id
 
   if (input.sections) {
-    // 1. Recupere les lignes existantes
-    const existing = await rpc<any[]>('sale.order', 'read', [[quoteId], ['order_line']])
-    const existingLineIds: number[] = existing?.[0]?.order_line || []
-    // 2. Unlink toutes les lignes existantes + recreate
     const newLines = await buildOrderLines(input.sections)
     const orderLineCmds = [
       ...existingLineIds.map(id => [2, id, false]),  // delete each existing line

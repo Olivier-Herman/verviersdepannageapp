@@ -137,6 +137,13 @@ interface PriceEstimateData {
   total_eur:     number
 }
 
+interface QuoteStatusData {
+  status:         'not_created' | 'deleted' | 'cancelled' | 'draft' | 'confirmed'
+  name?:          string
+  url?:           string
+  fully_invoiced?: boolean
+}
+
 function MissionBlock({
   m, payments, driverName, busy, onValidate, onAuto, onNoCharge, onQuoteCreated,
 }: {
@@ -156,6 +163,8 @@ function MissionBlock({
   const [estimateLoading, setEstimateLoading] = useState(true)
   const [quoteBusy, setQuoteBusy] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [quoteStatus, setQuoteStatus] = useState<QuoteStatusData | null>(null)
+  const [quoteStatusLoading, setQuoteStatusLoading] = useState(true)
   const kind = missionKind(m)
   const isReady = m.status === 'to_invoice'
 
@@ -177,8 +186,22 @@ function MissionBlock({
       .then(d => { if (!cancelled) setEstimate(d) })
       .catch(() => {})
       .finally(() => { if (!cancelled) setEstimateLoading(false) })
+    fetch(`/api/missions/${m.id}/quote-status`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setQuoteStatus(d) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setQuoteStatusLoading(false) })
     return () => { cancelled = true }
   }, [m.id])
+
+  async function refreshQuoteStatus() {
+    setQuoteStatusLoading(true)
+    try {
+      const res = await fetch(`/api/missions/${m.id}/quote-status`)
+      const j = await res.json()
+      setQuoteStatus(j)
+    } finally { setQuoteStatusLoading(false) }
+  }
 
   async function pushQuoteOdoo() {
     setQuoteBusy(true); setQuoteError(null)
@@ -192,6 +215,8 @@ function MissionBlock({
       // Ouvre direct le devis Odoo dans nouvel onglet
       if (j.quote?.url) window.open(j.quote.url, '_blank')
       onQuoteCreated(m.id, j.quote.id, j.quote.url)
+      // Recharge le statut pour reflet immediat (status devrait passer en 'draft')
+      await refreshQuoteStatus()
     } catch (e: any) {
       setQuoteError(e.message || 'Erreur réseau')
     } finally {
@@ -340,36 +365,46 @@ function MissionBlock({
           {quoteError && (
             <p className="text-critical text-[11px]">⚠ {quoteError}</p>
           )}
-          <div className="flex gap-2">
-            {m.odoo_quote_id && m.odoo_quote_url ? (
+          <div className="flex gap-2 items-center">
+            {quoteStatusLoading ? (
+              <span className="text-ink-faint text-xs">⏳ Vérification du devis…</span>
+            ) : quoteStatus?.status === 'confirmed' ? (
               <>
                 <a
-                  href={m.odoo_quote_url}
+                  href={quoteStatus.url}
                   target="_blank"
                   rel="noreferrer"
                   className="flex-1 py-2 bg-info hover:bg-info/90 text-white rounded-lg text-xs font-semibold text-center transition"
                 >
-                  📄 Ouvrir le devis Odoo ↗
+                  📄 Ouvrir le devis Odoo ↗ {quoteStatus.name ? `(${quoteStatus.name})` : ''}
                 </a>
+                {quoteStatus.fully_invoiced && (
+                  <span className="text-[10px] text-success font-semibold">✓ Entièrement facturé</span>
+                )}
+              </>
+            ) : (
+              <>
                 <button
                   type="button"
                   disabled={quoteBusy || !m.billed_to_id || !estimate?.ok}
                   onClick={pushQuoteOdoo}
-                  className="px-3 py-2 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition"
-                  title="Recalculer + mettre à jour les lignes du devis Odoo"
+                  className="flex-1 py-2 bg-info hover:bg-info/90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition"
                 >
-                  {quoteBusy ? '⏳…' : '🔄 Mettre à jour'}
+                  {quoteBusy ? '⏳…' : (
+                    quoteStatus?.status === 'draft' ? '🔄 Recréer / Mettre à jour le devis' :
+                    quoteStatus?.status === 'cancelled' ? '✨ Re-créer le devis (l\'ancien était annulé)' :
+                    quoteStatus?.status === 'deleted' ? '✨ Re-créer le devis (l\'ancien a été supprimé)' :
+                    '✨ Créer le devis Odoo'
+                  )}
                 </button>
+                {quoteStatus?.status === 'draft' && quoteStatus.url && (
+                  <a href={quoteStatus.url} target="_blank" rel="noreferrer"
+                    className="px-2.5 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs transition"
+                    title="Voir le brouillon en cours">
+                    👁
+                  </a>
+                )}
               </>
-            ) : (
-              <button
-                type="button"
-                disabled={quoteBusy || !m.billed_to_id || !estimate?.ok}
-                onClick={pushQuoteOdoo}
-                className="flex-1 py-2 bg-info hover:bg-info/90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition"
-              >
-                {quoteBusy ? '⏳ Création…' : '✨ Créer le devis Odoo'}
-              </button>
             )}
           </div>
         </div>
