@@ -28,6 +28,10 @@ interface BaseMission {
   invoice_number: string | null
   no_charge_at?:     string | null
   no_charge_reason?: string | null
+  odoo_quote_id?:    number | null
+  odoo_quote_url?:   string | null
+  billed_to_id?:     number | null
+  billed_to_name?:   string | null
 }
 
 interface PaymentRow {
@@ -119,8 +123,22 @@ function Copyable({ value, label, mono }: { value: string; label?: string; mono?
   )
 }
 
+interface PriceEstimateData {
+  ok:            boolean
+  reason?:       string
+  forfait:       number | null
+  km_extra:      number
+  km_extra_eur:  number
+  parc_jours:    number
+  parc_eur:      number
+  surcharge_pct: number
+  surcharge_eur: number
+  subtotal_eur:  number
+  total_eur:     number
+}
+
 function MissionBlock({
-  m, payments, driverName, busy, onValidate, onAuto, onNoCharge,
+  m, payments, driverName, busy, onValidate, onAuto, onNoCharge, onQuoteCreated,
 }: {
   m:          BaseMission
   payments:   PaymentRow[]
@@ -129,16 +147,22 @@ function MissionBlock({
   onValidate: () => void
   onAuto:     () => void
   onNoCharge: () => void
+  onQuoteCreated: (missionId: string, quoteId: number, quoteUrl: string) => void
 }) {
   const [km, setKm] = useState<KmData | null>(null)
   const [kmLoading, setKmLoading] = useState(true)
   const [surcharges, setSurcharges] = useState<SurchargeData | null>(null)
+  const [estimate, setEstimate] = useState<PriceEstimateData | null>(null)
+  const [estimateLoading, setEstimateLoading] = useState(true)
+  const [quoteBusy, setQuoteBusy] = useState(false)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
   const kind = missionKind(m)
   const isReady = m.status === 'to_invoice'
 
   useEffect(() => {
     let cancelled = false
     setKmLoading(true)
+    setEstimateLoading(true)
     fetch(`/api/missions/${m.id}/km`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setKm(d) })
@@ -148,8 +172,32 @@ function MissionBlock({
       .then(r => r.json())
       .then(d => { if (!cancelled) setSurcharges(d) })
       .catch(() => {})
+    fetch(`/api/missions/${m.id}/price-estimate`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setEstimate(d) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setEstimateLoading(false) })
     return () => { cancelled = true }
   }, [m.id])
+
+  async function pushQuoteOdoo() {
+    setQuoteBusy(true); setQuoteError(null)
+    try {
+      const res = await fetch(`/api/missions/${m.id}/quote`, { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok || !j.ok) {
+        setQuoteError(j.error || `Erreur ${res.status}`)
+        return
+      }
+      // Ouvre direct le devis Odoo dans nouvel onglet
+      if (j.quote?.url) window.open(j.quote.url, '_blank')
+      onQuoteCreated(m.id, j.quote.id, j.quote.url)
+    } catch (e: any) {
+      setQuoteError(e.message || 'Erreur réseau')
+    } finally {
+      setQuoteBusy(false)
+    }
+  }
 
   const totalCollected = payments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
@@ -255,6 +303,78 @@ function MissionBlock({
         </div>
       )}
 
+      {/* Section devis Odoo : preview montant + bouton creer/ouvrir */}
+      {isReady && (
+        <div className="bg-info/5 border border-info/30 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-info text-xs font-semibold uppercase tracking-wide">Devis Odoo</p>
+            {estimateLoading ? (
+              <span className="text-ink-faint text-xs">⏳ calcul…</span>
+            ) : estimate?.ok ? (
+              <span className="text-ink font-bold text-sm">
+                Total estimé : {estimate.total_eur.toFixed(2).replace('.', ',')} €
+              </span>
+            ) : (
+              <span className="text-warning text-xs" title={estimate?.reason || ''}>⚠ Tarif introuvable</span>
+            )}
+          </div>
+          {estimate?.ok && (
+            <div className="text-[11px] text-ink-secondary space-y-0.5">
+              {estimate.forfait != null && estimate.forfait > 0 && (
+                <p>• Forfait : {estimate.forfait.toFixed(2).replace('.', ',')} €</p>
+              )}
+              {estimate.km_extra > 0 && (
+                <p>• Km supp ({estimate.km_extra}) : {estimate.km_extra_eur.toFixed(2).replace('.', ',')} €</p>
+              )}
+              {estimate.parc_jours > 0 && (
+                <p>• Parc ({estimate.parc_jours} j) : {estimate.parc_eur.toFixed(2).replace('.', ',')} €</p>
+              )}
+              {estimate.surcharge_pct > 0 && (
+                <p>• Majoration {estimate.surcharge_pct}% : {estimate.surcharge_eur.toFixed(2).replace('.', ',')} €</p>
+              )}
+            </div>
+          )}
+          {!m.billed_to_id && (
+            <p className="text-warning text-[11px]">⚠ Aucun client à facturer (billed_to_id) — renseigne-le sur la fiche dispatch avant de créer le devis.</p>
+          )}
+          {quoteError && (
+            <p className="text-critical text-[11px]">⚠ {quoteError}</p>
+          )}
+          <div className="flex gap-2">
+            {m.odoo_quote_id && m.odoo_quote_url ? (
+              <>
+                <a
+                  href={m.odoo_quote_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 py-2 bg-info hover:bg-info/90 text-white rounded-lg text-xs font-semibold text-center transition"
+                >
+                  📄 Ouvrir le devis Odoo ↗
+                </a>
+                <button
+                  type="button"
+                  disabled={quoteBusy || !m.billed_to_id || !estimate?.ok}
+                  onClick={pushQuoteOdoo}
+                  className="px-3 py-2 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition"
+                  title="Recalculer + mettre à jour les lignes du devis Odoo"
+                >
+                  {quoteBusy ? '⏳…' : '🔄 Mettre à jour'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={quoteBusy || !m.billed_to_id || !estimate?.ok}
+                onClick={pushQuoteOdoo}
+                className="flex-1 py-2 bg-info hover:bg-info/90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition"
+              >
+                {quoteBusy ? '⏳ Création…' : '✨ Créer le devis Odoo'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Actions par fiche */}
       {isReady && (
         <div className="space-y-2 pt-1">
@@ -299,6 +419,8 @@ export default function FacturerModal({
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [noChargePrompt, setNoChargePrompt] = useState<{ ids: string[]; label: string } | null>(null)
   const [noChargeReason, setNoChargeReason] = useState('')
+  // Track des devis créés pendant la session (override les valeurs initiales)
+  const [createdQuotes, setCreatedQuotes] = useState<Record<string, { id: number; url: string }>>({})
 
   // Bloque le scroll de fond + ferme sur Escape
   useEffect(() => {
@@ -449,18 +571,27 @@ export default function FacturerModal({
 
           {/* Blocks par fiche */}
           <div className="space-y-3">
-            {all.map(m => (
-              <MissionBlock
-                key={m.id}
-                m={m}
-                payments={m.id === mission.id ? payments : []}
-                driverName={driverName}
-                busy={busy}
-                onValidate={() => askNumber([m.id], m.external_id || m.id.slice(0,8))}
-                onAuto={() => submit('auto', [m.id])}
-                onNoCharge={() => askNoCharge([m.id], m.external_id || m.id.slice(0,8))}
-              />
-            ))}
+            {all.map(m => {
+              const overrideQuote = createdQuotes[m.id]
+              const mWithQuote: BaseMission = overrideQuote
+                ? { ...m, odoo_quote_id: overrideQuote.id, odoo_quote_url: overrideQuote.url }
+                : m
+              return (
+                <MissionBlock
+                  key={m.id}
+                  m={mWithQuote}
+                  payments={m.id === mission.id ? payments : []}
+                  driverName={driverName}
+                  busy={busy}
+                  onValidate={() => askNumber([m.id], m.external_id || m.id.slice(0,8))}
+                  onAuto={() => submit('auto', [m.id])}
+                  onNoCharge={() => askNoCharge([m.id], m.external_id || m.id.slice(0,8))}
+                  onQuoteCreated={(missionId, quoteId, quoteUrl) => {
+                    setCreatedQuotes(prev => ({ ...prev, [missionId]: { id: quoteId, url: quoteUrl } }))
+                  }}
+                />
+              )
+            })}
           </div>
 
           {/* Actions chaine */}
