@@ -9,6 +9,7 @@
 // - Drop sur sidebar = retire du parc (parc_zone_key = null)
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
@@ -153,11 +154,20 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   const [pendingUnmerges, setPendingUnmerges]   = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const canvasRef = useRef<HTMLDivElement>(null)
+  const searchParams = useSearchParams()
 
   // Convenience flags pour le legacy code (editMode / blockMode toujours utilises)
   const editMode  = mode === 'edit'
   const blockMode = mode === 'block'
   const linkMode  = mode === 'link'
+
+  // Si l URL contient ?search=PLATE (venant du tableau Fourriere), pre-remplit
+  // le champ de recherche pour faire ressortir le vehicule cible.
+  useEffect(() => {
+    const initial = searchParams?.get('search')
+    if (initial) setSearch(initial)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),

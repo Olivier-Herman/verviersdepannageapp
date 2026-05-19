@@ -82,21 +82,24 @@ export async function GET(req: Request) {
     const plates = Array.from(new Set(
       (vehicles || []).map((v: any) => (v.license_plate || '').trim().toUpperCase()).filter(Boolean)
     ))
-    const placementByPlate = new Map<string, { row: number | null; slot: number | null }>()
+    const placementByPlate = new Map<string, { row: number | null; slot: number | null; mission_id: string }>()
     if (plates.length > 0) {
       const sb = createAdminClient()
       const { data: missions } = await sb
         .from('incoming_missions')
-        .select('vehicle_plate, parc_row_number, parc_slot_index, updated_at')
+        .select('id, vehicle_plate, parc_row_number, parc_slot_index, updated_at')
         .in('status', ['parked', 'delivering'])
         .in('vehicle_plate', plates)
-      // Si plusieurs missions par plaque (rare), garde la plus recente
+      // Si plusieurs missions par plaque (rare), garde la 1ere rencontree
       for (const m of (missions || [])) {
         const k = String(m.vehicle_plate || '').trim().toUpperCase()
         if (!k) continue
-        const existing = placementByPlate.get(k)
-        if (!existing) {
-          placementByPlate.set(k, { row: m.parc_row_number, slot: m.parc_slot_index })
+        if (!placementByPlate.has(k)) {
+          placementByPlate.set(k, {
+            mission_id: m.id,
+            row:        m.parc_row_number,
+            slot:       m.parc_slot_index,
+          })
         }
       }
     }
@@ -108,6 +111,7 @@ export async function GET(req: Request) {
       const place    = placementByPlate.get(plateKey)
       return {
         id:               v.id,
+        mission_id:       place?.mission_id || null,
         plate:            v.license_plate || null,
         vin:              v.vin_sn || null,
         brand:            v.brand_id?.[1] || '',

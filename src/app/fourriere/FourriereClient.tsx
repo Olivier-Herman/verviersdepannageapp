@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 
 interface Zone {
@@ -16,6 +16,7 @@ interface Zone {
 
 interface Vehicle {
   id:               number
+  mission_id:       string | null
   plate:            string | null
   vin:              string | null
   brand:            string
@@ -66,6 +67,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
   const [loading, setLoading]     = useState(true)
   const [filter, setFilter]       = useState<string>('')         // recherche libre
   const [zoneFilter, setZoneFilter] = useState<string>('all')    // code zone ou 'all'
+  const [onlyToPlace, setOnlyToPlace] = useState<boolean>(false) // toggle "À placer"
   const [moving, setMoving]       = useState<Vehicle | null>(null)
 
   async function load() {
@@ -83,8 +85,17 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
   }
   useEffect(() => { load() }, [])
 
+  // Un vehicule est "a placer" s il est dans une zone fourriere Odoo mais
+  // qu il manque rangee ou emplacement dans incoming_missions
+  function needsPlacement(v: Vehicle): boolean {
+    return v.zone_code != null && (v.parc_row_number == null || v.parc_slot_index == null)
+  }
+
+  const toPlaceCount = useMemo(() => vehicles.filter(needsPlacement).length, [vehicles])
+
   const filtered = useMemo(() => {
     let res = vehicles
+    if (onlyToPlace) res = res.filter(needsPlacement)
     if (zoneFilter !== 'all') res = res.filter(v => v.zone_code === zoneFilter)
     const q = filter.toLowerCase().trim()
     if (q) {
@@ -97,7 +108,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
       )
     }
     return res
-  }, [vehicles, filter, zoneFilter])
+  }, [vehicles, filter, zoneFilter, onlyToPlace])
 
   const countsByZone = useMemo(() => {
     const m = new Map<string, number>()
@@ -139,7 +150,23 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
 
         {/* Filtres zones (pills) */}
         <div className="bg-surface border rounded-2xl p-3 space-y-2">
-          <p className="text-ink-muted text-xs uppercase tracking-wide font-medium">Filtrer par zone</p>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-ink-muted text-xs uppercase tracking-wide font-medium">Filtrer par zone</p>
+            {toPlaceCount > 0 && (
+              <button
+                onClick={() => setOnlyToPlace(v => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
+                  onlyToPlace
+                    ? 'bg-warning text-white border-warning shadow-sm'
+                    : 'bg-warning/10 text-warning border-warning/40 hover:bg-warning/20'
+                }`}
+                title="N'afficher que les véhicules dont la rangée ou l'emplacement n'est pas encore défini"
+              >
+                <AlertCircle size={12} />
+                {onlyToPlace ? 'Tous' : 'À placer'} ({toPlaceCount})
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => setZoneFilter('all')}
@@ -205,18 +232,19 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               <tbody className="divide-y">
                 {filtered.map(v => {
                   const zoneColorClass = v.zone_code ? (ZONE_COLOR[v.zone_code] || 'bg-surface-2 text-ink-secondary border') : ''
+                  const toPlace = needsPlacement(v)
                   return (
-                    <tr key={v.id} className="hover:bg-surface-hover">
+                    <tr key={v.id} className={`hover:bg-surface-hover ${toPlace ? 'bg-warning/5' : ''}`}>
                       <td className="px-3 py-2">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold border ${zoneColorClass}`}>
                           {v.zone_code || '—'}
                         </span>
                       </td>
                       <td className="px-2 py-2 text-center font-mono text-ink-secondary">
-                        {v.parc_row_number ?? <span className="text-ink-faint">—</span>}
+                        {v.parc_row_number ?? <span className="text-warning font-bold" title="Rangée à définir">—</span>}
                       </td>
                       <td className="px-2 py-2 text-center font-mono text-ink-secondary">
-                        {v.parc_slot_index ?? <span className="text-ink-faint">—</span>}
+                        {v.parc_slot_index ?? <span className="text-warning font-bold" title="Emplacement à définir">—</span>}
                       </td>
                       <td className="px-3 py-2 font-mono text-ink font-semibold">{v.plate || '—'}</td>
                       <td className="px-3 py-2">
@@ -227,6 +255,16 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                       <td className="px-3 py-2 text-xs text-ink-muted">{fmtDate(v.last_update)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
+                          {toPlace && v.plate && (
+                            <Link
+                              href={`/fourriere/plan?search=${encodeURIComponent(v.plate)}`}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-warning hover:bg-warning/80 text-white rounded-md text-xs font-semibold transition"
+                              title="Placer ce véhicule sur le plan"
+                            >
+                              <MapPin size={12} />
+                              Placer
+                            </Link>
+                          )}
                           <a href={v.odoo_url} target="_blank" rel="noreferrer"
                             className="p-1.5 text-ink-faint hover:text-brand transition rounded"
                             title="Voir fiche Odoo">
