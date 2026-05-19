@@ -8,18 +8,22 @@
 //   apparaissent avec un bord rouge + badge "+N"
 // - Drop sur sidebar = retire du parc (parc_zone_key = null)
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, X } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 
 interface Zone {
   key:        string
   label:      string
   sort_order: number
+  pos_x:      number
+  pos_y:      number
+  width:      number
+  height:     number
 }
 
 interface Row {
@@ -52,18 +56,21 @@ interface State {
 
 const UNPLACED_DROP_ID = 'unplaced'
 
-export default function ParcPlanClient({ isDispatcher, isDriver, userRole, userName, userEmail, userModules }: {
-  isDispatcher: boolean
-  isDriver:     boolean
-  userRole:     string
-  userName:     string
-  userEmail?:   string
-  userModules:  string[]
+export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, userRole, userName, userEmail, userModules }: {
+  isDispatcher:   boolean
+  isDriver:       boolean
+  canEditLayout:  boolean
+  userRole:       string
+  userName:       string
+  userEmail?:     string
+  userModules:    string[]
 }) {
   const [state, setState] = useState<State | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeMission, setActiveMission] = useState<PlacedMission | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const canvasRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -167,47 +174,74 @@ export default function ParcPlanClient({ isDispatcher, isDriver, userRole, userN
         {/* Sidebar : a placer */}
         <UnplacedSidebar missions={state.toPlace} />
 
-        {/* Grille des zones */}
-        <div className="flex-1 space-y-4">
-          <div className="flex items-center justify-between">
+        {/* Canvas des zones */}
+        <div className="flex-1 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h1 className="text-ink font-bold text-xl">Plan du parc</h1>
               <p className="text-ink-muted text-xs mt-0.5">
-                Glisse les véhicules entre les slots. {isDriver && !isDispatcher && '— Tu peux placer uniquement dans A et Transit.'}
+                {editMode
+                  ? 'Glisse les zones pour les positionner, coin bas-droit pour redimensionner.'
+                  : `Glisse les véhicules entre les slots. ${isDriver && !isDispatcher ? '— Tu peux placer uniquement dans A et Transit.' : ''}`}
               </p>
             </div>
-            <button onClick={load} disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 bg-surface-2 border rounded-lg text-ink-secondary hover:text-ink text-xs transition disabled:opacity-50">
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Rafraîchir
-            </button>
+            <div className="flex items-center gap-2">
+              {canEditLayout && (
+                <button
+                  onClick={() => setEditMode(m => !m)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
+                    editMode
+                      ? 'bg-success hover:bg-success-soft text-white'
+                      : 'bg-surface-2 border text-ink-secondary hover:text-ink'
+                  }`}
+                >
+                  {editMode ? <><Check size={14} /> Terminer l&apos;édition</> : <><Edit3 size={14} /> Éditer le plan</>}
+                </button>
+              )}
+              <button onClick={load} disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-2 bg-surface-2 border rounded-lg text-ink-secondary hover:text-ink text-xs transition disabled:opacity-50">
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Rafraîchir
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          {/* Canvas avec ratio fixe — zones positionnees en absolute % */}
+          <div
+            ref={canvasRef}
+            className={`relative w-full bg-surface border rounded-2xl overflow-hidden ${editMode ? 'bg-grid-pattern' : ''}`}
+            style={{ aspectRatio: '4 / 3', minHeight: 400 }}
+          >
             {state.zones.map(zone => {
               const zRows = rowsByZone[zone.key] || []
               const canDriverDrop = !isDriver || isDispatcher || ['A', 'Transit'].includes(zone.key)
               return (
-                <div key={zone.key} className={`bg-surface-2 border rounded-2xl overflow-hidden ${canDriverDrop ? '' : 'opacity-50'}`}>
-                  <div className="px-4 py-2.5 border-b bg-surface flex items-center justify-between">
-                    <h2 className="text-ink font-bold">Zone {zone.label}</h2>
-                    {!canDriverDrop && (
-                      <span className="text-ink-faint text-[10px]">non autorisée</span>
-                    )}
-                  </div>
-                  <div className="p-3 space-y-2">
-                    {zRows.length === 0 ? (
-                      <p className="text-ink-faint text-xs italic text-center py-3">
-                        Aucune ligne configurée (admin → parc)
-                      </p>
-                    ) : zRows.map(row => (
-                      <RowSlots
-                        key={row.id}
-                        row={row}
-                        missions={missionsOnRow(zone.key, row.row_number)}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <ZoneOnCanvas
+                  key={zone.key}
+                  zone={zone}
+                  rows={zRows}
+                  missionsOnRow={missionsOnRow}
+                  canDriverDrop={canDriverDrop}
+                  editMode={editMode}
+                  canvasRef={canvasRef}
+                  onLayoutCommit={async (coords) => {
+                    // Optimistic update
+                    setState(s => s ? { ...s, zones: s.zones.map(z => z.key === zone.key ? { ...z, ...coords } : z) } : s)
+                    try {
+                      const res = await fetch(`/api/admin/parc/zones/${encodeURIComponent(zone.key)}`, {
+                        method:  'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify(coords),
+                      })
+                      if (!res.ok) {
+                        const j = await res.json().catch(() => ({}))
+                        throw new Error(j.error || `Erreur ${res.status}`)
+                      }
+                    } catch (e: any) {
+                      alert(`Sauvegarde plan : ${e.message}`)
+                      load() // rollback en relisant
+                    }
+                  }}
+                />
               )
             })}
           </div>
@@ -219,6 +253,129 @@ export default function ParcPlanClient({ isDispatcher, isDriver, userRole, userN
       </DragOverlay>
     </DndContext>
     </AppShell>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zone positionnée sur le canvas (drag + resize en mode édition)
+// ─────────────────────────────────────────────────────────────────────────────
+function ZoneOnCanvas({ zone, rows, missionsOnRow, canDriverDrop, editMode, canvasRef, onLayoutCommit }: {
+  zone:          Zone
+  rows:          Row[]
+  missionsOnRow: (zoneKey: string, rowNumber: number) => PlacedMission[]
+  canDriverDrop: boolean
+  editMode:      boolean
+  canvasRef:     React.RefObject<HTMLDivElement>
+  onLayoutCommit: (coords: { pos_x: number; pos_y: number; width: number; height: number }) => void
+}) {
+  // Coords locales pendant un drag/resize (commit en fin de geste seulement)
+  const [local, setLocal] = useState<{ pos_x: number; pos_y: number; width: number; height: number } | null>(null)
+  const pos_x  = local?.pos_x  ?? zone.pos_x
+  const pos_y  = local?.pos_y  ?? zone.pos_y
+  const width  = local?.width  ?? zone.width
+  const height = local?.height ?? zone.height
+
+  function startDrag(e: React.MouseEvent | React.TouchEvent, mode: 'move' | 'resize') {
+    if (!editMode || !canvasRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+    const canvas = canvasRef.current.getBoundingClientRect()
+    const startX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const startY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    const initial = { pos_x: zone.pos_x, pos_y: zone.pos_y, width: zone.width, height: zone.height }
+
+    const onMove = (mv: MouseEvent | TouchEvent) => {
+      const mx = 'touches' in mv ? mv.touches[0].clientX : mv.clientX
+      const my = 'touches' in mv ? mv.touches[0].clientY : mv.clientY
+      const dx = ((mx - startX) / canvas.width) * 100
+      const dy = ((my - startY) / canvas.height) * 100
+      if (mode === 'move') {
+        setLocal({
+          pos_x:  Math.max(0, Math.min(100 - initial.width,  initial.pos_x + dx)),
+          pos_y:  Math.max(0, Math.min(100 - initial.height, initial.pos_y + dy)),
+          width:  initial.width,
+          height: initial.height,
+        })
+      } else {
+        setLocal({
+          pos_x:  initial.pos_x,
+          pos_y:  initial.pos_y,
+          width:  Math.max(5, Math.min(100 - initial.pos_x, initial.width  + dx)),
+          height: Math.max(5, Math.min(100 - initial.pos_y, initial.height + dy)),
+        })
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend',  onUp)
+      setLocal(curr => {
+        if (curr) {
+          onLayoutCommit({
+            pos_x:  Math.round(curr.pos_x * 100) / 100,
+            pos_y:  Math.round(curr.pos_y * 100) / 100,
+            width:  Math.round(curr.width  * 100) / 100,
+            height: Math.round(curr.height * 100) / 100,
+          })
+        }
+        return null
+      })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('touchend',  onUp)
+  }
+
+  return (
+    <div
+      className={`absolute bg-surface-2 border rounded-xl overflow-hidden flex flex-col ${
+        editMode ? 'cursor-move ring-2 ring-brand/40 hover:ring-brand' : ''
+      } ${canDriverDrop ? '' : 'opacity-50'}`}
+      style={{
+        left:   `${pos_x}%`,
+        top:    `${pos_y}%`,
+        width:  `${width}%`,
+        height: `${height}%`,
+        transition: local ? 'none' : 'left 0.2s, top 0.2s, width 0.2s, height 0.2s',
+      }}
+      onMouseDown={editMode ? (e => startDrag(e, 'move')) : undefined}
+      onTouchStart={editMode ? (e => startDrag(e, 'move')) : undefined}
+    >
+      <div className="px-2 py-1 border-b bg-surface flex items-center justify-between flex-shrink-0">
+        <h2 className="text-ink font-bold text-sm truncate">Zone {zone.label}</h2>
+        {editMode && (
+          <span className="text-ink-faint text-[9px] font-mono">{width.toFixed(0)}×{height.toFixed(0)}%</span>
+        )}
+        {!editMode && !canDriverDrop && (
+          <span className="text-ink-faint text-[10px]">non autorisée</span>
+        )}
+      </div>
+      {!editMode && (
+        <div className="p-2 space-y-1.5 overflow-auto flex-1">
+          {rows.length === 0 ? (
+            <p className="text-ink-faint text-[10px] italic text-center py-2">
+              Aucune ligne configurée
+            </p>
+          ) : rows.map(row => (
+            <RowSlots
+              key={row.id}
+              row={row}
+              missions={missionsOnRow(zone.key, row.row_number)}
+            />
+          ))}
+        </div>
+      )}
+      {editMode && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 bg-brand cursor-nwse-resize rounded-tl"
+          onMouseDown={e => startDrag(e, 'resize')}
+          onTouchStart={e => startDrag(e, 'resize')}
+          title="Redimensionner"
+        />
+      )}
+    </div>
   )
 }
 

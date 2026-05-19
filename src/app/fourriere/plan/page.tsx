@@ -19,13 +19,15 @@ export default async function ParcPlanPage() {
   const roles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
   const normalized = roles.map(r => String(r ?? '').toLowerCase())
   const isSuperadmin = normalized.includes('superadmin')
-  const isDispatcher = isSuperadmin || normalized.some(r => r === 'admin' || r === 'dispatcher')
+  const isAdmin      = isSuperadmin || normalized.includes('admin')
+  const isDispatcher = isAdmin || normalized.includes('dispatcher')
   const isDriver     = isSuperadmin || normalized.includes('chauffeur') || normalized.includes('driver')
 
   return (
     <ParcPlanClient
       isDispatcher={isDispatcher}
       isDriver={isDriver}
+      canEditLayout={isAdmin}
       userRole={user.role || ''}
       userName={user.name || ''}
       userEmail={user.email || undefined}
