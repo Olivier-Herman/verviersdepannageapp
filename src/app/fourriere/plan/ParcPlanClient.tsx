@@ -652,10 +652,14 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
             </div>
           </div>
 
-          {/* Canvas avec ratio fixe — zones positionnees en absolute % */}
+          {/* Conteneur scrollable independant de la sidebar : on voit ~85vh
+              de canvas a la fois et on scroll a l interieur pendant le drag
+              (dnd-kit auto-scrolle le container quand on approche du bord). */}
+          <div className="lg:max-h-[85vh] lg:overflow-y-auto border rounded-2xl bg-surface">
+          {/* Canvas avec hauteur fixe — zones positionnees en absolute % */}
           <div
             ref={canvasRef}
-            className={`relative w-full bg-surface border rounded-2xl overflow-hidden ${editMode ? 'bg-grid-pattern' : ''}`}
+            className={`relative w-full ${editMode ? 'bg-grid-pattern' : ''}`}
             style={{ height: `${state.canvasHeightPx}px` }}
           >
             {state.zones.map(zone => {
@@ -699,6 +703,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                 />
               )
             })}
+          </div>
           </div>
         </div>
       </div>
