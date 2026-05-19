@@ -31,10 +31,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     'parc_day_price', 'surcharge_night_pct', 'surcharge_we_pct',
     'surcharge_holiday_pct', 'conditions', 'is_autofac',
     'effective_from', 'effective_to', 'notes',
+    // Champs mode "brackets" (tarif par tranches)
+    'pricing_mode', 'beyond_max_km', 'beyond_max_step_km', 'beyond_max_step_price',
   ]) {
     if (body[key] !== undefined) allowed[key] = body[key]
   }
   if (allowed.km_basis !== undefined) allowed.km_basis = allowed.km_basis === 'total' ? 'total' : 'charged'
+  if (allowed.pricing_mode !== undefined) {
+    allowed.pricing_mode = allowed.pricing_mode === 'brackets' ? 'brackets' : 'forfait'
+  }
   allowed.updated_at = new Date().toISOString()
 
   const { data, error } = await sb

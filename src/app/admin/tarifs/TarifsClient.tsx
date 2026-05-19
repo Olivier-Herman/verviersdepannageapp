@@ -113,21 +113,132 @@ export default function TarifsClient(props: Props) {
   const [editTariff, setEditTariff] = useState<Partial<Tariff> | null>(null)
   const [editSaving, setEditSaving] = useState(false)
 
-  // Brackets viewer modal (pour les tarifs en mode "brackets" IPA)
+  // Brackets viewer + editor modal
   const [bracketsModal, setBracketsModal] = useState<Tariff | null>(null)
   const [bracketsList, setBracketsList] = useState<Bracket[]>([])
   const [bracketsLoading, setBracketsLoading] = useState(false)
+  const [bracketEdit, setBracketEdit] = useState<Bracket | null>(null)  // édition d'une tranche
+  const [bracketSaving, setBracketSaving] = useState(false)
+  const [bracketsBeyondEdit, setBracketsBeyondEdit] = useState(false)   // édition des params beyond_max
+  const [showAddBracket, setShowAddBracket] = useState(false)
+  const [newBracket, setNewBracket] = useState<{ from_km: string; to_km: string; price_normal: string; price_majore: string }>({
+    from_km: '', to_km: '', price_normal: '', price_majore: '',
+  })
 
   async function openBrackets(t: Tariff) {
     setBracketsModal(t)
     setBracketsLoading(true)
     setBracketsList([])
+    setBracketEdit(null)
+    setShowAddBracket(false)
     try {
       const res = await fetch(`/api/admin/tarifs/${t.id}/brackets`)
       const j = await res.json()
       if (res.ok) setBracketsList(j.brackets || [])
     } catch {}
     setBracketsLoading(false)
+  }
+
+  async function reloadBrackets() {
+    if (!bracketsModal) return
+    try {
+      const res = await fetch(`/api/admin/tarifs/${bracketsModal.id}/brackets`)
+      const j = await res.json()
+      if (res.ok) setBracketsList(j.brackets || [])
+    } catch {}
+  }
+
+  async function saveBracketEdit() {
+    if (!bracketEdit) return
+    setBracketSaving(true)
+    try {
+      const res = await fetch(`/api/admin/tarifs/brackets/${bracketEdit.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          from_km:      bracketEdit.from_km,
+          to_km:        bracketEdit.to_km,
+          price_normal: bracketEdit.price_normal,
+          price_majore: bracketEdit.price_majore,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) { alert(`Erreur : ${j.error}`); return }
+      setBracketEdit(null)
+      await reloadBrackets()
+    } finally { setBracketSaving(false) }
+  }
+
+  async function deleteBracket(b: Bracket) {
+    if (!confirm(`Supprimer la tranche ${b.from_km}-${b.to_km} km ?`)) return
+    try {
+      const res = await fetch(`/api/admin/tarifs/brackets/${b.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        alert(`Erreur : ${j.error}`); return
+      }
+      await reloadBrackets()
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    }
+  }
+
+  async function createBracket() {
+    if (!bracketsModal) return
+    const fromKm = parseFloat(newBracket.from_km)
+    const toKm   = parseFloat(newBracket.to_km)
+    const pn     = parseFloat(newBracket.price_normal)
+    const pm     = parseFloat(newBracket.price_majore)
+    if (!Number.isFinite(fromKm) || !Number.isFinite(toKm) || toKm < fromKm) {
+      alert('Plage km invalide'); return
+    }
+    if (!Number.isFinite(pn) || !Number.isFinite(pm)) {
+      alert('Prix invalides'); return
+    }
+    try {
+      const res = await fetch('/api/admin/tarifs/brackets', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          source:         bracketsModal.source,
+          mission_type:   bracketsModal.mission_type,
+          from_km:        fromKm,
+          to_km:          toKm,
+          price_normal:   pn,
+          price_majore:   pm,
+          effective_from: bracketsModal.effective_from,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) { alert(`Erreur : ${j.error}`); return }
+      setShowAddBracket(false)
+      setNewBracket({ from_km: '', to_km: '', price_normal: '', price_majore: '' })
+      await reloadBrackets()
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    }
+  }
+
+  async function saveBeyondMax() {
+    if (!bracketsModal) return
+    setBracketSaving(true)
+    try {
+      const res = await fetch(`/api/admin/tarifs/${bracketsModal.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          beyond_max_km:         bracketsModal.beyond_max_km,
+          beyond_max_step_km:    bracketsModal.beyond_max_step_km,
+          beyond_max_step_price: bracketsModal.beyond_max_step_price,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) { alert(`Erreur : ${j.error}`); return }
+      // Update local + tariffs list
+      setTariffs(prev => prev.map(t => t.id === bracketsModal.id ? j.tariff : t))
+      setBracketsModal(j.tariff)
+      setBracketsBeyondEdit(false)
+    } finally { setBracketSaving(false) }
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -250,6 +361,10 @@ export default function TarifsClient(props: Props) {
       conditions:            '',
       is_autofac:            false,
       effective_from:        new Date().toISOString().slice(0, 10),
+      pricing_mode:          'forfait',
+      beyond_max_km:         null,
+      beyond_max_step_km:    null,
+      beyond_max_step_price: null,
     })
   }
 
@@ -600,10 +715,55 @@ export default function TarifsClient(props: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <FieldSelect label="Source" value={editTariff.source || ''} options={sources.map(s => s.source)} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
                 <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
-                <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
-                <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
-                <FieldNumber label="€/km extra" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
-                <FieldNumber label="€/jour parc" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+
+                {/* Toggle pricing mode : forfait vs brackets */}
+                <div className="col-span-2 bg-info/5 border border-info/30 rounded p-2">
+                  <label className="text-[10px] text-info uppercase tracking-wider font-semibold">Mode de tarification</label>
+                  <div className="flex gap-2 mt-1.5 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer flex-1">
+                      <input
+                        type="radio"
+                        name="pricing_mode"
+                        checked={(editTariff.pricing_mode || 'forfait') === 'forfait'}
+                        onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'forfait' }))}
+                      />
+                      <span>📐 <strong>Forfait</strong> (forfait + km supp + majorations classiques)</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer flex-1">
+                      <input
+                        type="radio"
+                        name="pricing_mode"
+                        checked={editTariff.pricing_mode === 'brackets'}
+                        onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'brackets' }))}
+                      />
+                      <span>📊 <strong>Tranches de km</strong> (IPA style, majoration intégrée)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Champs forfait — masques si mode brackets */}
+                {(editTariff.pricing_mode || 'forfait') === 'forfait' && (
+                  <>
+                    <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
+                    <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
+                    <FieldNumber label="€/km extra" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
+                    <FieldNumber label="€/jour parc" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+                  </>
+                )}
+
+                {/* Champs brackets — visible si mode brackets */}
+                {editTariff.pricing_mode === 'brackets' && (
+                  <>
+                    <FieldNumber label="Limite max (km)" value={editTariff.beyond_max_km ?? null} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_km: v }))} />
+                    <FieldNumber label="Pas au-delà (km)" value={editTariff.beyond_max_step_km ?? null} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_step_km: v }))} />
+                    <FieldNumber label="€ / pas" value={editTariff.beyond_max_step_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_step_price: v }))} />
+                    <FieldNumber label="€/jour parc (optionnel)" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+                    <div className="col-span-2 bg-warning/5 border border-warning/30 rounded p-2 text-xs text-ink-faint">
+                      ⚠️ Après création, clique sur la ligne dans le tableau pour ajouter les tranches (from_km, to_km, prix normal, prix majoré).
+                    </div>
+                  </>
+                )}
+
                 <div className="col-span-2">
                   <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
                   <select
@@ -612,11 +772,11 @@ export default function TarifsClient(props: Props) {
                     className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
                   >
                     <option value="charged">Km chargés (incident → destination) — assurances</option>
-                    <option value="total">Km totaux (dépôt → incident → destination → retour) — privé / garage</option>
+                    <option value="total">Km totaux (dépôt → incident → destination → retour) — privé / garage / IPA</option>
                   </select>
                 </div>
                 <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
-                  💡 <strong>Majorations</strong> nuit/WE/JF gérées par le module <a href="/admin/surcharges" className="underline">Surcharges</a> (calculées selon l'heure réelle d'intervention).
+                  💡 <strong>Majorations</strong> (mode Forfait) gérées par le module <a href="/admin/surcharges" className="underline">Surcharges</a>. En mode Tranches, les majorations sont intégrées dans le prix majoré de chaque bracket (selon heure d'appel &lt; 7h, ≥ 18h, sa, di, JF BE).
                 </div>
                 <div>
                   <label className="text-[10px] text-ink-faint uppercase tracking-wider">Effective from</label>
@@ -673,7 +833,7 @@ export default function TarifsClient(props: Props) {
           </div>
         )}
 
-        {/* ── Brackets viewer modal (tarifs IPA en mode "brackets") ─────────── */}
+        {/* ── Brackets editor modal (tarifs IPA en mode "brackets") ─────────── */}
         {bracketsModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-surface rounded-lg p-6 max-w-3xl w-full max-h-[85vh] flex flex-col">
@@ -683,54 +843,142 @@ export default function TarifsClient(props: Props) {
                     📊 Tarif par tranches — {SOURCE_LABELS[bracketsModal.source] || bracketsModal.source} · {TYPE_LABELS[bracketsModal.mission_type] || bracketsModal.mission_type}
                   </h2>
                   <p className="text-xs text-ink-faint mt-1">
-                    En vigueur depuis {bracketsModal.effective_from} ·
-                    Au-delà de {bracketsModal.beyond_max_km} km : +{Number(bracketsModal.beyond_max_step_price || 0).toFixed(2).replace('.', ',')} € par tranche de {bracketsModal.beyond_max_step_km} km
+                    En vigueur depuis {bracketsModal.effective_from}
                   </p>
-                  {bracketsModal.notes && (
-                    <p className="text-xs text-ink-secondary mt-1 italic">{bracketsModal.notes}</p>
-                  )}
                 </div>
                 <button onClick={() => setBracketsModal(null)} className="text-ink-faint hover:text-ink text-xl">×</button>
+              </div>
+
+              {/* Paramètres au-delà du max (editables) */}
+              <div className="bg-surface-hover/50 rounded p-3 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-ink-secondary uppercase tracking-wider">Au-delà du maximum</p>
+                  {!bracketsBeyondEdit ? (
+                    <button onClick={() => setBracketsBeyondEdit(true)} className="text-xs text-info hover:underline">✏️ Modifier</button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <button onClick={saveBeyondMax} disabled={bracketSaving} className="text-xs px-2 py-0.5 bg-brand text-surface rounded disabled:opacity-50">{bracketSaving ? '…' : '✓'}</button>
+                      <button onClick={() => setBracketsBeyondEdit(false)} className="text-xs px-2 py-0.5 bg-surface-hover rounded">✕</button>
+                    </div>
+                  )}
+                </div>
+                {bracketsBeyondEdit ? (
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <label className="text-ink-faint">Limite max (km)</label>
+                      <input type="number" value={bracketsModal.beyond_max_km ?? ''} onChange={e => setBracketsModal({ ...bracketsModal, beyond_max_km: e.target.value === '' ? null : parseInt(e.target.value, 10) })} className="w-full mt-1 px-2 py-1 bg-surface rounded" />
+                    </div>
+                    <div>
+                      <label className="text-ink-faint">Pas (km)</label>
+                      <input type="number" value={bracketsModal.beyond_max_step_km ?? ''} onChange={e => setBracketsModal({ ...bracketsModal, beyond_max_step_km: e.target.value === '' ? null : parseInt(e.target.value, 10) })} className="w-full mt-1 px-2 py-1 bg-surface rounded" />
+                    </div>
+                    <div>
+                      <label className="text-ink-faint">€ / pas</label>
+                      <input type="number" step="0.01" value={bracketsModal.beyond_max_step_price ?? ''} onChange={e => setBracketsModal({ ...bracketsModal, beyond_max_step_price: e.target.value === '' ? null : parseFloat(e.target.value) })} className="w-full mt-1 px-2 py-1 bg-surface rounded" />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink-secondary">
+                    Au-delà de <strong>{bracketsModal.beyond_max_km ?? '—'} km</strong> : +<strong>{Number(bracketsModal.beyond_max_step_price || 0).toFixed(2).replace('.', ',')} €</strong> par tranche de <strong>{bracketsModal.beyond_max_step_km ?? '—'} km</strong>
+                  </p>
+                )}
               </div>
 
               <div className="flex-1 overflow-y-auto">
                 {bracketsLoading ? (
                   <p className="text-center text-ink-faint py-8">⏳ Chargement…</p>
                 ) : bracketsList.length === 0 ? (
-                  <p className="text-center text-ink-faint py-8">Aucune tranche trouvée.</p>
+                  <p className="text-center text-ink-faint py-8">Aucune tranche. Clique "+ Ajouter" ci-dessous.</p>
                 ) : (
                   <table className="w-full text-sm">
-                    <thead className="text-xs text-ink-faint uppercase tracking-wider bg-surface-hover sticky top-0">
+                    <thead className="text-xs text-ink-faint uppercase tracking-wider bg-surface-hover sticky top-0 z-10">
                       <tr>
-                        <th className="text-left p-2">Tranche</th>
+                        <th className="text-left p-2">Tranche (km)</th>
                         <th className="text-right p-2">Prix normal (HT)</th>
                         <th className="text-right p-2">Prix majoré (HT)</th>
-                        <th className="text-right p-2">Différence</th>
+                        <th className="text-right p-2 w-24"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {bracketsList.map(b => {
+                        const isEditing = bracketEdit?.id === b.id
+                        if (isEditing) {
+                          return (
+                            <tr key={b.id} className="border-t border-surface-hover bg-info/5">
+                              <td className="p-1">
+                                <div className="flex items-center gap-1">
+                                  <input type="number" value={bracketEdit.from_km} onChange={e => setBracketEdit({ ...bracketEdit, from_km: parseFloat(e.target.value) || 0 })} className="w-20 px-2 py-1 bg-surface rounded text-sm" />
+                                  <span>-</span>
+                                  <input type="number" value={bracketEdit.to_km} onChange={e => setBracketEdit({ ...bracketEdit, to_km: parseFloat(e.target.value) || 0 })} className="w-20 px-2 py-1 bg-surface rounded text-sm" />
+                                </div>
+                              </td>
+                              <td className="p-1 text-right">
+                                <input type="number" step="0.01" value={bracketEdit.price_normal} onChange={e => setBracketEdit({ ...bracketEdit, price_normal: parseFloat(e.target.value) || 0 })} className="w-24 px-2 py-1 bg-surface rounded text-sm text-right" />
+                              </td>
+                              <td className="p-1 text-right">
+                                <input type="number" step="0.01" value={bracketEdit.price_majore} onChange={e => setBracketEdit({ ...bracketEdit, price_majore: parseFloat(e.target.value) || 0 })} className="w-24 px-2 py-1 bg-surface rounded text-sm text-right" />
+                              </td>
+                              <td className="p-1 text-right">
+                                <button onClick={saveBracketEdit} disabled={bracketSaving} className="text-xs px-2 py-1 bg-brand text-surface rounded mr-1 disabled:opacity-50">{bracketSaving ? '…' : '✓'}</button>
+                                <button onClick={() => setBracketEdit(null)} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
+                              </td>
+                            </tr>
+                          )
+                        }
                         const diff = Number(b.price_majore) - Number(b.price_normal)
                         return (
-                          <tr key={b.id} className="border-t border-surface-hover">
-                            <td className="p-2 font-mono">{b.from_km} - {b.to_km} km</td>
+                          <tr key={b.id} className="border-t border-surface-hover hover:bg-surface-hover/30">
+                            <td className="p-2 font-mono">{b.from_km} - {b.to_km}</td>
                             <td className="p-2 text-right">{Number(b.price_normal).toFixed(2).replace('.', ',')} €</td>
-                            <td className="p-2 text-right text-warning">{Number(b.price_majore).toFixed(2).replace('.', ',')} €</td>
-                            <td className="p-2 text-right text-ink-muted text-xs">+{diff.toFixed(2).replace('.', ',')} €</td>
+                            <td className="p-2 text-right text-warning">{Number(b.price_majore).toFixed(2).replace('.', ',')} € <span className="text-ink-faint text-xs">(+{diff.toFixed(2).replace('.', ',')})</span></td>
+                            <td className="p-2 text-right">
+                              <button onClick={() => setBracketEdit(b)} className="text-info hover:underline text-xs mr-2">✏️</button>
+                              <button onClick={() => deleteBracket(b)} className="text-red-500 hover:underline text-xs">🗑️</button>
+                            </td>
                           </tr>
                         )
                       })}
+                      {/* Ligne d'ajout */}
+                      {showAddBracket && (
+                        <tr className="border-t border-surface-hover bg-success/5">
+                          <td className="p-1">
+                            <div className="flex items-center gap-1">
+                              <input type="number" placeholder="from" value={newBracket.from_km} onChange={e => setNewBracket({ ...newBracket, from_km: e.target.value })} className="w-20 px-2 py-1 bg-surface rounded text-sm" />
+                              <span>-</span>
+                              <input type="number" placeholder="to" value={newBracket.to_km} onChange={e => setNewBracket({ ...newBracket, to_km: e.target.value })} className="w-20 px-2 py-1 bg-surface rounded text-sm" />
+                            </div>
+                          </td>
+                          <td className="p-1 text-right">
+                            <input type="number" step="0.01" placeholder="0,00" value={newBracket.price_normal} onChange={e => setNewBracket({ ...newBracket, price_normal: e.target.value })} className="w-24 px-2 py-1 bg-surface rounded text-sm text-right" />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input type="number" step="0.01" placeholder="0,00" value={newBracket.price_majore} onChange={e => setNewBracket({ ...newBracket, price_majore: e.target.value })} className="w-24 px-2 py-1 bg-surface rounded text-sm text-right" />
+                          </td>
+                          <td className="p-1 text-right">
+                            <button onClick={createBracket} className="text-xs px-2 py-1 bg-brand text-surface rounded mr-1">✓</button>
+                            <button onClick={() => { setShowAddBracket(false); setNewBracket({ from_km: '', to_km: '', price_normal: '', price_majore: '' }) }} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 )}
               </div>
 
-              <div className="mt-4 pt-3 border-t border-surface-hover text-xs text-ink-faint">
-                Majoration appliquée si : heure d'appel &lt; 7h, ≥ 18h, samedi, dimanche, ou jour férié BE.
-                Édition manuelle non implémentée (modifier directement en SQL si besoin).
+              <div className="mt-4 pt-3 border-t border-surface-hover flex items-center justify-between text-xs">
+                <span className="text-ink-faint">
+                  Majoration : heure d'appel &lt; 7h, ≥ 18h, samedi, dimanche, JF BE
+                </span>
+                <button
+                  onClick={() => setShowAddBracket(true)}
+                  disabled={showAddBracket}
+                  className="px-3 py-1.5 bg-success/15 text-success border border-success/30 rounded text-xs font-medium hover:bg-success/25 disabled:opacity-50"
+                >
+                  + Ajouter une tranche
+                </button>
               </div>
 
-              <div className="mt-4 flex justify-end">
+              <div className="mt-3 flex justify-end">
                 <button onClick={() => setBracketsModal(null)} className="px-4 py-2 bg-brand text-surface rounded font-medium text-sm">
                   Fermer
                 </button>
