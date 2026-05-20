@@ -10,6 +10,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Script from 'next/script'
+import ScanButton from '@/components/ScanButton'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -406,6 +407,8 @@ export default function NewDriverMissionClient() {
                       placeholder="Ex: 1-ABC-123"
                       className="flex-1 bg-surface border border rounded-xl px-4 py-3.5 text-ink font-mono text-base uppercase focus:outline-none focus:border-brand placeholder:text-ink-faint placeholder:normal-case"
                     />
+                    <ScanButton mode="plate" value={plateQuery} onScan={setPlateQuery}
+                      className="px-4 py-3.5 bg-brand/10 text-brand rounded-xl font-medium text-sm" label="📷" />
                     <button onClick={searchVehicle} disabled={searching || plateQuery.length < 3}
                       className="px-4 py-3.5 bg-brand disabled:opacity-40 text-white rounded-xl font-medium text-sm transition">
                       {searching ? '⏳' : '🔍'}
@@ -515,9 +518,13 @@ export default function NewDriverMissionClient() {
                   {/* Plaque */}
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">Plaque *</label>
-                    <input value={manualPlate} onChange={e => setManualPlate(e.target.value.toUpperCase())}
-                      placeholder="1-ABC-123"
-                      className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink font-mono text-sm uppercase focus:outline-none focus:border-brand" />
+                    <div className="flex gap-1.5">
+                      <input value={manualPlate} onChange={e => setManualPlate(e.target.value.toUpperCase())}
+                        placeholder="1-ABC-123"
+                        className="flex-1 bg-surface border border rounded-xl px-3 py-3 text-ink font-mono text-sm uppercase focus:outline-none focus:border-brand" />
+                      <ScanButton mode="plate" value={manualPlate} onScan={setManualPlate}
+                        className="px-3 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+                    </div>
                   </div>
 
                   {/* VIN */}
@@ -525,9 +532,13 @@ export default function NewDriverMissionClient() {
                     <label className="block text-ink-muted text-xs mb-1.5">
                       VIN / Châssis <span className="text-ink-faint">(souhaité)</span>
                     </label>
-                    <input value={manualVin} onChange={e => setManualVin(e.target.value.toUpperCase())}
-                      placeholder="WBA3A5C55DF..."
-                      className="w-full bg-surface border border rounded-xl px-3 py-3 text-ink font-mono text-xs uppercase focus:outline-none focus:border-brand" />
+                    <div className="flex gap-1.5">
+                      <input value={manualVin} onChange={e => setManualVin(e.target.value.toUpperCase())}
+                        placeholder="WBA3A5C55DF..."
+                        className="flex-1 bg-surface border border rounded-xl px-3 py-3 text-ink font-mono text-xs uppercase focus:outline-none focus:border-brand" />
+                      <ScanButton mode="vin" value={manualVin} onScan={setManualVin}
+                        className="px-3 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+                    </div>
                   </div>
                 </div>
               )}

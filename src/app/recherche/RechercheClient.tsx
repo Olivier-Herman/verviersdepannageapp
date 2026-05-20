@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import AppShell from '@/components/layout/AppShell'
 import { useSheetStack } from '@/components/sheets/SheetStackProvider'
+import ScanButton from '@/components/ScanButton'
 import { Search, Loader2, Sparkles, Clock, X, ExternalLink, FileText, ArrowRight } from 'lucide-react'
 
 interface SearchResult {
@@ -282,6 +283,13 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                       <X size={18} />
                     </button>
                   )}
+                  <ScanButton
+                    mode="plate"
+                    value={query}
+                    onScan={text => { setQuery(text); inputRef.current?.focus() }}
+                    className="p-1.5 text-ink-muted hover:text-brand transition flex-shrink-0 text-lg"
+                    label="📷"
+                  />
                 </div>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import CreateClientModal from '@/components/CreateClientModal'
+import ScanButton from '@/components/ScanButton'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -807,8 +808,12 @@ export default function NewMissionClient({
                   {/* Plaque */}
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">Plaque</label>
-                    <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
-                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                    <div className="flex gap-1.5">
+                      <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
+                        className="flex-1 bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                      <ScanButton mode="plate" value={plate} onScan={setPlate}
+                        className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+                    </div>
                   </div>
 
                   {/* Marque */}
@@ -852,8 +857,12 @@ export default function NewMissionClient({
                   {/* VIN */}
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">VIN / Châssis</label>
-                    <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
-                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                    <div className="flex gap-1.5">
+                      <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
+                        className="flex-1 bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm font-mono uppercase focus:outline-none focus:border-brand" />
+                      <ScanButton mode="vin" value={vin} onScan={setVin}
+                        className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">Carburant</label>

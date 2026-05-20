@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Search, X, Loader2, Sparkles } from 'lucide-react'
 import { useSheetStack } from '@/components/sheets/SheetStackProvider'
+import ScanButton from '@/components/ScanButton'
 
 interface SearchResult {
   category: string
@@ -196,6 +197,13 @@ export default function GlobalSearch() {
                 onKeyDown={handleKeyDown}
                 placeholder="Plaque, VIN, client, adresse, date, dépanneur..."
                 className="flex-1 bg-transparent text-ink text-base font-medium focus:outline-none placeholder:text-ink-faint placeholder:font-normal"
+              />
+              <ScanButton
+                mode="plate"
+                value={query}
+                onScan={text => { setQuery(text); inputRef.current?.focus() }}
+                className="text-ink-muted hover:text-brand transition flex-shrink-0 p-1 text-lg"
+                label="📷"
               />
               <button onClick={() => setOpen(false)} className="text-ink-muted hover:text-critical hover:rotate-90 transition-all duration-200 flex-shrink-0 p-1">
                 <X size={18} />

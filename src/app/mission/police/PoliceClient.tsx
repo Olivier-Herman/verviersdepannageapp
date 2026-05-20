@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
 
 type MissionType = 'accident' | 'saisie' | 'mal_garee' | 'snc' | 'appel_prive' | 'avp'
@@ -354,16 +355,28 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
               <label className="block text-ink-secondary text-xs font-medium mb-1">
                 Plaque<span className="text-critical ml-0.5">*</span>
               </label>
-              <input type="text" value={plate}
-                onChange={e => {
-                  setPlate(e.target.value.toUpperCase())
-                  if (vehicleFromOdoo) setVehicleFromOdoo(false)
-                }}
-                onBlur={searchVehicleByPlate}
-                placeholder="1ABC234"
-                className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+              <div className="flex gap-1.5">
+                <input type="text" value={plate}
+                  onChange={e => {
+                    setPlate(e.target.value.toUpperCase())
+                    if (vehicleFromOdoo) setVehicleFromOdoo(false)
+                  }}
+                  onBlur={searchVehicleByPlate}
+                  placeholder="1ABC234"
+                  className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+                <ScanButton mode="plate" value={plate} onScan={text => { setPlate(text); if (vehicleFromOdoo) setVehicleFromOdoo(false) }}
+                  className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+              </div>
             </div>
-            <LInput label="VIN" value={vin} onChange={v => setVin(v.toUpperCase())} placeholder="Optionnel" />
+            <div>
+              <label className="block text-ink-secondary text-xs font-medium mb-1">VIN</label>
+              <div className="flex gap-1.5">
+                <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder="Optionnel"
+                  className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+                <ScanButton mode="vin" value={vin} onScan={setVin}
+                  className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+              </div>
+            </div>
           </div>
 
           {/* Marque */}

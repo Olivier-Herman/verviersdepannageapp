@@ -10,6 +10,7 @@ import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
+import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import AppShell from '@/components/layout/AppShell'
 
@@ -1649,7 +1650,11 @@ export default function MissionDetailClient({
 
                   <div className="grid grid-cols-3 gap-4">
                     <Field label="Plaque">
-                      <Input value={form.vehicle_plate} onChange={f('vehicle_plate')} placeholder="1ABC234" />
+                      <div className="flex gap-1.5">
+                        <Input value={form.vehicle_plate} onChange={f('vehicle_plate')} placeholder="1ABC234" />
+                        <ScanButton mode="plate" value={form.vehicle_plate || ''} onScan={f('vehicle_plate')}
+                          className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+                      </div>
                     </Field>
                     <Field label="Marque">
                       <select
@@ -1687,7 +1692,11 @@ export default function MissionDetailClient({
                       <Select value={form.vehicle_gearbox} onChange={f('vehicle_gearbox')} options={GEARBOX_TYPES} />
                     </Field>
                     <Field label="N° Châssis (VIN)">
-                      <Input value={form.vehicle_vin} onChange={f('vehicle_vin')} placeholder="VIN..." />
+                      <div className="flex gap-1.5">
+                        <Input value={form.vehicle_vin} onChange={f('vehicle_vin')} placeholder="VIN..." />
+                        <ScanButton mode="vin" value={form.vehicle_vin || ''} onScan={f('vehicle_vin')}
+                          className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
+                      </div>
                     </Field>
                   </div>
                 </div>
