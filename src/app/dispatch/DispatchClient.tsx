@@ -132,6 +132,19 @@ const TYPE_LABELS: Record<string, string> = {
   autre:            '📋 Autre',
 }
 
+/**
+ * Label du type de mission. Prend en compte `incident_type=relivraison`
+ * pour distinguer REL d un REM standard (cas IMA Benelux : la mission
+ * principale et sa relivraison sont toutes les deux mission_type=remorquage,
+ * et c est incident_type qui les distingue).
+ */
+function getTypeLabel(m: { mission_type?: string | null; incident_type?: string | null }): string {
+  if (m.incident_type === 'relivraison') return '🚛 REL'
+  if (m.incident_type === 'dpr')          return '📍 DPR'
+  if (!m.mission_type) return '—'
+  return TYPE_LABELS[m.mission_type] || m.mission_type
+}
+
 const TABS = [
   { key: 'new',         label: 'En commande', countKey: 'new'         as const },
   { key: 'dispatching', label: 'En attente',  countKey: 'dispatching' as const },
@@ -143,7 +156,7 @@ const TABS = [
 // Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees
 // qui offre une vue plus riche (chips de filtre, tampons, toggle archives).
 
-const SOURCES = ['touring','ethias','vivium','axa','ardenne','mondial','aginsurance','vab','police','prive','garage']
+const SOURCES = ['touring','ethias','vivium','pv_assistance','kaze','axa','ardenne','mondial','aginsurance','vab','police','prive','garage']
 
 
 type SortMode = 'intervention_date' | 'received_at'
@@ -560,7 +573,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
           {mission.mission_type && (
             <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-ink-secondary">
-              {TYPE_LABELS[mission.mission_type] || mission.mission_type}
+              {getTypeLabel(mission)}
             </span>
           )}
         </div>
@@ -1149,7 +1162,7 @@ export default function DispatchClient({
                           )}
                         </td>
                         <td className="px-4 py-3 text-ink-secondary text-xs">
-                          {m.mission_type ? (TYPE_LABELS[m.mission_type] || m.mission_type) : '—'}
+                          {getTypeLabel(m)}
                         </td>
                         <td className="px-4 py-3">
                           {m.vehicle_plate && <p className="text-ink font-bold font-mono text-xs">{m.vehicle_plate}</p>}
