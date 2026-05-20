@@ -126,6 +126,41 @@ export async function importKazeJob(
     }
   }
 
+  // Auto-link REM ↔ REL (convention IMA : ref suffixe AA = mission principale,
+  // AB = relivraison). On detecte les 2 sens :
+  //   - Si on importe la REL et la REM existe deja → on set parent_mission_id
+  //   - Si on importe la REM et la REL existe deja → on backfill la REL apres
+  //     l upsert pour qu elle pointe vers cette nouvelle REM
+  let parent_mission_id: string | null = null
+  let relToBackfillId:   string | null = null
+  if (mapped.dossier_number) {
+    const ref     = mapped.dossier_number
+    const baseRef = ref.replace(/A[A-Z]$/, '')
+    const isRel   = mapped.incident_type === 'relivraison' || /AB$/.test(ref)
+
+    if (isRel && baseRef !== ref) {
+      // On cherche la REM principale (ref se terminant par AA)
+      const { data: parent } = await sb
+        .from('incoming_missions')
+        .select('id')
+        .eq('source', 'kaze')
+        .ilike('dossier_number', `${baseRef}AA`)
+        .maybeSingle()
+      if (parent?.id) parent_mission_id = parent.id
+    } else if (/AA$/.test(ref)) {
+      // On importe la REM principale. Y a-t-il une REL qui pointe ici ?
+      const { data: relChild } = await sb
+        .from('incoming_missions')
+        .select('id, parent_mission_id')
+        .eq('source', 'kaze')
+        .ilike('dossier_number', `${baseRef}AB`)
+        .maybeSingle()
+      if (relChild?.id && !relChild.parent_mission_id) {
+        relToBackfillId = relChild.id
+      }
+    }
+  }
+
   // Payload commun (insert et update)
   const payload: Record<string, any> = {
     source:               'kaze',
@@ -159,6 +194,10 @@ export async function importKazeJob(
     payload.billed_to_name = billedToName
   }
 
+  if (parent_mission_id) {
+    payload.parent_mission_id = parent_mission_id
+  }
+
   try {
     if (existingId) {
       // UPDATE : on n ecrase pas status/dispatch_mode/intervention_date qui
@@ -190,6 +229,21 @@ export async function importKazeJob(
     }
 
     result.ok = true
+
+    // Backfill : si on vient d inserer/updater la REM principale et qu une REL
+    // orpheline existe deja, on la fait pointer vers cette REM
+    if (relToBackfillId && result.mission_id) {
+      const { error: backfillErr } = await sb
+        .from('incoming_missions')
+        .update({ parent_mission_id: result.mission_id })
+        .eq('id', relToBackfillId)
+        .is('parent_mission_id', null)  // safety : ne pas ecraser si deja set
+      if (backfillErr) {
+        warnings.push(`Backfill REL parent_mission_id échoué : ${backfillErr.message}`)
+      } else {
+        warnings.push(`REL ${relToBackfillId} liee a cette REM (backfill)`)
+      }
+    }
 
     // Log mission
     await sb.from('mission_logs').insert({
