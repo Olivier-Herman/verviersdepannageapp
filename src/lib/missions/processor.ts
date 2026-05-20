@@ -675,10 +675,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     // Chercher une mission existante avec le même groupe dossier
     let existingMissionId: string | null = null
+    let existingKazeJobId: string | null = null
     if (dossierGroup) {
       let existingQuery = supabase
         .from('incoming_missions')
-        .select('id, external_id, status')
+        .select('id, external_id, status, kaze_job_id')
         .not('id', 'eq', placeholderId || '')
         .not('status', 'in', '("ignored","cancelled","completed")')
 
@@ -691,8 +692,26 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       const { data: existing } = await existingQuery.maybeSingle()
       if (existing) {
         existingMissionId = existing.id
+        existingKazeJobId = (existing as any).kaze_job_id || null
         console.log(`[Processor] Dossier existant trouvé: ${existing.external_id} (${existing.id}) → mise à jour`)
       }
+    }
+
+    // Protection Kaze : si la mission existante vient deja de l API Kaze (IMA),
+    // les donnees Kaze sont plus fiables que le parsing email. On marque juste
+    // le mail comme lu + log + on ne touche pas aux champs business.
+    // Sera enlevee quand IMA cessera definitivement l envoi email pour les
+    // sources couvertes par Kaze.
+    if (existingMissionId && existingKazeJobId) {
+      console.log(`[Processor] Dossier ${dossierGroup} deja synchronise via Kaze (job ${existingKazeJobId}) — skip update email`)
+      await markAsRead(token, messageId)
+      await supabase.from('mission_logs').insert({
+        mission_id: existingMissionId,
+        action:     'email_skipped_kaze_priority',
+        notes:      `Mail ${source.toUpperCase()} ignoré : mission deja synchronisée via Kaze`,
+        metadata:   { source_email_id: messageId, kaze_job_id: existingKazeJobId, from: fromEmail },
+      })
+      return { status: 'duplicate', externalId: parsed.external_id, source }
     }
 
     // Si dossier existant → mettre à jour + supprimer le placeholder

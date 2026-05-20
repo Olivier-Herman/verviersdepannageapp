@@ -105,6 +105,8 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   touring:  { label: 'TOURING',  color: 'bg-blue-600'   },
   ethias:   { label: 'ETHIAS',   color: 'bg-green-600'  },
   vivium:   { label: 'VIVIUM',   color: 'bg-purple-600' },
+  pv_assistance: { label: 'P&V', color: 'bg-fuchsia-600' },
+  kaze:     { label: 'KAZE',     color: 'bg-emerald-600' },
   axa:      { label: 'IPA',      color: 'bg-red-600'    },
   ardenne:  { label: 'ARDENNE',  color: 'bg-orange-600' },
   mondial:  { label: 'MONDIAL',  color: 'bg-teal-600'   },
