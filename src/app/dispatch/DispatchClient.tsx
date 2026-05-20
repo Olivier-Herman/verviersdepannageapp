@@ -120,12 +120,14 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
 
 const TYPE_LABELS: Record<string, string> = {
   remorquage:       '🚛 REM',
+  relivraison:      '🚛 REL',
   depannage:        '🔧 DSP',
   transport:        '🚐 Transport',
   trajet_vide:      '📍 TVD',
   reparation_place: '🔩 RPL',
   DSP:              '🔧 DSP',
   REM:              '🚛 REM',
+  REL:              '🚛 REL',
   Transport:        '🚐 Transport',
   DPR:              '📍 DPR',
   VR:               '🚗 VR',

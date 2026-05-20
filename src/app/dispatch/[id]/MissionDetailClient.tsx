@@ -152,7 +152,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   parse_error: { label: 'Erreur',       color: 'text-critical'  },
 }
 
-const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'autre']
+const MISSION_TYPES = ['remorquage', 'relivraison', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'autre']
 const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
 const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
 

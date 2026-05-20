@@ -36,6 +36,7 @@ const ALL_SOURCES = [
 const MISSION_TYPES = [
   { value: 'DSP',       label: '🔧 DSP — Dépannage sur place' },
   { value: 'REM',       label: '🚛 REM — Remorquage' },
+  { value: 'REL',       label: '🚛 REL — Relivraison (depuis dépôt)' },
   { value: 'Transport', label: '🚐 Transport / Rapatriement' },
   { value: 'DPR',       label: '📍 DPR — Déplacement pour rien' },
   { value: 'VR',        label: '🚗 VR — Véhicule de remplacement' },

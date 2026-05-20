@@ -27,10 +27,10 @@ export const maxDuration = 60
 function missionKind(m: any): string {
   const it = (m.incident_type || '').toLowerCase()
   const mt = (m.mission_type   || '').toLowerCase()
-  if (it === 'relivraison' || m.parent_mission_id) return 'REL'
-  if (it === 'dpr')                                 return 'DPR'
-  if (mt === 'remorquage')                          return 'REM'
-  if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt)) return 'DSP'
+  if (it === 'relivraison' || mt === 'relivraison' || m.parent_mission_id) return 'REL'
+  if (it === 'dpr')                                                         return 'DPR'
+  if (mt === 'remorquage')                                                  return 'REM'
+  if (['depannage', 'reparation_place', 'trajet_vide'].includes(mt))        return 'DSP'
   return 'AUTRE'
 }
 

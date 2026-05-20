@@ -264,6 +264,7 @@ export type MissionStatus =
 
 export type MissionType =
   | 'remorquage'
+  | 'relivraison'
   | 'depannage'
   | 'transport'
   | 'trajet_vide'
