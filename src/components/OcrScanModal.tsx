@@ -68,7 +68,14 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
     try {
       // Dynamic imports : aucun crash si lance dans un navigateur web
       const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
-      const { Ocr } = await import('@capacitor-community/image-to-text')
+      const { registerPlugin } = await import('@capacitor/core')
+
+      // Plugin custom defini cote iOS (App/App/TextRecognitionPlugin.swift)
+      // Utilise Apple Vision Framework (VNRecognizeTextRequest).
+      // Pour Android, faudra coder un equivalent Kotlin/Java via Google ML Kit.
+      const TextRecognition = registerPlugin<{
+        detectText(opts: { filename: string }): Promise<{ textDetections: { text: string; confidence: number }[] }>
+      }>('TextRecognition')
 
       const photo = await Camera.getPhoto({
         quality:        85,
@@ -80,9 +87,9 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
       })
       setTaken(true)
 
-      const data = await Ocr.detectText({ filename: photo.path! })
+      const data = await TextRecognition.detectText({ filename: photo.path! })
       const candidates: Detection[] = (data.textDetections || [])
-        .map(d => ({ text: normalize(d.text, mode), confidence: (d as any).confidence ?? 0 }))
+        .map(d => ({ text: normalize(d.text, mode), confidence: d.confidence ?? 0 }))
         .filter(d => {
           if (mode === 'vin')   return looksLikeVin(d.text) || d.text.length >= 8
           return looksLikePlate(d.text)
