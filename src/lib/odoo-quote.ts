@@ -235,3 +235,52 @@ export async function findPartnerByName(name: string): Promise<number | null> {
     return null
   }
 }
+
+/**
+ * Lookup l ID + le nom Odoo d un res.partner par code TVA (priorite) puis
+ * par nom (fallback). Retourne null si rien trouve.
+ *
+ * Utilise par l import Kaze : payload contient un widget vatcode (BE0404484654)
+ * + un widget name ("ETHIAS SA,c/o IMA BENELUX SA/NV"). Le TVA est plus fiable
+ * comme identifiant unique, mais peut etre commun a plusieurs entites IMA →
+ * on tente d abord le nom (s il est specifique a une assurance), puis on
+ * retombe sur le TVA.
+ */
+export async function lookupPartner(opts: {
+  vat?:        string | null
+  name?:       string | null
+}): Promise<{ id: number; name: string } | null> {
+  // 1) Tentative par nom (s il est specifique, ex "Ethias")
+  if (opts.name) {
+    try {
+      const r = await rpc<any[]>('res.partner', 'search_read',
+        [[['name', '=ilike', opts.name.trim()]]],
+        { fields: ['id', 'name'], limit: 2 },
+      )
+      if (r?.length === 1) return { id: r[0].id, name: r[0].name }
+    } catch (e: any) {
+      console.warn('[odoo lookupPartner] name search error:', e.message)
+    }
+  }
+
+  // 2) Fallback par TVA (normalisation : supprime espaces et tirets)
+  if (opts.vat) {
+    const vat = opts.vat.replace(/[\s\-.]/g, '').toUpperCase()
+    try {
+      const r = await rpc<any[]>('res.partner', 'search_read',
+        [[['vat', '=', vat]]],
+        { fields: ['id', 'name'], limit: 2 },
+      )
+      if (r?.length === 1) return { id: r[0].id, name: r[0].name }
+      // Plusieurs partners avec le meme TVA = on prend le premier (parfois doublons Odoo)
+      if (r?.length && r.length > 1) {
+        console.warn(`[odoo lookupPartner] ${r.length} partners avec TVA ${vat}, prend le premier`)
+        return { id: r[0].id, name: r[0].name }
+      }
+    } catch (e: any) {
+      console.warn('[odoo lookupPartner] vat search error:', e.message)
+    }
+  }
+
+  return null
+}
