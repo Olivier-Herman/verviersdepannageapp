@@ -34,9 +34,15 @@ interface Props {
  *   - plate : uppercase + retire les caracteres non alphanumeriques (sauf - et espace)
  *   - vin   : uppercase + ne conserve que A-HJ-NPR-Z et 0-9 (norme ISO 3779)
  */
+// Caracteres autorises pour un VIN ISO 3779 : A-Z sans I, O, Q + chiffres.
+// "A-HJ-NPR-Z" inclut Q par erreur (P-R = P, Q, R). On enumere explicitement.
+const VIN_ALLOWED_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789'
+
 function normalize(raw: string, mode: Mode): string {
   const u = raw.toUpperCase().trim()
-  if (mode === 'vin') return u.replace(/[^A-HJ-NPR-Z0-9]/g, '')
+  if (mode === 'vin') {
+    return [...u].filter(c => VIN_ALLOWED_CHARS.includes(c)).join('')
+  }
   return u.replace(/[^A-Z0-9\- ]/g, '').replace(/\s+/g, ' ')
 }
 
@@ -47,9 +53,11 @@ function looksLikePlate(s: string): boolean {
   return /[A-Z]/.test(clean) && /[0-9]/.test(clean)
 }
 
-/** True si le candidat respecte la norme VIN ISO 3779. */
+/** True si le candidat respecte la norme VIN ISO 3779 (17 chars sans I/O/Q). */
 function looksLikeVin(s: string): boolean {
-  return /^[A-HJ-NPR-Z0-9]{17}$/.test(s)
+  if (s.length !== 17) return false
+  for (const c of s) if (!VIN_ALLOWED_CHARS.includes(c)) return false
+  return true
 }
 
 export default function OcrScanModal({ mode, current, onPick, onClose }: Props) {
