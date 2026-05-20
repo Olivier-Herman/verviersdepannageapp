@@ -8,6 +8,7 @@ import { formatEur } from '@/lib/format'
 import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
+import OcrScanModal from '@/components/OcrScanModal'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -283,23 +284,78 @@ function AddrInput({ value, onChange, onPick, placeholder }: {
 }
 
 // ─── VehSheet ─────────────────────────────────────────────────────────────────
-function VehSheet({ m, onSave, onClose }: { m: Mission; onSave: (p: string, b: string, mo: string, v: string) => void; onClose: () => void }) {
-  const [p, setP] = useState(plate(m.vehicle_plate)); const [b, setB] = useState(m.vehicle_brand || '')
-  const [mo, setMo] = useState(m.vehicle_model || ''); const [v, setV] = useState(m.vehicle_vin || '')
+function VehSheet({ m, onSave, onClose, isNative }: {
+  m:        Mission
+  onSave:   (p: string, b: string, mo: string, v: string) => void
+  onClose:  () => void
+  isNative: boolean
+}) {
+  const [p, setP]   = useState(plate(m.vehicle_plate))
+  const [b, setB]   = useState(m.vehicle_brand || '')
+  const [mo, setMo] = useState(m.vehicle_model || '')
+  const [v, setV]   = useState(m.vehicle_vin || '')
+  const [scan, setScan] = useState<'plate' | 'vin' | null>(null)
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
       <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between"><h2 className="text-ink font-semibold text-lg">Modifier le véhicule</h2><button onClick={onClose} className="text-ink-muted text-2xl">×</button></div>
-        {([['Plaque', p, setP], ['Marque', b, setB], ['Modèle', mo, setMo], ['VIN (optionnel)', v, setV]] as [string, string, (v: string) => void][]).map(([l, val, set]) => (
-          <div key={l}><p className="text-ink-muted text-xs mb-1.5">{l}</p>
-            <input value={val} onChange={e => set(e.target.value)}
-              className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" /></div>
-        ))}
+
+        {/* Plaque : input + bouton scan (app native uniquement) */}
+        <div>
+          <p className="text-ink-muted text-xs mb-1.5">Plaque</p>
+          <div className="flex gap-2">
+            <input value={p} onChange={e => setP(e.target.value)}
+              className="flex-1 bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" />
+            {isNative && (
+              <button type="button" onClick={() => setScan('plate')}
+                className="px-3 py-3 bg-brand/10 text-brand rounded-xl text-sm font-medium flex items-center gap-1.5">
+                📷 Scan
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div><p className="text-ink-muted text-xs mb-1.5">Marque</p>
+          <input value={b} onChange={e => setB(e.target.value)}
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" /></div>
+
+        <div><p className="text-ink-muted text-xs mb-1.5">Modèle</p>
+          <input value={mo} onChange={e => setMo(e.target.value)}
+            className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none" /></div>
+
+        {/* VIN : input + bouton scan */}
+        <div>
+          <p className="text-ink-muted text-xs mb-1.5">VIN (optionnel)</p>
+          <div className="flex gap-2">
+            <input value={v} onChange={e => setV(e.target.value)}
+              className="flex-1 bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none font-mono" />
+            {isNative && (
+              <button type="button" onClick={() => setScan('vin')}
+                className="px-3 py-3 bg-brand/10 text-brand rounded-xl text-sm font-medium flex items-center gap-1.5">
+                📷 Scan
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
           <button onClick={() => onSave(plate(p), b, mo, v)} className="flex-1 py-3 bg-brand text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
         </div>
       </div>
+
+      {scan && (
+        <OcrScanModal
+          mode={scan}
+          current={scan === 'plate' ? p : v}
+          onPick={txt => {
+            if (scan === 'plate') setP(plate(txt))
+            else                  setV(txt)
+          }}
+          onClose={() => setScan(null)}
+        />
+      )}
     </div>
   )
 }
@@ -1113,15 +1169,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     // (pas de migration nécessaire) — c'est un guide visuel pour qu'il pense à
     // toutes les vues importantes. Le seuil "couverte" = au moins 1 photo prise
     // après ouverture de la catégorie (via le state local catPhotos).
+    // Plaque + VIN ne sont plus des categories photo : ils sont scannes via
+    // OCR (camera + Apple Vision / Google ML Kit) dans la fiche vehicule
+    // (cf VehSheet + composant OcrScanModal). Le chauffeur tape un seul bouton
+    // 📷 Scan et le texte est extrait + propose.
     const PHOTO_CATS: Array<{ id: string; icon: string; label: string; hint: string; required?: boolean }> = [
-      { id: 'plaque',    icon: '🔢', label: 'Plaque',         hint: 'Lisible en gros plan',                  required: true },
       { id: 'avant',     icon: '⬆️', label: 'Avant',          hint: 'Vue 3/4 côté conducteur idéalement',    required: true },
       { id: 'arriere',   icon: '⬇️', label: 'Arrière',        hint: 'Vue 3/4 côté conducteur idéalement',    required: true },
       { id: 'gauche',    icon: '⬅️', label: 'Côté gauche',    hint: 'Vue latérale complète' },
       { id: 'droite',    icon: '➡️', label: 'Côté droit',     hint: 'Vue latérale complète' },
       { id: 'interieur', icon: '🪑', label: 'Intérieur',      hint: 'Tableau de bord + état général' },
       { id: 'defauts',   icon: '⚠️', label: 'Défauts/dégâts', hint: 'Rayures, bosses, cassures (si applicable)' },
-      { id: 'vin',       icon: '🆔', label: 'VIN',            hint: 'Numéro de châssis (si visible)' },
       { id: 'km',        icon: '🔢', label: 'Kilométrage',    hint: 'Compteur lisible (si accessible)' },
     ]
     // Catégories couvertes : persistées en BDD via photo_categories_covered
@@ -2511,7 +2569,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       }} />}
 
       {/* Vehicle sheet */}
-      {showVeh && <VehSheet m={M} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v) => {
+      {showVeh && <VehSheet m={M} isNative={isCapacitor} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v) => {
         setM(m => ({ ...m, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }))
         setShowVeh(false)
         await fetch('/api/missions/update-vehicle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }) }).catch(() => {})
