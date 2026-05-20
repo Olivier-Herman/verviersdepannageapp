@@ -24,7 +24,7 @@
 // V2 future : reutiliser les vraies photos/signatures du chauffeur depuis
 //   driver_photos / discharge_sig pour audit qualite.
 
-import { uploadFile, performerUpdateTemplate, performerCompleteStep, getJobFull } from './client'
+import { uploadFile, performerUpdateTemplate, performerCompleteStep, getJobFull, assignPerformer } from './client'
 
 // PNG 1x1 transparent (70 octets)
 const BLANK_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
@@ -107,7 +107,19 @@ async function runKazeWorkflow(
   const stepsDone: string[] = []
   const maxIters = 12  // securite : pas plus que le nombre de steps + marge
 
-  console.log(`[kaze-close] start jobId=${jobId}`)
+  console.log(`[kaze-close] start jobId=${jobId} targetIdx=${targetStepIndex}`)
+
+  // Reassigne la mission a notre user (VD Soft) AVANT d agir comme performer.
+  // Kaze cree les missions assignees a un user IMA (Axel Higny par defaut)
+  // et /performer/jobs/<id>/* ne fonctionne que pour le performer assigne.
+  // Idempotent : si deja assigne, le PUT renvoie 204 sans effet.
+  try {
+    await assignPerformer(jobId)
+    console.log(`[kaze-close] performer reassigned to VD Soft`)
+  } catch (e: any) {
+    console.error(`[kaze-close] reassign failed:`, e.message)
+    return { ok: false, status: null, steps_done: [], error: `Reassign échoué : ${e.message}` }
+  }
 
   // Upload 1 seul PNG blanc qu on reutilise pour toutes les photos/signatures
   let blankSignedId: string

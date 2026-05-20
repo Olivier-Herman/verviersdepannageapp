@@ -141,6 +141,30 @@ export function getProfile(): Promise<any> {
   return kazeFetch('/profile.json')
 }
 
+let _myUserIdCache: string | null = null
+
+/** Renvoie l user_id de la clé API (cache process-level). */
+export async function getMyKazeUserId(): Promise<string> {
+  if (_myUserIdCache) return _myUserIdCache
+  const p = await getProfile()
+  const id = p?.user?.id
+  if (!id) throw new Error('Impossible de récupérer mon user_id Kaze depuis /profile')
+  _myUserIdCache = id
+  return id
+}
+
+/**
+ * Reassigne la mission Kaze a un performer (par defaut : moi-meme).
+ * Necessaire avant les PUTs /performer/jobs/... car ces endpoints ne
+ * fonctionnent que si le user de la cle API est le performer assigne.
+ *
+ * Idempotent : si deja assigne, retourne juste 204.
+ */
+export async function assignPerformer(jobId: string, userId?: string): Promise<void> {
+  const uid = userId || await getMyKazeUserId()
+  await kazeFetch(`/jobs/${jobId}/performers/${uid}.json`, { method: 'PUT' })
+}
+
 export function listStatuses(): Promise<KazeListResponse<{ status: string; name: string }>> {
   return kazeFetch('/jobs/statuses.json')
 }
