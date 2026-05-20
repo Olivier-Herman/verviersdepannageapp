@@ -111,9 +111,23 @@ function phone(v: any): string | null {
   return raw
 }
 
+/** Convertit un code pays ISO 3-lettres (BEL, FRA, ...) en 2-lettres (BE, FR). */
+function iso3to2(c: string | null): string | null {
+  if (!c) return null
+  const map: Record<string, string> = {
+    BEL: 'BE', FRA: 'FR', NLD: 'NL', LUX: 'LU', DEU: 'DE',
+    GBR: 'GB', ITA: 'IT', ESP: 'ES', PRT: 'PT', POL: 'PL',
+    CHE: 'CH', AUT: 'AT',
+  }
+  const up = c.trim().toUpperCase()
+  if (up.length === 2) return up
+  return map[up] || up
+}
+
 /**
  * Adresse Kaze : "R BIOLLEY 62, VERVIERS, 4800, BEL" -> { street, city, postal_code, country_code }
  * Format observe : virgule comme separateur, "BEL" comme code pays.
+ * Retourne le code pays au format ISO 2-lettres (BE, FR, ...).
  */
 function parseAddress(addr: string | null): {
   full:        string | null
@@ -127,7 +141,7 @@ function parseAddress(addr: string | null): {
   // Heuristique : dernier element = code pays (3 lettres), avant-dernier = CP si numerique,
   // sinon = ville.
   const country = parts.length > 1 && parts[parts.length - 1].length === 3
-    ? parts.pop()!
+    ? iso3to2(parts.pop()!)
     : null
   let postal_code: string | null = null
   if (parts.length > 1 && /^\d{4,5}$/.test(parts[parts.length - 1])) {
@@ -136,6 +150,42 @@ function parseAddress(addr: string | null): {
   const city   = parts.length > 1 ? parts.pop()! : null
   const street = parts.length > 0 ? parts.join(', ') : null
   return { full: addr, street, city, postal_code, country }
+}
+
+/**
+ * Kaze envoie souvent des valeurs bilingues "FR/NL" (ex "Autre/Andere",
+ * "Remorquage/Slepen"). On garde le FR pour notre app.
+ */
+function frHalf(v: string | null): string | null {
+  if (!v) return null
+  const i = v.indexOf('/')
+  return i > 0 ? v.slice(0, i).trim() : v
+}
+
+/**
+ * Capitalise une chaine (ex "MBONZO" -> "Mbonzo"). Conserve les espaces et tirets.
+ */
+function titleCase(s: string | null): string | null {
+  if (!s) return s
+  return s.toLowerCase().replace(
+    /(^|[\s\-'])([a-zà-ÿ])/g,
+    (_, sep, ch) => sep + ch.toUpperCase(),
+  )
+}
+
+/**
+ * Compose le nom du beneficiaire en gerant le cas IMA bizarre ou firstname==lastname.
+ * Convention belge : nom de famille en majuscules, prenom en title case.
+ */
+function composeClientName(firstname: string | null, lastname: string | null): string | null {
+  const f = firstname?.trim() || ''
+  const l = lastname?.trim()  || ''
+  if (!f && !l) return null
+  // IMA met parfois la meme valeur dans les 2 champs : on dedupe
+  if (f && l && f.toLowerCase() === l.toLowerCase()) {
+    return l ? l.toUpperCase() : titleCase(f)
+  }
+  return [titleCase(f), l ? l.toUpperCase() : ''].filter(Boolean).join(' ')
 }
 
 /** Extrait lat + lon depuis "50.593186,5.873229" */
@@ -263,10 +313,10 @@ export function mapKazeJobToMission(job: KazeJob): MappedKazeMission {
   // Type de mission
   const { mission_type, incident_type } = mapMissionType(s(w('meanscode')))
 
-  // Client
+  // Client (gerer cas IMA ou firstname == lastname)
   const lastname  = s(w('lastname'))
   const firstname = s(w('firstname'))
-  const client_name = [firstname, lastname].filter(Boolean).join(' ').trim() || null
+  const client_name = composeClientName(firstname, lastname)
 
   // Description panne
   const incident_description = [
@@ -303,7 +353,7 @@ export function mapKazeJobToMission(job: KazeJob): MappedKazeMission {
     vehicle_plate:   s(w('registrationnumber')),
     vehicle_brand:   s(w('brand')),
     vehicle_model:   s(w('model')),
-    vehicle_fuel:    s(w('energy')),
+    vehicle_fuel:    frHalf(s(w('energy'))),
     vehicle_mileage: num(w('mileage')),
 
     client_name,
