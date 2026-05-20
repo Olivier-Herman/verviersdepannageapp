@@ -163,6 +163,59 @@ interface CustomLine {
   price_unit:  number
 }
 
+/**
+ * Input numérique qui accepte les formules basiques (ex "952/1,21" → 786.78).
+ * Évalue au blur ou à Enter. Les virgules sont converties en points avant eval.
+ * Whitelist stricte (chiffres + opérateurs + parens) pour éviter toute injection.
+ */
+function FormulaInput({
+  value, onChange, className,
+}: { value: number; onChange: (n: number) => void; className?: string }) {
+  const [display, setDisplay] = useState(value.toString().replace('.', ','))
+
+  useEffect(() => {
+    setDisplay(value.toString().replace('.', ','))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  function evaluate() {
+    const expr = display.replace(/,/g, '.').replace(/\s+/g, '').trim()
+    if (!expr) { onChange(0); setDisplay('0'); return }
+    if (!/^-?[\d.+\-*/()]+$/.test(expr)) {
+      // Pas un nombre/formule valide → revert
+      setDisplay(value.toString().replace('.', ','))
+      return
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+      const result = Function('"use strict"; return (' + expr + ')')()
+      if (typeof result === 'number' && isFinite(result)) {
+        const rounded = Math.round(result * 100) / 100
+        onChange(rounded)
+        setDisplay(rounded.toString().replace('.', ','))
+      } else {
+        setDisplay(value.toString().replace('.', ','))
+      }
+    } catch {
+      setDisplay(value.toString().replace('.', ','))
+    }
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={display}
+      onChange={e => setDisplay(e.target.value)}
+      onBlur={evaluate}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      placeholder="ex: 952/1,21"
+      title="Accepte les formules : 952/1,21 = 786,78"
+      className={className}
+    />
+  )
+}
+
 const KIND_LABELS: Record<ProductKind, string> = {
   'SERV-PEC':  'Prise en charge',
   'SERV-KM':   'Kilomètre',
@@ -598,11 +651,9 @@ function MissionBlock({
                         />
                       </td>
                       <td className="py-1 pr-1">
-                        <input
-                          type="number"
-                          step="0.01"
+                        <FormulaInput
                           value={l.price_unit}
-                          onChange={e => updateLine(idx, { price_unit: parseFloat(e.target.value) || 0 })}
+                          onChange={n => updateLine(idx, { price_unit: n })}
                           className="bg-surface-2 border rounded px-1 py-0.5 text-[11px] w-full text-right"
                         />
                       </td>

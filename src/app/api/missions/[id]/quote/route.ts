@@ -36,7 +36,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Body optionnel : { lines: [{ kind, name, qty, price_unit }] }
   // Si fourni, on saute le calcul auto et on pousse ces lignes telles quelles.
   const body = await req.json().catch(() => ({}))
-  const customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
+  let customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
     ? body.lines.map((l: any): QuoteLine => ({
         kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
         name:       String(l.name || ''),
@@ -46,6 +46,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     : null
 
   const sb = createAdminClient()
+
+  // Si pas de customLines dans le body, on lit le brouillon persistant en BDD
+  // (l employe a peut-etre fait des modifs + sauvegarde mais ferme le modal
+  // avant de pousser, ou pousse depuis un autre flow qui ne forward pas les lines).
+  if (!customLines) {
+    const { data: draft } = await sb
+      .from('mission_invoice_drafts')
+      .select('lines')
+      .eq('mission_id', params.id)
+      .maybeSingle()
+    if (draft?.lines && Array.isArray(draft.lines) && draft.lines.length > 0) {
+      customLines = draft.lines.map((l: any): QuoteLine => ({
+        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
+        name:       String(l.name || ''),
+        qty:        Number(l.qty || 0),
+        price_unit: Number(l.price_unit || 0),
+      })).filter((l: QuoteLine) => l.name && l.qty > 0)
+      console.log(`[quote] Draft persistant utilise pour mission ${params.id} (${customLines.length} lignes)`)
+    }
+  }
   const { data: mission, error: missionErr } = await sb
     .from('incoming_missions')
     .select(`

@@ -34,15 +34,22 @@ function missionKind(m: any): string {
   return 'AUTRE'
 }
 
-/** Description longue par type de mission, pour la section du devis Odoo. */
-function kindDescription(kind: string): string {
+/**
+ * Description longue par type de mission, pour la section du devis Odoo.
+ * Les placeholders "Lieu d'intervention" et "Lieu de destination" sont
+ * remplaces par les vraies adresses de la mission.
+ */
+function kindDescription(kind: string, mission: any): string {
+  const lieuIntervention = mission.incident_address || "Lieu d'intervention"
+  const lieuDestination  = mission.destination_address || mission.destination_name || "Lieu de destination"
+
   switch (kind) {
     case 'REM':
-      return "Remorquage d'un véhicule dont référence ci-dessus de \"Lieu d'intervention\" à notre dépôt (si mise en dépôt) ou à \"Lieu de destination\" (si livraison)"
+      return `Remorquage d'un véhicule dont référence ci-dessus de "${lieuIntervention}" à notre dépôt (si mise en dépôt) ou à "${lieuDestination}" (si livraison)`
     case 'REL':
-      return "Relivraison d'un véhicule dont référence ci-dessus de notre dépôt vers \"Lieu de destination\""
+      return `Relivraison d'un véhicule dont référence ci-dessus de notre dépôt vers "${lieuDestination}"`
     case 'DSP':
-      return "Dépannage d'un véhicule dont référence ci-dessus à \"Lieu d'intervention\""
+      return `Dépannage d'un véhicule dont référence ci-dessus à "${lieuIntervention}"`
     case 'DPR':
       return "Déplacement protocolaire d'un véhicule dont référence ci-dessus"
     default:
@@ -74,9 +81,23 @@ export async function POST(req: Request) {
       client_name, vehicle_plate, vehicle_mileage,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       billed_to_id, billed_to_name,
+      incident_address, incident_city, destination_address, destination_name,
       odoo_quote_id, odoo_quote_url
     `)
     .in('id', missionIds)
+
+  // Charge les brouillons persistants des lignes pour chaque mission (si l employe
+  // a fait des modifs manuelles via FacturerModal et sauvegarde).
+  const { data: drafts } = await sb
+    .from('mission_invoice_drafts')
+    .select('mission_id, lines')
+    .in('mission_id', missionIds)
+  const draftByMissionId = new Map<string, any[]>()
+  for (const d of drafts || []) {
+    if (Array.isArray(d.lines) && d.lines.length > 0) {
+      draftByMissionId.set(d.mission_id, d.lines)
+    }
+  }
 
   if (missionErr || !missions || missions.length === 0) {
     return NextResponse.json({ error: 'Missions introuvables' }, { status: 404 })
@@ -130,13 +151,31 @@ export async function POST(req: Request) {
   const sectionStats: Array<{ mission_id: string; kind: string; ref: string; lines_count: number; has_tariff: boolean }> = []
 
   for (const mission of sortedMissions) {
-    const estimate = await estimateMissionPrice(mission as any)
     const kind = missionKind(mission)
     const ref = mission.external_id || mission.dossier_number || mission.id.slice(0, 8)
-    const desc = kindDescription(kind)
+    const desc = kindDescription(kind, mission)
     const sectionLabel = desc
       ? `${kind} #${ref} — ${desc}`
       : `${kind} #${ref}`
+
+    // Priorite au draft persistant (l employe a modifie + sauvegarde)
+    const draftLines = draftByMissionId.get(mission.id)
+    if (draftLines) {
+      const lines = draftLines.map((l: any) => ({
+        kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV'),
+        name:       String(l.name || ''),
+        qty:        Number(l.qty || 0),
+        price_unit: Number(l.price_unit || 0),
+      })).filter((l: any) => l.name && l.qty > 0)
+      sections.push({ section_label: sectionLabel, lines })
+      totalForResponse += lines.reduce((s: number, l: any) => s + l.qty * l.price_unit, 0)
+      sectionStats.push({ mission_id: mission.id, kind, ref, lines_count: lines.length, has_tariff: true })
+      console.log(`[quote-grouped] Draft persistant utilise pour mission ${mission.id} (${lines.length} lignes)`)
+      continue
+    }
+
+    // Sinon : calcul auto via estimate-price
+    const estimate = await estimateMissionPrice(mission as any)
     if (estimate.ok) {
       const lines = buildLinesFromEstimate(estimate, mission)
       sections.push({ section_label: sectionLabel, lines })
