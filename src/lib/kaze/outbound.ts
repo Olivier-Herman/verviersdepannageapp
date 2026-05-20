@@ -98,3 +98,33 @@ export async function notifyKazeOfAction(
     return { ok: false, sent: false, error: e?.message }
   }
 }
+
+/**
+ * Cloture complete d une mission Kaze : on remplit chaque step du workflow IMA
+ * (PNG blanc pour photos/signatures, options "Je peux intervenir" pour les
+ * selects) jusqu a status="completed". A appeler quand le chauffeur valide la
+ * cloture cote VD Soft (action 'completed' ou 'complete_delivery').
+ *
+ * Non bloquant : si Kaze plante on log mais on n empeche pas la cloture VD Soft.
+ */
+export async function closeKazeMissionIfApplicable(
+  mission: MissionLite,
+): Promise<{ ok: boolean; status: string | null; error?: string }> {
+  if (!mission.kaze_job_id) {
+    return { ok: true, status: null }
+  }
+
+  try {
+    const { closeKazeJob } = await import('@/lib/kaze/close-job')
+    const r = await closeKazeJob(mission.kaze_job_id)
+    if (r.ok) {
+      console.log(`[kaze-outbound] Mission Kaze ${mission.kaze_job_id} closed → ${r.status} (steps: ${r.steps_done.join(', ')})`)
+    } else {
+      console.warn(`[kaze-outbound] Mission Kaze ${mission.kaze_job_id} close failed at ${r.steps_done.length} steps : ${r.error}`)
+    }
+    return { ok: r.ok, status: r.status, error: r.error }
+  } catch (e: any) {
+    console.warn(`[kaze-outbound] closeKazeJob exception (${mission.kaze_job_id}):`, e?.message)
+    return { ok: false, status: null, error: e?.message }
+  }
+}

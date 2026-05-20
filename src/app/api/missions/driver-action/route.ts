@@ -313,28 +313,38 @@ export async function POST(req: Request) {
     metadata: { action, status: mapping.status || mission.status },
   })
 
-  // ── Propagation Kaze : note sur le job IMA (best effort, non bloquant) ──────
-  // Si la mission vient de Kaze (kaze_job_id non null), on poste une note
-  // pour qu IMA voie l avancement chauffeur en temps reel dans son interface.
+  // ── Propagation Kaze : note sur le job IMA + cloture si applicable ────────
+  // Si la mission vient de Kaze (kaze_job_id non null) :
+  //   1. Note sur le job pour qu IMA voie l avancement temps reel
+  //   2. Si l action est cloturante (completed / complete_delivery), on lance
+  //      la cloture complete du workflow Kaze (status → completed)
   if ((mission as any).kaze_job_id) {
+    const missionLite = {
+      id:             mission.id,
+      kaze_job_id:    (mission as any).kaze_job_id,
+      vehicle_plate:  mission.vehicle_plate,
+      vehicle_brand:  mission.vehicle_brand,
+      vehicle_model:  mission.vehicle_model,
+      dossier_number: (mission as any).dossier_number,
+    }
     try {
-      const { notifyKazeOfAction } = await import('@/lib/kaze/outbound')
-      const result = await notifyKazeOfAction(
-        {
-          id:              mission.id,
-          kaze_job_id:     (mission as any).kaze_job_id,
-          vehicle_plate:   mission.vehicle_plate,
-          vehicle_brand:   mission.vehicle_brand,
-          vehicle_model:   mission.vehicle_model,
-          dossier_number:  (mission as any).dossier_number,
-        },
-        action,
-      )
-      if (!result.ok) {
-        console.warn('[driver-action] kaze notify failed:', result.error)
+      const { notifyKazeOfAction, closeKazeMissionIfApplicable } = await import('@/lib/kaze/outbound')
+
+      // 1) Note temps reel
+      const noteResult = await notifyKazeOfAction(missionLite, action)
+      if (!noteResult.ok) {
+        console.warn('[driver-action] kaze note failed:', noteResult.error)
+      }
+
+      // 2) Cloture complete sur actions terminales
+      if (action === 'completed' || action === 'complete_delivery') {
+        const closeResult = await closeKazeMissionIfApplicable(missionLite)
+        if (!closeResult.ok) {
+          console.warn('[driver-action] kaze close failed:', closeResult.error)
+        }
       }
     } catch (e: any) {
-      console.warn('[driver-action] kaze notify exception:', e?.message)
+      console.warn('[driver-action] kaze hooks exception:', e?.message)
     }
   }
 
