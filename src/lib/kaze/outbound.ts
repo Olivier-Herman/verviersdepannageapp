@@ -21,6 +21,8 @@ interface MissionLite {
   vehicle_brand?:       string | null
   vehicle_model?:       string | null
   dossier_number?:      string | null
+  driver_photos?:       string[] | null     // URLs Supabase Storage (v3)
+  client_signature?:    string | null       // URL Supabase Storage (v3)
 }
 
 /**
@@ -129,7 +131,10 @@ export async function advanceKazeMissionForAction(
       return { ok: true, status: null }   // action sans avancement Kaze
     }
 
-    const r = await advanceKazeJob(mission.kaze_job_id, targetIdx)
+    const r = await advanceKazeJob(mission.kaze_job_id, targetIdx, {
+      driverPhotos: mission.driver_photos || undefined,
+      signatureUrl: mission.client_signature || undefined,
+    })
     if (r.ok) {
       console.log(`[kaze-outbound] Mission ${mission.kaze_job_id} action=${action} → step idx ${targetIdx} (status=${r.status}, ${r.steps_done.length} steps)`)
     } else {

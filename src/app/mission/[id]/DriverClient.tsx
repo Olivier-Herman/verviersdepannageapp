@@ -1702,11 +1702,26 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               </span>
             </button>
 
-            {/* Signature client (signée pendant la décharge généralement) */}
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-ink-secondary text-sm">✍️ Signature client</span>
-              <span className={`text-sm font-medium ${sig ? 'text-green-400' : 'text-ink-muted'}`}>{sig ? '✓ Signée' : '—'}</span>
-            </div>
+            {/* Signature client — obligatoire pour les missions Kaze (IMA) */}
+            <button
+              onClick={() => setScreen('sig')}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left"
+            >
+              <span className="text-ink-secondary text-sm">
+                ✍️ Signature client
+                {M.source === 'kaze' && (
+                  <span className="text-red-400 ml-1">*</span>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${
+                  sig ? 'text-green-400' : (M.source === 'kaze' ? 'text-red-400' : 'text-ink-muted')
+                }`}>
+                  {sig ? '✓ Signée' : (M.source === 'kaze' ? '⚠️ Obligatoire' : '—')}
+                </span>
+                <span className="text-blue-400 text-xs">→</span>
+              </span>
+            </button>
 
             {/* Signature destinataire — REM uniquement, optionnelle */}
             {closeType === 'rem' && (
@@ -1817,7 +1832,15 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   La clôture est bloquée tant que le total prévu n'est pas atteint (ou utilisez "À facturer").
                 </p>
               )}
-              <button onClick={doClose} disabled={loading || (closeType !== 'dpr' && (totPh < 3 || !paymentComplete))}
+              {/* Blocage signature obligatoire pour les missions Kaze (IMA) */}
+              {M.source === 'kaze' && !sig && (
+                <p className="text-red-400 text-xs text-center mb-2 px-2">
+                  ⚠ Signature client obligatoire pour les missions Kaze. Tape sur "✍️ Signature client" ci-dessus pour signer (faire une croix si le client refuse).
+                </p>
+              )}
+              <button onClick={doClose} disabled={loading
+                || (closeType !== 'dpr' && (totPh < 3 || !paymentComplete))
+                || (M.source === 'kaze' && !sig)}
                 className="w-full py-4 bg-green-600 disabled:opacity-40 text-ink font-semibold rounded-2xl">
                 {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
               </button>

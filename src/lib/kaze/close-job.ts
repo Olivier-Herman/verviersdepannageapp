@@ -26,11 +26,65 @@
 
 import { uploadFile, performerUpdateTemplate, performerCompleteStep, getJobFull, assignPerformer } from './client'
 
-// PNG 1x1 transparent (70 octets)
+// PNG 1x1 transparent (70 octets) — fallback quand aucune photo/signature dispo
 const BLANK_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
 
 function blankPngBuffer(): Buffer {
   return Buffer.from(BLANK_PNG_BASE64, 'base64')
+}
+
+/**
+ * Detecte si un Buffer contient une image HEIC/HEIF (format iPhone).
+ * Magic bytes : 4 octets "ftyp" en position 4, suivi du subtype (heic/heix/mif1/etc).
+ */
+function isHeic(buf: Buffer): boolean {
+  if (buf.length < 12) return false
+  const ftyp = buf.slice(4, 8).toString('ascii')
+  if (ftyp !== 'ftyp') return false
+  const subtype = buf.slice(8, 12).toString('ascii').toLowerCase()
+  return ['heic', 'heix', 'mif1', 'heis', 'msf1', 'hevc', 'hevx'].includes(subtype)
+}
+
+/**
+ * Telecharge une image depuis une URL (Supabase Storage), convertit en JPEG
+ * si HEIC (iPhone), et upload vers Kaze direct_uploads → retourne signed_id.
+ * Retourne null en cas d echec (le caller doit fallback sur PNG blanc).
+ */
+async function fetchConvertAndUpload(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) {
+      console.warn(`[kaze-close] fetch photo failed (${res.status}) : ${url.slice(0, 100)}`)
+      return null
+    }
+    let buf: Buffer = Buffer.from(await res.arrayBuffer())
+    let filename = 'photo.jpg'
+    let mime     = 'image/jpeg'
+
+    // Conversion HEIC → JPEG via Sharp (libheif inclus)
+    if (isHeic(buf)) {
+      try {
+        const sharp = (await import('sharp')).default
+        const converted = await sharp(buf).jpeg({ quality: 85 }).toBuffer()
+        buf = Buffer.from(converted)
+        console.log(`[kaze-close] HEIC converti en JPEG (${buf.length} bytes)`)
+      } catch (e: any) {
+        console.warn(`[kaze-close] HEIC conversion échouée : ${e.message}`)
+        return null
+      }
+    } else {
+      // Détecter PNG vs JPEG pour ajuster MIME
+      if (buf[0] === 0x89 && buf[1] === 0x50) {
+        mime = 'image/png'
+        filename = 'photo.png'
+      }
+    }
+
+    return await uploadFile(buf, filename, mime)
+  } catch (e: any) {
+    console.warn(`[kaze-close] fetchConvertAndUpload error : ${e.message}`)
+    return null
+  }
 }
 
 interface CloseResult {
@@ -71,18 +125,30 @@ export function actionToTargetStepIndex(action: string): number {
 }
 
 /**
+ * Options pour faire avancer un job Kaze. Les URLs photos/signature sont
+ * optionnelles — si absentes, on fallback sur PNG blanc placeholder.
+ */
+export interface KazeAdvanceOptions {
+  location?:     string
+  driverPhotos?: string[]      // URLs Supabase Storage des photos chauffeur
+  signatureUrl?: string | null // URL Supabase Storage de la signature client
+}
+
+/**
  * Fait avancer le workflow Kaze jusqu au step `targetStepIndex` inclus.
  * Si targetStepIndex >= 9, ferme completement la mission.
  * Best-effort : retourne ok=true meme si on n a pas tout fini, du moment qu on
  * a progresse.
  *
  * @param jobId UUID du job Kaze
- * @param targetStepIndex 0-9 selon KNOWN_STEP_ORDER
+ * @param targetStepIndex 0-9 (job_info à workshop_signature)
+ * @param opts.driverPhotos URLs photos chauffeur (upload réel au lieu de PNG blanc)
+ * @param opts.signatureUrl URL signature client (idem)
  */
 export async function advanceKazeJob(
   jobId:            string,
   targetStepIndex:  number,
-  opts:             { location?: string } = {},
+  opts:             KazeAdvanceOptions = {},
 ): Promise<CloseResult> {
   return runKazeWorkflow(jobId, targetStepIndex, opts)
 }
@@ -93,7 +159,7 @@ export async function advanceKazeJob(
  */
 export async function closeKazeJob(
   jobId: string,
-  opts:  { location?: string } = {},
+  opts:  KazeAdvanceOptions = {},
 ): Promise<CloseResult> {
   return runKazeWorkflow(jobId, 9, opts)
 }
@@ -101,13 +167,13 @@ export async function closeKazeJob(
 async function runKazeWorkflow(
   jobId:            string,
   targetStepIndex:  number,
-  opts:             { location?: string } = {},
+  opts:             KazeAdvanceOptions = {},
 ): Promise<CloseResult> {
   const location = opts.location || '50.593186,5.873229'
   const stepsDone: string[] = []
   const maxIters = 12  // securite : pas plus que le nombre de steps + marge
 
-  console.log(`[kaze-close] start jobId=${jobId} targetIdx=${targetStepIndex}`)
+  console.log(`[kaze-close] start jobId=${jobId} targetIdx=${targetStepIndex} photos=${opts.driverPhotos?.length ?? 0} sig=${opts.signatureUrl ? 'yes' : 'no'}`)
 
   // Reassigne la mission a notre user (VD Soft) AVANT d agir comme performer.
   // Kaze cree les missions assignees a un user IMA (Axel Higny par defaut)
@@ -121,14 +187,35 @@ async function runKazeWorkflow(
     return { ok: false, status: null, steps_done: [], error: `Reassign échoué : ${e.message}` }
   }
 
-  // Upload 1 seul PNG blanc qu on reutilise pour toutes les photos/signatures
+  // Upload PNG blanc (fallback unique pour tous les widgets sans vraie photo/sig).
   let blankSignedId: string
   try {
     blankSignedId = await uploadFile(blankPngBuffer(), 'placeholder.png', 'image/png')
-    console.log(`[kaze-close] PNG uploaded (signed_id : ${blankSignedId.slice(0, 40)}...)`)
+    console.log(`[kaze-close] PNG blanc uploadé (fallback)`)
   } catch (e: any) {
     console.error(`[kaze-close] upload PNG failed:`, e.message)
     return { ok: false, status: null, steps_done: [], error: `Upload blank PNG échoué : ${e.message}` }
+  }
+
+  // Upload des VRAIES photos chauffeur en parallèle (1 seul appel HTTP par photo).
+  // Si une photo fail (HEIC moisi, URL morte, etc), on garde just les autres.
+  const realPhotoSignedIds: string[] = []
+  if (opts.driverPhotos?.length) {
+    const results = await Promise.allSettled(
+      opts.driverPhotos.map(url => fetchConvertAndUpload(url)),
+    )
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) realPhotoSignedIds.push(r.value)
+    }
+    console.log(`[kaze-close] ${realPhotoSignedIds.length}/${opts.driverPhotos.length} photos chauffeur uploadées sur Kaze`)
+  }
+
+  // Upload signature client si disponible (Kaze accepte PNG/JPEG dans signature)
+  let realSignatureSignedId: string | null = null
+  if (opts.signatureUrl) {
+    realSignatureSignedId = await fetchConvertAndUpload(opts.signatureUrl)
+    if (realSignatureSignedId) console.log(`[kaze-close] signature client uploadée sur Kaze`)
+    else                       console.warn(`[kaze-close] signature upload échouée, fallback PNG blanc`)
   }
 
   for (let iter = 0; iter < maxIters; iter++) {
@@ -182,7 +269,11 @@ async function runKazeWorkflow(
     }
 
     try {
-      await fillAndCompleteStep(jobId, stepNode, blankSignedId, location)
+      await fillAndCompleteStep(jobId, stepNode, {
+        blankSignedId,
+        realPhotoSignedIds,
+        realSignatureSignedId,
+      }, location)
       stepsDone.push(currentStep)
       console.log(`[kaze-close] step ${currentStep} (${stepNode.type}) — done`)
     } catch (e: any) {
@@ -208,29 +299,50 @@ function findStep(node: any, targetId: string): any {
   return null
 }
 
+interface StepSignedIds {
+  blankSignedId:           string                      // fallback PNG blanc
+  realPhotoSignedIds:      string[]                    // photos chauffeur (peut etre vide)
+  realSignatureSignedId:   string | null               // signature client (peut etre null)
+}
+
 /** Remplit les widgets requis d un step + le marque comme completed. */
 async function fillAndCompleteStep(
   jobId:    string,
   stepNode: any,
-  signedId: string,  // signed_id du PNG blanc reutilise
+  ids:      StepSignedIds,
   location: string,
 ): Promise<void> {
   const stepId   = stepNode.id
   const stepType = stepNode.type
 
+  // Helper : prend la prochaine vraie photo dispo, sinon fallback PNG blanc.
+  // On rotate sur l array pour avoir des photos variees sur les differents
+  // widgets (au lieu de mettre la meme partout).
+  let photoIdx = 0
+  const nextPhotoSignedId = (): string => {
+    if (ids.realPhotoSignedIds.length > 0) {
+      const sig = ids.realPhotoSignedIds[photoIdx % ids.realPhotoSignedIds.length]
+      photoIdx++
+      return sig
+    }
+    return ids.blankSignedId
+  }
+
   // 1) Remplir les widgets selon le type de template
   let widgetsData: Record<string, any> = {}
 
   if (stepType === 'template_photo') {
-    // Tous les widget_photo de ce step doivent avoir un signed_id
+    // Tous les widget_photo de ce step doivent avoir un signed_id.
+    // On utilise les vraies photos chauffeur en rotation, fallback PNG blanc.
     for (const w of stepNode.photos || []) {
       if (w.type === 'widget_photo') {
-        widgetsData[w.id] = { data: [{ signed_id: signedId }] }
+        widgetsData[w.id] = { data: [{ signed_id: nextPhotoSignedId() }] }
       }
     }
   } else if (stepType === 'template_signature') {
-    // Signature directement sur le step
-    widgetsData[stepId] = { signature: [{ signed_id: signedId }] }
+    // Signature : utilise la vraie signature client si dispo, sinon PNG blanc.
+    const sigId = ids.realSignatureSignedId || ids.blankSignedId
+    widgetsData[stepId] = { signature: [{ signed_id: sigId }] }
   } else if (stepType === 'template_blank') {
     // Pour blank : detecter si y a des widget_select requis (ex motives_unnecessaryintervention)
     walkChildren(stepNode, (w) => {

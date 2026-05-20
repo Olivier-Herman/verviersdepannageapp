@@ -127,7 +127,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -321,13 +321,27 @@ export async function POST(req: Request) {
   // waitUntil garde la fonction Vercel alive jusqu a ce que la Promise
   // resolve, meme apres le NextResponse.json() au caller.
   if ((mission as any).kaze_job_id) {
+    // Donnees envoyees au hook Kaze : on inclut driver_photos + client_signature
+    // pour la v3 (upload des vrais fichiers cote Kaze au lieu de PNG blanc).
+    // Pour les actions terminales (completed/complete_delivery/park), on prend
+    // aussi les URLs eventuellement mises a jour dans le payload de cloture.
+    const photosFromBody = (closing_data?.photo_urls?.length
+      ? closing_data.photo_urls
+      : null) || mission.driver_photos || []
+    const sigFromBody = closing_data?.signature
+                     || closing_data?.signature_data
+                     || (mission as any).client_signature
+                     || null
+
     const missionLite = {
-      id:             mission.id,
-      kaze_job_id:    (mission as any).kaze_job_id,
-      vehicle_plate:  mission.vehicle_plate,
-      vehicle_brand:  mission.vehicle_brand,
-      vehicle_model:  mission.vehicle_model,
-      dossier_number: (mission as any).dossier_number,
+      id:               mission.id,
+      kaze_job_id:      (mission as any).kaze_job_id,
+      vehicle_plate:    mission.vehicle_plate,
+      vehicle_brand:    mission.vehicle_brand,
+      vehicle_model:    mission.vehicle_model,
+      dossier_number:   (mission as any).dossier_number,
+      driver_photos:    Array.isArray(photosFromBody) ? photosFromBody : null,
+      client_signature: sigFromBody,
     }
 
     const kazeBackground = (async () => {
