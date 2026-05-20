@@ -284,7 +284,7 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                     </button>
                   )}
                   <ScanButton
-                    mode="plate"
+                    mode="any"
                     value={query}
                     onScan={text => { setQuery(text); inputRef.current?.focus() }}
                     className="p-1.5 text-ink-muted hover:text-brand transition flex-shrink-0 text-lg"

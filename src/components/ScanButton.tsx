@@ -14,7 +14,9 @@ import { useEffect, useState } from 'react'
 import OcrScanModal             from '@/components/OcrScanModal'
 
 interface Props {
-  mode:      'plate' | 'vin'
+  /** plate = plaque uniquement ; vin = VIN uniquement ; any = les deux
+   *  (utile dans une barre de recherche universelle). */
+  mode:      'plate' | 'vin' | 'any'
   value:     string
   onScan:    (text: string) => void
   className?: string
@@ -42,7 +44,7 @@ export default function ScanButton({ mode, value, onScan, className, label, size
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={cls}
-        title={mode === 'plate' ? 'Scanner la plaque' : 'Scanner le VIN'}>
+        title={mode === 'plate' ? 'Scanner la plaque' : mode === 'vin' ? 'Scanner le VIN' : 'Scanner plaque ou VIN'}>
         {text}
       </button>
       {open && (

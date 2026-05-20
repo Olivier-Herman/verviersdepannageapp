@@ -199,7 +199,7 @@ export default function GlobalSearch() {
                 className="flex-1 bg-transparent text-ink text-base font-medium focus:outline-none placeholder:text-ink-faint placeholder:font-normal"
               />
               <ScanButton
-                mode="plate"
+                mode="any"
                 value={query}
                 onScan={text => { setQuery(text); inputRef.current?.focus() }}
                 className="text-ink-muted hover:text-brand transition flex-shrink-0 p-1 text-lg"

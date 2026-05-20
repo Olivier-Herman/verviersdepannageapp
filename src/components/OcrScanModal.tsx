@@ -15,7 +15,7 @@
 
 import { useState } from 'react'
 
-type Mode = 'plate' | 'vin'
+type Mode = 'plate' | 'vin' | 'any'
 
 interface Detection {
   text:       string
@@ -66,10 +66,14 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
   const [hits,     setHits]     = useState<Detection[]>([])
   const [taken,    setTaken]    = useState(false)
 
-  const title    = mode === 'plate' ? 'Scan plaque' : 'Scan VIN'
-  const helper   = mode === 'plate'
+  const title  = mode === 'plate' ? 'Scan plaque'
+               : mode === 'vin'   ? 'Scan VIN'
+               : 'Scan plaque ou VIN'
+  const helper = mode === 'plate'
     ? 'Cadre la plaque, prends une photo nette. Toutes les nationalités fonctionnent.'
-    : 'Rogne pour isoler les 17 caractères du VIN (l\'app proposera le crop après la photo).'
+    : mode === 'vin'
+    ? 'Rogne pour isoler les 17 caractères du VIN (l\'app proposera le crop après la photo).'
+    : 'Photographie la plaque ou la plaquette du VIN — l\'app détecte les deux formats.'
 
   async function scan() {
     setError(null); setLoading(true); setHits([]); setTaken(false)
@@ -87,9 +91,9 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
 
       const photo = await Camera.getPhoto({
         quality:        85,
-        // Pour le VIN : iOS propose le crop apres la photo, l user isole
-        // les 17 caracteres sans le bruit autour (plaquette de portiere).
-        allowEditing:   mode === 'vin',
+        // Pour le VIN ou 'any' (recherche large) : iOS propose le crop
+        // apres la photo. Pour la plaque seule on garde rapide.
+        allowEditing:   mode !== 'plate',
         resultType:     CameraResultType.Uri,
         source:         CameraSource.Camera,
         saveToGallery:  false,
@@ -100,17 +104,26 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
       const data = await TextRecognition.detectText({ filename: photo.path! })
       const rawDetections = data.textDetections || []
 
-      const candidates: Detection[] = rawDetections
-        .map(d => ({ text: normalize(d.text, mode), confidence: d.confidence ?? 0 }))
-        .filter(d => {
-          if (mode === 'vin') return looksLikeVin(d.text) || d.text.length >= 8
-          return looksLikePlate(d.text)
-        })
+      // Normalisation : pour 'any' on tente les 2 modes (plate puis vin).
+      const candidates: Detection[] = []
+      for (const d of rawDetections) {
+        const conf = d.confidence ?? 0
+        if (mode === 'plate' || mode === 'any') {
+          const np = normalize(d.text, 'plate')
+          if (looksLikePlate(np)) candidates.push({ text: np, confidence: conf })
+        }
+        if (mode === 'vin' || mode === 'any') {
+          const nv = normalize(d.text, 'vin')
+          if (looksLikeVin(nv) || (mode === 'vin' && nv.length >= 8)) {
+            candidates.push({ text: nv, confidence: conf })
+          }
+        }
+      }
 
-      // Mode VIN : on cherche aussi des sous-chaines de 17 chars dans le texte
-      // complet (utile quand l OCR decoupe le VIN en plusieurs morceaux a cause
-      // des espaces, retours ligne ou bruits sur la plaquette de portiere).
-      if (mode === 'vin') {
+      // Mode VIN ou 'any' : on cherche aussi des sous-chaines de 17 chars dans
+      // le texte complet (utile quand l OCR decoupe le VIN en plusieurs morceaux
+      // a cause des espaces ou bruits sur la plaquette de portiere).
+      if (mode === 'vin' || mode === 'any') {
         const fullText = rawDetections
           .map(d => normalize(d.text, 'vin'))
           .join('')
@@ -130,6 +143,8 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
       if (final.length === 0) {
         setError(mode === 'vin'
           ? 'Aucun VIN de 17 caractères trouvé. Rapproche-toi de la plaquette et rogne pour isoler uniquement le VIN.'
+          : mode === 'any'
+          ? 'Rien détecté — essaie de te rapprocher ou rogne pour isoler la plaque/VIN.'
           : 'Aucune plaque détectée — essaie de te rapprocher ou améliore l\'éclairage'
         )
       } else {
@@ -188,7 +203,8 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
             <p className="text-ink-muted text-xs">Choisis le bon texte :</p>
             {hits.map((d, i) => {
               const isLikely = (mode === 'plate' && looksLikePlate(d.text))
-                             || (mode === 'vin' && looksLikeVin(d.text))
+                             || (mode === 'vin'   && looksLikeVin(d.text))
+                             || (mode === 'any'   && (looksLikePlate(d.text) || looksLikeVin(d.text)))
               return (
                 <button
                   key={`${d.text}-${i}`}
