@@ -128,6 +128,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   // Dialog de fin d inventaire (vehicules manquants)
   const [completing, setCompleting]     = useState(false)
   const [missing, setMissing]           = useState<MissingVehicle[] | null>(null)
+  const [finishingZone, setFinishingZone] = useState(false)
   const scanRef = useRef<HTMLInputElement>(null)
 
   // Mapping FOURRIERE_ZONES.code -> parc_zones.key (case insensitive)
@@ -589,6 +590,42 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     }
   }
 
+  /** Termine le scan de la zone courante : les vehicules attendus dans cette
+   *  zone mais non scannes passent en status='unlocated' (avec rapport CSV
+   *  telechargeable). Permet d enchainer sur une autre zone sans terminer
+   *  toute la session. */
+  async function finishCurrentZone() {
+    if (!sessionId || !parcZoneKey || !selectedZone) return
+    if (!confirm(`Terminer le scan de la zone ${selectedZone.code} ?\n\nLes véhicules attendus dans cette zone mais non scannés passeront en statut "non localisé". Tu pourras ensuite scanner une autre zone, ou les retrouver via la liste dédiée.`)) return
+    setFinishingZone(true)
+    try {
+      const res = await fetch(`/api/inventaire/sessions/${sessionId}/finish-zone`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: parcZoneKey }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+
+      // Download CSV
+      if (j.csv && j.unlocated_count > 0) {
+        const blob = new Blob([j.csv], { type: 'text/csv;charset=utf-8;' })
+        const url  = URL.createObjectURL(blob)
+        const a    = document.createElement('a')
+        a.href     = url
+        a.download = `inventaire-non-localises-${selectedZone.code}-${new Date().toISOString().slice(0,10)}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+
+      alert(`Zone ${selectedZone.code} terminée.\n${j.unlocated_count} véhicule(s) passé(s) en "non localisé"${j.unlocated_count > 0 ? '.\nLe CSV a été téléchargé.' : '.'}\n\nTu peux maintenant scanner une autre zone.`)
+    } catch (e: any) {
+      alert(`Erreur fin de zone : ${e.message || e}`)
+    } finally {
+      setFinishingZone(false)
+    }
+  }
+
   /** Action sur un vehicule manquant : sortir du parc (parc_zone_key = null). */
   async function actionSortirDuParc(missionId: string) {
     try {
@@ -944,15 +981,29 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
                 Télécharger Excel
               </button>
             </div>
+            {/* Bouton clôture de la zone courante : marque les manquants de
+                cette zone comme 'unlocated' et permet de continuer la session
+                sur une autre zone. */}
+            {selectedZone && (
+              <button
+                onClick={finishCurrentZone}
+                disabled={finishingZone}
+                className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                title={`Terminer le scan de la zone ${selectedZone.label} : les véhicules attendus dans cette zone mais non scannés passeront en "non localisé" (avec rapport CSV téléchargeable). Vous pourrez ensuite scanner une autre zone.`}
+              >
+                {finishingZone ? <Loader2 className="animate-spin" size={12} /> : <CheckCircle2 size={12} />}
+                Terminer la zone {selectedZone.code} (manquants → non localisés)
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={completeSession}
                 disabled={completing}
                 className="w-full py-2 bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 rounded-xl text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                title="Terminer l'inventaire et lister les véhicules manquants"
+                title="Terminer l'inventaire complet et lister les véhicules manquants (toutes zones balayées confondues)"
               >
                 {completing ? <Loader2 className="animate-spin" size={12} /> : <CheckCircle2 size={12} />}
-                Terminer l'inventaire
+                Terminer toute la session
               </button>
               <button
                 onClick={clearSession}

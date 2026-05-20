@@ -21,7 +21,9 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const PARKED_STATUSES = ['parked', 'delivering']
+// 'unlocated' inclus pour permettre la recovery automatique : si on rescan
+// un vehicule perdu d une zone precedente, place-scan le retrouvera.
+const PARKED_STATUSES = ['parked', 'delivering', 'unlocated']
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -129,12 +131,31 @@ export async function POST(req: Request) {
   }
 
   // 5. Update du placement de la voiture scannee.
-  const { error: updErr } = await sb.from('incoming_missions').update({
+  // Si le vehicule etait en status='unlocated' (perdu lors d un inventaire de
+  // zone), on le rebascule en 'parked' + on clear unlocated_at/zone (recovery
+  // automatique).
+  const updates: Record<string, any> = {
     parc_zone_key:   zoneKey,
     parc_row_number: rowNumber,
     parc_slot_index: slotIndex,
-  }).eq('id', mission.id)
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+  }
+  if (mission.status === 'unlocated') {
+    updates.status         = 'parked'
+    updates.unlocated_at   = null
+    updates.unlocated_zone = null
+  }
+  const { error: updErr } = await sb.from('incoming_missions').update(updates).eq('id', mission.id)
+  if (updErr) {
+    // Si les colonnes unlocated_* n existent pas encore en BDD, retry sans
+    if (/unlocated_at|unlocated_zone/.test(updErr.message)) {
+      const fallback = { ...updates }
+      delete fallback.unlocated_at
+      delete fallback.unlocated_zone
+      await sb.from('incoming_missions').update(fallback).eq('id', mission.id)
+    } else {
+      return NextResponse.json({ error: updErr.message }, { status: 500 })
+    }
+  }
 
   // 6. Transfert detecte si zone OU rangee differente de l ancien placement.
   const transferred = wasAt && (
