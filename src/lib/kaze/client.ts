@@ -164,10 +164,11 @@ export function updateCell(jobId: string, cellId: string, payload: any): Promise
   })
 }
 
-export function addNote(jobId: string, body: string): Promise<any> {
+export function addNote(jobId: string, text: string): Promise<any> {
+  // Format Kaze : { "note": "texte" } - string direct, pas un objet imbrique
   return kazeFetch(`/jobs/${jobId}/notes.json`, {
     method: 'POST',
-    body:   JSON.stringify({ note: { body } }),
+    body:   JSON.stringify({ note: text }),
   })
 }
 
