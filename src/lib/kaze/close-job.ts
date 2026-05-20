@@ -140,9 +140,14 @@ async function runKazeWorkflow(
       return { ok: false, status: null, steps_done: stepsDone, error: `getJob échoué : ${e.message}` }
     }
 
-    const steps   = job.steps as Array<{ id: string; label?: string }> | undefined
+    // Liste des steps : prioriser job.steps (parfois absent dans ?with_versions=1),
+    // sinon fallback sur workflow.children qui contient les memes IDs dans l ordre.
+    let steps = job.steps as Array<{ id: string }> | undefined
+    if (!steps || steps.length === 0) {
+      steps = (job.workflow?.children || []).map((c: any) => ({ id: c.id }))
+    }
     const curStep = job.current_step_id as string | null
-    const curIdx  = steps && curStep ? steps.findIndex(s => s.id === curStep) : -1
+    const curIdx  = steps && curStep ? steps.findIndex((s: { id: string }) => s.id === curStep) : -1
 
     console.log(`[kaze-close] iter ${iter}: status=${job.status} step=${curStep} (idx ${curIdx}/${targetStepIndex}) stepsDone=${stepsDone.length}`)
 
