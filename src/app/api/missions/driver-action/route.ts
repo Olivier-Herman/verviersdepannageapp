@@ -127,7 +127,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -312,6 +312,31 @@ export async function POST(req: Request) {
     mission_id, actor_id: actor.id, action, notes: mapping.logMessage,
     metadata: { action, status: mapping.status || mission.status },
   })
+
+  // ── Propagation Kaze : note sur le job IMA (best effort, non bloquant) ──────
+  // Si la mission vient de Kaze (kaze_job_id non null), on poste une note
+  // pour qu IMA voie l avancement chauffeur en temps reel dans son interface.
+  if ((mission as any).kaze_job_id) {
+    try {
+      const { notifyKazeOfAction } = await import('@/lib/kaze/outbound')
+      const result = await notifyKazeOfAction(
+        {
+          id:              mission.id,
+          kaze_job_id:     (mission as any).kaze_job_id,
+          vehicle_plate:   mission.vehicle_plate,
+          vehicle_brand:   mission.vehicle_brand,
+          vehicle_model:   mission.vehicle_model,
+          dossier_number:  (mission as any).dossier_number,
+        },
+        action,
+      )
+      if (!result.ok) {
+        console.warn('[driver-action] kaze notify failed:', result.error)
+      }
+    } catch (e: any) {
+      console.warn('[driver-action] kaze notify exception:', e?.message)
+    }
+  }
 
   // ── Propagation Odoo : stage FSM + état véhicule (best effort, non bloquant) ──
   if (mission.odoo_task_id) {
