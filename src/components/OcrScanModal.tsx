@@ -61,7 +61,7 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
   const title    = mode === 'plate' ? 'Scan plaque' : 'Scan VIN'
   const helper   = mode === 'plate'
     ? 'Cadre la plaque, prends une photo nette. Toutes les nationalités fonctionnent.'
-    : 'Cadre le numéro de châssis (17 caractères). Eclairage important.'
+    : 'Rogne pour isoler les 17 caractères du VIN (l\'app proposera le crop après la photo).'
 
   async function scan() {
     setError(null); setLoading(true); setHits([]); setTaken(false)
@@ -79,7 +79,9 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
 
       const photo = await Camera.getPhoto({
         quality:        85,
-        allowEditing:   false,
+        // Pour le VIN : iOS propose le crop apres la photo, l user isole
+        // les 17 caracteres sans le bruit autour (plaquette de portiere).
+        allowEditing:   mode === 'vin',
         resultType:     CameraResultType.Uri,
         source:         CameraSource.Camera,
         saveToGallery:  false,
@@ -88,21 +90,42 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
       setTaken(true)
 
       const data = await TextRecognition.detectText({ filename: photo.path! })
-      const candidates: Detection[] = (data.textDetections || [])
+      const rawDetections = data.textDetections || []
+
+      const candidates: Detection[] = rawDetections
         .map(d => ({ text: normalize(d.text, mode), confidence: d.confidence ?? 0 }))
         .filter(d => {
-          if (mode === 'vin')   return looksLikeVin(d.text) || d.text.length >= 8
+          if (mode === 'vin') return looksLikeVin(d.text) || d.text.length >= 8
           return looksLikePlate(d.text)
         })
+
+      // Mode VIN : on cherche aussi des sous-chaines de 17 chars dans le texte
+      // complet (utile quand l OCR decoupe le VIN en plusieurs morceaux a cause
+      // des espaces, retours ligne ou bruits sur la plaquette de portiere).
+      if (mode === 'vin') {
+        const fullText = rawDetections
+          .map(d => normalize(d.text, 'vin'))
+          .join('')
+        for (let i = 0; i <= fullText.length - 17; i++) {
+          const sub = fullText.substring(i, i + 17)
+          if (looksLikeVin(sub) && !candidates.some(c => c.text === sub)) {
+            candidates.push({ text: sub, confidence: 0.85 })
+          }
+        }
+      }
+
+      const final = candidates
         .sort((a, b) => b.confidence - a.confidence)
-        // Dedup
         .filter((d, i, arr) => arr.findIndex(x => x.text === d.text) === i)
         .slice(0, 8)
 
-      if (candidates.length === 0) {
-        setError('Aucun texte exploitable détecté — essaie de te rapprocher ou améliore l\'éclairage')
+      if (final.length === 0) {
+        setError(mode === 'vin'
+          ? 'Aucun VIN de 17 caractères trouvé. Rapproche-toi de la plaquette et rogne pour isoler uniquement le VIN.'
+          : 'Aucune plaque détectée — essaie de te rapprocher ou améliore l\'éclairage'
+        )
       } else {
-        setHits(candidates)
+        setHits(final)
       }
     } catch (e: any) {
       const msg = e?.message || String(e)
