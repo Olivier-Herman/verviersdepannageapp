@@ -91,9 +91,10 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
 
       const photo = await Camera.getPhoto({
         quality:        85,
-        // Pour le VIN ou 'any' (recherche large) : iOS propose le crop
-        // apres la photo. Pour la plaque seule on garde rapide.
-        allowEditing:   mode !== 'plate',
+        // Crop iOS seulement quand on cible explicitement le VIN (besoin
+        // d isoler sur plaquette de portiere). Pour 'plate' et 'any' on
+        // garde rapide — l user peut toujours refaire une photo si besoin.
+        allowEditing:   mode === 'vin',
         resultType:     CameraResultType.Uri,
         source:         CameraSource.Camera,
         saveToGallery:  false,
