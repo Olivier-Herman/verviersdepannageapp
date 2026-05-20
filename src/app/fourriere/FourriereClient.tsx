@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 interface Zone {
@@ -69,14 +69,22 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
   const [zoneFilter, setZoneFilter] = useState<string>('all')    // code zone ou 'all'
   const [onlyToPlace, setOnlyToPlace] = useState<boolean>(false) // toggle "À placer"
   const [moving, setMoving]       = useState<Vehicle | null>(null)
+  const [unlocatedCount, setUnlocatedCount] = useState<number>(0)
 
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch('/api/fourriere/list')
-      const j = await res.json()
+      const [resList, resUnloc] = await Promise.all([
+        fetch('/api/fourriere/list'),
+        fetch('/api/fourriere/non-localises'),
+      ])
+      const j = await resList.json()
       setVehicles(j.vehicles || [])
       setZones(j.zones || [])
+      if (resUnloc.ok) {
+        const ju = await resUnloc.json()
+        setUnlocatedCount((ju.vehicles || []).length)
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -130,6 +138,16 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
             <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {vehicles.length} total</p>
           </div>
           <div className="flex items-center gap-2">
+            {unlocatedCount > 0 && (
+              <Link href="/fourriere/non-localises"
+                className="flex items-center gap-2 px-3 py-2 bg-warning/10 hover:bg-warning/20 border border-warning/40 rounded-xl text-warning text-sm font-medium transition">
+                <AlertTriangle size={14} />
+                Non-localisés
+                <span className="px-1.5 py-0.5 bg-warning text-white rounded-full text-xs font-bold leading-none">
+                  {unlocatedCount}
+                </span>
+              </Link>
+            )}
             <Link href="/fourriere/plan"
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition">
               <MapIcon size={14} />
