@@ -229,6 +229,14 @@ export async function POST(req: Request) {
     }  // fin if (!isPool)
   }
 
+  // ── Avant le UPDATE : on capture la position d'origine pour pouvoir shift
+  // les vehicules restants si on libere un slot (sortie ou move vers autre rangee).
+  const { data: previousState } = await sb
+    .from('incoming_missions')
+    .select('parc_zone_key, parc_row_number, parc_slot_index')
+    .eq('id', missionId)
+    .maybeSingle()
+
   // Mise a jour du placement. Si on place (zoneKey != null), force status='parked'
   // pour qu une mission delivering / completed devienne reellement en parc.
   const updates: Record<string, any> = {
@@ -241,5 +249,45 @@ export async function POST(req: Request) {
   const { error } = await sb.from('incoming_missions').update(updates).eq('id', missionId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // ── Shift apres liberation : si le vehicule quittait une vraie rangee
+  // (pas pool, avait row+slot) ET qu il n est plus dans la meme rangee
+  // apres l update -> on shift les vehicules avec slot_index > oldSlot
+  // de la meme rangee vers le bas (slot_index - 1) pour qu il n y ait pas
+  // de trou dans la rangee.
+  //
+  // Cas couverts :
+  //   - Sortie totale (zoneKey=null) : on shift toujours
+  //   - Move vers une autre zone : on shift l ancienne rangee
+  //   - Move vers une autre rangee dans la meme zone : on shift l ancienne rangee
+  //   - Move dans la meme rangee (intra-row swap) : pas de shift (le swap a deja
+  //     reattribue les positions correctement)
+  const oldZone = previousState?.parc_zone_key
+  const oldRow  = previousState?.parc_row_number
+  const oldSlot = previousState?.parc_slot_index
+  const hasOldPosition = !!(oldZone && oldRow && oldSlot)
+  const sameRow = hasOldPosition && oldZone === finalZone && oldRow === finalRow
+
+  if (hasOldPosition && !sameRow) {
+    // Recupere les vehicules en aval (slot_index > oldSlot) dans la meme rangee
+    const { data: downstream } = await sb
+      .from('incoming_missions')
+      .select('id, parc_slot_index')
+      .eq('parc_zone_key',   oldZone)
+      .eq('parc_row_number', oldRow)
+      .gt('parc_slot_index', oldSlot as number)
+      .order('parc_slot_index', { ascending: true })
+
+    if (downstream && downstream.length > 0) {
+      // Decrement chacun de 1 (ordre croissant pour eviter collision UNIQUE)
+      for (const m of downstream) {
+        await sb.from('incoming_missions').update({
+          parc_slot_index: (m.parc_slot_index as number) - 1,
+        }).eq('id', m.id)
+      }
+      console.log(`[parc/place] Shift ${downstream.length} véhicule(s) en ${oldZone}${oldRow} apres liberation du slot ${oldSlot}`)
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
