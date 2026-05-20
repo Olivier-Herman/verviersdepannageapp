@@ -557,6 +557,18 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'skipped', reason: 'Mondial verlopen (mission expirée)' }
     }
 
+    // ── Mondial : ignorer les OTP "Hexalite - One Time Password" ────────────
+    // Ce sujet n est pas une mission mais une demande de code OTP de la
+    // plateforme Hexalite (utilisee par Mondial/Allianz). Sans filtre on
+    // creait une mission vide. Cf. user feedback 2026-05-20.
+    if (source === 'mondial' && subject.toLowerCase().includes('hexalite')
+        && subject.toLowerCase().includes('one time password')) {
+      console.log(`[Processor] Mail Hexalite OTP ignoré: ${subject.slice(0, 80)}`)
+      await markAsRead(token, messageId)
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      return { status: 'skipped', reason: 'Hexalite OTP (pas une mission)' }
+    }
+
     // ── AG Insurance : uniquement "Remorquage frontalier" ───────────────────
     // Touring assistance route certains AG Insurance via aginsurance@... mais
     // VD ne traite QUE les remorquages frontaliers de cette source. Tout
