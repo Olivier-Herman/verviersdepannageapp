@@ -20,7 +20,7 @@ export default async function NewMissionPage() {
 
   const [{ data: drivers }, { data: warnings }] = await Promise.all([
     supabase.from('users').select('id, name').eq('active', true)
-      .in('role', ['driver', 'admin', 'superadmin']).order('name'),
+      .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}').order('name'),
     supabase.from('mission_warnings').select('id, label, icon, color')
       .eq('active', true).order('sort_order'),
   ])

@@ -17,7 +17,7 @@ export default async function AdminCashPage() {
   const { data: drivers } = await supabase
     .from('users')
     .select('id, name, email, role')
-    .in('role', ['driver', 'dispatcher', 'admin', 'superadmin'])
+    .or('role.in.(driver,dispatcher,admin,superadmin),roles.ov.{driver,dispatcher,admin,superadmin}')
     .eq('active', true)
     .order('name')
 

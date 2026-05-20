@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const { data: drivers } = await supabase
       .from('users')
       .select('id, name, email')
-      .eq('role', 'driver')
+      .or('role.eq.driver,roles.cs.{driver}')
       .eq('active', true)
 
     const results = await Promise.all((drivers || []).map(async (driver) => {

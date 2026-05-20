@@ -102,7 +102,7 @@ export async function GET(req: Request) {
         .from('users')
         .select('id, name, phone, priority_order, schedule_day, schedule_night, location_updated_at')
         .eq('active', true)
-        .in('role', ['driver', 'admin', 'superadmin'])
+        .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
         .order('priority_order', { ascending: true, nullsFirst: false })
         .order('name')
 

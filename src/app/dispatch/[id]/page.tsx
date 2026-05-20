@@ -90,7 +90,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     .from('users')
     .select('id, name, avatar_url')
     .eq('active', true)
-    .in('role', ['driver', 'admin', 'superadmin'])
+    .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
     .order('name')
 
   return (

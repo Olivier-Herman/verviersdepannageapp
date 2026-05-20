@@ -12,7 +12,7 @@ export default async function AdminDocumentsPage() {
     .from('users')
     .select('id, name, email')
     .eq('active', true)
-    .in('role', ['driver', 'admin', 'superadmin', 'dispatcher'])
+    .or('role.in.(driver,admin,superadmin,dispatcher),roles.ov.{driver,admin,superadmin,dispatcher}')
     .order('name')
 
   // Tous les documents
