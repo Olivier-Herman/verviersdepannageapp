@@ -313,11 +313,13 @@ export async function POST(req: Request) {
     metadata: { action, status: mapping.status || mission.status },
   })
 
-  // ── Propagation Kaze : note sur le job IMA + cloture si applicable ────────
-  // Si la mission vient de Kaze (kaze_job_id non null) :
-  //   1. Note sur le job pour qu IMA voie l avancement temps reel
-  //   2. Si l action est cloturante (completed / complete_delivery), on lance
-  //      la cloture complete du workflow Kaze (status → completed)
+  // ── Propagation Kaze : note + avancement workflow ─────────────────────────
+  // BACKGROUND via waitUntil : on ne bloque PAS la reponse HTTP de driver-action
+  // pour que l UI chauffeur reagisse instantanement (les operations Kaze
+  // prennent 2-10s, donc inacceptable en synchrone).
+  //
+  // waitUntil garde la fonction Vercel alive jusqu a ce que la Promise
+  // resolve, meme apres le NextResponse.json() au caller.
   if ((mission as any).kaze_job_id) {
     const missionLite = {
       id:             mission.id,
@@ -327,28 +329,40 @@ export async function POST(req: Request) {
       vehicle_model:  mission.vehicle_model,
       dossier_number: (mission as any).dossier_number,
     }
+
+    const kazeBackground = (async () => {
+      try {
+        const { notifyKazeOfAction, advanceKazeMissionForAction } = await import('@/lib/kaze/outbound')
+
+        // 1) Note temps reel (rapide, ~200ms)
+        const noteResult = await notifyKazeOfAction(missionLite, action)
+        if (!noteResult.ok) {
+          console.warn('[driver-action] kaze note failed:', noteResult.error)
+        }
+
+        // 2) Avancement progressif workflow Kaze
+        // - on_way        → navigation_to (status=started)
+        // - on_site       → photo_arrival
+        // - load_vehicle  → cri
+        // - park / complete_delivery / completed → workshop_signature (full close)
+        const advanceResult = await advanceKazeMissionForAction(missionLite, action)
+        if (!advanceResult.ok) {
+          console.warn('[driver-action] kaze advance failed:', advanceResult.error)
+        }
+      } catch (e: any) {
+        console.warn('[driver-action] kaze hooks exception:', e?.message)
+      }
+    })()
+
+    // Utilise waitUntil de Vercel pour que la fonction reste alive
+    // pendant que le background tourne, sans bloquer la response HTTP.
     try {
-      const { notifyKazeOfAction, advanceKazeMissionForAction } = await import('@/lib/kaze/outbound')
-
-      // 1) Note temps reel
-      const noteResult = await notifyKazeOfAction(missionLite, action)
-      if (!noteResult.ok) {
-        console.warn('[driver-action] kaze note failed:', noteResult.error)
-      }
-
-      // 2) Avancement progressif du workflow Kaze (mapping action → step cible).
-      // Strategie : on fait progresser un peu a chaque action chauffeur pour
-      // que la cloture finale tienne dans le timeout Vercel.
-      // - on_way        → navigation_to (status=started)
-      // - on_site       → photo_arrival
-      // - load_vehicle  → cri
-      // - park / complete_delivery / completed → workshop_signature (full close)
-      const advanceResult = await advanceKazeMissionForAction(missionLite, action)
-      if (!advanceResult.ok) {
-        console.warn('[driver-action] kaze advance failed:', advanceResult.error)
-      }
-    } catch (e: any) {
-      console.warn('[driver-action] kaze hooks exception:', e?.message)
+      const { waitUntil } = await import('@vercel/functions')
+      waitUntil(kazeBackground)
+    } catch {
+      // Hors Vercel (local dev) : on attend quand meme pour ne pas perdre
+      // l execution. En prod Vercel waitUntil est dispo.
+      await kazeBackground
     }
   }
 

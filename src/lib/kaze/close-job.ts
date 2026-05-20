@@ -144,7 +144,7 @@ async function runKazeWorkflow(
     const curStep = job.current_step_id as string | null
     const curIdx  = steps && curStep ? steps.findIndex(s => s.id === curStep) : -1
 
-    console.log(`[kaze-close] iter ${iter}: status=${job.status} step=${curStep} (idx ${curIdx}/${targetStepIndex})`)
+    console.log(`[kaze-close] iter ${iter}: status=${job.status} step=${curStep} (idx ${curIdx}/${targetStepIndex}) stepsDone=${stepsDone.length}`)
 
     if (job.status === 'completed') {
       return { ok: true, status: 'completed', steps_done: stepsDone }
@@ -156,6 +156,13 @@ async function runKazeWorkflow(
     // On est arrive ou au-dela du step cible — on s arrete
     if (curIdx > targetStepIndex) {
       console.log(`[kaze-close] target step ${targetStepIndex} atteint (current ${curIdx}), stop`)
+      return { ok: true, status: job.status, steps_done: stepsDone }
+    }
+
+    // Protection supplementaire : si on a deja complete plus de steps que la cible,
+    // on stop (au cas ou curIdx aurait un comportement etrange genre -1)
+    if (stepsDone.length > targetStepIndex) {
+      console.log(`[kaze-close] stepsDone.length ${stepsDone.length} > target ${targetStepIndex}, stop`)
       return { ok: true, status: job.status, steps_done: stepsDone }
     }
 
