@@ -100,31 +100,54 @@ export async function notifyKazeOfAction(
 }
 
 /**
- * Cloture complete d une mission Kaze : on remplit chaque step du workflow IMA
- * (PNG blanc pour photos/signatures, options "Je peux intervenir" pour les
- * selects) jusqu a status="completed". A appeler quand le chauffeur valide la
- * cloture cote VD Soft (action 'completed' ou 'complete_delivery').
+ * Avance le workflow Kaze a l etape correspondant a l action chauffeur.
+ * Idee : on fait progresser au fur et a mesure (en_route → started, sur_place
+ * → photo_arrival, etc.) pour que la cloture finale ne necessite que les
+ * derniers steps (tient dans le timeout Vercel).
  *
- * Non bloquant : si Kaze plante on log mais on n empeche pas la cloture VD Soft.
+ * Mapping action → step Kaze cible :
+ *   on_way        → navigation_to     (status passe a 'started')
+ *   on_site       → photo_arrival
+ *   load_vehicle  → cri
+ *   park          → workshop_signature (full close)
+ *   complete_delivery / completed → workshop_signature (full close)
+ *
+ * Non bloquant : si Kaze plante on log mais on n empeche pas l action VD Soft.
  */
-export async function closeKazeMissionIfApplicable(
+export async function advanceKazeMissionForAction(
   mission: MissionLite,
+  action:  string,
 ): Promise<{ ok: boolean; status: string | null; error?: string }> {
   if (!mission.kaze_job_id) {
     return { ok: true, status: null }
   }
 
   try {
-    const { closeKazeJob } = await import('@/lib/kaze/close-job')
-    const r = await closeKazeJob(mission.kaze_job_id)
+    const { advanceKazeJob, actionToTargetStepIndex } = await import('@/lib/kaze/close-job')
+    const targetIdx = actionToTargetStepIndex(action)
+    if (targetIdx < 0) {
+      return { ok: true, status: null }   // action sans avancement Kaze
+    }
+
+    const r = await advanceKazeJob(mission.kaze_job_id, targetIdx)
     if (r.ok) {
-      console.log(`[kaze-outbound] Mission Kaze ${mission.kaze_job_id} closed → ${r.status} (steps: ${r.steps_done.join(', ')})`)
+      console.log(`[kaze-outbound] Mission ${mission.kaze_job_id} action=${action} → step idx ${targetIdx} (status=${r.status}, ${r.steps_done.length} steps)`)
     } else {
-      console.warn(`[kaze-outbound] Mission Kaze ${mission.kaze_job_id} close failed at ${r.steps_done.length} steps : ${r.error}`)
+      console.warn(`[kaze-outbound] Mission ${mission.kaze_job_id} action=${action} fail at ${r.steps_done.length} steps : ${r.error}`)
     }
     return { ok: r.ok, status: r.status, error: r.error }
   } catch (e: any) {
-    console.warn(`[kaze-outbound] closeKazeJob exception (${mission.kaze_job_id}):`, e?.message)
+    console.warn(`[kaze-outbound] advanceKazeJob exception (${mission.kaze_job_id}):`, e?.message)
     return { ok: false, status: null, error: e?.message }
   }
+}
+
+/**
+ * Wrapper compat : equivalent a advanceKazeMissionForAction(..., 'completed')
+ * — full close jusqu a status=completed.
+ */
+export async function closeKazeMissionIfApplicable(
+  mission: MissionLite,
+): Promise<{ ok: boolean; status: string | null; error?: string }> {
+  return advanceKazeMissionForAction(mission, 'completed')
 }

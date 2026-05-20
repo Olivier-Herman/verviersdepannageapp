@@ -328,7 +328,7 @@ export async function POST(req: Request) {
       dossier_number: (mission as any).dossier_number,
     }
     try {
-      const { notifyKazeOfAction, closeKazeMissionIfApplicable } = await import('@/lib/kaze/outbound')
+      const { notifyKazeOfAction, advanceKazeMissionForAction } = await import('@/lib/kaze/outbound')
 
       // 1) Note temps reel
       const noteResult = await notifyKazeOfAction(missionLite, action)
@@ -336,12 +336,16 @@ export async function POST(req: Request) {
         console.warn('[driver-action] kaze note failed:', noteResult.error)
       }
 
-      // 2) Cloture complete sur actions terminales
-      if (action === 'completed' || action === 'complete_delivery') {
-        const closeResult = await closeKazeMissionIfApplicable(missionLite)
-        if (!closeResult.ok) {
-          console.warn('[driver-action] kaze close failed:', closeResult.error)
-        }
+      // 2) Avancement progressif du workflow Kaze (mapping action → step cible).
+      // Strategie : on fait progresser un peu a chaque action chauffeur pour
+      // que la cloture finale tienne dans le timeout Vercel.
+      // - on_way        → navigation_to (status=started)
+      // - on_site       → photo_arrival
+      // - load_vehicle  → cri
+      // - park / complete_delivery / completed → workshop_signature (full close)
+      const advanceResult = await advanceKazeMissionForAction(missionLite, action)
+      if (!advanceResult.ok) {
+        console.warn('[driver-action] kaze advance failed:', advanceResult.error)
       }
     } catch (e: any) {
       console.warn('[driver-action] kaze hooks exception:', e?.message)
