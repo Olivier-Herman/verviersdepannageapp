@@ -6,25 +6,48 @@
 //   https://app.verviersdepannage.com/api/webhooks/kaze/<KAZE_WEBHOOK_SECRET>
 //
 // Strategie :
-//   1. Verifier le secret dans le path (Kaze ne supporte pas de signature)
+//   1. Verifier le secret dans le path (Kaze ne supporte pas de signature HMAC)
 //   2. Logger le payload brut dans kaze_webhook_events (audit + replay)
-//   3. Repondre 200 OK le plus vite possible (Kaze coupe a 15 sec)
-//   4. Le traitement (insert/update mission) sera plug dans un step suivant
-//      une fois qu on aura sonde une vraie mission IMA pour decouvrir le
-//      schema du workflow.
+//   3. Dispatch selon l event_type :
+//      - import   : Mission proposee / Prestataire assigne / Mise a jour donnees
+//      - cancel   : Tache annulee / Mission proposee annulee / Proposition expiree
+//      - skip     : autres events (logues mais pas traites)
+//   4. Repondre 200 OK avant 15 sec (sinon Kaze desactive le webhook)
 //
-// Securite : la cle KAZE_WEBHOOK_SECRET est un secret URL (token aleatoire
-// 32+ chars). A regenerer si suspicion de fuite (et a mettre a jour cote Kaze).
+// Securite : le secret URL (KAZE_WEBHOOK_SECRET, ~64 chars hex) sert
+// d authentification. A regenerer si suspicion de fuite + update cote Kaze.
 
-import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient }         from '@/lib/supabase'
+import { NextRequest, NextResponse }       from 'next/server'
+import { createAdminClient }                from '@/lib/supabase'
+import { importKazeJob, cancelKazeJob }     from '@/lib/kaze/import'
 
 export const dynamic     = 'force-dynamic'
 export const runtime     = 'nodejs'
-export const maxDuration = 10
+export const maxDuration = 14   // < 15s limite Kaze
+
+/**
+ * Detecte l action a partir de l event_type (champ francais ou anglais).
+ * Robuste a la casse et aux variations FR/NL/EN.
+ */
+function detectAction(eventType: string | null): 'import' | 'cancel' | 'skip' {
+  if (!eventType) return 'skip'
+  const e = eventType.toLowerCase()
+
+  // Annulations : prioritaire (peut contenir aussi "mission" ou "task")
+  if (/cancel|annul|reject|rejet|expir|verlop/.test(e)) return 'cancel'
+
+  // Imports : creation/maj de mission
+  if (/perform|prestataire|assign|propos|update|data_updated|mise.a.jour|task_updated|task_created/.test(e)) {
+    return 'import'
+  }
+
+  return 'skip'
+}
 
 export async function POST(req: NextRequest, { params }: { params: { secret: string } }) {
-  // 1) Verification du secret
+  const t0 = Date.now()
+
+  // 1) Verification secret
   const expected = process.env.KAZE_WEBHOOK_SECRET
   if (!expected) {
     console.error('[kaze-webhook] KAZE_WEBHOOK_SECRET non configure')
@@ -35,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // 2) Lecture du payload
+  // 2) Lecture payload
   let payload: any = null
   try {
     payload = await req.json()
@@ -43,49 +66,69 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
     payload = { _parse_error: true, raw: await req.text().catch(() => '') }
   }
 
-  // 3) Best-effort extraction des champs cles (a affiner quand on aura
-  //    vu le vrai format Kaze)
+  // 3) Extraction event_type + job_id (best-effort, plusieurs noms possibles
+  //    selon ce qu envoie Kaze)
   const eventType = (
     payload?.event_type ||
     payload?.event      ||
     payload?.type       ||
     payload?.action     ||
+    payload?.eventName  ||
     null
   )
   const kazeJobId = (
     payload?.job_id     ||
     payload?.job?.id    ||
     payload?.data?.id   ||
+    payload?.task?.id   ||
     payload?.id         ||
     null
   )
 
-  // 4) Audit en BDD (insert non bloquant : si Supabase est lent, on log
-  //    l erreur mais on repond 200 quand meme pour ne pas faire disable
-  //    le webhook par Kaze)
+  // 4) Audit : insert immediatement pour ne rien perdre
+  let eventId: string | undefined
   try {
     const sb = createAdminClient()
-    const { error: dbErr } = await sb
+    const { data, error: dbErr } = await sb
       .from('kaze_webhook_events')
-      .insert({
-        event_type:  eventType,
-        kaze_job_id: kazeJobId,
-        payload,
-      })
-    if (dbErr) {
-      console.error('[kaze-webhook] insert audit failed:', dbErr.message)
-    }
+      .insert({ event_type: eventType, kaze_job_id: kazeJobId, payload })
+      .select('id')
+      .single()
+    if (dbErr) console.error('[kaze-webhook] insert audit failed:', dbErr.message)
+    else eventId = data?.id
   } catch (e: any) {
     console.error('[kaze-webhook] audit exception:', e?.message)
   }
 
-  // 5) Ack
-  console.log(`[kaze-webhook] received event=${eventType ?? 'unknown'} job_id=${kazeJobId ?? 'none'}`)
-  return NextResponse.json({ ok: true }, { status: 200 })
+  // 5) Dispatch action
+  const action = detectAction(eventType)
+  let result: any = { action, event: eventType, job_id: kazeJobId }
+
+  if (action !== 'skip' && kazeJobId) {
+    try {
+      if (action === 'import') {
+        result.import = await importKazeJob(kazeJobId, { webhookEventId: eventId })
+      } else if (action === 'cancel') {
+        result.cancel = await cancelKazeJob(kazeJobId, {
+          webhookEventId: eventId,
+          reason: `Annulation Kaze : ${eventType}`,
+        })
+      }
+    } catch (e: any) {
+      console.error(`[kaze-webhook] dispatch action=${action} failed:`, e?.message)
+      result.error = e?.message
+    }
+  } else if (action !== 'skip' && !kazeJobId) {
+    console.warn(`[kaze-webhook] action=${action} mais kazeJobId manquant — skip`)
+  }
+
+  const durationMs = Date.now() - t0
+  console.log(`[kaze-webhook] event=${eventType ?? 'unknown'} job=${kazeJobId ?? 'none'} action=${action} ${durationMs}ms`)
+
+  return NextResponse.json({ ok: true, ...result }, { status: 200 })
 }
 
 // Kaze peut envoyer en POST ou PUT (cf UI : Request Method = post|put).
-// On accepte les deux pour rester tolerant.
 export const PUT = POST
 
 // GET pour test manuel + future eventuelle validation de l URL par Kaze.

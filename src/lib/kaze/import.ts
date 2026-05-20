@@ -281,3 +281,52 @@ async function markEventProcessed(
     console.warn('[kaze import] markEventProcessed failed:', e?.message)
   }
 }
+
+/**
+ * Annule une mission Kaze suite a un event "Tache annulee" / "Mission
+ * proposee annulee" / "Proposition expiree" recu via webhook.
+ * Cherche par kaze_job_id et passe le status a 'cancelled' (sauf si deja
+ * dans un etat terminal).
+ */
+export async function cancelKazeJob(
+  kazeJobId: string,
+  opts: { webhookEventId?: string; reason?: string } = {},
+): Promise<{ ok: boolean; mission_id: string | null; action: 'cancelled' | 'not_found' | 'skipped' }> {
+  const sb = createAdminClient()
+  const { data: m } = await sb
+    .from('incoming_missions')
+    .select('id, status')
+    .eq('kaze_job_id', kazeJobId)
+    .maybeSingle()
+
+  if (!m?.id) {
+    await markEventProcessed(opts.webhookEventId, null, 'Mission Kaze introuvable pour annulation')
+    return { ok: false, mission_id: null, action: 'not_found' }
+  }
+
+  // Etat terminal : on n annule pas si la mission est deja completed/ignored
+  if (['completed', 'cancelled', 'ignored'].includes(m.status)) {
+    await markEventProcessed(opts.webhookEventId, m.id, null)
+    return { ok: true, mission_id: m.id, action: 'skipped' }
+  }
+
+  const { error } = await sb
+    .from('incoming_missions')
+    .update({ status: 'cancelled' })
+    .eq('id', m.id)
+
+  if (error) {
+    await markEventProcessed(opts.webhookEventId, m.id, error.message)
+    return { ok: false, mission_id: m.id, action: 'not_found' }
+  }
+
+  await sb.from('mission_logs').insert({
+    mission_id: m.id,
+    action:     'cancelled_by_kaze',
+    notes:      opts.reason || 'Annulation reçue via webhook Kaze',
+    metadata:   { kaze_job_id: kazeJobId },
+  }).then(() => {}, () => {})
+
+  await markEventProcessed(opts.webhookEventId, m.id, null)
+  return { ok: true, mission_id: m.id, action: 'cancelled' }
+}
