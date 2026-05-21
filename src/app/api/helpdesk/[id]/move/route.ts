@@ -16,6 +16,7 @@ import { createAdminClient }       from '@/lib/supabase'
 import { odooRpc, withOdooActor }  from '@/lib/odoo'
 import { FOURRIERE_ZONE_BY_ID, SCRATCH_STATE_ID } from '@/lib/fourriere'
 import { triggerTowsoftParcChange } from '@/lib/towsoft-sync'
+import { shiftAfterRelease }        from '@/lib/parc/release'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +37,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'ID ticket invalide' }, { status: 400 })
   }
 
-  const body = await req.json() as { to_state_id?: number; notes?: string }
+  const body = await req.json() as {
+    to_state_id?:  number
+    notes?:        string
+    /** Optionnel : rangee cible dans la zone (pour placement precis cote VD Soft) */
+    target_row?:   number | null
+    /** Optionnel : slot cible dans la rangee */
+    target_slot?:  number | null
+  }
   const to_state_id = Number(body.to_state_id)
   if (!to_state_id) {
     return NextResponse.json({ error: 'to_state_id requis' }, { status: 400 })
@@ -93,6 +101,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       // 4. Log dans fourriere_movements (audit)
       const toZone = FOURRIERE_ZONE_BY_ID[to_state_id]
       const toName = toZone?.full_name || (to_state_id === SCRATCH_STATE_ID ? 'Scratch' : `state_${to_state_id}`)
+      const toCode = toZone?.code || null
 
       const sb = createAdminClient()
       await sb.from('fourriere_movements').insert({
@@ -107,6 +116,82 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         moved_by:        user.id,
         notes:           body.notes || `Via /v/${ticketId}`,
       })
+
+      // 4bis. Synchronise incoming_missions cote VD Soft (le bouton "Transfert
+      // de parc" change la zone Odoo, on doit aussi mettre a jour le plan visuel
+      // et liberer l ancien slot avec shift). Lookup par helpdesk_id puis par
+      // plaque en fallback. Best effort.
+      try {
+        const plate = (v.license_plate || '').trim().toUpperCase()
+        let mission: any = null
+        // Match par odoo_helpdesk_id (preferable, lien direct)
+        const { data: byTicket } = await sb
+          .from('incoming_missions')
+          .select('id, parc_zone_key, parc_row_number, parc_slot_index, status')
+          .eq('odoo_helpdesk_id', ticketId)
+          .in('status', ['parked', 'delivering'])
+          .maybeSingle()
+        mission = byTicket
+        // Fallback : match par plaque (cas missions creees avant qu on stocke
+        // l odoo_helpdesk_id, ou import legacy)
+        if (!mission && plate) {
+          const { data: byPlate } = await sb
+            .from('incoming_missions')
+            .select('id, parc_zone_key, parc_row_number, parc_slot_index, status')
+            .eq('vehicle_plate', plate)
+            .in('status', ['parked', 'delivering'])
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          mission = byPlate
+        }
+
+        if (mission) {
+          const wasAt = (mission.parc_zone_key && mission.parc_row_number && mission.parc_slot_index)
+            ? { zone: mission.parc_zone_key, row: mission.parc_row_number, slot: mission.parc_slot_index }
+            : null
+
+          // Update vers la nouvelle zone. Si target_row/target_slot fournis et
+          // valides, on place precisement (workflow : suggestion auto sur /v/[id]
+          // qui propose la rangee puis confirmation de l operateur).
+          // Si Scratch (sortie), on clear tout.
+          const isScratch = to_state_id === SCRATCH_STATE_ID
+          const targetRow  = (typeof body.target_row  === 'number' && body.target_row  > 0) ? body.target_row  : null
+          const targetSlot = (typeof body.target_slot === 'number' && body.target_slot > 0) ? body.target_slot : null
+          await sb
+            .from('incoming_missions')
+            .update({
+              parc_zone_key:   isScratch ? null : toCode,
+              parc_row_number: isScratch ? null : targetRow,
+              parc_slot_index: isScratch ? null : targetSlot,
+              updated_at:      new Date().toISOString(),
+            })
+            .eq('id', mission.id)
+
+          // Shift downstream sur l ancien emplacement pour combler le trou
+          if (wasAt) {
+            await shiftAfterRelease(sb, wasAt.zone, wasAt.row, wasAt.slot)
+          }
+
+          // Log mission_logs pour tracabilite
+          await sb.from('mission_logs').insert({
+            mission_id: mission.id,
+            actor_id:   user.id,
+            action:     'parc_transferred',
+            notes:      `Transfert de parc via /v/${ticketId} : ${from_state_name || '?'} → ${toName}`,
+            metadata:   {
+              source:      'helpdesk_move',
+              ticket_id:   ticketId,
+              from_state_id,
+              to_state_id,
+              to_zone_code: toCode,
+              was_at:      wasAt,
+            },
+          }).then(() => {}, () => {})
+        }
+      } catch (e: any) {
+        console.error('[helpdesk/move] Sync VD Soft echec (non bloquant):', e.message)
+      }
 
       // 5. Sync Towsoft (best-effort, async, ne bloque pas la response)
       const missionTowsoft = t.x_studio_mission_towsoft

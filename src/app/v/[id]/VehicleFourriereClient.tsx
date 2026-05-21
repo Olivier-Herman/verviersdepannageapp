@@ -61,6 +61,20 @@ export default function VehicleFourriereClient({ ticketId, userName, canEdit }: 
 
   const [printing, setPrinting] = useState(false)
 
+  // ── Suggestion auto rangee + slot pour la zone cible du transfert ──────
+  interface RowAvail {
+    row_number: number
+    capacity:   number
+    next_slot:  number
+    is_full:    boolean
+    used_count: number
+  }
+  const [availRows, setAvailRows] = useState<RowAvail[]>([])
+  const [suggestion, setSuggestion] = useState<{ row_number: number; slot_index: number; label: string } | null>(null)
+  const [targetRow,  setTargetRow]  = useState<number | null>(null)
+  const [showRowPicker, setShowRowPicker] = useState(false)
+  const [loadingAvail, setLoadingAvail] = useState(false)
+
   async function load() {
     setLoading(true)
     setError(null)
@@ -86,13 +100,60 @@ export default function VehicleFourriereClient({ ticketId, userName, canEdit }: 
     setTimeout(() => setToast(null), 3500)
   }
 
+  /** Fetch availabilites des rangees de la zone cible + auto-suggestion. */
+  async function loadAvailability(stateId: number) {
+    const zone = FOURRIERE_ZONES.find(z => z.state_id === stateId)
+    if (!zone) {
+      setAvailRows([]); setSuggestion(null); setTargetRow(null); return
+    }
+    setLoadingAvail(true)
+    try {
+      const res = await fetch(`/api/inventaire/suggest-row?zone_key=${encodeURIComponent(zone.code)}`)
+      const j = await res.json()
+      if (res.ok) {
+        setAvailRows(j.rows || [])
+        setSuggestion(j.suggestion || null)
+        setTargetRow(j.suggestion?.row_number ?? null)
+      } else {
+        setAvailRows([])
+        setSuggestion(null)
+        setTargetRow(null)
+      }
+    } catch {
+      setAvailRows([])
+      setSuggestion(null)
+      setTargetRow(null)
+    } finally {
+      setLoadingAvail(false)
+    }
+  }
+
+  // Recalcule la suggestion quand l user choisit/change de zone cible
+  useEffect(() => {
+    if (selectedState != null) loadAvailability(selectedState)
+    else { setAvailRows([]); setSuggestion(null); setTargetRow(null); setShowRowPicker(false) }
+  }, [selectedState])
+
+  // Slot cible = next_slot de la rangee selectionnee
+  const targetSlot = (() => {
+    if (targetRow == null) return null
+    const r = availRows.find(x => x.row_number === targetRow)
+    return r?.is_full ? null : (r?.next_slot ?? null)
+  })()
+
   async function doMove(toStateId: number) {
     setSubmitting(true)
     try {
+      const body: any = { to_state_id: toStateId }
+      // Si suggestion + selection rangee, on envoie pour placement precis
+      if (targetRow && targetSlot) {
+        body.target_row  = targetRow
+        body.target_slot = targetSlot
+      }
       const res = await fetch(`/api/helpdesk/${encodeURIComponent(ticketId)}/move`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ to_state_id: toStateId }),
+        body:    JSON.stringify(body),
       })
       const j = await res.json()
       if (!res.ok) {
@@ -102,10 +163,15 @@ export default function VehicleFourriereClient({ ticketId, userName, canEdit }: 
       if (j.skipped) {
         showToast('ok', j.message || 'Aucun changement')
       } else {
-        showToast('ok', `Véhicule transféré : ${j.to_state_name}`)
+        const place = (body.target_row && body.target_slot)
+          ? ` en ${j.to_state_name?.match(/\b[A-Z\*]+\b/)?.[0] || ''}${body.target_row}-${body.target_slot}`
+          : ''
+        showToast('ok', `Véhicule transféré : ${j.to_state_name}${place}`)
       }
       setActionMenu(null)
       setSelectedState(null)
+      setTargetRow(null)
+      setShowRowPicker(false)
       load()
     } finally {
       setSubmitting(false)
@@ -259,14 +325,14 @@ export default function VehicleFourriereClient({ ticketId, userName, canEdit }: 
         )}
       </main>
 
-      {/* Sheet : selection zone */}
+      {/* Sheet : selection zone + suggestion auto rangee + slot */}
       {actionMenu === 'transfer' && (
-        <BottomSheet onClose={() => { setActionMenu(null); setSelectedState(null) }} title="Transférer vers…">
+        <BottomSheet onClose={() => { setActionMenu(null); setSelectedState(null); setShowRowPicker(false) }} title="Transférer vers…">
           <div className="grid grid-cols-3 gap-2 mb-4">
             {FOURRIERE_ZONES.map(z => (
               <button
                 key={z.state_id}
-                onClick={() => setSelectedState(z.state_id)}
+                onClick={() => { setSelectedState(z.state_id); setShowRowPicker(false) }}
                 disabled={z.state_id === vehicle?.stateId}
                 className={`p-3 rounded-xl border text-center transition ${
                   selectedState === z.state_id
@@ -281,8 +347,72 @@ export default function VehicleFourriereClient({ ticketId, userName, canEdit }: 
               </button>
             ))}
           </div>
+
+          {/* Suggestion rangee + slot pour la zone selectionnee */}
+          {selectedState != null && (
+            <div className="mb-4">
+              {loadingAvail ? (
+                <div className="text-center text-ink-muted text-sm py-2">
+                  <Loader2 className="inline animate-spin mr-2" size={14} /> Recherche de place…
+                </div>
+              ) : availRows.length === 0 ? (
+                <div className="bg-surface-2 border rounded-xl p-3 text-ink-secondary text-sm text-center">
+                  Cette zone n&apos;a pas de rangées configurées. Le véhicule sera transféré sans placement précis.
+                </div>
+              ) : suggestion == null ? (
+                <div className="bg-critical/10 border border-critical/40 rounded-xl p-3 text-critical text-sm text-center">
+                  ⚠ Toutes les rangées sont pleines pour cette zone.
+                </div>
+              ) : showRowPicker ? (
+                <div className="bg-surface-2 border rounded-xl p-3 space-y-2">
+                  <div className="text-xs text-ink-muted mb-1">Choisis une rangée :</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {availRows.map(r => {
+                      const code = FOURRIERE_ZONES.find(z => z.state_id === selectedState)?.code || ''
+                      return (
+                        <button
+                          key={r.row_number}
+                          onClick={() => { setTargetRow(r.row_number); setShowRowPicker(false) }}
+                          disabled={r.is_full}
+                          className={`p-2 rounded-lg border text-center transition ${
+                            targetRow === r.row_number && !r.is_full
+                              ? 'bg-brand text-white border-brand'
+                              : r.is_full
+                                ? 'bg-surface border-ink/15 opacity-40 cursor-not-allowed'
+                                : 'bg-surface hover:bg-surface-hover border-ink/15'
+                          }`}>
+                          <div className="font-mono font-bold text-sm">{code}{r.row_number}</div>
+                          <div className="text-[10px] opacity-80">
+                            {r.is_full ? 'plein' : `slot ${r.next_slot} libre`}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-success/10 border border-success/30 rounded-xl p-3 flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-ink-muted">Place suggérée :</div>
+                    <div className="text-ink font-bold font-mono">
+                      {(() => {
+                        const code = FOURRIERE_ZONES.find(z => z.state_id === selectedState)?.code || ''
+                        return `${code}${targetRow}-${targetSlot}`
+                      })()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowRowPicker(true)}
+                    className="text-xs text-brand hover:underline">
+                    Changer de rangée
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <button
-            disabled={!selectedState || submitting}
+            disabled={!selectedState || submitting || (availRows.length > 0 && (!targetRow || !targetSlot))}
             onClick={() => selectedState && doMove(selectedState)}
             className="w-full py-3 bg-brand text-white rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2"
           >
