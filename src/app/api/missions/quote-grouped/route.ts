@@ -39,13 +39,32 @@ function missionKind(m: any): string {
  * Les placeholders "Lieu d'intervention" et "Lieu de destination" sont
  * remplaces par les vraies adresses de la mission.
  */
-function kindDescription(kind: string, mission: any): string {
+function kindDescription(kind: string, mission: any, allMissions?: any[]): string {
   const lieuIntervention = mission.incident_address || "Lieu d'intervention"
   const lieuDestination  = mission.destination_address || mission.destination_name || "Lieu de destination"
 
+  // REM est consideree "mise en depot" si l un des cas suivants :
+  //   1. parked_at non null (la voiture a transite par le parc)
+  //   2. Une REL liee existe dans le devis (parent_mission_id = REM)
+  //   3. Pas d adresse destination du tout (REM "ouverte", typiquement Mal Garee
+  //      ou cas police, ou REM enregistree avant de connaitre la destination)
+  let isPutInDepot = Boolean(mission.parked_at)
+  if (!isPutInDepot && Array.isArray(allMissions)) {
+    isPutInDepot = allMissions.some(m =>
+      m.id !== mission.id &&
+      m.parent_mission_id === mission.id &&
+      (m.mission_type === 'relivraison' || m.mission_type === 'REL')
+    )
+  }
+  if (!isPutInDepot && !mission.destination_address && !mission.destination_name) {
+    isPutInDepot = true
+  }
+
   switch (kind) {
     case 'REM':
-      return `Remorquage d'un véhicule dont référence ci-dessus de "${lieuIntervention}" à notre dépôt (si mise en dépôt) ou à "${lieuDestination}" (si livraison)`
+      return isPutInDepot
+        ? `Remorquage d'un véhicule dont référence ci-dessus de "${lieuIntervention}" à notre dépôt`
+        : `Remorquage d'un véhicule dont référence ci-dessus de "${lieuIntervention}" à "${lieuDestination}"`
     case 'REL':
       return `Relivraison d'un véhicule dont référence ci-dessus de notre dépôt vers "${lieuDestination}"`
     case 'DSP':
@@ -153,7 +172,7 @@ export async function POST(req: Request) {
   for (const mission of sortedMissions) {
     const kind = missionKind(mission)
     const ref = mission.external_id || mission.dossier_number || mission.id.slice(0, 8)
-    const desc = kindDescription(kind, mission)
+    const desc = kindDescription(kind, mission, sortedMissions)
     const sectionLabel = desc
       ? `${kind} #${ref} — ${desc}`
       : `${kind} #${ref}`
