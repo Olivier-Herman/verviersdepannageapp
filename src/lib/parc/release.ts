@@ -8,8 +8,44 @@
 //   - /api/missions/invoice     (facturation -> mission completed -> sortie)
 //   - /api/missions/no-charge   (non facture -> mission completed -> sortie)
 //   - /api/inventaire/.../finish-zone  (vehicules unlocated dans la zone)
+//
+// Garde-fous :
+//   - Skip silencieusement les zones is_pool (pas de notion de rangee/slot,
+//     les positions sont nulles).
+//   - Skip les rangees qui contiennent un slot merge (parc_slot_groups) :
+//     un groupe occupe plusieurs slots avec des positions fixes voulues,
+//     shifter casserait le groupe.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Verifie si une rangee contient au moins un slot merge (parc_slot_groups).
+ * Si oui, on n applique pas de shift automatique pour preserver le groupe.
+ */
+async function rowHasMergedSlots(
+  sb:      SupabaseClient,
+  zoneKey: string,
+  rowNum:  number,
+): Promise<boolean> {
+  const { count } = await sb
+    .from('parc_slot_groups')
+    .select('group_uuid', { count: 'exact', head: true })
+    .eq('zone_key',   zoneKey)
+    .eq('row_number', rowNum)
+  return (count || 0) > 0
+}
+
+/**
+ * Verifie si une zone est de type 'pool' (bordel : pas de rangee/slot).
+ */
+async function isPoolZone(sb: SupabaseClient, zoneKey: string): Promise<boolean> {
+  const { data } = await sb
+    .from('parc_zones')
+    .select('is_pool')
+    .eq('key', zoneKey)
+    .maybeSingle()
+  return Boolean(data?.is_pool)
+}
 
 /**
  * Shift les voitures en aval d une position liberee dans une rangee.
@@ -18,6 +54,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  *
  * Decremente parc_slot_index de chaque voiture avec slot_index > oldSlot,
  * en ordre croissant pour eviter les collisions.
+ *
+ * No-op si :
+ *   - La rangee contient un slot merge (groupe protege)
+ *   - La zone est is_pool (pas de notion de rangee)
  */
 export async function shiftAfterRelease(
   sb:      SupabaseClient,
@@ -25,6 +65,9 @@ export async function shiftAfterRelease(
   oldRow:  number,
   oldSlot: number,
 ): Promise<number> {
+  if (await isPoolZone(sb, oldZone))                  return 0
+  if (await rowHasMergedSlots(sb, oldZone, oldRow))   return 0
+
   const { data: downstream } = await sb
     .from('incoming_missions')
     .select('id, parc_slot_index')

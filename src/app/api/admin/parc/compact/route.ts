@@ -40,11 +40,24 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
+  // Liste des zones pool (is_pool=true) : pas de notion de rangee/slot, donc
+  // pas de shift possible. On les skip.
+  const { data: poolZones } = await sb
+    .from('parc_zones')
+    .select('key')
+    .eq('is_pool', true)
+  const poolKeys = new Set<string>((poolZones || []).map((z: any) => z.key))
+
+  // Liste des rangees qui contiennent au moins un slot merge (parc_slot_groups).
+  // Shifter dans une rangee mergee casserait le groupe -> skip.
+  const { data: mergedSlots } = await sb
+    .from('parc_slot_groups')
+    .select('zone_key, row_number')
+  const mergedRowKeys = new Set<string>(
+    (mergedSlots || []).map((s: any) => `${s.zone_key}-${s.row_number}`)
+  )
+
   // Recupere toutes les missions placees (parc_zone_key + row + slot non null).
-  // On inclut UNIQUEMENT les status "actifs" dans le parc. Les status='completed',
-  // 'unlocated', 'cancelled' avec position fantome seront automatiquement nettoyes
-  // car ils ne sortiront PAS de cette query, mais leur position sera neanmoins
-  // ecrasee si on update les rangees (via un cleanup separe ci-dessous).
   let q = sb
     .from('incoming_missions')
     .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
@@ -87,6 +100,12 @@ export async function POST(req: Request) {
     occupants.sort((a, b) => (a.parc_slot_index as number) - (b.parc_slot_index as number))
     const zone = occupants[0].parc_zone_key as string
     const row  = occupants[0].parc_row_number as number
+
+    // Skip si zone pool (pas de notion de rangee/slot)
+    if (poolKeys.has(zone)) continue
+    // Skip si la rangee contient au moins un slot merge (groupe protege)
+    if (mergedRowKeys.has(`${zone}-${row}`)) continue
+
     const before = occupants.map(o => ({ slot: o.parc_slot_index as number, plate: o.vehicle_plate }))
     const after  = occupants.map((o, i) => ({ slot: i + 1, plate: o.vehicle_plate }))
     const changed = occupants.filter((o, i) => (o.parc_slot_index as number) !== i + 1).length

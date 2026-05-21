@@ -1265,8 +1265,24 @@ function RowSlots({ row, missions, matchingIds, blockedMap, mergedMap, pendingBl
     if (idx >= 0 && idx < slotCount) slots[idx] = m
   }
 
+  // Calcul "rangee complete" : tous les slots de la capacite sont utilises,
+  // soit par une mission, soit par un slot bloque, soit par un slot merge
+  // (membre ou primary). Permet d afficher le label en vert quand la rangee
+  // est physiquement pleine, meme avec liens/blocages.
+  let occupiedCount = 0
+  for (let s = 1; s <= row.capacity; s++) {
+    const k = `${row.zone_key}-${row.row_number}-${s}`
+    const hasMission = slots[s - 1] != null
+    const isBlocked  = blockedMap.has(k) && !pendingUnblocks.has(k)
+    const isMerged   = mergedMap.has(k)  && !pendingUnmergeMembersSet.has(k)
+    if (hasMission || isBlocked || isMerged) occupiedCount++
+  }
+  const isFull = !overflow && occupiedCount >= row.capacity
+
   const labelClass = `flex-shrink-0 font-mono font-bold text-[10px] flex items-center justify-center rounded ${
-    overflow ? 'bg-critical/15 text-critical' : 'bg-brand/15 text-brand'
+    overflow ? 'bg-critical/15 text-critical'
+    : isFull  ? 'bg-success/15 text-success'
+    :           'bg-brand/15 text-brand'
   }`
 
   if (layout === 'horizontal') {
