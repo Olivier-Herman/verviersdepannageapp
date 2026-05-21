@@ -121,7 +121,7 @@ export async function POST(req: Request) {
     // on supprime slot par slot en batch parallele (max 4 par UX).
     const results = await Promise.all(toUnblock.map(s =>
       sb.from('parc_blocked_slots').delete({ count: 'exact' })
-        .eq('zone_key',   s.zone_key)
+        .ilike('zone_key',   s.zone_key)  // case-insensitive (cf bug BOX/Box)
         .eq('row_number', s.row_number)
         .eq('slot_index', s.slot_index)
     ))

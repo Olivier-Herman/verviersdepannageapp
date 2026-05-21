@@ -67,10 +67,12 @@ export async function POST(req: Request) {
   }
 
   // 2) Toggle : existe -> delete, sinon -> insert
+  // Match case-insensitive sur zone_key pour gerer les zones avec casse mixed
+  // (Box vs BOX) historiquement non-normalisees. Cf normalize-zone-keys endpoint.
   const { data: existing } = await sb
     .from('parc_blocked_slots')
     .select('id')
-    .eq('zone_key',   zoneKey)
+    .ilike('zone_key',   zoneKey)
     .eq('row_number', rowNumber)
     .eq('slot_index', slotIndex)
     .maybeSingle()

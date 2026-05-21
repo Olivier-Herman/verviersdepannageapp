@@ -101,9 +101,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       // 4. Log dans fourriere_movements (audit)
       const toZone = FOURRIERE_ZONE_BY_ID[to_state_id]
       const toName = toZone?.full_name || (to_state_id === SCRATCH_STATE_ID ? 'Scratch' : `state_${to_state_id}`)
-      const toCode = toZone?.code || null
+      const toCodeRaw = toZone?.code || null
 
       const sb = createAdminClient()
+
+      // Resolve la casse canonique de parc_zones.key (eviter mismatch BOX/Box).
+      // FOURRIERE_ZONES.code est en uppercase ('BOX'), mais parc_zones.key peut
+      // etre en mixed case ('Box') -> il faut le lookup case-insensitive.
+      let toCode: string | null = toCodeRaw
+      if (toCodeRaw) {
+        const { data: zoneRow } = await sb
+          .from('parc_zones')
+          .select('key')
+          .ilike('key', toCodeRaw)
+          .maybeSingle()
+        if (zoneRow?.key) toCode = zoneRow.key
+      }
       await sb.from('fourriere_movements').insert({
         odoo_vehicle_id: fleetId,
         vehicle_plate:   v.license_plate || null,
