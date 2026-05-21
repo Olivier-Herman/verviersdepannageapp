@@ -12,6 +12,7 @@ import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
+import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
 import AppShell from '@/components/layout/AppShell'
 
 const sb = createClient(
@@ -93,6 +94,8 @@ interface Mission {
   invoice_number?: string | null
   invoice_url?:    string | null
   invoiced_at?:    string | null
+  police_blocked?: boolean
+  parked_at?:      string | null
 }
 
 interface Stop {
@@ -541,6 +544,7 @@ export default function MissionDetailClient({
   userEmail,
   userId,
   userModules = [],
+  userHasOdooAccess = false,
   googleMapsKey,
   autoDispatchStatus,
 }: {
@@ -554,6 +558,7 @@ export default function MissionDetailClient({
   userEmail?:    string
   userId?:       string
   userModules?:  string[]
+  userHasOdooAccess?: boolean
   googleMapsKey: string
   autoDispatchStatus?: string | null
 }) {
@@ -814,6 +819,7 @@ export default function MissionDetailClient({
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
+  const [showRestituerModal, setShowRestituerModal] = useState(false)
   const [clientQuery,     setClientQuery]     = useState('')
   const [clientResults,   setClientResults]   = useState<Array<{id:number;name:string;phone?:string;mobile?:string;city?:string}>>([])
   const [showClientDrop,  setShowClientDrop]  = useState(false)
@@ -2355,13 +2361,37 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Bouton Relivrer — visible uniquement quand mission en parc et pas encore de REL */}
-              {status === 'parked' && !linkedChild && (
+              {/* Bouton Relivrer — visible uniquement quand mission en parc et pas encore de REL.
+                  Mais pas pour les missions fourriere police (Mal Garee, etc.) qui ont
+                  leur propre flow de sortie (restitution au proprietaire). */}
+              {status === 'parked' && !linkedChild && initialMission.source !== 'police_mg' && (
                 <RelivrerButton
                   missionId={initialMission.id}
                   initialRedeliveryAddress={(initialMission as any).redelivery_address}
                   originalDestination={initialMission.destination_address || ''}
                 />
+              )}
+
+              {/* Bouton Restituer — visible pour Mal Garee au parc.
+                  Branche vers RestituerMalGareeModal qui gere la verif blocage police,
+                  la recherche/creation Partner Odoo, les multi-paiements et la sortie
+                  (devis Odoo direct OU encaissement chauffeur selon odoo_api_key user). */}
+              {status === 'parked' && initialMission.source === 'police_mg' && (
+                <>
+                  {initialMission.police_blocked && (
+                    <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">
+                      <span className="text-warning">🚓</span>
+                      <p className="text-warning text-sm font-medium">
+                        Bloquée par la police — vérif obligatoire à la restitution
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowRestituerModal(true)}
+                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                    🔑 Restituer le véhicule
+                  </button>
+                </>
               )}
 
               {/* Encart REL existante — si une mission REL a deja ete creee pour ce parc */}
@@ -2556,6 +2586,39 @@ export default function MissionDetailClient({
           onCreated={(client) => {
             selectBilledClient({ id: client.id, name: client.name })
             setShowCreateClientModal(false)
+          }}
+        />
+      )}
+      {showRestituerModal && initialMission.source === 'police_mg' && (
+        <RestituerMalGareeModal
+          mission={{
+            id:                initialMission.id,
+            external_id:       initialMission.external_id,
+            dossier_number:    initialMission.dossier_number,
+            vehicle_plate:     initialMission.vehicle_plate,
+            vehicle_brand:     initialMission.vehicle_brand,
+            vehicle_model:     initialMission.vehicle_model,
+            client_name:       initialMission.client_name,
+            client_phone:      (initialMission as any).client_phone || null,
+            billed_to_id:      initialMission.billed_to_id || null,
+            billed_to_name:    initialMission.billed_to_name || null,
+            parked_at:         initialMission.parked_at || null,
+            received_at:       initialMission.received_at || null,
+            intervention_date: (initialMission as any).intervention_date || null,
+            police_blocked:    Boolean(initialMission.police_blocked),
+          }}
+          userHasOdooAccess={userHasOdooAccess}
+          onClose={() => setShowRestituerModal(false)}
+          onSuccess={(result) => {
+            setShowRestituerModal(false)
+            if (result.redirect_to) {
+              router.push(result.redirect_to)
+            } else if (result.quote?.url) {
+              window.open(result.quote.url, '_blank')
+              router.push('/dispatch')
+            } else {
+              router.push('/dispatch')
+            }
           }}
         />
       )}

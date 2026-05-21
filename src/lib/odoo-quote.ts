@@ -17,8 +17,15 @@ const ODOO_DB      = process.env.ODOO_DB!
 const ODOO_UID     = parseInt(process.env.ODOO_UID || '8')
 const ODOO_API_KEY = process.env.ODOO_API_KEY!
 
-const PRODUCT_CODES = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'] as const
+// Produits Odoo utilises pour les devis :
+//   - SERV-* : 5 produits generiques utilises par le module Facturation Phase 2
+//     pour les missions classiques (assistance, prive, etc.). Cf [[facturation-phase2]].
+//   - PECMG       : forfait enlevement Mal Garee (fourriere police)
+//   - GARDIENNAGE : journee de gardiennage parc fourriere (Mal Garee et autres
+//     types fourriere). Quantite = nombre de jours, prix unitaire = 20 EUR HTVA.
+const PRODUCT_CODES = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV', 'PECMG', 'GARDIENNAGE'] as const
 type ProductCode = typeof PRODUCT_CODES[number]
+export type { ProductCode }
 
 const VEHICLE_FIELD = 'x_studio_many2one_field_78n_1j6fmmeom'
 
@@ -54,7 +61,7 @@ async function getProductIds(): Promise<Map<ProductCode, number>> {
   }
   const products = await rpc<any[]>('product.product', 'search_read',
     [[['default_code', 'in', [...PRODUCT_CODES]]]],
-    { fields: ['id', 'default_code'], limit: 10 },
+    { fields: ['id', 'default_code'], limit: 20 },
   )
   const map = new Map<ProductCode, number>()
   for (const p of (products || [])) {
@@ -62,12 +69,9 @@ async function getProductIds(): Promise<Map<ProductCode, number>> {
       map.set(p.default_code as ProductCode, p.id)
     }
   }
-  // Verifie qu on a bien les 5 produits generiques
-  for (const code of PRODUCT_CODES) {
-    if (!map.has(code)) {
-      throw new Error(`Produit Odoo "${code}" introuvable (default_code). Verifie que les 5 produits generiques SERV-PEC/KM/PARC/MAJ/DIV sont crees.`)
-    }
-  }
+  // Note : on ne throw plus si un code manque. Le check se fait au push (cf
+  // buildOrderLines) sur les codes REELLEMENT utilises. Permet d ajouter de
+  // nouveaux produits Odoo sans casser tous les flows.
   _productIdCache = map
   _productCacheLoadedAt = now
   return map
@@ -121,8 +125,12 @@ async function buildOrderLines(sections: QuoteSection[]): Promise<any[]> {
       }])
     }
     for (const ln of section.lines) {
+      const productId = productIds.get(ln.kind)
+      if (!productId) {
+        throw new Error(`Produit Odoo "${ln.kind}" introuvable (default_code). Verifie qu il existe avec ce code dans Odoo (product.product).`)
+      }
       lines.push([0, 0, {
-        product_id:      productIds.get(ln.kind),
+        product_id:      productId,
         name:            ln.name,
         product_uom_qty: ln.qty,
         price_unit:      ln.price_unit,

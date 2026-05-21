@@ -93,6 +93,18 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
     .order('name')
 
+  // Detection accès Odoo du user connecté (pour brancher la restitution
+  // vers devis direct ou encaissement chauffeur)
+  let userHasOdooAccess = false
+  if (user.id) {
+    const { data: meRow } = await supabase
+      .from('users')
+      .select('odoo_api_key')
+      .eq('id', user.id)
+      .maybeSingle()
+    userHasOdooAccess = Boolean(meRow?.odoo_api_key)
+  }
+
   return (
     <MissionDetailClient
       mission={mission}
@@ -105,6 +117,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       userId={user.id || undefined}
       userRole={user.role || ''}
       userModules={user.modules || []}
+      userHasOdooAccess={userHasOdooAccess}
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
       autoDispatchStatus={autoDispatchStatus}
     />
