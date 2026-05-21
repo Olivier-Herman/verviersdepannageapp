@@ -1439,7 +1439,7 @@ function Slot({ zoneKey, rowNumber, slotIndex, isOverflow, mission, highlighted,
   const isBlocked = blockedReason !== undefined
   const isMerged  = !!merged
   // En mode autre que normal/edit, ou si bloque/membre non-primary, le slot n est plus drop target.
-  const inActionMode = mode === 'block' || mode === 'link'
+  const inActionMode = mode === 'block' || mode === 'unblock' || mode === 'link'
   const droppable = !inActionMode && !isBlocked && !(isMerged && !merged?.isPrimary)
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable })
   const { selectedId } = useContext(VehicleSelectionCtx)
