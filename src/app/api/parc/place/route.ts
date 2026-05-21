@@ -13,6 +13,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { shiftAfterRelease } from '@/lib/parc/release'
 
 export const dynamic = 'force-dynamic'
 
@@ -269,24 +270,7 @@ export async function POST(req: Request) {
   const sameRow = hasOldPosition && oldZone === finalZone && oldRow === finalRow
 
   if (hasOldPosition && !sameRow) {
-    // Recupere les vehicules en aval (slot_index > oldSlot) dans la meme rangee
-    const { data: downstream } = await sb
-      .from('incoming_missions')
-      .select('id, parc_slot_index')
-      .eq('parc_zone_key',   oldZone)
-      .eq('parc_row_number', oldRow)
-      .gt('parc_slot_index', oldSlot as number)
-      .order('parc_slot_index', { ascending: true })
-
-    if (downstream && downstream.length > 0) {
-      // Decrement chacun de 1 (ordre croissant pour eviter collision UNIQUE)
-      for (const m of downstream) {
-        await sb.from('incoming_missions').update({
-          parc_slot_index: (m.parc_slot_index as number) - 1,
-        }).eq('id', m.id)
-      }
-      console.log(`[parc/place] Shift ${downstream.length} véhicule(s) en ${oldZone}${oldRow} apres liberation du slot ${oldSlot}`)
-    }
+    await shiftAfterRelease(sb, oldZone as string, oldRow as number, oldSlot as number)
   }
 
   return NextResponse.json({ ok: true })

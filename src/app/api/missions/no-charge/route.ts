@@ -13,6 +13,7 @@
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
+import { releaseParcAndShift } from '@/lib/parc/release'
 import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -82,6 +83,13 @@ export async function POST(req: Request) {
     .in('id', ids)
     .select('id, status, no_charge_at, no_charge_reason')
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+  // Sortie parc : pour chaque mission qui etait dans le parc, libere la position
+  // et shift les voitures en aval pour combler le trou.
+  for (const id of ids) {
+    try { await releaseParcAndShift(sb, id) }
+    catch (e: any) { console.error('[no-charge] release parc echec (non bloquant):', e.message) }
+  }
 
   const logRows = ids.map(id => ({
     mission_id: id,

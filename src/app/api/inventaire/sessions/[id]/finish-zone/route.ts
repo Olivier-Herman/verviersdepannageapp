@@ -118,6 +118,47 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       }
     }
 
+    // Shift les voitures restantes par rangee impactee (pas de trou apres
+    // qu un vehicule passe en unlocated).
+    const rowsImpacted = new Map<number, number>()  // row -> min slot libere
+    for (const m of missingList) {
+      if (!m.parc_row_number || !m.parc_slot_index) continue
+      const cur = rowsImpacted.get(m.parc_row_number)
+      if (cur === undefined || m.parc_slot_index < cur) {
+        rowsImpacted.set(m.parc_row_number, m.parc_slot_index)
+      }
+    }
+    for (const [row] of rowsImpacted) {
+      // On compacte toute la rangee : renumerote les slots restants 1..N.
+      const { data: rowOccupants } = await sb
+        .from('incoming_missions')
+        .select('id, parc_slot_index')
+        .eq('parc_zone_key',   zoneKey)
+        .eq('parc_row_number', row)
+        .not('parc_slot_index', 'is', null)
+        .in('status', PARKED_STATUSES)
+        .order('parc_slot_index', { ascending: true })
+      const occupants = rowOccupants || []
+      // Renumerote 1..N : on doit eviter les collisions UNIQUE, donc on shift
+      // d abord vers une plage temporaire (slot + 1000) puis on remet a 1..N.
+      for (let i = 0; i < occupants.length; i++) {
+        const occ = occupants[i]
+        const targetSlot = i + 1
+        if (occ.parc_slot_index === targetSlot) continue
+        await sb.from('incoming_missions').update({
+          parc_slot_index: targetSlot + 1000,
+        }).eq('id', occ.id)
+      }
+      for (let i = 0; i < occupants.length; i++) {
+        const occ = occupants[i]
+        const targetSlot = i + 1
+        if (occ.parc_slot_index === targetSlot) continue
+        await sb.from('incoming_missions').update({
+          parc_slot_index: targetSlot,
+        }).eq('id', occ.id)
+      }
+    }
+
     // Log dans mission_logs pour tracabilite
     const logs = missingList.map(m => ({
       mission_id: m.id,

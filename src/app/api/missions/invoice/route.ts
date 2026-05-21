@@ -16,6 +16,7 @@ import { getServerSession }        from 'next-auth'
 import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { resolveInvoiceByNumber }  from '@/lib/odoo-invoice'
+import { releaseParcAndShift }     from '@/lib/parc/release'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // PDF + push Odoo via waitUntil peut prendre 30s+
@@ -101,6 +102,13 @@ export async function POST(req: Request) {
     .in('id', ids)
     .select('id, status, invoice_method, invoice_number, invoice_url, invoice_odoo_id')
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+  // Sortie parc : pour chaque mission qui etait dans le parc, libere la position
+  // et shift les voitures en aval pour combler le trou.
+  for (const id of ids) {
+    try { await releaseParcAndShift(sb, id) }
+    catch (e: any) { console.error('[invoice] release parc echec (non bloquant):', e.message) }
+  }
 
   // Logs
   const logRows = ids.map(id => ({
