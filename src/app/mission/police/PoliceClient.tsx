@@ -85,6 +85,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [ownerLastName,  setOwnerLastName]  = useState('')
   const [ownerPhone,     setOwnerPhone]     = useState('')
   const [remarks,        setRemarks]        = useState('')
+  const [policeBlocked,  setPoliceBlocked]  = useState(false)
   const [photos,         setPhotos]         = useState<File[]>([])
   const [previews,       setPreviews]       = useState<string[]>([])
   const [loading,        setLoading]        = useState(false)
@@ -278,6 +279,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         location, policeZone, officerName,
         ownerFirstName, ownerLastName, ownerPhone,
         remarks, photoUrls,
+        policeBlocked,
       }),
     })
 
@@ -441,6 +443,30 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             placeholder="Observations..."
             className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none focus:border-blue-500" />
         </Section>
+
+        {/* Blocage Police : toggle visible pour les Mal Garees (et plus tard les autres
+            types fourriere). Si actif, la restitution exigera une confirmation que le
+            proprietaire est bien passe au commissariat. */}
+        {(selectedType === 'mal_garee') && (
+          <Section title="🚓 Blocage police">
+            <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-strong rounded-xl hover:border-blue-500 transition">
+              <input
+                type="checkbox"
+                checked={policeBlocked}
+                onChange={e => setPoliceBlocked(e.target.checked)}
+                className="mt-1 w-5 h-5"
+              />
+              <div className="flex-1">
+                <div className="text-ink text-sm font-medium">
+                  Le policier exige que le propriétaire passe au commissariat avant restitution
+                </div>
+                <div className="text-ink-muted text-xs mt-1">
+                  Active ce toggle si le policier sur place le demande (souvent pour les véhicules étrangers, parfois pour les belges). À la restitution, on demandera confirmation que le propriétaire s&apos;est bien présenté à la police.
+                </div>
+              </div>
+            </label>
+          </Section>
+        )}
 
         {/* Photos */}
         <Section title={`Photos (${photos.length})`}>

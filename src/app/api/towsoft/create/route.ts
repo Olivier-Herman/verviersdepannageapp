@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     policeZone, officerName,
     ownerFirstName, ownerLastName, ownerPhone,
     remarks, photoUrls,
+    policeBlocked,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -181,6 +182,70 @@ export async function POST(req: Request) {
     await supabase.from('towsoft_queue').update({ odoo_ticket_id: odooTicketId }).eq('id', queueEntry.id)
   } catch (e) {
     console.error('[TowSoft] Helpdesk Odoo échec:', e)
+  }
+
+  // 1bis. INSERT incoming_missions pour les missions fourriere (parc VD Soft).
+  // Pour l instant : Mal Garees uniquement. Les autres types police
+  // (saisie, snc, avp, etc.) seront ajoutes au fur et a mesure du chantier
+  // fourriere police. Sans ca, VD Soft est aveugle sur ces missions.
+  const FOURRIERE_TYPE_TO_SOURCE: Record<string, string> = {
+    mal_garee: 'police_mg',
+  }
+  const FOURRIERE_TYPE_TO_ZONE: Record<string, string> = {
+    mal_garee: 'L',
+  }
+
+  if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
+    const vdSource = FOURRIERE_TYPE_TO_SOURCE[type]
+    const vdZone   = FOURRIERE_TYPE_TO_ZONE[type]
+    const nowIso   = new Date().toISOString()
+
+    // Combine date (DD-MM-YYYY) + time (HH:MM) en ISO pour intervention_date.
+    let interventionISO = nowIso
+    try {
+      const [dd, mm, yyyy] = (date || '').split('-')
+      const [hh, mn] = (time || '00:00').split(':')
+      if (dd && mm && yyyy) {
+        interventionISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`).toISOString()
+      }
+    } catch {}
+
+    const fullName = [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || null
+
+    const { data: vdData, error: vdErr } = await supabase
+      .from('incoming_missions')
+      .insert({
+        external_id:        `MG-${queueEntry.id.slice(0, 8)}`,
+        dossier_number:     odooTicketId ? `MG-${odooTicketId}` : null,
+        source:             vdSource,
+        mission_type:       'remorquage',
+        status:             'parked',
+        parc_zone_key:      vdZone,
+        vehicle_plate:      ((plate || '').trim().toUpperCase()) || null,
+        vehicle_vin:        ((vin || '').trim().toUpperCase()) || null,
+        vehicle_brand:      brand || null,
+        vehicle_model:      model || null,
+        client_name:        fullName,
+        client_phone:       ownerPhone || null,
+        incident_address:   location,
+        incident_city:      null,
+        received_at:        nowIso,
+        intervention_date:  interventionISO,
+        driver_photos:      Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
+        remarks_general:    remarks || null,
+        police_blocked:     Boolean(policeBlocked),
+        odoo_task_id:       null,
+        created_at:         nowIso,
+        updated_at:         nowIso,
+      })
+      .select('id')
+      .single()
+
+    if (vdErr) {
+      console.error('[towsoft/create] INSERT incoming_missions echec (non bloquant):', vdErr.message)
+    } else {
+      console.log('[towsoft/create] VD Soft mission cree:', vdData?.id, 'source:', vdSource, 'zone:', vdZone)
+    }
   }
 
   // Numéro de dossier final pour TowSoft : si dossier explicite fourni on le garde,
