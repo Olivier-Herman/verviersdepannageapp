@@ -139,12 +139,14 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     return parcZones.find(z => z.key.toLowerCase() === code)?.key || null
   }, [selectedZone, parcZones])
 
-  // Rangees disponibles pour la zone selectionnee, triees par sort_order
+  // Rangees disponibles pour la zone selectionnee, triees par row_number ASC.
+  // On ignore sort_order ici (qui sert au plan visuel custom drag&drop) : pour
+  // l inventaire, l ordre naturel 1 -> 2 -> 3 est plus intuitif.
   const availableRows = useMemo<ParcRow[]>(() => {
     if (!parcZoneKey) return []
     return parcRows
       .filter(r => r.zone_key === parcZoneKey)
-      .sort((a, b) => (a.sort_order || a.row_number) - (b.sort_order || b.row_number))
+      .sort((a, b) => a.row_number - b.row_number)
   }, [parcZoneKey, parcRows])
 
   // Mode strict de la zone courante : si non-strict, l affichage de la capacite
