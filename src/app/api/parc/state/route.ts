@@ -128,6 +128,13 @@ export async function GET() {
     return zoneKeyCanon.get(String(k).toLowerCase()) || k
   }
 
+  // Canonicalize parc_zone_key des missions AVANT le isFullyPlaced
+  // (pool check + frontend grouping fonctionnent sur key canonique).
+  const parkedNormalized = (parkedMissions || []).map((m: any) => ({
+    ...m,
+    parc_zone_key: canonZoneKey(m.parc_zone_key),
+  }))
+
   // Un vehicule n est "place" que s il a zone + rangee + slot tous determines,
   // sauf en zone pool ou seule la zone suffit.
   const isFullyPlaced = (m: any) => {
@@ -135,8 +142,8 @@ export async function GET() {
     if (poolZoneKeys.has(m.parc_zone_key)) return true
     return !!(m.parc_row_number && m.parc_slot_index)
   }
-  const placed   = (parkedMissions || []).filter(isFullyPlaced)
-  const toPlace: any[] = (parkedMissions || []).filter(m => !isFullyPlaced(m))
+  const placed   = parkedNormalized.filter(isFullyPlaced)
+  const toPlace: any[] = parkedNormalized.filter(m => !isFullyPlaced(m))
 
   // Pour chaque vehicule Odoo en fourriere : si on a deja sa mission dans
   // placed/toPlace par plaque, on skip (deja visible). Sinon, on regarde
@@ -193,7 +200,7 @@ export async function GET() {
   // Regroupe les lignes parc_slot_groups par group_uuid (members + primary)
   const groupsMap = new Map<string, { group_uuid: string; primary: any; members: any[] }>()
   for (const g of (groupRows || [])) {
-    const slot = { zone_key: g.zone_key, row_number: g.row_number, slot_index: g.slot_index }
+    const slot = { zone_key: canonZoneKey(g.zone_key)!, row_number: g.row_number, slot_index: g.slot_index }
     if (!groupsMap.has(g.group_uuid)) {
       groupsMap.set(g.group_uuid, { group_uuid: g.group_uuid, primary: slot, members: [] })
     } else {
@@ -202,12 +209,21 @@ export async function GET() {
   }
   const merged_groups = Array.from(groupsMap.values())
 
+  // Canonicalize blocked aussi (placed est deja normalise via parkedNormalized).
+  // Le frontend construit ses Map<"zone-row-slot"> et match avec zones.key
+  // canonique - sans canon -> mismatch BOX/Box -> slots bloques invisibles
+  // = impossible a debloquer (le bug Olivier).
+  const blockedCanon = (blocked || []).map((b: any) => ({
+    ...b,
+    zone_key: canonZoneKey(b.zone_key),
+  }))
+
   return NextResponse.json({
     zones:           zones || [],
     rows:            rows  || [],
     placed,
     toPlace,
-    blocked:         blocked || [],
+    blocked:         blockedCanon,
     merged_groups,
     canvasHeightPx:  settings?.canvas_height_px || 2400,
   })
