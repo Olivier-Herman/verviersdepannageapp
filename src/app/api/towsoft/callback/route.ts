@@ -1,6 +1,7 @@
 // src/app/api/towsoft/callback/route.ts
-import { NextResponse }      from 'next/server'
-import { createAdminClient } from '@/lib/supabase'
+import { NextResponse }            from 'next/server'
+import { createAdminClient }       from '@/lib/supabase'
+import { printZebraLabelForTicket } from '@/lib/print/zebra'
 
 export async function POST(req: Request) {
   const body = await req.json()
@@ -36,14 +37,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 
-  // Impression étiquette (seulement si print_label !== false)
+  // Impression étiquette (seulement si print_label !== false).
+  // Bascule du chemin Verviers-QR vers le helper verviers-app integre,
+  // qui utilise la meme imprimante Zebra (ZEBRA_REMOTE) et le meme format.
   if (print_label !== false) {
-    try {
-      const printUrl = `https://verviers-qr.vercel.app/api/print/${queue.odoo_ticket_id}`
-      await fetch(printUrl, { method: 'GET' })
-      console.log(`[Callback] Impression étiquette déclenchée: ${printUrl}`)
-    } catch (e: any) {
-      console.error('[Callback] Impression échec:', e.message)
+    const result = await printZebraLabelForTicket(queue.odoo_ticket_id)
+    if (result.ok) {
+      console.log(`[Callback] Impression OK ticket #${queue.odoo_ticket_id} plate=${result.plate || '?'} motif=${result.motif || '?'}`)
+    } else {
+      console.error(`[Callback] Impression echec ticket #${queue.odoo_ticket_id}:`, result.error)
     }
   }
 
