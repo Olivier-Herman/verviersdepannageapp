@@ -14,7 +14,7 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink, Sparkles } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink, Unlock, Sparkles } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'
 
@@ -138,7 +138,7 @@ interface State {
   canvasHeightPx:  number
 }
 
-type Mode = 'normal' | 'edit' | 'block' | 'link'
+type Mode = 'normal' | 'edit' | 'block' | 'unblock' | 'link'
 
 /** Cle "zone-row-slot" utilisee dans les Sets / Maps de pending state. */
 function slotKey(s: SlotRef | { zone_key: string; row_number: number; slot_index: number }): string {
@@ -193,7 +193,7 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
 
   // Convenience flags pour le legacy code (editMode / blockMode toujours utilises)
   const editMode  = mode === 'edit'
-  const blockMode = mode === 'block'
+  const blockMode = mode === 'block' || mode === 'unblock'
   const linkMode  = mode === 'link'
 
   // Si l URL contient ?search=PLATE (venant du tableau Fourriere), pre-remplit
@@ -432,6 +432,11 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     }
 
     if (mode === 'block') {
+      // Mode bloquer UNIQUEMENT : on ne traite que les slots libres (a bloquer)
+      if (isBlocked) {
+        alert('Slot déjà bloqué. Utilise le mode "Débloquer" pour l enlever.')
+        return
+      }
       if (isMissionHere) {
         alert('Slot occupé par un véhicule. Retire-le avant de bloquer.')
         return
@@ -440,17 +445,26 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
         alert(`Slot dans un emplacement fusionné (${merged.primaryLabel}). Défusionne d'abord.`)
         return
       }
-      // Toggle :
-      // - slot libre cliqué -> pendingBlocks (ou retire si déjà en attente)
-      // - slot bloqué cliqué -> pendingUnblocks (ou retire si déjà en attente)
+      // Toggle pendingBlocks
       if (pendingBlocks.has(k)) {
         setPendingBlocks(prev => { const n = new Set(prev); n.delete(k); return n })
-      } else if (pendingUnblocks.has(k)) {
-        setPendingUnblocks(prev => { const n = new Set(prev); n.delete(k); return n })
-      } else if (isBlocked) {
-        setPendingUnblocks(prev => new Set(prev).add(k))
       } else {
         setPendingBlocks(prev => new Set(prev).add(k))
+      }
+      return
+    }
+
+    if (mode === 'unblock') {
+      // Mode debloquer UNIQUEMENT : on ne traite que les slots bloques
+      if (!isBlocked) {
+        alert('Slot non bloqué. Utilise le mode "Bloquer" pour le bloquer.')
+        return
+      }
+      // Toggle pendingUnblocks
+      if (pendingUnblocks.has(k)) {
+        setPendingUnblocks(prev => { const n = new Set(prev); n.delete(k); return n })
+      } else {
+        setPendingUnblocks(prev => new Set(prev).add(k))
       }
       return
     }
@@ -574,6 +588,12 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     setPendingUnblocks(new Set())
     setMode('block')
   }
+  function enterUnblockMode() {
+    setPendingBlocks(new Set())
+    setPendingUnblocks(new Set())
+    setBlockReason('')
+    setMode('unblock')
+  }
   function enterLinkMode() {
     setPendingMerge([])
     setPendingUnmerges(new Set())
@@ -629,7 +649,12 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                 {mode === 'edit' && 'Glisse les zones pour les positionner, coin bas-droit pour redimensionner.'}
                 {mode === 'block' && (
                   <>
-                    Sélectionne les emplacements à bloquer{blockReason ? ` (motif : « ${blockReason} »)` : ''}. Clic sur un slot déjà rouge = marqué pour déblocage.
+                    Sélectionne les emplacements à <strong>bloquer</strong>{blockReason ? ` (motif : « ${blockReason} »)` : ''}. Clic sur un slot libre pour le marquer.
+                  </>
+                )}
+                {mode === 'unblock' && (
+                  <>
+                    Clique sur les emplacements <strong>rouge</strong> à débloquer. Tu peux en sélectionner plusieurs avant de valider.
                   </>
                 )}
                 {mode === 'link' && (
@@ -676,16 +701,33 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
               {mode === 'block' && (
                 <>
                   <span className="text-xs text-ink-muted">
-                    {pendingBlocks.size + pendingUnblocks.size} sélectionné{pendingBlocks.size + pendingUnblocks.size > 1 ? 's' : ''}
-                    {pendingBlocks.size > 0 && ` · ${pendingBlocks.size} à bloquer`}
-                    {pendingUnblocks.size > 0 && ` · ${pendingUnblocks.size} à débloquer`}
+                    {pendingBlocks.size} slot{pendingBlocks.size > 1 ? 's' : ''} à bloquer
                   </span>
                   <button
                     onClick={commitBlockBatch}
-                    disabled={pendingBlocks.size === 0 && pendingUnblocks.size === 0}
+                    disabled={pendingBlocks.size === 0}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-critical hover:bg-critical/80 text-white transition disabled:opacity-40"
                   >
-                    <Check size={14} /> Valider
+                    <Check size={14} /> Bloquer
+                  </button>
+                  <button onClick={resetBlockMode}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-surface-2 border text-ink-secondary hover:text-ink transition">
+                    <X size={14} /> Annuler
+                  </button>
+                </>
+              )}
+              {/* Mode Unblock actif : Valider / Annuler */}
+              {mode === 'unblock' && (
+                <>
+                  <span className="text-xs text-ink-muted">
+                    {pendingUnblocks.size} slot{pendingUnblocks.size > 1 ? 's' : ''} à débloquer
+                  </span>
+                  <button
+                    onClick={commitBlockBatch}
+                    disabled={pendingUnblocks.size === 0}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-success hover:bg-success-soft text-white transition disabled:opacity-40"
+                  >
+                    <Check size={14} /> Débloquer
                   </button>
                   <button onClick={resetBlockMode}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-surface-2 border text-ink-secondary hover:text-ink transition">
@@ -722,6 +764,15 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
                   title="Bloquer manuellement des emplacements (batch avec motif unique)"
                 >
                   <Ban size={14} /> Bloquer
+                </button>
+              )}
+              {canBlock && mode === 'normal' && blockedCount > 0 && (
+                <button
+                  onClick={enterUnblockMode}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-surface-2 border text-ink-secondary hover:text-ink transition"
+                  title={`Débloquer des emplacements (${blockedCount} bloqué${blockedCount > 1 ? 's' : ''})`}
+                >
+                  <Unlock size={14} /> Débloquer
                 </button>
               )}
               {canBlock && mode === 'normal' && (
