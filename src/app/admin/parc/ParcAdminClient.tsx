@@ -211,6 +211,9 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
         </p>
       </div>
 
+      {/* Préparer inventaire complet : bulk sync Odoo + canonicalize + reset placements */}
+      <PrepareFullInventoryBlock />
+
       {/* Canvas size config */}
       <div className="bg-surface-2 border rounded-2xl p-4">
         <h2 className="text-ink font-semibold text-sm mb-2">Dimensions du plan</h2>
@@ -452,3 +455,163 @@ function SortableRowEditor(props: {
     </div>
   )
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Bloc "Préparer inventaire complet" (bulk sync Odoo + canonicalize + reset placements)
+// ──────────────────────────────────────────────────────────────────────────────
+function PrepareFullInventoryBlock() {
+  const [busy, setBusy] = useState(false)
+  const [dryRunResult, setDryRunResult] = useState<any>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [done, setDone] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function runDryRun() {
+    setBusy(true); setErr(null); setDone(null)
+    try {
+      const res = await fetch("/api/admin/parc/prepare-full-inventory", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ dry_run: true }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setDryRunResult(j)
+    } catch (e: any) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runExecute() {
+    if (!confirming) { setConfirming(true); return }
+    setBusy(true); setErr(null)
+    try {
+      const res = await fetch("/api/admin/parc/prepare-full-inventory", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({}),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      setDone(j)
+      setDryRunResult(null)
+      setConfirming(false)
+    } catch (e: any) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-warning/5 border border-warning/40 rounded-2xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-ink font-bold text-base flex items-center gap-2">
+            🔄 Préparer inventaire complet
+          </h2>
+          <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+            Pour passer VD Soft en source de vérité unique. Synchronise tous les véhicules
+            Odoo en fourrière vers VD Soft, fixe les mismatches de casse, et clear les rangées/slots
+            pour préparer un re-scan complet. <strong>Action lourde — à ne lancer qu&apos;avant un
+            inventaire complet (2h de scan).</strong>
+          </p>
+        </div>
+      </div>
+
+      {!dryRunResult && !done && (
+        <button
+          onClick={runDryRun}
+          disabled={busy}
+          className="px-3 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-medium disabled:opacity-50">
+          {busy ? "Analyse en cours…" : "1. Lancer un dry-run (aperçu sans modification)"}
+        </button>
+      )}
+
+      {err && (
+        <div className="bg-critical/10 border border-critical/40 rounded-lg p-3 text-critical text-sm">
+          {err}
+        </div>
+      )}
+
+      {dryRunResult && !done && (
+        <div className="bg-surface border rounded-xl p-3 space-y-2 text-sm">
+          <h3 className="font-semibold text-ink">📊 Aperçu (dry-run)</h3>
+          <ul className="space-y-1 text-ink-secondary text-xs">
+            <li>• <strong>{dryRunResult.stats.odoo_vehicles}</strong> véhicules Odoo en fourrière</li>
+            <li>• <strong>{dryRunResult.stats.vd_soft_missions}</strong> missions VD Soft actuelles</li>
+            <li>• <strong>{dryRunResult.stats.vehicles_to_create}</strong> stubs VD Soft à créer (manquants)</li>
+            <li>• <strong>{dryRunResult.stats.vehicles_to_canonicalize}</strong> zones à canonicaliser (BOX → Box, etc.)</li>
+            <li>• <strong>{dryRunResult.stats.vehicles_to_reset_placement}</strong> placements à vider (rangée+slot → null)</li>
+          </ul>
+          <div className="mt-3">
+            <h4 className="text-ink font-medium text-xs mb-1">Répartition par zone (après prépa) :</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(dryRunResult.stats.zones_distribution).map(([z, n]) => (
+                <span key={z} className="px-2 py-0.5 bg-surface-2 border rounded-full text-[10px] font-mono">
+                  {z}: <strong className="text-brand">{String(n)}</strong>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-2 border-t">
+            {confirming ? (
+              <>
+                <span className="text-warning text-xs font-medium">⚠️ Cette action va modifier la BDD. Confirmer ?</span>
+                <button
+                  onClick={runExecute}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-critical hover:bg-critical/90 text-white rounded-lg text-xs font-bold disabled:opacity-50">
+                  {busy ? "Exécution…" : "Oui, exécuter"}
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-xs">
+                  Annuler
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={runExecute}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-warning hover:bg-warning/90 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                  2. Exécuter pour de vrai
+                </button>
+                <button
+                  onClick={() => setDryRunResult(null)}
+                  className="px-3 py-1.5 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-xs">
+                  Re-analyser
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {done && (
+        <div className="bg-success/10 border border-success/40 rounded-xl p-3 text-sm space-y-2">
+          <h3 className="font-semibold text-success">✅ Préparation terminée</h3>
+          <ul className="space-y-1 text-ink-secondary text-xs">
+            <li>• {done.stats.vehicles_to_create} stubs créés</li>
+            <li>• {done.stats.vehicles_to_canonicalize} zones canonicalisées</li>
+            <li>• {done.stats.vehicles_to_reset_placement} placements vidés</li>
+          </ul>
+          <p className="text-ink-secondary text-xs mt-2">
+            Tu peux maintenant lancer l&apos;inventaire complet (~2h). Tous les véhicules
+            sont en &quot;À placer&quot; groupés par zone.
+          </p>
+          <button
+            onClick={() => { setDone(null); setDryRunResult(null) }}
+            className="mt-2 px-3 py-1.5 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-xs">
+            OK
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
