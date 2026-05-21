@@ -382,6 +382,10 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           const newSlot = nextSlot + 1
           setNextSlot(newSlot)
           persistNextSlot(newSlot)
+          // Auto-popup en fin de capacite : suggere de passer a la rangee suivante
+          if (currentRow && newSlot > currentRow.capacity) {
+            setTimeout(() => promptNextRow(currentRow.row_number), 200)
+          }
         }
 
       } else {
@@ -460,6 +464,10 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           const newSlot = nextSlot + 1
           setNextSlot(newSlot)
           persistNextSlot(newSlot)
+          // Auto-popup en fin de capacite : suggere de passer a la rangee suivante
+          if (currentRow && newSlot > currentRow.capacity) {
+            setTimeout(() => promptNextRow(currentRow.row_number), 200)
+          }
         }
       }
     } catch (err: any) {
@@ -569,6 +577,51 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       return
     }
     if (confirm(`Rangée ${parcZoneKey}${currentRow.row_number} validée.\nPasser à la rangée ${parcZoneKey}${next.row_number} (slot 1) ?`)) {
+      selectRow(next)
+    }
+  }
+
+  /** Vide la zone courante : tous les vehicules sortent du parc (parc_zone_key
+   *  = null). Au scan suivant ils retrouveront leur place. Garde une trace dans
+   *  mission_logs. Utile pour repartir d une zone "fraiche" quand l etat BDD
+   *  est devenu douteux. */
+  async function clearZoneAndScan() {
+    if (!parcZoneKey) {
+      alert('Sélectionne d abord une zone.')
+      return
+    }
+    const confirm1 = confirm(
+      `⚠ Vider la zone ${parcZoneKey} ?\n\n` +
+      `Tous les véhicules actuellement dans cette zone sortent du parc (pas de zone). ` +
+      `Ils ré-apparaîtront en zone quand tu les scanneras dans une zone (recovery automatique).\n\n` +
+      `Une trace est gardée dans la fiche véhicule (ancien emplacement + acteur).`
+    )
+    if (!confirm1) return
+
+    try {
+      const res = await fetch('/api/admin/parc/clear-zone', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: parcZoneKey }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      alert(`✅ Zone ${parcZoneKey} vidée : ${j.cleared} véhicule(s) sortis du parc.\n\nTu peux maintenant scanner la zone à nouveau pour la remettre à jour.`)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message || e}`)
+    }
+  }
+
+  /** Auto-prompt en fin de capacite : la rangee est pleine, propose de basculer
+   *  sur la suivante. Appele apres chaque scan reussi quand nextSlot > capacity. */
+  function promptNextRow(completedRowNum: number) {
+    if (!currentRow || currentRow.row_number !== completedRowNum) return
+    const next = suggestNextRow()
+    if (!next) {
+      alert(`✅ Rangée ${parcZoneKey}${currentRow.row_number} complète.\nPlus de rangée suivante dans cette zone — termine l'inventaire ou change de zone.`)
+      return
+    }
+    if (confirm(`✅ Rangée ${parcZoneKey}${currentRow.row_number} complète (capacité atteinte).\nPasser à la rangée ${parcZoneKey}${next.row_number} (slot 1) ?`)) {
       selectRow(next)
     }
   }
@@ -870,6 +923,18 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               <ScanLine size={18} />
               {sessionId ? 'Reprendre la session' : 'Démarrer le scan'}
             </button>
+
+            {/* Vider la zone : repart from scratch sans toucher au statut des
+                missions (juste clear parc_zone_key/row/slot). Garde trace en log. */}
+            {selectedZone && parcZoneKey != null && (
+              <button
+                onClick={clearZoneAndScan}
+                className="w-full py-2 bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 rounded-xl text-xs font-medium flex items-center justify-center gap-2 transition"
+                title="Sort tous les véhicules de cette zone (pour rescan fresh). Trace gardée dans la fiche véhicule."
+              >
+                ⚠ Vider la zone {parcZoneKey} d&apos;abord (rescan fresh)
+              </button>
+            )}
           </div>
         )}
 

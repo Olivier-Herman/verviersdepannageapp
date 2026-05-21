@@ -138,16 +138,20 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
             <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {vehicles.length} total</p>
           </div>
           <div className="flex items-center gap-2">
-            {unlocatedCount > 0 && (
-              <Link href="/fourriere/non-localises"
-                className="flex items-center gap-2 px-3 py-2 bg-warning/10 hover:bg-warning/20 border border-warning/40 rounded-xl text-warning text-sm font-medium transition">
-                <AlertTriangle size={14} />
-                Non-localisés
+            <Link href="/fourriere/non-localises"
+              className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-sm font-medium transition ${
+                unlocatedCount > 0
+                  ? 'bg-warning/10 hover:bg-warning/20 border-warning/40 text-warning'
+                  : 'bg-surface-2 hover:bg-surface-hover border-ink/15 text-ink-secondary hover:text-ink'
+              }`}>
+              <AlertTriangle size={14} />
+              Non-localisés
+              {unlocatedCount > 0 && (
                 <span className="px-1.5 py-0.5 bg-warning text-white rounded-full text-xs font-bold leading-none">
                   {unlocatedCount}
                 </span>
-              </Link>
-            )}
+              )}
+            </Link>
             <Link href="/fourriere/plan"
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition">
               <MapIcon size={14} />
