@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { FOURRIERE_ZONES } from '@/lib/fourriere'
 import { Loader2, CheckCircle2, AlertCircle, Printer, Plus, RefreshCw, Download, Settings, ScanLine, Camera, Mail, MapPin, ArrowRight, X, FileSpreadsheet, Car } from 'lucide-react'
@@ -982,33 +983,45 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
         {!restoring && step === 'scan' && selectedZone && (
           <>
-            {/* Header session */}
-            <div className="bg-surface border rounded-2xl p-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-ink-faint">Zone cible</div>
-                <div className="font-display font-bold flex items-center gap-2">
-                  <span className="text-brand">{selectedZone.code}</span>
-                  <span className="text-ink text-sm font-normal truncate">— {selectedZone.label}</span>
+            {/* Header sticky : contexte permanent (zone · rangée · slot · tag · progress) */}
+            <div className="sticky top-0 z-20 bg-surface border rounded-2xl shadow-lg -mx-4 px-4 mx-0 lg:mx-0 lg:rounded-2xl">
+              <div className="p-3 space-y-2">
+                {/* Ligne 1 : Zone · Rangée · Slot · Tag · Settings */}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-mono font-bold text-brand text-base">
+                    {currentRow ? `${parcZoneKey}${currentRow.row_number}-${nextSlot}` : selectedZone.code}
+                  </span>
+                  {currentRow && (
+                    <span className="text-ink-faint text-xs">
+                      slot {Math.min(nextSlot, currentRow.capacity)}/{currentRow.capacity}
+                    </span>
+                  )}
+                  <span className="flex-1 truncate text-ink-secondary text-xs">{selectedZone.label}</span>
+                  <span className="text-[10px] font-mono text-ink-muted">🏷️ {tagName}</span>
+                  <button
+                    onClick={() => { setStep('setup'); setCurrentItem(null) }}
+                    className="p-1 text-ink-muted hover:text-ink"
+                    title="Changer de zone/rangée"
+                  >
+                    <Settings size={14} />
+                  </button>
                 </div>
+                {/* Ligne 2 : progress bar rangée */}
+                {currentRow && (
+                  <div className="space-y-1">
+                    <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${nextSlot > currentRow.capacity ? 'bg-success' : 'bg-brand'}`}
+                        style={{ width: `${Math.min(100, ((nextSlot - 1) / currentRow.capacity) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-ink-faint">
+                      <span>{nextSlot > currentRow.capacity ? '✓ Rangée complète' : `Prochain : ${parcZoneKey}${currentRow.row_number}-${nextSlot}`}</span>
+                      <span>{stats.total} scan{stats.total > 1 ? 's' : ''} · {items.length > 0 ? `dernier ${items[0].label || '?'}` : 'aucun'}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-              {currentRow && (
-                <div className="flex-shrink-0 text-center px-2 border-l">
-                  <div className="text-xs text-ink-faint">Rangée</div>
-                  <div className="font-display font-bold text-brand">{parcZoneKey}{currentRow.row_number}</div>
-                  <div className="text-[10px] text-ink-muted">slot {nextSlot}</div>
-                </div>
-              )}
-              <div className="flex-shrink-0 text-right">
-                <div className="text-xs text-ink-faint">Tag</div>
-                <div className="font-mono font-bold text-brand text-sm">🏷️ {tagName}</div>
-              </div>
-              <button
-                onClick={() => { setStep('setup'); setCurrentItem(null) }}
-                className="p-2 text-ink-muted hover:text-ink"
-                title="Changer de zone/rangée"
-              >
-                <Settings size={16} />
-              </button>
             </div>
 
             {/* Bouton "Valider la rangée" : visible si on a une rangee active */}
@@ -1057,37 +1070,28 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               )}
             </div>
 
-            {/* Stats */}
+            {/* Stats — labels clarifiees + tooltips */}
             <div className="grid grid-cols-5 gap-2">
-              <Stat label="Total" value={stats.total} color="ink" />
-              <Stat label="Créés" value={stats.created} color="brand" />
-              <Stat label="MAJ" value={stats.updated} color="info" />
-              <Stat label="Réimp." value={stats.reprinted} color="purple-500" />
-              <Stat label="Erreurs" value={stats.errors} color="critical" />
+              <Stat label="Total" value={stats.total} color="ink" title="Nombre total de scans dans cette session" />
+              <Stat label="Nouveaux" value={stats.created} color="brand" title="Véhicules ajoutés en BDD lors du scan (n'existaient pas avant)" />
+              <Stat label="MAJ" value={stats.updated} color="info" title="Véhicules déjà connus, juste mis à jour (tag mensuel actualisé, position parc actualisée)" />
+              <Stat label="Étiquettes" value={stats.reprinted} color="purple-500" title="Étiquettes réimprimées au passage (auto-print activé ou bouton manuel)" />
+              <Stat label="Erreurs" value={stats.errors} color="critical" title="Scans en échec (QR non reconnu, mission introuvable, etc.)" />
             </div>
 
             {/* Item en cours */}
             {currentItem && <CurrentCard item={currentItem} onPrint={printOnDemand} />}
 
-            {/* Boutons */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={sendMailReport}
-                disabled={items.length === 0}
-                className="py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                <Mail size={14} />
-                Envoyer par email
-              </button>
-              <button
-                onClick={exportXLSX}
-                disabled={items.length === 0}
-                className="py-2.5 bg-success hover:bg-success/90 text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                <Download size={14} />
-                Télécharger Excel
-              </button>
-            </div>
+            {/* Bouton email (rapport intermediaire pendant le scan) */}
+            <button
+              onClick={sendMailReport}
+              disabled={items.length === 0}
+              className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
+              title="Envoie un rapport email avec les scans actuels (sans terminer la session)"
+            >
+              <Mail size={14} />
+              Envoyer un rapport email
+            </button>
             {/* Bouton clôture de la zone courante : marque les manquants de
                 cette zone comme 'unlocated' et permet de continuer la session
                 sur une autre zone. */}
@@ -1122,12 +1126,17 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               </button>
             </div>
 
-            {/* Historique */}
+            {/* Historique : collapsible, derniers 5 affiches par defaut, "voir tout" pour deplier */}
             {items.length > 0 && (
-              <div className="space-y-1.5">
-                <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider px-1">Historique ({items.length})</h3>
-                {items.map((item, i) => <HistoryItem key={i} item={item} onPrint={printOnDemand} />)}
-              </div>
+              <details className="space-y-1.5 group" open={items.length <= 5}>
+                <summary className="text-xs font-semibold text-ink-faint uppercase tracking-wider px-1 cursor-pointer hover:text-ink flex items-center gap-2 select-none">
+                  <span>Historique ({items.length})</span>
+                  <span className="text-[10px] text-ink-muted font-normal group-open:hidden">— clique pour déplier</span>
+                </summary>
+                <div className="space-y-1.5 mt-1.5">
+                  {items.map((item, i) => <HistoryItem key={i} item={item} onPrint={printOnDemand} />)}
+                </div>
+              </details>
             )}
           </>
         )}
@@ -1142,20 +1151,26 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         />
       )}
 
-      {/* Modal de fin d inventaire : vehicules attendus mais non scannes */}
+      {/* Drawer de fin d inventaire (slide depuis la droite, non-bloquant) :
+          bilan + liste compacte des manquants + actions principales (email,
+          voir tous, cloturer). Pour les actions sur chaque vehicule manquant,
+          on redirige vers /fourriere/non-localises (bulk actions, filtres). */}
       {missing && (
-        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
-          <div className="bg-surface border rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+        <>
+          {/* Overlay leger (clic = fermer) */}
+          <div
+            className="fixed inset-0 z-40 bg-ink/30"
+            onClick={closeMissingDialog}
+          />
+          {/* Drawer */}
+          <div className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-md bg-surface border-l shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
             <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
               <div>
                 <h3 className="font-display font-bold text-lg flex items-center gap-2">
-                  <AlertCircle className="text-warning" size={18} />
-                  Inventaire terminé
+                  🏁 Inventaire terminé
                 </h3>
                 <p className="text-xs text-ink-muted mt-0.5">
-                  {missing.length === 0
-                    ? 'Aucun véhicule manquant — bravo, tout est concordant.'
-                    : `${missing.length} véhicule${missing.length > 1 ? 's' : ''} attendu${missing.length > 1 ? 's' : ''} dans les zones balayées mais non scanné${missing.length > 1 ? 's' : ''}.`}
+                  Bilan + actions de suivi
                 </p>
               </div>
               <button onClick={closeMissingDialog} className="p-1.5 text-ink-faint hover:text-ink" title="Fermer">
@@ -1163,57 +1178,88 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               </button>
             </div>
 
+            {/* Bilan compteurs */}
+            <div className="p-4 border-b flex-shrink-0 grid grid-cols-3 gap-2">
+              <div className="bg-success/10 border border-success/30 rounded-xl p-2 text-center">
+                <div className="font-display font-bold text-lg text-success">{stats.total - stats.errors}</div>
+                <div className="text-[10px] text-ink-faint">scannés</div>
+              </div>
+              <div className="bg-warning/10 border border-warning/30 rounded-xl p-2 text-center">
+                <div className="font-display font-bold text-lg text-warning">{missing.length}</div>
+                <div className="text-[10px] text-ink-faint">manquants</div>
+              </div>
+              <div className="bg-critical/10 border border-critical/30 rounded-xl p-2 text-center">
+                <div className="font-display font-bold text-lg text-critical">{stats.errors}</div>
+                <div className="text-[10px] text-ink-faint">erreurs</div>
+              </div>
+            </div>
+
+            {/* Liste compacte des manquants (max 20 affichés) */}
             {missing.length > 0 && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {missing.map(m => (
-                  <div key={m.id} className="bg-surface-2 border rounded-xl p-3 flex items-center gap-3">
-                    <Car size={18} className="text-ink-muted flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-ink">{m.vehicle_plate || '—'}</span>
-                        <span className="text-[10px] text-ink-faint">#{m.external_id}</span>
-                      </div>
-                      <div className="text-xs text-ink-muted truncate">
-                        {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || m.client_name || '—'}
-                      </div>
-                      <div className="text-[10px] text-ink-faint mt-0.5">
-                        Attendu en {m.parc_zone_key}{m.parc_row_number}-{m.parc_slot_index}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => actionSortirDuParc(m.id)}
-                      className="flex-shrink-0 px-2.5 py-1.5 bg-critical/10 hover:bg-critical/20 text-critical border border-critical/30 rounded-lg text-xs font-medium transition"
-                      title="Le retirer du plan (parc_zone_key = null)"
-                    >
-                      Sortir du parc
-                    </button>
+              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                <h4 className="text-xs font-semibold text-ink-faint uppercase tracking-wider px-1">
+                  Véhicules attendus mais non scannés
+                </h4>
+                {missing.slice(0, 20).map(m => (
+                  <div key={m.id} className="bg-surface-2 border rounded-lg p-2 flex items-center gap-2 text-xs">
+                    <span className="font-mono font-bold text-ink">{m.vehicle_plate || '—'}</span>
+                    <span className="text-ink-muted truncate flex-1">
+                      {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || m.client_name || '—'}
+                    </span>
+                    <span className="font-mono text-[10px] text-warning whitespace-nowrap">
+                      {m.parc_zone_key}{m.parc_row_number}-{m.parc_slot_index}
+                    </span>
                   </div>
                 ))}
+                {missing.length > 20 && (
+                  <p className="text-[10px] text-ink-faint italic text-center pt-2">
+                    + {missing.length - 20} autre{missing.length - 20 > 1 ? 's' : ''}
+                  </p>
+                )}
               </div>
             )}
 
-            <div className="p-4 border-t flex items-center justify-between gap-2 flex-shrink-0">
+            {missing.length === 0 && (
+              <div className="flex-1 flex items-center justify-center p-8 text-center">
+                <div>
+                  <div className="text-4xl mb-2">🎉</div>
+                  <p className="text-ink font-medium">Aucun véhicule manquant</p>
+                  <p className="text-ink-muted text-xs mt-1">Inventaire concordant à 100%.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Footer actions */}
+            <div className="p-3 border-t flex-shrink-0 space-y-2">
               <button
-                onClick={exportXLSX}
-                className="px-3 py-2 bg-success/10 hover:bg-success/20 text-success border border-success/30 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+                onClick={() => sendMailReport()}
+                className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
               >
-                <FileSpreadsheet size={14} /> Exporter le rapport
+                <Mail size={14} /> Envoyer le rapport par email
               </button>
+              {missing.length > 0 && (
+                <Link
+                  href="/fourriere/non-localises"
+                  className="w-full py-2 bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
+                >
+                  📋 Gérer les non-localisés ({missing.length})
+                </Link>
+              )}
               <button
                 onClick={closeMissingDialog}
-                className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-medium transition"
+                className="w-full py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm transition"
               >
                 Clôturer
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </AppShell>
   )
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+function Stat({ label, value, color, title }: { label: string; value: number; color: string; title?: string }) {
   const cls = {
     ink:        'text-ink',
     brand:      'text-brand',
@@ -1222,7 +1268,10 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
     critical:   'text-critical',
   }[color] || 'text-ink'
   return (
-    <div className="bg-surface border rounded-xl p-2 text-center">
+    <div
+      className="bg-surface border rounded-xl p-2 text-center cursor-help"
+      title={title}
+    >
       <div className={`font-display font-bold text-xl ${cls}`}>{value}</div>
       <div className="text-[10px] text-ink-faint">{label}</div>
     </div>
