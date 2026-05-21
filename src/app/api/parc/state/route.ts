@@ -115,6 +115,19 @@ export async function GET() {
   // place des qu il a parc_zone_key (pas besoin de rangee/slot).
   const poolZoneKeys = new Set<string>((zones || []).filter((z: any) => z.is_pool).map((z: any) => z.key))
 
+  // Mapping case-insensitive : FOURRIERE_ZONES.code (uppercase ex 'BOX') -> parc_zones.key (canonique ex 'Box')
+  // Necessaire car les vehicules Odoo virtuels (toPlace) ont zone_code en uppercase
+  // mais le frontend group par parc_zones.key. Sans ce mapping, ils sont invisibles
+  // dans le sidebar "A placer".
+  const zoneKeyCanon = new Map<string, string>()
+  for (const z of (zones || [])) {
+    zoneKeyCanon.set(String(z.key).toLowerCase(), z.key)
+  }
+  function canonZoneKey(k: string | null | undefined): string | null {
+    if (!k) return null
+    return zoneKeyCanon.get(String(k).toLowerCase()) || k
+  }
+
   // Un vehicule n est "place" que s il a zone + rangee + slot tous determines,
   // sauf en zone pool ou seule la zone suffit.
   const isFullyPlaced = (m: any) => {
@@ -154,7 +167,7 @@ export async function GET() {
         client_name:      existingMission.client_name,
         status:           existingMission.status,
         mission_type:     existingMission.mission_type,
-        parc_zone_key:    existingMission.parc_zone_key || v.zone_code,
+        parc_zone_key:    canonZoneKey(existingMission.parc_zone_key || v.zone_code),
         parc_row_number:  existingMission.parc_row_number,
         parc_slot_index:  existingMission.parc_slot_index,
       })
@@ -168,7 +181,7 @@ export async function GET() {
         client_name:      null,
         status:           'odoo_only',
         mission_type:     null,
-        parc_zone_key:    v.zone_code,
+        parc_zone_key:    canonZoneKey(v.zone_code),
         parc_row_number:  null,
         parc_slot_index:  null,
         _virtual:         true,

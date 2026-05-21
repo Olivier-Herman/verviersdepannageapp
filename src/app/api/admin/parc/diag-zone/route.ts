@@ -93,14 +93,30 @@ export async function GET(req: Request) {
   const rowCapacity = new Map<number, number>()
   for (const r of (rows || [])) rowCapacity.set(Number(r.row_number), Number(r.capacity) || 0)
 
-  // 4. Fetch missions VD Soft avec parc_zone_key = zone (case-insensitive via OR sur 2 variantes)
-  //    On cherche aussi avec la casse opposee pour detecter le mismatch
-  const variants = [zoneKey, zoneKey.toLowerCase(), zoneKey.toUpperCase()].filter((v, i, arr) => arr.indexOf(v) === i)
-  const { data: vdMissions } = await sb
+  // 4. Fetch missions VD Soft : case-insensitive sur parc_zone_key + match aussi
+  //    par plaques Odoo (au cas ou la mission existe avec un parc_zone_key
+  //    different, voire null, mais le vehicule est physiquement en Box).
+  const { data: vdMissionsByZone } = await sb
     .from('incoming_missions')
     .select('id, external_id, vehicle_plate, status, parc_zone_key, parc_row_number, parc_slot_index, updated_at')
-    .in('parc_zone_key', variants)
+    .ilike('parc_zone_key', zoneKey)
     .order('updated_at', { ascending: false })
+
+  const odooPlatesList = Array.from(odooPlates)
+  const { data: vdMissionsByPlate } = odooPlatesList.length > 0
+    ? await sb
+        .from('incoming_missions')
+        .select('id, external_id, vehicle_plate, status, parc_zone_key, parc_row_number, parc_slot_index, updated_at')
+        .in('vehicle_plate', odooPlatesList)
+        .order('updated_at', { ascending: false })
+    : { data: [] as any[] }
+
+  // Merge sans doublons (par id)
+  const allMissions = new Map<string, any>()
+  for (const m of [...(vdMissionsByZone || []), ...(vdMissionsByPlate || [])]) {
+    if (!allMissions.has(m.id)) allMissions.set(m.id, m)
+  }
+  const vdMissions = Array.from(allMissions.values())
 
   const vdByPlate = new Map<string, any>()
   for (const m of (vdMissions || [])) {
