@@ -2362,9 +2362,9 @@ export default function MissionDetailClient({
               </div>
 
               {/* Bouton Relivrer — visible uniquement quand mission en parc et pas encore de REL.
-                  Mais pas pour les missions fourriere police (Mal Garee, etc.) qui ont
+                  Mais pas pour les missions fourriere police (Mal Garee, Rodeo, etc.) qui ont
                   leur propre flow de sortie (restitution au proprietaire). */}
-              {status === 'parked' && !linkedChild && initialMission.source !== 'police_mg' && (
+              {status === 'parked' && !linkedChild && !['police_mg', 'police_rodeo'].includes(initialMission.source) && (
                 <RelivrerButton
                   missionId={initialMission.id}
                   initialRedeliveryAddress={(initialMission as any).redelivery_address}
@@ -2372,17 +2372,27 @@ export default function MissionDetailClient({
                 />
               )}
 
-              {/* Bouton Restituer — visible pour Mal Garee au parc.
-                  Branche vers RestituerMalGareeModal qui gere la verif blocage police,
-                  la recherche/creation Partner Odoo, les multi-paiements et la sortie
-                  (devis Odoo direct OU encaissement chauffeur selon odoo_api_key user). */}
-              {status === 'parked' && initialMission.source === 'police_mg' && (
+              {/* Bouton Restituer — visible pour Mal Garee et Rodeo au parc.
+                  Branche vers RestituerMalGareeModal (devenu generique) qui gere :
+                  - blocage police (Mal Garee, optionnel)
+                  - levee de saisie (Rodeo, obligatoire)
+                  - minimum 3 jours gardiennage pour Rodeo
+                  - recherche/creation Partner Odoo, multi-paiements, branchement Odoo. */}
+              {status === 'parked' && ['police_mg', 'police_rodeo'].includes(initialMission.source) && (
                 <>
                   {initialMission.police_blocked && (
                     <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">
                       <span className="text-warning">🚓</span>
                       <p className="text-warning text-sm font-medium">
                         Bloquée par la police — vérif obligatoire à la restitution
+                      </p>
+                    </div>
+                  )}
+                  {initialMission.source === 'police_rodeo' && !(initialMission as any).police_levee_saisie_ok && (
+                    <div className="bg-rose-500/10 border border-rose-500/40 rounded-2xl p-3 flex items-start gap-2">
+                      <span className="text-rose-500">📋</span>
+                      <p className="text-rose-500 text-sm font-medium">
+                        Rodéo — levée de saisie non confirmée. Sera demandée à la restitution.
                       </p>
                     </div>
                   )}
@@ -2589,23 +2599,25 @@ export default function MissionDetailClient({
           }}
         />
       )}
-      {showRestituerModal && initialMission.source === 'police_mg' && (
+      {showRestituerModal && ['police_mg', 'police_rodeo'].includes(initialMission.source) && (
         <RestituerMalGareeModal
           mission={{
-            id:                initialMission.id,
-            external_id:       initialMission.external_id,
-            dossier_number:    initialMission.dossier_number,
-            vehicle_plate:     initialMission.vehicle_plate,
-            vehicle_brand:     initialMission.vehicle_brand,
-            vehicle_model:     initialMission.vehicle_model,
-            client_name:       initialMission.client_name,
-            client_phone:      (initialMission as any).client_phone || null,
-            billed_to_id:      initialMission.billed_to_id || null,
-            billed_to_name:    initialMission.billed_to_name || null,
-            parked_at:         initialMission.parked_at || null,
-            received_at:       initialMission.received_at || null,
-            intervention_date: (initialMission as any).intervention_date || null,
-            police_blocked:    Boolean(initialMission.police_blocked),
+            id:                     initialMission.id,
+            source:                 initialMission.source,
+            external_id:            initialMission.external_id,
+            dossier_number:         initialMission.dossier_number,
+            vehicle_plate:          initialMission.vehicle_plate,
+            vehicle_brand:          initialMission.vehicle_brand,
+            vehicle_model:          initialMission.vehicle_model,
+            client_name:            initialMission.client_name,
+            client_phone:           (initialMission as any).client_phone || null,
+            billed_to_id:           initialMission.billed_to_id || null,
+            billed_to_name:         initialMission.billed_to_name || null,
+            parked_at:              initialMission.parked_at || null,
+            received_at:            initialMission.received_at || null,
+            intervention_date:      (initialMission as any).intervention_date || null,
+            police_blocked:         Boolean(initialMission.police_blocked),
+            police_levee_saisie_ok: Boolean((initialMission as any).police_levee_saisie_ok),
           }}
           userHasOdooAccess={userHasOdooAccess}
           onClose={() => setShowRestituerModal(false)}

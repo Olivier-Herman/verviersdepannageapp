@@ -3,29 +3,55 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   X, Search, UserPlus, AlertTriangle, ShieldAlert, Check, Loader2,
-  Banknote, CreditCard, Truck, Trash2, Plus,
+  Banknote, CreditCard, Truck, Trash2, Plus, ScrollText,
 } from 'lucide-react'
 
-// Tarification Mal Garee (constantes synchro avec /api/missions/[id]/restitute)
-const PECMG_PRICE_HTVA       = 165.29
+// Tarification commune fourriere (constantes synchro avec /api/missions/[id]/restitute)
 const GARDIENNAGE_PRICE_HTVA = 20
 const TVA_RATE               = 0.21
 
+// Configuration par source (alignee avec SOURCE_CONFIGS du backend)
+interface SourceConfig {
+  label:              string
+  forfaitHtva:        number
+  forfaitLabel:       string
+  minDays:            number
+  requiresLeveeSaisie: boolean
+}
+const SOURCE_CONFIGS: Record<string, SourceConfig> = {
+  police_mg: {
+    label:              'Mal Garée',
+    forfaitHtva:        165.29,
+    forfaitLabel:       'Forfait enlèvement Mal Garée',
+    minDays:            0,
+    requiresLeveeSaisie: false,
+  },
+  police_rodeo: {
+    label:              'Rodéo',
+    forfaitHtva:        165.29,
+    forfaitLabel:       'Forfait enlèvement Rodéo',
+    minDays:            3,
+    requiresLeveeSaisie: true,
+  },
+}
+
 interface Mission {
-  id:                string
-  external_id:       string | null
-  dossier_number:    string | null
-  vehicle_plate:     string | null
-  vehicle_brand:     string | null
-  vehicle_model:     string | null
-  client_name:       string | null
-  client_phone:      string | null
-  billed_to_id:      number | null
-  billed_to_name:    string | null
-  parked_at:         string | null
-  received_at:       string | null
-  intervention_date: string | null
-  police_blocked:    boolean
+  id:                     string
+  source:                 string             // 'police_mg' | 'police_rodeo' | ...
+  external_id:            string | null
+  dossier_number:         string | null
+  vehicle_plate:          string | null
+  vehicle_brand:          string | null
+  vehicle_model:          string | null
+  client_name:            string | null
+  client_phone:           string | null
+  billed_to_id:           number | null
+  billed_to_name:         string | null
+  parked_at:              string | null
+  received_at:            string | null
+  intervention_date:      string | null
+  police_blocked:         boolean
+  police_levee_saisie_ok: boolean
 }
 
 interface OdooPartner {
@@ -60,12 +86,21 @@ function computeDays(entryIso: string | null, nowDate: Date): number {
 }
 
 export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onClose, onSuccess }: Props) {
+  // Lookup config selon source ; fallback Mal Garee si inconnue
+  const sourceConfig: SourceConfig = SOURCE_CONFIGS[mission.source] || SOURCE_CONFIGS.police_mg
+
+  // Levee de saisie : requise pour les Rodeos.
+  // Si deja cochee a la creation (police_levee_saisie_ok=true), on skip l etape verif.
+  const needsLeveeSaisieCheck = sourceConfig.requiresLeveeSaisie && !mission.police_levee_saisie_ok
+
   // ──────────── Etat machine ────────────
-  // Step 1 : verif blocage police (si applicable)
+  // Step 1 : verif blocage police OU levee de saisie (selon source)
   // Step 2 : choix partner (recherche / création)
   // Step 3 : paiements et validation
-  const [step, setStep]               = useState<1 | 2 | 3>(mission.police_blocked ? 1 : 2)
+  const initialStep: 1 | 2 = (mission.police_blocked || needsLeveeSaisieCheck) ? 1 : 2
+  const [step, setStep]               = useState<1 | 2 | 3>(initialStep)
   const [policeVerified, setPoliceVerified] = useState(false)
+  const [leveeSaisieVerified, setLeveeSaisieVerified] = useState(false)
 
   // Partner Odoo
   const [partnerQuery, setPartnerQuery]   = useState('')
@@ -95,9 +130,11 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
   const [submitting, setSubmitting] = useState(false)
   const [err,        setErr]        = useState<string | null>(null)
 
-  // Tarification live
-  const days       = useMemo(() => computeDays(mission.parked_at || mission.received_at, new Date()), [mission])
-  const forfait    = PECMG_PRICE_HTVA
+  // Tarification live (applique minDays selon source)
+  const rawDays    = useMemo(() => computeDays(mission.parked_at || mission.received_at, new Date()), [mission])
+  const days       = Math.max(rawDays, sourceConfig.minDays)
+  const minApplied = days > rawDays  // affichage : "minimum N jours applique"
+  const forfait    = sourceConfig.forfaitHtva
   const gardien    = GARDIENNAGE_PRICE_HTVA * days
   const totalHtva  = forfait + gardien
   const totalTvac  = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
@@ -194,6 +231,10 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
       setErr('Vérification police requise')
       return
     }
+    if (needsLeveeSaisieCheck && !leveeSaisieVerified) {
+      setErr('Confirmation de la levée de saisie requise')
+      return
+    }
 
     // Mode no_charge
     if (noChargeMode) {
@@ -208,6 +249,7 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
             mode: 'no_charge',
             no_charge_reason: noChargeReason.trim(),
             police_verified: policeVerified,
+            levee_saisie_verified: leveeSaisieVerified,
           }),
         })
         const j = await res.json()
@@ -238,6 +280,7 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
           partner_name:    selectedPartner.name,
           payments:        payments.map(p => ({ mode: p.mode, amount: parseFloat(p.amount) || 0 })),
           police_verified: policeVerified,
+          levee_saisie_verified: leveeSaisieVerified,
         }),
       })
       const j = await res.json()
@@ -258,9 +301,9 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <div>
-            <h2 className="text-ink font-bold">Restituer le véhicule</h2>
+            <h2 className="text-ink font-bold">Restituer le véhicule — {sourceConfig.label}</h2>
             <p className="text-ink-muted text-xs mt-0.5">
-              {mission.vehicle_plate} {mission.vehicle_brand} {mission.vehicle_model} · {days} jour{days !== 1 ? 's' : ''} de gardiennage
+              {mission.vehicle_plate} {mission.vehicle_brand} {mission.vehicle_model} · {days} jour{days !== 1 ? 's' : ''} de gardiennage{minApplied ? ` (min ${sourceConfig.minDays}j)` : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-surface-hover rounded-lg text-ink-muted hover:text-ink transition">
@@ -292,15 +335,48 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
                       Je confirme que le propriétaire s&apos;est bien présenté à la police
                     </span>
                   </label>
-                  <button
-                    onClick={() => setStep(2)}
-                    disabled={!policeVerified}
-                    className="mt-3 px-4 py-2 bg-warning hover:bg-warning/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition">
-                    Continuer →
-                  </button>
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Bandeau alerte levee de saisie obligatoire (Rodeo) */}
+          {needsLeveeSaisieCheck && step === 1 && (
+            <div className="bg-rose-500/10 border border-rose-500/40 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <ScrollText className="text-rose-500 flex-shrink-0 mt-0.5" size={20} />
+                <div className="flex-1">
+                  <h3 className="text-ink font-semibold">📋 Levée de saisie obligatoire</h3>
+                  <p className="text-ink-secondary text-sm mt-1">
+                    Mission Rodéo : la levée de saisie n&apos;a pas été cochée à la création. Confirme que tu as reçu le document de la police avant de continuer.
+                  </p>
+                  <label className="flex items-start gap-2 mt-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={leveeSaisieVerified}
+                      onChange={e => setLeveeSaisieVerified(e.target.checked)}
+                      className="mt-1 w-5 h-5"
+                    />
+                    <span className="text-ink text-sm font-medium">
+                      Je confirme avoir reçu la levée de saisie de la police
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bouton "Continuer" si etape 1 (un OU plusieurs blocages a valider) */}
+          {step === 1 && (mission.police_blocked || needsLeveeSaisieCheck) && (
+            <button
+              onClick={() => setStep(2)}
+              disabled={
+                (mission.police_blocked && !policeVerified) ||
+                (needsLeveeSaisieCheck && !leveeSaisieVerified)
+              }
+              className="w-full px-4 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition">
+              Continuer →
+            </button>
           )}
 
           {/* Step 2/3 — bandeau résumé véhicule */}
@@ -446,11 +522,16 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
                     <>
                       <div className="bg-surface-2 border rounded-xl p-3 space-y-1.5 text-sm">
                         <div className="flex justify-between text-ink-secondary">
-                          <span>Forfait enlèvement Mal Garée</span>
+                          <span>{sourceConfig.forfaitLabel}</span>
                           <span>{forfait.toFixed(2)} € HT</span>
                         </div>
                         <div className="flex justify-between text-ink-secondary">
-                          <span>Gardiennage ({days} jour{days !== 1 ? 's' : ''} × 20€)</span>
+                          <span>
+                            Gardiennage ({days} jour{days !== 1 ? 's' : ''} × 20€)
+                            {minApplied && (
+                              <span className="ml-1 text-rose-500 text-xs font-medium">(min {sourceConfig.minDays}j)</span>
+                            )}
+                          </span>
                           <span>{gardien.toFixed(2)} € HT</span>
                         </div>
                         <div className="flex justify-between text-ink-muted text-xs border-t pt-1.5">

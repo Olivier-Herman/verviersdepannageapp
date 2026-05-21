@@ -11,6 +11,7 @@ export const maxDuration = 60
 const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }> = {
   accident:    { label: '🚨 Police Accident',    parc: 'K3', motif: 'ACCIDENT' },
   saisie:      { label: '⚖️ Saisie',             parc: 'J',  motif: 'SAISIE' },
+  rodeo:       { label: '🏎️ Rodéo',              parc: 'J',  motif: 'RODEO' },
   mal_garee:   { label: '🚫 Mal Garée',          parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
   snc:         { label: '🛣️ Siabis Non Couvert', parc: 'K2', motif: 'SIABIS NON COUVERT' },
   appel_prive: { label: '📞 Appel Privé',        parc: 'K3', motif: 'APPEL PRIVE' },
@@ -38,6 +39,8 @@ export async function POST(req: Request) {
     ownerFirstName, ownerLastName, ownerPhone,
     remarks, photoUrls,
     policeBlocked,
+    policeLeveeSaisieOk,
+    policeLeveeSaisieDocUrl,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -138,7 +141,9 @@ export async function POST(req: Request) {
     odoTags.push(assistanceConfig!.tagId) // tag compagnie
     odoTags.push(interventionType === 'rem_parc' ? 19 : 26) // REL ou Assistance
   } else {
-    const POLICE_TAGS: Record<string, number> = { accident: 6, saisie: 5, snc: 15, mal_garee: 1, appel_prive: 25, avp: 10 }
+    // TODO Olivier : confirmer le tag Odoo pour 'rodeo' (mis a 5 = saisie pour
+    // l instant, a ajuster si un tag dedie existe ou si on en cree un nouveau).
+    const POLICE_TAGS: Record<string, number> = { accident: 6, saisie: 5, rodeo: 5, snc: 15, mal_garee: 1, appel_prive: 25, avp: 10 }
     if (POLICE_TAGS[type]) odoTags.push(POLICE_TAGS[type])
   }
 
@@ -185,14 +190,15 @@ export async function POST(req: Request) {
   }
 
   // 1bis. INSERT incoming_missions pour les missions fourriere (parc VD Soft).
-  // Pour l instant : Mal Garees uniquement. Les autres types police
-  // (saisie, snc, avp, etc.) seront ajoutes au fur et a mesure du chantier
-  // fourriere police. Sans ca, VD Soft est aveugle sur ces missions.
+  // Mapping des types police -> source VD Soft + zone parc cible. Etendu au fur
+  // et a mesure du chantier fourriere police (Mal Garees + Rodeos pour l instant).
   const FOURRIERE_TYPE_TO_SOURCE: Record<string, string> = {
     mal_garee: 'police_mg',
+    rodeo:     'police_rodeo',
   }
   const FOURRIERE_TYPE_TO_ZONE: Record<string, string> = {
     mal_garee: 'L',
+    rodeo:     'J',
   }
 
   if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
@@ -234,6 +240,8 @@ export async function POST(req: Request) {
         driver_photos:      Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
         remarks_general:    remarks || null,
         police_blocked:     Boolean(policeBlocked),
+        police_levee_saisie_ok:       Boolean(policeLeveeSaisieOk),
+        police_levee_saisie_doc_url:  policeLeveeSaisieDocUrl || null,
         odoo_task_id:       null,
         created_at:         nowIso,
         updated_at:         nowIso,

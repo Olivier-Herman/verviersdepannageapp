@@ -28,8 +28,33 @@ import { createSaleOrder, type QuoteLine } from '@/lib/odoo-quote'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-const PECMG_PRICE_HTVA       = 165.29   // forfait enlevement = 200 EUR TVAC
-const GARDIENNAGE_PRICE_HTVA = 20       // EUR/jour
+const GARDIENNAGE_PRICE_HTVA = 20       // EUR/jour (commun a tous les types fourriere)
+
+// Configuration par source fourriere : forfait + min jours gardiennage + produit Odoo.
+// A etendre pour chaque nouveau type police (SIABIS, AVP, etc.)
+interface SourceConfig {
+  label:           string
+  forfaitHtva:     number          // forfait enlevement HTVA
+  forfaitOdooCode: string          // default_code produit Odoo pour le forfait
+  forfaitName:     (ref: string) => string
+  minDays:         number          // minimum jours gardiennage factures
+}
+const SOURCE_CONFIGS: Record<string, SourceConfig> = {
+  police_mg: {
+    label:           'Mal Garée',
+    forfaitHtva:     165.29,                      // = 200 EUR TVAC
+    forfaitOdooCode: 'PECMG',
+    forfaitName:     (ref) => `Forfait enlèvement Mal Garée — ${ref}`,
+    minDays:         0,
+  },
+  police_rodeo: {
+    label:           'Rodéo',
+    forfaitHtva:     165.29,                      // = 200 EUR TVAC (a confirmer)
+    forfaitOdooCode: 'PECRODEO',
+    forfaitName:     (ref) => `Forfait enlèvement Rodéo — ${ref}`,
+    minDays:         3,                           // minimum 3 jours factures
+  },
+}
 
 interface PaymentLine {
   mode:      'cash' | 'bancontact' | 'driver_encaissement'
@@ -45,6 +70,8 @@ interface RestituteBody {
   payments?:         PaymentLine[]
   // police_blocked
   police_verified?:  boolean
+  // police_rodeo : levee de saisie validee
+  levee_saisie_verified?: boolean
   // no_charge
   no_charge_reason?: string
 }
@@ -105,7 +132,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       incident_address, incident_city, destination_address,
       parc_zone_key, parc_row_number, parc_slot_index,
       received_at, intervention_date, parked_at,
-      police_blocked, odoo_quote_id
+      police_blocked, police_levee_saisie_ok, odoo_quote_id
     `)
     .eq('id', missionId)
     .maybeSingle()
@@ -113,8 +140,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (mErr || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   // 2. Verifications business
-  if (mission.source !== 'police_mg') {
-    return NextResponse.json({ error: `Cette mission n est pas une Mal Garee (source=${mission.source})` }, { status: 409 })
+  const sourceConfig = SOURCE_CONFIGS[mission.source]
+  if (!sourceConfig) {
+    return NextResponse.json({
+      error: `Source mission "${mission.source}" non supportee par la restitution fourriere. Sources possibles : ${Object.keys(SOURCE_CONFIGS).join(', ')}.`,
+    }, { status: 409 })
   }
   if (mission.status !== 'parked') {
     return NextResponse.json({ error: `Mission deja restituee (status=${mission.status})` }, { status: 409 })
@@ -123,6 +153,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({
       error: 'Mission bloquee par la police. Confirmer que le proprietaire est passe au commissariat (police_verified=true).',
       requires_police_check: true,
+    }, { status: 409 })
+  }
+  // Rodeo : la levee de saisie est OBLIGATOIRE avant restitution.
+  // Soit cochee au form de creation (police_levee_saisie_ok=true en BDD), soit
+  // confirmee a la restitution via body.levee_saisie_verified.
+  if (mission.source === 'police_rodeo' && !mission.police_levee_saisie_ok && !body.levee_saisie_verified) {
+    return NextResponse.json({
+      error: 'Levee de saisie obligatoire pour les Rodeos. Confirmer que le document a ete recu (levee_saisie_verified=true).',
+      requires_levee_saisie: true,
     }, { status: 409 })
   }
 
@@ -134,9 +173,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .maybeSingle()
   const userHasOdooKey = Boolean(actor?.odoo_api_key)
 
-  const now    = new Date().toISOString()
-  const entry  = mission.parked_at || mission.received_at || mission.intervention_date || now
-  const days   = computeGardiennageDays(entry, now)
+  const now      = new Date().toISOString()
+  const entry    = mission.parked_at || mission.received_at || mission.intervention_date || now
+  const rawDays  = computeGardiennageDays(entry, now)
+  // Applique le minimum de jours selon source (3 pour Rodeo, 0 sinon)
+  const days     = Math.max(rawDays, sourceConfig.minDays)
 
   // 4. Branche selon mode
   // ─── 4a. NO_CHARGE : motif requis, status -> completed, pas de devis ────────
@@ -156,8 +197,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       mission_id: missionId,
       actor_id:   user.id,
       action:     'no_charge',
-      notes:      `Restitution sans frais : ${reason}`,
-      metadata:   { reason, source: 'police_mg' },
+      notes:      `Restitution sans frais (${sourceConfig.label}) : ${reason}`,
+      metadata:   { reason, source: mission.source },
     })
 
     await releaseParcAndShift(sb, missionId)
@@ -177,8 +218,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Au moins un mode de paiement requis' }, { status: 400 })
   }
 
-  // Calcul total HTVA et TTC pour validation
-  const forfaitHtva  = PECMG_PRICE_HTVA
+  // Calcul total HTVA et TTC pour validation (utilise config selon source)
+  const forfaitHtva  = sourceConfig.forfaitHtva
   const gardienHtva  = GARDIENNAGE_PRICE_HTVA * days
   const totalHtva    = forfaitHtva + gardienHtva
   const totalTvac    = Math.round(totalHtva * 1.21 * 100) / 100
@@ -206,14 +247,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       }, { status: 403 })
     }
 
-    // Build les lignes devis
+    // Build les lignes devis (config source : PECMG / PECRODEO / ...)
     const ref = mission.external_id || mission.dossier_number || mission.id.slice(0, 8)
     const lines: QuoteLine[] = [
       {
-        kind:       'PECMG' as any,
-        name:       `Forfait enlèvement Mal Garée — ${ref}`,
+        kind:       sourceConfig.forfaitOdooCode as any,
+        name:       sourceConfig.forfaitName(ref),
         qty:        1,
-        price_unit: PECMG_PRICE_HTVA,
+        price_unit: sourceConfig.forfaitHtva,
       },
     ]
     if (days > 0) {
@@ -245,7 +286,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     // Update mission : completed direct (le devis est cree, plus rien a faire)
-    await sb.from('incoming_missions').update({
+    const updateInvoice: Record<string, any> = {
       status:             'completed',
       billed_to_id:       body.partner_id,
       billed_to_name:     partnerName,
@@ -256,7 +297,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       released_at:        now,
       released_by:        user.id,
       completed_at:       now,
-    }).eq('id', missionId).then(() => {}, async () => {
+    }
+    if (mission.source === 'police_rodeo' && body.levee_saisie_verified) {
+      updateInvoice.police_levee_saisie_ok = true
+    }
+    await sb.from('incoming_missions').update(updateInvoice).eq('id', missionId).then(() => {}, async () => {
       // Si released_at/by ou completed_at n existent pas en BDD, retry sans
       await sb.from('incoming_missions').update({
         status:             'completed',
@@ -290,14 +335,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // ─── 4c. DRIVER_CASH : pas de devis Odoo, mission -> to_invoice ─────────────
   // Le devis sera cree plus tard via le module Encaissement Chauffeur.
-  await sb.from('incoming_missions').update({
+  const updateDriverCash: Record<string, any> = {
     status:             'to_invoice',
     billed_to_id:       body.partner_id,
     billed_to_name:     partnerName,
     payment_breakdown:  breakdown,
     released_at:        now,
     released_by:        user.id,
-  }).eq('id', missionId).then(() => {}, async () => {
+  }
+  if (mission.source === 'police_rodeo' && body.levee_saisie_verified) {
+    updateDriverCash.police_levee_saisie_ok = true
+  }
+  await sb.from('incoming_missions').update(updateDriverCash).eq('id', missionId).then(() => {}, async () => {
     await sb.from('incoming_missions').update({
       status:             'to_invoice',
       billed_to_id:       body.partner_id,
