@@ -199,7 +199,20 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
             })
           }
           if (j.session.parc_row_number != null) setParcRowNumber(j.session.parc_row_number)
-          if (j.session.next_slot_index != null) setNextSlot(j.session.next_slot_index)
+          // Au lieu d utiliser la valeur figee de la session (qui peut etre stale
+          // si on a vide la zone entre temps), on recalcule le next_slot via
+          // l API qui saute les slots merges/bloques/occupes.
+          if (j.session.parc_zone_key && j.session.parc_row_number != null) {
+            // Best effort, non bloquant
+            fetch(`/api/inventaire/next-slot?zone_key=${encodeURIComponent(j.session.parc_zone_key)}&row_number=${j.session.parc_row_number}`)
+              .then(r => r.json())
+              .then(d => { if (typeof d.next_slot === 'number') setNextSlot(d.next_slot) })
+              .catch(() => {
+                if (j.session.next_slot_index != null) setNextSlot(j.session.next_slot_index)
+              })
+          } else if (j.session.next_slot_index != null) {
+            setNextSlot(j.session.next_slot_index)
+          }
           // Restaure items depuis DB (deja tries desc par created_at)
           const restoredItems: ResultItem[] = (j.items || []).map((it: any) => ({
             status:         it.status,
@@ -378,12 +391,10 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           transferred_from_row:  place?.was_at?.row_number ?? null,
           transferred_from_slot: place?.was_at?.slot_index ?? null,
         })
-        if (place?.placed) {
-          const newSlot = nextSlot + 1
-          setNextSlot(newSlot)
-          persistNextSlot(newSlot)
+        if (place?.placed && parcZoneKey && currentRow) {
+          const newSlot = await refreshNextSlot(parcZoneKey, currentRow.row_number)
           // Auto-popup en fin de capacite : suggere de passer a la rangee suivante
-          if (currentRow && newSlot > currentRow.capacity) {
+          if (newSlot > currentRow.capacity) {
             setTimeout(() => promptNextRow(currentRow.row_number), 200)
           }
         }
@@ -460,12 +471,10 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           transferred_from_row:  place?.was_at?.row_number ?? null,
           transferred_from_slot: place?.was_at?.slot_index ?? null,
         })
-        if (place?.placed) {
-          const newSlot = nextSlot + 1
-          setNextSlot(newSlot)
-          persistNextSlot(newSlot)
+        if (place?.placed && parcZoneKey && currentRow) {
+          const newSlot = await refreshNextSlot(parcZoneKey, currentRow.row_number)
           // Auto-popup en fin de capacite : suggere de passer a la rangee suivante
-          if (currentRow && newSlot > currentRow.capacity) {
+          if (newSlot > currentRow.capacity) {
             setTimeout(() => promptNextRow(currentRow.row_number), 200)
           }
         }
@@ -549,20 +558,48 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     }
   }
 
-  /** Selectionne une rangee et persiste sur la session. */
-  function selectRow(row: ParcRow) {
+  /** Auto-detection du prochain slot disponible dans une rangee (saute les
+   *  slots merges, bloques, et deja occupes par d autres missions). Appele :
+   *   - apres selection de rangee (selectRow)
+   *   - apres chaque scan reussi (place auto saute les slots invalides)
+   *   - apres "Vider zone" (tout libre -> repart a 1) */
+  async function refreshNextSlot(zoneKey: string, rowNum: number): Promise<number> {
+    try {
+      const res = await fetch(`/api/inventaire/next-slot?zone_key=${encodeURIComponent(zoneKey)}&row_number=${rowNum}`)
+      if (!res.ok) return 1
+      const j = await res.json()
+      const ns = Number(j.next_slot) || 1
+      setNextSlot(ns)
+      if (sessionId) {
+        fetch(`/api/inventaire/sessions/${sessionId}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ next_slot_index: ns }),
+        }).catch(() => {})
+      }
+      return ns
+    } catch {
+      return 1
+    }
+  }
+
+  /** Selectionne une rangee et calcule le prochain slot dispo (skip merge/bloque/occupe). */
+  async function selectRow(row: ParcRow) {
     setParcRowNumber(row.row_number)
-    setNextSlot(1)
-    if (sessionId) {
-      fetch(`/api/inventaire/sessions/${sessionId}`, {
+    if (sessionId && parcZoneKey) {
+      // PATCH la rangee puis recalcule next_slot via /next-slot
+      await fetch(`/api/inventaire/sessions/${sessionId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           parc_zone_key:   parcZoneKey,
           parc_row_number: row.row_number,
-          next_slot_index: 1,
+          next_slot_index: 1, // sera mis a jour par refreshNextSlot
         }),
       }).catch(() => {})
+      await refreshNextSlot(parcZoneKey, row.row_number)
+    } else {
+      setNextSlot(1)
     }
   }
 
@@ -607,6 +644,11 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
       alert(`✅ Zone ${parcZoneKey} vidée : ${j.cleared} véhicule(s) sortis du parc.\n\nTu peux maintenant scanner la zone à nouveau pour la remettre à jour.`)
+      // Recalcul du prochain slot (devrait etre 1 sauf si la rangee a des
+      // slots merges/bloques au debut qu il faut sauter)
+      if (parcZoneKey && currentRow) {
+        await refreshNextSlot(parcZoneKey, currentRow.row_number)
+      }
     } catch (e: any) {
       alert(`Erreur : ${e.message || e}`)
     }
