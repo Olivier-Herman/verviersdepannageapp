@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
@@ -94,6 +95,18 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // SNC (Siabis Non Couvert) : balisage + scenario d intervention
   const [sncRequiresBalisage, setSncRequiresBalisage] = useState(false)
   const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
+  // Coordonnees GPS de l intervention (capturees via Google Autocomplete) — necessaires
+  // pour le preview tarif SNC qui utilise Google Distance Matrix.
+  const [locationLat, setLocationLat] = useState<number | null>(null)
+  const [locationLng, setLocationLng] = useState<number | null>(null)
+  // Destination (pour REM client = obligatoire, REM depot = optionnel pour relivraison future)
+  const [destination,     setDestination]     = useState('')
+  const [destinationLat,  setDestinationLat]  = useState<number | null>(null)
+  const [destinationLng,  setDestinationLng]  = useState<number | null>(null)
+  // Preview tarif SNC en live (resultat de /api/snc-preview-tarif)
+  const [sncPreview, setSncPreview] = useState<any>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [photos,         setPhotos]         = useState<File[]>([])
   const [previews,       setPreviews]       = useState<string[]>([])
   const [loading,        setLoading]        = useState(false)
@@ -137,8 +150,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   }
 
   const locationRef = useRef<HTMLInputElement>(null)
+  const destinationRef = useRef<HTMLInputElement>(null)
   const photoRef    = useRef<HTMLInputElement>(null)
   const acRef       = useRef<any>(null)
+  const destAcRef   = useRef<any>(null)
 
   // Load brands on mount
   useEffect(() => {
@@ -170,7 +185,28 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       acRef.current.addListener('place_changed', () => {
         const place = acRef.current.getPlace()
         if (place?.formatted_address) setLocation(place.formatted_address)
+        // Capture lat/lng pour le preview tarif SNC (Google Distance Matrix)
+        if (place?.geometry?.location) {
+          setLocationLat(place.geometry.location.lat())
+          setLocationLng(place.geometry.location.lng())
+        }
       })
+
+      // Autocomplete destination (visible pour SNC rem_client + rem_depot)
+      if (destinationRef.current && !destAcRef.current) {
+        destAcRef.current = new window.google.maps.places.Autocomplete(destinationRef.current, {
+          types: ['address'],
+          componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
+        })
+        destAcRef.current.addListener('place_changed', () => {
+          const place = destAcRef.current.getPlace()
+          if (place?.formatted_address) setDestination(place.formatted_address)
+          if (place?.geometry?.location) {
+            setDestinationLat(place.geometry.location.lat())
+            setDestinationLng(place.geometry.location.lng())
+          }
+        })
+      }
     }
     if (window.google?.maps?.places) {
       init()
@@ -189,6 +225,63 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       }
     }
   }, [selectedType])
+
+  // ──────────── Preview tarif SNC en live ────────────
+  // Quand SNC + scenario + coords sont presents, debounce et appel
+  // /api/snc-preview-tarif pour afficher au chauffeur le montant a encaisser
+  // (DSP / REM client) ou a transmettre au client (REM depot).
+  useEffect(() => {
+    if (selectedType !== 'snc' || !sncScenario || locationLat == null || locationLng == null) {
+      setSncPreview(null); setPreviewError(null)
+      return
+    }
+    // REM client : destination obligatoire pour calcul
+    if (sncScenario === 'rem_client' && (destinationLat == null || destinationLng == null)) {
+      setSncPreview(null); setPreviewError(null)
+      return
+    }
+
+    const ctrl = new AbortController()
+    const handler = setTimeout(async () => {
+      setPreviewLoading(true)
+      setPreviewError(null)
+      try {
+        // Construit intervention_at depuis date+time saisis
+        const [dd, mm, yyyy] = (date || '').split('-')
+        const [hh, mn] = (time || '00:00').split(':')
+        const interventionAt = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`).toISOString()
+        const res = await fetch('/api/snc-preview-tarif', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            scenario:          sncScenario,
+            requires_balisage: sncRequiresBalisage,
+            incident_lat:      locationLat,
+            incident_lng:      locationLng,
+            destination_lat:   destinationLat,
+            destination_lng:   destinationLng,
+            intervention_at:   interventionAt,
+          }),
+          signal: ctrl.signal,
+        })
+        const j = await res.json()
+        if (!res.ok || !j.ok) {
+          setSncPreview(null)
+          setPreviewError(j.error || 'Erreur calcul')
+        } else {
+          setSncPreview(j)
+        }
+      } catch (e: any) {
+        if (e.name !== 'AbortError') {
+          setSncPreview(null)
+          setPreviewError(e.message || 'Erreur reseau')
+        }
+      } finally {
+        setPreviewLoading(false)
+      }
+    }, 600)
+    return () => { clearTimeout(handler); ctrl.abort() }
+  }, [selectedType, sncScenario, sncRequiresBalisage, locationLat, locationLng, destinationLat, destinationLng, date, time])
 
   const getGPS = useCallback(() => {
     if (!navigator.geolocation) {
@@ -307,6 +400,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         policeLeveeSaisieDocUrl: leveeSaisieDocUrl,
         sncRequiresBalisage,
         sncScenario:             sncScenario || null,
+        // Coordonnees GPS (depuis autocomplete) pour SNC + calcul tarif futur
+        incidentLat:             locationLat,
+        incidentLng:             locationLng,
+        destination,
+        destinationLat,
+        destinationLng,
       }),
     })
 
@@ -542,6 +641,75 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                   </div>
                 </div>
               </label>
+
+              {/* Champ destination (visible si rem_client = obligatoire, rem_depot = optionnel) */}
+              {(sncScenario === 'rem_client' || sncScenario === 'rem_depot') && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-ink-secondary block">
+                    {sncScenario === 'rem_client'
+                      ? 'Adresse de destination (livraison) *'
+                      : 'Adresse de relivraison future (optionnelle)'}
+                  </label>
+                  <input
+                    ref={destinationRef}
+                    value={destination}
+                    onChange={e => {
+                      setDestination(e.target.value)
+                      // Si l user efface ou modifie sans selectionner -> clear coords
+                      if (destinationLat != null) { setDestinationLat(null); setDestinationLng(null) }
+                    }}
+                    placeholder={sncScenario === 'rem_client'
+                      ? 'Ex: Rue de la Gare 10, 4800 Verviers'
+                      : 'Si déjà connue (optionnel)'}
+                    className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none focus:border-blue-500"
+                  />
+                  {sncScenario === 'rem_client' && destinationLat == null && destination.trim() && (
+                    <p className="text-xs text-warning">⚠ Sélectionne la destination dans les suggestions Google pour calculer le tarif.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Preview tarif live : visible si tous les params requis sont remplis */}
+              {sncScenario && locationLat != null && locationLng != null &&
+                (sncScenario !== 'rem_client' || (destinationLat != null && destinationLng != null)) && (
+                <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-blue-900">💰 Tarif estimé</div>
+                    {previewLoading && <Loader2 size={14} className="animate-spin text-blue-600" />}
+                  </div>
+                  {previewError && (
+                    <div className="text-xs text-red-700">{previewError}</div>
+                  )}
+                  {sncPreview && sncPreview.ok && (
+                    <>
+                      <div className="space-y-1 text-xs">
+                        {sncPreview.lines.map((l: any, i: number) => (
+                          <div key={i} className="flex justify-between text-blue-900">
+                            <span className="truncate flex-1">{l.name}</span>
+                            <span className="font-mono ml-2 flex-shrink-0">
+                              {l.qty} × {l.price_unit.toFixed(4)} = <strong>{(l.qty * l.price_unit).toFixed(2)} €</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="border-t border-blue-300 pt-2 space-y-0.5 text-xs">
+                        <div className="flex justify-between text-blue-700">
+                          <span>Total HTVA</span>
+                          <span className="font-mono">{sncPreview.total_htva.toFixed(2)} €</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-blue-900 text-sm">
+                          <span>Total TVAC à encaisser</span>
+                          <span className="font-mono">{sncPreview.total_tvac.toFixed(2)} €</span>
+                        </div>
+                      </div>
+                      {sncPreview.metrics?.is_majored && (
+                        <div className="text-xs text-orange-700 font-medium">⏰ Plage horaire majorée appliquée</div>
+                      )}
+                      <div className="text-[10px] text-blue-700 italic">{sncPreview.metrics?.note}</div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </Section>
         )}

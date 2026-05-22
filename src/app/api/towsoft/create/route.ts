@@ -44,6 +44,9 @@ export async function POST(req: Request) {
     // SNC (Siabis Non Couvert)
     sncRequiresBalisage,
     sncScenario,         // 'dsp' | 'rem_client' | 'rem_depot'
+    // Coordonnees GPS (pour SNC : calcul tarif via Google Distance Matrix)
+    incidentLat, incidentLng,
+    destinationLat, destinationLng,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -281,6 +284,11 @@ export async function POST(req: Request) {
         client_phone:       ownerPhone || null,
         incident_address:   location,
         incident_city:      null,
+        incident_lat:       typeof incidentLat === 'number' ? incidentLat : null,
+        incident_lng:       typeof incidentLng === 'number' ? incidentLng : null,
+        destination_address: destination || null,
+        destination_lat:    typeof destinationLat === 'number' ? destinationLat : null,
+        destination_lng:    typeof destinationLng === 'number' ? destinationLng : null,
         received_at:        nowIso,
         intervention_date:  interventionISO,
         driver_photos:      Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
