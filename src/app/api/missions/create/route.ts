@@ -25,6 +25,16 @@ export async function POST(req: Request) {
   const primaryIncident    = body.destinations?.[0]
   const primaryDestination = body.destinations?.[1]
 
+  // Champs Police-specifiques (optionnels). Le dispatcher peut encoder
+  // une mission police directement (source=police_snc / sia_couvert / police_avp ...)
+  // avec scenario/balisage/destination connus. Le chauffeur les modifie ensuite
+  // depuis sa fiche si besoin.
+  const isSnc       = body.source === 'police_snc' || body.source === 'sia_couvert'
+  const isAvp       = body.source === 'police_avp'
+  const sncScenario = isSnc && ['dsp', 'rem_client', 'rem_depot'].includes(body.snc_scenario)
+    ? body.snc_scenario
+    : null
+
   const { data: mission, error } = await supabase
     .from('incoming_missions')
     .insert({
@@ -35,6 +45,7 @@ export async function POST(req: Request) {
       mission_type:         body.mission_type,
       incident_type:        body.mission_type,       // DSP/REM/DPR/VR/Transport
       incident_description: body.remarks_general,
+      dossier_number:       body.dossier_number      || null,
       // Client facturé
       billed_to_name:       body.billed_to_name,
       billed_to_id:         body.billed_to_id        || null,
@@ -56,6 +67,8 @@ export async function POST(req: Request) {
       incident_country:     'BE',
       destination_name:     primaryDestination?.label,
       destination_address:  primaryDestination?.address,
+      destination_lat:      primaryDestination?.lat   || null,
+      destination_lng:      primaryDestination?.lng   || null,
       // Toutes les destinations en jsonb
       destinations:         body.destinations         || [],
       // Avertissements
@@ -71,6 +84,10 @@ export async function POST(req: Request) {
       status:               'new',
       dispatch_mode:        'manual',
       parse_confidence:     1.0,
+      // Police-specifiques
+      police_blocked:       isAvp ? true : Boolean(body.police_blocked),
+      snc_scenario:         sncScenario,
+      snc_requires_balisage: isSnc ? Boolean(body.snc_requires_balisage) : false,
       parsed_data: {
         confidence:          1.0,
         created_manually_by: actor?.name,

@@ -30,17 +30,50 @@ const ALL_SOURCES = [
   { value: 'vivium',  label: 'VIVIUM'  }, { value: 'ipa',    label: 'IPA (AXA)' },
   { value: 'ardenne', label: 'ARDENNE (IPA)' }, { value: 'mondial', label: 'MONDIAL' },
   { value: 'aginsurance', label: 'AG INSURANCE' },
-  { value: 'vab',     label: 'VAB'     }, { value: 'police', label: 'POLICE' },
+  { value: 'vab',     label: 'VAB'     },
+  { value: 'police_snc',  label: 'Siabis Non Couvert' },
+  { value: 'sia_couvert', label: 'Siabis Couvert (assistance)' },
+  { value: 'police', label: 'POLICE' },
   { value: 'prive',   label: 'PRIVÉ'   }, { value: 'garage', label: 'GARAGE' },
+]
+// Sous-types Police (Source=police) : choix du dispatcher pilote la source reelle
+// envoyee a l API ('police_accident', 'police_saisie', ...) ainsi que la zone
+// de parc par defaut (parametree dans /admin/parc).
+const POLICE_SUBTYPES = [
+  { value: 'accident',   label: 'Accident',  source: 'police_accident'  },
+  { value: 'saisie',     label: 'Saisie',    source: 'police_saisie'    },
+  { value: 'rodeo',      label: 'Rodéo',     source: 'police_rodeo'     },
+  { value: 'avp',        label: 'AVP — Abandon Voie Publique', source: 'police_avp' },
+  { value: 'mal_garee',  label: 'Mal garée', source: 'police_mal_garee' },
+]
+const SNC_SCENARIOS = [
+  { value: 'dsp',        label: 'DSP — Dépannage sur place' },
+  { value: 'rem_client', label: 'REM — Remorquage chez le client' },
+  { value: 'rem_depot',  label: 'REM — Mise en dépôt VD Soft' },
 ]
 const MISSION_TYPES = [
   { value: 'DSP',       label: '🔧 DSP — Dépannage sur place' },
   { value: 'REM',       label: '🚛 REM — Remorquage' },
+  { value: 'REM+REL',   label: '🚛 REM+REL — Remorquage avec relivraison ultérieure' },
   { value: 'REL',       label: '🚛 REL — Relivraison (depuis dépôt)' },
   { value: 'Transport', label: '🚐 Transport / Rapatriement' },
   { value: 'DPR',       label: '📍 DPR — Déplacement pour rien' },
   { value: 'VR',        label: '🚗 VR — Véhicule de remplacement' },
 ]
+
+// Types de mission disponibles selon la source :
+//  - Siabis (police_snc, sia_couvert) : DSP / REM / REM+REL / DPR
+//  - Police                            : REM / REM+REL / DPR (tous viennent en zone fourriere)
+//  - Autres (assistance, prive, ...)   : tous
+function getAvailableMissionTypes(src: string) {
+  if (src === 'police_snc' || src === 'sia_couvert') {
+    return MISSION_TYPES.filter(t => ['DSP', 'REM', 'REM+REL', 'DPR'].includes(t.value))
+  }
+  if (src === 'police') {
+    return MISSION_TYPES.filter(t => ['REM', 'REM+REL', 'DPR'].includes(t.value))
+  }
+  return MISSION_TYPES
+}
 const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
 const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -146,59 +179,6 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
   )
 }
 
-// ── Bouton GPS position actuelle ─────────────────────────────────────────────
-
-function GPSButton({ onLocated }: {
-  onLocated: (addr: string, lat: number, lng: number, city: string) => void
-}) {
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState('')
-
-  const handle = () => {
-    if (!navigator.geolocation) { setErr('Géolocalisation non disponible'); return }
-    setLoading(true); setErr('')
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude
-        const lng = pos.coords.longitude
-        const g = (window as any).google
-        if (g?.maps) {
-          new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: any[], status: string) => {
-            setLoading(false)
-            if (status === 'OK' && results[0]) {
-              const addr = results[0].formatted_address
-              const cityComp = (results[0].address_components || []).find((c: any) =>
-                c.types.includes('locality') || c.types.includes('postal_town')
-              )
-              onLocated(addr, lat, lng, cityComp?.long_name || '')
-            } else {
-              onLocated(`${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng, '')
-            }
-          })
-        } else {
-          setLoading(false)
-          onLocated(`${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng, '')
-        }
-      },
-      (e) => {
-        setLoading(false)
-        setErr(e.code === 1 ? 'Accès refusé — autorise la géolocalisation' : 'Position indisponible')
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    )
-  }
-
-  return (
-    <div>
-      <button onClick={handle} disabled={loading} type="button"
-        className="flex items-center gap-2 px-3 py-2 bg-blue-600/15 border border-blue-500/30 hover:bg-blue-600/25 disabled:opacity-50 text-blue-300 rounded-xl text-xs font-medium transition">
-        {loading ? <><span className="animate-spin inline-block">⏳</span> Localisation…</> : <>📍 Ma position actuelle</>}
-      </button>
-      {err && <p className="text-red-400 text-xs mt-1">{err}</p>}
-    </div>
-  )
-}
-
 // ── Composant destinations multiples ──────────────────────────────────────────
 
 function DestinationsBlock({ destinations, onChange, gmKey }: {
@@ -231,14 +211,6 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
                 placeholder="Nom du lieu..."
                 className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
             </div>
-          )}
-          {i === 0 && (
-            <GPSButton onLocated={(addr, lat, lng, city) => {
-              updateDest(dest.id, 'address', addr)
-              updateDest(dest.id, 'lat', lat)
-              updateDest(dest.id, 'lng', lng)
-              updateDest(dest.id, 'city', city)
-            }} />
           )}
           <AddressField
             label="Adresse"
@@ -282,10 +254,11 @@ export default function NewMissionClient({
   const [rdvTime, setRdvTime] = useState(curTime)
 
   // ── Source ────────────────────────────────────────────────────────────────
-  const [source,        setSource]        = useState('prive')
+  const [source,         setSource]         = useState('prive')
   const [sourceFromOdoo, setSourceFromOdoo] = useState(false)
-  const [savingSource,  setSavingSource]  = useState(false)
-  const [showSaveSource, setShowSaveSource] = useState(false)
+
+  // ── Numero dossier (ref externe : PV police, ref assurance, etc.) ────────
+  const [dossierNumber,  setDossierNumber]  = useState('')
 
   // ── Client facturé ────────────────────────────────────────────────────────
   const clientSearch = useClientSearch()
@@ -303,6 +276,44 @@ export default function NewMissionClient({
   // ── Type + mission ────────────────────────────────────────────────────────
   const [missionType,  setMissionType]  = useState('DSP')
   const [description,  setDescription]  = useState('')
+
+  // ── Police / Siabis specifiques ───────────────────────────────────────────
+  // policeSubtype : choisi seulement si source === 'police'. Pilote la source
+  // reelle envoyee a l API (police_accident, police_saisie, ...).
+  const [policeSubtype, setPoliceSubtype] = useState('')
+  // sncScenario : pour police_snc / sia_couvert. Pilote le mission_type par
+  // defaut (dsp -> DSP, rem_* -> REM).
+  const [sncScenario,   setSncScenario]   = useState('dsp')
+  const [sncBalisage,   setSncBalisage]   = useState(false)
+
+  // ── Estimation tarif live (panneau resume droite) ────────────────────────
+  // Pour Siabis : appel /api/snc-preview-tarif avec debounce.
+  // Pour Police/assurance : pas encore branche (placeholder).
+  type TarifPreview = {
+    total_htva: number
+    total_tvac: number
+    tva_rate:   number
+    lines:      Array<{ name: string; qty: number; price_unit: number }>
+  }
+  const [tarifPreview, setTarifPreview] = useState<TarifPreview | null>(null)
+  const [tarifLoading, setTarifLoading] = useState(false)
+  const [tarifError,   setTarifError]   = useState<string | null>(null)
+
+  // Auto-defaults missionType selon source :
+  //   - Police (Accident/Saisie/Rodeo/AVP/Mal garee) : tous viennent dans une
+  //     zone de notre fourriere => REM par defaut
+  //   - Siabis : selon scenario (dsp->DSP, rem_client->REM, rem_depot->REM+REL)
+  useEffect(() => {
+    if (source === 'police') {
+      setMissionType('REM')
+    } else if (source === 'police_snc' || source === 'sia_couvert') {
+      setMissionType(
+        sncScenario === 'dsp'        ? 'DSP'
+      : sncScenario === 'rem_client' ? 'REM'
+      :                                'REM+REL'  // rem_depot
+      )
+    }
+  }, [source, sncScenario])
 
   // ── Véhicule ──────────────────────────────────────────────────────────────
   const vehicleSearch = useVehicleSearch()
@@ -362,6 +373,69 @@ export default function NewMissionClient({
     })
   }, [destinations])
 
+  // ── Preview tarif live (Siabis SNC/SC) ───────────────────────────────────
+  // Debounce 600ms. Reset si source non-Siabis. Si rem_client, attend la
+  // destination. Erreurs API affichees dans le panneau resume.
+  useEffect(() => {
+    const isSiabisLocal = source === 'police_snc' || source === 'sia_couvert'
+    if (!isSiabisLocal) {
+      setTarifPreview(null)
+      setTarifError(null)
+      setTarifLoading(false)
+      return
+    }
+    const inc = destinations[0]
+    if (!inc?.lat || !inc?.lng) {
+      setTarifPreview(null)
+      setTarifError(null)
+      return
+    }
+    const dest = destinations[1]
+    if (sncScenario === 'rem_client' && (!dest?.lat || !dest?.lng)) {
+      setTarifPreview(null)
+      setTarifError('Destination requise pour REM-client')
+      return
+    }
+    const handle = setTimeout(async () => {
+      setTarifLoading(true)
+      setTarifError(null)
+      try {
+        const interventionAt = rdvDate && rdvTime ? `${rdvDate}T${rdvTime}:00` : new Date().toISOString()
+        const res = await fetch('/api/snc-preview-tarif', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scenario:          sncScenario,
+            requires_balisage: sncBalisage,
+            incident_lat:      inc.lat,
+            incident_lng:      inc.lng,
+            destination_lat:   dest?.lat || null,
+            destination_lng:   dest?.lng || null,
+            intervention_at:   interventionAt,
+            variant:           source === 'sia_couvert' ? 'sc' : 'snc',
+          }),
+        })
+        const data = await res.json()
+        if (data.ok) {
+          setTarifPreview({
+            total_htva: data.total_htva,
+            total_tvac: data.total_tvac,
+            tva_rate:   data.tva_rate,
+            lines:      data.lines || [],
+          })
+        } else {
+          setTarifPreview(null)
+          setTarifError(data.error || 'Erreur calcul tarif')
+        }
+      } catch (e: any) {
+        setTarifPreview(null)
+        setTarifError(e.message || 'Erreur réseau')
+      } finally {
+        setTarifLoading(false)
+      }
+    }, 600)
+    return () => clearTimeout(handle)
+  }, [source, sncScenario, sncBalisage, destinations, rdvDate, rdvTime])
+
   // Sélection client facturé → lookup source
   const selectClient = async (c: OdooClient) => {
     setSelectedClient(c)
@@ -376,7 +450,6 @@ export default function NewMissionClient({
     const data = await res.json()
     setSource(data.source)
     setSourceFromOdoo(data.found)
-    setShowSaveSource(!data.found && data.source === 'prive')
   }
 
   // Copier client facturé → assisté
@@ -405,17 +478,17 @@ export default function NewMissionClient({
     vehicleSearch.setResults([])
   }
 
-  // Sauvegarder source pour ce client
-  const saveSource = async () => {
-    if (!odooPartnerId) return
-    setSavingSource(true)
-    await fetch('/api/missions/source-lookup', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ odoo_partner_id: odooPartnerId, source, label: billedName })
-    })
-    setShowSaveSource(false)
-    setSourceFromOdoo(true)
-    setSavingSource(false)
+  // Change source : autosave silencieux pour ce client si un partner Odoo est lie.
+  // L association partner -> source est persistee best-effort, pas de feedback visible.
+  const changeSource = (newSource: string) => {
+    setSource(newSource)
+    if (odooPartnerId) {
+      fetch('/api/missions/source-lookup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ odoo_partner_id: odooPartnerId, source: newSource, label: billedName })
+      }).catch(() => {})
+      setSourceFromOdoo(true)
+    }
   }
 
   const toggleWarning = (id: string) =>
@@ -438,15 +511,27 @@ export default function NewMissionClient({
   }
 
   // Validation derivee pour l'UI (CTA pulse + disabled state)
+  const policeSubtypeOk = source !== 'police' || !!policeSubtype
   const canSubmit = !!missionType
                  && !!destinations[0]?.address
                  && (!!odooPartnerId || !!billedName.trim())
+                 && policeSubtypeOk
+
+  // Source reelle envoyee a l API : si Police, c'est le sous-type qui pilote.
+  const resolvedSource = source === 'police' && policeSubtype
+    ? (POLICE_SUBTYPES.find(s => s.value === policeSubtype)?.source || 'police')
+    : source
+
+  const isSiabis = source === 'police_snc' || source === 'sia_couvert'
 
   const handleSubmit = async () => {
     if (!missionType)               return setError('Type de mission requis')
     if (!destinations[0]?.address)  return setError('Lieu d\'incident requis')
     if (!odooPartnerId && !billedName.trim()) {
       return setError('Client requis — sélectionne un client ou tape le nom')
+    }
+    if (source === 'police' && !policeSubtype) {
+      return setError('Sous-type Police requis (Accident / Saisie / Rodéo / AVP / Mal garée)')
     }
 
     setSaving(true); setError('')
@@ -484,8 +569,9 @@ export default function NewMissionClient({
       const res = await fetch('/api/missions/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          source,
+          source:          resolvedSource,
           mission_type:    missionType,
+          dossier_number:  dossierNumber.trim() || null,
           billed_to_name:  billedName,
           billed_to_id:    finalPartnerId,
           assisted_name:   assistedName || billedName,
@@ -506,6 +592,10 @@ export default function NewMissionClient({
           odoo_vehicle_id: finalVehicleId,
           distance_km:     distanceKm,
           duration_min:    durationMin,
+          // Champs Police / Siabis (envoyes seulement si pertinents)
+          snc_scenario:           isSiabis ? sncScenario : null,
+          snc_requires_balisage:  isSiabis ? sncBalisage : false,
+          police_blocked:         resolvedSource === 'police_avp',
         })
       })
 
@@ -618,7 +708,74 @@ export default function NewMissionClient({
                 </div>
               </div>
 
-              {/* 2. Client facturé */}
+              {/* 2. Source + numero dossier + sous-type Police / Siabis */}
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+                <h2 className="text-ink font-semibold text-sm mb-4">🎯 Source du dossier</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1.5">
+                      Source {sourceFromOdoo ? '(memorisée pour ce client)' : ''}
+                    </label>
+                    <select value={source} onChange={e => changeSource(e.target.value)}
+                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
+                      {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1.5">Numéro de dossier <span className="text-ink-faint">(optionnel)</span></label>
+                    <input value={dossierNumber} onChange={e => setDossierNumber(e.target.value)}
+                      placeholder="PV, ref assurance, ref interne..."
+                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm font-mono focus:outline-none focus:border-brand placeholder:text-ink-faint placeholder:font-sans" />
+                  </div>
+                </div>
+
+                {/* Sous-type Police (si source=police) */}
+                {source === 'police' && (
+                  <div className="mt-5 pt-5 border-t">
+                    <p className="text-ink-muted text-xs mb-3">Sous-type d'intervention Police (pilote tarif et zone parc par défaut) :</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                      {POLICE_SUBTYPES.map(t => (
+                        <button key={t.value} onClick={() => setPoliceSubtype(t.value)} type="button"
+                          className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
+                            policeSubtype === t.value
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
+                          }`}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Détails Siabis (si source=police_snc ou sia_couvert) */}
+                {(source === 'police_snc' || source === 'sia_couvert') && (
+                  <div className="mt-5 pt-5 border-t space-y-4">
+                    <p className="text-ink-muted text-xs">
+                      {source === 'sia_couvert'
+                        ? '🛣️ Tarif assistance (forfait sans km). Le client facturé doit être l\'assistance qui paye.'
+                        : '🛣️ Tarif Siabis Non Couvert (forfait + km dépanneuse). Encaissement immédiat sauf si mise en dépôt.'}
+                      {' '}Le chauffeur peut tout modifier sur sa fiche.
+                    </p>
+                    <div>
+                      <label className="block text-ink-muted text-xs mb-1.5">Scénario</label>
+                      <select value={sncScenario} onChange={e => setSncScenario(e.target.value)}
+                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
+                        {SNC_SCENARIOS
+                          .filter(s => !(source === 'sia_couvert' && s.value === 'rem_client'))
+                          .map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={sncBalisage} onChange={e => setSncBalisage(e.target.checked)}
+                        className="w-5 h-5 accent-cyan-500" />
+                      <span className="text-ink text-sm">Balisage requis (autoroute / voie rapide)</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Client facturé */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
                 <div className="relative mb-3">
@@ -683,27 +840,6 @@ export default function NewMissionClient({
                     title="Champ en lecture seule — passe par la recherche ou clique sur '＋ Créer un nouveau client' si introuvable"
                     className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink-secondary text-sm placeholder:text-ink-faint cursor-not-allowed" />
                 </div>
-
-                {/* Source déduite */}
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="flex-1">
-                    <label className="block text-ink-muted text-xs mb-1.5">
-                      Source {sourceFromOdoo ? '(depuis fiche client)' : ''}
-                    </label>
-                    <select value={source} onChange={e => { setSource(e.target.value); setShowSaveSource(true) }}
-                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
-                      {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
-                  </div>
-                  {showSaveSource && odooPartnerId && (
-                    <div className="flex-shrink-0 mt-5">
-                      <button onClick={saveSource} disabled={savingSource}
-                        className="px-3 py-2.5 bg-surface border border-brand/50 rounded-xl text-brand text-xs hover:bg-brand/10 transition disabled:opacity-50">
-                        {savingSource ? '...' : '💾 Mémoriser'}
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* 3. Client assisté */}
@@ -735,8 +871,8 @@ export default function NewMissionClient({
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {MISSION_TYPES.map(t => (
-                    <button key={t.value} onClick={() => setMissionType(t.value)}
+                  {getAvailableMissionTypes(source).map(t => (
+                    <button key={t.value} onClick={() => setMissionType(t.value)} type="button"
                       className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
                         missionType === t.value
                           ? 'bg-brand border-brand text-white'
@@ -969,7 +1105,18 @@ export default function NewMissionClient({
                   <p className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Résumé</p>
                   {[
                     { label: 'RDV',      value: rdvDate && rdvTime ? `${rdvDate} ${rdvTime}` : '—' },
-                    { label: 'Source',   value: ALL_SOURCES.find(s => s.value === source)?.label || source },
+                    ...(dossierNumber ? [{ label: 'N° dossier', value: dossierNumber }] : []),
+                    {
+                      label: 'Source',
+                      value: source === 'police'
+                        ? `POLICE${policeSubtype ? ' — ' + (POLICE_SUBTYPES.find(s => s.value === policeSubtype)?.label || policeSubtype) : ' (sous-type requis)'}`
+                        : (ALL_SOURCES.find(s => s.value === source)?.label || source),
+                    },
+                    ...(isSiabis ? [{
+                      label: 'Scénario',
+                      value: (SNC_SCENARIOS.find(s => s.value === sncScenario)?.label || sncScenario)
+                           + (sncBalisage ? ' · 🚧 balisage' : ''),
+                    }] : []),
                     { label: 'Type',     value: MISSION_TYPES.find(t => t.value === missionType)?.label || '—' },
                     { label: 'Facturé', value: billedName || '—' },
                     { label: 'Assisté', value: assistedName || billedName || '—' },
@@ -1002,6 +1149,45 @@ export default function NewMissionClient({
                         ))}
                       </div>
                     </div>
+                  )}
+                </div>
+
+                {/* Estimation tarif live */}
+                <div className="border-t border pt-4">
+                  <p className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">💰 Estimation tarif</p>
+                  {isSiabis ? (
+                    tarifLoading ? (
+                      <p className="text-ink-faint text-xs italic">Calcul...</p>
+                    ) : tarifError ? (
+                      <p className="text-amber-400 text-xs">{tarifError}</p>
+                    ) : tarifPreview ? (
+                      <>
+                        <div className="space-y-1 mb-2">
+                          {tarifPreview.lines.map((l, i) => (
+                            <div key={i} className="flex justify-between text-xs gap-2">
+                              <span className="text-ink-muted truncate" title={l.name}>{l.name}</span>
+                              <span className="text-ink whitespace-nowrap">{(l.qty * l.price_unit).toFixed(2)} €</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="border-t pt-2 flex justify-between text-sm">
+                          <span className="text-ink font-medium">Total HTVA</span>
+                          <span className="text-ink font-bold">{tarifPreview.total_htva.toFixed(2)} €</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-ink-muted">TVAC ({Math.round(tarifPreview.tva_rate * 100)}%)</span>
+                          <span className="text-ink-muted">{tarifPreview.total_tvac.toFixed(2)} €</span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-ink-faint text-xs italic">
+                        Renseigne le lieu d'incident{sncScenario === 'rem_client' ? ' et la destination' : ''}
+                      </p>
+                    )
+                  ) : source === 'police' ? (
+                    <p className="text-ink-faint text-xs italic">Tarif Police pas encore paramétré</p>
+                  ) : (
+                    <p className="text-ink-faint text-xs italic">Calculé à la facturation</p>
                   )}
                 </div>
               </div>
