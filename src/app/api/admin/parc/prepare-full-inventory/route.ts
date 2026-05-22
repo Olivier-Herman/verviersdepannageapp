@@ -95,11 +95,63 @@ export async function POST(req: Request) {
     odooVehicles = await odooCall<any[]>('fleet.vehicle', 'search_read', [
       [['state_id', 'in', FOURRIERE_STATE_IDS]],
     ], {
-      fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id', 'write_date'],
+      fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id', 'write_date', 'create_date'],
       limit: 5000,
     })
   } catch (e: any) {
     return NextResponse.json({ error: `Odoo fetch echec : ${e.message}` }, { status: 500 })
+  }
+
+  // Fetch helpdesk.ticket lies a ces vehicules pour recuperer la VRAIE date
+  // d intervention (x_studio_date_dentree) plutot que write_date du fleet.
+  // Indexe par vehicle_id pour lookup rapide.
+  const odooVehicleIds = odooVehicles.map(v => v.id).filter(Boolean)
+  const interventionDateByVehicle = new Map<number, string>()
+  const odooTicketIdByVehicle = new Map<number, number>()
+  if (odooVehicleIds.length > 0) {
+    try {
+      const tickets = await odooCall<any[]>('helpdesk.ticket', 'search_read', [
+        [
+          '|',
+          ['x_studio_vehicule', 'in', odooVehicleIds],
+          ['x_studio_fiche_vehicule', 'in', odooVehicleIds],
+        ],
+      ], {
+        fields: ['id', 'x_studio_vehicule', 'x_studio_fiche_vehicule', 'x_studio_date_dentree', 'create_date'],
+        order:  'create_date DESC',  // on garde le plus recent par vehicule
+        limit:  10000,
+      })
+      for (const t of (tickets || [])) {
+        // Resoudre vehicle_id depuis x_studio_vehicule ou x_studio_fiche_vehicule (m2o)
+        const vehicleId = Array.isArray(t.x_studio_fiche_vehicule)
+          ? t.x_studio_fiche_vehicule[0]
+          : (Array.isArray(t.x_studio_vehicule) ? t.x_studio_vehicule[0] : null)
+        if (!vehicleId) continue
+        if (interventionDateByVehicle.has(vehicleId)) continue  // garde le plus recent (order DESC)
+
+        // Format date d entree Odoo : 'YYYY-MM-DD' ou 'YYYY-MM-DD HH:MM:SS'
+        let dateStr: string | null = null
+        if (t.x_studio_date_dentree) {
+          // Date format Odoo : 'YYYY-MM-DD' -> ajoute T00:00:00 pour ISO
+          const raw = String(t.x_studio_date_dentree)
+          dateStr = raw.includes('T') ? raw : `${raw}T00:00:00`
+        } else if (t.create_date) {
+          // create_date Odoo : 'YYYY-MM-DD HH:MM:SS' -> remplace espace par T
+          dateStr = String(t.create_date).replace(' ', 'T')
+        }
+        if (dateStr) {
+          // Tente de parser pour valider
+          const d = new Date(dateStr)
+          if (isFinite(d.getTime())) {
+            interventionDateByVehicle.set(vehicleId, d.toISOString())
+            odooTicketIdByVehicle.set(vehicleId, t.id)
+          }
+        }
+      }
+      console.log(`[prepare-full-inventory] Dates intervention recuperees pour ${interventionDateByVehicle.size}/${odooVehicleIds.length} vehicules`)
+    } catch (e: any) {
+      console.error('[prepare-full-inventory] Fetch helpdesk tickets echec (non bloquant):', e.message)
+    }
   }
 
   // Liste missions VD Soft parked/delivering avec leur plaque
@@ -140,6 +192,16 @@ export async function POST(req: Request) {
     const brand = brandName || modelName.split(/[\s\/]+/)[0] || ''
     const model = brandName ? modelName : modelName.split(/[\s\/]+/).slice(1).join(' ')
 
+    // Date d intervention reelle (depuis ticket helpdesk si disponible),
+    // sinon fallback create_date du fleet.vehicle, sinon write_date.
+    // CRITIQUE pour les calculs : 60j AVP, jours gardiennage, etc.
+    const realInterventionDate =
+      interventionDateByVehicle.get(v.id) ||
+      (v.create_date ? String(v.create_date).replace(' ', 'T') : null) ||
+      v.write_date ||
+      new Date().toISOString()
+    const odooHelpdeskId = odooTicketIdByVehicle.get(v.id) || null
+
     stubsToCreate.push({
       external_id:     `LEGACY-${plate}-${v.id}`,
       vehicle_plate:   plate,
@@ -152,9 +214,11 @@ export async function POST(req: Request) {
       status:          'parked',
       source:          'legacy_odoo',
       mission_type:    null,
-      received_at:     v.write_date || new Date().toISOString(),
-      created_at:      new Date().toISOString(),
-      updated_at:      new Date().toISOString(),
+      odoo_helpdesk_id: odooHelpdeskId,
+      received_at:       realInterventionDate,
+      intervention_date: realInterventionDate,
+      created_at:        new Date().toISOString(),
+      updated_at:        new Date().toISOString(),
     })
 
     stats.vehicles_to_create++
