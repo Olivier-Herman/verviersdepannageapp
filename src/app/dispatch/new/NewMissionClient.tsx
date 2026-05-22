@@ -259,11 +259,10 @@ export default function NewMissionClient({
 
   // ── Depot de depart ───────────────────────────────────────────────────────
   // Charge dynamiquement via /api/depots. Pepinster pre-selectionne par defaut
-  // (depot principal). Stocke pour l instant dans parsed_data en attendant la
-  // migration qui ajoutera departure_depot_id sur incoming_missions.
-  type Depot = { id: number; name: string; is_default?: boolean }
+  // (depot principal). depots.id est un UUID (string).
+  type Depot = { id: string; name: string; is_default?: boolean }
   const [depots,           setDepots]           = useState<Depot[]>([])
-  const [departureDepotId, setDepartureDepotId] = useState<number | null>(null)
+  const [departureDepotId, setDepartureDepotId] = useState<string | null>(null)
   useEffect(() => {
     fetch('/api/depots').then(r => r.json()).then((list: Depot[]) => {
       const arr = Array.isArray(list) ? list : []
@@ -810,7 +809,7 @@ export default function NewMissionClient({
                 <h2 className="text-ink font-semibold text-sm mb-4">🏭 Dépôt de départ</h2>
                 <select
                   value={departureDepotId ?? ''}
-                  onChange={e => setDepartureDepotId(e.target.value ? Number(e.target.value) : null)}
+                  onChange={e => setDepartureDepotId(e.target.value || null)}
                   className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
                 >
                   {depots.length === 0 && <option value="">Chargement...</option>}

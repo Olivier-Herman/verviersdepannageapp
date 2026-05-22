@@ -14,7 +14,7 @@
 -- ============================================================
 
 ALTER TABLE public.incoming_missions
-  ADD COLUMN IF NOT EXISTS departure_depot_id INTEGER REFERENCES public.depots(id);
+  ADD COLUMN IF NOT EXISTS departure_depot_id UUID REFERENCES public.depots(id);
 
 CREATE INDEX IF NOT EXISTS idx_incoming_missions_departure_depot
   ON public.incoming_missions(departure_depot_id);
