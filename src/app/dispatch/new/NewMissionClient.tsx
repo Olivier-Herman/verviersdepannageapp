@@ -26,15 +26,19 @@ interface Destination { id: string; label: string; address: string; lat: number|
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ALL_SOURCES = [
-  { value: 'touring', label: 'TOURING' }, { value: 'ethias', label: 'ETHIAS' },
-  { value: 'vivium',  label: 'VIVIUM'  }, { value: 'ipa',    label: 'IPA (AXA)' },
-  { value: 'ardenne', label: 'ARDENNE (IPA)' }, { value: 'mondial', label: 'MONDIAL' },
   { value: 'aginsurance', label: 'AG INSURANCE' },
-  { value: 'vab',     label: 'VAB'     },
-  { value: 'police_snc',  label: 'Siabis Non Couvert' },
+  { value: 'ardenne',     label: 'ARDENNE (IPA)' },
+  { value: 'ethias',      label: 'ETHIAS' },
+  { value: 'garage',      label: 'GARAGE' },
+  { value: 'ipa',         label: 'IPA (AXA)' },
+  { value: 'mondial',     label: 'MONDIAL' },
+  { value: 'police',      label: 'POLICE' },
+  { value: 'prive',       label: 'PRIVÉ' },
   { value: 'sia_couvert', label: 'Siabis Couvert (assistance)' },
-  { value: 'police', label: 'POLICE' },
-  { value: 'prive',   label: 'PRIVÉ'   }, { value: 'garage', label: 'GARAGE' },
+  { value: 'police_snc',  label: 'Siabis Non Couvert' },
+  { value: 'touring',     label: 'TOURING' },
+  { value: 'vab',         label: 'VAB' },
+  { value: 'vivium',      label: 'VIVIUM' },
 ]
 // Sous-types Police (Source=police) : choix du dispatcher pilote la source reelle
 // envoyee a l API ('police_accident', 'police_saisie', ...) ainsi que la zone
@@ -253,9 +257,30 @@ export default function NewMissionClient({
   const [rdvDate, setRdvDate] = useState(today)
   const [rdvTime, setRdvTime] = useState(curTime)
 
+  // ── Depot de depart ───────────────────────────────────────────────────────
+  // Charge dynamiquement via /api/depots. Pepinster pre-selectionne par defaut
+  // (depot principal). Stocke pour l instant dans parsed_data en attendant la
+  // migration qui ajoutera departure_depot_id sur incoming_missions.
+  type Depot = { id: number; name: string; is_default?: boolean }
+  const [depots,           setDepots]           = useState<Depot[]>([])
+  const [departureDepotId, setDepartureDepotId] = useState<number | null>(null)
+  useEffect(() => {
+    fetch('/api/depots').then(r => r.json()).then((list: Depot[]) => {
+      const arr = Array.isArray(list) ? list : []
+      setDepots(arr)
+      // Pepinster en priorite, sinon is_default, sinon premier
+      const pep = arr.find(d => /pepin/i.test(d.name))
+      const def = pep || arr.find(d => d.is_default) || arr[0]
+      if (def) setDepartureDepotId(def.id)
+    }).catch(() => {})
+  }, [])
+
   // ── Source ────────────────────────────────────────────────────────────────
-  const [source,         setSource]         = useState('prive')
-  const [sourceFromOdoo, setSourceFromOdoo] = useState(false)
+  // '' au demarrage : la selection est obligatoire (validation canSubmit).
+  // sourceManuallySet : empeche selectClient d ecraser un choix manuel.
+  const [source,             setSource]             = useState('')
+  const [sourceFromOdoo,     setSourceFromOdoo]     = useState(false)
+  const [sourceManuallySet,  setSourceManuallySet]  = useState(false)
 
   // ── Numero dossier (ref externe : PV police, ref assurance, etc.) ────────
   const [dossierNumber,  setDossierNumber]  = useState('')
@@ -276,6 +301,12 @@ export default function NewMissionClient({
   // ── Type + mission ────────────────────────────────────────────────────────
   const [missionType,  setMissionType]  = useState('DSP')
   const [description,  setDescription]  = useState('')
+
+  // ── Chauffeur assigne (optionnel) ─────────────────────────────────────────
+  // Si selectionne au moment du submit : la mission est creee, le chauffeur
+  // assigne (status='assigned') et la push envoyee dans la foulee. Sinon la
+  // mission reste 'new' et l attribution se fera plus tard via la fiche.
+  const [assignedDriverId, setAssignedDriverId] = useState<string>('')
 
   // ── Police / Siabis specifiques ───────────────────────────────────────────
   // policeSubtype : choisi seulement si source === 'police'. Pilote la source
@@ -459,11 +490,17 @@ export default function NewMissionClient({
     clientSearch.setQuery(c.name)
     clientSearch.setResults([])
 
-    // Lookup source depuis notre DB
+    // Lookup source depuis notre DB. Ne reset PAS la source si le dispatcher
+    // a deja fait un choix manuel : on respecte son intention. On met juste a
+    // jour sourceFromOdoo si la source connue pour ce partner matche.
     const res  = await fetch(`/api/missions/source-lookup?partner_id=${c.id}`)
     const data = await res.json()
-    setSource(data.source)
-    setSourceFromOdoo(data.found)
+    if (!sourceManuallySet) {
+      setSource(data.source)
+      setSourceFromOdoo(data.found)
+    } else if (data.source === source) {
+      setSourceFromOdoo(data.found)
+    }
   }
 
   // Copier client facturé → assisté
@@ -492,16 +529,37 @@ export default function NewMissionClient({
     vehicleSearch.setResults([])
   }
 
-  // Change source : autosave silencieux pour ce client si un partner Odoo est lie.
-  // L association partner -> source est persistee best-effort, pas de feedback visible.
-  const changeSource = (newSource: string) => {
+  // Change source : marque la source comme manuelle (empeche ecrasement par
+  // selectClient), autosave pour le partner Odoo lie, et autocomplete le client
+  // facture si la source a un default_billed_to dans le catalog et qu aucun
+  // client n est deja lie.
+  const changeSource = async (newSource: string) => {
     setSource(newSource)
+    setSourceManuallySet(true)
     if (odooPartnerId) {
       fetch('/api/missions/source-lookup', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ odoo_partner_id: odooPartnerId, source: newSource, label: billedName })
       }).catch(() => {})
       setSourceFromOdoo(true)
+    }
+    // Autocomplete client facture depuis le default de la source (catalog).
+    // Ne touche pas si un client est deja lie (respect choix manuel).
+    if (!odooPartnerId && newSource) {
+      try {
+        const r = await fetch(`/api/missions/source-defaults?source=${encodeURIComponent(newSource)}`)
+        const d = await r.json()
+        if (d.ok && d.default_billed_to_id) {
+          setOdooPartnerId(d.default_billed_to_id)
+          setBilledName(d.default_billed_to_name || '')
+          clientSearch.setQuery(d.default_billed_to_name || '')
+          setSelectedClient({
+            id:     d.default_billed_to_id,
+            name:   d.default_billed_to_name || '',
+            phone:  false, mobile: false, street: false, city: false, zip: false, email: false,
+          })
+        }
+      } catch {}
     }
   }
 
@@ -526,7 +584,8 @@ export default function NewMissionClient({
 
   // Validation derivee pour l'UI (CTA pulse + disabled state)
   const policeSubtypeOk = source !== 'police' || !!policeSubtype
-  const canSubmit = !!missionType
+  const canSubmit = !!source
+                 && !!missionType
                  && !!destinations[0]?.address
                  && (!!odooPartnerId || !!billedName.trim())
                  && policeSubtypeOk
@@ -539,6 +598,7 @@ export default function NewMissionClient({
   const isSiabis = source === 'police_snc' || source === 'sia_couvert'
 
   const handleSubmit = async () => {
+    if (!source)                    return setError('Source requise')
     if (!missionType)               return setError('Type de mission requis')
     if (!destinations[0]?.address)  return setError('Lieu d\'incident requis')
     if (!odooPartnerId && !billedName.trim()) {
@@ -583,9 +643,10 @@ export default function NewMissionClient({
       const res = await fetch('/api/missions/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          source:          resolvedSource,
-          mission_type:    missionType,
-          dossier_number:  dossierNumber.trim() || null,
+          source:              resolvedSource,
+          mission_type:        missionType,
+          dossier_number:      dossierNumber.trim() || null,
+          departure_depot_id:  departureDepotId,
           billed_to_name:  billedName,
           billed_to_id:    finalPartnerId,
           assisted_name:   assistedName || billedName,
@@ -615,6 +676,28 @@ export default function NewMissionClient({
 
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'Erreur création')
+
+      // Si un chauffeur a ete selectionne : on assigne dans la foulee. L API
+      // assign fait passer la mission a status='assigned', notifie le chauffeur
+      // par push et met a jour la task FSM Odoo. Best-effort : si l assign
+      // echoue, la mission reste creee (status='new'), l erreur affichee.
+      if (assignedDriverId) {
+        try {
+          const assignRes = await fetch('/api/missions/assign', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mission_id: data.mission_id, driver_id: assignedDriverId }),
+          })
+          const assignData = await assignRes.json()
+          if (!assignRes.ok) {
+            console.error('[create+assign] assign failed:', assignData?.error)
+            // On n affiche pas d erreur bloquante : la mission est creee, le user
+            // pourra reassigner depuis la fiche.
+          }
+        } catch (e) {
+          console.error('[create+assign] assign network error:', e)
+        }
+      }
+
       router.push(`/dispatch/${data.mission_id}`)
     } catch (err: any) {
       setError(err.message); setSaving(false)
@@ -722,16 +805,34 @@ export default function NewMissionClient({
                 </div>
               </div>
 
-              {/* 2. Source + numero dossier + sous-type Police / Siabis */}
+              {/* 2. Depot de depart */}
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+                <h2 className="text-ink font-semibold text-sm mb-4">🏭 Dépôt de départ</h2>
+                <select
+                  value={departureDepotId ?? ''}
+                  onChange={e => setDepartureDepotId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                >
+                  {depots.length === 0 && <option value="">Chargement...</option>}
+                  {depots.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                <p className="text-ink-faint text-xs mt-2">Dépôt depuis lequel le camion part. Modifiable si le chauffeur démarre d'un autre site.</p>
+              </div>
+
+              {/* 3. Source + numero dossier + sous-type Police / Siabis */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🎯 Source du dossier</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">
-                      Source {sourceFromOdoo ? '(memorisée pour ce client)' : ''}
+                      Source <span className="text-red-400">*</span>
+                      {sourceFromOdoo ? <span className="text-ink-faint"> (memorisée pour ce client)</span> : ''}
                     </label>
                     <select value={source} onChange={e => changeSource(e.target.value)}
-                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
+                      className={`w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand ${!source ? 'border-amber-500/50' : ''}`}>
+                      <option value="">— Sélectionner une source —</option>
                       {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                   </div>
@@ -1056,12 +1157,12 @@ export default function NewMissionClient({
                 </div>
               )}
 
-              {/* 8. Paiement à réclamer */}
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
-                <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
-                  <span>💳</span> Paiement à réclamer au client
+              {/* 8. Paiement à réclamer au client — mis en evidence pour eviter l oubli */}
+              <div className={`rounded-2xl p-5 transition nm-card-enter ${amountToCollect ? 'bg-amber-500/10 border-2 border-amber-500/60 shadow-lg shadow-amber-500/10' : 'bg-amber-500/5 border-2 border-amber-500/30 hover:border-amber-500/50'}`}>
+                <h2 className="text-ink font-bold text-base mb-2 flex items-center gap-2">
+                  <span className="text-2xl">💳</span> Paiement à réclamer au client
                 </h2>
-                <p className="text-ink-muted text-xs mb-3">Laisser vide si facturation directe à l'assurance</p>
+                <p className="text-ink-secondary text-xs mb-4">⚠️ N'oublie pas si encaissement immédiat (DSP particulier, SNC, etc.). Laisser vide si facturation directe à l'assurance.</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -1069,10 +1170,31 @@ export default function NewMissionClient({
                     value={amountToCollect}
                     onChange={e => setAmountToCollect(e.target.value)}
                     placeholder="0.00"
-                    className="w-40 bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                    className="w-40 bg-surface border-2 border-amber-500/40 rounded-xl px-3 py-2.5 text-ink text-base font-semibold focus:outline-none focus:border-amber-500"
                   />
-                  <span className="text-ink-muted text-sm">€</span>
+                  <span className="text-ink font-medium text-base">€</span>
                 </div>
+              </div>
+
+              {/* 8.5. Chauffeur (optionnel) — si selectionne : assignation + envoi dans la foulee */}
+              <div className={`rounded-2xl p-5 transition nm-card-enter ${assignedDriverId ? 'bg-green-500/10 border-2 border-green-500/60' : 'bg-surface border'}`}>
+                <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
+                  <span>👷</span> Chauffeur assigné <span className="text-ink-faint text-xs">(optionnel)</span>
+                </h2>
+                <p className="text-ink-muted text-xs mb-3">
+                  Si tu choisis un chauffeur : la mission sera créée + assignée + envoyée à son téléphone en un clic.
+                  Sinon elle restera dans la file d'attente du dispatch.
+                </p>
+                <select value={assignedDriverId} onChange={e => setAssignedDriverId(e.target.value)}
+                  className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
+                  <option value="">— Pas d'assignation (laisser en file dispatch) —</option>
+                  {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                {assignedDriverId && (
+                  <p className="text-green-400 text-xs mt-2">
+                    ✓ Sera envoyé à {drivers.find(d => d.id === assignedDriverId)?.name || 'chauffeur'} dès la création
+                  </p>
+                )}
               </div>
 
               {/* 9. Remarques */}
@@ -1093,9 +1215,9 @@ export default function NewMissionClient({
               </div>
             </div>
 
-            {/* ── Colonne droite : résumé + action ────────────────────────── */}
-            <div className="space-y-4">
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter sticky top-[89px] space-y-4">
+            {/* ── Colonne droite : résumé + action (sticky en desktop) ────── */}
+            <div className="lg:sticky lg:top-24 lg:self-start space-y-4">
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter space-y-4">
 
                 {error && (
                   <div className="px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
@@ -1104,9 +1226,15 @@ export default function NewMissionClient({
                 )}
 
                 <button onClick={handleSubmit} disabled={saving || !canSubmit}
-                  title={!canSubmit ? 'Renseigne au moins : type, lieu, client' : ''}
+                  title={!canSubmit ? 'Renseigne : source, type, lieu, client (+ sous-type Police si Police)' : ''}
                   className={`w-full py-3 bg-gradient-to-r from-brand to-brand-dark hover:opacity-90 text-white rounded-xl font-semibold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed ${canSubmit && !saving ? 'nm-pulse' : ''}`}>
-                  {saving ? '⏳ Création en cours...' : canSubmit ? '✓ Créer la mission' : 'Compléter les champs requis'}
+                  {saving
+                    ? '⏳ Création en cours...'
+                    : !canSubmit
+                      ? 'Compléter les champs requis'
+                      : assignedDriverId
+                        ? `✓ Créer + envoyer à ${(drivers.find(d => d.id === assignedDriverId)?.name || '').split(' ')[0]}`
+                        : '✓ Créer la mission'}
                 </button>
 
                 <Link href="/dispatch"

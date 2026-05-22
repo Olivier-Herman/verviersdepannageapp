@@ -95,6 +95,7 @@ export async function POST(req: Request) {
         odoo_vehicle_id:     body.odoo_vehicle_id     || null,
         distance_km:         body.distance_km         || null,
         duration_min:        body.duration_min        || null,
+        departure_depot_id:  body.departure_depot_id  || null,
       }
     })
     .select('id, external_id')
