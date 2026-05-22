@@ -28,19 +28,27 @@ export async function getAppToken(): Promise<string> {
   return data.access_token
 }
 
-export async function sendEmail(to: string, subject: string, html: string, toName?: string) {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  toName?: string,
+  cc?: string | string[],
+) {
   const token = await getAppToken()
+  const ccList = Array.isArray(cc) ? cc : cc ? [cc] : []
+  const message: any = {
+    subject,
+    body: { contentType: 'HTML', content: html },
+    toRecipients: [{ emailAddress: { address: to, name: toName || to } }],
+  }
+  if (ccList.length > 0) {
+    message.ccRecipients = ccList.map(addr => ({ emailAddress: { address: addr } }))
+  }
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: {
-        subject,
-        body: { contentType: 'HTML', content: html },
-        toRecipients: [{ emailAddress: { address: to, name: toName || to } }],
-      },
-      saveToSentItems: true,
-    })
+    body: JSON.stringify({ message, saveToSentItems: true })
   })
   if (!res.ok) {
     const err = await res.text()

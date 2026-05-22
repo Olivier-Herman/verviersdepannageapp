@@ -253,6 +253,8 @@ export async function POST(req: Request) {
         villeEmail,
         `[Verviers Dépannage] Envoi en destruction AVP — ${monthLabel} (${missions.length} véhicule${missions.length > 1 ? 's' : ''})`,
         html,
+        undefined,
+        'fourriere@verviersdepannage.be',  // CC interne pour archivage
       )
       emailSent = true
     } catch (e: any) {
