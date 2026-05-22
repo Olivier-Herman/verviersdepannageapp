@@ -42,12 +42,14 @@ export interface SncCalcInput {
 }
 
 export interface SncCalcOutput {
-  depart_depot:        string    // nom du depot de depart (= depot retour, sauf REM_depot ou retour=Pepinster)
-  depart_depot_id:     number | string
-  km_depanneuse:       number    // total km depanneuse (depot -> ... -> depot)
-  km_balisage:         number    // km balisage (aller-retour intervention)
-  is_majored:          boolean
-  note:                string    // explication calcul (visible facturation)
+  depart_depot:           string    // nom du depot depanneuse (le plus proche parmi tous)
+  depart_depot_id:        number | string
+  balisage_depot?:        string    // nom du depot balisage (Pepinster ou Aywaille, le plus proche)
+  balisage_depot_id?:     number | string
+  km_depanneuse:          number    // total km depanneuse (depot -> ... -> depot)
+  km_balisage:            number    // km balisage (aller-retour intervention depuis SON depot)
+  is_majored:             boolean
+  note:                   string    // explication calcul (visible facturation)
 }
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
@@ -92,6 +94,12 @@ export function findNearestDepot(lat: number, lng: number, depots: SncDepot[]): 
 /** Cherche le depot Pepinster parmi la liste (case-insensitive sur name). */
 export function findPepinster(depots: SncDepot[]): SncDepot | null {
   return depots.find(d => /pepinster/i.test(d.name)) || null
+}
+
+/** Cherche les depots BALISAGE : uniquement Pepinster et Aywaille (les autres
+ *  depots n ont pas de vehicule de securite/balisage). */
+export function findBalisageDepots(depots: SncDepot[]): SncDepot[] {
+  return depots.filter(d => /pepinster|aywaille/i.test(d.name))
 }
 
 /** Calcule km route via Google Maps Distance Matrix. Fallback haversine si echec. */
@@ -189,22 +197,37 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     kmDepanneuse = d1 + dRetour
   }
 
-  // Km balisage = TOUJOURS aller-retour intervention depuis le depot de depart.
-  // Le balisage rentre directement au depot apres l intervention, sans suivre
-  // la depanneuse vers destination (rem_client) ou Pepinster (rem_depot).
-  // En DSP : balisage et depanneuse font le meme trajet -> kmBalisage = kmDepanneuse.
-  // En REM (client ou depot) : balisage = d1 + dRetour (depanneuse continue ailleurs).
-  const kmBalisage = d1 + dRetour
+  // Km balisage : le balisage part toujours de Pepinster OU Aywaille (le plus
+  // proche de l intervention parmi ces 2 depots), pas du meme depot que la
+  // depanneuse. Il fait aller-retour intervention puis rentre directement.
+  let kmBalisage = 0
+  let balisageDepotInfo: { name: string; id: number | string } | null = null
+  if (input.requiresBalisage) {
+    const balisageDepots = findBalisageDepots(depots)
+    const balisageDepot = findNearestDepot(input.interventionLat, input.interventionLng, balisageDepots)
+    if (balisageDepot) {
+      balisageDepotInfo = { name: balisageDepot.name, id: balisageDepot.id }
+      const bal1 = await calculateRouteKm(balisageDepot.lat, balisageDepot.lng, input.interventionLat, input.interventionLng)
+      const bal2 = await calculateRouteKm(input.interventionLat, input.interventionLng, balisageDepot.lat, balisageDepot.lng)
+      kmBalisage = bal1 + bal2
+    }
+  }
 
   const isMajored = await isSncMajored(input.interventionAt)
 
   return {
-    depart_depot:    depart.name,
-    depart_depot_id: depart.id,
-    km_depanneuse:   kmDepanneuse,
-    km_balisage:     kmBalisage,
-    is_majored:      isMajored,
-    note: `Dépôt départ : ${depart.name}. Km dépanneuse : ${kmDepanneuse}. Km balisage : ${kmBalisage}.${isMajored ? ' Plage horaire majorée appliquée.' : ''}`,
+    depart_depot:      depart.name,
+    depart_depot_id:   depart.id,
+    balisage_depot:    balisageDepotInfo?.name,
+    balisage_depot_id: balisageDepotInfo?.id,
+    km_depanneuse:     kmDepanneuse,
+    km_balisage:       kmBalisage,
+    is_majored:        isMajored,
+    note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}.` +
+          (input.requiresBalisage && balisageDepotInfo
+            ? ` Dépôt balisage : ${balisageDepotInfo.name}. Km balisage : ${kmBalisage}.`
+            : '') +
+          (isMajored ? ' Plage horaire majorée appliquée.' : ''),
   }
 }
 
