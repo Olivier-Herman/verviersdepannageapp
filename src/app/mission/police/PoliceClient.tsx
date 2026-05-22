@@ -8,7 +8,7 @@ import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
 
-type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'appel_prive' | 'avp'
+type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'appel_prive' | 'avp'
 
 const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: string; colorLight: string; hidePolice?: boolean; hideOwner?: boolean }> = {
   accident:    { label: 'Police Accident',    icon: '🚨', color: 'bg-red-600',    colorLight: 'bg-red-50 border-red-200' },
@@ -16,6 +16,7 @@ const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: str
   rodeo:       { label: 'Rodéo',              icon: '🏎️', color: 'bg-rose-600',   colorLight: 'bg-rose-50 border-rose-200' },
   mal_garee:   { label: 'Mal Garée',          icon: '🚫', color: 'bg-amber-600',  colorLight: 'bg-amber-50 border-amber-200' },
   snc:         { label: 'Siabis Non Couvert', icon: '🛣️', color: 'bg-blue-600',   colorLight: 'bg-blue-50 border-blue-200' },
+  sc:          { label: 'Siabis Couvert',     icon: '🛣️', color: 'bg-cyan-600',   colorLight: 'bg-cyan-50 border-cyan-200', hidePolice: true, hideOwner: true },
   appel_prive: { label: 'Appel Privé',        icon: '📞', color: 'bg-green-800',  colorLight: 'bg-green-50 border-green-200', hidePolice: true },
   avp:         { label: 'AVP',                icon: '🔲', color: 'bg-black',     colorLight: 'bg-gray-50 border-gray-200',  hidePolice: true, hideOwner: true },
 }
@@ -92,9 +93,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [leveeSaisieOk,    setLeveeSaisieOk]    = useState(false)
   const [leveeSaisiePhoto, setLeveeSaisiePhoto] = useState<File | null>(null)
   const [leveeSaisiePreview, setLeveeSaisiePreview] = useState<string>('')
-  // SNC (Siabis Non Couvert) : balisage + scenario d intervention
+  // SNC (Siabis Non Couvert) + SC (Siabis Couvert) : balisage + scenario
   const [sncRequiresBalisage, setSncRequiresBalisage] = useState(false)
   const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
+  // SC uniquement : nom de l assistance qui paye (Touring, Ethias, VAB, etc.)
+  const [scAssistanceName, setScAssistanceName] = useState('')
   // Coordonnees GPS de l intervention (capturees via Google Autocomplete) — necessaires
   // pour le preview tarif SNC qui utilise Google Distance Matrix.
   const [locationLat, setLocationLat] = useState<number | null>(null)
@@ -216,7 +219,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // Reset destAcRef quand le scenario change pour eviter de pointer vers un input demonté.
   useEffect(() => {
     destAcRef.current = null  // reset au changement de scenario
-    if (selectedType !== 'snc') return
+    const isSiabis = selectedType === 'snc' || selectedType === 'sc'
+    if (!isSiabis) return
     if (sncScenario !== 'rem_client' && sncScenario !== 'rem_depot') return
 
     const init = () => {
@@ -244,16 +248,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     }
   }, [selectedType, sncScenario])
 
-  // ──────────── Preview tarif SNC en live ────────────
-  // Quand SNC + scenario + coords sont presents, debounce et appel
-  // /api/snc-preview-tarif pour afficher au chauffeur le montant a encaisser
-  // (DSP / REM client) ou a transmettre au client (REM depot).
+  // ──────────── Preview tarif SNC/SC en live ────────────
+  // Quand SNC/SC + scenario + coords sont presents, debounce et appel
+  // /api/snc-preview-tarif. SC = forfait sans km (variant=sc).
   useEffect(() => {
-    if (selectedType !== 'snc' || !sncScenario || locationLat == null || locationLng == null) {
+    const isSiabis = selectedType === 'snc' || selectedType === 'sc'
+    if (!isSiabis || !sncScenario || locationLat == null || locationLng == null) {
       setSncPreview(null); setPreviewError(null)
       return
     }
-    // REM client : destination obligatoire pour calcul
+    // REM client : destination obligatoire pour calcul (SNC seulement, pas SC)
     if (sncScenario === 'rem_client' && (destinationLat == null || destinationLng == null)) {
       setSncPreview(null); setPreviewError(null)
       return
@@ -279,6 +283,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             destination_lat:   destinationLat,
             destination_lng:   destinationLng,
             intervention_at:   interventionAt,
+            variant:           selectedType === 'sc' ? 'sc' : 'snc',
           }),
           signal: ctrl.signal,
         })
@@ -418,6 +423,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         policeLeveeSaisieDocUrl: leveeSaisieDocUrl,
         sncRequiresBalisage,
         sncScenario:             sncScenario || null,
+        scAssistanceName:        selectedType === 'sc' ? scAssistanceName.trim() || null : null,
         // Coordonnees GPS (depuis autocomplete) pour SNC + calcul tarif futur
         incidentLat:             locationLat,
         incidentLng:             locationLng,
@@ -612,19 +618,37 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           </Section>
         )}
 
-        {/* SNC (Siabis Non Couvert) : scenario d intervention + toggle balisage */}
-        {(selectedType === 'snc') && (
-          <Section title="🛣️ Détails SNC">
+        {/* SNC (Siabis Non Couvert) + SC (Siabis Couvert) : scenario + balisage + assistance (SC) */}
+        {(selectedType === 'snc' || selectedType === 'sc') && (
+          <Section title={selectedType === 'sc' ? '🛣️ Détails Siabis Couvert' : '🛣️ Détails SNC'}>
             <div className="space-y-3">
+              {/* Nom assistance (SC uniquement) */}
+              {selectedType === 'sc' && (
+                <div>
+                  <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
+                    Assistance qui prend en charge *
+                  </label>
+                  <input
+                    value={scAssistanceName}
+                    onChange={e => setScAssistanceName(e.target.value)}
+                    placeholder="Ex: Touring, Ethias, VAB, IMA, AXA..."
+                    className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none focus:border-cyan-500"
+                  />
+                  <p className="text-xs text-ink-muted mt-1">
+                    L&apos;assistance paye la facture (aucun encaissement client). Sera utilisée comme client facturé sur le devis Odoo.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
                   Scénario d&apos;intervention
                 </label>
                 <div className="grid grid-cols-1 gap-2">
                   {([
-                    { key: 'dsp',        label: '🔧 DSP — Dépannage sur place',          desc: 'Réparation sur autoroute, client paie en direct au chauffeur.' },
-                    { key: 'rem_client', label: '🚛 REM avec paiement immédiat',          desc: 'Remorquage vers destination du client, paiement immédiat.' },
-                    { key: 'rem_depot',  label: '🏢 REM vers dépôt Pepinster',            desc: 'Mise en zone Transit, le client passera au bureau ensuite.' },
+                    { key: 'dsp',        label: '🔧 DSP — Dépannage sur place',          desc: selectedType === 'sc' ? 'Réparation sur autoroute, facturée à l\'assistance.' : 'Réparation sur autoroute, client paie en direct au chauffeur.' },
+                    ...(selectedType === 'snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat',          desc: 'Remorquage vers destination du client, paiement immédiat.' }] : []),
+                    { key: 'rem_depot',  label: '🏢 REM vers dépôt Pepinster',            desc: selectedType === 'sc' ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.' : 'Mise en zone Transit, le client passera au bureau ensuite.' },
                   ] as const).map(opt => (
                     <button
                       key={opt.key}
@@ -632,7 +656,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                       onClick={() => setSncScenario(opt.key)}
                       className={`p-3 rounded-xl border text-left transition ${
                         sncScenario === opt.key
-                          ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-200'
+                          ? (selectedType === 'sc' ? 'bg-cyan-50 border-cyan-500 ring-2 ring-cyan-200' : 'bg-blue-50 border-blue-500 ring-2 ring-blue-200')
                           : 'bg-surface border-strong hover:border-blue-300'
                       }`}
                     >

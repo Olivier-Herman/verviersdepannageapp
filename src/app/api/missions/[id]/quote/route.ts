@@ -97,9 +97,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (customLines) {
     lines = customLines
     totalForResponse = customLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
-  } else if (mission.source === 'police_snc' && (mission as any).snc_scenario) {
-    // SNC : tarification specifique (SIAREM/SIAKIL/SIABAL + MAJ si plage horaire).
-    // Calcule les metrics si pas deja en BDD.
+  } else if ((mission.source === 'police_snc' || mission.source === 'sia_couvert') && (mission as any).snc_scenario) {
+    // SNC / SC : tarification specifique (SIAREM/SIAKIL/SIABAL + MAJ si plage horaire).
+    // SC = variant 'sc' (pas de km, forfait + balisage seulement).
+    const variant = mission.source === 'sia_couvert' ? 'sc' : 'snc'
     const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
     const metrics = await computeSncMetrics({
       scenario:          (mission as any).snc_scenario,
@@ -115,6 +116,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         metrics,
         requiresBalisage:  Boolean((mission as any).snc_requires_balisage),
         missionRef,
+        variant,
       })
       lines = sncLines.map(l => ({
         kind:       l.kind as any,

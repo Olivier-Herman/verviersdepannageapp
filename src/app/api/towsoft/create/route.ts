@@ -14,6 +14,7 @@ const TYPE_CONFIG: Record<string, { label: string; parc: string; motif: string }
   rodeo:       { label: '🏎️ Rodéo',              parc: 'J',  motif: 'RODEO' },
   mal_garee:   { label: '🚫 Mal Garée',          parc: 'L - Fourrière - Zone L Mal Garée', motif: 'MAL GARÉE' },
   snc:         { label: '🛣️ Siabis Non Couvert', parc: 'K2', motif: 'SIABIS NON COUVERT' },
+  sc:          { label: '🛣️ Siabis Couvert',     parc: 'K2', motif: 'SIABIS COUVERT' },
   appel_prive: { label: '📞 Appel Privé',        parc: 'K3', motif: 'APPEL PRIVE' },
   avp:         { label: '🔲 AVP',                parc: 'J',  motif: 'ABANDON' },
 }
@@ -41,10 +42,11 @@ export async function POST(req: Request) {
     policeBlocked,
     policeLeveeSaisieOk,
     policeLeveeSaisieDocUrl,
-    // SNC (Siabis Non Couvert)
+    // SNC (Siabis Non Couvert) + SC (Siabis Couvert)
     sncRequiresBalisage,
     sncScenario,         // 'dsp' | 'rem_client' | 'rem_depot'
-    // Coordonnees GPS (pour SNC : calcul tarif via Google Distance Matrix)
+    scAssistanceName,    // SC uniquement : nom assistance qui paye
+    // Coordonnees GPS (pour SNC/SC : calcul tarif via Google Distance Matrix)
     incidentLat, incidentLng,
     destinationLat, destinationLng,
   } = body
@@ -205,14 +207,15 @@ export async function POST(req: Request) {
     rodeo:     'police_rodeo',
     avp:       'police_avp',
     snc:       'police_snc',
+    sc:        'sia_couvert',
   }
-  // Zone parc cible. Pour SNC : depend du scenario (Transit si rem_depot, sinon
+  // Zone parc cible. Pour SNC/SC : depend du scenario (Transit si rem_depot, sinon
   // pas de zone car le vehicule ne reste pas chez nous).
   function zoneForType(t: string, sncScenarioVal?: string): string | null {
     if (t === 'mal_garee') return 'L'
     if (t === 'rodeo')     return 'J'
     if (t === 'avp')       return 'J'
-    if (t === 'snc')       return sncScenarioVal === 'rem_depot' ? 'Transit' : null
+    if (t === 'snc' || t === 'sc') return sncScenarioVal === 'rem_depot' ? 'Transit' : null
     return null
   }
 
@@ -243,6 +246,7 @@ export async function POST(req: Request) {
       rodeo:     'RODEO',
       avp:       'AVP',
       snc:       'SNC',
+      sc:        'SC',
     }
     const prefix = prefixByType[type] || 'POLICE'
 
@@ -250,7 +254,7 @@ export async function POST(req: Request) {
     // restitution, car le proprio doit toujours passer par la police pour
     // valider la recuperation, qui nous informe ensuite).
     const isAvp = type === 'avp'
-    const isSnc = type === 'snc'
+    const isSnc = type === 'snc' || type === 'sc'
 
     // SNC : mission_type depend du scenario
     //   - dsp        -> depannage
@@ -282,6 +286,8 @@ export async function POST(req: Request) {
         vehicle_model:      model || null,
         client_name:        fullName,
         client_phone:       ownerPhone || null,
+        // SC : billed_to = assistance (paye), pas le client
+        billed_to_name:     (type === 'sc' && scAssistanceName) ? String(scAssistanceName).trim() : null,
         incident_address:   location,
         incident_city:      null,
         incident_lat:       typeof incidentLat === 'number' ? incidentLat : null,

@@ -39,6 +39,8 @@ export interface SncCalcInput {
   destinationLat?:    number | null
   destinationLng?:    number | null
   interventionAt:     Date | string | null
+  /** 'snc' (defaut) = avec km. 'sc' = Siabis Couvert, forfait sans km. */
+  variant?:           'snc' | 'sc'
 }
 
 export interface SncCalcOutput {
@@ -243,21 +245,25 @@ export function buildSncQuoteLines(opts: {
   metrics:           SncCalcOutput
   requiresBalisage:  boolean
   missionRef:        string
+  /** 'snc' (defaut) = avec km. 'sc' = Siabis Couvert, forfait sans km. */
+  variant?:          'snc' | 'sc'
 }): SncQuoteLine[] {
   const lines: SncQuoteLine[] = []
   const { metrics, requiresBalisage, missionRef } = opts
+  const variant = opts.variant || 'snc'
   const m = metrics.is_majored
+  const variantLabel = variant === 'sc' ? 'SC' : 'SNC'
 
   // 1. Prise en charge (PEC)
   lines.push({
     kind:       m ? 'PECSIAMAJ' : 'SIAREM',
-    name:       `Prise en charge SNC${m ? ' (heures majorées)' : ''} — ${missionRef}`,
+    name:       `Prise en charge ${variantLabel}${m ? ' (heures majorées)' : ''} — ${missionRef}`,
     qty:        1,
     price_unit: m ? 242.98 : 161.98,
   })
 
-  // 2. Kilometres depanneuse
-  if (metrics.km_depanneuse > 0) {
+  // 2. Kilometres depanneuse — SNC SEULEMENT (SC = forfait pur, pas de km)
+  if (variant === 'snc' && metrics.km_depanneuse > 0) {
     lines.push({
       kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
       name:       `Kilomètre dépanneuse${m ? ' (majoré)' : ''}`,
@@ -274,8 +280,8 @@ export function buildSncQuoteLines(opts: {
       qty:        1,
       price_unit: m ? 175.21 : 150,
     })
-    // Km balisage (separe car peut avoir un comportement different en REM)
-    if (metrics.km_balisage > 0) {
+    // Km balisage : SNC seulement (SC = pas de km du tout)
+    if (variant === 'snc' && metrics.km_balisage > 0) {
       lines.push({
         kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
         name:       `Kilomètre balisage${m ? ' (majoré)' : ''}`,
