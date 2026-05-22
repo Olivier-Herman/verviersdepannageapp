@@ -42,6 +42,8 @@ export async function POST(req: Request) {
   const rowNumber = body.row_number != null ? Number(body.row_number) : NaN
   const slotIndex = body.slot_index != null ? Number(body.slot_index) : NaN
   const reason    = body.reason != null ? String(body.reason).trim().slice(0, 200) || null : null
+  const photoUrl  = body.photo_url != null ? String(body.photo_url).trim() || null : null
+  const blockedKind = body.blocked_kind === 'missing_label' ? 'missing_label' : 'manual'
 
   if (!zoneKey || !Number.isInteger(rowNumber) || rowNumber <= 0 ||
       !Number.isInteger(slotIndex) || slotIndex <= 0) {
@@ -83,13 +85,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, blocked: false })
   }
 
-  const { error } = await sb.from('parc_blocked_slots').insert({
+  const insertPayload: Record<string, any> = {
     zone_key:        zoneKey,
     row_number:      rowNumber,
     slot_index:      slotIndex,
     reason:          reason,
     blocked_by_user: user.id || null,
-  })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    photo_url:       photoUrl,
+    blocked_kind:    blockedKind,
+  }
+  const { error } = await sb.from('parc_blocked_slots').insert(insertPayload)
+  if (error) {
+    // Si les colonnes photo_url / blocked_kind n existent pas encore (migration
+    // pas appliquee), retry sans
+    if (/photo_url|blocked_kind/.test(error.message)) {
+      const fallback = { ...insertPayload }
+      delete fallback.photo_url
+      delete fallback.blocked_kind
+      const { error: e2 } = await sb.from('parc_blocked_slots').insert(fallback)
+      if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
+    } else {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+  }
   return NextResponse.json({ ok: true, blocked: true })
 }

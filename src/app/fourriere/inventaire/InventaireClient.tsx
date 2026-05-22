@@ -131,6 +131,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   const [missing, setMissing]           = useState<MissingVehicle[] | null>(null)
   const [finishingZone, setFinishingZone] = useState(false)
   const scanRef = useRef<HTMLInputElement>(null)
+  const missingLabelPhotoRef = useRef<HTMLInputElement>(null)
 
   // Mapping FOURRIERE_ZONES.code -> parc_zones.key (case insensitive)
   const parcZoneKey = useMemo(() => {
@@ -657,6 +658,75 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     }
   }
 
+  /** Marque le slot courant comme "Vehicule sans etiquette a identifier".
+   *  Bloque le slot avec une raison + photo optionnelle, puis avance au suivant.
+   *  L user retrouvera ces slots en /fourriere/plan -> mode "Debloquer". */
+  async function markSlotMissingLabel(photoFile?: File | null) {
+    if (!parcZoneKey || !currentRow) {
+      alert('Sélectionne d abord une zone et une rangée.')
+      return
+    }
+    setProcessing(true)
+    try {
+      // Upload photo si fournie
+      let photoUrl: string | null = null
+      if (photoFile) {
+        const fd = new FormData()
+        fd.append('mission_id', `inv-missing-${Date.now()}`)
+        fd.append('files', photoFile)
+        const upRes = await fetch('/api/missions/photos-upload', { method: 'POST', body: fd })
+        if (upRes.ok) {
+          const upData = await upRes.json()
+          photoUrl = (upData.urls && upData.urls[0]) || null
+        }
+      }
+
+      // Bloque le slot avec raison + photo
+      const res = await fetch('/api/parc/block', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          zone_key:     parcZoneKey,
+          row_number:   currentRow.row_number,
+          slot_index:   nextSlot,
+          reason:       'Véhicule sans étiquette à identifier',
+          photo_url:    photoUrl,
+          blocked_kind: 'missing_label',
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+
+      // Ajoute a l historique (visible immediatement)
+      const item: ResultItem = {
+        status:   'ok',
+        type:     'updated',
+        label:    `📷 Sans étiquette`,
+        sublabel: photoUrl ? 'Photo capturée' : 'Sans photo',
+        zone:     `${parcZoneKey}${currentRow.row_number}-${nextSlot}`,
+        msg:      'Slot bloqué — à ré-étiqueter',
+      }
+      setCurrentItem(item)
+      setItems(prev => [item, ...prev])
+      setStats(prev => ({ ...prev, total: prev.total + 1, updated: prev.updated + 1 }))
+      persistItem(item, {
+        parc_zone_key:   parcZoneKey,
+        parc_row_number: currentRow.row_number,
+        parc_slot_index: nextSlot,
+      })
+
+      // Avance au slot suivant
+      const newSlot = await refreshNextSlot(parcZoneKey, currentRow.row_number)
+      if (newSlot > currentRow.capacity) {
+        setTimeout(() => promptNextRow(currentRow.row_number), 200)
+      }
+    } catch (e: any) {
+      alert(`Erreur : ${e.message || e}`)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   /** Auto-prompt en fin de capacite : la rangee est pleine, propose de basculer
    *  sur la suivante. Appele apres chaque scan reussi quand nextSlot > capacity. */
   function promptNextRow(completedRowNum: number) {
@@ -705,18 +775,47 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
 
-      // Download CSV
-      if (j.csv && j.unlocated_count > 0) {
-        const blob = new Blob([j.csv], { type: 'text/csv;charset=utf-8;' })
-        const url  = URL.createObjectURL(blob)
-        const a    = document.createElement('a')
-        a.href     = url
-        a.download = `inventaire-non-localises-${selectedZone.code}-${new Date().toISOString().slice(0,10)}.csv`
-        a.click()
-        URL.revokeObjectURL(url)
-      }
+      // Mode cycle : propose la zone suivante automatiquement (zones balayables
+      // restantes, dans l ordre alphabetique). Si l user accepte, on switch sans
+      // retour au setup. Sinon, on lui laisse choisir.
+      const currentZoneCode = selectedZone.code
+      const remainingZones = FOURRIERE_ZONES.filter(z => {
+        // Zones deja balayees pendant cette session : on regarde les codes
+        // utilises dans items (zone, ou parc_zone_key des items)
+        const balayed = items.some(it => {
+          const itemZone = (it.zone || '').split(/[\s\-]+/)[0]
+          return itemZone === z.code
+        })
+        return !balayed && z.code !== currentZoneCode
+      })
+      const nextZoneToSuggest = remainingZones[0] || null
 
-      alert(`Zone ${selectedZone.code} terminée.\n${j.unlocated_count} véhicule(s) passé(s) en "non localisé"${j.unlocated_count > 0 ? '.\nLe CSV a été téléchargé.' : '.'}\n\nTu peux maintenant scanner une autre zone.`)
+      const recapMsg = `✅ Zone ${currentZoneCode} terminée.\n` +
+                       `${j.unlocated_count} véhicule(s) passé(s) en "non localisé".`
+
+      if (nextZoneToSuggest) {
+        const shouldContinue = confirm(
+          `${recapMsg}\n\n` +
+          `Passer à la zone suivante : ${nextZoneToSuggest.code} (${nextZoneToSuggest.label}) ?\n\n` +
+          `(Annuler = retour au setup pour choisir une autre zone)`
+        )
+        if (shouldContinue) {
+          // Switch direct sur la zone suivante sans retour setup
+          setSelectedZone({
+            stateId:  nextZoneToSuggest.state_id,
+            code:     nextZoneToSuggest.code,
+            label:    nextZoneToSuggest.label,
+            fullName: nextZoneToSuggest.full_name,
+          })
+          setParcRowNumber(null)
+          setNextSlot(1)
+          setStep('setup')
+          return
+        }
+      } else {
+        alert(`${recapMsg}\n\nToutes les zones ont été balayées. Tu peux terminer l inventaire.`)
+      }
+      setStep('setup')
     } catch (e: any) {
       alert(`Erreur fin de zone : ${e.message || e}`)
     } finally {
@@ -1047,6 +1146,44 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               <Camera size={18} />
               Scanner avec la caméra
             </button>
+
+            {/* Bouton "Véhicule sans étiquette" : bloque le slot courant avec
+                raison + photo optionnelle, puis avance au suivant. À retrouver
+                ensuite via /fourriere/plan -> mode "Débloquer". */}
+            {currentRow && (
+              <>
+                <input
+                  ref={missingLabelPhotoRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] || null
+                    e.target.value = '' // reset pour pouvoir re-uploader
+                    markSlotMissingLabel(file)
+                  }}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => missingLabelPhotoRef.current?.click()}
+                    disabled={processing}
+                    className="py-2.5 bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 rounded-xl text-xs font-medium transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    title="Photographier le véhicule + bloquer ce slot. À retrouver ensuite dans /fourriere/plan → mode Débloquer."
+                  >
+                    📷 Sans étiquette + photo
+                  </button>
+                  <button
+                    onClick={() => markSlotMissingLabel(null)}
+                    disabled={processing}
+                    className="py-2.5 bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 rounded-xl text-xs font-medium transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    title="Bloquer ce slot sans photo, à ré-étiqueter plus tard"
+                  >
+                    ⊘ Sans étiquette
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Input scan (fallback : saisie manuelle d un n° mission Towsoft) */}
             <div className="bg-surface border rounded-2xl p-3">
