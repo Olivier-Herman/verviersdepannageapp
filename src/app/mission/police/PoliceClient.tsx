@@ -91,6 +91,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [leveeSaisieOk,    setLeveeSaisieOk]    = useState(false)
   const [leveeSaisiePhoto, setLeveeSaisiePhoto] = useState<File | null>(null)
   const [leveeSaisiePreview, setLeveeSaisiePreview] = useState<string>('')
+  // SNC (Siabis Non Couvert) : balisage + scenario d intervention
+  const [sncRequiresBalisage, setSncRequiresBalisage] = useState(false)
+  const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
   const [photos,         setPhotos]         = useState<File[]>([])
   const [previews,       setPreviews]       = useState<string[]>([])
   const [loading,        setLoading]        = useState(false)
@@ -302,6 +305,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         policeBlocked,
         policeLeveeSaisieOk:     leveeSaisieOk,
         policeLeveeSaisieDocUrl: leveeSaisieDocUrl,
+        sncRequiresBalisage,
+        sncScenario:             sncScenario || null,
       }),
     })
 
@@ -487,6 +492,57 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 </div>
               </div>
             </label>
+          </Section>
+        )}
+
+        {/* SNC (Siabis Non Couvert) : scenario d intervention + toggle balisage */}
+        {(selectedType === 'snc') && (
+          <Section title="🛣️ Détails SNC">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
+                  Scénario d&apos;intervention
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  {([
+                    { key: 'dsp',        label: '🔧 DSP — Dépannage sur place',          desc: 'Réparation sur autoroute, client paie en direct au chauffeur.' },
+                    { key: 'rem_client', label: '🚛 REM avec paiement immédiat',          desc: 'Remorquage vers destination du client, paiement immédiat.' },
+                    { key: 'rem_depot',  label: '🏢 REM vers dépôt Pepinster',            desc: 'Mise en zone Transit, le client passera au bureau ensuite.' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setSncScenario(opt.key)}
+                      className={`p-3 rounded-xl border text-left transition ${
+                        sncScenario === opt.key
+                          ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-200'
+                          : 'bg-surface border-strong hover:border-blue-300'
+                      }`}
+                    >
+                      <div className="text-ink font-medium text-sm">{opt.label}</div>
+                      <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-strong rounded-xl hover:border-blue-500 transition">
+                <input
+                  type="checkbox"
+                  checked={sncRequiresBalisage}
+                  onChange={e => setSncRequiresBalisage(e.target.checked)}
+                  className="mt-1 w-5 h-5"
+                />
+                <div className="flex-1">
+                  <div className="text-ink text-sm font-medium">
+                    Intervention avec balisage (véhicule de sécurité)
+                  </div>
+                  <div className="text-ink-muted text-xs mt-1">
+                    Active si un véhicule de sécurité a dû être placé avant l&apos;incident. Génère un supplément SIABAL à la facturation (150 € HTVA normal / 175,21 € HTVA majoré).
+                  </div>
+                </div>
+              </label>
+            </div>
           </Section>
         )}
 

@@ -41,6 +41,9 @@ export async function POST(req: Request) {
     policeBlocked,
     policeLeveeSaisieOk,
     policeLeveeSaisieDocUrl,
+    // SNC (Siabis Non Couvert)
+    sncRequiresBalisage,
+    sncScenario,         // 'dsp' | 'rem_client' | 'rem_depot'
   } = body
 
   if (!type || !date || !time || !location) {
@@ -198,16 +201,21 @@ export async function POST(req: Request) {
     mal_garee: 'police_mg',
     rodeo:     'police_rodeo',
     avp:       'police_avp',
+    snc:       'police_snc',
   }
-  const FOURRIERE_TYPE_TO_ZONE: Record<string, string> = {
-    mal_garee: 'L',
-    rodeo:     'J',
-    avp:       'J',  // tampon, le bureau transfere ensuite vers D/E/F
+  // Zone parc cible. Pour SNC : depend du scenario (Transit si rem_depot, sinon
+  // pas de zone car le vehicule ne reste pas chez nous).
+  function zoneForType(t: string, sncScenarioVal?: string): string | null {
+    if (t === 'mal_garee') return 'L'
+    if (t === 'rodeo')     return 'J'
+    if (t === 'avp')       return 'J'
+    if (t === 'snc')       return sncScenarioVal === 'rem_depot' ? 'Transit' : null
+    return null
   }
 
   if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
     const vdSource = FOURRIERE_TYPE_TO_SOURCE[type]
-    const vdZone   = FOURRIERE_TYPE_TO_ZONE[type]
+    const vdZone   = zoneForType(type, sncScenario)
     const nowIso   = new Date().toISOString()
 
     // Combine date (DD-MM-YYYY) + time (HH:MM) en ISO pour intervention_date.
@@ -226,10 +234,12 @@ export async function POST(req: Request) {
     //   mal_garee -> MG-XXX
     //   rodeo     -> RODEO-XXX
     //   avp       -> AVP-XXX
+    //   snc       -> SNC-XXX
     const prefixByType: Record<string, string> = {
       mal_garee: 'MG',
       rodeo:     'RODEO',
       avp:       'AVP',
+      snc:       'SNC',
     }
     const prefix = prefixByType[type] || 'POLICE'
 
@@ -237,6 +247,22 @@ export async function POST(req: Request) {
     // restitution, car le proprio doit toujours passer par la police pour
     // valider la recuperation, qui nous informe ensuite).
     const isAvp = type === 'avp'
+    const isSnc = type === 'snc'
+
+    // SNC : mission_type depend du scenario
+    //   - dsp        -> depannage
+    //   - rem_client -> remorquage (livraison directe)
+    //   - rem_depot  -> remorquage (mise en parc Transit)
+    const sncMissionType = isSnc
+      ? (sncScenario === 'dsp' ? 'depannage' : 'remorquage')
+      : null
+
+    // SNC : status depend du scenario
+    //   - rem_depot  -> parked (en zone Transit)
+    //   - dsp / rem_client -> completed (mission immediate, paiement chauffeur)
+    const sncStatus = isSnc
+      ? (sncScenario === 'rem_depot' ? 'parked' : 'in_progress')
+      : 'parked'
 
     const { data: vdData, error: vdErr } = await supabase
       .from('incoming_missions')
@@ -244,8 +270,8 @@ export async function POST(req: Request) {
         external_id:        `${prefix}-${queueEntry.id.slice(0, 8)}`,
         dossier_number:     odooTicketId ? `${prefix}-${odooTicketId}` : null,
         source:             vdSource,
-        mission_type:       'remorquage',
-        status:             'parked',
+        mission_type:       isSnc ? sncMissionType : 'remorquage',
+        status:             isSnc ? sncStatus : 'parked',
         parc_zone_key:      vdZone,
         vehicle_plate:      ((plate || '').trim().toUpperCase()) || null,
         vehicle_vin:        ((vin || '').trim().toUpperCase()) || null,
@@ -262,6 +288,9 @@ export async function POST(req: Request) {
         police_blocked:     isAvp ? true : Boolean(policeBlocked),
         police_levee_saisie_ok:       Boolean(policeLeveeSaisieOk),
         police_levee_saisie_doc_url:  policeLeveeSaisieDocUrl || null,
+        // SNC-specifiques
+        snc_requires_balisage: isSnc ? Boolean(sncRequiresBalisage) : false,
+        snc_scenario:          isSnc ? (sncScenario || null) : null,
         odoo_task_id:       null,
         created_at:         nowIso,
         updated_at:         nowIso,
