@@ -210,6 +210,11 @@ interface MissionLike {
   received_at?:       string | null
   incident_type?:     string | null
   parent_mission_id?: string | null
+  // Override pour preview cote dispatch (avant insertion BDD) : si fourni,
+  // bypass computeMissionKm qui exige un mission.id existant. La meme valeur
+  // est utilisee pour les modes 'charged' et 'total' (approximation
+  // acceptable pour une estimation pre-creation).
+  distance_km?:       number | null
 }
 
 /** Map mission_type DB vers le canonical attendu en source_tariffs (lowercase). */
@@ -268,7 +273,12 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   const kmBasis: 'charged' | 'total' = tariff.km_basis === 'total' ? 'total' : 'charged'
   let kmCharged = 0
   let kmTotalRoute = 0
-  if (mission.id) {
+  if (mission.distance_km != null) {
+    // Preview cote dispatch : utilise le km fourni (Google Maps cote UI),
+    // meme valeur pour charged et total (approximation pre-creation).
+    kmCharged    = mission.distance_km
+    kmTotalRoute = mission.distance_km
+  } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
@@ -411,7 +421,10 @@ async function estimateBrackets(
   const kmBasis: 'charged' | 'total' = tariff.km_basis === 'total' ? 'total' : 'charged'
   let kmCharged = 0
   let kmTotalRoute = 0
-  if (mission.id) {
+  if (mission.distance_km != null) {
+    kmCharged    = mission.distance_km
+    kmTotalRoute = mission.distance_km
+  } else if (mission.id) {
     const km = await computeMissionKm(mission.id)
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0

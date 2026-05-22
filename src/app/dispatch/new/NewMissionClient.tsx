@@ -373,47 +373,61 @@ export default function NewMissionClient({
     })
   }, [destinations])
 
-  // ── Preview tarif live (Siabis SNC/SC) ───────────────────────────────────
-  // Debounce 600ms. Reset si source non-Siabis. Si rem_client, attend la
-  // destination. Erreurs API affichees dans le panneau resume.
+  // ── Preview tarif live ───────────────────────────────────────────────────
+  // Debounce 600ms. Deux endpoints selon la source :
+  //   - Siabis (police_snc / sia_couvert) -> /api/snc-preview-tarif
+  //     (calcul specifique : depots multiples, balisage, MAJ horaire)
+  //   - Autres sources (assurance, prive, garage) -> /api/missions/estimate-preview
+  //     (forfait + km extras + surcharges via source_tariffs)
+  // Police accident/saisie/... pas branche : tarif pas encore parametre.
   useEffect(() => {
-    const isSiabisLocal = source === 'police_snc' || source === 'sia_couvert'
-    if (!isSiabisLocal) {
-      setTarifPreview(null)
-      setTarifError(null)
-      setTarifLoading(false)
-      return
+    const isSiabisLocal  = source === 'police_snc' || source === 'sia_couvert'
+    const isPoliceLocal  = source === 'police'
+    if (isPoliceLocal) {
+      setTarifPreview(null); setTarifError(null); setTarifLoading(false); return
+    }
+    if (!missionType) {
+      setTarifPreview(null); setTarifError(null); return
     }
     const inc = destinations[0]
-    if (!inc?.lat || !inc?.lng) {
-      setTarifPreview(null)
-      setTarifError(null)
-      return
+    if (isSiabisLocal && (!inc?.lat || !inc?.lng)) {
+      setTarifPreview(null); setTarifError(null); return
     }
     const dest = destinations[1]
-    if (sncScenario === 'rem_client' && (!dest?.lat || !dest?.lng)) {
-      setTarifPreview(null)
-      setTarifError('Destination requise pour REM-client')
-      return
+    if (isSiabisLocal && sncScenario === 'rem_client' && (!dest?.lat || !dest?.lng)) {
+      setTarifPreview(null); setTarifError('Destination requise pour REM-client'); return
     }
     const handle = setTimeout(async () => {
-      setTarifLoading(true)
-      setTarifError(null)
+      setTarifLoading(true); setTarifError(null)
       try {
         const interventionAt = rdvDate && rdvTime ? `${rdvDate}T${rdvTime}:00` : new Date().toISOString()
-        const res = await fetch('/api/snc-preview-tarif', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scenario:          sncScenario,
-            requires_balisage: sncBalisage,
-            incident_lat:      inc.lat,
-            incident_lng:      inc.lng,
-            destination_lat:   dest?.lat || null,
-            destination_lng:   dest?.lng || null,
-            intervention_at:   interventionAt,
-            variant:           source === 'sia_couvert' ? 'sc' : 'snc',
-          }),
-        })
+        let res: Response
+        if (isSiabisLocal) {
+          res = await fetch('/api/snc-preview-tarif', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              scenario:          sncScenario,
+              requires_balisage: sncBalisage,
+              incident_lat:      inc!.lat,
+              incident_lng:      inc!.lng,
+              destination_lat:   dest?.lat || null,
+              destination_lng:   dest?.lng || null,
+              intervention_at:   interventionAt,
+              variant:           source === 'sia_couvert' ? 'sc' : 'snc',
+            }),
+          })
+        } else {
+          res = await fetch('/api/missions/estimate-preview', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source,
+              mission_type:    missionType,
+              distance_km:     distanceKm,
+              intervention_at: interventionAt,
+              client_name:     assistedName || billedName || null,
+            }),
+          })
+        }
         const data = await res.json()
         if (data.ok) {
           setTarifPreview({
@@ -434,7 +448,7 @@ export default function NewMissionClient({
       }
     }, 600)
     return () => clearTimeout(handle)
-  }, [source, sncScenario, sncBalisage, destinations, rdvDate, rdvTime])
+  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, rdvDate, rdvTime, assistedName, billedName])
 
   // Sélection client facturé → lookup source
   const selectClient = async (c: OdooClient) => {
@@ -775,7 +789,31 @@ export default function NewMissionClient({
                 )}
               </div>
 
-              {/* 3. Client facturé */}
+              {/* 3. Type d'intervention */}
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+                <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {getAvailableMissionTypes(source).map(t => (
+                    <button key={t.value} onClick={() => setMissionType(t.value)} type="button"
+                      className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
+                        missionType === t.value
+                          ? 'bg-brand border-brand text-white'
+                          : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
+                      }`}>
+                      <div>{t.label.split(' ')[0]}</div>
+                      <div className="text-xs font-bold mt-0.5">{t.value}</div>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4">
+                  <label className="block text-ink-muted text-xs mb-1.5">Description / Détails</label>
+                  <textarea value={description} onChange={e => setDescription(e.target.value)}
+                    rows={2} placeholder="Détails de l'intervention..."
+                    className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint" />
+                </div>
+              </div>
+
+              {/* 4. Client facturé */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
                 <div className="relative mb-3">
@@ -864,30 +902,6 @@ export default function NewMissionClient({
                       placeholder="+32..."
                       className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
                   </div>
-                </div>
-              </div>
-
-              {/* 4. Type d'intervention */}
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
-                <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {getAvailableMissionTypes(source).map(t => (
-                    <button key={t.value} onClick={() => setMissionType(t.value)} type="button"
-                      className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
-                        missionType === t.value
-                          ? 'bg-brand border-brand text-white'
-                          : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
-                      }`}>
-                      <div>{t.label.split(' ')[0]}</div>
-                      <div className="text-xs font-bold mt-0.5">{t.value}</div>
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-4">
-                  <label className="block text-ink-muted text-xs mb-1.5">Description / Détails</label>
-                  <textarea value={description} onChange={e => setDescription(e.target.value)}
-                    rows={2} placeholder="Détails de l'intervention..."
-                    className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint" />
                 </div>
               </div>
 
@@ -1155,39 +1169,37 @@ export default function NewMissionClient({
                 {/* Estimation tarif live */}
                 <div className="border-t border pt-4">
                   <p className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">💰 Estimation tarif</p>
-                  {isSiabis ? (
-                    tarifLoading ? (
-                      <p className="text-ink-faint text-xs italic">Calcul...</p>
-                    ) : tarifError ? (
-                      <p className="text-amber-400 text-xs">{tarifError}</p>
-                    ) : tarifPreview ? (
-                      <>
-                        <div className="space-y-1 mb-2">
-                          {tarifPreview.lines.map((l, i) => (
-                            <div key={i} className="flex justify-between text-xs gap-2">
-                              <span className="text-ink-muted truncate" title={l.name}>{l.name}</span>
-                              <span className="text-ink whitespace-nowrap">{(l.qty * l.price_unit).toFixed(2)} €</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="border-t pt-2 flex justify-between text-sm">
-                          <span className="text-ink font-medium">Total HTVA</span>
-                          <span className="text-ink font-bold">{tarifPreview.total_htva.toFixed(2)} €</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-ink-muted">TVAC ({Math.round(tarifPreview.tva_rate * 100)}%)</span>
-                          <span className="text-ink-muted">{tarifPreview.total_tvac.toFixed(2)} €</span>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-ink-faint text-xs italic">
-                        Renseigne le lieu d'incident{sncScenario === 'rem_client' ? ' et la destination' : ''}
-                      </p>
-                    )
-                  ) : source === 'police' ? (
+                  {source === 'police' ? (
                     <p className="text-ink-faint text-xs italic">Tarif Police pas encore paramétré</p>
+                  ) : tarifLoading ? (
+                    <p className="text-ink-faint text-xs italic">Calcul...</p>
+                  ) : tarifError ? (
+                    <p className="text-amber-400 text-xs">{tarifError}</p>
+                  ) : tarifPreview ? (
+                    <>
+                      <div className="space-y-1 mb-2">
+                        {tarifPreview.lines.map((l, i) => (
+                          <div key={i} className="flex justify-between text-xs gap-2">
+                            <span className="text-ink-muted truncate" title={l.name}>{l.name}</span>
+                            <span className="text-ink whitespace-nowrap">{(l.qty * l.price_unit).toFixed(2)} €</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="border-t pt-2 flex justify-between text-sm">
+                        <span className="text-ink font-medium">Total HTVA</span>
+                        <span className="text-ink font-bold">{tarifPreview.total_htva.toFixed(2)} €</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-ink-muted">TVAC ({Math.round(tarifPreview.tva_rate * 100)}%)</span>
+                        <span className="text-ink-muted">{tarifPreview.total_tvac.toFixed(2)} €</span>
+                      </div>
+                    </>
+                  ) : isSiabis ? (
+                    <p className="text-ink-faint text-xs italic">
+                      Renseigne le lieu d'incident{sncScenario === 'rem_client' ? ' et la destination' : ''}
+                    </p>
                   ) : (
-                    <p className="text-ink-faint text-xs italic">Calculé à la facturation</p>
+                    <p className="text-ink-faint text-xs italic">Renseigne les adresses pour estimer</p>
                   )}
                 </div>
               </div>
