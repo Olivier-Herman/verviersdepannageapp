@@ -54,6 +54,15 @@ const SOURCE_CONFIGS: Record<string, SourceConfig> = {
     forfaitName:     (ref) => `Forfait enlèvement Rodéo — ${ref}`,
     minDays:         3,                           // minimum 3 jours factures
   },
+  police_avp: {
+    label:           'AVP',
+    forfaitHtva:     165.29,                      // = 200 EUR TVAC (tarif identique MG)
+    forfaitOdooCode: 'PECAVP',
+    forfaitName:     (ref) => `Forfait enlèvement AVP — ${ref}`,
+    minDays:         0,
+    // AVP : police_blocked=true par defaut a la creation, donc la modal
+    // restitution forcera la verification "Proprio est-il passe a la police ?"
+  },
 }
 
 interface PaymentLine {

@@ -172,10 +172,12 @@ export async function POST(req: Request) {
       // Missions assistance : étape par défaut (workflow normal continue côté dispatch).
       stageId:           isAssistance ? undefined : 4,
       noteEtiquette:     type === 'avp' ? (() => {
-        // AVP note = "AVP " + date+2mois
+        // AVP note = "AVP " + (date d enlevement + 60 jours)
+        // Apres cette date, le vehicule est eligible a la destruction (accord Ville).
         const parts = (date || '').split('-')
         if (parts.length === 3) {
-          const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1+2, parseInt(parts[0]))
+          const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]))
+          d.setDate(d.getDate() + 60)  // exactement +60 jours
           const pad = (n: number) => String(n).padStart(2,'0')
           return 'AVP ' + pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear()
         }
@@ -195,10 +197,12 @@ export async function POST(req: Request) {
   const FOURRIERE_TYPE_TO_SOURCE: Record<string, string> = {
     mal_garee: 'police_mg',
     rodeo:     'police_rodeo',
+    avp:       'police_avp',
   }
   const FOURRIERE_TYPE_TO_ZONE: Record<string, string> = {
     mal_garee: 'L',
     rodeo:     'J',
+    avp:       'J',  // tampon, le bureau transfere ensuite vers D/E/F
   }
 
   if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
@@ -218,11 +222,27 @@ export async function POST(req: Request) {
 
     const fullName = [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || null
 
+    // Prefix external_id et dossier_number selon le type :
+    //   mal_garee -> MG-XXX
+    //   rodeo     -> RODEO-XXX
+    //   avp       -> AVP-XXX
+    const prefixByType: Record<string, string> = {
+      mal_garee: 'MG',
+      rodeo:     'RODEO',
+      avp:       'AVP',
+    }
+    const prefix = prefixByType[type] || 'POLICE'
+
+    // AVP : police_blocked = true par defaut (vérif police obligatoire avant
+    // restitution, car le proprio doit toujours passer par la police pour
+    // valider la recuperation, qui nous informe ensuite).
+    const isAvp = type === 'avp'
+
     const { data: vdData, error: vdErr } = await supabase
       .from('incoming_missions')
       .insert({
-        external_id:        `MG-${queueEntry.id.slice(0, 8)}`,
-        dossier_number:     odooTicketId ? `MG-${odooTicketId}` : null,
+        external_id:        `${prefix}-${queueEntry.id.slice(0, 8)}`,
+        dossier_number:     odooTicketId ? `${prefix}-${odooTicketId}` : null,
         source:             vdSource,
         mission_type:       'remorquage',
         status:             'parked',
@@ -239,7 +259,7 @@ export async function POST(req: Request) {
         intervention_date:  interventionISO,
         driver_photos:      Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
         remarks_general:    remarks || null,
-        police_blocked:     Boolean(policeBlocked),
+        police_blocked:     isAvp ? true : Boolean(policeBlocked),
         police_levee_saisie_ok:       Boolean(policeLeveeSaisieOk),
         police_levee_saisie_doc_url:  policeLeveeSaisieDocUrl || null,
         odoo_task_id:       null,
