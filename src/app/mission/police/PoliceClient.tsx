@@ -191,22 +191,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           setLocationLng(place.geometry.location.lng())
         }
       })
-
-      // Autocomplete destination (visible pour SNC rem_client + rem_depot)
-      if (destinationRef.current && !destAcRef.current) {
-        destAcRef.current = new window.google.maps.places.Autocomplete(destinationRef.current, {
-          types: ['address'],
-          componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
-        })
-        destAcRef.current.addListener('place_changed', () => {
-          const place = destAcRef.current.getPlace()
-          if (place?.formatted_address) setDestination(place.formatted_address)
-          if (place?.geometry?.location) {
-            setDestinationLat(place.geometry.location.lat())
-            setDestinationLng(place.geometry.location.lng())
-          }
-        })
-      }
     }
     if (window.google?.maps?.places) {
       init()
@@ -225,6 +209,39 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       }
     }
   }, [selectedType])
+
+  // ──────────── Autocomplete destination (SNC rem_client / rem_depot) ────────────
+  // Initialise une seule fois quand le champ est rendu (= scenario SNC choisi).
+  // Reset destAcRef quand le scenario change pour eviter de pointer vers un input demonté.
+  useEffect(() => {
+    destAcRef.current = null  // reset au changement de scenario
+    if (selectedType !== 'snc') return
+    if (sncScenario !== 'rem_client' && sncScenario !== 'rem_depot') return
+
+    const init = () => {
+      if (!window.google?.maps?.places || !destinationRef.current) return
+      if (destAcRef.current) return  // deja init
+      destAcRef.current = new window.google.maps.places.Autocomplete(destinationRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
+      })
+      destAcRef.current.addListener('place_changed', () => {
+        const place = destAcRef.current.getPlace()
+        if (place?.formatted_address) setDestination(place.formatted_address)
+        if (place?.geometry?.location) {
+          setDestinationLat(place.geometry.location.lat())
+          setDestinationLng(place.geometry.location.lng())
+        }
+      })
+    }
+    if (window.google?.maps?.places) {
+      // Petit delai pour s assurer que le champ est rendu dans le DOM
+      setTimeout(init, 100)
+    } else {
+      // Script Google deja chargé pour location, juste attendre
+      setTimeout(init, 500)
+    }
+  }, [selectedType, sncScenario])
 
   // ──────────── Preview tarif SNC en live ────────────
   // Quand SNC + scenario + coords sont presents, debounce et appel
