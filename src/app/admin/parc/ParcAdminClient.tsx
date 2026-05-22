@@ -37,16 +37,19 @@ interface Row {
   sort_order:  number
 }
 
-export default function ParcAdminClient({ initialZones, initialRows, initialCanvasHeight }: {
-  initialZones:        Zone[]
-  initialRows:         Row[]
-  initialCanvasHeight: number
+export default function ParcAdminClient({ initialZones, initialRows, initialCanvasHeight, initialVilleDestructionEmail }: {
+  initialZones:                 Zone[]
+  initialRows:                  Row[]
+  initialCanvasHeight:          number
+  initialVilleDestructionEmail: string | null
 }) {
   const [zones, setZones] = useState<Zone[]>(initialZones)
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [busy, setBusy] = useState(false)
   const [canvasHeight, setCanvasHeight] = useState(initialCanvasHeight)
   const [canvasInput, setCanvasInput]   = useState(String(initialCanvasHeight))
+  const [villeEmail, setVilleEmail]     = useState(initialVilleDestructionEmail || '')
+  const [villeEmailSaving, setVilleEmailSaving] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -108,6 +111,28 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
       setRows(initialRows.map(r => ({ ...r })))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function saveVilleEmail() {
+    const email = villeEmail.trim()
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('Email invalide')
+      return
+    }
+    setVilleEmailSaving(true)
+    try {
+      const res = await fetch('/api/admin/parc/settings', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ville_destruction_email: email }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    } finally {
+      setVilleEmailSaving(false)
     }
   }
 
@@ -213,6 +238,30 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
 
       {/* Préparer inventaire complet : bulk sync Odoo + canonicalize + reset placements */}
       <PrepareFullInventoryBlock />
+
+      {/* Settings destruction AVP : email destinataire Ville de Verviers */}
+      <div className="bg-surface-2 border rounded-2xl p-4">
+        <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
+          🗑️ Destruction AVP
+        </h2>
+        <p className="text-ink-muted text-xs mb-3">
+          Email destinataire du rapport mensuel d&apos;envoi en destruction (accord Ville de Verviers).
+          Utilisé par <a href="/fourriere/destruction" className="underline">/fourriere/destruction</a> pour envoyer la liste des AVP &gt; 60 jours.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            value={villeEmail}
+            onChange={e => setVilleEmail(e.target.value)}
+            onBlur={saveVilleEmail}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            disabled={villeEmailSaving}
+            placeholder="fourriere@ville-verviers.be"
+            className="flex-1 max-w-md bg-surface border rounded px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+          {villeEmailSaving && <span className="text-xs text-ink-muted">Enregistrement…</span>}
+        </div>
+      </div>
 
       {/* Canvas size config */}
       <div className="bg-surface-2 border rounded-2xl p-4">

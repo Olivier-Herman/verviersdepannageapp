@@ -1,8 +1,10 @@
 // src/app/api/admin/parc/settings/route.ts
 //
 // PATCH /api/admin/parc/settings
-// Body: { canvas_height_px }
-// Met a jour la hauteur du canvas du plan du parc.
+// Body: { canvas_height_px?, ville_destruction_email? }
+//   Met a jour les settings du parc fourriere.
+//   - canvas_height_px : hauteur canvas du plan visuel (400-8000)
+//   - ville_destruction_email : destinataire rapport destruction AVP (Ville de Verviers)
 //
 // Acces : admin / superadmin uniquement.
 
@@ -27,15 +29,32 @@ export async function PATCH(req: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const height = Number(body.canvas_height_px)
-  if (!Number.isInteger(height) || height < 400 || height > 8000) {
-    return NextResponse.json({ error: 'canvas_height_px doit etre entre 400 et 8000' }, { status: 400 })
+  const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+
+  if (body.canvas_height_px !== undefined) {
+    const height = Number(body.canvas_height_px)
+    if (!Number.isInteger(height) || height < 400 || height > 8000) {
+      return NextResponse.json({ error: 'canvas_height_px doit etre entre 400 et 8000' }, { status: 400 })
+    }
+    updates.canvas_height_px = height
+  }
+
+  if (body.ville_destruction_email !== undefined) {
+    const email = String(body.ville_destruction_email || '').trim()
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'ville_destruction_email doit etre un email valide' }, { status: 400 })
+    }
+    updates.ville_destruction_email = email || null
+  }
+
+  if (Object.keys(updates).length <= 1) {
+    return NextResponse.json({ error: 'Au moins un champ a mettre a jour' }, { status: 400 })
   }
 
   const sb = createAdminClient()
   const { data, error } = await sb
     .from('parc_settings')
-    .update({ canvas_height_px: height, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq('id', 1)
     .select()
     .single()
