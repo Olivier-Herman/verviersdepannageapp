@@ -13,6 +13,7 @@ import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
+import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
 
 const sb = createClient(
@@ -820,6 +821,7 @@ export default function MissionDetailClient({
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
   const [showRestituerModal, setShowRestituerModal] = useState(false)
+  const [showSncDepotModal, setShowSncDepotModal] = useState(false)
   const [clientQuery,     setClientQuery]     = useState('')
   const [clientResults,   setClientResults]   = useState<Array<{id:number;name:string;phone?:string;mobile?:string;city?:string}>>([])
   const [showClientDrop,  setShowClientDrop]  = useState(false)
@@ -2372,6 +2374,18 @@ export default function MissionDetailClient({
                 />
               )}
 
+              {/* Bouton "Gérer SNC dépôt" : visible pour les SNC en zone Transit (scenario rem_depot).
+                  Ouvre un modal avec 3 actions : créer REL / abandonné / repris par assistance. */}
+              {status === 'parked'
+                && initialMission.source === 'police_snc'
+                && (initialMission as any).snc_scenario === 'rem_depot' && (
+                <button
+                  onClick={() => setShowSncDepotModal(true)}
+                  className="w-full py-3 bg-info hover:bg-info/90 text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                  🛣️ Gérer la mise en dépôt SNC
+                </button>
+              )}
+
               {/* Bouton Restituer — visible pour Mal Garee et Rodeo au parc.
                   Branche vers RestituerMalGareeModal (devenu generique) qui gere :
                   - blocage police (Mal Garee, optionnel)
@@ -2596,6 +2610,28 @@ export default function MissionDetailClient({
           onCreated={(client) => {
             selectBilledClient({ id: client.id, name: client.name })
             setShowCreateClientModal(false)
+          }}
+        />
+      )}
+      {showSncDepotModal && initialMission.source === 'police_snc' && (
+        <GererSncDepotModal
+          mission={{
+            id:             initialMission.id,
+            external_id:    initialMission.external_id,
+            dossier_number: initialMission.dossier_number,
+            vehicle_plate:  initialMission.vehicle_plate,
+            vehicle_brand:  initialMission.vehicle_brand,
+            vehicle_model:  initialMission.vehicle_model,
+            client_name:    initialMission.client_name,
+          }}
+          onClose={() => setShowSncDepotModal(false)}
+          onSuccess={(action, result) => {
+            setShowSncDepotModal(false)
+            if (action === 'rel' && result.rel_mission?.id) {
+              router.push(`/dispatch/${result.rel_mission.id}`)
+            } else {
+              router.push('/dispatch')
+            }
           }}
         />
       )}
