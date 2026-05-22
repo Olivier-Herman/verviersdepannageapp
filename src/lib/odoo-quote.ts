@@ -23,7 +23,15 @@ const ODOO_API_KEY = process.env.ODOO_API_KEY!
 //   - PECMG       : forfait enlevement Mal Garee (fourriere police)
 //   - GARDIENNAGE : journee de gardiennage parc fourriere (Mal Garee et autres
 //     types fourriere). Quantite = nombre de jours, prix unitaire = 20 EUR HTVA.
-const PRODUCT_CODES = ['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV', 'PECMG', 'GARDIENNAGE'] as const
+const PRODUCT_CODES = [
+  // Generiques Facturation Phase 2
+  'SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV',
+  // Fourriere police
+  'PECMG', 'PECRODEO', 'PECAVP', 'GARDIENNAGE',
+  // SNC (Siabis Non Couvert)
+  'SIAREM', 'SIAKIL', 'SIABAL',
+  'PECSIAMAJ', 'SIAKILMAJ', 'SIABALMAJ',
+] as const
 type ProductCode = typeof PRODUCT_CODES[number]
 export type { ProductCode }
 

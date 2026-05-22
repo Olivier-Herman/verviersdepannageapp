@@ -97,6 +97,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (customLines) {
     lines = customLines
     totalForResponse = customLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
+  } else if (mission.source === 'police_snc' && (mission as any).snc_scenario) {
+    // SNC : tarification specifique (SIAREM/SIAKIL/SIABAL + MAJ si plage horaire).
+    // Calcule les metrics si pas deja en BDD.
+    const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
+    const metrics = await computeSncMetrics({
+      scenario:          (mission as any).snc_scenario,
+      requiresBalisage:  Boolean((mission as any).snc_requires_balisage),
+      interventionLat:   (mission as any).incident_lat,
+      interventionLng:   (mission as any).incident_lng,
+      destinationLat:    (mission as any).destination_lat,
+      destinationLng:    (mission as any).destination_lng,
+      interventionAt:    mission.intervention_date || mission.received_at,
+    })
+    if (metrics) {
+      const sncLines = buildSncQuoteLines({
+        metrics,
+        requiresBalisage:  Boolean((mission as any).snc_requires_balisage),
+        missionRef,
+      })
+      lines = sncLines.map(l => ({
+        kind:       l.kind as any,
+        name:       l.name,
+        qty:        l.qty,
+        price_unit: l.price_unit,
+      }))
+      totalForResponse = sncLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
+    } else {
+      totalForResponse = 0  // pas de coordonnees -> devis shell
+    }
   } else {
     // 1) Calcule le devis via le module estimate-price existant.
     //    Si pas de tarif applicable, on pousse un devis SHELL (sans lignes) :
