@@ -166,7 +166,10 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   const pepinster = findPepinster(depots)
 
   // Calcul km depanneuse selon scenario
-  const d1 = await calculateRouteKm(depart.lat, depart.lng, input.interventionLat, input.interventionLng)
+  // d1 et dRetour calcules separement car les routes aller != retour
+  // (autoroute, sens unique, etc.) -> Google donne 2 distances differentes.
+  const d1       = await calculateRouteKm(depart.lat, depart.lng, input.interventionLat, input.interventionLng)
+  const dRetour  = await calculateRouteKm(input.interventionLat, input.interventionLng, depart.lat, depart.lng)
 
   let kmDepanneuse = 0
   if (input.scenario === 'rem_client' && input.destinationLat != null && input.destinationLng != null) {
@@ -183,14 +186,15 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     kmDepanneuse = d1 + d2 + d3
   } else {
     // dsp (ou rem_depot sans Pepinster configure) : depart -> intervention -> depart
-    const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, depart.lat, depart.lng)
-    kmDepanneuse = d1 + d2
+    kmDepanneuse = d1 + dRetour
   }
 
-  // Km balisage = toujours aller-retour intervention depuis le depot de depart
-  // (le balisage rentre directement au depot apres l intervention, sans suivre
-  // la depanneuse vers destination/Pepinster).
-  const kmBalisage = d1 * 2
+  // Km balisage = TOUJOURS aller-retour intervention depuis le depot de depart.
+  // Le balisage rentre directement au depot apres l intervention, sans suivre
+  // la depanneuse vers destination (rem_client) ou Pepinster (rem_depot).
+  // En DSP : balisage et depanneuse font le meme trajet -> kmBalisage = kmDepanneuse.
+  // En REM (client ou depot) : balisage = d1 + dRetour (depanneuse continue ailleurs).
+  const kmBalisage = d1 + dRetour
 
   const isMajored = await isSncMajored(input.interventionAt)
 
