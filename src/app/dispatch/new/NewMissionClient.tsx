@@ -5,6 +5,7 @@ import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import CreateClientModal from '@/components/CreateClientModal'
+import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -302,10 +303,13 @@ export default function NewMissionClient({
   const [description,  setDescription]  = useState('')
 
   // ── Chauffeur assigne (optionnel) ─────────────────────────────────────────
-  // Si selectionne au moment du submit : la mission est creee, le chauffeur
-  // assigne (status='assigned') et la push envoyee dans la foulee. Sinon la
-  // mission reste 'new' et l attribution se fera plus tard via la fiche.
-  const [assignedDriverId, setAssignedDriverId] = useState<string>('')
+  // Selection via DriverPickerModal (meme composant que les fiches dispatch :
+  // ETA temps reel cape a 90 km/h camion, statut libre/en mission, tri ETA).
+  // Si selectionne au submit : la mission est creee, le chauffeur assigne
+  // (status='assigned') et la push envoyee dans la foulee.
+  const [assignedDriverId,   setAssignedDriverId]   = useState<string>('')
+  const [assignedDriverName, setAssignedDriverName] = useState<string>('')
+  const [showDriverPicker,   setShowDriverPicker]   = useState(false)
 
   // ── Police / Siabis specifiques ───────────────────────────────────────────
   // policeSubtype : choisi seulement si source === 'police'. Pilote la source
@@ -1175,7 +1179,7 @@ export default function NewMissionClient({
                 </div>
               </div>
 
-              {/* 8.5. Chauffeur (optionnel) — si selectionne : assignation + envoi dans la foulee */}
+              {/* 8.5. Chauffeur (optionnel) — meme picker que les fiches dispatch (ETA temps reel) */}
               <div className={`rounded-2xl p-5 transition nm-card-enter ${assignedDriverId ? 'bg-green-500/10 border-2 border-green-500/60' : 'bg-surface border'}`}>
                 <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
                   <span>👷</span> Chauffeur assigné <span className="text-ink-faint text-xs">(optionnel)</span>
@@ -1184,15 +1188,26 @@ export default function NewMissionClient({
                   Si tu choisis un chauffeur : la mission sera créée + assignée + envoyée à son téléphone en un clic.
                   Sinon elle restera dans la file d'attente du dispatch.
                 </p>
-                <select value={assignedDriverId} onChange={e => setAssignedDriverId(e.target.value)}
-                  className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
-                  <option value="">— Pas d'assignation (laisser en file dispatch) —</option>
-                  {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-                {assignedDriverId && (
-                  <p className="text-green-400 text-xs mt-2">
-                    ✓ Sera envoyé à {drivers.find(d => d.id === assignedDriverId)?.name || 'chauffeur'} dès la création
-                  </p>
+                {assignedDriverId ? (
+                  <div className="flex items-center gap-3 px-4 py-3 bg-green-500/10 border border-green-500/30 rounded-xl">
+                    <span className="text-2xl">🚛</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-green-300 text-sm font-semibold truncate">{assignedDriverName}</p>
+                      <p className="text-green-400/80 text-xs">Sera notifié dès création de la mission</p>
+                    </div>
+                    <button type="button" onClick={() => { setAssignedDriverId(''); setAssignedDriverName('') }}
+                      className="text-ink-muted hover:text-red-400 text-xs px-2">✕ Retirer</button>
+                  </div>
+                ) : (
+                  <button type="button"
+                    onClick={() => setShowDriverPicker(true)}
+                    disabled={!destinations[0]?.lat || !destinations[0]?.lng}
+                    title={!destinations[0]?.lat ? 'Renseigne d abord le lieu d incident (avec autocomplete Google) pour calculer les ETA' : ''}
+                    className="w-full py-2.5 bg-brand/10 hover:bg-brand/20 border border-brand/30 text-brand rounded-xl text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed">
+                    {!destinations[0]?.lat
+                      ? '📍 Renseigne d\'abord le lieu d\'incident'
+                      : '🚛 Choisir un chauffeur (ETA temps réel)'}
+                  </button>
                 )}
               </div>
 
@@ -1232,7 +1247,7 @@ export default function NewMissionClient({
                     : !canSubmit
                       ? 'Compléter les champs requis'
                       : assignedDriverId
-                        ? `✓ Créer + envoyer à ${(drivers.find(d => d.id === assignedDriverId)?.name || '').split(' ')[0]}`
+                        ? `✓ Créer + envoyer à ${(assignedDriverName || '').split(' ')[0]}`
                         : '✓ Créer la mission'}
                 </button>
 
@@ -1355,6 +1370,22 @@ export default function NewMissionClient({
               selectClient(odooClient)
               setShowCreateClient(false)
             }}
+          />
+        )}
+        {showDriverPicker && destinations[0]?.lat && destinations[0]?.lng && (
+          <DriverPickerModal
+            // La mission n existe pas encore : UUID placeholder. Le backend
+            // utilise les coords passees en query, donc params.id ne sert qu a
+            // exclure les missions actives — un UUID inexistant n exclut rien.
+            missionId={'00000000-0000-0000-0000-000000000000'}
+            incidentLat={destinations[0].lat}
+            incidentLng={destinations[0].lng}
+            onPick={(driverId) => {
+              setAssignedDriverId(driverId)
+              setAssignedDriverName(drivers.find(d => d.id === driverId)?.name || '')
+              setShowDriverPicker(false)
+            }}
+            onClose={() => setShowDriverPicker(false)}
           />
         )}
     </AppShell>
