@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import BornesKmPicker from '@/components/snc/BornesKmPicker'
 import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
 
@@ -95,6 +96,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // SNC (Siabis Non Couvert) : balisage + scenario d intervention
   const [sncRequiresBalisage, setSncRequiresBalisage] = useState(false)
   const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
+  // SNC : mode de selection du lieu d intervention
+  //   'google' (default) : autocomplete adresse / etablissement
+  //   'bk'               : selection par borne kilometrique Geoportail Wallonie
+  const [sncLocationMode, setSncLocationMode] = useState<'google' | 'bk'>('google')
   // Coordonnees GPS de l intervention (capturees via Google Autocomplete) — necessaires
   // pour le preview tarif SNC qui utilise Google Distance Matrix.
   const [locationLat, setLocationLat] = useState<number | null>(null)
@@ -178,8 +183,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     acRef.current = null // Reset pour forcer la réinit
     const init = () => {
       if (!window.google?.maps?.places || !locationRef.current) return
+      // Pas de restriction 'types' pour autoriser adresses ET etablissements
+      // (ex: "Garage Untel", "McDonald s Verviers", etc.)
       acRef.current = new window.google.maps.places.Autocomplete(locationRef.current, {
-        types: ['address'],
         componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
       })
       acRef.current.addListener('place_changed', () => {
@@ -221,8 +227,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     const init = () => {
       if (!window.google?.maps?.places || !destinationRef.current) return
       if (destAcRef.current) return  // deja init
+      // Pas de restriction 'types' pour autoriser adresses ET etablissements
       destAcRef.current = new window.google.maps.places.Autocomplete(destinationRef.current, {
-        types: ['address'],
         componentRestrictions: { country: ['be', 'lu', 'nl', 'de', 'fr'] },
       })
       destAcRef.current.addListener('place_changed', () => {
@@ -608,6 +614,51 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 </div>
               </div>
             </label>
+          </Section>
+        )}
+
+        {/* SNC : selection du lieu d intervention via borne kilometrique Geoportail
+            (alternative a l adresse Google pour localisation precise sur autoroute) */}
+        {(selectedType === 'snc') && (
+          <Section title="📍 Lieu d'intervention (mode autoroute)">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSncLocationMode('google')}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition ${
+                    sncLocationMode === 'google'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900'
+                      : 'bg-surface border-strong text-ink-secondary hover:border-blue-300'
+                  }`}>
+                  📍 Adresse Google (haut)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSncLocationMode('bk')}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition ${
+                    sncLocationMode === 'bk'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900'
+                      : 'bg-surface border-strong text-ink-secondary hover:border-blue-300'
+                  }`}>
+                  🛣️ Borne kilométrique
+                </button>
+              </div>
+              {sncLocationMode === 'bk' && (
+                <BornesKmPicker
+                  onLocated={(r) => {
+                    setLocation(`${r.label} (${r.lat.toFixed(5)}, ${r.lng.toFixed(5)})`)
+                    setLocationLat(r.lat)
+                    setLocationLng(r.lng)
+                  }}
+                />
+              )}
+              {sncLocationMode === 'google' && (
+                <p className="text-xs text-ink-muted">
+                  Utilise le champ &quot;Lieu&quot; en haut du formulaire pour saisir l&apos;adresse (autocomplete Google).
+                </p>
+              )}
+            </div>
           </Section>
         )}
 
