@@ -1169,18 +1169,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     // (pas de migration nécessaire) — c'est un guide visuel pour qu'il pense à
     // toutes les vues importantes. Le seuil "couverte" = au moins 1 photo prise
     // après ouverture de la catégorie (via le state local catPhotos).
-    // Plaque + VIN ne sont plus des categories photo : ils sont scannes via
-    // OCR (camera + Apple Vision / Google ML Kit) dans la fiche vehicule
-    // (cf VehSheet + composant OcrScanModal). Le chauffeur tape un seul bouton
-    // 📷 Scan et le texte est extrait + propose.
+    // 3 categories photo simplifiees (Olivier 2026-05-23) : plusieurs
+    // photos possibles par categorie. Triees alpha pour coherence UX.
+    // Le scan OCR plaque/VIN reste dans VehSheet via le bouton scan dedie.
     const PHOTO_CATS: Array<{ id: string; icon: string; label: string; hint: string; required?: boolean }> = [
-      { id: 'avant',     icon: '⬆️', label: 'Avant',          hint: 'Vue 3/4 côté conducteur idéalement',    required: true },
-      { id: 'arriere',   icon: '⬇️', label: 'Arrière',        hint: 'Vue 3/4 côté conducteur idéalement',    required: true },
-      { id: 'gauche',    icon: '⬅️', label: 'Côté gauche',    hint: 'Vue latérale complète' },
-      { id: 'droite',    icon: '➡️', label: 'Côté droit',     hint: 'Vue latérale complète' },
-      { id: 'interieur', icon: '🪑', label: 'Intérieur',      hint: 'Tableau de bord + état général' },
-      { id: 'defauts',   icon: '⚠️', label: 'Défauts/dégâts', hint: 'Rayures, bosses, cassures (si applicable)' },
-      { id: 'km',        icon: '🔢', label: 'Kilométrage',    hint: 'Compteur lisible (si accessible)' },
+      { id: 'km',       icon: '🔢', label: 'Kilométrage', hint: 'Compteur lisible',                                          required: true },
+      { id: 'vehicule', icon: '🚗', label: 'Véhicule',    hint: 'Avant, arrière, côtés, intérieur, défauts (multi-photos)', required: true },
+      { id: 'vin',      icon: '🆔', label: 'VIN',         hint: 'Numéro de châssis visible',                                  required: true },
     ]
     // Catégories couvertes : persistées en BDD via photo_categories_covered
     // pour partage cross-device (PC ↔ iPhone ↔ wrapper). Fallback localStorage
@@ -1209,7 +1204,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     const allRequiredDone = requiredCats.every(id => coveredCats.includes(id))
 
     return (
-      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''} · ${coveredCats.length}/${PHOTO_CATS.length} angles couverts`} back={() => setScreen(photosFrom)}>
+      <ScreenWrap title="Photos" sub={`${totPh} photo${totPh !== 1 ? 's' : ''} · ${coveredCats.length}/${PHOTO_CATS.length} catégories couvertes`} back={() => setScreen(photosFrom)}>
         <input ref={photoRef} type="file" accept="image/*" multiple className="hidden"
           onChange={e => {
             // La catégorie cliquée a été stockée dans data-cat sur le button
