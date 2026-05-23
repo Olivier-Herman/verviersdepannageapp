@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Plus, Trash2, X, Edit2, Eye, EyeOff } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Trash2, X, Edit2, Eye, EyeOff, ChevronRight } from 'lucide-react'
 
 interface Source {
   key:           string
@@ -100,7 +101,10 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
             ) : filtered.map(s => (
               <tr key={s.key} className={s.active ? '' : 'opacity-50'}>
                 <td className="px-4 py-2">
-                  <p className="text-ink font-medium">{s.label}</p>
+                  <Link href={`/admin/sources/${encodeURIComponent(s.key)}`} className="group inline-flex items-center gap-1 hover:text-brand transition">
+                    <span className="text-ink font-medium group-hover:text-brand">{s.label}</span>
+                    <ChevronRight size={14} className="text-ink-faint group-hover:text-brand opacity-0 group-hover:opacity-100 transition" />
+                  </Link>
                   {s.notes && <p className="text-ink-muted text-xs">{s.notes}</p>}
                 </td>
                 <td className="px-4 py-2"><span className="text-ink-muted text-xs font-mono">{s.key}</span></td>
