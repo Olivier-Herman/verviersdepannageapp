@@ -81,8 +81,7 @@ async function fetchRelData(missionId: string) {
       id, dossier_number,
       vehicle_plate, vehicle_brand, vehicle_model,
       billed_to_name,
-      destination_address, destination_city,
-      odoo_task_id
+      destination_address, destination_city
     `)
     .eq('id', missionId)
     .single()
@@ -91,11 +90,12 @@ async function fetchRelData(missionId: string) {
   const brandModel = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ').toUpperCase()
   const fullAddress = [m.destination_address, m.destination_city].filter(Boolean).join(', ')
 
-  // QR : si la mission a un ticket Odoo, on utilise son id, sinon on utilise
-  // l id mission VD Soft (un /v/[id] devra exister, cf Phase fourriere).
-  const qrUrl = m.odoo_task_id
-    ? `${QR_BASE}/${m.odoo_task_id}`
-    : `${QR_BASE}/m-${m.id.slice(0, 8)}`
+  // Le QR REL pointe vers la page landing /qr/mission/[id] de VD Soft. Quand
+  // un chauffeur scanne l etiquette dans le parc, il peut choisir entre
+  // "Consulter le dossier" et "Relivrer le vehicule" (cree la REL fille +
+  // s assigne dessus). Cf src/app/qr/mission/[id]/page.tsx.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'
+  const qrUrl = `${appUrl.replace(/\/$/, '')}/qr/mission/${m.id}`
 
   return {
     qrUrl,
