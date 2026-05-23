@@ -4,7 +4,6 @@ import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import DispatchSubNav        from '@/components/admin/DispatchSubNav'
 import SurchargesClient      from './SurchargesClient'
 
 export const dynamic    = 'force-dynamic'
@@ -24,12 +23,9 @@ export default async function SurchargesPage() {
   ])
 
   return (
-    <>
-      <DispatchSubNav />
-      <SurchargesClient
-        initialClients={clients || []}
-        initialSchedules={schedules || []}
-      />
-    </>
+    <SurchargesClient
+      initialClients={clients || []}
+      initialSchedules={schedules || []}
+    />
   )
 }

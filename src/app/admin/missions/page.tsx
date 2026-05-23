@@ -2,7 +2,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import DispatchSubNav          from '@/components/admin/DispatchSubNav'
 
 interface Sender {
   id: string
@@ -123,7 +122,6 @@ export default function AdminMissionsPage() {
 
   return (
     <>
-    <DispatchSubNav />
     <div className="p-6 space-y-6">
       <div>
         <h2 className="text-ink font-bold text-xl">Gestion des missions</h2>

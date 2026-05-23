@@ -3,7 +3,6 @@ import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import DispatchSubNav        from '@/components/admin/DispatchSubNav'
 import { Radio, Percent, Database, MapPin, Archive } from 'lucide-react'
 
 export const dynamic    = 'force-dynamic'
@@ -75,7 +74,6 @@ export default async function DispatchAdminPage() {
 
   return (
     <>
-      <DispatchSubNav />
       <div className="p-4 lg:p-6 space-y-4">
         <div>
           <h1 className="text-ink text-xl font-semibold">Module Dispatch</h1>

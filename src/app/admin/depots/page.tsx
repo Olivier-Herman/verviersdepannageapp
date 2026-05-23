@@ -3,7 +3,6 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { redirect }          from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase'
-import DispatchSubNav        from '@/components/admin/DispatchSubNav'
 import DepotsAdminClient     from './DepotsAdminClient'
 
 export const dynamic = 'force-dynamic'
@@ -18,10 +17,5 @@ export default async function DepotsAdminPage() {
     .select('*')
     .order('sort_order')
 
-  return (
-    <>
-      <DispatchSubNav />
-      <DepotsAdminClient initialDepots={depots || []} />
-    </>
-  )
+  return <DepotsAdminClient initialDepots={depots || []} />
 }

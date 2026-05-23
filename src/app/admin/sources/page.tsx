@@ -2,7 +2,6 @@ import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import DispatchSubNav        from '@/components/admin/DispatchSubNav'
 import SourcesClient         from './SourcesClient'
 
 export const dynamic    = 'force-dynamic'
@@ -41,10 +40,5 @@ export default async function SourcesPage() {
     has_surcharge: surchargeSet.has(s.key),
   }))
 
-  return (
-    <>
-      <DispatchSubNav />
-      <SourcesClient initial={initial} />
-    </>
-  )
+  return <SourcesClient initial={initial} />
 }
