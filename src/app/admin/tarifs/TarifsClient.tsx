@@ -449,7 +449,7 @@ export default function TarifsClient(props: Props) {
       unit_price:            null,
       km_inclus:             0,
       km_price:              null,
-      km_basis:              'charged',
+      km_basis:              'total',
       parc_day_price:        null,
       surcharge_night_pct:   0,
       surcharge_we_pct:      0,
@@ -760,12 +760,12 @@ export default function TarifsClient(props: Props) {
                           <div className="col-span-2 lg:col-span-4">
                             <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
                             <select
-                              value={item.km_basis || 'charged'}
+                              value={item.km_basis || 'total'}
                               onChange={e => updateField(idx, 'km_basis', e.target.value)}
                               className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
                             >
-                              <option value="charged">Km chargés (incident → destination) — assurances</option>
                               <option value="total">Km totaux (dépôt → ... → retour) — privé / garage</option>
+                              <option value="charged">Km chargés (incident → destination) — assurances</option>
                             </select>
                           </div>
                           <div className="col-span-2 lg:col-span-4">
@@ -890,12 +890,12 @@ export default function TarifsClient(props: Props) {
                 <div className="col-span-2">
                   <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
                   <select
-                    value={editTariff.km_basis || 'charged'}
+                    value={editTariff.km_basis || 'total'}
                     onChange={e => setEditTariff(p => ({ ...p!, km_basis: e.target.value as 'charged' | 'total' }))}
                     className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
                   >
-                    <option value="charged">Km chargés (incident → destination) — assurances</option>
                     <option value="total">Km totaux (dépôt → incident → destination → retour) — privé / garage / IPA</option>
+                    <option value="charged">Km chargés (incident → destination) — assurances</option>
                   </select>
                 </div>
                 <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
