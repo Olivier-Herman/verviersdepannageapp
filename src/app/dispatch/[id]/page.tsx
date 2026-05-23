@@ -85,13 +85,20 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     linkedChild = child
   }
 
-  // Chauffeurs actifs
-  const { data: drivers } = await supabase
-    .from('users')
-    .select('id, name, avatar_url')
-    .eq('active', true)
-    .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
-    .order('name')
+  // Chauffeurs actifs + catalog sources (display_color, group_key)
+  const [{ data: drivers }, { data: catalogSources }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, name, avatar_url')
+      .eq('active', true)
+      .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
+      .order('name'),
+    supabase
+      .from('mission_source_catalog')
+      .select('key, label, display_color, group_key')
+      .eq('active', true)
+      .order('label'),
+  ])
 
   // Detection accès Odoo du user connecté (pour brancher la restitution
   // vers devis direct ou encaissement chauffeur)
@@ -110,6 +117,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       mission={mission}
       logs={logs || []}
       drivers={drivers || []}
+      sources={catalogSources || []}
       linkedParent={linkedParent}
       linkedChild={linkedChild}
       userName={user.name || ''}

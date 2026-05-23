@@ -16,18 +16,26 @@ export default async function DispatchPage() {
   )
   if (!hasAccess) redirect('/dashboard?error=access_denied')
 
-  // Récupérer les chauffeurs actifs pour le dropdown d'assignation
   const supabase = createAdminClient()
-  const { data: drivers } = await supabase
-    .from('users')
-    .select('id, name, avatar_url')
-    .eq('active', true)
-    .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
-    .order('name')
+  // Chauffeurs + catalog sources (display_color, group_key) en parallele
+  const [{ data: drivers }, { data: catalogSources }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, name, avatar_url')
+      .eq('active', true)
+      .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}')
+      .order('name'),
+    supabase
+      .from('mission_source_catalog')
+      .select('key, label, display_color, group_key')
+      .eq('active', true)
+      .order('label'),
+  ])
 
   return (
     <DispatchClient
       drivers={drivers || []}
+      sources={catalogSources || []}
       userName={user.name || ''}
       userEmail={user.email || undefined}
       userId={user.id || undefined}

@@ -13,6 +13,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import VabImportButton from '@/components/dispatch/VabImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
+import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -101,22 +102,10 @@ type ViewMode = 'list' | 'card' | 'map'
 
 // ── Helpers & Constantes ──────────────────────────────────────────────────────
 
-const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
-  touring:  { label: 'TOURING',  color: 'bg-blue-600'   },
-  ethias:   { label: 'ETHIAS',   color: 'bg-green-600'  },
-  vivium:   { label: 'VIVIUM',   color: 'bg-purple-600' },
-  pv_assistance: { label: 'P&V', color: 'bg-fuchsia-600' },
-  kaze:     { label: 'KAZE',     color: 'bg-emerald-600' },
-  axa:      { label: 'IPA',      color: 'bg-red-600'    },
-  ardenne:  { label: 'ARDENNE',  color: 'bg-orange-600' },
-  mondial:  { label: 'MONDIAL',  color: 'bg-teal-600'   },
-  aginsurance: { label: 'AG INSURANCE', color: 'bg-indigo-600' },
-  vab:      { label: 'VAB',      color: 'bg-yellow-600' },
-  police:   { label: 'POLICE',   color: 'bg-blue-900'   },
-  prive:    { label: 'PRIVÉ',    color: 'bg-zinc-700'   },
-  garage:   { label: 'GARAGE',   color: 'bg-amber-700'  },
-  unknown:  { label: '?',        color: 'bg-zinc-600'   },
-}
+// SOURCE_LABELS / SOURCES retires : tout vient maintenant de
+// mission_source_catalog (charge en prop server-side via la page parent).
+// Cf src/lib/missions/source-display.ts pour les helpers getSourceLabel /
+// getSourceColor (importes en haut du fichier).
 
 const TYPE_LABELS: Record<string, string> = {
   remorquage:       '🚛 REM',
@@ -158,7 +147,7 @@ const TABS = [
 // Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees
 // qui offre une vue plus riche (chips de filtre, tampons, toggle archives).
 
-const SOURCES = ['touring','ethias','vivium','pv_assistance','kaze','axa','ardenne','mondial','aginsurance','vab','police','prive','garage']
+// La liste des sources vient maintenant en prop depuis le catalog BDD.
 
 
 type SortMode = 'intervention_date' | 'received_at'
@@ -549,10 +538,11 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
 // les cas "sans frais", "annulee" et "archivee" (utilise aussi dans
 // /missions-terminees pour coherence visuelle).
 
-function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChange, userRole, userModules }: {
+function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onModalChange, userRole, userModules }: {
   mission:        Mission
   drivers:        Driver[]
   driverStatuses: DriverStatus[]
+  sources:        CatalogSource[]
   onRefresh:      () => void
   onModalChange?: (open: boolean) => void
   userRole:       string
@@ -560,7 +550,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
 }) {
   const router  = useRouter()
   const delai   = getDelai(mission.intervention_date, mission.status)
-  const srcInfo = SOURCE_LABELS[mission.source] || { label: '?', color: 'bg-zinc-600' }
+  const srcInfo = { label: getSourceLabel(mission.source, sources), color: getSourceColor(mission.source, sources) }
   const showDelai = delai.urgency !== 'muted'
 
   return (
@@ -679,6 +669,7 @@ function MissionCard({ mission, drivers, driverStatuses, onRefresh, onModalChang
 
 export default function DispatchClient({
   drivers,
+  sources,
   userName,
   userRole,
   userEmail,
@@ -686,6 +677,7 @@ export default function DispatchClient({
   userModules = [],
 }: {
   drivers:      Driver[]
+  sources:      CatalogSource[]
   userName:     string
   userRole:     string
   userEmail?:   string
@@ -875,8 +867,8 @@ export default function DispatchClient({
               className="hidden sm:block bg-surface border border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
             >
               <option value="">Toutes sources</option>
-              {SOURCES.map(s => (
-                <option key={s} value={s}>{SOURCE_LABELS[s]?.label || s.toUpperCase()}</option>
+              {sources.map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
               ))}
             </select>
 
@@ -1082,6 +1074,7 @@ export default function DispatchClient({
                   mission={m}
                   drivers={drivers}
                   driverStatuses={driverStatuses}
+                  sources={sources}
                   onRefresh={load}
                   onModalChange={onModalChange}
                   userRole={userRole}
@@ -1102,6 +1095,7 @@ export default function DispatchClient({
                     mission={m}
                     drivers={drivers}
                     driverStatuses={driverStatuses}
+                    sources={sources}
                     onRefresh={load}
                     onModalChange={onModalChange}
                     userRole={userRole}
@@ -1130,7 +1124,7 @@ export default function DispatchClient({
                 <tbody className="divide-y divide-[#222]">
                   {filtered.map(m => {
                     const delai   = getDelai(m.intervention_date, m.status)
-                    const srcInfo = SOURCE_LABELS[m.source] || { label: '?', color: 'bg-zinc-600' }
+                    const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
                     const showDelai = delai.urgency !== 'muted'
                     return (
                       <tr key={m.id}

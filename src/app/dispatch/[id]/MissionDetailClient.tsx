@@ -15,6 +15,7 @@ import CreateClientModal from '@/components/CreateClientModal'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
+import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -127,22 +128,8 @@ interface Driver {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
-  touring:  { label: 'TOURING',  color: 'bg-blue-600' },
-  ethias:   { label: 'ETHIAS',   color: 'bg-green-600' },
-  vivium:   { label: 'VIVIUM',   color: 'bg-purple-600' },
-  pv_assistance: { label: 'P&V', color: 'bg-fuchsia-600' },
-  kaze:     { label: 'KAZE',     color: 'bg-emerald-600' },
-  axa:      { label: 'IPA',      color: 'bg-red-600' },
-  ardenne:  { label: 'ARDENNE (IPA)', color: 'bg-orange-600' },
-  mondial:  { label: 'MONDIAL',  color: 'bg-teal-600' },
-  aginsurance: { label: 'AG INSURANCE', color: 'bg-indigo-600' },
-  vab:      { label: 'VAB',      color: 'bg-yellow-600' },
-  police:   { label: 'POLICE',   color: 'bg-blue-900' },
-  prive:    { label: 'PRIVÉ',    color: 'bg-zinc-700' },
-  garage:   { label: 'GARAGE',   color: 'bg-amber-700' },
-  unknown:  { label: '?',        color: 'bg-zinc-600' },
-}
+// SOURCE_LABELS retire : remplace par les helpers getSourceLabel /
+// getSourceColor qui lisent mission_source_catalog (charge en prop).
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new:         { label: 'Nouvelle',     color: 'text-warning'   },
@@ -538,6 +525,7 @@ export default function MissionDetailClient({
   mission: initialMission,
   logs,
   drivers,
+  sources,
   linkedParent,
   linkedChild,
   userName,
@@ -552,6 +540,7 @@ export default function MissionDetailClient({
   mission:       Mission
   logs:          MissionLog[]
   drivers:       Driver[]
+  sources:       CatalogSource[]
   linkedParent?: LinkedMissionLight | null
   linkedChild?:  LinkedMissionLight | null
   userName:      string
@@ -1265,7 +1254,7 @@ export default function MissionDetailClient({
   }
 
 
-  const srcInfo    = SOURCE_LABELS[initialMission.source] || { label: '?', color: 'bg-zinc-600' }
+  const srcInfo    = { label: getSourceLabel(initialMission.source, sources), color: getSourceColor(initialMission.source, sources) }
   const statusInfo = STATUS_LABELS[status] || { label: status, color: 'text-ink-muted' }
   const canEdit    = ['new', 'dispatching'].includes(status)
 
