@@ -87,6 +87,7 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
             <tr className="text-ink-muted text-xs uppercase tracking-wide">
               <th className="px-4 py-2 text-left">Libellé</th>
               <th className="px-4 py-2 text-left">Clé</th>
+              <th className="px-4 py-2 text-left">Client facturé par défaut</th>
               <th className="px-4 py-2 text-left">Missions</th>
               <th className="px-4 py-2 text-left">Surcharge</th>
               <th className="px-4 py-2 text-left">État</th>
@@ -95,7 +96,7 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
           </thead>
           <tbody className="divide-y">
             {filtered.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-8 text-ink-muted text-sm">Aucune source.</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-ink-muted text-sm">Aucune source.</td></tr>
             ) : filtered.map(s => (
               <tr key={s.key} className={s.active ? '' : 'opacity-50'}>
                 <td className="px-4 py-2">
@@ -103,6 +104,14 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
                   {s.notes && <p className="text-ink-muted text-xs">{s.notes}</p>}
                 </td>
                 <td className="px-4 py-2"><span className="text-ink-muted text-xs font-mono">{s.key}</span></td>
+                <td className="px-4 py-2">
+                  {s.default_billed_to_name
+                    ? <span className="text-ink text-xs">{s.default_billed_to_name}</span>
+                    : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
+                        — à configurer
+                      </button>
+                  }
+                </td>
                 <td className="px-4 py-2">
                   <span className="text-ink-secondary text-xs">{s.mission_count > 0 ? `${s.mission_count} historique${s.mission_count > 1 ? 's' : ''}` : '—'}</span>
                 </td>
