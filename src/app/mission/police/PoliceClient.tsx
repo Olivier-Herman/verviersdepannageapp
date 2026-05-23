@@ -21,7 +21,10 @@ const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: str
   avp:         { label: 'AVP',                icon: '🔲', color: 'bg-black',     colorLight: 'bg-gray-50 border-gray-200',  hidePolice: true, hideOwner: true },
 }
 
-const POLICE_ZONES = ['Police Zone Vesdre', 'Police Zone Fagnes']
+// Triees alphabetiquement pour la liste affichee. Le defaut (zone la plus
+// frequente, Verviers Depannage etant sur Verviers) est Vesdre.
+const POLICE_ZONES = ['Police Zone Fagnes', 'Police Zone Vesdre']
+const DEFAULT_POLICE_ZONE = 'Police Zone Vesdre'
 
 function nowFormatted() {
   const d = new Date()
@@ -82,7 +85,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [brand,          setBrand]          = useState('')
   const [model,          setModel]          = useState('')
   const [location,       setLocation]       = useState('')
-  const [policeZone,     setPoliceZone]     = useState(POLICE_ZONES[0])
+  const [policeZone,     setPoliceZone]     = useState(DEFAULT_POLICE_ZONE)
   const [officerName,    setOfficerName]    = useState('')
   const [ownerFirstName, setOwnerFirstName] = useState('')
   const [ownerLastName,  setOwnerLastName]  = useState('')

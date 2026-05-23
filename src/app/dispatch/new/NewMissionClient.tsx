@@ -74,8 +74,8 @@ function getAvailableMissionTypes(src: string) {
   }
   return MISSION_TYPES
 }
-const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
-const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
+const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
+const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
 function useClientSearch() {

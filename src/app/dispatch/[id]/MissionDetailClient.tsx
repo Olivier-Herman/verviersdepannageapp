@@ -157,8 +157,8 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 const MISSION_TYPES = ['remorquage', 'relivraison', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'autre']
-const FUEL_TYPES    = ['Diesel', 'Essence', 'Hybride', 'Électrique', 'GPL', 'Autre']
-const GEARBOX_TYPES = ['Manuelle', 'Automatique', 'Semi-automatique']
+const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
+const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
 
 const LOG_ICONS: Record<string, string> = {
   received:   '📥',
