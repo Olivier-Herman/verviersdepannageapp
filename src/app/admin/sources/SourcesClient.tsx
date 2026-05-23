@@ -14,7 +14,32 @@ interface Source {
   has_surcharge: boolean
   default_billed_to_id?:   number | null
   default_billed_to_name?: string | null
+  display_color?:          string | null
+  group_key?:              string | null
 }
+
+// Palette de couleurs Tailwind proposees dans le modal d edition. L admin
+// peut aussi taper une classe Tailwind custom dans le champ texte libre.
+const COLOR_PALETTE = [
+  { value: 'bg-blue-600',    label: 'Bleu' },
+  { value: 'bg-blue-900',    label: 'Bleu marine' },
+  { value: 'bg-cyan-600',    label: 'Cyan' },
+  { value: 'bg-teal-600',    label: 'Teal' },
+  { value: 'bg-green-600',   label: 'Vert' },
+  { value: 'bg-emerald-600', label: 'Émeraude' },
+  { value: 'bg-yellow-600',  label: 'Jaune' },
+  { value: 'bg-amber-700',   label: 'Ambre' },
+  { value: 'bg-orange-600',  label: 'Orange' },
+  { value: 'bg-red-600',     label: 'Rouge' },
+  { value: 'bg-rose-600',    label: 'Rose' },
+  { value: 'bg-fuchsia-600', label: 'Fuchsia' },
+  { value: 'bg-purple-600',  label: 'Violet' },
+  { value: 'bg-violet-600',  label: 'Violet clair' },
+  { value: 'bg-indigo-600',  label: 'Indigo' },
+  { value: 'bg-zinc-700',    label: 'Gris foncé' },
+  { value: 'bg-zinc-600',    label: 'Gris (défaut)' },
+  { value: 'bg-stone-600',   label: 'Pierre' },
+]
 
 export default function SourcesClient({ initial }: { initial: Source[] }) {
   const [sources, setSources] = useState<Source[]>(initial)
@@ -102,7 +127,11 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
               <tr key={s.key} className={s.active ? '' : 'opacity-50'}>
                 <td className="px-4 py-2">
                   <Link href={`/admin/sources/${encodeURIComponent(s.key)}`} className="group inline-flex items-center gap-1 hover:text-brand transition">
+                    <span className={`inline-block w-2.5 h-2.5 rounded-sm ${s.display_color || 'bg-zinc-600'} mr-2`} title={s.display_color || 'aucune couleur'} />
                     <span className="text-ink font-medium group-hover:text-brand">{s.label}</span>
+                    {s.group_key && (
+                      <span className="ml-2 text-[10px] uppercase tracking-wider text-ink-faint font-mono">[{s.group_key}]</span>
+                    )}
                     <ChevronRight size={14} className="text-ink-faint group-hover:text-brand opacity-0 group-hover:opacity-100 transition" />
                   </Link>
                   {s.notes && <p className="text-ink-muted text-xs">{s.notes}</p>}
@@ -166,6 +195,8 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
   const [notes, setNotes] = useState(source?.notes || '')
   const [defaultBilledId,   setDefaultBilledId]   = useState<number | null>(source?.default_billed_to_id   || null)
   const [defaultBilledName, setDefaultBilledName] = useState<string>(source?.default_billed_to_name || '')
+  const [displayColor, setDisplayColor] = useState<string>(source?.display_color || '')
+  const [groupKey,     setGroupKey]     = useState<string>(source?.group_key     || '')
   const [clientQuery, setClientQuery] = useState('')
   const [clientResults, setClientResults] = useState<Array<{ id: number; name: string }>>([])
   const [clientSearching, setClientSearching] = useState(false)
@@ -207,11 +238,18 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
     try {
       const url    = '/api/admin/sources'
       const method = isNew ? 'POST' : 'PATCH'
-      const body   = isNew
-        ? { key: autoKey, label: label.trim(), sort_order: sortOrder, notes: notes.trim() || null,
-            default_billed_to_id: defaultBilledId, default_billed_to_name: defaultBilledName || null }
-        : { key: source!.key, label: label.trim(), sort_order: sortOrder, notes: notes.trim() || null,
-            default_billed_to_id: defaultBilledId, default_billed_to_name: defaultBilledName || null }
+      const common = {
+        label:                  label.trim(),
+        sort_order:             sortOrder,
+        notes:                  notes.trim() || null,
+        default_billed_to_id:   defaultBilledId,
+        default_billed_to_name: defaultBilledName || null,
+        display_color:          displayColor.trim() || null,
+        group_key:              groupKey.trim() || null,
+      }
+      const body = isNew
+        ? { key: autoKey, ...common }
+        : { key: source!.key, ...common }
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
@@ -294,6 +332,42 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
               )}
             </div>
           )}
+        </div>
+
+        <div>
+          <label className="block text-ink-muted text-xs mb-1">Couleur du badge</label>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {COLOR_PALETTE.map(c => (
+              <button key={c.value} type="button"
+                onClick={() => setDisplayColor(c.value)}
+                title={`${c.label} — ${c.value}`}
+                className={`w-7 h-7 rounded-md ${c.value} ${displayColor === c.value ? 'ring-2 ring-offset-2 ring-brand' : 'opacity-70 hover:opacity-100'} transition`}
+              />
+            ))}
+            {displayColor && (
+              <button type="button" onClick={() => setDisplayColor('')}
+                className="text-ink-muted hover:text-critical text-xs px-2">✕ effacer</button>
+            )}
+          </div>
+          <input value={displayColor} onChange={e => setDisplayColor(e.target.value)}
+            placeholder="bg-blue-600 (classe Tailwind)"
+            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
+          {displayColor && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${displayColor}`}>{label || 'Aperçu'}</span>
+              <span className="text-ink-faint text-xs">aperçu badge</span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-ink-muted text-xs mb-1">Groupe UI (optionnel)</label>
+          <input value={groupKey} onChange={e => setGroupKey(e.target.value)}
+            placeholder="ex: police (regroupe les sources sous un meta-choix dans /dispatch/new)"
+            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
+          <p className="text-ink-faint text-[11px] mt-1">
+            Sources avec le même groupe sont regroupées sous un menu unique. Laisser vide pour une source autonome.
+          </p>
         </div>
 
         <div>

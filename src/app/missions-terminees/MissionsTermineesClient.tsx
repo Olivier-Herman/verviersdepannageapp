@@ -6,6 +6,7 @@ import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import { ExternalLink, Search, Archive } from 'lucide-react'
+import { getSourceLabel, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 
 interface TerminatedMission {
   id: string
@@ -43,16 +44,10 @@ interface Counts {
 
 type StatusFilter = 'all' | 'to_invoice' | 'invoiced' | 'no_charge' | 'cancelled' | 'archived'
 
-const SOURCE_LABELS: Record<string, string> = {
-  touring: 'Touring', allianz: 'Allianz', vab: 'VAB',
-  axa: 'AXA', ethias: 'Ethias', vivium: 'Vivium',
-  mondial: 'Mondial', ardenne: 'Ardenne',
-  appel_police_accident: 'Police Accident',
-  prive: 'Privé', garage: 'Garage',
-}
-function fmtSource(s: string | null): string {
+// fmtSource lit le catalog passe en prop (cf chantier admin-zero-hardcode)
+function fmtSource(s: string | null, catalog: CatalogSource[]): string {
   if (!s) return '—'
-  return SOURCE_LABELS[s.toLowerCase()] || s
+  return getSourceLabel(s.toLowerCase(), catalog)
 }
 
 function fmtDate(d: string | null): string {
@@ -143,6 +138,7 @@ function MissionStatusBadge({ m }: { m: TerminatedMission }) {
 }
 
 interface Props {
+  catalogSources: CatalogSource[]
   userRole:    string
   userName:    string
   userEmail:   string
@@ -150,7 +146,7 @@ interface Props {
   userModules: string[]
 }
 
-export default function MissionsTermineesClient({ userRole, userName, userEmail, userId, userModules }: Props) {
+export default function MissionsTermineesClient({ catalogSources, userRole, userName, userEmail, userId, userModules }: Props) {
   const [missions, setMissions] = useState<TerminatedMission[]>([])
   const [total,    setTotal]    = useState(0)
   const [page,     setPage]     = useState(1)
@@ -233,7 +229,7 @@ export default function MissionsTermineesClient({ userRole, userName, userEmail,
             className="bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
           >
             <option value="all">Toutes sources</option>
-            {sources.map(s => <option key={s} value={s}>{fmtSource(s)}</option>)}
+            {sources.map(s => <option key={s} value={s}>{fmtSource(s, catalogSources)}</option>)}
           </select>
         </div>
 
@@ -280,7 +276,7 @@ export default function MissionsTermineesClient({ userRole, userName, userEmail,
                       <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-white text-[10px] font-bold ${KIND_COLOR[kind]}`}>
                         {kind}
                       </span>
-                      <span className="text-ink-muted text-[10px] uppercase tracking-wider">{fmtSource(m.source)}</span>
+                      <span className="text-ink-muted text-[10px] uppercase tracking-wider">{fmtSource(m.source, catalogSources)}</span>
                     </div>
                     <ExternalLink size={12} className="text-ink-faint flex-shrink-0" />
                   </div>

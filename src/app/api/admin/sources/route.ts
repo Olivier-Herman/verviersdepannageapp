@@ -85,6 +85,8 @@ export async function POST(req: Request) {
     notes?: string
     default_billed_to_id?: number | null
     default_billed_to_name?: string | null
+    display_color?: string | null
+    group_key?: string | null
   }
   const label = (body.label || '').trim()
   if (!label) return NextResponse.json({ error: 'Libellé requis' }, { status: 400 })
@@ -102,6 +104,8 @@ export async function POST(req: Request) {
       notes:                  body.notes || null,
       default_billed_to_id:   body.default_billed_to_id ?? null,
       default_billed_to_name: body.default_billed_to_name ?? null,
+      display_color:          body.display_color || null,
+      group_key:              body.group_key || null,
     })
     .select()
     .single()
@@ -127,6 +131,8 @@ export async function PATCH(req: Request) {
     notes?: string
     default_billed_to_id?: number | null
     default_billed_to_name?: string | null
+    display_color?: string | null
+    group_key?: string | null
   }
   const key = (body.key || '').trim()
   if (!key) return NextResponse.json({ error: 'key requis' }, { status: 400 })
@@ -138,6 +144,8 @@ export async function PATCH(req: Request) {
   if (body.notes !== undefined)                  update.notes                  = body.notes
   if (body.default_billed_to_id !== undefined)   update.default_billed_to_id   = body.default_billed_to_id
   if (body.default_billed_to_name !== undefined) update.default_billed_to_name = body.default_billed_to_name
+  if (body.display_color !== undefined)          update.display_color          = body.display_color || null
+  if (body.group_key !== undefined)              update.group_key              = body.group_key || null
 
   const sb = createAdminClient()
   const { data, error } = await sb

@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 
 interface Sender {
   id: string
@@ -23,11 +24,13 @@ interface ErrorMission {
   sender_email: string | null
 }
 
-const SOURCES = ['touring', 'ethias', 'vivium', 'axa', 'ardenne', 'mondial', 'aginsurance', 'vab', 'police', 'prive', 'garage', 'unknown']
+// La liste hardcodee SOURCES a ete retiree : on charge maintenant le catalog
+// (mission_source_catalog) via /api/missions/sources au moment du load.
 
 export default function AdminMissionsPage() {
   const [senders,       setSenders]       = useState<Sender[]>([])
   const [errorMissions, setErrorMissions] = useState<ErrorMission[]>([])
+  const [catalogSources, setCatalogSources] = useState<CatalogSource[]>([])
   const [loading,       setLoading]       = useState(true)
   const [newPattern,    setNewPattern]    = useState('')
   const [newSource,     setNewSource]     = useState('touring')
@@ -66,14 +69,17 @@ export default function AdminMissionsPage() {
   async function load() {
     setLoading(true)
     try {
-      const [sendersRes, errorsRes] = await Promise.all([
+      const [sendersRes, errorsRes, sourcesRes] = await Promise.all([
         fetch('/api/admin/missions/senders'),
         fetch('/api/admin/missions/errors'),
+        fetch('/api/missions/sources'),
       ])
       const sendersData = await sendersRes.json()
       const errorsData  = await errorsRes.json()
+      const sourcesData = await sourcesRes.json()
       setSenders(sendersData.senders || [])
       setErrorMissions(errorsData.missions || [])
+      setCatalogSources(sourcesData.sources || [])
     } finally {
       setLoading(false)
     }
@@ -112,13 +118,9 @@ export default function AdminMissionsPage() {
     await load()
   }
 
-  const SOURCE_COLORS: Record<string, string> = {
-    touring: 'bg-blue-600',  ethias: 'bg-green-600', vivium: 'bg-purple-600',
-    axa: 'bg-red-600', ardenne: 'bg-orange-600', mondial: 'bg-teal-600',
-    aginsurance: 'bg-indigo-600',
-    vab: 'bg-yellow-600', police: 'bg-blue-900', prive: 'bg-zinc-700',
-    garage: 'bg-amber-700', unknown: 'bg-zinc-600',
-  }
+  // Couleur d un badge source : utilise le catalog (display_color en BDD).
+  // Fallback bg-zinc-600 pour les sources inconnues.
+  const srcColor = (key: string) => getSourceColor(key, catalogSources)
 
   return (
     <>
@@ -170,8 +172,8 @@ export default function AdminMissionsPage() {
                 <label className="text-ink-muted text-xs mb-1.5 block">Source</label>
                 <select value={newSource} onChange={e => setNewSource(e.target.value)}
                   className="w-full bg-surface border border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
-                  {SOURCES.filter(s => s !== 'unknown').map(s => (
-                    <option key={s} value={s}>{s.toUpperCase()}</option>
+                  {catalogSources.filter(s => s.key !== 'unknown').map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
                 </select>
               </div>
@@ -208,7 +210,7 @@ export default function AdminMissionsPage() {
                   <tr key={s.id} className="hover:bg-surface-hover">
                     <td className="px-4 py-3 font-mono text-ink-secondary text-xs">{s.email_pattern}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold text-ink ${SOURCE_COLORS[s.source] || 'bg-zinc-600'}`}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold text-ink ${srcColor(s.source)}`}>
                         {s.source.toUpperCase()}
                       </span>
                     </td>
@@ -263,7 +265,7 @@ export default function AdminMissionsPage() {
                   <tr key={m.id} className="hover:bg-surface-hover">
                     <td className="px-4 py-3 font-mono text-ink-secondary text-xs">{m.external_id}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold text-ink ${SOURCE_COLORS[m.source] || 'bg-zinc-600'}`}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold text-ink ${srcColor(m.source)}`}>
                         {m.source.toUpperCase()}
                       </span>
                       <div className="text-ink-faint text-[10px] mt-1 uppercase">{m.source_format}</div>
@@ -311,8 +313,8 @@ export default function AdminMissionsPage() {
                   <select value={linkSource} onChange={e => setLinkSource(e.target.value)}
                           disabled={linkLoading}
                           className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm mb-5">
-                    {SOURCES.filter(s => s !== 'unknown').map(s => (
-                      <option key={s} value={s}>{s.toUpperCase()}</option>
+                    {catalogSources.filter(s => s.key !== 'unknown').map(s => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
                     ))}
                   </select>
                   <div className="flex justify-end gap-2">

@@ -232,21 +232,13 @@ export interface VehicleCheck {
 
 // ── Missions entrantes (Phase 2) ──────────────────────────
 
-export type MissionSource =
-  | 'touring'
-  | 'ethias'
-  | 'vivium'
-  | 'pv_assistance'
-  | 'axa'
-  | 'ardenne'
-  | 'mondial'
-  | 'aginsurance'
-  | 'vab'
-  | 'eurocross'
-  | 'police'
-  | 'prive'
-  | 'garage'
-  | 'unknown'
+// MissionSource : la liste enumeree etait hardcodee ici, mais le catalog
+// (mission_source_catalog) est maintenant la source de verite. On garde
+// le type comme alias string pour flexibilite (toute nouvelle source ajoutee
+// dans /admin/sources est utilisable sans modifier ce type). Les valeurs
+// connues a titre indicatif (non-exhaustif) sont visibles dans le catalog.
+// Cf chantier [[admin-zero-hardcode]].
+export type MissionSource = string
 
 export type MissionStatus =
   | 'new'

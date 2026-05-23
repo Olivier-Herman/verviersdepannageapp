@@ -26,26 +26,15 @@ interface Destination { id: string; label: string; address: string; lat: number|
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-// Clefs de sources "regroupees" sous l item synthetique 'police' du dropdown.
-// IMPORTANT : ces cles doivent matcher EXACTEMENT celles utilisees ailleurs
-// dans le code (towsoft/create, cron mg-to-avp, restitute, RestituerMalGareeModal).
-// Pour Mal Garee la cle officielle est 'police_mg' (pas 'police_mal_garee').
-const POLICE_SUBTYPE_KEYS = [
-  'police_accident',
-  'police_saisie',
-  'police_rodeo',
-  'police_avp',
-  'police_mg',
-] as const
-
-// Mapping sub-type value (UI) -> source key (BDD).
-const POLICE_SUBTYPES = [
-  { value: 'accident',  label: 'Accident',  source: 'police_accident' },
-  { value: 'saisie',    label: 'Saisie',    source: 'police_saisie'   },
-  { value: 'rodeo',     label: 'Rodéo',     source: 'police_rodeo'    },
-  { value: 'avp',       label: 'AVP — Abandon Voie Publique', source: 'police_avp' },
-  { value: 'mal_garee', label: 'Mal garée', source: 'police_mg'       },
-]
+// Les sub-types Police viennent maintenant du catalog (group_key='police').
+// Plus de liste hardcodee : ajouter une source avec group_key='police' dans
+// /admin/sources la fait apparaitre automatiquement comme sub-type.
+// Les "labels courts" affiches dans les boutons sont derives en supprimant
+// le prefixe "Police - " du label catalog (ex: "Police - Accident" -> "Accident").
+const POLICE_GROUP_KEY = 'police'
+function shortLabelForPoliceSubtype(label: string): string {
+  return label.replace(/^Police\s*-\s*/i, '').trim()
+}
 const SNC_SCENARIOS = [
   { value: 'dsp',        label: 'DSP — Dépannage sur place' },
   { value: 'rem_client', label: 'REM — Remorquage chez le client' },
@@ -241,19 +230,25 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
 export default function NewMissionClient({
   drivers, warnings, sources, userName, userRole, userModules = [], userEmail, userId, googleMapsKey
 }: {
-  drivers: Driver[]; warnings: Warning[]; sources: Array<{ key: string; label: string }>;
+  drivers: Driver[]; warnings: Warning[]; sources: Array<{ key: string; label: string; display_color?: string | null; group_key?: string | null }>;
   userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
 }) {
+  // Sub-types Police : sources du catalog avec group_key='police'.
+  // Plus de liste hardcodee : ajouter une source avec group_key='police' dans
+  // /admin/sources la fait apparaitre automatiquement comme sub-type.
+  const policeSubtypeSources = sources.filter(s => s.group_key === POLICE_GROUP_KEY)
+
   // Construit la liste des sources affichees dans le dropdown principal.
-  // Regroupement : on cache les 5 sub-types Police (police_accident, ...) et
-  // on insere a la place une entree synthetique 'police' (POLICE) qui ouvre
-  // le sub-selector. police_snc et sia_couvert restent visibles (Siabis).
-  // Tri : deja alphabetique cote serveur (order by label).
+  // Les sources avec group_key sont regroupees sous un meta-choix synthetique
+  // ('police' pour les sub-types Police). Les sources sans group_key sont
+  // affichees telles quelles. Tri alpha cote serveur (order by label).
   const dropdownSources = [
-    ...sources.filter(s => !POLICE_SUBTYPE_KEYS.includes(s.key as any)),
-    // Garantit la presence de l entree synthetique "POLICE" meme si le catalog
-    // n a pas de ligne 'police' (les 5 sub-types existent mais pas le parent).
-    ...(sources.some(s => s.key === 'police') ? [] : [{ key: 'police', label: 'POLICE' }]),
+    ...sources.filter(s => !s.group_key),
+    // Si group 'police' a au moins une source mais pas d entree synthetique
+    // 'police' dans le catalog : on l ajoute pour ouvrir le sub-selector.
+    ...(policeSubtypeSources.length > 0 && !sources.some(s => s.key === 'police')
+      ? [{ key: 'police', label: 'POLICE' }]
+      : []),
   ].sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }))
   const router = useRouter()
 
@@ -611,8 +606,9 @@ export default function NewMissionClient({
                  && policeSubtypeOk
 
   // Source reelle envoyee a l API : si Police, c'est le sous-type qui pilote.
+  // policeSubtype stocke directement la cle catalog du sub-type (ex: 'police_accident')
   const resolvedSource = source === 'police' && policeSubtype
-    ? (POLICE_SUBTYPES.find(s => s.value === policeSubtype)?.source || 'police')
+    ? policeSubtype
     : source
 
   const isSiabis = source === 'police_snc' || source === 'sia_couvert'
@@ -864,19 +860,24 @@ export default function NewMissionClient({
                   </div>
                 </div>
 
-                {/* Sous-type Police (si source=police) */}
+                {/* Sous-type Police (si source=police) : liste dynamique du catalog */}
                 {source === 'police' && (
                   <div className="mt-5 pt-5 border-t">
                     <p className="text-ink-muted text-xs mb-3">Sous-type d'intervention Police (pilote tarif et zone parc par défaut) :</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                      {POLICE_SUBTYPES.map(t => (
-                        <button key={t.value} onClick={() => setPoliceSubtype(t.value)} type="button"
+                      {policeSubtypeSources.length === 0 && (
+                        <p className="col-span-full text-ink-faint text-xs italic">
+                          Aucun sous-type Police configuré. Ajoute des sources avec <span className="font-mono">group_key=police</span> dans <a href="/admin/sources" className="underline">/admin/sources</a>.
+                        </p>
+                      )}
+                      {policeSubtypeSources.map(t => (
+                        <button key={t.key} onClick={() => setPoliceSubtype(t.key)} type="button"
                           className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
-                            policeSubtype === t.value
+                            policeSubtype === t.key
                               ? 'bg-blue-600 border-blue-600 text-white'
                               : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
                           }`}>
-                          {t.label}
+                          {shortLabelForPoliceSubtype(t.label)}
                         </button>
                       ))}
                     </div>
@@ -1286,7 +1287,7 @@ export default function NewMissionClient({
                     {
                       label: 'Source',
                       value: source === 'police'
-                        ? `POLICE${policeSubtype ? ' — ' + (POLICE_SUBTYPES.find(s => s.value === policeSubtype)?.label || policeSubtype) : ' (sous-type requis)'}`
+                        ? `POLICE${policeSubtype ? ' — ' + shortLabelForPoliceSubtype(policeSubtypeSources.find(s => s.key === policeSubtype)?.label || policeSubtype) : ' (sous-type requis)'}`
                         : (dropdownSources.find(s => s.key === source)?.label || source),
                     },
                     ...(isSiabis ? [{

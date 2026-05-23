@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArchiveRestore, ExternalLink, Search } from 'lucide-react'
+import { getSourceLabel, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 
 interface ArchivedMission {
   id: string
@@ -22,16 +23,11 @@ interface ArchivedMission {
   archived_at:     string
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  touring: 'Touring', allianz: 'Allianz', vab: 'VAB',
-  axa: 'AXA', ethias: 'Ethias', vivium: 'Vivium',
-  mondial: 'Mondial', ardenne: 'Ardenne',
-  appel_police_accident: 'Police Accident',
-  prive: 'Privé', garage: 'Garage',
-}
-function fmtSource(s: string | null): string {
+// fmtSource lit le catalog (mission_source_catalog) passe en prop server-side
+// au lieu du Record hardcode (cf chantier [[admin-zero-hardcode]]).
+function fmtSource(s: string | null, catalog: CatalogSource[]): string {
   if (!s) return '—'
-  return SOURCE_LABELS[s.toLowerCase()] || s
+  return getSourceLabel(s.toLowerCase(), catalog)
 }
 
 function fmtDate(d: string | null): string {
@@ -39,7 +35,7 @@ function fmtDate(d: string | null): string {
   return new Date(d).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-export default function ArchivesClient() {
+export default function ArchivesClient({ catalogSources }: { catalogSources: CatalogSource[] }) {
   const [missions, setMissions] = useState<ArchivedMission[]>([])
   const [total,    setTotal]    = useState(0)
   const [page,     setPage]     = useState(1)
@@ -114,7 +110,7 @@ export default function ArchivesClient() {
           className="bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
         >
           <option value="all">Toutes sources</option>
-          {sources.map(s => <option key={s} value={s}>{fmtSource(s)}</option>)}
+          {sources.map(s => <option key={s} value={s}>{fmtSource(s, catalogSources)}</option>)}
         </select>
       </div>
 
@@ -147,7 +143,7 @@ export default function ArchivesClient() {
               {missions.map(m => (
                 <tr key={m.id} className="hover:bg-surface-hover">
                   <td className="px-4 py-2 font-mono text-xs">{m.external_id || m.dossier_number || m.id.slice(0,8)}</td>
-                  <td className="px-4 py-2 text-xs text-ink-secondary">{fmtSource(m.source)}</td>
+                  <td className="px-4 py-2 text-xs text-ink-secondary">{fmtSource(m.source, catalogSources)}</td>
                   <td className="px-4 py-2">
                     <p className="text-ink text-xs font-mono">{m.vehicle_plate || '—'}</p>
                     <p className="text-ink-muted text-xs">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}</p>

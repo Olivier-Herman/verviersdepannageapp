@@ -7,6 +7,7 @@
 import { getServerSession }   from 'next-auth'
 import { redirect }           from 'next/navigation'
 import { authOptions }        from '@/lib/auth'
+import { createAdminClient }  from '@/lib/supabase'
 import MissionsTermineesClient from './MissionsTermineesClient'
 
 export const dynamic    = 'force-dynamic'
@@ -24,8 +25,17 @@ export default async function MissionsTermineesPage() {
     modules.includes('missions')
   if (!hasAccess) redirect('/dashboard?error=access_denied')
 
+  // Catalog des sources (label + display_color) pour les helpers d'affichage
+  const sb = createAdminClient()
+  const { data: catalogSources } = await sb
+    .from('mission_source_catalog')
+    .select('key, label, display_color, group_key')
+    .eq('active', true)
+    .order('label')
+
   return (
     <MissionsTermineesClient
+      catalogSources={catalogSources || []}
       userRole={role}
       userName={user.name || ''}
       userEmail={user.email || ''}
