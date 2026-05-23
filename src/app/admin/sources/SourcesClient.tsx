@@ -27,10 +27,15 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
     setSources(j.sources || [])
   }
 
+  // Tri alphabetique par label (fr, insensible casse/accents), puis filtre
+  // texte sur label OU key.
   const filtered = useMemo(() => {
+    const sorted = [...sources].sort((a, b) =>
+      a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' })
+    )
     const q = filter.toLowerCase().trim()
-    if (!q) return sources
-    return sources.filter(s =>
+    if (!q) return sorted
+    return sorted.filter(s =>
       s.label.toLowerCase().includes(q) || s.key.toLowerCase().includes(q)
     )
   }, [sources, filter])

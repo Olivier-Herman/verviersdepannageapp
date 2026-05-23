@@ -31,7 +31,7 @@ const ALL_SOURCES = [
   { value: 'ardenne',     label: 'ARDENNE (IPA)' },
   { value: 'ethias',      label: 'ETHIAS' },
   { value: 'garage',      label: 'GARAGE' },
-  { value: 'ipa',         label: 'IPA (AXA)' },
+  { value: 'axa',         label: 'IPA (AXA)' },
   { value: 'mondial',     label: 'MONDIAL' },
   { value: 'police',      label: 'POLICE' },
   { value: 'prive',       label: 'PRIVÉ' },
