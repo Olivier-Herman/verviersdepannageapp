@@ -1230,8 +1230,11 @@ export default function NewMissionClient({
             </div>
 
             {/* ── Colonne droite : résumé + action (sticky en desktop) ────── */}
-            <div className="lg:sticky lg:top-24 lg:self-start space-y-4">
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter space-y-4">
+            {/* Pattern sticky : grid item stretch (default), sticky directement
+                sur la card. Le conteneur scrollable est <main overflow-y-auto>
+                dans AppShell.  top-24 = 6rem (en dessous de la sticky top bar). */}
+            <div>
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
 
                 {error && (
                   <div className="px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
