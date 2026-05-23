@@ -13,7 +13,7 @@ import {
   Radio, Bell, ShieldCheck, FileSignature,
   Map, ClipboardCheck,
   FileText, Archive, Wallet, Truck,
-  Settings, Home,
+  Settings, Home, Printer,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -57,6 +57,7 @@ const GROUPS: NavGroup[] = [
     title: 'Documents & Compta',
     items: [
       { href: '/admin/documents', label: 'Documents', icon: FileText },
+      { href: '/admin/labels',    label: 'Étiquettes', icon: Printer },
       { href: '/admin/archives',  label: 'Archives',  icon: Archive },
       { href: '/admin/cash',      label: 'Caisses',   icon: Wallet },
       { href: '/admin/tgr',       label: 'TGR',       icon: Truck },

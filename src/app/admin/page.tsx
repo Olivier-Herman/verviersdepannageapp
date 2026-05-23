@@ -15,7 +15,7 @@ import { redirect }          from 'next/navigation'
 import {
   DollarSign, Truck, FileText, Wallet, Settings,
   Tag, MapPin, Users, Car, Receipt, AlertTriangle, Radio, ShieldCheck,
-  Bell, ClipboardCheck, Map, Archive, FileSignature,
+  Bell, ClipboardCheck, Map, Archive, FileSignature, Printer,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -150,6 +150,8 @@ export default async function AdminPage() {
       <Group title="Documents & Comptabilité">
         <Card href="/admin/documents" icon={FileText} label="Documents"
           desc="Modèles de bons d'intervention, CGU, autres PDFs." />
+        <Card href="/admin/labels" icon={Printer} label="Étiquettes"
+          desc="Bibliothèque de templates ZPL pour l'imprimante Zebra. Aperçu + impression sur demande." />
         <Card href="/admin/archives" icon={Archive} label="Archives"
           desc="Anciennes missions / documents archivés." />
         <Card href="/admin/cash" icon={Wallet} label="Caisses"
