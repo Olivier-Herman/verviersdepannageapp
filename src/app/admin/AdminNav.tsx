@@ -47,9 +47,10 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Parc',
+    title: 'Parc & Flotte',
     items: [
       { href: '/admin/parc',           label: 'Plan parc',     icon: Map },
+      { href: '/admin/labels',         label: 'Étiquettes',    icon: Printer },
       { href: '/admin/check-vehicule', label: 'Check véhicule', icon: ClipboardCheck },
     ],
   },
@@ -57,7 +58,6 @@ const GROUPS: NavGroup[] = [
     title: 'Documents & Compta',
     items: [
       { href: '/admin/documents', label: 'Documents', icon: FileText },
-      { href: '/admin/labels',    label: 'Étiquettes', icon: Printer },
       { href: '/admin/archives',  label: 'Archives',  icon: Archive },
       { href: '/admin/cash',      label: 'Caisses',   icon: Wallet },
       { href: '/admin/tgr',       label: 'TGR',       icon: Truck },

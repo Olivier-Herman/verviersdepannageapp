@@ -143,6 +143,8 @@ export default async function AdminPage() {
         <Card href="/admin/parc" icon={Map} label="Plan parc fourrière"
           desc="Zones, rangées, slots. Drag & drop, blocage manuel."
           count={parcSlots} />
+        <Card href="/admin/labels" icon={Printer} label="Étiquettes"
+          desc="Bibliothèque de templates ZPL pour l'imprimante Zebra (parc, REL, etc.). Aperçu + impression sur demande." />
         <Card href="/admin/check-vehicule" icon={ClipboardCheck} label="Check véhicule"
           desc="Checklist de prise en charge véhicule par les chauffeurs." />
       </Group>
@@ -150,8 +152,6 @@ export default async function AdminPage() {
       <Group title="Documents & Comptabilité">
         <Card href="/admin/documents" icon={FileText} label="Documents"
           desc="Modèles de bons d'intervention, CGU, autres PDFs." />
-        <Card href="/admin/labels" icon={Printer} label="Étiquettes"
-          desc="Bibliothèque de templates ZPL pour l'imprimante Zebra. Aperçu + impression sur demande." />
         <Card href="/admin/archives" icon={Archive} label="Archives"
           desc="Anciennes missions / documents archivés." />
         <Card href="/admin/cash" icon={Wallet} label="Caisses"
