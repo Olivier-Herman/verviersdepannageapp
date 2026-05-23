@@ -64,6 +64,8 @@ function sendZplToPrinter(zpl, res, label = "label") {
 // src/lib/print/zpl-templates/parc-label.ts du repo verviers-app.
 // ─────────────────────────────────────────────────────────────────────
 function buildZPL({ qrUrl, motif, date, note }) {
+  // Note : "TDC" hardcode supprime (etait un bug de l initialisation
+  // du script — TDC est un motif possible, pas une signature fixe).
   return `^XA
 ^CI28
 ^PW812
@@ -88,10 +90,6 @@ function buildZPL({ qrUrl, motif, date, note }) {
 ^A0N,28,28
 ^FB752,2,0,L,0
 ^FD${escapeZPL(note)}^FS
-
-^FO700,580
-^A0N,22,22
-^FDTDC^FS
 
 ^XZ`;
 }

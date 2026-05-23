@@ -75,10 +75,6 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 ^FB752,2,0,L,0
 ^FD${note}^FS
 
-^FO700,580
-^A0N,22,22
-^FDTDC^FS
-
 ^XZ`
 }
 
