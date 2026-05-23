@@ -547,12 +547,15 @@ export default function NewMissionClient({
       setSourceFromOdoo(true)
     }
     // Autocomplete client facture depuis le default de la source (catalog).
-    // Ne touche pas si un client est deja lie (respect choix manuel).
-    if (!odooPartnerId && newSource) {
+    // Comportement attendu (Olivier 2026-05-23) :
+    //   - Si la nouvelle source A un default_billed_to -> on REMPLACE le client
+    //     courant (cas : on s est trompe de source au depart, on switche)
+    //   - Si la nouvelle source N A PAS de default -> on garde le client
+    //     courant (cas : source Privee, on a deja saisi le client a la main)
+    if (newSource) {
       try {
         const r = await fetch(`/api/missions/source-defaults?source=${encodeURIComponent(newSource)}`)
         const d = await r.json()
-        console.log('[dispatch/new] source-defaults', newSource, '->', d)
         if (d.ok && d.default_billed_to_id) {
           setOdooPartnerId(d.default_billed_to_id)
           setBilledName(d.default_billed_to_name || '')
@@ -562,8 +565,10 @@ export default function NewMissionClient({
             name:   d.default_billed_to_name || '',
             phone:  false, mobile: false, street: false, city: false, zip: false, email: false,
           })
+          setSourceFromOdoo(true)
         } else if (d.ok && !d.default_billed_to_id) {
-          console.warn(`[dispatch/new] Aucun client par defaut pour source '${newSource}'. Configure-le dans /admin/sources.`)
+          // Pas de default : on ne touche pas au client existant
+          console.warn(`[dispatch/new] Aucun client par defaut pour source '${newSource}'. Configure-le dans /admin/sources si voulu.`)
         }
       } catch (e) {
         console.error('[dispatch/new] source-defaults fetch failed:', e)
