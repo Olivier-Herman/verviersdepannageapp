@@ -27,25 +27,24 @@ interface Destination { id: string; label: string; address: string; lat: number|
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 // Clefs de sources "regroupees" sous l item synthetique 'police' du dropdown.
-// Convention : key avec prefix 'police_' SAUF 'police_snc' qui est Siabis NC
-// (presente comme une source distincte). 'sia_couvert' est Siabis Couvert.
-// Le sub-type est resolu via mapPoliceSubtypeToSource() ci-dessous.
+// IMPORTANT : ces cles doivent matcher EXACTEMENT celles utilisees ailleurs
+// dans le code (towsoft/create, cron mg-to-avp, restitute, RestituerMalGareeModal).
+// Pour Mal Garee la cle officielle est 'police_mg' (pas 'police_mal_garee').
 const POLICE_SUBTYPE_KEYS = [
   'police_accident',
   'police_saisie',
   'police_rodeo',
   'police_avp',
-  'police_mal_garee',
+  'police_mg',
 ] as const
 
-// Mapping sub-type value (UI) -> source key (BDD). Garde des labels stables
-// dans l UI meme si l admin renomme la source en BDD.
+// Mapping sub-type value (UI) -> source key (BDD).
 const POLICE_SUBTYPES = [
-  { value: 'accident',   label: 'Accident',  source: 'police_accident'  },
-  { value: 'saisie',     label: 'Saisie',    source: 'police_saisie'    },
-  { value: 'rodeo',      label: 'Rodéo',     source: 'police_rodeo'     },
-  { value: 'avp',        label: 'AVP — Abandon Voie Publique', source: 'police_avp' },
-  { value: 'mal_garee',  label: 'Mal garée', source: 'police_mal_garee' },
+  { value: 'accident',  label: 'Accident',  source: 'police_accident' },
+  { value: 'saisie',    label: 'Saisie',    source: 'police_saisie'   },
+  { value: 'rodeo',     label: 'Rodéo',     source: 'police_rodeo'    },
+  { value: 'avp',       label: 'AVP — Abandon Voie Publique', source: 'police_avp' },
+  { value: 'mal_garee', label: 'Mal garée', source: 'police_mg'       },
 ]
 const SNC_SCENARIOS = [
   { value: 'dsp',        label: 'DSP — Dépannage sur place' },
