@@ -26,24 +26,20 @@ interface Destination { id: string; label: string; address: string; lat: number|
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-const ALL_SOURCES = [
-  { value: 'aginsurance', label: 'AG INSURANCE' },
-  { value: 'ardenne',     label: 'ARDENNE (IPA)' },
-  { value: 'ethias',      label: 'ETHIAS' },
-  { value: 'garage',      label: 'GARAGE' },
-  { value: 'axa',         label: 'IPA (AXA)' },
-  { value: 'mondial',     label: 'MONDIAL' },
-  { value: 'police',      label: 'POLICE' },
-  { value: 'prive',       label: 'PRIVÉ' },
-  { value: 'sia_couvert', label: 'Siabis Couvert (assistance)' },
-  { value: 'police_snc',  label: 'Siabis Non Couvert' },
-  { value: 'touring',     label: 'TOURING' },
-  { value: 'vab',         label: 'VAB' },
-  { value: 'vivium',      label: 'VIVIUM' },
-]
-// Sous-types Police (Source=police) : choix du dispatcher pilote la source reelle
-// envoyee a l API ('police_accident', 'police_saisie', ...) ainsi que la zone
-// de parc par defaut (parametree dans /admin/parc).
+// Clefs de sources "regroupees" sous l item synthetique 'police' du dropdown.
+// Convention : key avec prefix 'police_' SAUF 'police_snc' qui est Siabis NC
+// (presente comme une source distincte). 'sia_couvert' est Siabis Couvert.
+// Le sub-type est resolu via mapPoliceSubtypeToSource() ci-dessous.
+const POLICE_SUBTYPE_KEYS = [
+  'police_accident',
+  'police_saisie',
+  'police_rodeo',
+  'police_avp',
+  'police_mal_garee',
+] as const
+
+// Mapping sub-type value (UI) -> source key (BDD). Garde des labels stables
+// dans l UI meme si l admin renomme la source en BDD.
 const POLICE_SUBTYPES = [
   { value: 'accident',   label: 'Accident',  source: 'police_accident'  },
   { value: 'saisie',     label: 'Saisie',    source: 'police_saisie'    },
@@ -244,10 +240,22 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function NewMissionClient({
-  drivers, warnings, userName, userRole, userModules = [], userEmail, userId, googleMapsKey
+  drivers, warnings, sources, userName, userRole, userModules = [], userEmail, userId, googleMapsKey
 }: {
-  drivers: Driver[]; warnings: Warning[]; userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
+  drivers: Driver[]; warnings: Warning[]; sources: Array<{ key: string; label: string }>;
+  userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
 }) {
+  // Construit la liste des sources affichees dans le dropdown principal.
+  // Regroupement : on cache les 5 sub-types Police (police_accident, ...) et
+  // on insere a la place une entree synthetique 'police' (POLICE) qui ouvre
+  // le sub-selector. police_snc et sia_couvert restent visibles (Siabis).
+  // Tri : deja alphabetique cote serveur (order by label).
+  const dropdownSources = [
+    ...sources.filter(s => !POLICE_SUBTYPE_KEYS.includes(s.key as any)),
+    // Garantit la presence de l entree synthetique "POLICE" meme si le catalog
+    // n a pas de ligne 'police' (les 5 sub-types existent mais pas le parent).
+    ...(sources.some(s => s.key === 'police') ? [] : [{ key: 'police', label: 'POLICE' }]),
+  ].sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }))
   const router = useRouter()
 
   // ── RDV ───────────────────────────────────────────────────────────────────
@@ -846,7 +854,7 @@ export default function NewMissionClient({
                     <select value={source} onChange={e => changeSource(e.target.value)}
                       className={`w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand ${!source ? 'border-amber-500/50' : ''}`}>
                       <option value="">— Sélectionner une source —</option>
-                      {ALL_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      {dropdownSources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                     </select>
                   </div>
                   <div>
@@ -1280,7 +1288,7 @@ export default function NewMissionClient({
                       label: 'Source',
                       value: source === 'police'
                         ? `POLICE${policeSubtype ? ' — ' + (POLICE_SUBTYPES.find(s => s.value === policeSubtype)?.label || policeSubtype) : ' (sous-type requis)'}`
-                        : (ALL_SOURCES.find(s => s.value === source)?.label || source),
+                        : (dropdownSources.find(s => s.key === source)?.label || source),
                     },
                     ...(isSiabis ? [{
                       label: 'Scénario',

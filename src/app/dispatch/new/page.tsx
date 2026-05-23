@@ -18,17 +18,22 @@ export default async function NewMissionPage() {
 
   const supabase = createAdminClient()
 
-  const [{ data: drivers }, { data: warnings }] = await Promise.all([
+  const [{ data: drivers }, { data: warnings }, { data: catalogSources }] = await Promise.all([
     supabase.from('users').select('id, name').eq('active', true)
       .or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}').order('name'),
     supabase.from('mission_warnings').select('id, label, icon, color')
       .eq('active', true).order('sort_order'),
+    // Catalog central des sources : pas de hardcode cote client.
+    // Toute source ajoutee dans /admin/sources apparait automatiquement ici.
+    // Tri alphabetique par label (cohereent avec /admin/sources).
+    supabase.from('mission_source_catalog').select('key, label').eq('active', true).order('label'),
   ])
 
   return (
     <NewMissionClient
       drivers={drivers || []}
       warnings={warnings || []}
+      sources={catalogSources || []}
       userName={user.name || ''}
       userEmail={user.email || undefined}
       userId={user.id || undefined}
