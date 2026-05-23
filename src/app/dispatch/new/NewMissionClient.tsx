@@ -552,6 +552,7 @@ export default function NewMissionClient({
       try {
         const r = await fetch(`/api/missions/source-defaults?source=${encodeURIComponent(newSource)}`)
         const d = await r.json()
+        console.log('[dispatch/new] source-defaults', newSource, '->', d)
         if (d.ok && d.default_billed_to_id) {
           setOdooPartnerId(d.default_billed_to_id)
           setBilledName(d.default_billed_to_name || '')
@@ -561,8 +562,12 @@ export default function NewMissionClient({
             name:   d.default_billed_to_name || '',
             phone:  false, mobile: false, street: false, city: false, zip: false, email: false,
           })
+        } else if (d.ok && !d.default_billed_to_id) {
+          console.warn(`[dispatch/new] Aucun client par defaut pour source '${newSource}'. Configure-le dans /admin/sources.`)
         }
-      } catch {}
+      } catch (e) {
+        console.error('[dispatch/new] source-defaults fetch failed:', e)
+      }
     }
   }
 
@@ -1229,12 +1234,13 @@ export default function NewMissionClient({
               </div>
             </div>
 
-            {/* ── Colonne droite : résumé + action (sticky en desktop) ────── */}
-            {/* Pattern sticky : grid item stretch (default), sticky directement
-                sur la card. Le conteneur scrollable est <main overflow-y-auto>
-                dans AppShell.  top-24 = 6rem (en dessous de la sticky top bar). */}
-            <div>
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+            {/* ── Colonne droite : résumé + action (sticky en desktop) ──────
+                Sticky direct sur la card avec align-self: start pour empecher
+                le grid item de stretch (sinon sticky n a pas d effet visible
+                car deja en haut). Pas de max-h/overflow interne (creerait un
+                scroll context qui peut casser sticky par rapport a <main>).
+            */}
+            <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter space-y-4 lg:sticky lg:top-24 lg:self-start">
 
                 {error && (
                   <div className="px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
@@ -1351,7 +1357,6 @@ export default function NewMissionClient({
             </div>
           </div>
         </div>
-      </div>
 
         {showCreateClient && (
           <CreateClientModal

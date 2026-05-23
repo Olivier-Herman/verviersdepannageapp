@@ -179,3 +179,14 @@ body {
 .ambient-stagger-7 { animation-delay: 360ms; }
 .ambient-stagger-8 { animation-delay: 420ms; }
 .ambient-stagger-9 { animation-delay: 480ms; }
+
+/* Google Maps Places Autocomplete : la dropdown (.pac-container) est injectee
+   dans <body> avec z-index ~1000 par defaut. Quand on a des modaux ou des
+   conteneurs sticky qui se chevauchent, les suggestions deviennent non
+   cliquables. On force un z-index tres haut pour passer au-dessus de tout. */
+.pac-container {
+  z-index: 99999 !important;
+}
+.pac-item {
+  cursor: pointer;
+}
