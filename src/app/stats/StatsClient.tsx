@@ -6,8 +6,10 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
+import { getSourceColorHex, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 
 interface StatsClientProps {
+  catalogSources: CatalogSource[]
   userRole:    string
   userName:    string
   userEmail?:  string
@@ -65,18 +67,12 @@ const PERIODS = [
   { key: 'year',    label: 'Cette année' },
 ]
 
-const SOURCE_COLORS: Record<string, string> = {
-  vab:      '#3b82f6',
-  touring:  '#eab308',
-  ima:      '#22c55e',
-  mondial:  '#a855f7',
-  ethias:   '#ef4444',
-  inconnu:  '#9ca3af',
-}
+// SOURCE_COLORS retire : remplace par getSourceColorHex(key, catalog) qui
+// lit display_color_hex depuis mission_source_catalog (charge en prop).
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
-export default function StatsClient(props: StatsClientProps) {
+export default function StatsClient({ catalogSources, ...props }: StatsClientProps) {
   const [period, setPeriod] = useState<string>('month')
   const [source, setSource] = useState<string>('')
   const [chauffeur, setChauffeur] = useState<string>('')
@@ -126,7 +122,8 @@ export default function StatsClient(props: StatsClientProps) {
     URL.revokeObjectURL(url)
   }
 
-  const sources = ['vab', 'touring', 'ima', 'mondial', 'ethias', 'autre']
+  // Sources : lues depuis le catalog (passe en prop server-side)
+  const sources = catalogSources.map(s => s.key)
   const types: { value: string; label: string }[] = [
     { value: 'remorquage',  label: 'Remorquage (REM)' },
     { value: 'depannage',   label: 'Dépannage (DSP)' },
@@ -239,7 +236,7 @@ export default function StatsClient(props: StatsClientProps) {
                   <PieChart>
                     <Pie data={data.bySource} dataKey="count" nameKey="source" cx="50%" cy="50%" outerRadius={80} label>
                       {data.bySource.map((entry, idx) => (
-                        <Cell key={idx} fill={SOURCE_COLORS[entry.source.toLowerCase()] || '#9ca3af'} />
+                        <Cell key={idx} fill={getSourceColorHex(entry.source.toLowerCase(), catalogSources)} />
                       ))}
                     </Pie>
                     <Legend />

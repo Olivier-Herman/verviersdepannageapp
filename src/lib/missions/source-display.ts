@@ -9,16 +9,18 @@
 // et passees en prop a tout composant qui en a besoin.
 
 export interface SourceDisplay {
-  key:           string
-  label:         string
-  display_color: string | null   // classe Tailwind (ex 'bg-blue-600') ou null
-  group_key:     string | null   // pour regroupement UI (ex 'police')
+  key:               string
+  label:             string
+  display_color:     string | null   // classe Tailwind (ex 'bg-blue-600') ou null
+  display_color_hex?: string | null  // hex (#3b82f6) pour les charts Recharts/etc.
+  group_key:         string | null   // pour regroupement UI (ex 'police')
 }
 
 // Fallbacks utilises si une source n est pas dans le catalog (ex donnees
 // historiques avec une cle qui n existe plus). Affiche un badge neutre +
 // le label brut transforme en humain.
-const FALLBACK_COLOR = 'bg-zinc-600'
+const FALLBACK_COLOR     = 'bg-zinc-600'
+const FALLBACK_COLOR_HEX = '#9ca3af'
 
 export function getSourceLabel(key: string | null | undefined, catalog: SourceDisplay[]): string {
   if (!key) return '—'
@@ -34,6 +36,14 @@ export function getSourceColor(key: string | null | undefined, catalog: SourceDi
   if (!key) return FALLBACK_COLOR
   const found = catalog.find(s => s.key === key)
   return found?.display_color || FALLBACK_COLOR
+}
+
+// Variante hex pour les composants qui n acceptent pas les classes Tailwind
+// (Recharts, SVG fill, etc.). Cf migration 202605231600.
+export function getSourceColorHex(key: string | null | undefined, catalog: SourceDisplay[]): string {
+  if (!key) return FALLBACK_COLOR_HEX
+  const found = catalog.find(s => s.key === key)
+  return found?.display_color_hex || FALLBACK_COLOR_HEX
 }
 
 // Regroupe les sources par group_key pour les dropdowns "meta-choix" (ex
