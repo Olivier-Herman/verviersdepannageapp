@@ -19,7 +19,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const sb = createAdminClient()
   const { data: mission, error } = await sb
     .from('incoming_missions')
-    .select('id, source, mission_type, client_name, vehicle_mileage, parked_at, intervention_date, received_at, incident_type, parent_mission_id')
+    .select('id, source, mission_type, client_name, vehicle_mileage, parked_at, intervention_date, received_at, incident_type, parent_mission_id, amount_to_collect')
     .eq('id', params.id)
     .single()
 

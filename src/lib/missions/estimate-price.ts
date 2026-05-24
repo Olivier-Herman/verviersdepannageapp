@@ -218,6 +218,12 @@ interface MissionLike {
   // est utilisee pour les modes 'charged' et 'total' (approximation
   // acceptable pour une estimation pre-creation).
   distance_km?:       number | null
+  // Appel Prive (source='prive') : forfait TVAC saisi par dispatcher/chauffeur.
+  // Si rempli, on facture une seule ligne au montant HT = TVAC/1.21.
+  // Si vide, on bascule le calcul sur le tarif 'police_accident' avec ses
+  // majorations horaires (la source originale 'prive' reste preservee pour
+  // le tracking et le naming des lignes).
+  amount_to_collect?: number | null
 }
 
 /** Map mission_type DB vers le canonical attendu en source_tariffs (lowercase). */
@@ -235,6 +241,57 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
 
   if (!source || !missionType) {
     return emptyEstimate(source, missionType || 'inconnu', 'Source ou type mission manquant')
+  }
+
+  // === SOURCE 'prive' (Appel Privé) ===
+  // Particulier qui appelle directement (pas police, pas assistance).
+  //   Cas 1 : forfait TVAC saisi -> 1 seule ligne, HT = TVAC/1.21
+  //   Cas 2 : pas de forfait -> bascule du calcul sur 'police_accident'
+  //           (avec ses majorations horaires). La source originale 'prive'
+  //           reste preservee dans l estimate retourne pour le tracking.
+  if (source === 'prive') {
+    const amountTvac = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
+      ? Number(mission.amount_to_collect)
+      : null
+
+    if (amountTvac != null) {
+      const amountHt = Math.round((amountTvac / 1.21) * 100) / 100
+      return {
+        ok:            true,
+        source:        'prive',
+        mission_type:  missionType,
+        pricing_mode:  'forfait',
+        forfait:       amountHt,
+        km_charged:    0,
+        km_inclus:     0,
+        km_extra:      0,
+        km_extra_eur:  0,
+        parc_jours:    0,
+        parc_eur:      0,
+        subtotal_eur:  amountHt,
+        surcharge_pct: 0,
+        surcharge_eur: 0,
+        total_eur:     amountHt,
+        is_autofac:    false,
+        tariff_id:     'prive-forfait',
+        tariff_doc_path: null,
+        tariff_doc_name: null,
+        breakdown: [
+          { label: 'Forfait négocié', amount: amountHt, note: `${amountTvac.toFixed(2)} € TVAC saisi à la création` },
+        ],
+      }
+    }
+
+    // Pas de forfait -> tarif police_accident + majorations
+    const fallback = await estimateMissionPrice({ ...mission, source: 'police_accident' })
+    return {
+      ...fallback,
+      source: 'prive',
+      breakdown: [
+        ...fallback.breakdown,
+        { label: 'Tarif appliqué', amount: null, note: 'Aucun forfait négocié → tarif Appel Police Accident' },
+      ],
+    }
   }
 
   const sb = createAdminClient()
