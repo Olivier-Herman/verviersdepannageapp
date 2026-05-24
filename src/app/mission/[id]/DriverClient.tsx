@@ -1062,6 +1062,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   //   - autres          : null (le personnel parc choisit a l inventaire)
   const isPoliceAccident = M.source === 'police_accident'
   const isPoliceSaisie   = M.source === 'police_saisie'
+  // Appel Prive : si le client n a pas regle, mise en parc obligatoire en
+  // Transit (pas de livraison sans paiement). Le forfait/tarif sera facture
+  // depuis le bureau via le module Facturation.
+  const isAppelPrive     = M.source === 'prive'
 
   let suggestedZoneKey: string | null = null
   if (parkZoneOverride) {
@@ -1070,6 +1074,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     suggestedZoneKey = (isRollable === true && isRightDirection === true) ? 'A' : 'Transit'
   } else if (isPoliceSaisie) {
     suggestedZoneKey = 'J'
+  } else if (isAppelPrive) {
+    suggestedZoneKey = 'Transit'
   }
 
   // ── Mise en parc ──────────────────────────────────────────────────────────
@@ -2172,6 +2178,34 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
+        {/* Appel Privé : aide visuelle workflow paiement -> livraison/parc */}
+        {isAppelPrive && (
+          <div className={`rounded-2xl p-4 border ${paidEffective
+            ? 'bg-green-600/10 border-green-500/40'
+            : 'bg-amber-600/10 border-amber-500/40'}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">📞</span>
+              <p className={`text-sm font-bold uppercase tracking-wide ${paidEffective ? 'text-green-300' : 'text-amber-300'}`}>
+                Appel Privé — {paidEffective ? 'Paiement OK' : 'Pas encore réglé'}
+              </p>
+            </div>
+            {paidEffective ? (
+              <p className="text-ink-secondary text-xs">
+                ✅ Le client a réglé. Tu peux livrer le véhicule à l&apos;adresse client (REM).
+              </p>
+            ) : (
+              <>
+                <p className="text-ink-secondary text-xs mb-2">
+                  Le client n&apos;a pas réglé. Mets le véhicule en parc <strong>zone TRANSIT</strong> (facturation ultérieure depuis le bureau).
+                </p>
+                <p className="text-amber-300 text-xs font-medium">
+                  ⚠ Pas de livraison sans paiement.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Facturé à + Dossier */}
         <div className="grid grid-cols-2 gap-2">
           <div className="bg-surface border border rounded-2xl p-3">
@@ -2497,6 +2531,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <h2 className="text-ink font-semibold text-lg">🅿️ Choisir le dépôt</h2>
               <button onClick={() => setShowPark(false)} className="text-ink-muted text-2xl">×</button>
             </div>
+
+            {/* Appel Prive : zone Transit par defaut (pas de livraison sans paiement) */}
+            {isAppelPrive && (
+              <div className="bg-amber-900/15 border border-amber-700/30 rounded-2xl p-3 space-y-2">
+                <p className="text-amber-300 text-xs font-medium">📞 Appel Privé — zone parc</p>
+                <p className="text-ink-muted text-xs">
+                  Zone : <strong className="text-ink">Transit</strong>. Le véhicule reste chez nous tant que le client n&apos;a pas réglé. Facturation gérée depuis le bureau.
+                </p>
+              </div>
+            )}
 
             {/* Police Saisie : zone J par defaut, override Transit si pas de place */}
             {isPoliceSaisie && (
