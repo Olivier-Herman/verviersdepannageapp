@@ -103,6 +103,12 @@ export async function POST(req: Request) {
       stage_id?:   number
       stage_name?: string
       notes?:      string
+      // Zone suggeree par le chauffeur lors de la depose. Pour Police Accident,
+      // selon les reponses Roulant + Bon sens, on suggere 'A' ou 'Transit'.
+      // Le personnel parc affecte ensuite la rangee + slot precis a l inventaire.
+      zone_key?:        string         // ex 'A', 'Transit', 'K1', ...
+      is_rollable?:     boolean
+      is_right_direction?: boolean
     }
     park_address?:       string
     park_lat?:           number | null
@@ -206,6 +212,7 @@ export async function POST(req: Request) {
   if (action === 'park') {
     if (park_data?.stage_id)   updatePayload.park_stage_id   = park_data.stage_id
     if (park_data?.stage_name) updatePayload.park_stage_name = park_data.stage_name
+    if (park_data?.zone_key)   updatePayload.parc_zone_key   = park_data.zone_key
     // Adresse du parc devient la destination
     if (body.park_address)     updatePayload.destination_address = body.park_address
     // Ancienne destination devient l'adresse de relivraison

@@ -630,6 +630,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   ))
   const [parkDepot, setParkDepot] = useState<VrLoc | null>(null)
   const [closeNote, setCloseNote] = useState('')
+  // Workflow specifique Police Accident : le chauffeur indique si le vehicule
+  // est roulant + dans le bon sens. Si oui+oui -> zone A, sinon -> Transit.
+  // L admin parc verra la zone suggeree au moment de l inventaire.
+  const [isRollable,        setIsRollable]        = useState<boolean | null>(null)
+  const [isRightDirection,  setIsRightDirection]  = useState<boolean | null>(null)
 
   // Motif DPR (Deplacement Pour Rien)
   const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
@@ -1047,6 +1052,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     finally { setLoading(false) }
   }
 
+  // Calcule la zone suggeree pour les missions Police Accident.
+  // Y+Y -> 'A', sinon 'Transit'. Pour les autres types : null (pas de
+  // suggestion auto, le personnel parc choisit a l inventaire).
+  const isPoliceAccident = M.source === 'police_accident'
+  const suggestedZoneKey: string | null = !isPoliceAccident
+    ? null
+    : (isRollable === true && isRightDirection === true) ? 'A' : 'Transit'
+
   // ── Mise en parc ──────────────────────────────────────────────────────────
   const doPark = async (vr: VrLoc) => {
     setLoading(true); setErr('')
@@ -1063,7 +1076,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             signature: sig || undefined,
             discharge_data: disch.length > 0 ? disch : undefined,
           },
-          park_data: { stage_name: vr.name },
+          park_data: {
+            stage_name:         vr.name,
+            zone_key:           suggestedZoneKey || undefined,
+            is_rollable:        isPoliceAccident ? !!isRollable : undefined,
+            is_right_direction: isPoliceAccident ? !!isRightDirection : undefined,
+          },
           park_address: vr.address, park_lat: vr.lat, park_lng: vr.lng,
           redelivery_address: M.destination_address || undefined,
         }),
@@ -2462,34 +2480,85 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {/* ── Modal Mise en parc ───────────────────────────────────────────── */}
       {showPark && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowPark(false)}>
-          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
               <h2 className="text-ink font-semibold text-lg">🅿️ Choisir le dépôt</h2>
               <button onClick={() => setShowPark(false)} className="text-ink-muted text-2xl">×</button>
             </div>
+
+            {/* Questions Police Accident : roulant + bon sens -> suggestion zone */}
+            {isPoliceAccident && (
+              <div className="bg-blue-900/15 border border-blue-700/30 rounded-2xl p-3 space-y-3">
+                <p className="text-blue-300 text-xs font-medium">🚓 Police Accident — état du véhicule</p>
+                <div>
+                  <p className="text-ink text-xs mb-1.5">Le véhicule est-il roulant ?</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setIsRollable(true)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRollable === true ? 'bg-success text-white border-success' : 'bg-surface border text-ink-secondary'}`}>
+                      Oui
+                    </button>
+                    <button type="button" onClick={() => setIsRollable(false)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRollable === false ? 'bg-warning text-white border-warning' : 'bg-surface border text-ink-secondary'}`}>
+                      Non
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-ink text-xs mb-1.5">Dans le bon sens ?</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setIsRightDirection(true)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRightDirection === true ? 'bg-success text-white border-success' : 'bg-surface border text-ink-secondary'}`}>
+                      Oui
+                    </button>
+                    <button type="button" onClick={() => setIsRightDirection(false)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRightDirection === false ? 'bg-warning text-white border-warning' : 'bg-surface border text-ink-secondary'}`}>
+                      Non
+                    </button>
+                  </div>
+                </div>
+                {suggestedZoneKey && (
+                  <div className={`px-3 py-2 rounded-xl text-sm font-bold ${suggestedZoneKey === 'A' ? 'bg-success-soft text-success border border-success/40' : 'bg-warning-soft text-warning border border-warning/40'}`}>
+                    Zone suggérée : <strong>{suggestedZoneKey}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
             {M.destination_address && (
               <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl px-3 py-2.5">
                 <p className="text-blue-300 text-xs font-medium">📍 Adresse de relivraison à enregistrer</p>
                 <p className="text-ink text-sm">{M.destination_address}</p>
               </div>
             )}
+
+            {/* Le bouton "choisir un depot" reste disabled tant que les questions
+                Police Accident ne sont pas repondues. Pour les autres types, libre. */}
+            {isPoliceAccident && (isRollable === null || isRightDirection === null) && (
+              <p className="text-amber-400 text-xs text-center py-2">
+                ⚠ Réponds aux 2 questions ci-dessus avant de choisir le dépôt
+              </p>
+            )}
+
             {vrLocs.length === 0
               ? <p className="text-ink-faint text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
-              : vrLocs.map(vr => (
-                <button key={vr.id} onClick={() => doPark(vr)} disabled={loading}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 bg-surface border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
-                    vr.is_default ? 'border-amber-500/40' : 'border'
-                  }`}>
-                  <span className="text-xl">🅿️</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-ink font-medium text-sm flex items-center gap-2">
-                      {vr.name}
-                      {vr.is_default && <span className="text-amber-400 text-xs font-normal">défaut</span>}
-                    </p>
-                    <p className="text-ink-muted text-xs truncate">{vr.address}</p>
-                  </div>
-                </button>
-              ))}
+              : vrLocs.map(vr => {
+                const blocked = isPoliceAccident && (isRollable === null || isRightDirection === null)
+                return (
+                  <button key={vr.id} onClick={() => doPark(vr)} disabled={loading || blocked}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 bg-surface border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
+                      vr.is_default ? 'border-amber-500/40' : 'border'
+                    }`}>
+                    <span className="text-xl">🅿️</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-ink font-medium text-sm flex items-center gap-2">
+                        {vr.name}
+                        {vr.is_default && <span className="text-amber-400 text-xs font-normal">défaut</span>}
+                      </p>
+                      <p className="text-ink-muted text-xs truncate">{vr.address}</p>
+                    </div>
+                  </button>
+                )
+              })}
           </div>
         </div>
       )}

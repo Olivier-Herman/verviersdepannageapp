@@ -552,13 +552,46 @@ async function estimateLinesTemplate(
     .or(`effective_to.is.null,effective_to.gte.${today}`)
     .order('position', { ascending: true })
 
-  const templateLines: TemplateLine[] = (lines || []).map(l => ({
-    kind:             l.kind as TemplateLine['kind'],
-    name:             l.name,
-    default_qty:      l.default_qty != null ? Number(l.default_qty) : null,
-    default_price:    l.default_price != null ? Number(l.default_price) : null,
-    apply_surcharges: !!l.apply_surcharges,
-  }))
+  // Auto-calcul de qty pour les lignes specifiques quand default_qty=null :
+  //   - SERV-PARC : nombre de jours depuis mission.parked_at (incl. aujourd hui)
+  //   - SERV-KM   : km totaux (mission.distance_km override ou computeMissionKm
+  //                 selon le contexte). Le tarif source_tariffs.km_basis pilote
+  //                 charged ou total.
+  // Si l auto-calcul donne 0 ou null, la ligne reste default_qty=null
+  // (l employe la saisira manuellement dans l editeur de devis).
+  let autoParcJours = 0
+  if (mission.parked_at) {
+    const parcStart = new Date(mission.parked_at)
+    const parcEnd = new Date()
+    const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
+    autoParcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  }
+  let autoKm = 0
+  if (mission.distance_km != null) {
+    autoKm = mission.distance_km
+  } else if (mission.id) {
+    try {
+      const km = await computeMissionKm(mission.id)
+      autoKm = (tariff.km_basis === 'total' ? km.totalKm : km.chargedKm) ?? 0
+    } catch {}
+  }
+
+  const templateLines: TemplateLine[] = (lines || []).map(l => {
+    const qtyConfigured = l.default_qty != null ? Number(l.default_qty) : null
+    let autoQty: number | null = qtyConfigured
+    // Auto-fill si la ligne n a pas de qty configuree
+    if (qtyConfigured == null) {
+      if (l.kind === 'SERV-PARC' && autoParcJours > 0) autoQty = autoParcJours
+      if (l.kind === 'SERV-KM'   && autoKm > 0)        autoQty = Math.ceil(autoKm)
+    }
+    return {
+      kind:             l.kind as TemplateLine['kind'],
+      name:             l.name,
+      default_qty:      autoQty,
+      default_price:    l.default_price != null ? Number(l.default_price) : null,
+      apply_surcharges: !!l.apply_surcharges,
+    }
+  })
 
   if (templateLines.length === 0) {
     return emptyEstimate(source, missionType,
