@@ -101,6 +101,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
   // SC uniquement : nom de l assistance qui paye (Touring, Ethias, VAB, etc.)
   const [scAssistanceName, setScAssistanceName] = useState('')
+  // Appel Prive : forfait TVAC negocie au tel (optionnel). Si vide, la
+  // facturation appliquera le fallback tarif police_accident + majorations.
+  const [amountToCollect, setAmountToCollect] = useState('')
   // Coordonnees GPS de l intervention (capturees via Google Autocomplete) — necessaires
   // pour le preview tarif SNC qui utilise Google Distance Matrix.
   const [locationLat, setLocationLat] = useState<number | null>(null)
@@ -433,6 +436,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         destination,
         destinationLat,
         destinationLng,
+        // Appel Prive : forfait TVAC saisi (string vide ou nombre)
+        amountToCollect: selectedType === 'appel_prive' ? amountToCollect : null,
       }),
     })
 
@@ -589,6 +594,36 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           </div>
           <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" />
         </Section>}
+
+        {/* Appel Privé : forfait TVAC (optionnel). Si vide -> facturation
+            fallback sur tarif police_accident + majorations. */}
+        {selectedType === 'appel_prive' && (
+          <div className="bg-amber-500/10 border-2 border-amber-500/60 rounded-2xl p-4 shadow-sm space-y-2">
+            <div>
+              <label className="block text-ink text-sm font-bold mb-1">
+                💳 Paiement à réclamer au client (TVAC)
+              </label>
+              <p className="text-ink-muted text-xs leading-relaxed mb-2">
+                Forfait négocié au téléphone, montant <strong>TVAC</strong>.
+                Laisse vide si pas de forfait — on appliquera alors le tarif
+                Appel Police Accident avec ses majorations horaires.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={amountToCollect}
+                onChange={e => setAmountToCollect(e.target.value)}
+                placeholder="0.00"
+                className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+              />
+              <span className="text-ink-muted text-sm font-medium">€ TVAC</span>
+            </div>
+          </div>
+        )}
 
         {/* Remarques */}
         <Section title="Remarques">

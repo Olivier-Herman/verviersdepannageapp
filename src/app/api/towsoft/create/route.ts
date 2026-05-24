@@ -49,6 +49,10 @@ export async function POST(req: Request) {
     // Coordonnees GPS (pour SNC/SC : calcul tarif via Google Distance Matrix)
     incidentLat, incidentLng,
     destinationLat, destinationLng,
+    // Appel Prive : montant TVAC saisi par le dispatcher/chauffeur (forfait
+    // negocie au tel). Si vide -> tarif fallback police_accident applique a
+    // la facturation. Stocke direct dans incoming_missions.amount_to_collect.
+    amountToCollect,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -157,7 +161,12 @@ export async function POST(req: Request) {
 
   // 1. Helpdesk Odoo créé EN PREMIER pour récupérer son ID. On l'intègre ensuite dans
   // le numéro de dossier TowSoft afin que la fiche TowSoft pointe vers son ticket Odoo.
+  // Appel Prive : VD Soft = source de verite (cf. [[project-helpdesk-ticket-obsolete]]).
+  // On saute la creation du ticket Helpdesk Odoo pour ce type.
   let odooTicketId: number | null = null
+  if (type === 'appel_prive') {
+    console.log('[TowSoft] appel_prive: skip ticket Helpdesk Odoo (VD Soft source verite)')
+  } else {
   try {
     const { createHelpdeskTicket } = await import('@/lib/odoo-fsm')
     const result = await createHelpdeskTicket({
@@ -198,24 +207,30 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error('[TowSoft] Helpdesk Odoo échec:', e)
   }
+  }
 
   // 1bis. INSERT incoming_missions pour les missions fourriere (parc VD Soft).
   // Mapping des types police -> source VD Soft + zone parc cible. Etendu au fur
   // et a mesure du chantier fourriere police (Mal Garees + Rodeos pour l instant).
   const FOURRIERE_TYPE_TO_SOURCE: Record<string, string> = {
-    mal_garee: 'police_mg',
-    rodeo:     'police_rodeo',
-    avp:       'police_avp',
-    snc:       'police_snc',
-    sc:        'sia_couvert',
+    mal_garee:   'police_mg',
+    rodeo:       'police_rodeo',
+    avp:         'police_avp',
+    snc:         'police_snc',
+    sc:          'sia_couvert',
+    appel_prive: 'prive',
   }
   // Zone parc cible. Pour SNC/SC : depend du scenario (Transit si rem_depot, sinon
   // pas de zone car le vehicule ne reste pas chez nous).
+  // Appel Prive : pas de zone a la creation. Le chauffeur decide en cloture :
+  //   - client paye -> livraison adresse (pas de parc)
+  //   - client ne paye pas -> Transit (decision chauffeur, pas auto)
   function zoneForType(t: string, sncScenarioVal?: string): string | null {
     if (t === 'mal_garee') return 'L'
     if (t === 'rodeo')     return 'J'
     if (t === 'avp')       return 'J'
     if (t === 'snc' || t === 'sc') return sncScenarioVal === 'rem_depot' ? 'Transit' : null
+    if (t === 'appel_prive') return null
     return null
   }
 
@@ -242,11 +257,12 @@ export async function POST(req: Request) {
     //   avp       -> AVP-XXX
     //   snc       -> SNC-XXX
     const prefixByType: Record<string, string> = {
-      mal_garee: 'MG',
-      rodeo:     'RODEO',
-      avp:       'AVP',
-      snc:       'SNC',
-      sc:        'SC',
+      mal_garee:   'MG',
+      rodeo:       'RODEO',
+      avp:         'AVP',
+      snc:         'SNC',
+      sc:          'SC',
+      appel_prive: 'PRIVE',
     }
     const prefix = prefixByType[type] || 'POLICE'
 
@@ -255,6 +271,7 @@ export async function POST(req: Request) {
     // valider la recuperation, qui nous informe ensuite).
     const isAvp = type === 'avp'
     const isSnc = type === 'snc' || type === 'sc'
+    const isAppelPrive = type === 'appel_prive'
 
     // SNC : mission_type depend du scenario
     //   - dsp        -> depannage
@@ -264,12 +281,16 @@ export async function POST(req: Request) {
       ? (sncScenario === 'dsp' ? 'depannage' : 'remorquage')
       : null
 
-    // SNC : status depend du scenario
-    //   - rem_depot  -> parked (en zone Transit)
-    //   - dsp / rem_client -> completed (mission immediate, paiement chauffeur)
-    const sncStatus = isSnc
+    // Status par type :
+    //   - SNC rem_depot -> parked (en zone Transit)
+    //   - SNC dsp/rem_client -> in_progress (mission immediate, paiement chauffeur)
+    //   - appel_prive -> in_progress (chauffeur va intervenir, pas encore parked)
+    //   - police fourriere classique (mal_garee/rodeo/avp) -> parked
+    const computedStatus = isSnc
       ? (sncScenario === 'rem_depot' ? 'parked' : 'in_progress')
-      : 'parked'
+      : isAppelPrive
+        ? 'in_progress'
+        : 'parked'
 
     const { data: vdData, error: vdErr } = await supabase
       .from('incoming_missions')
@@ -278,7 +299,7 @@ export async function POST(req: Request) {
         dossier_number:     odooTicketId ? `${prefix}-${odooTicketId}` : null,
         source:             vdSource,
         mission_type:       isSnc ? sncMissionType : 'remorquage',
-        status:             isSnc ? sncStatus : 'parked',
+        status:             computedStatus,
         parc_zone_key:      vdZone,
         vehicle_plate:      ((plate || '').trim().toUpperCase()) || null,
         vehicle_vin:        ((vin || '').trim().toUpperCase()) || null,
@@ -288,6 +309,11 @@ export async function POST(req: Request) {
         client_phone:       ownerPhone || null,
         // SC : billed_to = assistance (paye), pas le client
         billed_to_name:     (type === 'sc' && scAssistanceName) ? String(scAssistanceName).trim() : null,
+        // Appel Prive : forfait TVAC saisi par dispatcher/chauffeur. Si vide,
+        // la facturation appliquera le fallback tarif police_accident.
+        amount_to_collect:  isAppelPrive && amountToCollect != null && amountToCollect !== ''
+                              ? Number(amountToCollect)
+                              : null,
         incident_address:   location,
         incident_city:      null,
         incident_lat:       typeof incidentLat === 'number' ? incidentLat : null,
