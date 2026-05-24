@@ -22,9 +22,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Body optionnel : { redelivery_address?: string } pour saisir l'adresse
-  // si elle n'a pas ete capturee au moment de la mise en parc cote chauffeur.
-  let body: { redelivery_address?: string } = {}
+  // Body optionnel :
+  //   - redelivery_address : adresse de relivraison si pas capturee au parc
+  //   - source_override    : source tarifaire de la REL (cas Appel Prive
+  //                          repris par assistance : REM reste 'prive',
+  //                          REL passe en 'touring'/'ethias'/etc.)
+  let body: { redelivery_address?: string; source_override?: string | null } = {}
   try { body = await req.json() } catch {}
 
   const sb = createAdminClient()
@@ -69,6 +72,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     parkLat:           parent.destination_lat ?? null,
     parkLng:           parent.destination_lng ?? null,
     redeliveryAddress: redelivery,
+    sourceOverride:    body.source_override || null,
   })
 
   if (!result) {

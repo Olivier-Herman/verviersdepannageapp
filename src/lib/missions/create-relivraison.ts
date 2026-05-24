@@ -26,6 +26,17 @@ export interface RelivraisonInput {
   parkLng?:         number | null
   /** Adresse originale = destination à atteindre lors de la REL future */
   redeliveryAddress: string
+  /**
+   * Override de la source tarifaire de la REL. Si null/undefined, la REL
+   * herite de parent.source (comportement par defaut).
+   *
+   * Cas d usage Appel Prive : mission parente source='prive' avec billed_to
+   * change vers une assistance apres coup. La REM garde 'prive' (tarif
+   * negocie), mais la REL est facturee au tarif de l assistance qui reprend
+   * (Touring, Ethias, etc.). Le dispatcher choisit la source au moment de
+   * cliquer "Relivrer".
+   */
+  sourceOverride?: string | null
 }
 
 export async function createRelivraisonMission(input: RelivraisonInput): Promise<{ id: string } | null> {
@@ -63,7 +74,9 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
     .insert({
       external_id:           externalId,
       dossier_number:        parent.dossier_number ? `${parent.dossier_number}-REL` : null,
-      source:                parent.source,
+      source:                input.sourceOverride && input.sourceOverride.trim()
+                               ? input.sourceOverride.trim()
+                               : parent.source,
       source_format:         'auto_rel',
       mission_type:          'remorquage',
       incident_type:         'relivraison',

@@ -267,16 +267,37 @@ function AddressReviewModal({
 }
 
 function RelivrerButton({
-  missionId, initialRedeliveryAddress, originalDestination,
+  missionId, initialRedeliveryAddress, originalDestination, parentSource,
 }: {
   missionId: string
   initialRedeliveryAddress?: string | null
   originalDestination?: string | null
+  parentSource: string | null
 }) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
   const [address, setAddress] = useState(initialRedeliveryAddress || originalDestination || '')
+
+  // Cas Appel Prive (parent.source='prive') : le dispatcher peut basculer la
+  // facturation REL vers l assistance qui reprend le dossier (Touring, Ethias,
+  // etc.). La REM reste 'prive' (tarif negocie). Default = '' (= garde 'prive').
+  const isParentPrive = (parentSource || '').toLowerCase() === 'prive'
+  const [sourceOverride, setSourceOverride] = useState<string>('')
+  const [sourcesList, setSourcesList] = useState<Array<{ key: string; label: string }>>([])
+
+  useEffect(() => {
+    if (!isParentPrive) return
+    fetch('/api/missions/sources')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d?.sources)) {
+          // Filtre la source 'prive' elle-meme (pas besoin d override vers le meme)
+          setSourcesList(d.sources.filter((s: any) => s.key !== 'prive'))
+        }
+      })
+      .catch(() => {})
+  }, [isParentPrive])
 
   const hasAddress = (initialRedeliveryAddress || '').trim().length > 0
 
@@ -292,7 +313,10 @@ function RelivrerButton({
       const res = await fetch(`/api/missions/${missionId}/relivrer`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ redelivery_address: finalAddr }),
+        body:    JSON.stringify({
+          redelivery_address: finalAddr,
+          source_override:    sourceOverride.trim() || null,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erreur')
@@ -342,6 +366,29 @@ function RelivrerButton({
           </p>
         )}
       </div>
+
+      {/* Cas Appel Privé : choix de la source tarifaire de la REL (si le
+          dossier a été repris par une assistance après coup). */}
+      {isParentPrive && (
+        <div>
+          <label className="block text-ink-muted text-xs mb-1.5">
+            Source tarifaire de la REL
+          </label>
+          <select
+            value={sourceOverride}
+            onChange={e => setSourceOverride(e.target.value)}
+            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+          >
+            <option value="">Garder Privé (tarif négocié)</option>
+            {sourcesList.map(s => (
+              <option key={s.key} value={s.key}>Reprise par {s.label}</option>
+            ))}
+          </select>
+          <p className="text-ink-muted text-xs mt-1">
+            💡 Si une assurance a repris le dossier, choisis-la ici. La REL sera facturée à son tarif. La mission parente garde le tarif Privé.
+          </p>
+        </div>
+      )}
 
       <button onClick={handle} disabled={loading || !address.trim()}
         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
@@ -2360,6 +2407,7 @@ export default function MissionDetailClient({
                   missionId={initialMission.id}
                   initialRedeliveryAddress={(initialMission as any).redelivery_address}
                   originalDestination={initialMission.destination_address || ''}
+                  parentSource={initialMission.source}
                 />
               )}
 
