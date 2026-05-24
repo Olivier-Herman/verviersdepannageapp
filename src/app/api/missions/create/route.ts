@@ -59,6 +59,7 @@ export async function POST(req: Request) {
       vehicle_vin:          body.vehicle_vin,
       vehicle_fuel:         body.vehicle_fuel,
       vehicle_gearbox:      body.vehicle_gearbox,
+      vehicle_class:        body.vehicle_class === 'moto' ? 'moto' : 'car',
       // Adresses (première = incident, deuxième = destination principale)
       incident_address:     primaryIncident?.address,
       incident_city:        primaryIncident?.city,

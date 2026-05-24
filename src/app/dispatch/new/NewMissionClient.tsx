@@ -355,12 +355,14 @@ export default function NewMissionClient({
   const vehicleSearch = useVehicleSearch()
   const [showVehicleDrop,  setShowVehicleDrop]  = useState(false)
   const [selectedVehicle,  setSelectedVehicle]  = useState<OdooVehicle|null>(null)
-  const [plate,   setPlate]   = useState('')
-  const [brand,   setBrand]   = useState('')
-  const [model,   setModel]   = useState('')
-  const [vin,     setVin]     = useState('')
-  const [fuel,    setFuel]    = useState('')
-  const [gearbox, setGearbox] = useState('')
+  const [plate,        setPlate]        = useState('')
+  const [brand,        setBrand]        = useState('')
+  const [model,        setModel]        = useState('')
+  const [vin,          setVin]          = useState('')
+  const [fuel,         setFuel]         = useState('')
+  const [gearbox,      setGearbox]      = useState('')
+  // Toggle Voiture/Moto. Pilote la grille tarifaire (Police Accident PCD voiture vs PC moto).
+  const [vehicleClass, setVehicleClass] = useState<'car' | 'moto'>('car')
   const [odooVehicleId, setOdooVehicleId] = useState<number|null>(null)
   const [brands,        setBrands]        = useState<Brand[]>([])
   const [models,        setModels]        = useState<Model[]>([])
@@ -461,6 +463,7 @@ export default function NewMissionClient({
               distance_km:     distanceKm,
               intervention_at: interventionAt,
               client_name:     assistedName || billedName || null,
+              vehicle_class:   vehicleClass,
             }),
           })
         }
@@ -484,7 +487,7 @@ export default function NewMissionClient({
       }
     }, 600)
     return () => clearTimeout(handle)
-  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, rdvDate, rdvTime, assistedName, billedName])
+  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, rdvDate, rdvTime, assistedName, billedName, vehicleClass])
 
   // Sélection client facturé → lookup source
   const selectClient = async (c: OdooClient) => {
@@ -673,6 +676,7 @@ export default function NewMissionClient({
           vehicle_vin:     vin,
           vehicle_fuel:    fuel,
           vehicle_gearbox: gearbox,
+          vehicle_class:   vehicleClass,
           destinations,
           warnings:        warningLabels,
           amount_to_collect: amountToCollect ? parseFloat(amountToCollect) : null,
@@ -1048,7 +1052,20 @@ export default function NewMissionClient({
 
               {/* 6. Véhicule */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
-                <h2 className="text-ink font-semibold text-sm mb-4">🚗 Véhicule</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-ink font-semibold text-sm">🚗 Véhicule</h2>
+                  {/* Toggle Voiture/Moto : pilote la grille tarifaire Police Accident (PCD voiture vs PC moto). */}
+                  <div className="inline-flex bg-surface-2 rounded-lg p-0.5 border" role="radiogroup" aria-label="Type de véhicule">
+                    <button type="button" onClick={() => setVehicleClass('car')}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition ${vehicleClass === 'car' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'}`}>
+                      🚗 Voiture
+                    </button>
+                    <button type="button" onClick={() => setVehicleClass('moto')}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition ${vehicleClass === 'moto' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'}`}>
+                      🏍️ Moto
+                    </button>
+                  </div>
+                </div>
                 <div className="relative mb-4">
                   <label className="block text-ink-muted text-xs mb-1.5">Rechercher dans le parc (plaque ou VIN)</label>
                   <input value={vehicleSearch.query}

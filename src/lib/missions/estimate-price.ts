@@ -210,6 +210,9 @@ interface MissionLike {
   received_at?:       string | null
   incident_type?:     string | null
   parent_mission_id?: string | null
+  // Toggle Voiture/Moto : 'car' (default) ou 'moto'. Permet de selectionner
+  // une grille tarifaire specifique (notamment Police Accident PCD vs PC).
+  vehicle_class?:     string | null
   // Override pour preview cote dispatch (avant insertion BDD) : si fourni,
   // bypass computeMissionKm qui exige un mission.id existant. La meme valeur
   // est utilisee pour les modes 'charged' et 'total' (approximation
@@ -236,16 +239,22 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
 
   const sb = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
+  const vehicleClass = (mission.vehicle_class || 'car').toLowerCase()
 
   // 1. Lookup le tarif en vigueur (effective_from <= today, effective_to >= today ou null).
-  //    Si plusieurs lignes, prend la plus recente (effective_from DESC).
+  //    Filtrage par vehicle_class :
+  //      - une grille avec vehicle_class qui match la mission prime sur la generique
+  //      - une grille avec vehicle_class IS NULL est generique (s applique a tous)
+  //    Tri : vehicle_class non-null d abord (specifique > generique), puis effective_from DESC.
   const { data: tariffs } = await sb
     .from('source_tariffs')
     .select('*')
     .eq('source', source)
     .eq('mission_type', missionType)
+    .or(`vehicle_class.eq.${vehicleClass},vehicle_class.is.null`)
     .lte('effective_from', today)
     .or(`effective_to.is.null,effective_to.gte.${today}`)
+    .order('vehicle_class', { ascending: false, nullsFirst: false })
     .order('effective_from', { ascending: false })
     .limit(1)
 

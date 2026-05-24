@@ -39,6 +39,7 @@ export async function POST(req: Request) {
   const interventionAt = body.intervention_at || new Date().toISOString()
   const clientName   = body.client_name || null
   const incidentType = body.incident_type || null
+  const vehicleClass = body.vehicle_class === 'moto' ? 'moto' : 'car'
 
   if (!source) return NextResponse.json({ ok: false, error: 'source manquant' }, { status: 400 })
   if (!missionType) return NextResponse.json({ ok: false, error: 'mission_type manquant' }, { status: 400 })
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
     received_at:       interventionAt,
     incident_type:     incidentType,
     distance_km:       distanceKm,
+    vehicle_class:     vehicleClass,
   })
 
   if (!estimate.ok) {

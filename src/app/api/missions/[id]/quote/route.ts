@@ -70,7 +70,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .from('incoming_missions')
     .select(`
       id, external_id, dossier_number, source, mission_type, status,
-      client_name, vehicle_plate, vehicle_mileage,
+      client_name, vehicle_plate, vehicle_mileage, vehicle_class,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       billed_to_id, billed_to_name,
       odoo_quote_id, odoo_quote_url
