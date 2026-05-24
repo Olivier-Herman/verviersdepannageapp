@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const PROTECTED_KEYS = ['snc', 'accident_police']
+const PROTECTED_KEYS = ['snc', 'police_accident']
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions)
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   }
   const sourceRaw = (body.source || '').trim()
   const labelIn   = (body.label  || '').trim()
-  const kind      = body.kind === 'assistance' || body.kind === 'hors_assistance' ? body.kind : 'assistance'
+  const kind      = body.kind === 'assistance' || body.kind === 'hors_assistance' ? body.kind : 'hors_assistance'
 
   if (!sourceRaw) {
     return NextResponse.json({ error: 'source requise' }, { status: 400 })

@@ -38,7 +38,7 @@ const WEEKDAYS: Array<{ n: number; short: string; long: string }> = [
   { n: 7, short: 'Dim', long: 'Dim / Férié' },
 ]
 
-const PROTECTED_KEYS = ['snc', 'accident_police']
+const PROTECTED_KEYS = ['snc', 'police_accident']
 
 export default function SurchargesClient({
   initialClients, initialSchedules,
@@ -48,13 +48,12 @@ export default function SurchargesClient({
 }) {
   const [clients,   setClients]   = useState<Client[]>(initialClients)
   const [schedules, setSchedules] = useState<Schedule[]>(initialSchedules)
-  const [tab,       setTab]       = useState<'assistance' | 'hors_assistance'>('assistance')
   const [editing,   setEditing]   = useState<{ client: Client; weekday: number } | null>(null)
   const [addingClient, setAddingClient] = useState(false)
 
   const visibleClients = useMemo(
-    () => clients.filter(c => c.kind === tab).sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label)),
-    [clients, tab]
+    () => [...clients].sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label)),
+    [clients]
   )
 
   const schedulesByCell = useMemo(() => {
@@ -89,20 +88,6 @@ export default function SurchargesClient({
     <div className="p-4 lg:p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-ink text-xl font-semibold">Majorations tarifaires</h1>
-        <div className="flex gap-1 bg-surface-2 border rounded-xl p-1">
-          <button
-            onClick={() => setTab('assistance')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === 'assistance' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'}`}
-          >
-            Assistance
-          </button>
-          <button
-            onClick={() => setTab('hors_assistance')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${tab === 'hors_assistance' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'}`}
-          >
-            Hors assistance
-          </button>
-        </div>
       </div>
 
       <div className="bg-info-soft border border-info rounded-xl p-3 flex items-start gap-2">
@@ -130,7 +115,7 @@ export default function SurchargesClient({
             {visibleClients.length === 0 ? (
               <tr>
                 <td colSpan={9} className="text-center py-8 text-ink-muted text-sm">
-                  {tab === 'assistance' ? 'Aucun client d\'assistance. Cliquez sur "+ Ajouter".' : 'Aucun client.'}
+                  Aucune source configuree. Cliquez sur "+ Ajouter".
                 </td>
               </tr>
             ) : visibleClients.map(c => (
@@ -175,14 +160,12 @@ export default function SurchargesClient({
         </table>
       </div>
 
-      {tab === 'assistance' && (
-        <button
-          onClick={() => setAddingClient(true)}
-          className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition flex items-center gap-2"
-        >
-          <Plus size={16} /> Ajouter un client
-        </button>
-      )}
+      <button
+        onClick={() => setAddingClient(true)}
+        className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium transition flex items-center gap-2"
+      >
+        <Plus size={16} /> Ajouter une source
+      </button>
 
       {editing && (
         <EditCellPanel
@@ -463,7 +446,7 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         body: JSON.stringify({
           source: picked.source,
           label:  picked.label,
-          kind:   'assistance',
+          kind:   'hors_assistance',
         }),
       })
       const j = await res.json()
@@ -480,7 +463,7 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
         <div>
-          <h3 className="text-ink font-semibold">Ajouter un client d'assistance</h3>
+          <h3 className="text-ink font-semibold">Ajouter une source</h3>
           <p className="text-ink-muted text-xs mt-1">Choisis une source utilisée dans les missions.</p>
         </div>
 
