@@ -543,22 +543,25 @@ async function estimateLinesTemplate(
   sb:          ReturnType<typeof createAdminClient>,
 ): Promise<PriceEstimate> {
   const today = new Date().toISOString().slice(0, 10)
+  const vehicleClass = (mission.vehicle_class || 'car').toLowerCase()
+
+  // Lignes filtrees par vehicle_class : on prend les lignes specifiques
+  // au vehicle_class de la mission, OU les lignes generiques (vehicle_class IS NULL).
+  // Une ligne specifique prime sur une ligne generique (meme kind+position).
   const { data: lines } = await sb
     .from('source_tariff_lines')
-    .select('id, position, kind, name, default_qty, default_price, apply_surcharges')
+    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class')
     .eq('source', source)
     .eq('mission_type', missionType)
+    .or(`vehicle_class.eq.${vehicleClass},vehicle_class.is.null`)
     .lte('effective_from', today)
     .or(`effective_to.is.null,effective_to.gte.${today}`)
+    .order('vehicle_class', { ascending: false, nullsFirst: false })
     .order('position', { ascending: true })
 
   // Auto-calcul de qty pour les lignes specifiques quand default_qty=null :
-  //   - SERV-PARC : nombre de jours depuis mission.parked_at (incl. aujourd hui)
-  //   - SERV-KM   : km totaux (mission.distance_km override ou computeMissionKm
-  //                 selon le contexte). Le tarif source_tariffs.km_basis pilote
-  //                 charged ou total.
-  // Si l auto-calcul donne 0 ou null, la ligne reste default_qty=null
-  // (l employe la saisira manuellement dans l editeur de devis).
+  //   - SERV-PARC : nombre de jours depuis mission.parked_at
+  //   - SERV-KM   : max(0, autoKm - tariff.km_inclus) (km hors forfait)
   let autoParcJours = 0
   if (mission.parked_at) {
     const parcStart = new Date(mission.parked_at)
@@ -575,21 +578,64 @@ async function estimateLinesTemplate(
       autoKm = (tariff.km_basis === 'total' ? km.totalKm : km.chargedKm) ?? 0
     } catch {}
   }
+  const kmInclus = Number(tariff.km_inclus || 0)
+  const kmHorsForfait = Math.max(0, autoKm - kmInclus)
 
-  const templateLines: TemplateLine[] = (lines || []).map(l => {
+  // 1. Determination si la majoration horaire est applicable (plages
+  //    source-specifiques via /admin/surcharges)
+  let surchargePct = 0
+  let surchargeNote = ''
+  const interventionDateStr = mission.intervention_date || mission.received_at
+  if (interventionDateStr) {
+    try {
+      const applicable = await getApplicableSurcharges({
+        source:            mission.source,
+        client_name:       mission.client_name,
+        mission_type:      mission.mission_type,
+        incident_type:     mission.incident_type || null,
+        parent_mission_id: mission.parent_mission_id || null,
+      }, new Date(interventionDateStr))
+      if (applicable.length > 0) {
+        surchargePct = applicable.reduce((s, x) => s + Number(x.rate_pct || 0), 0)
+        surchargeNote = applicable.map(x => `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`).join(', ')
+      }
+    } catch {}
+  }
+  const isMajored = surchargePct > 0
+
+  // 2. Deduplication par position : garde la ligne specifique au vehicle_class
+  //    si dispo, sinon la generique. (L ORDER BY vehicle_class DESC nullsFirst=false
+  //    a deja place les specifiques avant les generiques.)
+  const seenPositions = new Set<number>()
+  const dedupedLines = (lines || []).filter(l => {
+    if (seenPositions.has(l.position)) return false
+    seenPositions.add(l.position)
+    return true
+  })
+
+  const templateLines: TemplateLine[] = dedupedLines.map(l => {
     const qtyConfigured = l.default_qty != null ? Number(l.default_qty) : null
     let autoQty: number | null = qtyConfigured
-    // Auto-fill si la ligne n a pas de qty configuree
     if (qtyConfigured == null) {
       if (l.kind === 'SERV-PARC' && autoParcJours > 0) autoQty = autoParcJours
-      if (l.kind === 'SERV-KM'   && autoKm > 0)        autoQty = Math.ceil(autoKm)
+      if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)
     }
+    // Choix du prix : si majoration applicable ET la ligne a un prix majore
+    // distinct, on prend ce prix. Sinon prix normal.
+    const priceNormal  = l.default_price != null ? Number(l.default_price) : null
+    const priceMajore  = l.default_price_majore != null ? Number(l.default_price_majore) : null
+    const priceToUse   = (isMajored && priceMajore != null) ? priceMajore : priceNormal
     return {
       kind:             l.kind as TemplateLine['kind'],
       name:             l.name,
       default_qty:      autoQty,
-      default_price:    l.default_price != null ? Number(l.default_price) : null,
-      apply_surcharges: !!l.apply_surcharges,
+      default_price:    priceToUse,
+      apply_surcharges: !!l.apply_surcharges && priceMajore == null,
+      // ^ Si la ligne a son propre prix majore, elle n'est PLUS soumise a la
+      //   majoration calculee +X% (sinon double comptage). Pour les autres
+      //   lignes (Accident PCD/TD/MOE) sans prix majore distinct : ancien
+      //   comportement (apply_surcharges=true -> contribue au subtotal
+      //   majorable -> ligne SERV-MAJ ajoutee).
     }
   })
 
@@ -609,27 +655,12 @@ async function estimateLinesTemplate(
     }
   }
 
-  // Majoration applicable selon heure d'intervention
-  let surchargePct = 0
-  let surchargeNote = ''
-  const interventionDateStr = mission.intervention_date || mission.received_at
-  if (interventionDateStr) {
-    const interventionDate = new Date(interventionDateStr)
-    try {
-      const applicable = await getApplicableSurcharges({
-        source:            mission.source,
-        client_name:       mission.client_name,
-        mission_type:      mission.mission_type,
-        incident_type:     mission.incident_type || null,
-        parent_mission_id: mission.parent_mission_id || null,
-      }, interventionDate)
-      if (applicable.length > 0) {
-        surchargePct = applicable.reduce((s, x) => s + Number(x.rate_pct || 0), 0)
-        surchargeNote = applicable.map(x => `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`).join(', ')
-      }
-    } catch {}
-  }
-
+  // La majoration horaire applicable a deja ete calculee au debut
+  // (surchargePct + surchargeNote sont disponibles). Pour les lignes qui ont
+  // un default_price_majore distinct, on a deja substitue le prix dans le
+  // subtotal — pas de SERV-MAJ calculee a ajouter. Pour les lignes legacy
+  // (apply_surcharges=true SANS default_price_majore), on ajoute la
+  // surcharge sur le subtotal majorable.
   const surchargeEur = (subtotalMajorable * surchargePct) / 100
   const total = subtotalIndicatif + surchargeEur
 
