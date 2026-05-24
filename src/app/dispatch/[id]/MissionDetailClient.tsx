@@ -279,25 +279,29 @@ function RelivrerButton({
   const [createdId, setCreatedId] = useState<string | null>(null)
   const [address, setAddress] = useState(initialRedeliveryAddress || originalDestination || '')
 
-  // Cas Appel Prive (parent.source='prive') : le dispatcher peut basculer la
-  // facturation REL vers l assistance qui reprend le dossier (Touring, Ethias,
-  // etc.). La REM reste 'prive' (tarif negocie). Default = '' (= garde 'prive').
-  const isParentPrive = (parentSource || '').toLowerCase() === 'prive'
+  // Cas reprise par assistance (Appel Prive, SNC, SC, Police Accident) : le
+  // dispatcher peut basculer la facturation REL vers l assistance qui reprend
+  // le dossier (Touring, Ethias, etc.). La REM parente garde son tarif
+  // d origine. Default = '' (= garde la source parente).
+  const parentSourceLower = (parentSource || '').toLowerCase()
+  const allowsSourceOverride = ['prive', 'police_snc', 'police_accident'].includes(parentSourceLower)
   const [sourceOverride, setSourceOverride] = useState<string>('')
   const [sourcesList, setSourcesList] = useState<Array<{ key: string; label: string }>>([])
 
   useEffect(() => {
-    if (!isParentPrive) return
+    if (!allowsSourceOverride) return
     fetch('/api/missions/sources')
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d?.sources)) {
-          // Filtre la source 'prive' elle-meme (pas besoin d override vers le meme)
-          setSourcesList(d.sources.filter((s: any) => s.key !== 'prive'))
+          // Filtre la source parente elle-meme (pas besoin d override vers le meme)
+          // + les sources Police qui ne sont jamais des "assistances qui reprennent"
+          const excluded = new Set([parentSourceLower, 'police_mg', 'police_rodeo', 'police_avp', 'police_saisie'])
+          setSourcesList(d.sources.filter((s: any) => !excluded.has((s.key || '').toLowerCase())))
         }
       })
       .catch(() => {})
-  }, [isParentPrive])
+  }, [allowsSourceOverride, parentSourceLower])
 
   const hasAddress = (initialRedeliveryAddress || '').trim().length > 0
 
@@ -367,9 +371,9 @@ function RelivrerButton({
         )}
       </div>
 
-      {/* Cas Appel Privé : choix de la source tarifaire de la REL (si le
-          dossier a été repris par une assistance après coup). */}
-      {isParentPrive && (
+      {/* Cas Appel Privé / SNC / Police Accident : choix de la source
+          tarifaire de la REL si le dossier a été repris par une assistance. */}
+      {allowsSourceOverride && (
         <div>
           <label className="block text-ink-muted text-xs mb-1.5">
             Source tarifaire de la REL
@@ -379,13 +383,13 @@ function RelivrerButton({
             onChange={e => setSourceOverride(e.target.value)}
             className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
           >
-            <option value="">Garder Privé (tarif négocié)</option>
+            <option value="">Garder la source d&apos;origine</option>
             {sourcesList.map(s => (
               <option key={s.key} value={s.key}>Reprise par {s.label}</option>
             ))}
           </select>
           <p className="text-ink-muted text-xs mt-1">
-            💡 Si une assurance a repris le dossier, choisis-la ici. La REL sera facturée à son tarif. La mission parente garde le tarif Privé.
+            💡 Si une assurance a repris le dossier, choisis-la ici. La REL sera facturée à son tarif. La mission parente garde sa source d&apos;origine.
           </p>
         </div>
       )}

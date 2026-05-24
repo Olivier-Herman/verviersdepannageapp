@@ -30,11 +30,11 @@ export interface RelivraisonInput {
    * Override de la source tarifaire de la REL. Si null/undefined, la REL
    * herite de parent.source (comportement par defaut).
    *
-   * Cas d usage Appel Prive : mission parente source='prive' avec billed_to
-   * change vers une assistance apres coup. La REM garde 'prive' (tarif
-   * negocie), mais la REL est facturee au tarif de l assistance qui reprend
-   * (Touring, Ethias, etc.). Le dispatcher choisit la source au moment de
-   * cliquer "Relivrer".
+   * Cas d usage : mission parente source='prive' / 'police_snc' /
+   * 'police_accident' avec billed_to change vers une assistance apres coup.
+   * La REM garde sa source d origine (tarif d origine), mais la REL est
+   * facturee au tarif de l assistance qui reprend (Touring, Ethias, etc.).
+   * Le dispatcher choisit la source au moment de cliquer "Relivrer".
    */
   sourceOverride?: string | null
 }
