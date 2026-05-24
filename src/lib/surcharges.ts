@@ -145,15 +145,21 @@ function normalizeKey(s: string): string {
 
 /**
  * Detecte le client_key applicable a une mission :
- *   1. mission.source normalise matche une key active dans surcharge_clients → ce client
- *   2. sinon → 'snc' (fallback hors-contrat)
+ *   1. mission.source a apply_surcharges=false dans le catalog → null (aucune majoration)
+ *   2. source normalise matche une key active dans surcharge_clients → ce client
+ *   3. sinon → 'snc' (fallback hors-contrat)
  *
  * Le cas "Appel Police - Accident" doit etre encode comme une source mission
  * normale (cle 'appel_police_accident') liee a un partenaire Odoo via
  * mission_sources, ou choisie au moment de la creation manuelle.
  */
-async function resolveClientKey(mission: MinimalMission, activeKeys: Set<string>): Promise<string> {
+async function resolveClientKey(
+  mission: MinimalMission,
+  activeKeys: Set<string>,
+  sourcesWithoutSurcharges: Set<string>,
+): Promise<string | null> {
   const source = normalizeKey(mission.source || '')
+  if (source && sourcesWithoutSurcharges.has(source)) return null
   if (source && activeKeys.has(source)) return source
 
   return 'snc'
@@ -170,15 +176,17 @@ export async function getApplicableSurcharges(
 ): Promise<ApplicableSurcharge[]> {
   const sb = createAdminClient()
 
-  // 1. Charger les clients actifs pour resoudre la cle
-  const { data: clients } = await sb
-    .from('surcharge_clients')
-    .select('key, label, active')
-    .eq('active', true)
+  // 1. Charger les clients actifs + le flag apply_surcharges du catalog
+  const [{ data: clients }, { data: catalogOff }] = await Promise.all([
+    sb.from('surcharge_clients').select('key, label, active').eq('active', true),
+    sb.from('mission_source_catalog').select('key').eq('apply_surcharges', false),
+  ])
   const activeMap = new Map<string, string>()
   ;(clients || []).forEach(c => activeMap.set(c.key, c.label))
+  const noSurchargeSet = new Set<string>((catalogOff || []).map(c => c.key))
 
-  const clientKey = await resolveClientKey(mission, new Set(activeMap.keys()))
+  const clientKey = await resolveClientKey(mission, new Set(activeMap.keys()), noSurchargeSet)
+  if (!clientKey) return []
   const clientLabel = activeMap.get(clientKey) || clientKey
 
   // 2. Extraire jour/heure dans le timezone Europe/Brussels (le serveur tourne
