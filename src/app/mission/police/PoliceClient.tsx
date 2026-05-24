@@ -92,10 +92,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [ownerPhone,     setOwnerPhone]     = useState('')
   const [remarks,        setRemarks]        = useState('')
   const [policeBlocked,  setPoliceBlocked]  = useState(false)
-  // Rodeo : toggle obligatoire "Levee de saisie validee" + photo doc optionnelle
-  const [leveeSaisieOk,    setLeveeSaisieOk]    = useState(false)
-  const [leveeSaisiePhoto, setLeveeSaisiePhoto] = useState<File | null>(null)
-  const [leveeSaisiePreview, setLeveeSaisiePreview] = useState<string>('')
+  // Note : la levee de saisie Rodeo n est plus saisie depuis le formulaire
+  // chauffeur (Olivier 2026-05-24, regle "info levee = service fourriere
+  // uniquement"). C est la fiche dispatch / le workflow restitution qui
+  // capture la confirmation.
   // SNC (Siabis Non Couvert) + SC (Siabis Couvert) : balisage + scenario
   const [sncRequiresBalisage, setSncRequiresBalisage] = useState(false)
   const [sncScenario, setSncScenario] = useState<'dsp' | 'rem_client' | 'rem_depot' | ''>('')
@@ -401,21 +401,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       } catch (e) { console.error('Upload photos:', e) }
     }
 
-    // Upload photo levee de saisie (Rodeo) si fournie
-    let leveeSaisieDocUrl: string | null = null
-    if (selectedType === 'rodeo' && leveeSaisiePhoto) {
-      try {
-        const fd = new FormData()
-        fd.append('mission_id', `rodeo-levee-${Date.now()}`)
-        fd.append('files', leveeSaisiePhoto)
-        const upRes = await fetch('/api/missions/photos-upload', { method: 'POST', body: fd })
-        if (upRes.ok) {
-          const upData = await upRes.json()
-          leveeSaisieDocUrl = (upData.urls && upData.urls[0]) || null
-        }
-      } catch (e) { console.error('Upload levee:', e) }
-    }
-
     const res = await fetch('/api/towsoft/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -425,8 +410,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         ownerFirstName, ownerLastName, ownerPhone,
         remarks, photoUrls,
         policeBlocked,
-        policeLeveeSaisieOk:     leveeSaisieOk,
-        policeLeveeSaisieDocUrl: leveeSaisieDocUrl,
         sncRequiresBalisage,
         sncScenario:             sncScenario || null,
         scAssistanceName:        selectedType === 'sc' ? scAssistanceName.trim() || null : null,
@@ -794,59 +777,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           </Section>
         )}
 
-        {/* Levee de saisie : visible pour Rodeos. Toggle obligatoire pour pouvoir
-            restituer le vehicule. Photo du document optionnelle. */}
-        {(selectedType === 'rodeo') && (
-          <Section title="📋 Levée de saisie">
-            <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-strong rounded-xl hover:border-rose-500 transition">
-              <input
-                type="checkbox"
-                checked={leveeSaisieOk}
-                onChange={e => setLeveeSaisieOk(e.target.checked)}
-                className="mt-1 w-5 h-5"
-              />
-              <div className="flex-1">
-                <div className="text-ink text-sm font-medium">
-                  J&apos;ai reçu l&apos;accord de levée de saisie de la police
-                </div>
-                <div className="text-ink-muted text-xs mt-1">
-                  Pour les Rodéos, le document de levée de saisie est obligatoire avant restitution. Si tu ne l&apos;as pas encore reçu, laisse décoché — la restitution exigera la confirmation plus tard.
-                </div>
-              </div>
-            </label>
-            {leveeSaisieOk && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs text-ink-muted">Photo du document (optionnel)</p>
-                {leveeSaisiePreview && (
-                  <div className="relative inline-block">
-                    <img src={leveeSaisiePreview} alt="Levée de saisie" className="max-h-32 rounded-lg border" />
-                    <button
-                      type="button"
-                      onClick={() => { setLeveeSaisiePhoto(null); setLeveeSaisiePreview('') }}
-                      className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full text-white text-xs flex items-center justify-center">
-                      ✕
-                    </button>
-                  </div>
-                )}
-                {!leveeSaisiePreview && (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={e => {
-                      const f = e.target.files?.[0]
-                      if (!f) return
-                      setLeveeSaisiePhoto(f)
-                      const reader = new FileReader()
-                      reader.onload = ev => setLeveeSaisiePreview(String(ev.target?.result || ''))
-                      reader.readAsDataURL(f)
-                    }}
-                    className="text-sm text-ink-muted"
-                  />
-                )}
-              </div>
-            )}
-          </Section>
-        )}
+        {/* Note : pas de section "Levée de saisie" cote chauffeur — c est le
+            service fourriere qui gere ca depuis la fiche dispatch / workflow
+            restitution (Olivier 2026-05-24). */}
 
         {/* Photos */}
         <Section title={`Photos (${photos.length})`}>
