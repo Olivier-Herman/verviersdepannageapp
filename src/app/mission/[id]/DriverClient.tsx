@@ -635,6 +635,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // L admin parc verra la zone suggeree au moment de l inventaire.
   const [isRollable,        setIsRollable]        = useState<boolean | null>(null)
   const [isRightDirection,  setIsRightDirection]  = useState<boolean | null>(null)
+  // Override manuel de la zone (Saisie : J par defaut, mais le chauffeur peut
+  // basculer en Transit s il n y a plus de place en J).
+  const [parkZoneOverride,  setParkZoneOverride]  = useState<string | null>(null)
 
   // Motif DPR (Deplacement Pour Rien)
   const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
@@ -1052,13 +1055,22 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     finally { setLoading(false) }
   }
 
-  // Calcule la zone suggeree pour les missions Police Accident.
-  // Y+Y -> 'A', sinon 'Transit'. Pour les autres types : null (pas de
-  // suggestion auto, le personnel parc choisit a l inventaire).
+  // Zone suggeree selon le scenario :
+  //   - Police Accident : Y+Y -> 'A', sinon 'Transit' (Olivier 2026-05-24)
+  //   - Police Saisie   : 'J' par defaut, le chauffeur peut basculer en
+  //                       'Transit' s il n y a plus de place en J
+  //   - autres          : null (le personnel parc choisit a l inventaire)
   const isPoliceAccident = M.source === 'police_accident'
-  const suggestedZoneKey: string | null = !isPoliceAccident
-    ? null
-    : (isRollable === true && isRightDirection === true) ? 'A' : 'Transit'
+  const isPoliceSaisie   = M.source === 'police_saisie'
+
+  let suggestedZoneKey: string | null = null
+  if (parkZoneOverride) {
+    suggestedZoneKey = parkZoneOverride
+  } else if (isPoliceAccident) {
+    suggestedZoneKey = (isRollable === true && isRightDirection === true) ? 'A' : 'Transit'
+  } else if (isPoliceSaisie) {
+    suggestedZoneKey = 'J'
+  }
 
   // ── Mise en parc ──────────────────────────────────────────────────────────
   const doPark = async (vr: VrLoc) => {
@@ -2485,6 +2497,24 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <h2 className="text-ink font-semibold text-lg">🅿️ Choisir le dépôt</h2>
               <button onClick={() => setShowPark(false)} className="text-ink-muted text-2xl">×</button>
             </div>
+
+            {/* Police Saisie : zone J par defaut, override Transit si pas de place */}
+            {isPoliceSaisie && (
+              <div className="bg-blue-900/15 border border-blue-700/30 rounded-2xl p-3 space-y-2">
+                <p className="text-blue-300 text-xs font-medium">🚓 Police Saisie — zone parc</p>
+                <p className="text-ink-muted text-xs">Zone par défaut : <strong className="text-ink">J (Pepinster)</strong>. Bascule en Transit s'il n'y a plus de place en J.</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setParkZoneOverride('J')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${suggestedZoneKey === 'J' ? 'bg-success text-white border-success' : 'bg-surface border text-ink-secondary'}`}>
+                    Zone J (place dispo)
+                  </button>
+                  <button type="button" onClick={() => setParkZoneOverride('Transit')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${suggestedZoneKey === 'Transit' ? 'bg-warning text-white border-warning' : 'bg-surface border text-ink-secondary'}`}>
+                    Transit (J complet)
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Questions Police Accident : roulant + bon sens -> suggestion zone */}
             {isPoliceAccident && (
