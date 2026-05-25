@@ -618,7 +618,7 @@ async function estimateLinesTemplate(
   // requete car chainer deux .or() dans Supabase JS v2 genere ?or=(...)&or=(...)
   // mal interprete par PostgREST. Symptome : la requete renvoie 0 ligne alors
   // que les 6 lignes police_accident existent bien (cf bug Olivier 2026-05-25).
-  const { data: linesRaw } = await sb
+  const { data: linesRaw, error: linesErr } = await sb
     .from('source_tariff_lines')
     .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class, effective_to')
     .eq('source', source)
@@ -626,6 +626,11 @@ async function estimateLinesTemplate(
     .lte('effective_from', today)
     .order('vehicle_class', { ascending: false, nullsFirst: false })
     .order('position', { ascending: true })
+
+  if (linesErr) {
+    console.error('[estimate-price] source_tariff_lines query error:', linesErr.message, { source, missionType, today })
+  }
+  console.log('[estimate-price] lines lookup', { source, missionType, vehicleClass, today, linesRawCount: linesRaw?.length ?? 0 })
 
   const lines = (linesRaw || []).filter(l => {
     const vehicleOk     = !l.vehicle_class || l.vehicle_class === vehicleClass
@@ -714,8 +719,10 @@ async function estimateLinesTemplate(
   })
 
   if (templateLines.length === 0) {
+    // DEBUG temporaire 2026-05-25 : ajoute les compteurs au message pour
+    // diagnostiquer le bug "Aucune ligne" persistant signale par Olivier.
     return emptyEstimate(source, missionType,
-      `Aucune ligne configuree pour ${source}/${missionType} en mode "lines". Ajoute des lignes dans /admin/tarifs.`)
+      `Aucune ligne configuree pour ${source}/${missionType} en mode "lines" (DBG raw=${linesRaw?.length ?? 0} filtered=${lines.length} deduped=${dedupedLines.length} vc=${vehicleClass} today=${today}${linesErr ? ' err=' + linesErr.message : ''}). Ajoute des lignes dans /admin/tarifs.`)
   }
 
   // Calcule un subtotal indicatif (sur les defauts existants) pour estimation
