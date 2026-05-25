@@ -35,6 +35,23 @@ export async function POST(req: Request) {
     ? body.snc_scenario
     : null
 
+  // Normalisation mission_type : le frontend envoie DSP/REM/REM+REL/REL/
+  // Transport/DPR. La BDD stocke le format canonical (remorquage/depannage/
+  // relivraison/transport/trajet_vide). Mapping unique ici.
+  // Olivier 2026-05-25 : sinon le Select 'Type de mission' dans la fiche
+  // dispatch reste vide (options en lowercase ne matchent pas REM upper).
+  function normalizeMissionType(t: string | null | undefined): string | null {
+    const v = (t || '').trim().toLowerCase()
+    if (!v) return null
+    if (v === 'rem' || v === 'rem+rel' || v === 'remorquage') return 'remorquage'
+    if (v === 'rel' || v === 'relivraison') return 'relivraison'
+    if (v === 'dsp' || v === 'depannage' || v === 'reparation_place') return 'depannage'
+    if (v === 'transport') return 'transport'
+    if (v === 'dpr' || v === 'trajet_vide' || v === 'deplacement_pour_rien') return 'trajet_vide'
+    return v  // valeur deja canonical ou inconnue : laisse tel quel
+  }
+  const normalizedMissionType = normalizeMissionType(body.mission_type)
+
   const { data: mission, error } = await supabase
     .from('incoming_missions')
     .insert({
@@ -42,8 +59,11 @@ export async function POST(req: Request) {
       source:               body.source              || 'prive',
       source_format:        'manual',
       source_email_id:      `manual_${Date.now()}`,
-      mission_type:         body.mission_type,
-      incident_type:        body.mission_type,       // DSP/REM/DPR/VR/Transport
+      mission_type:         normalizedMissionType,
+      // incident_type : champ semantique distinct (panne, accident, pneu, etc.).
+      // Plus copie depuis mission_type (Olivier 2026-05-25 : DSP/REM/etc.
+      // affichait "REM" en label incident, ce qui n a aucun sens).
+      incident_type:        body.incident_type        || null,
       incident_description: body.remarks_general,
       dossier_number:       body.dossier_number      || null,
       // Client facturé
@@ -89,7 +109,11 @@ export async function POST(req: Request) {
       incident_at:          body.rdv_at               || now,
       received_at:          now,
       intervention_date:    body.rdv_at               || now,
-      status:               'new',
+      // Olivier 2026-05-25 : "si je l ai creee, c est pas pour confirmer ma
+      // creation". Une mission creee manuellement depuis le formulaire dispatch
+      // saute l etape "new" (qui demande une confirmation par le dispatcher)
+      // et passe direct en 'dispatching' (a assigner a un chauffeur).
+      status:               'dispatching',
       dispatch_mode:        'manual',
       parse_confidence:     1.0,
       // Police-specifiques
