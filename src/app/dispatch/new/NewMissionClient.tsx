@@ -1056,15 +1056,22 @@ export default function NewMissionClient({
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
                 {(() => {
-                  const isSiabisHere   = source === 'police_snc' || source === 'sia_couvert'
-                  const isPoliceHere   = POLICE_PURE_SOURCES.has((source || '').toLowerCase())
-                  // Descriptions par source. Si une source n a pas
-                  // d entree specifique, on tombe sur 'default'.
+                  const isSnc        = source === 'police_snc'
+                  const isSc         = source === 'sia_couvert'
+                  const isPoliceHere = POLICE_PURE_SOURCES.has((source || '').toLowerCase())
+                  // Descriptions par source. Si une source n a pas d entree
+                  // specifique, on tombe sur 'default'.
                   const desc: Record<string, Record<string, string>> = {
                     snc: {
                       DSP:       'Dépannage sur place — réparation autoroute, client paye direct',
                       REM:       'Remorquage avec paiement immédiat du client',
                       'REM+REL': 'Remorquage vers dépôt Pepinster (zone Transit)',
+                      DPR:       'Déplacement pour rien — intervention annulée',
+                    },
+                    sc: {
+                      DSP:       'Dépannage sur place — facturé à l\'assistance',
+                      REM:       'Remorquage vers destination — facturé à l\'assistance',
+                      'REM+REL': 'Remorquage vers dépôt Pepinster — facturé à l\'assistance',
                       DPR:       'Déplacement pour rien — intervention annulée',
                     },
                     police: {
@@ -1081,7 +1088,8 @@ export default function NewMissionClient({
                     },
                   }
                   const pickDesc = (t: string) =>
-                    (isSiabisHere && desc.snc[t]) ||
+                    (isSnc && desc.snc[t]) ||
+                    (isSc  && desc.sc[t]) ||
                     (isPoliceHere && desc.police[t]) ||
                     desc.default[t] || ''
                   return (
