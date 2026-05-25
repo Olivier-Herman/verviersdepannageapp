@@ -264,6 +264,9 @@ function AddrInput({ value, onChange, onPick, placeholder }: {
   onPick: (addr: string, lat: number, lng: number) => void; placeholder?: string
 }) {
   const ref = useRef<HTMLInputElement>(null); const ac = useRef<any>(null)
+  // Refs pour onChange/onPick : evite closure stale (listener cree une fois).
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange
+  const onPickRef   = useRef(onPick);   onPickRef.current   = onPick
   useEffect(() => {
     const init = () => {
       if (!ref.current || !(window as any).google?.maps?.places || ac.current) return
@@ -271,7 +274,7 @@ function AddrInput({ value, onChange, onPick, placeholder }: {
       ac.current.addListener('place_changed', () => {
         const p = ac.current.getPlace(); if (!p?.geometry) return
         const a = p.name && p.formatted_address ? `${p.name}, ${p.formatted_address}` : (p.formatted_address || p.name || '')
-        onChange(a); onPick(a, p.geometry.location.lat(), p.geometry.location.lng())
+        onChangeRef.current(a); onPickRef.current(a, p.geometry.location.lat(), p.geometry.location.lng())
       })
     }
     if ((window as any).google?.maps?.places) init()

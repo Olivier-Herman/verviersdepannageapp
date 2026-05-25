@@ -8,6 +8,10 @@ interface VrLocation { id: string; name: string; address: string; lat: number|nu
 function AddressInput({ value, onChange, onSelect }: { value: string; onChange: (v: string) => void; onSelect: (addr: string, lat: number, lng: number) => void }) {
   const ref = useRef<HTMLInputElement>(null)
   const acRef = useRef<any>(null)
+  // Refs pour onChange/onSelect : evite closure stale (listener cree une fois,
+  // mais props peuvent changer entre re-renders).
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange
+  const onSelectRef = useRef(onSelect); onSelectRef.current = onSelect
   const [gps, setGps] = useState(false)
 
   useEffect(() => {
@@ -20,8 +24,8 @@ function AddressInput({ value, onChange, onSelect }: { value: string; onChange: 
         const p = acRef.current.getPlace()
         if (p?.geometry) {
           const addr = p.name && p.formatted_address ? `${p.name}, ${p.formatted_address}` : (p.formatted_address || p.name || '')
-          onChange(addr)
-          onSelect(addr, p.geometry.location.lat(), p.geometry.location.lng())
+          onChangeRef.current(addr)
+          onSelectRef.current(addr, p.geometry.location.lat(), p.geometry.location.lng())
         }
       })
     }

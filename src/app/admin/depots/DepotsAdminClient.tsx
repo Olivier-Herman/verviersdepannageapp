@@ -48,6 +48,9 @@ function AddressInput({ value, onChange, onSelect }: {
   const ref   = useRef<HTMLInputElement>(null)
   const acRef = useRef<any>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
+  // Refs pour onChange/onSelect : evite closure stale (listener cree une fois).
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange
+  const onSelectRef = useRef(onSelect); onSelectRef.current = onSelect
 
   useEffect(() => {
     const init = () => {
@@ -60,8 +63,8 @@ function AddressInput({ value, onChange, onSelect }: {
         const p = acRef.current.getPlace()
         if (p?.geometry) {
           const addr = p.formatted_address || ''
-          onChange(addr)
-          onSelect(addr, p.geometry.location.lat(), p.geometry.location.lng())
+          onChangeRef.current(addr)
+          onSelectRef.current(addr, p.geometry.location.lat(), p.geometry.location.lng())
         }
       })
     }

@@ -46,6 +46,9 @@ function AddressInput({ value, onChange, onSelect, mapsReady }: {
 }) {
   const ref   = useRef<HTMLInputElement>(null)
   const acRef = useRef<any>(null)
+  // Refs pour onChange/onSelect : evite closure stale (listener cree une fois).
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange
+  const onSelectRef = useRef(onSelect); onSelectRef.current = onSelect
 
   useEffect(() => {
     if (!mapsReady || !ref.current || acRef.current) return
@@ -64,8 +67,8 @@ function AddressInput({ value, onChange, onSelect, mapsReady }: {
       const cityComp = (p.address_components || []).find((c: any) =>
         c.types.includes('locality') || c.types.includes('postal_town')
       )
-      onChange(addr)
-      onSelect(addr, lat, lng, cityComp?.long_name || '')
+      onChangeRef.current(addr)
+      onSelectRef.current(addr, lat, lng, cityComp?.long_name || '')
     })
   }, [mapsReady])
 
