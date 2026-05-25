@@ -2170,20 +2170,19 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       <div className="px-4 py-4 space-y-3">
 
-        {/* ⚠ Particularites du dispatch — bandeau ROUGE bien visible.
-            Info critique pour le chauffeur (Complexe, Vehicule electrique,
-            Cle absente, etc.) saisie a la creation. */}
+        {/* ⚠ Particularites du dispatch — bandeau ROUGE bien lisible
+            en theme clair iOS (text-red-700 + bg-red-50). */}
         {Array.isArray(M.warnings) && M.warnings.length > 0 && (
-          <div className="bg-red-600/15 border-2 border-red-500/60 rounded-2xl p-4">
+          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">⚠️</span>
-              <p className="text-red-300 text-sm font-bold uppercase tracking-wide">
+              <p className="text-red-700 text-sm font-bold uppercase tracking-wide">
                 Particularités à connaître
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {M.warnings.map((w, i) => (
-                <span key={i} className="inline-flex items-center px-3 py-1.5 bg-red-500/20 border border-red-500/40 rounded-lg text-red-200 text-sm font-medium">
+                <span key={i} className="inline-flex items-center px-3 py-1.5 bg-white border border-red-400 rounded-lg text-red-800 text-sm font-semibold shadow-sm">
                   {w}
                 </span>
               ))}
@@ -2213,17 +2212,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         {/* Appel Privé : workflow paiement -> livraison/parc.
             3 etats : paid OK / encaisser / paiement impossible (toggle). */}
         {isAppelPrive && (
-          <div className={`rounded-2xl p-4 border ${paidEffective
-            ? 'bg-green-600/10 border-green-500/40'
+          <div className={`rounded-2xl p-4 border-2 ${paidEffective
+            ? 'bg-green-50 border-green-500'
             : paymentImpossible
-              ? 'bg-amber-600/10 border-amber-500/40'
-              : 'bg-blue-600/10 border-blue-500/40'}`}>
+              ? 'bg-amber-50 border-amber-500'
+              : 'bg-blue-50 border-blue-500'}`}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">📞</span>
               <p className={`text-sm font-bold uppercase tracking-wide ${
-                paidEffective ? 'text-green-300'
-                : paymentImpossible ? 'text-amber-300'
-                : 'text-blue-300'
+                paidEffective ? 'text-green-700'
+                : paymentImpossible ? 'text-amber-700'
+                : 'text-blue-700'
               }`}>
                 Appel Privé — {
                   paidEffective ? 'Paiement OK'
@@ -2234,28 +2233,28 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </div>
 
             {paidEffective ? (
-              <p className="text-ink-secondary text-xs">
+              <p className="text-green-900 text-xs">
                 ✅ Le client a réglé. Tu peux livrer le véhicule à l&apos;adresse client (REM).
               </p>
             ) : paymentImpossible ? (
               <>
-                <p className="text-ink-secondary text-xs mb-2">
+                <p className="text-amber-900 text-sm mb-2">
                   Le client n&apos;a pas pu payer. Mets le véhicule en parc <strong>zone TRANSIT</strong> (facturation ultérieure depuis le bureau).
                 </p>
-                <p className="text-amber-300 text-xs font-medium mb-3">
+                <p className="text-amber-800 text-xs font-semibold mb-3">
                   ⚠ Pas de livraison sans paiement.
                 </p>
                 <button
                   type="button"
                   onClick={() => setPaymentImpossible(false)}
-                  className="text-xs px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg text-amber-300"
+                  className="text-xs px-3 py-1.5 bg-white border border-amber-500 rounded-lg text-amber-800 font-semibold hover:bg-amber-100"
                 >
                   ↩ Annuler — réessayer le paiement
                 </button>
               </>
             ) : (
               <>
-                <p className="text-ink-secondary text-xs mb-3">
+                <p className="text-blue-900 text-sm mb-3">
                   {requiredAmount > 0
                     ? <>Le client doit régler <strong>{formatEur(requiredAmount)}</strong>. Ouvre l&apos;encaissement pour saisir le paiement.</>
                     : 'Aucun montant pré-saisi par le bureau. Ouvre l\'encaissement pour saisir le montant à encaisser au client.'}
@@ -2271,7 +2270,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   <button
                     type="button"
                     onClick={() => setPaymentImpossible(true)}
-                    className="w-full text-xs px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg text-amber-300"
+                    className="w-full text-xs px-3 py-2 bg-white border border-amber-500 rounded-lg text-amber-800 font-semibold hover:bg-amber-100"
                   >
                     🅿️ Paiement impossible par le client → mise en parc Transit
                   </button>
