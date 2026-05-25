@@ -439,8 +439,14 @@ export default function NewMissionClient({
   }, [destinations])
 
   // ── Distance ──────────────────────────────────────────────────────────────
+  // distanceKm = totalKm par defaut (affichage UI). totalKm et chargedKm
+  // exposes separement pour que l API estimate-preview applique la bonne
+  // selon le km_basis du tariff (cf 2026-05-25 Olivier "les km doivent
+  // inclure les stops intermediaires").
   const [distanceKm,  setDistanceKm]  = useState<number|null>(null)
   const [durationMin, setDurationMin] = useState<number|null>(null)
+  const [totalKm,     setTotalKm]     = useState<number|null>(null)
+  const [chargedKm,   setChargedKm]   = useState<number|null>(null)
 
   // ── Avertissements ────────────────────────────────────────────────────────
   const [selectedWarnings, setSelectedWarnings] = useState<string[]>([])
@@ -454,57 +460,69 @@ export default function NewMissionClient({
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
-  // Calcul distance : 3 cas selon les destinations renseignees
-  //   1. incident + destination(s) renseignees -> distance chargee
-  //      (incident -> destination). Utilise par les tarifs km_basis='charged'
-  //      (assurances classiques).
-  //   2. incident seul (pas de destination) -> distance total aller-retour
-  //      depot -> incident -> retour depot (2 x depot-incident).
-  //      Utilise par les tarifs km_basis='total' (Police Accident, Prive,
-  //      Garage, Saisie). Sinon le tarif n inclut pas les km et apparait
-  //      sous-estime.
-  //   3. pas d incident -> reset a 0.
+  // Calcul distance avec DirectionsService (un seul appel, gere les waypoints).
+  // On expose 2 valeurs distinctes utilisees par l API estimate-preview :
+  //   - totalKm   : depot -> incident -> stops -> retour depot
+  //                 (utilise par km_basis='total' : Police Accident, Saisie,
+  //                  Prive, Garage)
+  //   - chargedKm : incident -> stops -> derniere destination
+  //                 (utilise par km_basis='charged' : assurances classiques)
+  // Si une seule destination (incident seul) : chargedKm = 0, totalKm =
+  // 2 x depot-incident.
+  // Resets a 0 si pas d incident.
   useEffect(() => {
-    const inc  = destinations[0]
-    const dest = destinations[1]
+    const inc = destinations[0]
     if (!inc?.lat || !inc?.lng) {
-      setDistanceKm(0); setDurationMin(0); return
+      setDistanceKm(0); setDurationMin(0); setTotalKm(0); setChargedKm(0); return
     }
     if (!(window as any).google?.maps) return
-    const svc = new (window as any).google.maps.DistanceMatrixService()
 
-    if (dest?.lat && dest?.lng) {
-      // Cas 1 : incident -> destination
-      svc.getDistanceMatrix({
-        origins:      [{ lat: inc.lat,  lng: inc.lng }],
-        destinations: [{ lat: dest.lat, lng: dest.lng }],
-        travelMode:   'DRIVING',
+    const stops = destinations.slice(1).filter(d => d.lat != null && d.lng != null)
+      .map(d => ({ lat: d.lat as number, lng: d.lng as number }))
+    const depot = depots.find(d => d.id === departureDepotId)
+    const hasDepot = !!(depot?.lat && depot?.lng)
+    const depotCoord = hasDepot ? { lat: depot!.lat as number, lng: depot!.lng as number } : null
+
+    const dirSvc = new (window as any).google.maps.DirectionsService()
+
+    // === 1) totalKm : depot -> inc -> stops -> retour depot ===
+    if (depotCoord) {
+      const waypointsTotal = [
+        { location: { lat: inc.lat, lng: inc.lng }, stopover: true },
+        ...stops.map(s => ({ location: { lat: s.lat, lng: s.lng }, stopover: true })),
+      ]
+      dirSvc.route({
+        origin:      depotCoord,
+        destination: depotCoord,
+        waypoints:   waypointsTotal,
+        travelMode:  'DRIVING',
       }, (res: any, status: string) => {
-        if (status === 'OK') {
-          const el = res.rows[0].elements[0]
-          if (el.status === 'OK') {
-            setDistanceKm(Math.round(el.distance.value / 1000))
-            setDurationMin(Math.round(el.duration.value / 60))
-          }
+        if (status === 'OK' && res?.routes?.[0]?.legs) {
+          const totalMeters  = res.routes[0].legs.reduce((s: number, l: any) => s + (l.distance?.value || 0), 0)
+          const totalSeconds = res.routes[0].legs.reduce((s: number, l: any) => s + (l.duration?.value || 0), 0)
+          const km = Math.round(totalMeters / 1000)
+          setTotalKm(km)
+          setDistanceKm(km)  // distanceKm = total par defaut (utilise pour affichage UI)
+          setDurationMin(Math.round(totalSeconds / 60))
         }
       })
+    }
+
+    // === 2) chargedKm : inc -> stops (pas de depot ni retour) ===
+    if (stops.length === 0) {
+      setChargedKm(0)
     } else {
-      // Cas 2 : 2 x depot -> incident (aller-retour, total km)
-      const depot = depots.find(d => d.id === departureDepotId)
-      if (!depot?.lat || !depot?.lng) {
-        setDistanceKm(0); setDurationMin(0); return
-      }
-      svc.getDistanceMatrix({
-        origins:      [{ lat: depot.lat, lng: depot.lng }],
-        destinations: [{ lat: inc.lat,   lng: inc.lng   }],
-        travelMode:   'DRIVING',
+      const last = stops[stops.length - 1]
+      const middle = stops.slice(0, -1).map(s => ({ location: { lat: s.lat, lng: s.lng }, stopover: true }))
+      dirSvc.route({
+        origin:      { lat: inc.lat, lng: inc.lng },
+        destination: { lat: last.lat, lng: last.lng },
+        waypoints:   middle,
+        travelMode:  'DRIVING',
       }, (res: any, status: string) => {
-        if (status === 'OK') {
-          const el = res.rows[0].elements[0]
-          if (el.status === 'OK') {
-            setDistanceKm(Math.round((el.distance.value / 1000) * 2))
-            setDurationMin(Math.round((el.duration.value / 60) * 2))
-          }
+        if (status === 'OK' && res?.routes?.[0]?.legs) {
+          const meters = res.routes[0].legs.reduce((s: number, l: any) => s + (l.distance?.value || 0), 0)
+          setChargedKm(Math.round(meters / 1000))
         }
       })
     }
@@ -560,6 +578,8 @@ export default function NewMissionClient({
               source,
               mission_type:    missionType,
               distance_km:     distanceKm,
+              total_km:        totalKm,
+              charged_km:      chargedKm,
               intervention_at: interventionAt,
               client_name:     assistedName || billedName || null,
               vehicle_class:   vehicleClass,
@@ -586,7 +606,7 @@ export default function NewMissionClient({
       }
     }, 600)
     return () => clearTimeout(handle)
-  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, rdvDate, rdvTime, assistedName, billedName, vehicleClass])
+  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, totalKm, chargedKm, rdvDate, rdvTime, assistedName, billedName, vehicleClass])
 
   // Sélection client facturé → lookup source
   const selectClient = async (c: OdooClient) => {

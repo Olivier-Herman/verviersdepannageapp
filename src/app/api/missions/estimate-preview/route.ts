@@ -35,7 +35,14 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const source       = String(body.source || '').trim().toLowerCase()
   const missionType  = String(body.mission_type || '').trim()
+  // distance_km : legacy (meme valeur pour charged/total).
+  // total_km / charged_km : nouveau, exposes separement pour que le code
+  // applique le bon selon tariff.km_basis (Olivier 2026-05-25 : "les km
+  // doivent inclure les stops intermediaires + la boucle aller-retour
+  // depot pour Police Accident").
   const distanceKm   = body.distance_km != null ? Number(body.distance_km) : null
+  const totalKm      = body.total_km    != null ? Number(body.total_km)    : null
+  const chargedKm    = body.charged_km  != null ? Number(body.charged_km)  : null
   const interventionAt = body.intervention_at || new Date().toISOString()
   const clientName   = body.client_name || null
   const incidentType = body.incident_type || null
@@ -53,6 +60,8 @@ export async function POST(req: Request) {
     received_at:       interventionAt,
     incident_type:     incidentType,
     distance_km:       distanceKm,
+    total_km:          totalKm,
+    charged_km:        chargedKm,
     vehicle_class:     vehicleClass,
   })
 

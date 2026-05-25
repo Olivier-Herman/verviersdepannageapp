@@ -214,10 +214,15 @@ interface MissionLike {
   // une grille tarifaire specifique (notamment Police Accident PCD vs PC).
   vehicle_class?:     string | null
   // Override pour preview cote dispatch (avant insertion BDD) : si fourni,
-  // bypass computeMissionKm qui exige un mission.id existant. La meme valeur
-  // est utilisee pour les modes 'charged' et 'total' (approximation
-  // acceptable pour une estimation pre-creation).
+  // bypass computeMissionKm qui exige un mission.id existant.
+  // distance_km : LEGACY, meme valeur pour charged et total.
+  // total_km / charged_km : NOUVEAU (Olivier 2026-05-25). total_km =
+  // boucle complete depot -> incident -> stops -> retour depot.
+  // charged_km = incident -> stops -> derniere destination.
+  // Si total_km ou charged_km est fourni, ils prennent le pas sur distance_km.
   distance_km?:       number | null
+  total_km?:          number | null
+  charged_km?:        number | null
   // Appel Prive (source='prive') : forfait TVAC saisi par dispatcher/chauffeur.
   // Si rempli, on facture une seule ligne au montant HT = TVAC/1.21.
   // Si vide, on bascule le calcul sur le tarif 'police_accident' avec ses
@@ -347,9 +352,14 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   const kmBasis: 'charged' | 'total' = tariff.km_basis === 'total' ? 'total' : 'charged'
   let kmCharged = 0
   let kmTotalRoute = 0
-  if (mission.distance_km != null) {
-    // Preview cote dispatch : utilise le km fourni (Google Maps cote UI),
-    // meme valeur pour charged et total (approximation pre-creation).
+  if (mission.total_km != null || mission.charged_km != null) {
+    // Preview cote dispatch (Olivier 2026-05-25) : valeurs separees calculees
+    // via Google DirectionsService cote UI (waypoints geres). Fallback entre
+    // les 2 si une seule est fournie.
+    kmCharged    = mission.charged_km ?? mission.total_km ?? 0
+    kmTotalRoute = mission.total_km   ?? mission.charged_km ?? 0
+  } else if (mission.distance_km != null) {
+    // LEGACY : meme valeur pour charged et total (approximation acceptable).
     kmCharged    = mission.distance_km
     kmTotalRoute = mission.distance_km
   } else if (mission.id) {
@@ -495,7 +505,10 @@ async function estimateBrackets(
   const kmBasis: 'charged' | 'total' = tariff.km_basis === 'total' ? 'total' : 'charged'
   let kmCharged = 0
   let kmTotalRoute = 0
-  if (mission.distance_km != null) {
+  if (mission.total_km != null || mission.charged_km != null) {
+    kmCharged    = mission.charged_km ?? mission.total_km ?? 0
+    kmTotalRoute = mission.total_km   ?? mission.charged_km ?? 0
+  } else if (mission.distance_km != null) {
     kmCharged    = mission.distance_km
     kmTotalRoute = mission.distance_km
   } else if (mission.id) {
@@ -648,7 +661,12 @@ async function estimateLinesTemplate(
     autoParcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
   }
   let autoKm = 0
-  if (mission.distance_km != null) {
+  if (mission.total_km != null || mission.charged_km != null) {
+    // Preview cote dispatch : on choisit la bonne valeur selon tariff.km_basis.
+    autoKm = tariff.km_basis === 'total'
+      ? (mission.total_km   ?? mission.charged_km ?? 0)
+      : (mission.charged_km ?? mission.total_km   ?? 0)
+  } else if (mission.distance_km != null) {
     autoKm = mission.distance_km
   } else if (mission.id) {
     try {
