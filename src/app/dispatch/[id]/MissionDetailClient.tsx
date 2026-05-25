@@ -2723,6 +2723,7 @@ export default function MissionDetailClient({
       {showCreateClientModal && (
         <CreateClientModal
           initialName={clientQuery || form.billed_to_name || ''}
+          gmKey={googleMapsKey}
           onClose={() => setShowCreateClientModal(false)}
           onCreated={(client) => {
             selectBilledClient({ id: client.id, name: client.name })

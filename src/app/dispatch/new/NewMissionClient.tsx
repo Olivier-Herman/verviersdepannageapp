@@ -1533,6 +1533,7 @@ export default function NewMissionClient({
         {showCreateClient && (
           <CreateClientModal
             initialName={clientSearch.query || billedName}
+            gmKey={googleMapsKey}
             onClose={() => setShowCreateClient(false)}
             onCreated={(client) => {
               // Le nouveau client devient le client lie : on appelle selectClient

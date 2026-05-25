@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
 export interface CreatedClient {
@@ -17,11 +17,12 @@ export interface CreatedClient {
 
 interface Props {
   initialName?: string
+  gmKey?:       string  // Cle Google Maps (pour Places Autocomplete sur l adresse)
   onClose:      () => void
   onCreated:    (client: CreatedClient) => void
 }
 
-export default function CreateClientModal({ initialName, onClose, onCreated }: Props) {
+export default function CreateClientModal({ initialName, gmKey, onClose, onCreated }: Props) {
   const [name,   setName]   = useState(initialName || '')
   const [phone,  setPhone]  = useState('')
   const [mobile, setMobile] = useState('')
@@ -84,6 +85,54 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
       window.removeEventListener('keydown', onKey)
     }
   }, [onClose, saving])
+
+  // Google Maps Places Autocomplete sur le champ "Rue + n°".
+  // Au pick d une suggestion, parse address_components et auto-remplit
+  // street + zip + city + country. Pattern closure-safe : refs pour les
+  // setters utilises dans le listener (sinon le listener cree une fois
+  // referencerait les setters du 1er render — meme bug que ailleurs).
+  const streetInputRef = useRef<HTMLInputElement>(null)
+  const acRef = useRef<any>(null)
+  const settersRef = useRef({ setStreet, setZip, setCity })
+  settersRef.current = { setStreet, setZip, setCity }
+
+  useEffect(() => {
+    if (!gmKey || !streetInputRef.current) return
+    const init = () => {
+      if (!(window as any).google?.maps?.places || acRef.current) return
+      acRef.current = new (window as any).google.maps.places.Autocomplete(streetInputRef.current!, {
+        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
+        fields: ['address_components', 'formatted_address'],
+        types:  ['address'],
+      })
+      acRef.current.addListener('place_changed', () => {
+        const p = acRef.current.getPlace()
+        const comps = p?.address_components || []
+        const get = (type: string) => comps.find((c: any) => c.types?.includes(type))?.long_name || ''
+        const route       = get('route')
+        const number      = get('street_number')
+        const zipFound    = get('postal_code')
+        const cityFound   = get('locality') || get('postal_town')
+        const street      = [route, number].filter(Boolean).join(' ').trim()
+        if (street)    settersRef.current.setStreet(street)
+        if (zipFound)  settersRef.current.setZip(zipFound)
+        if (cityFound) settersRef.current.setCity(cityFound)
+      })
+    }
+    if ((window as any).google?.maps?.places) { init(); return }
+    if (!document.getElementById('gm-script')) {
+      const s = document.createElement('script')
+      s.id     = 'gm-script'
+      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
+      s.onload = init
+      document.head.appendChild(s)
+    } else {
+      const t = setInterval(() => {
+        if ((window as any).google?.maps?.places) { init(); clearInterval(t) }
+      }, 200)
+      return () => clearInterval(t)
+    }
+  }, [gmKey])
 
   async function save() {
     const trimmed = name.trim()
@@ -186,10 +235,19 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
           </div>
 
           <div>
-            <label className="block text-ink-muted text-xs mb-1.5">Rue + n°</label>
-            <input value={street} onChange={e => setStreet(e.target.value)}
-              placeholder="Rue Lefin 12"
-              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+            <label className="block text-ink-muted text-xs mb-1.5">
+              Rue + n° {gmKey && <span className="text-ink-faint">· tape pour suggestions Google</span>}
+            </label>
+            <div className="relative">
+              <input
+                ref={streetInputRef}
+                value={street}
+                onChange={e => setStreet(e.target.value)}
+                placeholder="Rue Lefin 12, Pepinster"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 pr-8 text-ink text-sm focus:outline-none focus:border-brand"
+              />
+              {gmKey && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint text-sm">📍</span>}
+            </div>
           </div>
 
           <div className="grid grid-cols-[120px_1fr] gap-3">
