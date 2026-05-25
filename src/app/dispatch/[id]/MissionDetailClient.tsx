@@ -98,6 +98,11 @@ interface Mission {
   invoiced_at?:    string | null
   police_blocked?: boolean
   parked_at?:      string | null
+  // Position dans le parc (mission parked). Cf migration 202605182100.
+  parc_zone_key?:    string | null
+  parc_row_number?:  number | null
+  parc_slot_index?:  number | null
+  park_stage_name?:  string | null  // nom du depot/stage (ex: "Pepinster")
 }
 
 interface Stop {
@@ -1535,6 +1540,38 @@ export default function MissionDetailClient({
             />
           </div>
         </div>
+
+        {/* ── Bandeau Position parc (visible si mission parked avec zone) ── */}
+        {status === 'parked' && initialMission.parc_zone_key && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-4 flex items-center gap-4">
+              <div className="w-11 h-11 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">🅿️</span>
+              </div>
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-amber-500">
+                  Position parc
+                </span>
+                <span className="text-lg font-bold text-ink truncate">
+                  Zone <span className="font-mono">{initialMission.parc_zone_key}</span>
+                  {initialMission.parc_row_number != null && (
+                    <> · Rang <span className="font-mono">{initialMission.parc_row_number}</span></>
+                  )}
+                  {initialMission.parc_slot_index != null && (
+                    <> · Slot <span className="font-mono">{initialMission.parc_slot_index}</span></>
+                  )}
+                  {initialMission.park_stage_name && (
+                    <span className="text-ink-muted font-normal text-sm"> — {initialMission.park_stage_name}</span>
+                  )}
+                </span>
+              </div>
+              <a href="/fourriere/plan"
+                className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
+                Voir le plan parc →
+              </a>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 px-8 py-6">
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_288px] gap-6">
