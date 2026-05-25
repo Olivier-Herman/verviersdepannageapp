@@ -583,6 +583,10 @@ export default function NewMissionClient({
               intervention_at: interventionAt,
               client_name:     assistedName || billedName || null,
               vehicle_class:   vehicleClass,
+              // Forfait Appel Prive saisi par le dispatcher (TVAC). Si rempli,
+              // estimateMissionPrice retourne 1 ligne "Forfait negocie" au lieu
+              // du fallback police_accident.
+              amount_to_collect: amountToCollect ? Number(amountToCollect) : null,
             }),
           })
         }
@@ -606,7 +610,7 @@ export default function NewMissionClient({
       }
     }, 600)
     return () => clearTimeout(handle)
-  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, totalKm, chargedKm, rdvDate, rdvTime, assistedName, billedName, vehicleClass])
+  }, [source, missionType, sncScenario, sncBalisage, destinations, distanceKm, totalKm, chargedKm, rdvDate, rdvTime, assistedName, billedName, vehicleClass, amountToCollect])
 
   // Sélection client facturé → lookup source
   const selectClient = async (c: OdooClient) => {

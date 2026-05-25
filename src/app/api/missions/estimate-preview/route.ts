@@ -47,6 +47,9 @@ export async function POST(req: Request) {
   const clientName   = body.client_name || null
   const incidentType = body.incident_type || null
   const vehicleClass = body.vehicle_class === 'moto' ? 'moto' : 'car'
+  // Forfait Appel Prive (TVAC). Si fourni > 0, estimateMissionPrice retourne
+  // 1 ligne "Forfait negocie" au lieu du fallback police_accident.
+  const amountToCollect = body.amount_to_collect != null ? Number(body.amount_to_collect) : null
 
   if (!source) return NextResponse.json({ ok: false, error: 'source manquant' }, { status: 400 })
   if (!missionType) return NextResponse.json({ ok: false, error: 'mission_type manquant' }, { status: 400 })
@@ -63,6 +66,7 @@ export async function POST(req: Request) {
     total_km:          totalKm,
     charged_km:        chargedKm,
     vehicle_class:     vehicleClass,
+    amount_to_collect: amountToCollect,
   })
 
   if (!estimate.ok) {
