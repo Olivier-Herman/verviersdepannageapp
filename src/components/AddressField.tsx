@@ -79,6 +79,14 @@ export default function AddressField({
 }) {
   const ref         = useRef<HTMLInputElement>(null)
   const acRef       = useRef<any>(null)
+  // Refs pour onChange + onSelect : evite closure stale (listener cree une
+  // fois mais props peuvent changer entre re-renders). onSelectRef etait
+  // deja en place ; ajout de onChangeRef pour symetrie (sinon le listener
+  // appelait l ancienne version de onChange au clic suggestion -> input
+  // controle se re-render avec ancienne valeur, l adresse semble non
+  // selectionnee). Olivier 2026-05-25.
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
 
@@ -105,7 +113,7 @@ export default function AddressField({
         const isEstablishment = (p.types || []).some((t: string) => t === 'establishment' || t === 'point_of_interest')
         const name = isEstablishment && p.name && !addr.startsWith(p.name) ? p.name as string : undefined
         const display = name ? `${name}, ${addr}` : addr
-        onChange(display)
+        onChangeRef.current(display)
         onSelectRef.current?.(display, lat, lng, city, name)
       })
     }
