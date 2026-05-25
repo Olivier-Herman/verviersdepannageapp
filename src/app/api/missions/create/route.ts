@@ -74,6 +74,13 @@ export async function POST(req: Request) {
       destinations:         body.destinations         || [],
       // Avertissements
       warnings:             body.warnings             || [],
+      // Montant a encaisser saisi par le dispatcher (forfait negocie pour
+      // Appel Prive, ou montant attendu pour autres sources avec encaissement
+      // chauffeur direct). Olivier 2026-05-25 : le frontend envoyait deja
+      // ce champ mais l API l ignorait.
+      amount_to_collect:    body.amount_to_collect    != null
+                              ? Number(body.amount_to_collect)
+                              : null,
       // Remarques
       remarks_general:      body.remarks_general,
       remarks_billing:      body.remarks_billing,

@@ -463,6 +463,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // sur place (revele le bandeau "Mise en parc Transit"). Toggle par bouton
   // dans le bandeau Appel Prive. Pas persiste en BDD (info ephemere).
   const [paymentImpossible, setPaymentImpossible] = useState(false)
+  // Montant calcule via estimate-price (utilise par le bandeau Appel Prive
+  // quand requiredAmount=0 pour montrer le tarif applique : forfait
+  // negocie OU fallback police_accident, en HT et TVAC).
+  const [estimatedAmount, setEstimatedAmount] = useState<{ htva: number; tvac: number } | null>(null)
   // Etat reel persiste : DB > state local (le state local sert de quick-feedback
   // pendant les 3s avant redirect retour depuis /encaissement)
   const hasAnyPayment   = paid || !!M.payment_collected_at
@@ -579,6 +583,25 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       .catch(() => {})
     return () => { cancelled = true }
   }, [M.id, M.amount_to_collect])
+
+  // Fetch estimation tarif (utilisee par bandeau Appel Prive quand pas de
+  // montant pre-saisi : on affiche le total calcule HT + TVAC pour que le
+  // chauffeur sache quel montant proposer au client). Best-effort, silent.
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/missions/${M.id}/price-estimate`)
+      .then(r => r.json())
+      .then(j => {
+        if (cancelled) return
+        if (j?.ok && typeof j.total_eur === 'number' && j.total_eur > 0) {
+          const htva = j.total_eur
+          const tvac = Math.round(htva * 1.21 * 100) / 100
+          setEstimatedAmount({ htva, tvac })
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [M.id])
 
   // Polling 5s en fallback du Realtime : si Realtime ne fire pas (config Supabase
   // douteuse, websocket flap), le chauffeur voit la decision en max 5s.
@@ -2255,9 +2278,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             ) : (
               <>
                 <p className="text-blue-900 text-sm mb-3">
-                  {requiredAmount > 0
-                    ? <>Le client doit régler <strong>{formatEur(requiredAmount)}</strong>. Ouvre l&apos;encaissement pour saisir le paiement.</>
-                    : 'Aucun montant pré-saisi par le bureau. Ouvre l\'encaissement pour saisir le montant à encaisser au client.'}
+                  {requiredAmount > 0 ? (
+                    <>Le client doit régler <strong>{formatEur(requiredAmount)}</strong>. Ouvre l&apos;encaissement pour saisir le paiement.</>
+                  ) : estimatedAmount ? (
+                    <>Le bureau n&apos;a pas pré-saisi de forfait. Tarif calculé : <strong>{estimatedAmount.tvac.toFixed(2)} € TVAC</strong> <span className="text-blue-700">({estimatedAmount.htva.toFixed(2)} € HTVA)</span>. Ouvre l&apos;encaissement pour saisir le montant à encaisser au client.</>
+                  ) : (
+                    'Aucun montant pré-saisi par le bureau. Ouvre l\'encaissement pour saisir le montant à encaisser au client.'
+                  )}
                 </p>
                 <div className="flex flex-col gap-2">
                   <a
