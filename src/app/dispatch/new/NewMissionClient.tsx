@@ -123,8 +123,17 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
 }) {
   const ref       = useRef<HTMLInputElement>(null)
   const acRef     = useRef<any>(null)
+  // Refs pour onChange + onSelect : toujours a jour sans re-init l autocomplete.
+  // BUG fixe Olivier 2026-05-25 : sans onChangeRef, la closure du listener
+  // place_changed capturait la version initiale de onChange (qui pointe vers
+  // updateDest(OLD_destinations, ...)). Le clic sur une suggestion Google
+  // appelait alors un setState base sur l ancienne snapshot du state ->
+  // l input controle se re-rendait avec l ancienne valeur, donnant l impression
+  // que la selection ne fonctionnait pas.
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
   const onSelectRef = useRef(onSelect)
-  onSelectRef.current = onSelect // toujours à jour sans re-init l'autocomplete
+  onSelectRef.current = onSelect
 
   useEffect(() => {
     if (!ref.current || !gmKey) return
@@ -142,7 +151,7 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
           const lat  = p.geometry.location.lat()
           const lng  = p.geometry.location.lng()
           // Mettre à jour le champ immédiatement avant que onBlur ne le vide
-          onChange(addr)
+          onChangeRef.current(addr)
           onSelectRef.current(addr, lat, lng)
         }
       })
