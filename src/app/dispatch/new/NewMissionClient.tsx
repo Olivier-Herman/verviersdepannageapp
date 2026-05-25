@@ -386,12 +386,10 @@ export default function NewMissionClient({
       // est equivalent a un choix explicite -> revele la suite du formulaire.
       setUserPickedType(true)
     } else if (source === 'police_snc' || source === 'sia_couvert') {
-      setMissionType(
-        sncScenario === 'dsp'        ? 'DSP'
-      : sncScenario === 'rem_client' ? 'REM'
-      :                                'REM+REL'  // rem_depot
-      )
-      setUserPickedType(true)
+      // SNC/SC : pas de pre-selection (le user choisit le type d intervention,
+      // et sncScenario est derive depuis ce choix dans un autre useEffect).
+      // sia_couvert n a pas rem_client comme option (filtre dans
+      // getAvailableMissionTypes ailleurs).
     } else {
       // Autres sources : si le missionType courant n est plus dans la liste
       // autorisee pour cette source, reset au premier dispo. Sinon on garde.
@@ -402,6 +400,21 @@ export default function NewMissionClient({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, sncScenario])
+
+  // Derivation sncScenario depuis missionType (SNC/SC uniquement).
+  // Olivier 2026-05-25 : "le scenario est defini via le type d intervention".
+  // Mapping : DSP -> 'dsp', REM -> 'rem_client', REM+REL -> 'rem_depot'.
+  // DPR (annulation) : pas de scenario applicable -> '' (vide).
+  useEffect(() => {
+    if (source !== 'police_snc' && source !== 'sia_couvert') return
+    const derived: 'dsp' | 'rem_client' | 'rem_depot' | '' =
+        missionType === 'DSP'     ? 'dsp'
+      : missionType === 'REM'     ? 'rem_client'
+      : missionType === 'REM+REL' ? 'rem_depot'
+      :                              ''  // DPR / autres -> pas de scenario
+    if (derived !== sncScenario) setSncScenario(derived)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missionType, source])
 
   // === Progressive disclosure : flags qui latchent vers true ===
   // (le flag destinations est plus bas, apres la declaration de `destinations`)
@@ -1020,15 +1033,10 @@ export default function NewMissionClient({
                         : '🛣️ Tarif Siabis Non Couvert (forfait + km dépanneuse). Encaissement immédiat sauf si mise en dépôt.'}
                       {' '}Le chauffeur peut tout modifier sur sa fiche.
                     </p>
-                    <div>
-                      <label className="block text-ink-muted text-xs mb-1.5">Scénario</label>
-                      <select value={sncScenario} onChange={e => setSncScenario(e.target.value)}
-                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
-                        {SNC_SCENARIOS
-                          .filter(s => !(source === 'sia_couvert' && s.value === 'rem_client'))
-                          .map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                      </select>
-                    </div>
+                    {/* Le scenario SNC (dsp/rem_client/rem_depot) est derive
+                        automatiquement du Type d intervention selectionne plus
+                        bas (Olivier 2026-05-25 : "le scenario est defini via
+                        le type d intervention"). Pas de champ separe. */}
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input type="checkbox" checked={sncBalisage} onChange={e => setSncBalisage(e.target.checked)}
                         className="w-5 h-5 accent-cyan-500" />
@@ -1038,23 +1046,51 @@ export default function NewMissionClient({
                 )}
               </div>
 
-              {/* 3. Type d'intervention (apparait apres choix de la source) */}
+              {/* 3. Type d'intervention (apparait apres choix de la source).
+                  Pour SNC/SC, on affiche des descriptions explicites sous
+                  chaque bouton (DSP = depannage place, REM = paiement direct,
+                  REM+REL = mise en depot Pepinster) car le type drive aussi
+                  le scenario tarifaire (cf useEffect derivation sncScenario). */}
               {showType && (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {getAvailableMissionTypes(source).map(t => (
-                    <button key={t.value} onClick={() => { setMissionType(t.value); setUserPickedType(true) }} type="button"
-                      className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
-                        missionType === t.value
-                          ? 'bg-brand border-brand text-white'
-                          : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
-                      }`}>
-                      <div>{t.label.split(' ')[0]}</div>
-                      <div className="text-xs font-bold mt-0.5">{t.value}</div>
-                    </button>
-                  ))}
-                </div>
+                {(() => {
+                  const isSiabisHere = source === 'police_snc' || source === 'sia_couvert'
+                  const sncTypeDescriptions: Record<string, string> = {
+                    DSP:        'Dépannage sur place — réparation autoroute, client paye direct',
+                    REM:        'Remorquage avec paiement immédiat du client',
+                    'REM+REL':  'Remorquage vers dépôt Pepinster (zone Transit, relivraison ultérieure)',
+                    DPR:        'Déplacement pour rien — intervention annulée',
+                  }
+                  return (
+                    <div className={isSiabisHere
+                      ? 'grid grid-cols-1 sm:grid-cols-2 gap-2'
+                      : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2'}>
+                      {getAvailableMissionTypes(source).map(t => (
+                        <button key={t.value} onClick={() => { setMissionType(t.value); setUserPickedType(true) }} type="button"
+                          className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-left ${
+                            missionType === t.value
+                              ? 'bg-brand border-brand text-white'
+                              : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
+                          }`}>
+                          {isSiabisHere ? (
+                            <>
+                              <div className="font-bold">{t.label.split(' ')[0]} {t.value}</div>
+                              <div className={`text-xs mt-0.5 ${missionType === t.value ? 'text-white/80' : 'text-ink-muted'}`}>
+                                {sncTypeDescriptions[t.value] || ''}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-center">{t.label.split(' ')[0]}</div>
+                              <div className="text-xs font-bold mt-0.5 text-center">{t.value}</div>
+                            </>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()}
                 <div className="mt-4">
                   <label className="block text-ink-muted text-xs mb-1.5">Description / Détails</label>
                   <textarea value={description} onChange={e => setDescription(e.target.value)}
