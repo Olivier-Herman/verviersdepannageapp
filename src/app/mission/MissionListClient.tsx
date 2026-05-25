@@ -148,14 +148,14 @@ export default function MissionListClient({
 
             <button
               type="button"
-              onClick={() => router.push('/mission/new')}
+              onClick={() => router.push('/mission/police')}
               className="w-full flex items-start gap-3 p-4 bg-surface-2 hover:bg-surface-hover border rounded-2xl text-left transition active:scale-[0.98]">
               <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center">
                 <Shield size={20} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-ink font-semibold">Appel Police</p>
-                <p className="text-ink-muted text-xs mt-0.5">Accident · Saisie · Mal garée · SNC · AVP</p>
+                <p className="text-ink-muted text-xs mt-0.5">Accident · Saisie · Mal garée · SNC · AVP · Appel Privé</p>
               </div>
             </button>
 
