@@ -69,17 +69,37 @@ export async function POST(req: Request) {
   const totalTvac = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
 
   const lines: Array<{ name: string; qty: number; price_unit: number }> = []
-  if (estimate.forfait && estimate.forfait > 0) {
-    lines.push({ name: 'Forfait', qty: 1, price_unit: estimate.forfait })
+
+  if (estimate.pricing_mode === 'lines' && Array.isArray(estimate.template_lines)) {
+    // Mode 'lines' (Police Accident, Saisie, etc.) : on expose chaque ligne
+    // pre-configuree (PCD/TD/KIL/MOE/ECOPERLE/Gardiennage) avec sa qty et son PU.
+    // Les lignes avec qty=null (a saisir) sont affichees avec qty=0 pour signaler
+    // qu elles existent dans la grille mais ne sont pas encore valorisees.
+    for (const tl of estimate.template_lines) {
+      if (tl.default_price == null) continue
+      const qty = tl.default_qty != null ? Number(tl.default_qty) : 0
+      lines.push({
+        name:       tl.name,
+        qty,
+        price_unit: Number(tl.default_price),
+      })
+    }
+  } else {
+    // Mode 'forfait' / 'brackets' : breakdown synthetique
+    if (estimate.forfait && estimate.forfait > 0) {
+      lines.push({ name: 'Forfait', qty: 1, price_unit: estimate.forfait })
+    }
+    if (estimate.km_extra > 0 && estimate.km_extra_eur > 0) {
+      const pu = estimate.km_extra_eur / estimate.km_extra
+      lines.push({
+        name:       `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
+        qty:        estimate.km_extra,
+        price_unit: Math.round(pu * 100) / 100,
+      })
+    }
   }
-  if (estimate.km_extra > 0 && estimate.km_extra_eur > 0) {
-    const pu = estimate.km_extra_eur / estimate.km_extra
-    lines.push({
-      name:       `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
-      qty:        estimate.km_extra,
-      price_unit: Math.round(pu * 100) / 100,
-    })
-  }
+
+  // Ligne Majoration (toujours derniere) pour les 3 modes
   if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
     lines.push({
       name:       `Majoration ${estimate.surcharge_pct}%`,

@@ -25,33 +25,50 @@ export function buildLinesFromEstimate(
   const lines: QuoteLine[] = []
   const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
 
-  if (estimate.forfait && estimate.forfait > 0) {
-    lines.push({
-      kind:       'SERV-PEC',
-      name:       `Prise en charge ${mission.source ? `(${mission.source.toUpperCase()}) ` : ''}— ${missionRef}`,
-      qty:        1,
-      price_unit: estimate.forfait,
-    })
-  }
+  if (estimate.pricing_mode === 'lines' && Array.isArray(estimate.template_lines)) {
+    // Mode 'lines' (Police Accident, Saisie, etc.) : expose chaque ligne
+    // pre-configuree (PCD/TD/KIL/MOE/ECOPERLE/Gardiennage) avec sa qty et son PU.
+    // Lignes avec qty=null ou price=null ignorees (a saisir manuellement).
+    for (const tl of estimate.template_lines) {
+      if (tl.default_qty == null || tl.default_price == null) continue
+      if (tl.default_qty <= 0 || tl.default_price <= 0) continue
+      lines.push({
+        kind:       tl.kind as QuoteLine['kind'],
+        name:       tl.name,
+        qty:        Number(tl.default_qty),
+        price_unit: Number(tl.default_price),
+      })
+    }
+  } else {
+    // Mode 'forfait' / 'brackets' : breakdown synthetique
+    if (estimate.forfait && estimate.forfait > 0) {
+      lines.push({
+        kind:       'SERV-PEC',
+        name:       `Prise en charge ${mission.source ? `(${mission.source.toUpperCase()}) ` : ''}— ${missionRef}`,
+        qty:        1,
+        price_unit: estimate.forfait,
+      })
+    }
 
-  if (estimate.km_extra > 0 && estimate.km_extra_eur > 0) {
-    const pu = estimate.km_extra_eur / estimate.km_extra
-    lines.push({
-      kind:       'SERV-KM',
-      name:       `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
-      qty:        estimate.km_extra,
-      price_unit: Math.round(pu * 100) / 100,
-    })
-  }
+    if (estimate.km_extra > 0 && estimate.km_extra_eur > 0) {
+      const pu = estimate.km_extra_eur / estimate.km_extra
+      lines.push({
+        kind:       'SERV-KM',
+        name:       `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
+        qty:        estimate.km_extra,
+        price_unit: Math.round(pu * 100) / 100,
+      })
+    }
 
-  if (estimate.parc_jours > 0 && estimate.parc_eur > 0) {
-    const pu = estimate.parc_eur / estimate.parc_jours
-    lines.push({
-      kind:       'SERV-PARC',
-      name:       `Frais de parc (${estimate.parc_jours} jour${estimate.parc_jours > 1 ? 's' : ''})`,
-      qty:        estimate.parc_jours,
-      price_unit: Math.round(pu * 100) / 100,
-    })
+    if (estimate.parc_jours > 0 && estimate.parc_eur > 0) {
+      const pu = estimate.parc_eur / estimate.parc_jours
+      lines.push({
+        kind:       'SERV-PARC',
+        name:       `Frais de parc (${estimate.parc_jours} jour${estimate.parc_jours > 1 ? 's' : ''})`,
+        qty:        estimate.parc_jours,
+        price_unit: Math.round(pu * 100) / 100,
+      })
+    }
   }
 
   if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
