@@ -539,7 +539,13 @@ function DynamicSourceSelect({ value, onChange }: {
   // est inconnue (legacy).
   const currentKey = (value || '').toLowerCase().trim()
   const hasCurrent = !currentKey || sources.some(s => s.source === currentKey)
-  const options = hasCurrent ? sources : [{ source: currentKey, label: currentKey }, ...sources]
+  const merged = hasCurrent ? sources : [{ source: currentKey, label: currentKey }, ...sources]
+  // Tri alphabetique par label (Olivier 2026-05-25 : l API retourne par
+  // sort_order qui n est pas alphabetique, mais l user veut alpha dans ce
+  // dropdown d edition de fiche).
+  const options = [...merged].sort((a, b) =>
+    a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' })
+  )
 
   return (
     <select
