@@ -51,11 +51,16 @@ const MISSION_TYPES = [
 // VR (Vehicule de Remplacement) retire de partout (Olivier 2026-05-25 :
 // "VR ne servira jamais. On le retire de partout").
 
-// Types de mission disponibles selon la source (Olivier 2026-05-25) :
+// Types de mission disponibles selon la source.
+// Olivier 2026-05-25 : "REM+REL ne doit jamais etre dans l encodage d une
+// mission. Et REL tout seul non plus. REM+REL est une consequence generee
+// parce qu un chauffeur depose un vehicule dans le parc au lieu de relivrer.
+// Une REL est creee uniquement via le bouton 'Creer une relivraison' sur
+// une mission REM+REL existante".
+//
 //  - Police pure (accident/saisie/mg/rodeo/avp) : REM / DPR uniquement
-//  - Siabis (police_snc, sia_couvert)           : DSP / REM / REM+REL / DPR
-//  - Assistances / Prive / Garage / autres      : tous (DSP / REM / REM+REL /
-//                                                  REL / Transport / DPR)
+//  - Siabis (police_snc, sia_couvert)           : DSP / REM / DPR
+//  - Assistances / Prive / Garage / autres      : DSP / REM / Transport / DPR
 const POLICE_PURE_SOURCES = new Set([
   'police_accident', 'police_saisie', 'police_mg', 'police_rodeo', 'police_avp',
 ])
@@ -67,10 +72,10 @@ function getAvailableMissionTypes(src: string) {
     return MISSION_TYPES.filter(t => ['REM', 'DPR'].includes(t.value))
   }
   if (SIABIS_SOURCES.has(key)) {
-    return MISSION_TYPES.filter(t => ['DSP', 'REM', 'REM+REL', 'DPR'].includes(t.value))
+    return MISSION_TYPES.filter(t => ['DSP', 'REM', 'DPR'].includes(t.value))
   }
-  // Assistances + Prive + Garage : tous les types restants (VR deja retire)
-  return MISSION_TYPES
+  // Assistances / Prive / Garage : DSP, REM, Transport, DPR
+  return MISSION_TYPES.filter(t => ['DSP', 'REM', 'Transport', 'DPR'].includes(t.value))
 }
 const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
 const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
@@ -403,15 +408,16 @@ export default function NewMissionClient({
 
   // Derivation sncScenario depuis missionType (SNC/SC uniquement).
   // Olivier 2026-05-25 : "le scenario est defini via le type d intervention".
-  // Mapping : DSP -> 'dsp', REM -> 'rem_client', REM+REL -> 'rem_depot'.
+  // REM+REL et REL retires de l encodage : DSP -> 'dsp', REM -> 'rem_client'
+  // par defaut (si le chauffeur depose finalement en parc, le code ajuste
+  // automatiquement vers 'rem_depot' a la cloture chauffeur).
   // DPR (annulation) : pas de scenario applicable -> '' (vide).
   useEffect(() => {
     if (source !== 'police_snc' && source !== 'sia_couvert') return
     const derived: 'dsp' | 'rem_client' | 'rem_depot' | '' =
-        missionType === 'DSP'     ? 'dsp'
-      : missionType === 'REM'     ? 'rem_client'
-      : missionType === 'REM+REL' ? 'rem_depot'
-      :                              ''  // DPR / autres -> pas de scenario
+        missionType === 'DSP' ? 'dsp'
+      : missionType === 'REM' ? 'rem_client'
+      :                          ''  // DPR / autres -> pas de scenario
     if (derived !== sncScenario) setSncScenario(derived)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missionType, source])
@@ -1063,26 +1069,22 @@ export default function NewMissionClient({
                   // specifique, on tombe sur 'default'.
                   const desc: Record<string, Record<string, string>> = {
                     snc: {
-                      DSP:       'Dépannage sur place — réparation autoroute, client paye direct',
-                      REM:       'Remorquage avec paiement immédiat du client',
-                      'REM+REL': 'Remorquage vers dépôt Pepinster (zone Transit)',
-                      DPR:       'Déplacement pour rien — intervention annulée',
+                      DSP: 'Dépannage sur place — réparation autoroute, client paye direct',
+                      REM: 'Remorquage — paiement immédiat du client ou dépôt parc selon décision chauffeur',
+                      DPR: 'Déplacement pour rien — intervention annulée',
                     },
                     sc: {
-                      DSP:       'Dépannage sur place — facturé à l\'assistance',
-                      REM:       'Remorquage vers destination — facturé à l\'assistance',
-                      'REM+REL': 'Remorquage vers dépôt Pepinster — facturé à l\'assistance',
-                      DPR:       'Déplacement pour rien — intervention annulée',
+                      DSP: 'Dépannage sur place — facturé à l\'assistance',
+                      REM: 'Remorquage vers destination ou dépôt — facturé à l\'assistance',
+                      DPR: 'Déplacement pour rien — intervention annulée',
                     },
                     police: {
-                      REM:       'Remorquage vers parc fourrière',
-                      DPR:       'Déplacement pour rien — mission annulée par police',
+                      REM: 'Remorquage vers parc fourrière',
+                      DPR: 'Déplacement pour rien — mission annulée par police',
                     },
                     default: {
                       DSP:       'Dépannage sur place — réparation directe au véhicule',
                       REM:       'Remorquage simple vers une destination',
-                      'REM+REL': 'Remorquage avec mise en parc + relivraison ultérieure',
-                      REL:       'Relivraison depuis dépôt vers destination finale',
                       Transport: 'Transport / rapatriement longue distance',
                       DPR:       'Déplacement pour rien — intervention annulée',
                     },
