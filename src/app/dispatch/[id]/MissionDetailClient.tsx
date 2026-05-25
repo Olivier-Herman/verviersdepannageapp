@@ -883,10 +883,15 @@ export default function MissionDetailClient({
     setClientQuery('')
     setClientResults([])
     setShowClientDrop(false)
+    // Persistance immediate (Olivier 2026-05-25) : sinon la fiche reste avec
+    // billed_to_id=null en BDD tant qu on n a pas clique "Sauvegarder", et
+    // le modal Facturer affiche "Client : —".
+    silentPatch({ billed_to_id: c.id, billed_to_name: c.name })
   }
   const clearBilledClient = () => {
     setBilledPartnerId(null)
     setForm(prev => ({ ...prev, billed_to_name: '' }))
+    silentPatch({ billed_to_id: null, billed_to_name: null })
   }
 
   // ── Recherche/lien véhicule Odoo (par plaque ou VIN) ────────────────────────
@@ -2261,6 +2266,10 @@ export default function MissionDetailClient({
                       onClick={async () => {
                         if (!confirm('Réinitialiser la mission en "En attente" et désassigner le chauffeur ?')) return
                         try {
+                          // Auto-save du form avant la transition pour ne pas
+                          // perdre les modifs non encore sauvegardees (Olivier
+                          // 2026-05-25).
+                          await handleSave()
                           await fetch(`/api/missions/${initialMission.id}/force-status`, {
                             method:  'POST',
                             headers: { 'Content-Type': 'application/json' },
