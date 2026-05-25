@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
   const { data: missions, error } = await sb
     .from('incoming_missions')
-    .select('id, external_id, dossier_number, source, vehicle_plate, created_at')
+    .select('id, external_id, dossier_number, source, vehicle_plate, vehicle_brand, vehicle_model, created_at')
     .gte('created_at', fromIso)
     .lte('created_at', toIso)
     .in('source', sources)
@@ -124,6 +124,9 @@ export async function POST(req: Request) {
       const zpl = template.build({
         qrUrl: `${QR_BASE}/${ticketId}`,
         motif, date, note,
+        brand: (m as any).vehicle_brand || undefined,
+        model: (m as any).vehicle_model || undefined,
+        plate: m.vehicle_plate || undefined,
       })
       const printResult = await printZPLRaw(zpl)
       results.push({ ...base, ok: printResult.ok, error: printResult.error })

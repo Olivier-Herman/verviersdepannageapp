@@ -65,11 +65,37 @@ async function fetchParcEntreeData(ticketId: number) {
     ? String(t.x_studio_note_sur_etiquette)
     : ''
 
+  // Marque/modele/plaque depuis towsoft_queue (alimentee a la creation de
+  // la mission dans /api/towsoft/create). Lookup par odoo_ticket_id.
+  // Best-effort : si la queue n a pas la mission (cas rare), on imprime
+  // sans ces infos plutot que d echouer.
+  let brand: string | undefined
+  let model: string | undefined
+  let plate: string | undefined
+  try {
+    const sb = createAdminClient()
+    const { data: tq } = await sb
+      .from('towsoft_queue')
+      .select('plate, brand, model')
+      .eq('odoo_ticket_id', ticketId)
+      .maybeSingle()
+    if (tq) {
+      brand = tq.brand || undefined
+      model = tq.model || undefined
+      plate = tq.plate || undefined
+    }
+  } catch (e: any) {
+    console.warn('[label] lookup towsoft_queue echec (non bloquant):', e.message)
+  }
+
   return {
     qrUrl: `${QR_BASE}/${ticketId}`,
     motif,
     date,
     note,
+    brand,
+    model,
+    plate,
   }
 }
 
