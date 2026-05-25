@@ -332,6 +332,15 @@ export default function NewMissionClient({
 
   // ── Type + mission ────────────────────────────────────────────────────────
   const [missionType,  setMissionType]  = useState('DSP')
+  // Affichage progressif des blocs (Olivier 2026-05-25 : "les bloc s affiche
+  // au fur et a mesure de la completion"). Les flags latchent (passent a true
+  // une fois la condition remplie et restent, meme si on revient en arriere
+  // pour modifier).
+  const [userPickedType,     setUserPickedType]     = useState(false)
+  const [showType,           setShowType]           = useState(false)
+  const [showClients,        setShowClients]        = useState(false)
+  const [showAddresses,      setShowAddresses]      = useState(false)
+  const [showRest,           setShowRest]           = useState(false)
   const [description,  setDescription]  = useState('')
 
   // ── Chauffeur assigne (optionnel) ─────────────────────────────────────────
@@ -373,12 +382,16 @@ export default function NewMissionClient({
   useEffect(() => {
     if (POLICE_PURE_SOURCES.has((source || '').toLowerCase())) {
       setMissionType('REM')
+      // Police : le type est figé (REM ou DPR uniquement), donc auto-pick
+      // est equivalent a un choix explicite -> revele la suite du formulaire.
+      setUserPickedType(true)
     } else if (source === 'police_snc' || source === 'sia_couvert') {
       setMissionType(
         sncScenario === 'dsp'        ? 'DSP'
       : sncScenario === 'rem_client' ? 'REM'
       :                                'REM+REL'  // rem_depot
       )
+      setUserPickedType(true)
     } else {
       // Autres sources : si le missionType courant n est plus dans la liste
       // autorisee pour cette source, reset au premier dispo. Sinon on garde.
@@ -389,6 +402,14 @@ export default function NewMissionClient({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, sncScenario])
+
+  // === Progressive disclosure : flags qui latchent vers true ===
+  // (le flag destinations est plus bas, apres la declaration de `destinations`)
+  useEffect(() => { if (source) setShowType(true) }, [source])
+  useEffect(() => { if (userPickedType) setShowClients(true) }, [userPickedType])
+  useEffect(() => {
+    if (odooPartnerId || (billedName && billedName.trim().length >= 2)) setShowAddresses(true)
+  }, [odooPartnerId, billedName])
 
   // ── Véhicule ──────────────────────────────────────────────────────────────
   const vehicleSearch = useVehicleSearch()
@@ -411,6 +432,11 @@ export default function NewMissionClient({
   const [destinations, setDestinations] = useState<Destination[]>([
     { id: 'incident', label: 'Incident', address: '', lat: null, lng: null, city: '' }
   ])
+
+  // === Progressive disclosure (suite) : flag base sur destinations[0] ===
+  useEffect(() => {
+    if (destinations[0]?.address && destinations[0].address.trim().length > 3) setShowRest(true)
+  }, [destinations])
 
   // ── Distance ──────────────────────────────────────────────────────────────
   const [distanceKm,  setDistanceKm]  = useState<number|null>(null)
@@ -988,12 +1014,13 @@ export default function NewMissionClient({
                 )}
               </div>
 
-              {/* 3. Type d'intervention */}
+              {/* 3. Type d'intervention (apparait apres choix de la source) */}
+              {showType && (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                   {getAvailableMissionTypes(source).map(t => (
-                    <button key={t.value} onClick={() => setMissionType(t.value)} type="button"
+                    <button key={t.value} onClick={() => { setMissionType(t.value); setUserPickedType(true) }} type="button"
                       className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-center ${
                         missionType === t.value
                           ? 'bg-brand border-brand text-white'
@@ -1011,8 +1038,10 @@ export default function NewMissionClient({
                     className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint" />
                 </div>
               </div>
+              )}
 
-              {/* 4. Client facturé */}
+              {/* 4. Client facturé + Client assisté (apparaissent apres choix d un type) */}
+              {showClients && (<>
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
                 <div className="relative mb-3">
@@ -1103,8 +1132,10 @@ export default function NewMissionClient({
                   </div>
                 </div>
               </div>
+              </>)}
 
-              {/* 5. Adresses multiples */}
+              {/* 5. Adresses (apparait apres selection du client facture) */}
+              {showAddresses && (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">📍 Adresses</h2>
                 <DestinationsBlock
@@ -1122,6 +1153,11 @@ export default function NewMissionClient({
                   </div>
                 )}
               </div>
+              )}
+
+              {/* 6+. Vehicule + Avertissements + Remarques + autres
+                  (apparaissent apres saisie d une adresse minimum) */}
+              {showRest && (<>
 
               {/* 6. Véhicule */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
@@ -1335,6 +1371,8 @@ export default function NewMissionClient({
                   </div>
                 </div>
               </div>
+
+              </>)}
             </div>
 
             {/* ── Colonne droite : résumé + action (sticky en desktop) ──────
