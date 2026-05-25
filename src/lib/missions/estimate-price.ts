@@ -653,9 +653,17 @@ async function estimateLinesTemplate(
   // Auto-calcul de qty pour les lignes specifiques quand default_qty=null :
   //   - SERV-PARC : nombre de jours depuis mission.parked_at
   //   - SERV-KM   : max(0, autoKm - tariff.km_inclus) (km hors forfait)
+  //
+  // Fallback parked_at -> received_at (Olivier 2026-05-25) : certaines missions
+  // legacy parked n ont pas parked_at en BDD (set seulement depuis les
+  // transitions recentes). Pour eviter "Frais de gardiennage : qty/PU a saisir",
+  // on prend received_at comme proxy (date de reception ~= date d entree parc
+  // pour les missions Police fourriere). Le fallback ne tire que sur des
+  // grilles qui ont effectivement une ligne SERV-PARC (= sources fourriere).
   let autoParcJours = 0
-  if (mission.parked_at) {
-    const parcStart = new Date(mission.parked_at)
+  const parkedRef = mission.parked_at || mission.received_at
+  if (parkedRef) {
+    const parcStart = new Date(parkedRef)
     const parcEnd = new Date()
     const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
     autoParcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
@@ -761,11 +769,25 @@ async function estimateLinesTemplate(
   const total = subtotalIndicatif + surchargeEur
 
   const breakdown = [
-    ...templateLines.map(l => ({
-      label: `${l.kind} — ${l.name}`,
-      amount: (l.default_qty != null && l.default_price != null) ? l.default_qty * l.default_price : null,
-      note:  (l.default_qty == null || l.default_price == null) ? 'qty/PU à saisir' : undefined,
-    })),
+    ...templateLines.map(l => {
+      const hasQty   = l.default_qty   != null && l.default_qty > 0
+      const hasPrice = l.default_price != null
+      const unit     = l.kind === 'SERV-PARC' ? 'jour' : l.kind === 'SERV-KM' ? 'km' : 'u'
+      // Note plus parlante quand on a le PU mais pas la qty : affiche
+      // "20.00 EUR/jour" plutot que "qty/PU a saisir" (Olivier 2026-05-25 :
+      // "les jours de gardiennage toujours pas visible dans l estimation").
+      let note: string | undefined
+      if (!hasQty && hasPrice) {
+        note = `${Number(l.default_price).toFixed(2)} €/${unit}`
+      } else if (!hasQty || !hasPrice) {
+        note = 'qty/PU à saisir'
+      }
+      return {
+        label: `${l.kind} — ${l.name}`,
+        amount: (hasQty && hasPrice) ? Number(l.default_qty) * Number(l.default_price) : null,
+        note,
+      }
+    }),
     { label: 'Majoration horaire', amount: surchargeEur > 0 ? surchargeEur : null, note: surchargeNote || 'aucune' },
   ]
 
