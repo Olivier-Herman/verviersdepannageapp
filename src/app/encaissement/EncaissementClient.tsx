@@ -296,24 +296,39 @@ export default function EncaissementClient({
 
   // Auto-prefill complet depuis la mission : si mission_id est fourni, on
   // fetch /api/missions/[id] au mount pour recuperer brand, model, client,
-  // phone, etc. et pre-remplir le formulaire. Le chauffeur ne doit pas
-  // re-saisir ce qui est deja dans la fiche (Olivier 2026-05-25).
+  // phone, lieu d intervention, etc. et pre-remplir le formulaire. Si le
+  // montant n est pas deja pre-saisi (forfait dispatch), on fetch aussi
+  // /price-estimate pour pre-remplir avec le total TVAC calcule.
+  // Olivier 2026-05-25 : "le chauffeur ne va pas faire deux fois le travail".
   useEffect(() => {
     if (!prefill?.mission_id) return
     let cancelled = false
-    fetch(`/api/missions/${prefill.mission_id}`)
-      .then(r => r.json())
-      .then(m => {
-        if (cancelled || !m || m.error) return
-        if (m.vehicle_plate)  setPlate(prev => prev || m.vehicle_plate)
-        if (m.vehicle_brand)  setSelectedBrand(prev => prev || m.vehicle_brand)
-        if (m.vehicle_model)  setSelectedModel(prev => prev || m.vehicle_model)
+    const missionId = prefill.mission_id
+    Promise.all([
+      fetch(`/api/missions/${missionId}`).then(r => r.json()).catch(() => null),
+      prefill.amount ? Promise.resolve(null) : fetch(`/api/missions/${missionId}/price-estimate`).then(r => r.json()).catch(() => null),
+    ]).then(([m, est]) => {
+      if (cancelled) return
+      // Mission : plate / brand / model / client / phone / email / lieu
+      if (m && !m.error) {
+        if (m.vehicle_plate)     setPlate(prev => prev || m.vehicle_plate)
+        if (m.vehicle_brand)     setSelectedBrand(prev => prev || m.vehicle_brand)
+        if (m.vehicle_model)     setSelectedModel(prev => prev || m.vehicle_model)
         const cname = m.client_name || m.billed_to_name || ''
-        if (cname)            setClientName(prev => prev || cname)
-        if (m.client_phone)   setClientPhone(prev => prev || m.client_phone)
-        if (m.client_email)   setClientEmail(prev => prev || m.client_email)
-      })
-      .catch(() => {})
+        if (cname)               setClientName(prev => prev || cname)
+        if (m.client_phone)      setClientPhone(prev => prev || m.client_phone)
+        if (m.client_email)      setClientEmail(prev => prev || m.client_email)
+        // Lieu d intervention : pre-remplit le champ location avec
+        // l adresse de l incident concatenee (rue + ville).
+        const loc = [m.incident_address, m.incident_city].filter(Boolean).join(', ')
+        if (loc)                 setLocation(prev => prev || loc)
+      }
+      // Estimate : pre-remplit le montant TVAC si pas deja set
+      if (est?.ok && typeof est.total_eur === 'number' && est.total_eur > 0) {
+        const tvac = Math.round(est.total_eur * 1.21 * 100) / 100
+        setAmount(prev => prev || String(tvac))
+      }
+    })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.mission_id])
