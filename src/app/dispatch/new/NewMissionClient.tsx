@@ -47,20 +47,29 @@ const MISSION_TYPES = [
   { value: 'REL',       label: '🚛 REL — Relivraison (depuis dépôt)' },
   { value: 'Transport', label: '🚐 Transport / Rapatriement' },
   { value: 'DPR',       label: '📍 DPR — Déplacement pour rien' },
-  { value: 'VR',        label: '🚗 VR — Véhicule de remplacement' },
 ]
+// VR (Vehicule de Remplacement) retire de partout (Olivier 2026-05-25 :
+// "VR ne servira jamais. On le retire de partout").
 
-// Types de mission disponibles selon la source :
-//  - Siabis (police_snc, sia_couvert) : DSP / REM / REM+REL / DPR
-//  - Police                            : REM / REM+REL / DPR (tous viennent en zone fourriere)
-//  - Autres (assistance, prive, ...)   : tous
+// Types de mission disponibles selon la source (Olivier 2026-05-25) :
+//  - Police pure (accident/saisie/mg/rodeo/avp) : REM / DPR uniquement
+//  - Siabis (police_snc, sia_couvert)           : DSP / REM / REM+REL / DPR
+//  - Assistances / Prive / Garage / autres      : tous (DSP / REM / REM+REL /
+//                                                  REL / Transport / DPR)
+const POLICE_PURE_SOURCES = new Set([
+  'police_accident', 'police_saisie', 'police_mg', 'police_rodeo', 'police_avp',
+])
+const SIABIS_SOURCES = new Set(['police_snc', 'sia_couvert'])
+
 function getAvailableMissionTypes(src: string) {
-  if (src === 'police_snc' || src === 'sia_couvert') {
+  const key = (src || '').toLowerCase()
+  if (POLICE_PURE_SOURCES.has(key)) {
+    return MISSION_TYPES.filter(t => ['REM', 'DPR'].includes(t.value))
+  }
+  if (SIABIS_SOURCES.has(key)) {
     return MISSION_TYPES.filter(t => ['DSP', 'REM', 'REM+REL', 'DPR'].includes(t.value))
   }
-  if (src === 'police') {
-    return MISSION_TYPES.filter(t => ['REM', 'REM+REL', 'DPR'].includes(t.value))
-  }
+  // Assistances + Prive + Garage : tous les types restants (VR deja retire)
   return MISSION_TYPES
 }
 const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
@@ -336,11 +345,12 @@ export default function NewMissionClient({
   const [tarifError,   setTarifError]   = useState<string | null>(null)
 
   // Auto-defaults missionType selon source :
-  //   - Police (Accident/Saisie/Rodeo/AVP/Mal garee) : tous viennent dans une
-  //     zone de notre fourriere => REM par defaut
+  //   - Police pure (Accident/Saisie/Rodeo/AVP/Mal garee) : REM par defaut
   //   - Siabis : selon scenario (dsp->DSP, rem_client->REM, rem_depot->REM+REL)
+  //   - Autres : on ne touche pas (sauf si le type courant n est plus dans la
+  //     liste autorisee pour la nouvelle source -> reset au premier dispo)
   useEffect(() => {
-    if (source === 'police') {
+    if (POLICE_PURE_SOURCES.has((source || '').toLowerCase())) {
       setMissionType('REM')
     } else if (source === 'police_snc' || source === 'sia_couvert') {
       setMissionType(
@@ -348,7 +358,15 @@ export default function NewMissionClient({
       : sncScenario === 'rem_client' ? 'REM'
       :                                'REM+REL'  // rem_depot
       )
+    } else {
+      // Autres sources : si le missionType courant n est plus dans la liste
+      // autorisee pour cette source, reset au premier dispo. Sinon on garde.
+      const available = getAvailableMissionTypes(source).map(t => t.value)
+      if (missionType && !available.includes(missionType) && available.length > 0) {
+        setMissionType(available[0])
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, sncScenario])
 
   // ── Véhicule ──────────────────────────────────────────────────────────────
