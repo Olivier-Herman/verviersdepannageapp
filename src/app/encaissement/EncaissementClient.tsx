@@ -294,6 +294,30 @@ export default function EncaissementClient({
   const [clientEmail, setClientEmail] = useState('')
   const [notes, setNotes] = useState('')
 
+  // Auto-prefill complet depuis la mission : si mission_id est fourni, on
+  // fetch /api/missions/[id] au mount pour recuperer brand, model, client,
+  // phone, etc. et pre-remplir le formulaire. Le chauffeur ne doit pas
+  // re-saisir ce qui est deja dans la fiche (Olivier 2026-05-25).
+  useEffect(() => {
+    if (!prefill?.mission_id) return
+    let cancelled = false
+    fetch(`/api/missions/${prefill.mission_id}`)
+      .then(r => r.json())
+      .then(m => {
+        if (cancelled || !m || m.error) return
+        if (m.vehicle_plate)  setPlate(prev => prev || m.vehicle_plate)
+        if (m.vehicle_brand)  setSelectedBrand(prev => prev || m.vehicle_brand)
+        if (m.vehicle_model)  setSelectedModel(prev => prev || m.vehicle_model)
+        const cname = m.client_name || m.billed_to_name || ''
+        if (cname)            setClientName(prev => prev || cname)
+        if (m.client_phone)   setClientPhone(prev => prev || m.client_phone)
+        if (m.client_email)   setClientEmail(prev => prev || m.client_email)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.mission_id])
+
   const locationInputRef = useRef<HTMLInputElement>(null)
   const clientAddressInputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<any>(null)
