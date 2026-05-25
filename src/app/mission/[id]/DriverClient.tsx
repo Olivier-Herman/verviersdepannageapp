@@ -29,6 +29,10 @@ interface Mission {
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
   incident_address?: string; incident_city?: string; incident_lat?: number; incident_lng?: number
   incident_description?: string; remarks_general?: string
+  // Particularites/warnings choisies par le dispatcher a la creation
+  // (ex: Complexe, Vehicule electrique, Cle absente, etc.). INFO CRITIQUE
+  // pour le chauffeur : doit etre tres visible.
+  warnings?: string[] | null
   destination_address?: string; destination_name?: string; redelivery_address?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   loaded_at?: string
@@ -2165,6 +2169,27 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       )}
 
       <div className="px-4 py-4 space-y-3">
+
+        {/* ⚠ Particularites du dispatch — bandeau ROUGE bien visible.
+            Info critique pour le chauffeur (Complexe, Vehicule electrique,
+            Cle absente, etc.) saisie a la creation. */}
+        {Array.isArray(M.warnings) && M.warnings.length > 0 && (
+          <div className="bg-red-600/15 border-2 border-red-500/60 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">⚠️</span>
+              <p className="text-red-300 text-sm font-bold uppercase tracking-wide">
+                Particularités à connaître
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {M.warnings.map((w, i) => (
+                <span key={i} className="inline-flex items-center px-3 py-1.5 bg-red-500/20 border border-red-500/40 rounded-lg text-red-200 text-sm font-medium">
+                  {w}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Banderole REL — visible uniquement pour les missions de relivraison */}
         {rel && (

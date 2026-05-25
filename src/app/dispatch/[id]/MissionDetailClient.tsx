@@ -103,6 +103,8 @@ interface Mission {
   parc_row_number?:  number | null
   parc_slot_index?:  number | null
   park_stage_name?:  string | null  // nom du depot/stage (ex: "Pepinster")
+  // Particularites/warnings saisies par le dispatcher a la creation
+  warnings?:         string[] | null
 }
 
 interface Stop {
@@ -1540,6 +1542,28 @@ export default function MissionDetailClient({
             />
           </div>
         </div>
+
+        {/* ⚠ Particularites/warnings dispatch — bandeau ROUGE bien visible
+            (Olivier 2026-05-25 : "info importante" pour chauffeur + bureau). */}
+        {Array.isArray(initialMission.warnings) && initialMission.warnings.length > 0 && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="bg-red-500/10 border-2 border-red-500/60 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xl">⚠️</span>
+                <p className="text-red-500 text-sm font-bold uppercase tracking-wide">
+                  Particularités à connaître
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {initialMission.warnings.map((w, i) => (
+                  <span key={i} className="inline-flex items-center px-3 py-1.5 bg-red-500/15 border border-red-500/40 rounded-lg text-red-500 text-sm font-medium">
+                    {w}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Bandeau Position parc (visible si mission parked avec zone) ── */}
         {status === 'parked' && initialMission.parc_zone_key && (
