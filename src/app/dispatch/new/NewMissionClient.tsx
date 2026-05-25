@@ -1047,47 +1047,64 @@ export default function NewMissionClient({
               </div>
 
               {/* 3. Type d'intervention (apparait apres choix de la source).
-                  Pour SNC/SC, on affiche des descriptions explicites sous
-                  chaque bouton (DSP = depannage place, REM = paiement direct,
-                  REM+REL = mise en depot Pepinster) car le type drive aussi
-                  le scenario tarifaire (cf useEffect derivation sncScenario). */}
+                  Boutons explicites avec descriptions contextuelles selon
+                  la source choisie. Inspire de PoliceClient.tsx cote
+                  chauffeur (Olivier 2026-05-25 : "version chauffeur dans
+                  creer mission qui sont ok, on arrive pas a les reproduire
+                  dans le dispatch"). */}
               {showType && (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">📋 Type d'intervention</h2>
                 {(() => {
-                  const isSiabisHere = source === 'police_snc' || source === 'sia_couvert'
-                  const sncTypeDescriptions: Record<string, string> = {
-                    DSP:        'Dépannage sur place — réparation autoroute, client paye direct',
-                    REM:        'Remorquage avec paiement immédiat du client',
-                    'REM+REL':  'Remorquage vers dépôt Pepinster (zone Transit, relivraison ultérieure)',
-                    DPR:        'Déplacement pour rien — intervention annulée',
+                  const isSiabisHere   = source === 'police_snc' || source === 'sia_couvert'
+                  const isPoliceHere   = POLICE_PURE_SOURCES.has((source || '').toLowerCase())
+                  // Descriptions par source. Si une source n a pas
+                  // d entree specifique, on tombe sur 'default'.
+                  const desc: Record<string, Record<string, string>> = {
+                    snc: {
+                      DSP:       'Dépannage sur place — réparation autoroute, client paye direct',
+                      REM:       'Remorquage avec paiement immédiat du client',
+                      'REM+REL': 'Remorquage vers dépôt Pepinster (zone Transit)',
+                      DPR:       'Déplacement pour rien — intervention annulée',
+                    },
+                    police: {
+                      REM:       'Remorquage vers parc fourrière',
+                      DPR:       'Déplacement pour rien — mission annulée par police',
+                    },
+                    default: {
+                      DSP:       'Dépannage sur place — réparation directe au véhicule',
+                      REM:       'Remorquage simple vers une destination',
+                      'REM+REL': 'Remorquage avec mise en parc + relivraison ultérieure',
+                      REL:       'Relivraison depuis dépôt vers destination finale',
+                      Transport: 'Transport / rapatriement longue distance',
+                      DPR:       'Déplacement pour rien — intervention annulée',
+                    },
                   }
+                  const pickDesc = (t: string) =>
+                    (isSiabisHere && desc.snc[t]) ||
+                    (isPoliceHere && desc.police[t]) ||
+                    desc.default[t] || ''
                   return (
-                    <div className={isSiabisHere
-                      ? 'grid grid-cols-1 sm:grid-cols-2 gap-2'
-                      : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2'}>
-                      {getAvailableMissionTypes(source).map(t => (
-                        <button key={t.value} onClick={() => { setMissionType(t.value); setUserPickedType(true) }} type="button"
-                          className={`px-3 py-3 rounded-xl text-sm font-medium border transition text-left ${
-                            missionType === t.value
-                              ? 'bg-brand border-brand text-white'
-                              : 'bg-surface border text-ink-secondary hover:text-ink hover:border-strong'
-                          }`}>
-                          {isSiabisHere ? (
-                            <>
-                              <div className="font-bold">{t.label.split(' ')[0]} {t.value}</div>
-                              <div className={`text-xs mt-0.5 ${missionType === t.value ? 'text-white/80' : 'text-ink-muted'}`}>
-                                {sncTypeDescriptions[t.value] || ''}
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-center">{t.label.split(' ')[0]}</div>
-                              <div className="text-xs font-bold mt-0.5 text-center">{t.value}</div>
-                            </>
-                          )}
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {getAvailableMissionTypes(source).map(t => {
+                        const selected = missionType === t.value
+                        return (
+                          <button key={t.value} onClick={() => { setMissionType(t.value); setUserPickedType(true) }} type="button"
+                            className={`px-3 py-3 rounded-xl text-sm border-2 transition text-left ${
+                              selected
+                                ? 'bg-brand border-brand text-white shadow-md'
+                                : 'bg-surface border-strong text-ink hover:border-brand/50 hover:bg-brand/5'
+                            }`}>
+                            <div className="font-bold flex items-center gap-1.5">
+                              <span>{t.label.split(' ')[0]}</span>
+                              <span>{t.value}</span>
+                            </div>
+                            <div className={`text-xs mt-1 leading-snug ${selected ? 'text-white/85' : 'text-ink-muted'}`}>
+                              {pickDesc(t.value)}
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
                   )
                 })()}
