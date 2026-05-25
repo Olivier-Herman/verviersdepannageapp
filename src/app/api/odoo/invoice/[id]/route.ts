@@ -42,7 +42,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     let partner: any = null
     if (m.partner_id?.[0]) {
       const partners = await odooRpc<any[]>('res.partner', 'read', [[m.partner_id[0]]], {
-        fields: ['id', 'name', 'phone', 'mobile', 'email', 'street', 'street2', 'zip', 'city', 'vat'],
+        fields: ['id', 'name', 'phone', 'email', 'street', 'street2', 'zip', 'city', 'vat'],
       })
       partner = partners[0] || null
     }
@@ -117,7 +117,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       partner: partner ? {
         id:      partner.id,
         name:    partner.name || null,
-        phone:   partner.phone || partner.mobile || null,
+        phone:   partner.phone || null,
         email:   partner.email || null,
         vat:     partner.vat || null,
         address: [partner.street, partner.street2, [partner.zip, partner.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null,

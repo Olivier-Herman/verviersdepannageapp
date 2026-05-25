@@ -113,7 +113,10 @@ export default function CreateClientModal({ initialName, onClose, onCreated }: P
         id:     data.partner.id,
         name:   data.partner.name,
         phone:  data.partner.phone || undefined,
-        mobile: data.partner.mobile || undefined,
+        // 'mobile' retire de res.partner en Odoo 19 (Olivier 2026-05-25).
+        // Le frontend continue d accepter mobile en input et la route
+        // create-client le fusionne dans phone si phone vide.
+        mobile: undefined,
         street: data.partner.street || undefined,
         city:   data.partner.city || undefined,
         zip:    data.partner.zip || undefined,

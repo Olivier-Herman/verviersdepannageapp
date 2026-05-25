@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   if (q.length < 3) return NextResponse.json({ clients: [] })
 
   try {
-    // Recherche par nom OU téléphone OU mobile
+    // Recherche par nom OU telephone OU ref (mobile retire de Odoo 19)
     const domain = [
       '|', '|',
       ['name',  'ilike', q],
