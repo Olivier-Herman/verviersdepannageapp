@@ -630,7 +630,6 @@ async function estimateLinesTemplate(
   if (linesErr) {
     console.error('[estimate-price] source_tariff_lines query error:', linesErr.message, { source, missionType, today })
   }
-  console.log('[estimate-price] lines lookup', { source, missionType, vehicleClass, today, linesRawCount: linesRaw?.length ?? 0 })
 
   const lines = (linesRaw || []).filter(l => {
     const vehicleOk     = !l.vehicle_class || l.vehicle_class === vehicleClass
@@ -719,10 +718,8 @@ async function estimateLinesTemplate(
   })
 
   if (templateLines.length === 0) {
-    // DEBUG temporaire 2026-05-25 : ajoute les compteurs au message pour
-    // diagnostiquer le bug "Aucune ligne" persistant signale par Olivier.
     return emptyEstimate(source, missionType,
-      `Aucune ligne configuree pour ${source}/${missionType} en mode "lines" (DBG raw=${linesRaw?.length ?? 0} filtered=${lines.length} deduped=${dedupedLines.length} vc=${vehicleClass} today=${today}${linesErr ? ' err=' + linesErr.message : ''}). Ajoute des lignes dans /admin/tarifs.`)
+      `Aucune ligne configuree pour ${source}/${missionType} en mode "lines". Ajoute des lignes dans /admin/tarifs.`)
   }
 
   // Calcule un subtotal indicatif (sur les defauts existants) pour estimation
