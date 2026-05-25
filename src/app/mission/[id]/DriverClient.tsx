@@ -455,6 +455,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<DischargeEntry[]>([])
   const [paid, setPaid]           = useState(false)
+  // Appel Prive : flag local pour signaler que le client n a pas pu payer
+  // sur place (revele le bandeau "Mise en parc Transit"). Toggle par bouton
+  // dans le bandeau Appel Prive. Pas persiste en BDD (info ephemere).
+  const [paymentImpossible, setPaymentImpossible] = useState(false)
   // Etat reel persiste : DB > state local (le state local sert de quick-feedback
   // pendant les 3s avant redirect retour depuis /encaissement)
   const hasAnyPayment   = paid || !!M.payment_collected_at
@@ -2181,29 +2185,72 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
-        {/* Appel Privé : aide visuelle workflow paiement -> livraison/parc */}
+        {/* Appel Privé : workflow paiement -> livraison/parc.
+            3 etats : paid OK / encaisser / paiement impossible (toggle). */}
         {isAppelPrive && (
           <div className={`rounded-2xl p-4 border ${paidEffective
             ? 'bg-green-600/10 border-green-500/40'
-            : 'bg-amber-600/10 border-amber-500/40'}`}>
+            : paymentImpossible
+              ? 'bg-amber-600/10 border-amber-500/40'
+              : 'bg-blue-600/10 border-blue-500/40'}`}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">📞</span>
-              <p className={`text-sm font-bold uppercase tracking-wide ${paidEffective ? 'text-green-300' : 'text-amber-300'}`}>
-                Appel Privé — {paidEffective ? 'Paiement OK' : 'Pas encore réglé'}
+              <p className={`text-sm font-bold uppercase tracking-wide ${
+                paidEffective ? 'text-green-300'
+                : paymentImpossible ? 'text-amber-300'
+                : 'text-blue-300'
+              }`}>
+                Appel Privé — {
+                  paidEffective ? 'Paiement OK'
+                  : paymentImpossible ? 'Mise en parc obligatoire'
+                  : 'Encaisser le paiement'
+                }
               </p>
             </div>
+
             {paidEffective ? (
               <p className="text-ink-secondary text-xs">
                 ✅ Le client a réglé. Tu peux livrer le véhicule à l&apos;adresse client (REM).
               </p>
-            ) : (
+            ) : paymentImpossible ? (
               <>
                 <p className="text-ink-secondary text-xs mb-2">
-                  Le client n&apos;a pas réglé. Mets le véhicule en parc <strong>zone TRANSIT</strong> (facturation ultérieure depuis le bureau).
+                  Le client n&apos;a pas pu payer. Mets le véhicule en parc <strong>zone TRANSIT</strong> (facturation ultérieure depuis le bureau).
                 </p>
-                <p className="text-amber-300 text-xs font-medium">
+                <p className="text-amber-300 text-xs font-medium mb-3">
                   ⚠ Pas de livraison sans paiement.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setPaymentImpossible(false)}
+                  className="text-xs px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg text-amber-300"
+                >
+                  ↩ Annuler — réessayer le paiement
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-ink-secondary text-xs mb-3">
+                  {requiredAmount > 0
+                    ? <>Le client doit régler <strong>{formatEur(requiredAmount)}</strong>. Ouvre l&apos;encaissement pour saisir le paiement.</>
+                    : 'Aucun montant pré-saisi par le bureau. Ouvre l\'encaissement pour saisir le montant à encaisser au client.'}
+                </p>
+                <div className="flex flex-col gap-2">
+                  <a
+                    href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${Math.max(0, requiredAmount - (M.payment_amount ?? 0))}&return_to=/mission/${M.id}`}
+                    onClick={() => setTimeout(() => setPaid(true), 3000)}
+                    className="w-full flex items-center justify-center py-3 bg-brand text-white font-semibold rounded-xl text-sm"
+                  >
+                    💳 Encaisser le paiement
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentImpossible(true)}
+                    className="w-full text-xs px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg text-amber-300"
+                  >
+                    🅿️ Paiement impossible par le client → mise en parc Transit
+                  </button>
+                </div>
               </>
             )}
           </div>
