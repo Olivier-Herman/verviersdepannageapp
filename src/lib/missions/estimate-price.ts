@@ -303,19 +303,27 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   //      - une grille avec vehicle_class qui match la mission prime sur la generique
   //      - une grille avec vehicle_class IS NULL est generique (s applique a tous)
   //    Tri : vehicle_class non-null d abord (specifique > generique), puis effective_from DESC.
-  const { data: tariffs } = await sb
+  //
+  // Note 2026-05-25 : on filtre vehicle_class et effective_to en JS apres
+  // requete car chainer deux .or() dans Supabase JS v2 genere ?or=(...)&or=(...)
+  // mal interprete par PostgREST (les conditions s annulent ou s ecrasent).
+  // Cf bug observe sur source_tariff_lines (lookup retournait 0 lignes au lieu
+  // de 6 pour police_accident).
+  const { data: tariffsRaw } = await sb
     .from('source_tariffs')
     .select('*')
     .eq('source', source)
     .eq('mission_type', missionType)
-    .or(`vehicle_class.eq.${vehicleClass},vehicle_class.is.null`)
     .lte('effective_from', today)
-    .or(`effective_to.is.null,effective_to.gte.${today}`)
     .order('vehicle_class', { ascending: false, nullsFirst: false })
     .order('effective_from', { ascending: false })
-    .limit(1)
 
-  const tariff = tariffs?.[0]
+  const tariffsFiltered = (tariffsRaw || []).filter(t => {
+    const vehicleOk     = !t.vehicle_class || t.vehicle_class === vehicleClass
+    const effectiveToOk = !t.effective_to  || t.effective_to >= today
+    return vehicleOk && effectiveToOk
+  })
+  const tariff = tariffsFiltered[0]
   if (!tariff) {
     return emptyEstimate(source, missionType, `Aucun tarif ${source}/${missionType} en vigueur`)
   }
@@ -605,16 +613,25 @@ async function estimateLinesTemplate(
   // Lignes filtrees par vehicle_class : on prend les lignes specifiques
   // au vehicle_class de la mission, OU les lignes generiques (vehicle_class IS NULL).
   // Une ligne specifique prime sur une ligne generique (meme kind+position).
-  const { data: lines } = await sb
+  //
+  // Note 2026-05-25 : on filtre vehicle_class et effective_to en JS apres
+  // requete car chainer deux .or() dans Supabase JS v2 genere ?or=(...)&or=(...)
+  // mal interprete par PostgREST. Symptome : la requete renvoie 0 ligne alors
+  // que les 6 lignes police_accident existent bien (cf bug Olivier 2026-05-25).
+  const { data: linesRaw } = await sb
     .from('source_tariff_lines')
-    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class')
+    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class, effective_to')
     .eq('source', source)
     .eq('mission_type', missionType)
-    .or(`vehicle_class.eq.${vehicleClass},vehicle_class.is.null`)
     .lte('effective_from', today)
-    .or(`effective_to.is.null,effective_to.gte.${today}`)
     .order('vehicle_class', { ascending: false, nullsFirst: false })
     .order('position', { ascending: true })
+
+  const lines = (linesRaw || []).filter(l => {
+    const vehicleOk     = !l.vehicle_class || l.vehicle_class === vehicleClass
+    const effectiveToOk = !l.effective_to  || l.effective_to >= today
+    return vehicleOk && effectiveToOk
+  })
 
   // Auto-calcul de qty pour les lignes specifiques quand default_qty=null :
   //   - SERV-PARC : nombre de jours depuis mission.parked_at
