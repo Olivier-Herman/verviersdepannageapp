@@ -77,13 +77,14 @@ export async function POST(req: Request) {
   const totalHtva = estimate.total_eur
   const totalTvac = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
 
-  const lines: Array<{ name: string; qty: number; price_unit: number }> = []
+  const lines: Array<{ name: string; qty: number; price_unit: number; kind?: string }> = []
 
   if (estimate.pricing_mode === 'lines' && Array.isArray(estimate.template_lines)) {
     // Mode 'lines' (Police Accident, Saisie, etc.) : on expose chaque ligne
     // pre-configuree (PCD/TD/KIL/MOE/ECOPERLE/Gardiennage) avec sa qty et son PU.
-    // Les lignes avec qty=null (a saisir) sont affichees avec qty=0 pour signaler
-    // qu elles existent dans la grille mais ne sont pas encore valorisees.
+    // Les lignes avec qty=null (a saisir) sont affichees avec qty=0. Le UI
+    // utilise le `kind` pour afficher le PU avec son unite (jour/km/u) plutot
+    // que "0.00 EUR" qui donne l impression d une ligne vide.
     for (const tl of estimate.template_lines) {
       if (tl.default_price == null) continue
       const qty = tl.default_qty != null ? Number(tl.default_qty) : 0
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
         name:       tl.name,
         qty,
         price_unit: Number(tl.default_price),
+        kind:       tl.kind,
       })
     }
   } else {

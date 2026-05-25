@@ -368,7 +368,7 @@ export default function NewMissionClient({
     total_htva: number
     total_tvac: number
     tva_rate:   number
-    lines:      Array<{ name: string; qty: number; price_unit: number }>
+    lines:      Array<{ name: string; qty: number; price_unit: number; kind?: string }>
   }
   const [tarifPreview, setTarifPreview] = useState<TarifPreview | null>(null)
   const [tarifLoading, setTarifLoading] = useState(false)
@@ -1490,12 +1490,19 @@ export default function NewMissionClient({
                   ) : tarifPreview ? (
                     <>
                       <div className="space-y-1 mb-2">
-                        {tarifPreview.lines.map((l, i) => (
-                          <div key={i} className="flex justify-between text-xs gap-2">
-                            <span className="text-ink-muted truncate" title={l.name}>{l.name}</span>
-                            <span className="text-ink whitespace-nowrap">{(l.qty * l.price_unit).toFixed(2)} €</span>
-                          </div>
-                        ))}
+                        {tarifPreview.lines.map((l, i) => {
+                          const unit = l.kind === 'SERV-PARC' ? 'jour' : l.kind === 'SERV-KM' ? 'km' : 'u'
+                          return (
+                            <div key={i} className="flex justify-between text-xs gap-2">
+                              <span className="text-ink-muted truncate" title={l.name}>{l.name}</span>
+                              <span className={`whitespace-nowrap ${l.qty > 0 ? 'text-ink' : 'text-ink-faint italic'}`}>
+                                {l.qty > 0
+                                  ? `${(l.qty * l.price_unit).toFixed(2)} €`
+                                  : `${l.price_unit.toFixed(2)} €/${unit}`}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                       <div className="border-t pt-2 flex justify-between text-sm">
                         <span className="text-ink font-medium">Total HTVA</span>
