@@ -550,11 +550,11 @@ function MissionBlock({
               <span className="text-ink-faint text-xs">⏳ calcul…</span>
             ) : customLines ? (
               <span className="text-ink font-bold text-sm">
-                Total : {customTotal.toFixed(2).replace('.', ',')} €
+                Total : {customTotal.toFixed(2).replace('.', ',')} € HTVA · {(customTotal * 1.21).toFixed(2).replace('.', ',')} € TVAC
               </span>
             ) : estimate?.ok ? (
               <span className="text-ink font-bold text-sm">
-                Total estimé : {estimate.total_eur.toFixed(2).replace('.', ',')} €
+                Total estimé : {estimate.total_eur.toFixed(2).replace('.', ',')} € HTVA · {(estimate.total_eur * 1.21).toFixed(2).replace('.', ',')} € TVAC
               </span>
             ) : (
               <span className="text-warning text-xs" title={estimate?.reason || ''}>⚠ Tarif introuvable</span>

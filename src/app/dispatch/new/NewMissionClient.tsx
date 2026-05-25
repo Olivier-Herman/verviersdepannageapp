@@ -293,7 +293,7 @@ export default function NewMissionClient({
   // ── Depot de depart ───────────────────────────────────────────────────────
   // Charge dynamiquement via /api/depots. Pepinster pre-selectionne par defaut
   // (depot principal). depots.id est un UUID (string).
-  type Depot = { id: string; name: string; is_default?: boolean }
+  type Depot = { id: string; name: string; is_default?: boolean; lat?: number | null; lng?: number | null }
   const [depots,           setDepots]           = useState<Depot[]>([])
   const [departureDepotId, setDepartureDepotId] = useState<string | null>(null)
   useEffect(() => {
@@ -428,27 +428,61 @@ export default function NewMissionClient({
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
-  // Calcul distance dès que incident + destination 2 sont remplies
+  // Calcul distance : 3 cas selon les destinations renseignees
+  //   1. incident + destination(s) renseignees -> distance chargee
+  //      (incident -> destination). Utilise par les tarifs km_basis='charged'
+  //      (assurances classiques).
+  //   2. incident seul (pas de destination) -> distance total aller-retour
+  //      depot -> incident -> retour depot (2 x depot-incident).
+  //      Utilise par les tarifs km_basis='total' (Police Accident, Prive,
+  //      Garage, Saisie). Sinon le tarif n inclut pas les km et apparait
+  //      sous-estime.
+  //   3. pas d incident -> reset a 0.
   useEffect(() => {
     const inc  = destinations[0]
     const dest = destinations[1]
-    if (!inc?.lat || !inc?.lng || !dest?.lat || !dest?.lng) return
+    if (!inc?.lat || !inc?.lng) {
+      setDistanceKm(0); setDurationMin(0); return
+    }
     if (!(window as any).google?.maps) return
     const svc = new (window as any).google.maps.DistanceMatrixService()
-    svc.getDistanceMatrix({
-      origins:      [{ lat: inc.lat,  lng: inc.lng }],
-      destinations: [{ lat: dest.lat, lng: dest.lng }],
-      travelMode:   'DRIVING',
-    }, (res: any, status: string) => {
-      if (status === 'OK') {
-        const el = res.rows[0].elements[0]
-        if (el.status === 'OK') {
-          setDistanceKm(Math.round(el.distance.value / 1000))
-          setDurationMin(Math.round(el.duration.value / 60))
+
+    if (dest?.lat && dest?.lng) {
+      // Cas 1 : incident -> destination
+      svc.getDistanceMatrix({
+        origins:      [{ lat: inc.lat,  lng: inc.lng }],
+        destinations: [{ lat: dest.lat, lng: dest.lng }],
+        travelMode:   'DRIVING',
+      }, (res: any, status: string) => {
+        if (status === 'OK') {
+          const el = res.rows[0].elements[0]
+          if (el.status === 'OK') {
+            setDistanceKm(Math.round(el.distance.value / 1000))
+            setDurationMin(Math.round(el.duration.value / 60))
+          }
         }
+      })
+    } else {
+      // Cas 2 : 2 x depot -> incident (aller-retour, total km)
+      const depot = depots.find(d => d.id === departureDepotId)
+      if (!depot?.lat || !depot?.lng) {
+        setDistanceKm(0); setDurationMin(0); return
       }
-    })
-  }, [destinations])
+      svc.getDistanceMatrix({
+        origins:      [{ lat: depot.lat, lng: depot.lng }],
+        destinations: [{ lat: inc.lat,   lng: inc.lng   }],
+        travelMode:   'DRIVING',
+      }, (res: any, status: string) => {
+        if (status === 'OK') {
+          const el = res.rows[0].elements[0]
+          if (el.status === 'OK') {
+            setDistanceKm(Math.round((el.distance.value / 1000) * 2))
+            setDurationMin(Math.round((el.duration.value / 60) * 2))
+          }
+        }
+      })
+    }
+  }, [destinations, depots, departureDepotId])
 
   // ── Preview tarif live ───────────────────────────────────────────────────
   // Debounce 600ms. Deux endpoints selon la source :

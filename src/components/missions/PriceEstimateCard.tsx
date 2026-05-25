@@ -29,7 +29,9 @@ interface Props {
   missionId: string
 }
 
+const TVA_RATE = 0.21
 const fmt = (n: number | null | undefined) => n != null ? `${n.toFixed(2)} €` : '—'
+const toTvac = (htva: number) => Math.round(htva * (1 + TVA_RATE) * 100) / 100
 
 export default function PriceEstimateCard({ missionId }: Props) {
   const [data, setData] = useState<PriceEstimate | null>(null)
@@ -81,7 +83,8 @@ export default function PriceEstimateCard({ missionId }: Props) {
           <span className="text-xl">💰</span>
           <div className="text-left">
             <div className="text-xs text-ink-faint uppercase tracking-wider">Estimation tarif</div>
-            <div className="text-xl font-display font-bold">{fmt(data.total_eur)} HT</div>
+            <div className="text-xl font-display font-bold">{fmt(data.total_eur)} <span className="text-xs text-ink-faint font-normal">HTVA</span></div>
+            <div className="text-xs text-ink-muted">{fmt(toTvac(data.total_eur))} TVAC</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -118,8 +121,12 @@ export default function PriceEstimateCard({ missionId }: Props) {
             </div>
           )}
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-surface-hover">
-            <span className="font-semibold">Total HT</span>
+            <span className="font-semibold">Total HTVA</span>
             <span className="font-display font-bold text-base">{fmt(data.total_eur)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-ink-muted">Total TVAC ({Math.round(TVA_RATE * 100)}%)</span>
+            <span className="font-medium text-ink-muted">{fmt(toTvac(data.total_eur))}</span>
           </div>
           <div className="text-[10px] text-ink-faint pt-2">
             Tarif source {data.source.toUpperCase()} / {data.mission_type}
