@@ -191,12 +191,24 @@ function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: 
 function DestinationsBlock({ destinations, onChange, gmKey }: {
   destinations: Destination[]; onChange: (d: Destination[]) => void; gmKey: string
 }) {
+  // destinations capture la snapshot du render -> piege dans updateDest si on
+  // appelle plusieurs updateDest successifs (les setState batched partent tous
+  // de la meme snapshot, le dernier ecrase les precedents). Pour cela on utilise
+  // une ref qui suit l etat courant + updateDestFields qui batch un objet partiel
+  // en un seul appel.
+  const destRef = useRef(destinations); destRef.current = destinations
+
   const addDest = () => {
-    onChange([...destinations, { id: crypto.randomUUID(), label: '', address: '', lat: null, lng: null, city: '' }])
+    onChange([...destRef.current, { id: crypto.randomUUID(), label: '', address: '', lat: null, lng: null, city: '' }])
   }
-  const removeDest = (id: string) => onChange(destinations.filter(d => d.id !== id))
+  const removeDest = (id: string) => onChange(destRef.current.filter(d => d.id !== id))
   const updateDest = (id: string, key: keyof Destination, val: any) =>
-    onChange(destinations.map(d => d.id === id ? { ...d, [key]: val } : d))
+    onChange(destRef.current.map(d => d.id === id ? { ...d, [key]: val } : d))
+  /** Met a jour plusieurs champs d une destination en UN SEUL onChange.
+      Necessaire pour le onSelect Google Maps qui doit set address+lat+lng+city
+      en meme temps sans qu un setState ulterieur ecrase les precedents. */
+  const updateDestFields = (id: string, fields: Partial<Destination>) =>
+    onChange(destRef.current.map(d => d.id === id ? { ...d, ...fields } : d))
 
   return (
     <div className="space-y-4">
@@ -224,11 +236,11 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
             value={dest.address}
             onChange={v => updateDest(dest.id, 'address', v)}
             onSelect={(addr, lat, lng) => {
-              updateDest(dest.id, 'address', addr)
-              updateDest(dest.id, 'lat', lat)
-              updateDest(dest.id, 'lng', lng)
+              // Update atomique : un seul onChange pour les 4 champs sinon
+              // les setState batched s ecrasent (closure stale sur destinations).
               const parts = addr.split(',')
-              if (parts.length > 1) updateDest(dest.id, 'city', parts[parts.length - 2]?.trim() || '')
+              const city = parts.length > 1 ? (parts[parts.length - 2]?.trim() || '') : ''
+              updateDestFields(dest.id, { address: addr, lat, lng, city })
             }}
             gmKey={gmKey}
             placeholder="Rue, numéro, ville..."
