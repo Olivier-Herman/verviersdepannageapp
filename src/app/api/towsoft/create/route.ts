@@ -5,8 +5,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
-import { buildParcLabelZPL } from '@/lib/print/zpl-templates/parc-label'
-import { printZPLRaw }       from '@/lib/print/zebra-raw'
+import { printVdSoftParcLabel } from '@/lib/missions/print-parc-label'
 
 export const maxDuration = 60
 
@@ -387,43 +386,39 @@ export async function POST(req: Request) {
       console.log('[towsoft/create] VD Soft mission cree:', vdData?.id, 'source:', vdSource, 'zone:', vdZone)
       vdMissionId = vdData?.id || null
 
-      // Appel Prive REM 'depot' : impression etiquette parc directement depuis
-      // VD Soft (pas de ticket Helpdesk Odoo pour les Appel Prive, donc le
-      // callback Towsoft ne le ferait pas). Best-effort, n echoue pas la mission.
-      // Note typique : vehicule destine a relivraison ulterieure -> Olivier
-      // 2026-05-26 : "Relivraison vers {adresse}" si connue, sinon
-      // "En attente d info adresse de relivraison".
-      if (isAppelPrive && appelPriveDestination === 'depot' && vdMissionId) {
-        try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
-          const dd = new Date(interventionISO)
-          const dateStr = `${String(dd.getDate()).padStart(2, '0')}/${String(dd.getMonth()+1).padStart(2, '0')}/${String(dd.getFullYear()).slice(-2)}`
-          // Adresse de relivraison : le chauffeur peut la saisir directement
-          // depuis PoliceClient.tsx (Fix 11 Olivier 2026-05-26). Fallback sur
-          // body.destination (nom du champ frontend) puis body.redelivery_address.
-          const redeliveryAddr = (body.destination || body.redelivery_address || '').trim()
-          const note = redeliveryAddr
-            ? `Relivraison vers ${redeliveryAddr}`
-            : `En attente d info adresse de relivraison`
-          const zpl = buildParcLabelZPL({
-            qrUrl: `${baseUrl}/dispatch/${vdMissionId}`,
-            motif: 'APPEL PRIVE',
-            date:  dateStr,
-            note,
-            brand: brand || '',
-            model: model || '',
-            plate: (plate || '').trim().toUpperCase(),
-            vin:   (vin   || '').trim().toUpperCase(),
-          })
-          const printRes = await printZPLRaw(zpl)
-          if (printRes.ok) {
-            console.log('[towsoft/create] Etiquette Prive imprimee pour mission', vdMissionId)
-          } else {
-            console.error('[towsoft/create] Impression etiquette Prive echec:', printRes.error)
-          }
-        } catch (e: any) {
-          console.error('[towsoft/create] Erreur impression etiquette Prive:', e.message)
-        }
+      // Impression etiquette parc depuis VD Soft (chantier "Etiquettes VD Soft
+      // globales", Olivier 2026-05-26). Sources migrees :
+      //   - Appel Prive REM 'depot' : pas de ticket Helpdesk donc seul VD Soft imprime
+      //   - SNC / SC 'rem_depot'    : double impression (callback Odoo + VD Soft) pour
+      //     transition. A desactiver cote callback quand format valide en parallele.
+      //
+      // TODO Mal Garee chargement / Rodeo / AVP : impressions toujours via callback
+      // Helpdesk Odoo. A migrer dans une iteration future.
+      const isSncDepot = isSnc && sncScenario === 'rem_depot'
+      const shouldPrintFromVdSoft = vdMissionId && (
+        (isAppelPrive && appelPriveDestination === 'depot') ||
+        isSncDepot
+      )
+      if (shouldPrintFromVdSoft && vdMissionId) {
+        // Adresse de relivraison : pour Appel Prive le chauffeur peut la saisir
+        // dans PoliceClient.tsx (Fix 11). Pour SNC depot, le dispatcher la
+        // definira via le bouton "Relivrer" plus tard. Si non saisie maintenant,
+        // l etiquette indique "En attente d info adresse de relivraison".
+        const redeliveryAddr = (body.destination || body.redelivery_address || '').trim() || null
+        const motifLabel = isAppelPrive
+          ? 'APPEL PRIVE'
+          : (type === 'sc' ? 'SIABIS COUVERT' : 'SIABIS NON COUVERT')
+        await printVdSoftParcLabel({
+          missionId:        vdMissionId,
+          source:           vdSource,
+          motif:            motifLabel,
+          interventionDate: interventionISO,
+          plate:            plate || null,
+          brand:            brand || null,
+          model:            model || null,
+          vin:              vin   || null,
+          redeliveryAddr,
+        })
       }
     }
   }
