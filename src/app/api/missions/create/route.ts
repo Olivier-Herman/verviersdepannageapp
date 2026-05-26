@@ -64,7 +64,11 @@ export async function POST(req: Request) {
       // Plus copie depuis mission_type (Olivier 2026-05-25 : DSP/REM/etc.
       // affichait "REM" en label incident, ce qui n a aucun sens).
       incident_type:        body.incident_type        || null,
-      incident_description: body.remarks_general,
+      // incident_description = description specifique de l incident (saisie
+      // dans le champ "Description / Details" sous Type d intervention).
+      // Olivier 2026-05-26 : plus de copie depuis remarks_general (qui est
+      // un champ dedie aux remarques internes dispatch).
+      incident_description: body.description          || null,
       dossier_number:       body.dossier_number      || null,
       // Client facturé
       billed_to_name:       body.billed_to_name,

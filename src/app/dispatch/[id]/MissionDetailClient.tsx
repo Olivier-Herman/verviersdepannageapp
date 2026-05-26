@@ -105,6 +105,13 @@ interface Mission {
   park_stage_name?:  string | null  // nom du depot/stage (ex: "Pepinster")
   // Particularites/warnings saisies par le dispatcher a la creation
   warnings?:         string[] | null
+  // Infos additionnelles affichees sur la fiche (Olivier 2026-05-26).
+  vehicle_class?:        'car' | 'moto' | string | null
+  distance_km?:          number | null
+  duration_min?:         number | null
+  snc_scenario?:         'dsp' | 'rem_client' | 'rem_depot' | string | null
+  snc_requires_balisage?: boolean | null
+  remarks_billing?:      string | null
 }
 
 interface Stop {
@@ -1599,6 +1606,66 @@ export default function MissionDetailClient({
                 className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
                 Voir le plan parc →
               </a>
+            </div>
+          </div>
+        )}
+
+        {/* Bandeau "Bloquee par la police" — visible des la creation pour AVP
+            (et toute mission avec police_blocked=true). Olivier 2026-05-26. */}
+        {initialMission.police_blocked && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="bg-amber-50 border-2 border-amber-500 rounded-xl p-4 flex items-start gap-3">
+              <span className="text-2xl">🚓</span>
+              <div>
+                <p className="text-amber-700 text-sm font-bold uppercase tracking-wide">Bloquée par la police</p>
+                <p className="text-amber-900 text-xs mt-1">Le propriétaire doit être passé au commissariat avant la restitution. Vérification obligatoire à la sortie.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bandeau infos additionnelles (Olivier 2026-05-26) : agrege les
+            infos utiles non editables ailleurs sur la fiche. */}
+        {(initialMission.vehicle_class === 'moto' || initialMission.distance_km
+          || initialMission.snc_scenario || initialMission.snc_requires_balisage
+          || initialMission.remarks_billing) && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="bg-surface border rounded-xl p-4 space-y-2">
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-semibold">Infos mission</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                {initialMission.vehicle_class === 'moto' && (
+                  <div className="flex items-center gap-2">
+                    <span>🏍️</span><span>Véhicule : <strong>Moto / 2 roues</strong></span>
+                  </div>
+                )}
+                {(initialMission.distance_km != null && initialMission.distance_km > 0) && (
+                  <div className="flex items-center gap-2">
+                    <span>🛣️</span><span><strong>{initialMission.distance_km} km</strong>{initialMission.duration_min ? ` · ~${initialMission.duration_min} min` : ''}</span>
+                  </div>
+                )}
+                {(initialMission.source === 'police_snc' || initialMission.source === 'sia_couvert') && initialMission.snc_scenario && (
+                  <div className="flex items-center gap-2">
+                    <span>🛣️</span>
+                    <span>Scénario : <strong>{
+                      initialMission.snc_scenario === 'dsp'        ? 'DSP — dépannage sur place'
+                    : initialMission.snc_scenario === 'rem_client' ? 'REM avec paiement immédiat'
+                    : initialMission.snc_scenario === 'rem_depot'  ? 'REM vers dépôt Pepinster'
+                    : initialMission.snc_scenario
+                    }</strong></span>
+                  </div>
+                )}
+                {initialMission.snc_requires_balisage && (
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <span>🚧</span><span className="font-semibold">Balisage requis (autoroute / voie rapide)</span>
+                  </div>
+                )}
+              </div>
+              {initialMission.remarks_billing && (
+                <div className="pt-2 border-t border">
+                  <p className="text-ink-muted text-xs mb-1">📝 Remarques facturation</p>
+                  <p className="text-ink text-sm whitespace-pre-line">{initialMission.remarks_billing}</p>
+                </div>
+              )}
             </div>
           </div>
         )}

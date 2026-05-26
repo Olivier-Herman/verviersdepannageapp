@@ -858,6 +858,7 @@ export default function NewMissionClient({
           destinations,
           warnings:        warningLabels,
           amount_to_collect: amountToCollect ? parseFloat(amountToCollect) : null,
+          description:       description,         // -> incident_description en BDD
           remarks_general:   remarksGeneral,
           remarks_billing:   remarksBilling,
           rdv_at:          rdvAt,

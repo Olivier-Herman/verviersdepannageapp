@@ -33,6 +33,15 @@ interface Mission {
   // (ex: Complexe, Vehicule electrique, Cle absente, etc.). INFO CRITIQUE
   // pour le chauffeur : doit etre tres visible.
   warnings?: string[] | null
+  // Infos transmises par le dispatch lors de la creation, a afficher
+  // au chauffeur. Olivier 2026-05-26.
+  vehicle_class?: 'car' | 'moto' | string | null
+  distance_km?: number | null
+  duration_min?: number | null
+  snc_scenario?: 'dsp' | 'rem_client' | 'rem_depot' | string | null
+  snc_requires_balisage?: boolean | null
+  police_blocked?: boolean | null
+  remarks_billing?: string | null
   destination_address?: string; destination_name?: string; redelivery_address?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   loaded_at?: string
@@ -2324,6 +2333,60 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             )}
           </div>
         </div>
+
+        {/* Bandeau Bloqué par la police (AVP : auto, autres : si saisi) */}
+        {M.police_blocked && (
+          <div className="bg-amber-50 border-2 border-amber-500 rounded-2xl p-3 flex items-start gap-2">
+            <span className="text-xl">🚓</span>
+            <div>
+              <p className="text-amber-700 text-sm font-bold uppercase tracking-wide">Bloquée par la police</p>
+              <p className="text-amber-900 text-xs">Le propriétaire doit être passé au commissariat avant restitution.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Bandeau infos mission : véhicule classe, distance, SNC scenario,
+            balisage, remarques facturation. Affichage conditionnel. */}
+        {(M.vehicle_class === 'moto' || M.distance_km || M.snc_scenario || M.snc_requires_balisage || M.remarks_billing) && (
+          <div className="bg-surface border rounded-2xl p-3 space-y-2">
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Infos mission</p>
+            {M.vehicle_class === 'moto' && (
+              <div className="flex items-center gap-2 text-sm">
+                <span>🏍️</span>
+                <span className="text-ink font-medium">Véhicule : Moto / 2 roues</span>
+              </div>
+            )}
+            {(M.distance_km != null && M.distance_km > 0) && (
+              <div className="flex items-center gap-2 text-sm">
+                <span>🛣️</span>
+                <span className="text-ink"><strong>{M.distance_km} km</strong>{M.duration_min ? ` · ~${M.duration_min} min` : ''}</span>
+              </div>
+            )}
+            {(M.source === 'police_snc' || M.source === 'sia_couvert') && M.snc_scenario && (
+              <div className="flex items-center gap-2 text-sm">
+                <span>🛣️</span>
+                <span className="text-ink">Scénario : <strong>{
+                  M.snc_scenario === 'dsp'        ? 'DSP — dépannage sur place'
+                : M.snc_scenario === 'rem_client' ? 'REM avec paiement immédiat'
+                : M.snc_scenario === 'rem_depot'  ? 'REM vers dépôt Pepinster'
+                : M.snc_scenario
+                }</strong></span>
+              </div>
+            )}
+            {M.snc_requires_balisage && (
+              <div className="flex items-center gap-2 text-sm">
+                <span>🚧</span>
+                <span className="text-amber-700 font-semibold">Balisage requis (autoroute / voie rapide)</span>
+              </div>
+            )}
+            {M.remarks_billing && (
+              <div className="text-sm pt-1 border-t border">
+                <p className="text-ink-muted text-xs mb-0.5">📝 Remarques facturation</p>
+                <p className="text-ink">{M.remarks_billing}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Description */}
         {M.incident_description && (
