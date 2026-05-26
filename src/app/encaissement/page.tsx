@@ -31,6 +31,11 @@ export default async function EncaissementPage({
     brand:             searchParams?.prefill_brand      || '',
     model:             searchParams?.prefill_model      || '',
     amount:            searchParams?.prefill_amount     ? parseFloat(searchParams.prefill_amount) : undefined,
+    // Adresse + precision motif precomplets depuis la mission (Olivier 2026-05-26).
+    // Evite que le chauffeur re-saisisse manuellement le lieu d intervention et
+    // la description (ex: "Mal Garee 2JBY431 - Deplacement avec paiement").
+    location:          searchParams?.prefill_location   || '',
+    motif_precision:   searchParams?.prefill_motif_precision || '',
     return_to:         searchParams?.return_to          || (hasFourrierePrefill ? '/recherche' : '/mission'),
     // Fourriere
     type:              searchParams?.prefill_type as 'fourriere' | undefined,

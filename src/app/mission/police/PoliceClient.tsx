@@ -524,8 +524,24 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       // Sources avec paiement direct : on ne redirige PAS automatiquement,
       // le chauffeur choisit (encaisser maintenant ou plus tard). Pour les
       // autres types (accident, saisie, ...) : redirection auto comme avant.
+      // EXCEPTION Olivier 2026-05-26 : Mal Garee scenario deplacement_paye =
+      // encaissement OBLIGATOIRE, on auto-redirige direct sur /encaissement
+      // SANS passer par l ecran de choix (sinon le chauffeur peut cloturer
+      // sans paiement et le client part sans payer).
       const needsPayment = ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
-      if (!needsPayment) {
+      const malGareeForceEncaisse = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
+      if (malGareeForceEncaisse && data.missionId) {
+        const url = `/encaissement?prefill_mission_id=${data.missionId}`
+          + `&prefill_plate=${encodeURIComponent(plate || vin || '')}`
+          + `&prefill_brand=${encodeURIComponent(brand || '')}`
+          + `&prefill_model=${encodeURIComponent(model || '')}`
+          + `&prefill_amount=125`
+          + `&prefill_location=${encodeURIComponent(location || '')}`
+          + `&prefill_motif_precision=${encodeURIComponent(`Mal Garée déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`)}`
+          + `&return_to=/mission/${data.missionId}`
+        // Petit delai pour que le toast de succes soit visible
+        setTimeout(() => { window.location.href = url }, 800)
+      } else if (!needsPayment) {
         setTimeout(() => router.push('/dashboard'), 2000)
       }
     } else {
@@ -550,12 +566,26 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     const prefillAmount = selectedType === 'appel_prive'
       ? (amountToCollect !== '' ? Number(amountToCollect) : (priveEstimate?.total_tvac ?? null))
       : (malGareeDeplacementPaye ? 125 : (selectedType === 'snc' ? (sncPreview?.total_tvac ?? null) : null))
+    // Description courte du motif d encaissement selon source (Olivier 2026-05-26).
+    // Permet au chauffeur de ne pas re-saisir manuellement la description dans
+    // le module encaissement.
+    const motifPrecision = malGareeDeplacementPaye
+      ? `Mal Garée déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`
+      : selectedType === 'appel_prive'
+        ? `Appel Privé ${appelPriveType || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+        : selectedType === 'snc'
+          ? `Siabis Non Couvert ${sncScenario || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+          : selectedType === 'mal_garee'
+            ? `Mal Garée — ${(plate || vin || '').trim().toUpperCase()}`
+            : ''
     const encaissementUrl = createdMissionId
       ? `/encaissement?prefill_mission_id=${createdMissionId}`
         + `&prefill_plate=${encodeURIComponent(plate || vin || '')}`
         + `&prefill_brand=${encodeURIComponent(brand || '')}`
         + `&prefill_model=${encodeURIComponent(model || '')}`
         + (prefillAmount != null ? `&prefill_amount=${prefillAmount}` : '')
+        + `&prefill_location=${encodeURIComponent(location || '')}`
+        + `&prefill_motif_precision=${encodeURIComponent(motifPrecision)}`
         + `&return_to=/dashboard`
       : null
     return (
@@ -567,6 +597,14 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
 
         {needsPayment && encaissementUrl && (
           <div className="pt-2 space-y-2">
+            {malGareeDeplacementPaye && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3 mb-2">
+                <p className="text-red-900 text-sm font-bold">⚠️ Encaissement obligatoire</p>
+                <p className="text-red-800 text-xs mt-1">
+                  Redirection automatique vers l&apos;encaissement... Le client doit payer les 125€ TVAC avant de partir.
+                </p>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => router.push(encaissementUrl)}
@@ -577,13 +615,17 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 <span className="font-normal opacity-90 text-sm">— {prefillAmount.toFixed(2)} €</span>
               )}
             </button>
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard')}
-              className="w-full bg-surface-hover hover:bg-page text-ink-muted text-sm py-2 rounded-xl"
-            >
-              Plus tard, retour au dashboard
-            </button>
+            {/* Bouton "Plus tard" : masque pour Mal Garee deplacement paye
+                (encaissement obligatoire, le client paye sur place). */}
+            {!malGareeDeplacementPaye && (
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard')}
+                className="w-full bg-surface-hover hover:bg-page text-ink-muted text-sm py-2 rounded-xl"
+              >
+                Plus tard, retour au dashboard
+              </button>
+            )}
           </div>
         )}
 

@@ -150,6 +150,9 @@ interface Prefill {
   brand?:      string
   model?:      string
   amount?:     number
+  // Olivier 2026-05-26 : adresse + motif precision precompletes depuis la mission
+  location?:        string
+  motif_precision?: string
   return_to?:  string
   // Prefill fourriere (bouton "Restituer" depuis /recherche)
   type?:       'fourriere'
@@ -285,10 +288,10 @@ export default function EncaissementClient({
   }, [prefill?.type, motifs])
   const [motif, setMotif] = useState(fourriereMotif?.value || '')
   const [motifLabel, setMotifLabel] = useState(fourriereMotif?.label || '')
-  const [motifPrecision, setMotifPrecision] = useState('')
+  const [motifPrecision, setMotifPrecision] = useState(prefill?.motif_precision || '')
 
   // Page 3
-  const [location, setLocation] = useState('')
+  const [location, setLocation] = useState(prefill?.location || '')
   const [locationLoading, setLocationLoading] = useState(false)
 
   // Page 4
