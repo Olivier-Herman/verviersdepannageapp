@@ -35,7 +35,7 @@ export default async function MissionListPage() {
 
   const { data: missions } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at')
+    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at')
     .eq('assigned_to', user.id)
     .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .order('assigned_at', { ascending: false })
@@ -74,7 +74,7 @@ export default async function MissionListPage() {
                     <Link key={m.id} href={`/mission/${m.id}`}
                       className="block bg-surface border border hover:border-brand/50 rounded-2xl p-4 transition-all">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-ink-secondary text-xs font-mono">{m.dossier_number || m.external_id}</span>
+                        <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
                         <span className={`text-xs font-semibold ${st.color}`}>{st.label}</span>
                       </div>
                       <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>

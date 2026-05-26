@@ -31,7 +31,7 @@ export default async function FacturationPage() {
   const { data: missions } = await supabase
     .from('incoming_missions')
     .select(`
-      id, external_id, dossier_number, source, status,
+      id, mission_number, external_id, dossier_number, source, status,
       mission_type, incident_type, parent_mission_id,
       client_name, client_phone,
       vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,

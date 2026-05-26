@@ -7,6 +7,7 @@ import { Eye, Truck, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 interface Mission {
   id:                 string
+  mission_number:     number | null
   external_id:        string | null
   dossier_number:     string | null
   source:             string | null
@@ -22,11 +23,12 @@ interface Mission {
 }
 
 interface ExistingRel {
-  id:           string
-  external_id:  string | null
-  status:       string
-  assigned_to:  string | null
-  assigneeName: string | null
+  id:             string
+  mission_number: number | null
+  external_id:    string | null
+  status:         string
+  assigned_to:    string | null
+  assigneeName:   string | null
 }
 
 interface CurrentUser {
@@ -117,7 +119,9 @@ export default function QrMissionClient({
             <div>
               <p className="text-ink-muted text-xs uppercase tracking-wider">Mission</p>
               <p className="text-ink font-medium mt-0.5">
-                {mission.external_id || mission.dossier_number || mission.id.slice(0, 8)}
+                {mission.mission_number != null
+                  ? `#${mission.mission_number}`
+                  : (mission.external_id || mission.dossier_number || mission.id.slice(0, 8))}
               </p>
             </div>
           </div>
@@ -145,7 +149,7 @@ export default function QrMissionClient({
                 <>
                   <p className="font-semibold text-ink text-sm">REL déjà assignée</p>
                   <p className="text-ink-muted text-xs mt-1">
-                    {existingRel.assigneeName || 'Un autre chauffeur'} a déjà pris cette relivraison ({existingRel.external_id}). Tu peux la lui prendre si tu prends le relais.
+                    {existingRel.assigneeName || 'Un autre chauffeur'} a déjà pris cette relivraison ({existingRel.mission_number != null ? `#${existingRel.mission_number}` : existingRel.external_id}). Tu peux la lui prendre si tu prends le relais.
                   </p>
                 </>
               ) : existingRel.assigned_to === currentUser.id ? (

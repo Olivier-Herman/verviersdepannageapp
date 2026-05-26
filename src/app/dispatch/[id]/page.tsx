@@ -18,15 +18,21 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
 
   const supabase = createAdminClient()
 
-  // Mission complète avec logs
-  const { data: mission } = await supabase
+  // Mission complète avec logs.
+  // params.id accepte 2 formats :
+  //   - UUID classique (xxx-xxx-xxx-...)
+  //   - mission_number numerique (#10001234 sans le #) — Olivier 2026-05-26
+  // On detecte via /^\d+$/ pour ne pas tenter une recherche UUID si numerique.
+  const idIsNumeric = /^\d+$/.test(params.id)
+  const baseQuery = supabase
     .from('incoming_missions')
     .select(`
       *,
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
-    .eq('id', params.id)
-    .single()
+  const { data: mission } = idIsNumeric
+    ? await baseQuery.eq('mission_number', Number(params.id)).single()
+    : await baseQuery.eq('id', params.id).single()
 
   if (!mission) redirect('/dispatch')
 
@@ -71,7 +77,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
   if (mission.parent_mission_id) {
     const { data: parent } = await supabase
       .from('incoming_missions')
-      .select('id, external_id, dossier_number, status, vehicle_plate, completed_at, parked_at, destination_address, redelivery_address')
+      .select('id, mission_number, external_id, dossier_number, status, vehicle_plate, completed_at, parked_at, destination_address, redelivery_address')
       .eq('id', mission.parent_mission_id)
       .maybeSingle()
     linkedParent = parent
@@ -79,7 +85,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
   {
     const { data: child } = await supabase
       .from('incoming_missions')
-      .select('id, external_id, dossier_number, status, vehicle_plate, assigned_to, received_at, intervention_date')
+      .select('id, mission_number, external_id, dossier_number, status, vehicle_plate, assigned_to, received_at, intervention_date')
       .eq('parent_mission_id', mission.id)
       .maybeSingle()
     linkedChild = child

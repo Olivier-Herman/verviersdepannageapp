@@ -33,6 +33,7 @@ const sb = createClient(
 
 interface Mission {
   id: string
+  mission_number: number | null
   external_id: string
   dossier_number: string | null
   source: string
@@ -828,6 +829,7 @@ export default function DispatchClient({
     return (
       m.client_name?.toLowerCase().includes(q) ||
       m.external_id?.toLowerCase().includes(q)  ||
+      m.mission_number?.toString().includes(q)  ||
       m.vehicle_plate?.toLowerCase().includes(q) ||
       m.incident_address?.toLowerCase().includes(q)
     )
@@ -1138,8 +1140,10 @@ export default function DispatchClient({
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-ink font-mono text-xs">{m.dossier_number || m.external_id}</p>
-                          <p className="text-ink-muted text-xs">{m.external_id}</p>
+                          <p className="text-ink font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
+                          {(m.dossier_number || (m.mission_number != null && m.external_id)) && (
+                            <p className="text-ink-muted text-xs">{m.dossier_number || m.external_id}</p>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-ink">{m.client_name || '—'}</p>

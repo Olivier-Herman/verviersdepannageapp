@@ -14,6 +14,7 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_
 
 interface Mission {
   id: string
+  mission_number: number | null
   external_id: string
   dossier_number: string | null
   source: string

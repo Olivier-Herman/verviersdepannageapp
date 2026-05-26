@@ -8,6 +8,7 @@ import FacturerModal from '@/components/facturation/FacturerModal'
 
 interface MissionRow {
   id: string
+  mission_number: number | null
   external_id: string | null
   dossier_number: string | null
   source: string | null
@@ -39,6 +40,7 @@ interface MissionRow {
 
 interface SiblingRow {
   id: string
+  mission_number: number | null
   external_id: string | null
   source: string | null
   status: string
@@ -168,7 +170,7 @@ export default function FacturationClient({
       if (sourceFilter !== 'all' && m.source !== sourceFilter) return false
       if (!q) return true
       const hay = [
-        m.external_id, m.dossier_number, m.client_name,
+        m.mission_number?.toString(), m.external_id, m.dossier_number, m.client_name,
         m.vehicle_plate, m.vehicle_brand, m.vehicle_model,
         m.incident_address, m.destination_address,
       ].filter(Boolean).join(' ').toLowerCase()
@@ -248,7 +250,7 @@ export default function FacturationClient({
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-ink font-semibold text-sm">{m.external_id || m.dossier_number || m.id.slice(0, 8)}</span>
+                        <span className="text-ink font-semibold text-sm">{m.mission_number != null ? `#${m.mission_number}` : (m.external_id || m.dossier_number || m.id.slice(0, 8))}</span>
                         <span className="text-ink-muted text-xs">·</span>
                         <span className="text-ink-secondary text-xs">{fmtSource(m.source)}</span>
                         {hasChain && (

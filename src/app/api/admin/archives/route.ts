@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
   let query = sb
     .from('incoming_missions')
-    .select('id, external_id, dossier_number, source, status, vehicle_plate, vehicle_brand, vehicle_model, client_name, intervention_date, completed_at, invoiced_at, invoice_number, invoice_method, archived_at', { count: 'exact' })
+    .select('id, mission_number, external_id, dossier_number, source, status, vehicle_plate, vehicle_brand, vehicle_model, client_name, intervention_date, completed_at, invoiced_at, invoice_number, invoice_method, archived_at', { count: 'exact' })
     .not('archived_at', 'is', null)
     .order('archived_at', { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)

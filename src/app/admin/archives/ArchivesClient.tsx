@@ -7,6 +7,7 @@ import { getSourceLabel, type SourceDisplay as CatalogSource } from '@/lib/missi
 
 interface ArchivedMission {
   id: string
+  mission_number:  number | null
   external_id:     string | null
   dossier_number:  string | null
   source:          string | null
@@ -67,7 +68,7 @@ export default function ArchivesClient({ catalogSources }: { catalogSources: Cat
   useEffect(() => { load() }, [load])
 
   async function unarchive(m: ArchivedMission) {
-    if (!confirm(`Désarchiver la mission ${m.external_id || m.id.slice(0,8)} ?\nElle réapparaîtra dans la liste dispatch normale.`)) return
+    if (!confirm(`Désarchiver la mission ${m.mission_number != null ? `#${m.mission_number}` : (m.external_id || m.id.slice(0,8))} ?\nElle réapparaîtra dans la liste dispatch normale.`)) return
     setUnarchiving(m.id)
     try {
       const res = await fetch('/api/admin/archives/unarchive', {
@@ -142,7 +143,7 @@ export default function ArchivesClient({ catalogSources }: { catalogSources: Cat
             <tbody className="divide-y">
               {missions.map(m => (
                 <tr key={m.id} className="hover:bg-surface-hover">
-                  <td className="px-4 py-2 font-mono text-xs">{m.external_id || m.dossier_number || m.id.slice(0,8)}</td>
+                  <td className="px-4 py-2 font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.external_id || m.dossier_number || m.id.slice(0,8))}</td>
                   <td className="px-4 py-2 text-xs text-ink-secondary">{fmtSource(m.source, catalogSources)}</td>
                   <td className="px-4 py-2">
                     <p className="text-ink text-xs font-mono">{m.vehicle_plate || '—'}</p>

@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   let query = supabase
     .from('incoming_missions')
     .select(`
-      id, external_id, dossier_number, source, source_format,
+      id, mission_number, external_id, dossier_number, source, source_format,
       mission_type, incident_type, incident_description,
       client_name, client_phone,
       assisted_name, assisted_phone,

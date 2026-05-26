@@ -35,7 +35,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const { data: mission, error } = await sb
     .from('incoming_missions')
     .select(`
-      id, external_id, dossier_number, source, mission_type, incident_type,
+      id, mission_number, external_id, dossier_number, source, mission_type, incident_type,
       status, snc_scenario,
       vehicle_plate, vehicle_brand, vehicle_model,
       client_name, billed_to_name,
@@ -50,7 +50,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   // Detecte une REL fille existante pour ce parent (idempotence)
   const { data: existingRel } = await sb
     .from('incoming_missions')
-    .select('id, external_id, status, assigned_to, dossier_number')
+    .select('id, mission_number, external_id, status, assigned_to, dossier_number')
     .eq('parent_mission_id', mission.id)
     .eq('incident_type', 'relivraison')
     .maybeSingle()
@@ -88,6 +88,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
     <QrMissionClient
       mission={{
         id:                 mission.id,
+        mission_number:     mission.mission_number,
         external_id:        mission.external_id,
         dossier_number:     mission.dossier_number,
         source:             mission.source,
@@ -102,11 +103,12 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         destination_city:    mission.destination_city,
       }}
       existingRel={existingRel ? {
-        id:          existingRel.id,
-        external_id: existingRel.external_id,
-        status:      existingRel.status,
-        assigned_to: existingRel.assigned_to,
-        assigneeName: existingRelAssignee?.name || null,
+        id:             existingRel.id,
+        mission_number: existingRel.mission_number,
+        external_id:    existingRel.external_id,
+        status:         existingRel.status,
+        assigned_to:    existingRel.assigned_to,
+        assigneeName:   existingRelAssignee?.name || null,
       } : null}
       currentUser={{
         id:    user.id,

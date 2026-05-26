@@ -10,6 +10,7 @@ import { getSourceLabel, type SourceDisplay as CatalogSource } from '@/lib/missi
 
 interface TerminatedMission {
   id: string
+  mission_number: number | null
   external_id:     string | null
   dossier_number:  string | null
   source:          string | null
@@ -259,7 +260,7 @@ export default function MissionsTermineesClient({ catalogSources, userRole, user
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {missions.map(m => {
               const kind = missionKind(m)
-              const ref  = m.external_id || m.dossier_number || m.id.slice(0, 8)
+              const ref  = m.mission_number != null ? `#${m.mission_number}` : (m.external_id || m.dossier_number || m.id.slice(0, 8))
               const veh  = [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
               return (
                 <Link

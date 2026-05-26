@@ -48,7 +48,7 @@ export async function GET(req: Request) {
   let query = sb
     .from('incoming_missions')
     .select(`
-      id, external_id, dossier_number, source, status,
+      id, mission_number, external_id, dossier_number, source, status,
       mission_type, incident_type, parent_mission_id,
       vehicle_plate, vehicle_brand, vehicle_model,
       client_name, intervention_date, completed_at,
@@ -87,13 +87,16 @@ export async function GET(req: Request) {
 
   if (source) query = query.eq('source', source)
   if (q) {
-    query = query.or([
+    const ors = [
       `external_id.ilike.%${q}%`,
       `dossier_number.ilike.%${q}%`,
       `client_name.ilike.%${q}%`,
       `vehicle_plate.ilike.%${q}%`,
       `invoice_number.ilike.%${q}%`,
-    ].join(','))
+    ]
+    // Si q est numerique, on cherche aussi sur mission_number (cast text).
+    if (/^\d+$/.test(q)) ors.push(`mission_number::text.ilike.%${q}%`)
+    query = query.or(ors.join(','))
   }
 
   query = query

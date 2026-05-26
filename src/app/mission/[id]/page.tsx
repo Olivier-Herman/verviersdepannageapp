@@ -17,11 +17,11 @@ export default async function MissionDriverPage({ params }: Props) {
     .from('users').select('id, role, nav_app').eq('email', session.user.email!).single()
   if (!currentUser) redirect('/dashboard')
 
-  const { data: mission } = await supabase
-    .from('incoming_missions')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  // params.id accepte UUID OU mission_number numerique (Olivier 2026-05-26).
+  const idIsNumeric = /^\d+$/.test(params.id)
+  const { data: mission } = idIsNumeric
+    ? await supabase.from('incoming_missions').select('*').eq('mission_number', Number(params.id)).single()
+    : await supabase.from('incoming_missions').select('*').eq('id', params.id).single()
 
   if (!mission) redirect('/dashboard')
 

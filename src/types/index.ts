@@ -269,6 +269,10 @@ export type MissionSourceFormat = 'rtf' | 'email_plain' | 'docx' | 'pdf' | 'unkn
 
 export interface IncomingMission {
   id: string
+  // mission_number : numero lisible (8 chiffres, sequence demarre a 10000000).
+  // Cf migration 202605261800_mission_number_sequence.sql. Affiche partout
+  // dans l UI a la place de external_id (Olivier 2026-05-26).
+  mission_number?: number | null
   external_id: string
   dossier_number: string | null
   source: MissionSource
