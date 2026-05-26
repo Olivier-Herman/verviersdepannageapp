@@ -369,19 +369,31 @@ export async function POST(req: Request) {
       // Appel Prive REM 'depot' : impression etiquette parc directement depuis
       // VD Soft (pas de ticket Helpdesk Odoo pour les Appel Prive, donc le
       // callback Towsoft ne le ferait pas). Best-effort, n echoue pas la mission.
+      // Note typique : vehicule destine a relivraison ulterieure -> Olivier
+      // 2026-05-26 : "Relivraison vers {adresse}" si connue, sinon
+      // "En attente d info adresse de relivraison".
       if (isAppelPrive && appelPriveDestination === 'depot' && vdMissionId) {
         try {
           const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
           const dd = new Date(interventionISO)
           const dateStr = `${String(dd.getDate()).padStart(2, '0')}/${String(dd.getMonth()+1).padStart(2, '0')}/${String(dd.getFullYear()).slice(-2)}`
+          // Adresse de relivraison : aujourd hui non saisie sur Appel Prive
+          // (champ futur du form). Pour l instant on tombe systematiquement sur
+          // le fallback "En attente". Quand le form proposera le champ, on
+          // l injectera ici via body.redelivery_address.
+          const redeliveryAddr = (body.redelivery_address || '').trim()
+          const note = redeliveryAddr
+            ? `Relivraison vers ${redeliveryAddr}`
+            : `En attente d info adresse de relivraison`
           const zpl = buildParcLabelZPL({
             qrUrl: `${baseUrl}/dispatch/${vdMissionId}`,
-            motif: 'PRIVE',
+            motif: 'APPEL PRIVE',
             date:  dateStr,
-            note:  `PRIVE ${dateStr}`,
+            note,
             brand: brand || '',
             model: model || '',
-            plate: (plate || vin || '').trim().toUpperCase(),
+            plate: (plate || '').trim().toUpperCase(),
+            vin:   (vin   || '').trim().toUpperCase(),
           })
           const printRes = await printZPLRaw(zpl)
           if (printRes.ok) {

@@ -1,31 +1,38 @@
 // src/lib/print/zpl-templates/parc-label.ts
 //
 // Template ZPL pour l etiquette d entree en parc fourriere VD Soft.
-// Refait 2026-05-26 (Olivier) : QR XXL pour scan a distance depuis un Clark,
-// metadata source/date/immat compressees en pied. Le scan QR est le canal
-// principal d identification ; le texte humain n est qu une aide visuelle.
+// Refait 2026-05-26 v2 (Olivier) : layout paysage avec QR a gauche et texte
+// vertical a droite — exploite mieux les 812 dots de largeur pour maximiser
+// la taille du QR (cf. analyse +18% surface vs centre-haut).
 //
 // Materiel cible :
 //   - Zebra ZD421, 203 dpi (8 dots/mm)
-//   - Etiquette 101.6 x 76.2 mm = 812 x 609 dots, orientation portrait
+//   - Etiquette 101.6 x 76.2 mm = 812 x 609 dots, orientation paysage
 //
-// Layout 2026-05-26 :
-//   - QR code   : ENORME (~480 dots, y=10 a y=490), centre horizontalement
-//   - Immat     : pied gauche, gros (50x50) — identification visuelle rapide
-//   - Motif+Date: pied droit, petit (28x28) — info secondaire compact
-//   - Marque/Mod+Note : pied bas, micro (22x22) sur 1-2 lignes
-//
-// Pas de logique conditionnelle : champs vides -> string vide ->
-// n apparaissent pas visuellement sur l etiquette.
+// Layout 2026-05-26 v2 :
+//   - QR     : x=15, y=10, ~530 dots de cote (magnification 16)
+//   - Colonne droite (x=560, largeur ~240) :
+//       y=15   DATE              (28x28)
+//       y=60   SOURCE            (32x32, peut wrap)
+//       y=160  Marque/Modele     (26x26)
+//       y=200  IMMATRICULATION   (44x44 — identification rapide)
+//       y=260  VIN               (22x22, si present)
+//   - Pied : NOTE (24x24) sur toute la largeur, sous le QR (y=555)
 
 export interface ParcLabelData {
-  qrUrl: string   // URL encodee dans le QR (ex: https://app.verviersdepannage.com/v/1346)
-  motif: string   // Texte gros bandeau bas gauche (ex: AVP, Accident, Saisie, Mal Garée, SNC)
-  date:  string   // Format DD/MM/YY (bandeau bas droite)
-  note:  string   // Texte typique en pied (ex: "AVP 20-07-2026" = date+60j pour AVP eligible destruction)
+  qrUrl: string   // URL encodee dans le QR (ex: https://app.verviersdepannage.com/dispatch/10001234)
+  motif: string   // SOURCE colonne droite (ex: PRIVE, ACCIDENT, SIABIS NON COUVERT, AVP, MAL GAREE)
+  date:  string   // Format DD/MM/YY (haut droite)
+  note:  string   // Pied bas, texte conditionnel selon type (cf. logique cote API) :
+                  //   - AVP : "AVP 20-07-2026" (date+60j eligibilite destruction)
+                  //   - Vehicule destine a relivraison :
+                  //       avec adresse  -> "Relivraison vers Rue X, 4800 Verviers"
+                  //       sans adresse  -> "En attente d info adresse de relivraison"
+                  //   - Autres : vide acceptable (pas de note)
   brand?: string  // Marque vehicule (ex: "Mazda")
   model?: string  // Modele vehicule (ex: "5")
   plate?: string  // Immatriculation (ex: "1LPK879")
+  vin?:   string  // VIN vehicule (optionnel, ligne sautee si vide)
 }
 
 /**
@@ -55,29 +62,34 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
   const brand = escapeZPL(data.brand || '')
   const model = escapeZPL(data.model || '')
   const plate = escapeZPL(data.plate || '')
+  const vin   = escapeZPL(data.vin || '')
   // Combine marque + modele sur une seule ligne ("Mazda 5", "BMW Serie 3").
   const brandModel = [brand, model].filter(Boolean).join(' ')
-  const immat = plate ? `Immat: ${plate}` : ''
 
-  // Coords (812x609 dots). QR XXL en haut, infos texte compressees en pied.
+  // Coords (812x609 dots, paysage). QR XXL a gauche, colonne texte a droite.
   //
-  //   y=10  -----+------------------------+
-  //              |                        |
-  //              |       QR XXL           |
-  //              |   ~480 dots de cote    |
-  //              |    (centre x)          |
-  //              |                        |
-  //   y=490 ----+------------------------+
-  //   y=500  1LPK879            ACCIDENT  (immat 50x50 gauche / motif 28x28 droite)
-  //   y=540                     20/05/26  (date 28x28 droite, sous motif)
-  //   y=575  Mazda 5 — Note typee ici     (22x22, FB 2 lignes, 752 dots large)
+  //   x=15  ----+----------------------------+---x=560-------+
+  //         |                                |  DATE         | y=15
+  //         |                                |               |
+  //         |        QR ~530 dots            |  SOURCE       | y=60
+  //         |       (magnification 16)       |  (32x32)      |
+  //         |                                |               |
+  //         |                                |  Mazda 5      | y=160
+  //         |                                |  1LPK879      | y=200 (44x44 gros)
+  //         |                                |  VIN:XXX..    | y=260
+  //   y=545 +-------------------------------++----------------+
+  //         |  Note typique (Relivraison vers ... / AVP date / ...)  | y=555 (24x24)
+  //         +-----------------------------------------------+
   //
-  // QR ^BQN,2,M ou M = magnification. Pour 480 dots, M=14 (33 dots/module x 14 = 462,
-  // proche du max). Le module size depend de la quantite de data dans l URL.
-  // L URL /dispatch/{number} = ~50 chars + domain = ~80 chars total, version auto.
+  // QR : ^BQN,2,16. URL /dispatch/{number} = ~80 chars total.
+  // Magnification 16 -> module size 16 dots, QR version auto -> ~530 dots
+  // (peut varier selon longueur URL ; reste >480 dots dans tous les cas).
 
-  // Concatene marque + modele + note en une ligne pour le pied (gain de place)
-  const footerLine = [brandModel, note].filter(Boolean).join(' — ')
+  // VIN ligne (sautee si vide pour eviter espace vide laid)
+  const vinLine = vin ? `^FO560,260\n^A0N,22,22\n^FB240,2,0,L,0\n^FDVIN: ${vin}^FS\n` : ''
+
+  // Note pied (sautee si vide)
+  const noteBlock = note ? `^FO15,555\n^A0N,24,24\n^FB780,1,0,L,0\n^FD${note}^FS\n` : ''
 
   return `^XA
 ^CI28
@@ -87,30 +99,31 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 ^PR2
 ~SD30
 
-^FO165,10
-^BQN,2,14
+^FO15,10
+^BQN,2,16
 ^FDLA,${qrUrl}^FS
 
-^FO30,500
-^A0N,50,50
-^FD${plate}^FS
-
-^FO500,505
+^FO560,15
 ^A0N,28,28
-^FB282,1,0,R,0
-^FD${motif}^FS
-
-^FO500,545
-^A0N,28,28
-^FB282,1,0,R,0
+^FB240,1,0,L,0
 ^FD${date}^FS
 
-^FO30,580
-^A0N,22,22
-^FB752,1,0,L,0
-^FD${footerLine}^FS
+^FO560,60
+^A0N,32,32
+^FB240,2,0,L,0
+^FD${motif}^FS
 
-^XZ`
+^FO560,160
+^A0N,26,26
+^FB240,2,0,L,0
+^FD${brandModel}^FS
+
+^FO560,210
+^A0N,44,44
+^FB240,1,0,L,0
+^FD${plate}^FS
+
+${vinLine}${noteBlock}^XZ`
 }
 
 /**
