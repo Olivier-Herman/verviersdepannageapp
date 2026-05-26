@@ -285,8 +285,13 @@ export default function NewMissionClient({
   // Les sources avec group_key sont regroupees sous un meta-choix synthetique
   // ('police' pour les sub-types Police). Les sources sans group_key sont
   // affichees telles quelles. Tri alpha cote serveur (order by label).
+  // Filtre 'unknown' du dropdown (Olivier 2026-05-26 : "retirer la source
+  // Unknown"). La source reste en BDD pour les missions historiques mais
+  // n est plus proposee a la creation manuelle.
+  const isUnknownSource = (s: { key: string; label: string }) =>
+    s.key.toLowerCase() === 'unknown' || s.label.toLowerCase() === 'unknown'
   const dropdownSources = [
-    ...sources.filter(s => !s.group_key),
+    ...sources.filter(s => !s.group_key && !isUnknownSource(s)),
     // Si group 'police' a au moins une source mais pas d entree synthetique
     // 'police' dans le catalog : on l ajoute pour ouvrir le sub-selector.
     ...(policeSubtypeSources.length > 0 && !sources.some(s => s.key === 'police')
