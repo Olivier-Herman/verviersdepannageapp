@@ -231,10 +231,39 @@ export default function EncaissementClient({
   }, [saved])
 
   // Page 0 — pré-rempli depuis mission si prefill fourni
+  // Auto-lien mission ouverte (mode standalone uniquement). Si prefill_mission_id
+  // deja set, le user vient deja d une mission, pas besoin de chercher.
   const [plate, setPlate] = useState(prefill?.plate || '')
   const [odooVehicle, setOdooVehicle] = useState<OdooVehicle | null>(null)
   /** Modal de lookup véhicule (Phase 1 multi-match Odoo) */
   const [showLookup, setShowLookup] = useState(false)
+  /** Auto-lien vers mission ouverte si plaque match (Olivier 2026-05-26).
+   *  Affiche un bandeau "Mission #XXX trouvee" qui propose de l encaisser direct. */
+  const [openMission, setOpenMission] = useState<null | {
+    id: string; mission_number: number | null; source: string;
+    mission_type: string | null; vehicle_brand: string | null; vehicle_model: string | null;
+    amount_to_collect: number | null; status: string; client_name: string | null;
+  }>(null)
+  // Debounce 400ms sur changement de plaque (mode standalone uniquement).
+  useEffect(() => {
+    // Si on est deja arrive avec une mission prefilled, pas besoin de chercher.
+    if (prefill?.mission_id) return
+    if (!plate || plate.length < 4) { setOpenMission(null); return }
+    const ctrl = new AbortController()
+    const handler = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/missions/open-by-plate?plate=${encodeURIComponent(plate)}`, {
+          signal: ctrl.signal,
+        })
+        const j = await res.json()
+        if (j.found && j.mission) setOpenMission(j.mission)
+        else setOpenMission(null)
+      } catch (e: any) {
+        if (e.name !== 'AbortError') setOpenMission(null)
+      }
+    }, 400)
+    return () => { clearTimeout(handler); ctrl.abort() }
+  }, [plate, prefill?.mission_id])
 
   // Page 1
   const [vehicleConfirmed, setVehicleConfirmed] = useState<boolean | null>(null)
@@ -617,7 +646,57 @@ export default function EncaissementClient({
           autoFocus
           className={`${inputXLCls} mb-2`}
         />
-        <p className="text-ink-muted text-xs text-center mb-8">Sans tirets ni espaces</p>
+        <p className="text-ink-muted text-xs text-center mb-4">Sans tirets ni espaces</p>
+
+        {/* Bandeau "Mission ouverte trouvee" — Olivier 2026-05-26 (Chantier 4).
+            Si la plaque match une mission ouverte (parked/in_progress/...), on
+            propose un saut direct vers le mode encaissement mission-prefilled
+            avec le montant deja calcule. */}
+        {openMission && (
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 mb-4">
+            <p className="text-emerald-900 text-sm font-semibold mb-1">
+              💡 Mission ouverte trouvée pour cette plaque
+            </p>
+            <p className="text-emerald-800 text-xs leading-relaxed mb-3">
+              <span className="font-mono">{openMission.mission_number != null ? `#${openMission.mission_number}` : openMission.id.slice(0, 8)}</span>
+              {' · '}{openMission.source}
+              {openMission.mission_type ? ` · ${openMission.mission_type}` : ''}
+              {' · '}<span className="capitalize">{openMission.status}</span>
+              {openMission.amount_to_collect != null && (
+                <span className="block mt-0.5">
+                  Montant attendu : <strong>{openMission.amount_to_collect.toFixed(2)} €</strong>
+                </span>
+              )}
+              {(openMission.vehicle_brand || openMission.vehicle_model) && (
+                <span className="block mt-0.5">
+                  {[openMission.vehicle_brand, openMission.vehicle_model].filter(Boolean).join(' ')}
+                </span>
+              )}
+              {openMission.client_name && (
+                <span className="block mt-0.5">{openMission.client_name}</span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const url = `/encaissement?prefill_mission_id=${openMission.id}`
+                  + `&prefill_plate=${encodeURIComponent(plate)}`
+                  + `&prefill_brand=${encodeURIComponent(openMission.vehicle_brand || '')}`
+                  + `&prefill_model=${encodeURIComponent(openMission.vehicle_model || '')}`
+                  + (openMission.amount_to_collect != null ? `&prefill_amount=${openMission.amount_to_collect}` : '')
+                  + `&return_to=/mission/${openMission.id}`
+                window.location.href = url
+              }}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition"
+            >
+              💳 Encaisser cette mission →
+            </button>
+            <p className="text-emerald-700 text-xs mt-2 text-center">
+              Ou continue ci-dessous pour un encaissement standalone (passage caisse classique).
+            </p>
+          </div>
+        )}
+
         <BigBtn
           label="Rechercher →"
           onClick={checkPlate}
