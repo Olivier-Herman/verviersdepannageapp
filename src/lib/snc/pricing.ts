@@ -262,13 +262,27 @@ export function buildSncQuoteLines(opts: {
     price_unit: m ? 242.98 : 161.98,
   })
 
-  // 2. Kilometres depanneuse — SNC SEULEMENT (SC = forfait pur, pas de km)
+  // 2. Kilometres depanneuse :
+  //    - SNC : facture tous les km au tarif depanneuse
+  //    - SC  : 30 km inclus dans le forfait. Facture uniquement le surplus
+  //            au tarif 1.0744 normal / 1.6529 majore.
+  //      Olivier 2026-05-26 : "Pour Siabis couvert, on va compter le forfait
+  //      incluant 30kms totaux. Le surplus de kilometre est facture au tarif
+  //      de 1,0744eur htva en non majore et 1,6529eur htva en majore".
   if (variant === 'snc' && metrics.km_depanneuse > 0) {
     lines.push({
       kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
       name:       `Kilomètre dépanneuse${m ? ' (majoré)' : ''}`,
       qty:        metrics.km_depanneuse,
       price_unit: m ? 1.65 : 1.0744,
+    })
+  } else if (variant === 'sc' && metrics.km_depanneuse > 30) {
+    const surplus = metrics.km_depanneuse - 30
+    lines.push({
+      kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
+      name:       `Kilomètre dépanneuse (au-delà des 30 km inclus)${m ? ' (majoré)' : ''}`,
+      qty:        surplus,
+      price_unit: m ? 1.6529 : 1.0744,
     })
   }
 

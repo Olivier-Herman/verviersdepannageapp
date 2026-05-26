@@ -71,7 +71,15 @@ function getAvailableMissionTypes(src: string) {
   if (POLICE_PURE_SOURCES.has(key)) {
     return MISSION_TYPES.filter(t => ['REM', 'DPR'].includes(t.value))
   }
-  if (SIABIS_SOURCES.has(key)) {
+  // SNC : pas de DPR encodable (Olivier 2026-05-26 : "Rien n etant facture,
+  // on ne va pas planifier un DPR. Le DPR dans ce cas est initie par le
+  // chauffeur en arrivant sur place. On ne sait rien facturer a personne
+  // etant donne qu on a pas les coordonnees").
+  if (key === 'police_snc') {
+    return MISSION_TYPES.filter(t => ['DSP', 'REM'].includes(t.value))
+  }
+  // SC : DSP/REM/DPR (DPR tarif = DSP cf useEffect derivation scenario).
+  if (key === 'sia_couvert') {
     return MISSION_TYPES.filter(t => ['DSP', 'REM', 'DPR'].includes(t.value))
   }
   // Assistances / Prive / Garage : DSP, REM, Transport, DPR
@@ -408,16 +416,16 @@ export default function NewMissionClient({
 
   // Derivation sncScenario depuis missionType (SNC/SC uniquement).
   // Olivier 2026-05-25 : "le scenario est defini via le type d intervention".
-  // REM+REL et REL retires de l encodage : DSP -> 'dsp', REM -> 'rem_client'
-  // par defaut (si le chauffeur depose finalement en parc, le code ajuste
-  // automatiquement vers 'rem_depot' a la cloture chauffeur).
-  // DPR (annulation) : pas de scenario applicable -> '' (vide).
+  // Olivier 2026-05-26 : "Pour Siabis couvert : Le tarif DPR = le tarif DSP".
+  // DSP -> 'dsp', REM -> 'rem_client' par defaut, DPR(SC) -> 'dsp' (tarif).
   useEffect(() => {
     if (source !== 'police_snc' && source !== 'sia_couvert') return
+    const isSc = source === 'sia_couvert'
     const derived: 'dsp' | 'rem_client' | 'rem_depot' | '' =
-        missionType === 'DSP' ? 'dsp'
-      : missionType === 'REM' ? 'rem_client'
-      :                          ''  // DPR / autres -> pas de scenario
+        missionType === 'DSP'                 ? 'dsp'
+      : missionType === 'REM'                 ? 'rem_client'
+      : (missionType === 'DPR' && isSc)       ? 'dsp'  // SC : DPR = DSP tarif
+      :                                          ''
     if (derived !== sncScenario) setSncScenario(derived)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missionType, source])
@@ -469,6 +477,29 @@ export default function NewMissionClient({
 
   // ── Avertissements ────────────────────────────────────────────────────────
   const [selectedWarnings, setSelectedWarnings] = useState<string[]>([])
+
+  // Auto-coche le warning "Periphérique / Voie Rapide" pour les sources SNC
+  // et SC (interventions autoroute systematiques). Olivier 2026-05-26.
+  // Match du warning par label (insensible casse + accents). Si l user
+  // l a deja decoche manuellement, on ne le re-coche pas (track via flag).
+  const autoWarningAppliedRef = useRef(false)
+  useEffect(() => {
+    if (source !== 'police_snc' && source !== 'sia_couvert') {
+      autoWarningAppliedRef.current = false
+      return
+    }
+    if (autoWarningAppliedRef.current) return
+    const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const w = warnings.find(w => {
+      const n = norm(w.label)
+      return n.includes('peripherique') || n.includes('voie rapide') || n.includes('autoroute')
+    })
+    if (w && !selectedWarnings.includes(w.id)) {
+      setSelectedWarnings(prev => [...prev, w.id])
+      autoWarningAppliedRef.current = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, warnings])
 
   // ── Remarques ─────────────────────────────────────────────────────────────
   const [remarksGeneral,  setRemarksGeneral]  = useState('')
