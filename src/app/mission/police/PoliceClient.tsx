@@ -92,6 +92,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [ownerPhone,     setOwnerPhone]     = useState('')
   const [remarks,        setRemarks]        = useState('')
   const [policeBlocked,  setPoliceBlocked]  = useState(false)
+  // Mal Garee scenario : 'chargement' (defaut, mise en parc) ou 'deplacement_paye'
+  // (client arrive avant chargement, paye le deplacement 125 EUR TVAC, pas de
+  // mise en parc, mission close apres encaissement). Olivier 2026-05-26.
+  const [malGareeScenario, setMalGareeScenario] = useState<'chargement' | 'deplacement_paye'>('chargement')
   // Note : la levee de saisie Rodeo n est plus saisie depuis le formulaire
   // chauffeur (Olivier 2026-05-24, regle "info levee = service fourriere
   // uniquement"). C est la fiche dispatch / le workflow restitution qui
@@ -506,6 +510,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         // Appel Prive REM : 'client' (livraison directe, pas d etiquette) ou
         // 'depot' (Transit + etiquette). DSP : implicitement 'client'.
         appelPriveDestination: selectedType === 'appel_prive' ? (appelPriveDestination || null) : null,
+        // Mal Garee scenario : chargement (parc) ou deplacement_paye (encaissement direct).
+        malGareeScenario: selectedType === 'mal_garee' ? malGareeScenario : null,
       }),
     })
 
@@ -535,12 +541,15 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // amount). Le chauffeur peut choisir d encaisser maintenant ou plus tard.
   if (done) {
     const needsPayment = selectedType && ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
+    // Mal Garee scenario 'deplacement_paye' : encaissement OBLIGATOIRE 125 EUR TVAC.
+    // Pas de bouton "plus tard" dans ce cas.
+    const malGareeDeplacementPaye = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
     // Estimation : pour Appel Prive on prefere le total TVAC du preview tarif
-    // (forfait negocie OU tarif source). Pour les autres on laisse vide,
-    // l ecran encaissement re-calculera depuis la mission.
+    // (forfait negocie OU tarif source). Pour Mal Garee deplacement paye : 125 fixe.
+    // Pour les autres on laisse vide, l ecran encaissement re-calculera depuis la mission.
     const prefillAmount = selectedType === 'appel_prive'
       ? (amountToCollect !== '' ? Number(amountToCollect) : (priveEstimate?.total_tvac ?? null))
-      : (selectedType === 'snc' ? (sncPreview?.total_tvac ?? null) : null)
+      : (malGareeDeplacementPaye ? 125 : (selectedType === 'snc' ? (sncPreview?.total_tvac ?? null) : null))
     const encaissementUrl = createdMissionId
       ? `/encaissement?prefill_mission_id=${createdMissionId}`
         + `&prefill_plate=${encodeURIComponent(plate || vin || '')}`
@@ -902,12 +911,39 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           </Section>
         )}
 
-        {/* Blocage Police : toggle visible pour les Mal Garees (et plus tard les autres
-            types fourriere). Si actif, la restitution exigera une confirmation que le
-            proprietaire est bien passe au commissariat.
-            Olivier 2026-05-26 : positionne juste avant Remarques (UX : on encode le
-            blocage avant les observations libres). */}
-        {(selectedType === 'mal_garee') && (
+        {/* Mal Garee scenario : Chargement normal (parc) ou Deplacement avec
+            paiement (125 EUR TVAC, client arrive avant chargement, pas de parc).
+            Olivier 2026-05-26. */}
+        {selectedType === 'mal_garee' && (
+          <Section title="🚫 Scénario Mal Garée">
+            <div className="grid grid-cols-1 gap-2">
+              {([
+                { key: 'chargement',      label: '🚛 Chargement et mise en parc',  desc: 'Workflow standard : véhicule chargé et mis en zone L. Restitution ultérieure au propriétaire (avec gardiennage).' },
+                { key: 'deplacement_paye', label: '💳 Déplacement avec paiement',    desc: 'Le client arrive AVANT chargement. Paye 125€ TVAC pour le déplacement de la dépanneuse. Véhicule pas chargé, pas de parc.' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setMalGareeScenario(opt.key)}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    malGareeScenario === opt.key
+                      ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200'
+                      : 'border-strong bg-surface hover:border-amber-300'
+                  }`}
+                >
+                  <div className="text-ink text-sm font-medium">{opt.label}</div>
+                  <div className="text-ink-muted text-xs leading-relaxed">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Blocage Police : toggle visible pour les Mal Garees (uniquement scenario
+            chargement, pas pour deplacement_paye qui ne va pas en parc).
+            Si actif, la restitution exigera une confirmation que le
+            proprietaire est bien passe au commissariat. */}
+        {selectedType === 'mal_garee' && malGareeScenario === 'chargement' && (
           <Section title="🚓 Blocage police">
             <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-strong rounded-xl hover:border-blue-500 transition">
               <input

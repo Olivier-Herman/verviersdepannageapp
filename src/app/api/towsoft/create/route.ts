@@ -62,6 +62,9 @@ export async function POST(req: Request) {
     // pas d etiquette) ou 'depot' (Transit + impression etiquette). DSP :
     // implicitement 'client'. Olivier 2026-05-26.
     appelPriveDestination,
+    // Mal Garee scenario : 'chargement' (defaut, parc) ou 'deplacement_paye'
+    // (client arrive avant chargement, paye 125 EUR TVAC pour le deplacement).
+    malGareeScenario,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -234,8 +237,11 @@ export async function POST(req: Request) {
   // Appel Prive :
   //   - DSP / REM 'client' -> pas de zone (intervention immediate, facturation directe)
   //   - REM 'depot'        -> Transit (mise en parc, etiquette imprimee)
-  function zoneForType(t: string, sncScenarioVal?: string, priveDest?: string): string | null {
-    if (t === 'mal_garee') return 'L'
+  // Mal Garee :
+  //   - chargement (defaut) -> zone L (parc standard)
+  //   - deplacement_paye    -> pas de zone (client arrive avant chargement, paye, on repart)
+  function zoneForType(t: string, sncScenarioVal?: string, priveDest?: string, malGareeScen?: string): string | null {
+    if (t === 'mal_garee') return malGareeScen === 'deplacement_paye' ? null : 'L'
     if (t === 'rodeo')     return 'J'
     if (t === 'avp')       return 'J'
     if (t === 'snc' || t === 'sc') return sncScenarioVal === 'rem_depot' ? 'Transit' : null
@@ -250,7 +256,7 @@ export async function POST(req: Request) {
 
   if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
     const vdSource = FOURRIERE_TYPE_TO_SOURCE[type]
-    const vdZone   = zoneForType(type, sncScenario, appelPriveDestination)
+    const vdZone   = zoneForType(type, sncScenario, appelPriveDestination, malGareeScenario)
     const nowIso   = new Date().toISOString()
 
     // Combine date (DD-MM-YYYY) + time (HH:MM) en ISO pour intervention_date.
@@ -307,12 +313,16 @@ export async function POST(req: Request) {
     //   - SNC dsp/rem_client -> in_progress (mission immediate, paiement chauffeur)
     //   - Appel Prive REM 'depot' -> parked (en zone Transit, etiquette imprimee)
     //   - Appel Prive DSP / REM 'client' -> in_progress (intervention immediate)
-    //   - police fourriere classique (mal_garee/rodeo/avp) -> parked
+    //   - Mal Garee 'deplacement_paye' -> in_progress (client paye direct, pas de parc)
+    //   - police fourriere classique (mal_garee chargement / rodeo / avp) -> parked
+    const isMalGareeDeplacementPaye = type === 'mal_garee' && malGareeScenario === 'deplacement_paye'
     const computedStatus = isSnc
       ? (sncScenario === 'rem_depot' ? 'parked' : 'in_progress')
       : isAppelPrive
         ? (appelPriveDestination === 'depot' ? 'parked' : 'in_progress')
-        : 'parked'
+        : isMalGareeDeplacementPaye
+          ? 'in_progress'
+          : 'parked'
 
     const { data: vdData, error: vdErr } = await supabase
       .from('incoming_missions')
@@ -320,7 +330,15 @@ export async function POST(req: Request) {
         external_id:        `${prefix}-${queueEntry.id.slice(0, 8)}`,
         dossier_number:     odooTicketId ? `${prefix}-${odooTicketId}` : null,
         source:             vdSource,
-        mission_type:       isSnc ? sncMissionType : (isAppelPrive ? priveMissionType : 'remorquage'),
+        // mission_type : Mal Garee deplacement_paye = trajet_vide (DPR) car pas
+        // de chargement effectif. Sinon SNC/Prive selon logique dediee, defaut remorquage.
+        mission_type:       isSnc
+                              ? sncMissionType
+                              : isAppelPrive
+                                ? priveMissionType
+                                : isMalGareeDeplacementPaye
+                                  ? 'trajet_vide'
+                                  : 'remorquage',
         status:             computedStatus,
         parc_zone_key:      vdZone,
         vehicle_plate:      ((plate || '').trim().toUpperCase()) || null,
@@ -333,9 +351,12 @@ export async function POST(req: Request) {
         billed_to_name:     (type === 'sc' && scAssistanceName) ? String(scAssistanceName).trim() : null,
         // Appel Prive : forfait TVAC saisi par dispatcher/chauffeur. Si vide,
         // la facturation appliquera le fallback tarif police_accident.
+        // Mal Garee deplacement_paye : forfait fixe 125 EUR TVAC (Olivier 2026-05-26).
         amount_to_collect:  isAppelPrive && amountToCollect != null && amountToCollect !== ''
                               ? Number(amountToCollect)
-                              : null,
+                              : isMalGareeDeplacementPaye
+                                ? 125
+                                : null,
         incident_address:   location,
         incident_city:      null,
         incident_lat:       typeof incidentLat === 'number' ? incidentLat : null,
