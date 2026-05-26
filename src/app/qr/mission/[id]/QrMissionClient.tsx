@@ -50,6 +50,9 @@ export default function QrMissionClient({
   const [working,      setWorking]      = useState(false)
   const [error,        setError]        = useState<string | null>(null)
   const [confirmingReassign, setConfirmingReassign] = useState(false)
+  // Restitution sans frais (Chantier 3 Olivier 2026-05-26) : modal motif obligatoire
+  const [showNoCharge,   setShowNoCharge]   = useState(false)
+  const [noChargeReason, setNoChargeReason] = useState('')
 
   const brandModel = [mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')
   const address    = [mission.destination_address, mission.destination_city].filter(Boolean).join(', ')
@@ -58,6 +61,35 @@ export default function QrMissionClient({
   // - Mission eligible (parked + REM+REL ou Siabis rem_depot)
   // - L utilisateur est driver
   const canRelivrer = isElligibleForRel && currentUser.isDriver
+
+  // Boutons Restituer / Restituer sans frais : disponibles si mission en parc
+  // (sources fourriere : mal_garee, rodeo, avp, snc/sc rem_depot, prive depot).
+  // Olivier 2026-05-26 - Chantier 3 : transforme scan QR en hub de restitution.
+  const RESTITUABLE_SOURCES = ['police_mg', 'police_rodeo', 'police_avp', 'police_snc', 'sia_couvert', 'prive']
+  const canRestituer = mission.status === 'parked' && RESTITUABLE_SOURCES.includes(mission.source || '')
+
+  async function doRestituerSansFrais() {
+    const reason = noChargeReason.trim()
+    if (!reason) { setError('Motif obligatoire'); return }
+    setWorking(true); setError(null)
+    try {
+      const r = await fetch(`/api/missions/${mission.id}/restitute`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          mode:             'no_charge',
+          no_charge_reason: reason,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      // Mission cloturee sans frais → redirige vers la fiche dispatch
+      router.push(`/dispatch/${mission.id}`)
+    } catch (e: any) {
+      setError(e.message)
+      setWorking(false)
+    }
+  }
 
   // Existing REL deja prise par quelqu un d autre que le scanneur
   const existingTakenByOther = existingRel?.assigned_to
@@ -198,7 +230,7 @@ export default function QrMissionClient({
         )}
 
         {/* Actions principales */}
-        {!confirmingReassign && (
+        {!confirmingReassign && !showNoCharge && (
           <div className="space-y-3 pt-2">
             {canRelivrer && (
               <button onClick={() => doRelivrer(false)} disabled={working}
@@ -209,15 +241,40 @@ export default function QrMissionClient({
               </button>
             )}
 
+            {/* Hub de restitution (Chantier 3) — bouton paiement client + bouton no_charge */}
+            {canRestituer && (
+              <>
+                <button
+                  onClick={() => {
+                    const url = `/encaissement?prefill_mission_id=${mission.id}`
+                      + `&prefill_plate=${encodeURIComponent(mission.vehicle_plate || '')}`
+                      + `&prefill_brand=${encodeURIComponent(mission.vehicle_brand || '')}`
+                      + `&prefill_model=${encodeURIComponent(mission.vehicle_model || '')}`
+                      + `&return_to=/dispatch/${mission.id}`
+                    window.location.href = url
+                  }}
+                  disabled={working}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-base font-bold transition disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                  💳 Restituer (avec paiement)
+                </button>
+                <button
+                  onClick={() => setShowNoCharge(true)}
+                  disabled={working}
+                  className="w-full py-3 bg-surface border-2 border-amber-400 text-amber-700 hover:bg-amber-50 rounded-2xl text-sm font-bold transition disabled:opacity-40">
+                  🆓 Restituer sans frais
+                </button>
+              </>
+            )}
+
             <Link href={consultUrl}
               className="w-full py-3 bg-surface border-2 text-ink hover:bg-surface-hover rounded-2xl text-base font-medium transition flex items-center justify-center gap-2">
               <Eye size={18} />
               Consulter le dossier
             </Link>
 
-            {!isElligibleForRel && (
+            {!isElligibleForRel && !canRestituer && (
               <p className="text-ink-muted text-xs text-center mt-2 italic">
-                Cette mission n'est pas en attente de relivraison (statut : {mission.status})
+                Cette mission n&apos;est pas en attente d&apos;action (statut : {mission.status})
               </p>
             )}
             {isElligibleForRel && !currentUser.isDriver && (
@@ -225,6 +282,39 @@ export default function QrMissionClient({
                 Seul un chauffeur peut prendre une relivraison via scan QR.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Modal Restituer sans frais (motif obligatoire) */}
+        {showNoCharge && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
+            <div>
+              <p className="text-amber-900 font-semibold text-sm">🆓 Restitution sans frais</p>
+              <p className="text-amber-800 text-xs mt-1 leading-relaxed">
+                Cette action clôture la mission sans paiement. Motif obligatoire — sera consigné dans le dossier pour audit.
+              </p>
+            </div>
+            <textarea
+              value={noChargeReason}
+              onChange={e => setNoChargeReason(e.target.value)}
+              rows={3}
+              placeholder="Motif (ex : demande direction, geste commercial, erreur dossier...)"
+              className="w-full bg-surface border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-amber-500"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowNoCharge(false); setNoChargeReason(''); setError(null) }}
+                disabled={working}
+                className="flex-1 py-2.5 bg-surface border text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-hover transition">
+                Annuler
+              </button>
+              <button
+                onClick={doRestituerSansFrais}
+                disabled={working || !noChargeReason.trim()}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition disabled:opacity-40">
+                {working ? <><Loader2 size={16} className="inline animate-spin" /> ...</> : 'Confirmer'}
+              </button>
+            </div>
           </div>
         )}
 

@@ -30,10 +30,10 @@ INSERT INTO public.source_tariff_lines (
   default_qty, default_price, apply_surcharges, notes
 )
 SELECT * FROM (VALUES
-  ('police_mg', 'trajet_vide', 1, 'SERV-DEP',
+  ('police_mg', 'trajet_vide', 1, 'SERV-DIV',
    'Forfait deplacement Mal Garee (client arrive avant chargement)',
    1::numeric, 103.31::numeric, false,
-   'Code Odoo a definir. = 125 EUR TVAC. Pas de majoration horaire.')
+   'Code Odoo Divers. = 125 EUR TVAC. Pas de majoration horaire.')
 ) AS t(source, mission_type, position, kind, name, default_qty, default_price, apply_surcharges, notes)
 WHERE NOT EXISTS (
   SELECT 1 FROM public.source_tariff_lines
