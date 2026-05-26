@@ -1410,7 +1410,29 @@ export default function NewMissionClient({
                 </div>
               </div>
 
-              {/* 8.5. Chauffeur (optionnel) — meme picker que les fiches dispatch (ETA temps reel) */}
+              {/* 9. Remarques (avant Chauffeur assigne : reorganise 2026-05-26).
+                  Olivier : "Chauffeur assigne doit etre le dernier bloc etant
+                  donne que ca correspond a la derniere action avant que la
+                  mission ne parte vers un autre intervenant". */}
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+                <h2 className="text-ink font-semibold text-sm mb-4">📝 Remarques</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1.5">Remarques générales (visible bureau + chauffeur)</label>
+                    <textarea value={remarksGeneral} onChange={e => setRemarksGeneral(e.target.value)}
+                      rows={3} className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1.5">Remarques de facturation (visible bureau + facture)</label>
+                    <textarea value={remarksBilling} onChange={e => setRemarksBilling(e.target.value)}
+                      rows={2} className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 10. Chauffeur assigne (optionnel) — DERNIER bloc : c est la
+                  derniere action avant que la mission ne parte vers un autre
+                  intervenant (Olivier 2026-05-26). */}
               <div className={`rounded-2xl p-5 transition nm-card-enter ${assignedDriverId ? 'bg-green-500/10 border-2 border-green-500/60' : 'bg-surface border'}`}>
                 <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
                   <span>👷</span> Chauffeur assigné <span className="text-ink-faint text-xs">(optionnel)</span>
@@ -1440,23 +1462,6 @@ export default function NewMissionClient({
                       : '🚛 Choisir un chauffeur (ETA temps réel)'}
                   </button>
                 )}
-              </div>
-
-              {/* 9. Remarques */}
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
-                <h2 className="text-ink font-semibold text-sm mb-4">📝 Remarques</h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-ink-muted text-xs mb-1.5">Remarques générales (visible bureau + chauffeur)</label>
-                    <textarea value={remarksGeneral} onChange={e => setRemarksGeneral(e.target.value)}
-                      rows={3} className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
-                  </div>
-                  <div>
-                    <label className="block text-ink-muted text-xs mb-1.5">Remarques de facturation (visible bureau + facture)</label>
-                    <textarea value={remarksBilling} onChange={e => setRemarksBilling(e.target.value)}
-                      rows={2} className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
-                  </div>
-                </div>
               </div>
 
               </>)}
