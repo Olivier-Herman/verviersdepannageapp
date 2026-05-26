@@ -1,20 +1,19 @@
 // src/lib/print/zpl-templates/parc-label.ts
 //
 // Template ZPL pour l etiquette d entree en parc fourriere VD Soft.
-// Refait 2026-05-25 selon le design photo partage par Olivier pour matcher
-// le rendu actuel des etiquettes imprimees au PC.
+// Refait 2026-05-26 (Olivier) : QR XXL pour scan a distance depuis un Clark,
+// metadata source/date/immat compressees en pied. Le scan QR est le canal
+// principal d identification ; le texte humain n est qu une aide visuelle.
 //
 // Materiel cible :
 //   - Zebra ZD421, 203 dpi (8 dots/mm)
 //   - Etiquette 101.6 x 76.2 mm = 812 x 609 dots, orientation portrait
 //
-// Layout :
-//   - QR code     : haut, centre, ~330 dots de cote (de y=20 a y=350)
-//   - Motif       : bandeau bas, gauche, gros texte (70x70)
-//   - Date        : bandeau bas, droite, gros texte (70x70)
-//   - Marque/Mod  : sous le motif, moyen (38x38)
-//   - Immat       : sous marque, moyen (38x38)
-//   - Note typee  : tout en bas, petit (28x28)
+// Layout 2026-05-26 :
+//   - QR code   : ENORME (~480 dots, y=10 a y=490), centre horizontalement
+//   - Immat     : pied gauche, gros (50x50) — identification visuelle rapide
+//   - Motif+Date: pied droit, petit (28x28) — info secondaire compact
+//   - Marque/Mod+Note : pied bas, micro (22x22) sur 1-2 lignes
 //
 // Pas de logique conditionnelle : champs vides -> string vide ->
 // n apparaissent pas visuellement sur l etiquette.
@@ -60,18 +59,25 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
   const brandModel = [brand, model].filter(Boolean).join(' ')
   const immat = plate ? `Immat: ${plate}` : ''
 
-  // Coords (812x609 dots). Le QR est en haut (centre), le bandeau texte en bas.
+  // Coords (812x609 dots). QR XXL en haut, infos texte compressees en pied.
   //
-  //   y=20 -----+----------------------+
-  //             |                      |
-  //             |     QR (16x ~330)    |
-  //             |     [centred x]      |
-  //             |                      |
-  //   y=350 ----+----------------------+
-  //   y=370   AVP                20/05/26      (70x70)
-  //   y=450   Mazda 5                          (38x38)
-  //   y=495   Immat: 1LPK879                   (38x38)
-  //   y=560   AVP 20-07-2026                   (28x28, FB 2 lignes)
+  //   y=10  -----+------------------------+
+  //              |                        |
+  //              |       QR XXL           |
+  //              |   ~480 dots de cote    |
+  //              |    (centre x)          |
+  //              |                        |
+  //   y=490 ----+------------------------+
+  //   y=500  1LPK879            ACCIDENT  (immat 50x50 gauche / motif 28x28 droite)
+  //   y=540                     20/05/26  (date 28x28 droite, sous motif)
+  //   y=575  Mazda 5 — Note typee ici     (22x22, FB 2 lignes, 752 dots large)
+  //
+  // QR ^BQN,2,M ou M = magnification. Pour 480 dots, M=14 (33 dots/module x 14 = 462,
+  // proche du max). Le module size depend de la quantite de data dans l URL.
+  // L URL /dispatch/{number} = ~50 chars + domain = ~80 chars total, version auto.
+
+  // Concatene marque + modele + note en une ligne pour le pied (gain de place)
+  const footerLine = [brandModel, note].filter(Boolean).join(' — ')
 
   return `^XA
 ^CI28
@@ -81,31 +87,28 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 ^PR2
 ~SD30
 
-^FO240,20
-^BQN,2,9
+^FO165,10
+^BQN,2,14
 ^FDLA,${qrUrl}^FS
 
-^FO30,370
-^A0N,70,70
+^FO30,500
+^A0N,50,50
+^FD${plate}^FS
+
+^FO500,505
+^A0N,28,28
+^FB282,1,0,R,0
 ^FD${motif}^FS
 
-^FO430,370
-^A0N,70,70
-^FB352,1,0,R,0
+^FO500,545
+^A0N,28,28
+^FB282,1,0,R,0
 ^FD${date}^FS
 
-^FO30,460
-^A0N,38,38
-^FD${brandModel}^FS
-
-^FO30,505
-^A0N,38,38
-^FD${immat}^FS
-
-^FO30,565
-^A0N,28,28
-^FB752,2,0,L,0
-^FD${note}^FS
+^FO30,580
+^A0N,22,22
+^FB752,1,0,L,0
+^FD${footerLine}^FS
 
 ^XZ`
 }

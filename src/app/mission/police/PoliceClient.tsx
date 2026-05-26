@@ -104,6 +104,18 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // Appel Prive : forfait TVAC negocie au tel (optionnel). Si vide, la
   // facturation appliquera le fallback tarif police_accident + majorations.
   const [amountToCollect, setAmountToCollect] = useState('')
+  // Appel Prive : type d intervention (DSP ou REM). Pour DSP on n a pas de
+  // destination, pour REM on en propose une. Olivier 2026-05-26.
+  const [appelPriveType, setAppelPriveType] = useState<'DSP' | 'REM' | ''>('')
+  // Appel Prive REM : destination = livraison directe client OU passage par
+  // notre depot Pepinster. Si DSP : implicitement 'client'. Si 'depot' :
+  // mise en parc Transit + impression etiquette. Si 'client' : pas d
+  // etiquette mais owner OBLIGATOIRE (necessaire pour facturation).
+  const [appelPriveDestination, setAppelPriveDestination] = useState<'client' | 'depot' | ''>('')
+  // Preview tarif Appel Prive (resultat de /api/missions/estimate-preview)
+  const [priveEstimate, setPriveEstimate] = useState<{ total_tvac: number; total_htva: number; lines: Array<{ name: string; qty: number; price_unit: number }> } | null>(null)
+  const [priveEstimateLoading, setPriveEstimateLoading] = useState(false)
+  const [priveEstimateError, setPriveEstimateError] = useState<string | null>(null)
   // Coordonnees GPS de l intervention (capturees via Google Autocomplete) — necessaires
   // pour le preview tarif SNC qui utilise Google Distance Matrix.
   const [locationLat, setLocationLat] = useState<number | null>(null)
@@ -121,6 +133,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [loading,        setLoading]        = useState(false)
   const [err,            setErr]            = useState('')
   const [done,           setDone]           = useState(false)
+  // Id mission VD Soft renvoye par /api/towsoft/create. Utilise sur l ecran
+  // succes pour construire le lien encaissement precomplete (Olivier 2026-05-26).
+  const [createdMissionId, setCreatedMissionId] = useState<string | null>(null)
 
   // Brands/Models from Odoo
   const [brands,          setBrands]          = useState<{id:number;name:string}[]>([])
@@ -312,6 +327,53 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     return () => { clearTimeout(handler); ctrl.abort() }
   }, [selectedType, sncScenario, sncRequiresBalisage, locationLat, locationLng, destinationLat, destinationLng, date, time])
 
+  // ──────────── Preview tarif Appel Prive en live ────────────
+  // Quand selectedType=appel_prive et type DSP/REM choisi, appelle
+  // /api/missions/estimate-preview pour afficher au chauffeur le tarif estime
+  // (forfait negocie si saisi, sinon fallback tarif source).
+  useEffect(() => {
+    if (selectedType !== 'appel_prive' || !appelPriveType) {
+      setPriveEstimate(null); setPriveEstimateError(null)
+      return
+    }
+    const ctrl = new AbortController()
+    const handler = setTimeout(async () => {
+      setPriveEstimateLoading(true)
+      setPriveEstimateError(null)
+      try {
+        const [dd, mm, yyyy] = (date || '').split('-')
+        const [hh, mn] = (time || '00:00').split(':')
+        const interventionAt = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`).toISOString()
+        const res = await fetch('/api/missions/estimate-preview', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            source:            'prive',
+            mission_type:      appelPriveType,
+            intervention_at:   interventionAt,
+            amount_to_collect: amountToCollect !== '' ? Number(amountToCollect) : null,
+          }),
+          signal: ctrl.signal,
+        })
+        const j = await res.json()
+        if (!res.ok || !j.ok) {
+          setPriveEstimate(null)
+          setPriveEstimateError(j.error || 'Tarif indisponible')
+        } else {
+          setPriveEstimate(j)
+        }
+      } catch (e: any) {
+        if (e.name !== 'AbortError') {
+          setPriveEstimate(null)
+          setPriveEstimateError(e.message || 'Erreur réseau')
+        }
+      } finally {
+        setPriveEstimateLoading(false)
+      }
+    }, 500)
+    return () => { clearTimeout(handler); ctrl.abort() }
+  }, [selectedType, appelPriveType, amountToCollect, date, time])
+
   const getGPS = useCallback(() => {
     if (!navigator.geolocation) {
       alert('Géolocalisation non disponible')
@@ -381,6 +443,21 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     if (!plate && !vin)   { setErr('Plaque ou VIN requis'); return }
     if (!brand)           { setErr('La marque du véhicule est requise'); return }
     if (!model)           { setErr('Le modèle du véhicule est requis'); return }
+    // Appel Privé : DSP/REM obligatoire, et pour REM le scenario destination
+    // doit etre choisi explicitement.
+    if (selectedType === 'appel_prive') {
+      if (!appelPriveType) { setErr('Choisis le type d\'intervention (DSP ou REM)'); return }
+      if (appelPriveType === 'REM' && !appelPriveDestination) {
+        setErr('Choisis la destination du remorquage (client direct ou dépôt)'); return
+      }
+      // Owner obligatoire pour DSP ou REM client direct (facturation directe)
+      const ownerNeeded = appelPriveType === 'DSP'
+        || (appelPriveType === 'REM' && appelPriveDestination === 'client')
+      if (ownerNeeded && (!ownerFirstName.trim() || !ownerLastName.trim() || !ownerPhone.trim())) {
+        setErr('Coordonnées propriétaire obligatoires (prénom, nom, téléphone) pour la facturation')
+        return
+      }
+    }
     // Si plaque vide, utiliser le VIN
     const finalPlate = plate.trim() || vin.trim()
 
@@ -421,6 +498,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         destinationLng,
         // Appel Prive : forfait TVAC saisi (string vide ou nombre)
         amountToCollect: selectedType === 'appel_prive' ? amountToCollect : null,
+        // Appel Prive : type DSP ou REM (defaut REM si pas choisi pour ne pas
+        // casser les missions existantes)
+        appelPriveType: selectedType === 'appel_prive' ? (appelPriveType || null) : null,
+        // Appel Prive REM : 'client' (livraison directe, pas d etiquette) ou
+        // 'depot' (Transit + etiquette). DSP : implicitement 'client'.
+        appelPriveDestination: selectedType === 'appel_prive' ? (appelPriveDestination || null) : null,
       }),
     })
 
@@ -428,8 +511,15 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     setLoading(false)
 
     if (data.ok) {
+      setCreatedMissionId(data.missionId || null)
       setDone(true)
-      setTimeout(() => router.push('/dashboard'), 2000)
+      // Sources avec paiement direct : on ne redirige PAS automatiquement,
+      // le chauffeur choisit (encaisser maintenant ou plus tard). Pour les
+      // autres types (accident, saisie, ...) : redirection auto comme avant.
+      const needsPayment = ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
+      if (!needsPayment) {
+        setTimeout(() => router.push('/dashboard'), 2000)
+      }
     } else {
       setErr(data.error || 'Erreur création')
     }
@@ -438,18 +528,73 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const cfg = selectedType ? TYPE_CONFIG[selectedType] : null
 
   // ── Écran succès ──────────────────────────────────────────────────────────
-  if (done) return (
+  // Sources avec encaissement chauffeur direct : on propose un bouton qui
+  // ouvre /encaissement precomplete (mission_id + plate + brand + model +
+  // amount). Le chauffeur peut choisir d encaisser maintenant ou plus tard.
+  if (done) {
+    const needsPayment = selectedType && ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
+    // Estimation : pour Appel Prive on prefere le total TVAC du preview tarif
+    // (forfait negocie OU tarif source). Pour les autres on laisse vide,
+    // l ecran encaissement re-calculera depuis la mission.
+    const prefillAmount = selectedType === 'appel_prive'
+      ? (amountToCollect !== '' ? Number(amountToCollect) : (priveEstimate?.total_tvac ?? null))
+      : (selectedType === 'snc' ? (sncPreview?.total_tvac ?? null) : null)
+    const encaissementUrl = createdMissionId
+      ? `/encaissement?prefill_mission_id=${createdMissionId}`
+        + `&prefill_plate=${encodeURIComponent(plate || vin || '')}`
+        + `&prefill_brand=${encodeURIComponent(brand || '')}`
+        + `&prefill_model=${encodeURIComponent(model || '')}`
+        + (prefillAmount != null ? `&prefill_amount=${prefillAmount}` : '')
+        + `&return_to=/dashboard`
+      : null
+    return (
     <div className="min-h-screen bg-page flex flex-col items-center justify-center px-4">
-      <div className="bg-surface rounded-3xl shadow-lg p-10 text-center max-w-sm w-full">
-        <div className="text-6xl mb-4">✅</div>
-        <h1 className="text-ink text-2xl font-bold mb-2">Mission créée</h1>
+      <div className="bg-surface rounded-3xl shadow-lg p-8 text-center max-w-sm w-full space-y-4">
+        <div className="text-6xl">✅</div>
+        <h1 className="text-ink text-2xl font-bold">Mission créée</h1>
         <p className="text-ink-muted text-sm">Email envoyé — TowSoft en cours de mise à jour</p>
-        <div className="mt-6 w-full bg-surface-hover rounded-full h-1">
-          <div className="bg-green-500 h-1 rounded-full animate-[width_2s_ease-in-out]" style={{width:'100%',transition:'width 2s'}} />
-        </div>
+
+        {needsPayment && encaissementUrl && (
+          <div className="pt-2 space-y-2">
+            <button
+              type="button"
+              onClick={() => router.push(encaissementUrl)}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl shadow-md flex items-center justify-center gap-2"
+            >
+              💳 Encaisser maintenant
+              {prefillAmount != null && (
+                <span className="font-normal opacity-90 text-sm">— {prefillAmount.toFixed(2)} €</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard')}
+              className="w-full bg-surface-hover hover:bg-page text-ink-muted text-sm py-2 rounded-xl"
+            >
+              Plus tard, retour au dashboard
+            </button>
+          </div>
+        )}
+
+        {needsPayment && !encaissementUrl && (
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard')}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-2xl shadow-md"
+          >
+            Retour au dashboard
+          </button>
+        )}
+
+        {!needsPayment && (
+          <div className="mt-6 w-full bg-surface-hover rounded-full h-1">
+            <div className="bg-green-500 h-1 rounded-full animate-[width_2s_ease-in-out]" style={{width:'100%',transition:'width 2s'}} />
+          </div>
+        )}
       </div>
     </div>
-  )
+    )
+  }
 
   // ── Écran sélection type ──────────────────────────────────────────────────
   if (!selectedType) return (
@@ -569,55 +714,175 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           {!cfg!.hidePolice && <LInput label="Nom du policier" value={officerName} onChange={setOfficerName} />}
         </Section>
 
-        {/* Propriétaire */}
-        {!cfg!.hideOwner && <Section title="Propriétaire (optionnel)">
-          <div className="grid grid-cols-2 gap-3">
-            <LInput label="Prénom" value={ownerFirstName} onChange={setOwnerFirstName} />
-            <LInput label="Nom" value={ownerLastName} onChange={setOwnerLastName} />
-          </div>
-          <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" />
-        </Section>}
+        {/* Propriétaire — obligatoire pour Appel Privé DSP / REM client direct
+            (necessaire pour facturation). Optionnel pour REM avec depot et
+            pour les autres types (Mal Garee, etc.).
+            Pour SNC (Olivier 2026-05-26) : champ propriétaire optionnel partout,
+            on s appuie sur la recherche/creation client du module encaissement
+            qui auto-lie le client a la mission a la validation du paiement. */}
+        {!cfg!.hideOwner && (() => {
+          const ownerRequired = selectedType === 'appel_prive' && (
+            appelPriveType === 'DSP'
+            || (appelPriveType === 'REM' && appelPriveDestination === 'client')
+          )
+          const isSnc = selectedType === 'snc'
+          const sncDirectPayment = isSnc && (sncScenario === 'dsp' || sncScenario === 'rem_client')
+          return (
+            <Section title={`Propriétaire${ownerRequired ? ' *' : ' (optionnel)'}`}>
+              {ownerRequired && (
+                <p className="text-amber-800 text-xs bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                  Coordonnées obligatoires — nécessaires pour la facturation (pas de mise en parc).
+                </p>
+              )}
+              {sncDirectPayment && (
+                <p className="text-blue-800 text-xs bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
+                  💡 Le client sera lié automatiquement à la mission lors de l&apos;encaissement
+                  (recherche / création depuis le module paiement).
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <LInput label="Prénom" value={ownerFirstName} onChange={setOwnerFirstName} required={ownerRequired} />
+                <LInput label="Nom" value={ownerLastName} onChange={setOwnerLastName} required={ownerRequired} />
+              </div>
+              <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" required={ownerRequired} />
+            </Section>
+          )
+        })()}
 
-        {/* Appel Privé : forfait TVAC (optionnel). Si vide -> facturation
-            fallback sur tarif police_accident + majorations. */}
+        {/* Appel Privé : type DSP/REM + forfait TVAC (optionnel) + preview tarif.
+            Si forfait vide -> facturation fallback sur tarif Prive en vigueur. */}
         {selectedType === 'appel_prive' && (
-          <div className="bg-amber-500/10 border-2 border-amber-500/60 rounded-2xl p-4 shadow-sm space-y-2">
-            <div>
-              <label className="block text-ink text-sm font-bold mb-1">
-                💳 Paiement à réclamer au client (TVAC)
-              </label>
-              <p className="text-ink-muted text-xs leading-relaxed mb-2">
-                Forfait négocié au téléphone, montant <strong>TVAC</strong>.
-                Laisse vide si pas de forfait — on appliquera alors le tarif
-                Appel Police Accident avec ses majorations horaires.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={amountToCollect}
-                onChange={e => setAmountToCollect(e.target.value)}
-                placeholder="0.00"
-                className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
-              />
-              <span className="text-ink-muted text-sm font-medium">€ TVAC</span>
-            </div>
-          </div>
-        )}
+          <Section title="📞 Détails Appel Privé">
+            <div className="space-y-3">
+              {/* Type d intervention */}
+              <div>
+                <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
+                  Type d&apos;intervention *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: 'DSP', label: '🔧 DSP', desc: 'Dépannage sur place' },
+                    { key: 'REM', label: '🚛 REM', desc: 'Remorquage' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => {
+                        setAppelPriveType(opt.key)
+                        // DSP : destination implicitement 'client' (paiement direct, pas de parc).
+                        // REM : on reset pour forcer le choix explicite client vs depot.
+                        if (opt.key === 'DSP') setAppelPriveDestination('client')
+                        else setAppelPriveDestination('')
+                      }}
+                      className={`p-3 rounded-xl border text-left transition ${
+                        appelPriveType === opt.key
+                          ? 'border-green-500 bg-green-50 ring-2 ring-green-200'
+                          : 'border-strong bg-surface hover:border-green-300'
+                      }`}
+                    >
+                      <div className="text-ink text-sm font-medium">{opt.label}</div>
+                      <div className="text-ink-muted text-xs">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-        {/* Remarques */}
-        <Section title="Remarques">
-          <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
-            placeholder="Observations..."
-            className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none focus:border-blue-500" />
-        </Section>
+              {/* Destination REM : livraison directe client OU passage depot.
+                  Visible uniquement quand type REM choisi. */}
+              {appelPriveType === 'REM' && (
+                <div>
+                  <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
+                    Destination du remorquage *
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {([
+                      { key: 'client', label: '🏠 Livraison directe client', desc: 'Vers l\'adresse client. Paiement immédiat, pas d\'étiquette parc. Coordonnées client obligatoires.' },
+                      { key: 'depot',  label: '🏢 Passage par dépôt Pepinster', desc: 'Mise en parc Transit. Étiquette imprimée. Coordonnées client optionnelles (passera au bureau).' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setAppelPriveDestination(opt.key)}
+                        className={`p-3 rounded-xl border text-left transition ${
+                          appelPriveDestination === opt.key
+                            ? 'border-green-500 bg-green-50 ring-2 ring-green-200'
+                            : 'border-strong bg-surface hover:border-green-300'
+                        }`}
+                      >
+                        <div className="text-ink text-sm font-medium">{opt.label}</div>
+                        <div className="text-ink-muted text-xs leading-relaxed">{opt.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Forfait negocie */}
+              <div className="bg-amber-500/10 border-2 border-amber-500/60 rounded-2xl p-3">
+                <label className="block text-ink text-sm font-bold mb-1">
+                  💳 Paiement à réclamer au client (TVAC)
+                </label>
+                <p className="text-ink-muted text-xs leading-relaxed mb-2">
+                  Forfait négocié au téléphone, montant <strong>TVAC</strong>.
+                  Laisse vide si pas de forfait — on appliquera le tarif Privé en vigueur.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    value={amountToCollect}
+                    onChange={e => setAmountToCollect(e.target.value)}
+                    placeholder="0.00"
+                    className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                  />
+                  <span className="text-ink-muted text-sm font-medium">€ TVAC</span>
+                </div>
+              </div>
+
+              {/* Preview tarif (visible des qu un type est choisi) */}
+              {appelPriveType && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                  {priveEstimateLoading && (
+                    <div className="text-green-800 text-xs flex items-center gap-2">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Calcul du tarif estimé...
+                    </div>
+                  )}
+                  {!priveEstimateLoading && priveEstimateError && (
+                    <div className="text-amber-800 text-xs">⚠️ {priveEstimateError}</div>
+                  )}
+                  {!priveEstimateLoading && priveEstimate && (
+                    <div className="space-y-1">
+                      <div className="text-green-900 text-xs font-semibold uppercase tracking-wide">Tarif estimé</div>
+                      {priveEstimate.lines?.map((ln, i) => (
+                        <div key={i} className="flex justify-between text-green-800 text-xs">
+                          <span>{ln.name}{ln.qty > 1 ? ` × ${ln.qty}` : ''}</span>
+                          <span className="tabular-nums">{(ln.qty * ln.price_unit).toFixed(2)} €</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-green-900 text-sm font-bold pt-1 border-t border-green-200">
+                        <span>Total TVAC</span>
+                        <span className="tabular-nums">{priveEstimate.total_tvac.toFixed(2)} €</span>
+                      </div>
+                      <div className="flex justify-between text-green-700 text-xs">
+                        <span>HTVA</span>
+                        <span className="tabular-nums">{priveEstimate.total_htva.toFixed(2)} €</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
 
         {/* Blocage Police : toggle visible pour les Mal Garees (et plus tard les autres
             types fourriere). Si actif, la restitution exigera une confirmation que le
-            proprietaire est bien passe au commissariat. */}
+            proprietaire est bien passe au commissariat.
+            Olivier 2026-05-26 : positionne juste avant Remarques (UX : on encode le
+            blocage avant les observations libres). */}
         {(selectedType === 'mal_garee') && (
           <Section title="🚓 Blocage police">
             <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-strong rounded-xl hover:border-blue-500 transition">
@@ -638,6 +903,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             </label>
           </Section>
         )}
+
+        {/* Remarques */}
+        <Section title="Remarques">
+          <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
+            placeholder="Observations..."
+            className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none focus:border-blue-500" />
+        </Section>
 
         {/* SNC (Siabis Non Couvert) + SC (Siabis Couvert) : scenario + balisage + assistance (SC) */}
         {(selectedType === 'snc' || selectedType === 'sc') && (

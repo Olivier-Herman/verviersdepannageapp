@@ -5,6 +5,8 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
+import { buildParcLabelZPL } from '@/lib/print/zpl-templates/parc-label'
+import { printZPLRaw }       from '@/lib/print/zebra-raw'
 
 export const maxDuration = 60
 
@@ -53,6 +55,13 @@ export async function POST(req: Request) {
     // negocie au tel). Si vide -> tarif fallback police_accident applique a
     // la facturation. Stocke direct dans incoming_missions.amount_to_collect.
     amountToCollect,
+    // Appel Prive : type d intervention DSP ou REM (cote chauffeur). Mappe sur
+    // mission_type canonique 'depannage' / 'remorquage' a l insertion.
+    appelPriveType,
+    // Appel Prive REM : destination 'client' (livraison directe, pas de parc,
+    // pas d etiquette) ou 'depot' (Transit + impression etiquette). DSP :
+    // implicitement 'client'. Olivier 2026-05-26.
+    appelPriveDestination,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -222,21 +231,26 @@ export async function POST(req: Request) {
   }
   // Zone parc cible. Pour SNC/SC : depend du scenario (Transit si rem_depot, sinon
   // pas de zone car le vehicule ne reste pas chez nous).
-  // Appel Prive : pas de zone a la creation. Le chauffeur decide en cloture :
-  //   - client paye -> livraison adresse (pas de parc)
-  //   - client ne paye pas -> Transit (decision chauffeur, pas auto)
-  function zoneForType(t: string, sncScenarioVal?: string): string | null {
+  // Appel Prive :
+  //   - DSP / REM 'client' -> pas de zone (intervention immediate, facturation directe)
+  //   - REM 'depot'        -> Transit (mise en parc, etiquette imprimee)
+  function zoneForType(t: string, sncScenarioVal?: string, priveDest?: string): string | null {
     if (t === 'mal_garee') return 'L'
     if (t === 'rodeo')     return 'J'
     if (t === 'avp')       return 'J'
     if (t === 'snc' || t === 'sc') return sncScenarioVal === 'rem_depot' ? 'Transit' : null
-    if (t === 'appel_prive') return null
+    if (t === 'appel_prive') return priveDest === 'depot' ? 'Transit' : null
     return null
   }
 
+  // Id de la mission VD Soft creee — necessaire pour renvoyer au client (formulaire
+  // chauffeur) afin de construire un lien encaissement precomplete sur les sources
+  // avec paiement direct (prive / snc / mal_garee). Olivier 2026-05-26.
+  let vdMissionId: string | null = null
+
   if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
     const vdSource = FOURRIERE_TYPE_TO_SOURCE[type]
-    const vdZone   = zoneForType(type, sncScenario)
+    const vdZone   = zoneForType(type, sncScenario, appelPriveDestination)
     const nowIso   = new Date().toISOString()
 
     // Combine date (DD-MM-YYYY) + time (HH:MM) en ISO pour intervention_date.
@@ -281,15 +295,23 @@ export async function POST(req: Request) {
       ? (sncScenario === 'dsp' ? 'depannage' : 'remorquage')
       : null
 
+    // Appel Prive : DSP -> depannage, REM -> remorquage. Defaut remorquage
+    // si pas precise (compat retro avec les anciens clients qui n envoient
+    // pas le champ).
+    const priveMissionType = isAppelPrive
+      ? (String(appelPriveType || '').toUpperCase() === 'DSP' ? 'depannage' : 'remorquage')
+      : null
+
     // Status par type :
     //   - SNC rem_depot -> parked (en zone Transit)
     //   - SNC dsp/rem_client -> in_progress (mission immediate, paiement chauffeur)
-    //   - appel_prive -> in_progress (chauffeur va intervenir, pas encore parked)
+    //   - Appel Prive REM 'depot' -> parked (en zone Transit, etiquette imprimee)
+    //   - Appel Prive DSP / REM 'client' -> in_progress (intervention immediate)
     //   - police fourriere classique (mal_garee/rodeo/avp) -> parked
     const computedStatus = isSnc
       ? (sncScenario === 'rem_depot' ? 'parked' : 'in_progress')
       : isAppelPrive
-        ? 'in_progress'
+        ? (appelPriveDestination === 'depot' ? 'parked' : 'in_progress')
         : 'parked'
 
     const { data: vdData, error: vdErr } = await supabase
@@ -298,7 +320,7 @@ export async function POST(req: Request) {
         external_id:        `${prefix}-${queueEntry.id.slice(0, 8)}`,
         dossier_number:     odooTicketId ? `${prefix}-${odooTicketId}` : null,
         source:             vdSource,
-        mission_type:       isSnc ? sncMissionType : 'remorquage',
+        mission_type:       isSnc ? sncMissionType : (isAppelPrive ? priveMissionType : 'remorquage'),
         status:             computedStatus,
         parc_zone_key:      vdZone,
         vehicle_plate:      ((plate || '').trim().toUpperCase()) || null,
@@ -342,6 +364,35 @@ export async function POST(req: Request) {
       console.error('[towsoft/create] INSERT incoming_missions echec (non bloquant):', vdErr.message)
     } else {
       console.log('[towsoft/create] VD Soft mission cree:', vdData?.id, 'source:', vdSource, 'zone:', vdZone)
+      vdMissionId = vdData?.id || null
+
+      // Appel Prive REM 'depot' : impression etiquette parc directement depuis
+      // VD Soft (pas de ticket Helpdesk Odoo pour les Appel Prive, donc le
+      // callback Towsoft ne le ferait pas). Best-effort, n echoue pas la mission.
+      if (isAppelPrive && appelPriveDestination === 'depot' && vdMissionId) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+          const dd = new Date(interventionISO)
+          const dateStr = `${String(dd.getDate()).padStart(2, '0')}/${String(dd.getMonth()+1).padStart(2, '0')}/${String(dd.getFullYear()).slice(-2)}`
+          const zpl = buildParcLabelZPL({
+            qrUrl: `${baseUrl}/dispatch/${vdMissionId}`,
+            motif: 'PRIVE',
+            date:  dateStr,
+            note:  `PRIVE ${dateStr}`,
+            brand: brand || '',
+            model: model || '',
+            plate: (plate || vin || '').trim().toUpperCase(),
+          })
+          const printRes = await printZPLRaw(zpl)
+          if (printRes.ok) {
+            console.log('[towsoft/create] Etiquette Prive imprimee pour mission', vdMissionId)
+          } else {
+            console.error('[towsoft/create] Impression etiquette Prive echec:', printRes.error)
+          }
+        } catch (e: any) {
+          console.error('[towsoft/create] Erreur impression etiquette Prive:', e.message)
+        }
+      }
     }
   }
 
@@ -410,5 +461,10 @@ export async function POST(req: Request) {
      .catch(e => console.error('[TowSoft] Email échec:', e)),
   ])
 
-  return NextResponse.json({ ok: true, queueId: queueEntry.id, message: 'Mission en cours de création' })
+  return NextResponse.json({
+    ok:         true,
+    queueId:    queueEntry.id,
+    missionId:  vdMissionId,  // id de la mission VD Soft (null si type sans parc, ex: accident)
+    message:    'Mission en cours de création',
+  })
 }
