@@ -52,6 +52,12 @@ export async function POST(req: NextRequest) {
   // payment_amount = SOMME de tous les encaissements lies a la mission (un meme
   // dossier peut etre encaisse en plusieurs fois) → on recalcule a chaque insert
   // pour rester coherent avec la table interventions (source de verite).
+  //
+  // Olivier 2026-05-26 : on auto-lie aussi le client a la mission (billed_to_id +
+  // billed_to_name) si la mission n a pas encore de client lie. Permet aux flows
+  // SNC dsp/rem_client / Mal Garee restitution / Privé direct de ne pas devoir
+  // ressaisir le client cote form chauffeur — la recherche/creation se fait dans
+  // /encaissement qui a deja toute la machinerie.
   if (intervention && body.mission_id) {
     try {
       const { data: allPayments } = await supabase
@@ -59,13 +65,32 @@ export async function POST(req: NextRequest) {
         .select('amount')
         .eq('mission_id', body.mission_id)
       const sum = (allPayments || []).reduce((s, p) => s + Number(p.amount || 0), 0)
+
+      // Lire l etat actuel de la mission pour ne pas ecraser un billed_to existant
+      const { data: currentMission } = await supabase
+        .from('incoming_missions')
+        .select('billed_to_id, billed_to_name')
+        .eq('id', body.mission_id)
+        .single()
+
+      const updatePayload: Record<string, any> = {
+        payment_collected_at: new Date().toISOString(),
+        payment_mode:         body.payment_mode || 'unpaid',
+        payment_amount:       sum,
+      }
+      // Auto-link client Odoo (si selectedClient.id remonte) — seulement si pas
+      // deja lie. body.client_id vient du selectedClient cote frontend.
+      if (body.client_id && !currentMission?.billed_to_id) {
+        updatePayload.billed_to_id = Number(body.client_id)
+      }
+      // Auto-link nom client (memorise meme sans id Odoo) — seulement si vide.
+      if (body.client_name && !currentMission?.billed_to_name) {
+        updatePayload.billed_to_name = String(body.client_name)
+      }
+
       await supabase
         .from('incoming_missions')
-        .update({
-          payment_collected_at: new Date().toISOString(),
-          payment_mode:         body.payment_mode || 'unpaid',
-          payment_amount:       sum,
-        })
+        .update(updatePayload)
         .eq('id', body.mission_id)
     } catch (err: any) {
       console.error('[Mission payment] Erreur update annotation:', err.message)

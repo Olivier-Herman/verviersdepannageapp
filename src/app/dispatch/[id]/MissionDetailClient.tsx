@@ -26,6 +26,7 @@ const sb = createClient(
 
 interface Mission {
   id: string
+  mission_number: number | null
   external_id: string
   dossier_number: string | null
   source: string
@@ -287,16 +288,19 @@ function AddressReviewModal({
 }
 
 function RelivrerButton({
-  missionId, initialRedeliveryAddress, originalDestination, parentSource,
+  missionId, initialRedeliveryAddress, originalDestination, parentSource, gmKey,
 }: {
   missionId: string
   initialRedeliveryAddress?: string | null
   originalDestination?: string | null
   parentSource: string | null
+  gmKey: string
 }) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
-  const [createdId, setCreatedId] = useState<string | null>(null)
+  // Redirection immediate apres creation (Olivier 2026-05-26) — plus de bouton
+  // intermediaire "Ouvrir la mission de relivraison".
   const [address, setAddress] = useState(initialRedeliveryAddress || originalDestination || '')
 
   // Cas reprise par assistance (Appel Prive, SNC, SC, Police Accident) : le
@@ -344,24 +348,13 @@ function RelivrerButton({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erreur')
-      setCreatedId(data.mission_id)
+      // Redirection immediate vers la mission REL creee (Olivier 2026-05-26).
+      // Loading reste a true pour eviter double clic pendant la navigation.
+      router.push(`/dispatch/${data.mission_id}`)
     } catch (e: any) {
       setError(e.message)
-    } finally {
       setLoading(false)
     }
-  }
-
-  if (createdId) {
-    return (
-      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4">
-        <p className="text-emerald-300 text-sm font-semibold mb-2">✅ Mission REL créée</p>
-        <Link href={`/dispatch/${createdId}`}
-          className="block w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium text-center transition">
-          📋 Ouvrir la mission de relivraison →
-        </Link>
-      </div>
-    )
   }
 
   return (
@@ -377,12 +370,12 @@ function RelivrerButton({
         <label className="block text-ink-muted text-xs mb-1.5">
           Adresse de relivraison {hasAddress && <span className="text-success">· enregistrée</span>}
         </label>
-        <textarea
+        <AddressField
           value={address}
-          onChange={e => setAddress(e.target.value)}
-          rows={2}
+          onChange={setAddress}
+          onSelect={(addr) => setAddress(addr)}
+          gmKey={gmKey}
           placeholder="Rue, n°, code postal, ville…"
-          className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint resize-none"
         />
         {!hasAddress && originalDestination && (
           <p className="text-ink-muted text-xs mt-1">
@@ -585,6 +578,7 @@ function DynamicSourceSelect({ value, onChange }: {
 
 interface LinkedMissionLight {
   id: string
+  mission_number?: number | null
   external_id: string | null
   dossier_number?: string | null
   status: string
@@ -1342,7 +1336,7 @@ export default function MissionDetailClient({
 
   return (
     <AppShell
-      title={`Mission ${initialMission.external_id}`}
+      title={`Mission ${initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}`}
       userName={userName}
       userEmail={userEmail}
       userId={userId}
@@ -2525,7 +2519,12 @@ export default function MissionDetailClient({
                 <div className="space-y-2">
                   <div>
                     <p className="text-ink-muted text-xs">N° Mission</p>
-                    <p className="text-ink font-mono text-sm">{initialMission.external_id}</p>
+                    <p className="text-ink font-mono text-sm">
+                      {initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}
+                    </p>
+                    {initialMission.mission_number != null && initialMission.external_id && (
+                      <p className="text-ink-faint font-mono text-xs">{initialMission.external_id}</p>
+                    )}
                   </div>
                   {initialMission.dossier_number && (
                     <div>
@@ -2561,6 +2560,7 @@ export default function MissionDetailClient({
                   initialRedeliveryAddress={(initialMission as any).redelivery_address}
                   originalDestination={initialMission.destination_address || ''}
                   parentSource={initialMission.source}
+                  gmKey={googleMapsKey}
                 />
               )}
 
@@ -2612,7 +2612,7 @@ export default function MissionDetailClient({
               {linkedChild && (
                 <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4">
                   <p className="text-purple-400 text-xs font-bold uppercase tracking-wide mb-2">🚛 Relivraison liée</p>
-                  <p className="text-ink text-sm font-medium">{linkedChild.external_id || linkedChild.dossier_number || linkedChild.id.slice(0, 8)}</p>
+                  <p className="text-ink text-sm font-medium">{linkedChild.mission_number != null ? `#${linkedChild.mission_number}` : (linkedChild.external_id || linkedChild.dossier_number || linkedChild.id.slice(0, 8))}</p>
                   <p className="text-ink-muted text-xs mb-3">Statut : {linkedChild.status}</p>
                   <Link href={`/dispatch/${linkedChild.id}`}
                     className="block w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium text-center transition">
@@ -2625,7 +2625,7 @@ export default function MissionDetailClient({
               {linkedParent && (
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
                   <p className="text-amber-400 text-xs font-bold uppercase tracking-wide mb-2">🚗 Mission parente (REM)</p>
-                  <p className="text-ink text-sm font-medium">{linkedParent.external_id || linkedParent.dossier_number || linkedParent.id.slice(0, 8)}</p>
+                  <p className="text-ink text-sm font-medium">{linkedParent.mission_number != null ? `#${linkedParent.mission_number}` : (linkedParent.external_id || linkedParent.dossier_number || linkedParent.id.slice(0, 8))}</p>
                   <p className="text-ink-muted text-xs mb-3">Issue du remorquage initial</p>
                   <Link href={`/dispatch/${linkedParent.id}`}
                     className="block w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium text-center transition">

@@ -539,6 +539,10 @@ export default function EncaissementClient({
           location_address: location, amount,
           payment_mode: paymentMode || (sumupStatus === 'PAID' ? 'sumup' : 'unpaid'),
           payment_reference: sumupData?.sumupReference || undefined,
+          // Olivier 2026-05-26 : si client Odoo selectionne, on le remonte pour
+          // que l API auto-lie billed_to_id sur la mission (uniquement si la
+          // mission n a pas encore de client liee).
+          client_id: selectedClient?.id || null,
           client_vat: client.vat, client_name: client.name,
           client_address: client.address, client_street: client.street,
           client_zip: client.zip, client_city: client.city,
