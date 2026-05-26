@@ -614,16 +614,21 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
           received_at:       receivedAt,
           intervention_date: receivedAt,
         }).eq('id', placeholderId)
+        // Push uniquement si placeholder REELLEMENT cree en BD. Sinon = INSERT a
+        // echoue silencieusement (cache PostgREST stale, perm, etc.) -> on spam
+        // sans qu une mission existe. Olivier 2026-05-26 incident debug.
+        await sendPushToRole(['admin', 'superadmin'], {
+          title: '⚠️ Expéditeur inconnu',
+          body:  `Email de ${fromEmail} — à identifier dans les paramètres`,
+          url:   '/admin/settings',
+          tag:   `unknown-sender-${fromEmail}`,
+          icon:  '/icons/apple-touch-icon.png'
+        })
+      } else {
+        console.error(`[Processor] Skip push "Expediteur inconnu" : placeholder INSERT a echoue (cache PostgREST stale ?) fromEmail=${fromEmail}`)
       }
-      await sendPushToRole(['admin', 'superadmin'], {
-        title: '⚠️ Expéditeur inconnu',
-        body:  `Email de ${fromEmail} — à identifier dans les paramètres`,
-        url:   '/admin/settings',
-        tag:   `unknown-sender-${fromEmail}`,
-        icon:  '/icons/apple-touch-icon.png'
-      })
       await markAsRead(token, messageId)
-      return { status: 'skipped', reason: `Source inconnue stockée: ${fromEmail}` }
+      return { status: 'skipped', reason: `Source inconnue: ${fromEmail}${placeholderId ? ' (stockee)' : ' (placeholder INSERT failed)'}` }
     }
 
     // Contenu vide → skip
