@@ -235,14 +235,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     }
   }, [selectedType])
 
-  // ──────────── Autocomplete destination (SNC rem_client / rem_depot) ────────────
-  // Initialise une seule fois quand le champ est rendu (= scenario SNC choisi).
-  // Reset destAcRef quand le scenario change pour eviter de pointer vers un input demonté.
+  // ──────────── Autocomplete destination (SNC rem_client / rem_depot + Prive REM depot) ────────────
+  // Initialise une seule fois quand le champ est rendu (= scenario qui requiert
+  // une destination). Olivier 2026-05-26 : ajout Appel Prive REM depot pour
+  // saisir adresse de relivraison directement (pre-remplit la note etiquette).
   useEffect(() => {
     destAcRef.current = null  // reset au changement de scenario
     const isSiabis = selectedType === 'snc' || selectedType === 'sc'
-    if (!isSiabis) return
-    if (sncScenario !== 'rem_client' && sncScenario !== 'rem_depot') return
+    const isPriveDepot = selectedType === 'appel_prive' && appelPriveType === 'REM' && appelPriveDestination === 'depot'
+    if (!isSiabis && !isPriveDepot) return
+    if (isSiabis && sncScenario !== 'rem_client' && sncScenario !== 'rem_depot') return
 
     const init = () => {
       if (!window.google?.maps?.places || !destinationRef.current) return
@@ -814,6 +816,28 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Adresse de relivraison : visible si REM depot. Optionnel — si vide,
+                  la note etiquette affiche "En attente d info adresse de relivraison".
+                  Olivier 2026-05-26 : chauffeur peut deja saisir au depot pour
+                  pre-remplir la fiche dispatch (utilise l autocomplete partage). */}
+              {appelPriveType === 'REM' && appelPriveDestination === 'depot' && (
+                <div>
+                  <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
+                    Adresse de relivraison (optionnelle)
+                  </label>
+                  <input
+                    ref={destinationRef}
+                    value={destination}
+                    onChange={e => setDestination(e.target.value)}
+                    placeholder="Rue, n°, code postal, ville…"
+                    className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-green-500"
+                  />
+                  <p className="text-xs text-ink-muted mt-1">
+                    💡 Si renseignée, sera imprimée sur l&apos;étiquette parc. Sinon : &quot;En attente d&apos;info adresse de relivraison&quot;.
+                  </p>
                 </div>
               )}
 

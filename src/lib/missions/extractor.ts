@@ -54,6 +54,10 @@ function detectSourceFallback(fromEmail: string, subject: string): MissionSource
     if (subj.includes('ardenne')) return 'ardenne'
     return 'axa'
   }
+  // IP-Assistance = Inter Partner Assistance (maison-mere AXA Assistance).
+  // Olivier 2026-05-26 : assistance.technique@ip-assistance.com n etait pas
+  // mappe -> source 'unknown' -> push spam "Expediteur inconnu" sur burst de mails.
+  if (from.includes('@ip-assistance.com') || from.includes('@interpartner')) return 'ipa'
   if (from.includes('@allianz') || from.includes('automotive.be@allianz') ||
       from.includes('@mondial-assistance') || from.includes('awp')) return 'mondial'
   if (from.includes('@vab.be')) return 'vab'

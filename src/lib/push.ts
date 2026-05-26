@@ -144,6 +144,53 @@ export async function sendPushToUsers(
 }
 
 /**
+ * Anti-spam : si le `tag` du push a deja ete utilise dans la fenetre TTL
+ * (defaut 60s), on skip silencieusement. Mecanisme defensif post-incident
+ * Olivier 2026-05-26 (burst 10 push identiques en 30s).
+ *
+ * Implementation atomique sans RPC :
+ *   1. SELECT sent_at WHERE tag=X
+ *   2. Si row recente (< TTL) -> skip
+ *   3. Sinon : UPSERT (insert si absent, update sent_at sinon)
+ *
+ * Race condition possible si 2 push concurrents pour le meme tag passent le
+ * SELECT en meme temps -> les 2 envoient. C est acceptable car le pire cas
+ * est 2 push au lieu de 1 (vs 10 actuels). Pour une vraie atomicite il
+ * faudra un RPC SQL ou un Redis SETNX.
+ *
+ * Sans tag : pas de dedup (compat retro pour les push qui ne specifient pas).
+ */
+async function checkPushDedup(tag: string | undefined, ttlSeconds = 60): Promise<boolean> {
+  if (!tag) return true  // pas de tag = pas de dedup
+  try {
+    const supabase = createAdminClient()
+    const cutoff = new Date(Date.now() - ttlSeconds * 1000).toISOString()
+
+    // Verifie si le tag a ete envoye recemment
+    const { data: existing } = await supabase
+      .from('push_dedupe')
+      .select('sent_at')
+      .eq('tag', tag)
+      .gte('sent_at', cutoff)
+      .maybeSingle()
+
+    if (existing) return false  // deja envoye < TTL -> skip
+
+    // UPSERT pour marquer ce tag envoye (sera ignore au prochain check < TTL)
+    await supabase
+      .from('push_dedupe')
+      .upsert({ tag, sent_at: new Date().toISOString() }, { onConflict: 'tag' })
+
+    return true
+  } catch (e: any) {
+    // En cas d erreur (table manquante, RLS, etc.), on n empeche pas le push
+    // pour ne pas casser les notifs en production.
+    console.warn('[Push dedup] Exception, sending anyway:', e.message)
+    return true
+  }
+}
+
+/**
  * Envoie une notification push à tous les utilisateurs ayant un rôle donné.
  * Inclut les users dont `users.role` (champ principal) match, ainsi que ceux
  * dont `users.roles` (array multi-roles, ex: ["driver","dispatcher"]) contient
@@ -155,6 +202,12 @@ export async function sendPushToRole(
   payload:    PushPayload,
   notifType?: NotifType,
 ): Promise<void> {
+  // Anti-spam : skip si meme tag deja emis dans les 60s (cf checkPushDedup).
+  const allowed = await checkPushDedup(payload.tag)
+  if (!allowed) {
+    console.log(`[Push dedup] Skip ${payload.tag} (deja envoye < 60s)`)
+    return
+  }
   const supabase = createAdminClient()
   const roles    = Array.isArray(role) ? role : [role]
 
