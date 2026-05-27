@@ -20,6 +20,9 @@ interface Mission {
   vehicle_model:      string | null
   client_name:        string | null
   billed_to_name:     string | null
+  // Adresse intervention (lieu ou la mission a ete prise en charge)
+  incident_address:   string | null
+  incident_city:      string | null
   destination_address: string | null
   destination_city:    string | null
   parc_zone_key:      string | null
@@ -50,6 +53,7 @@ interface CurrentUser {
 interface Permissions {
   canFourriereActions: boolean   // Transferer / Domaine / Scratch / Imprimer
   canOpenOdoo:         boolean   // Lien direct Odoo (besoin odoo_api_key)
+  canConsulterDossier: boolean   // Consulter le dossier (admin/superadmin/dispatcher)
 }
 
 const DOMAINE_STATE_ID = 13   // Zone I — Domaine
@@ -402,10 +406,27 @@ export default function QrMissionClient({
               <>
                 <button
                   onClick={() => {
+                    // Mapping source -> motif label affiche dans encaissement
+                    const MOTIF_LABELS: Record<string, string> = {
+                      'police_mg':       'Mal Garée',
+                      'police_rodeo':    'Rodéo',
+                      'police_avp':      'AVP',
+                      'police_accident': 'Accident',
+                      'police_saisie':   'Saisie',
+                      'police_snc':      'Siabis',
+                      'sia_couvert':     'Siabis',
+                      'prive':           'Intervention Privée',
+                    }
+                    const motifLabel = MOTIF_LABELS[mission.source || ''] || ''
+                    const motifPrecision = `${motifLabel} — ${(mission.vehicle_plate || '').trim().toUpperCase()}`.trim()
+                    const loc = [mission.incident_address, mission.incident_city].filter(Boolean).join(', ')
                     const url = `/encaissement?prefill_mission_id=${mission.id}`
                       + `&prefill_plate=${encodeURIComponent(mission.vehicle_plate || '')}`
                       + `&prefill_brand=${encodeURIComponent(mission.vehicle_brand || '')}`
                       + `&prefill_model=${encodeURIComponent(mission.vehicle_model || '')}`
+                      + `&prefill_location=${encodeURIComponent(loc)}`
+                      + (motifLabel ? `&prefill_motif_label=${encodeURIComponent(motifLabel)}` : '')
+                      + `&prefill_motif_precision=${encodeURIComponent(motifPrecision)}`
                       + `&return_to=/dispatch/${mission.id}`
                     window.location.href = url
                   }}
@@ -460,11 +481,14 @@ export default function QrMissionClient({
               </div>
             )}
 
-            {/* Consulter le dossier (toujours) */}
-            <Link href={consultUrl}
-              className="w-full py-3 bg-surface border-2 text-ink hover:bg-surface-hover rounded-2xl text-base font-medium transition flex items-center justify-center gap-2">
-              <Eye size={18} /> Consulter le dossier
-            </Link>
+            {/* Consulter le dossier (dispatcher / admin / superadmin uniquement
+                — Olivier 2026-05-27 : pas pour drivers ni autres roles) */}
+            {permissions.canConsulterDossier && (
+              <Link href={consultUrl}
+                className="w-full py-3 bg-surface border-2 text-ink hover:bg-surface-hover rounded-2xl text-base font-medium transition flex items-center justify-center gap-2">
+                <Eye size={18} /> Consulter le dossier
+              </Link>
+            )}
           </div>
         )}
 

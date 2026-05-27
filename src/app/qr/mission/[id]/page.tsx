@@ -95,9 +95,11 @@ export default async function QrMissionPage({ params }: { params: { id: string }
 
   // Permissions par fonction (Olivier 2026-05-27)
   const isAdmin = userRoles.some(r => ['admin', 'superadmin'].includes(r))
+  const isDispatcher = userRoles.includes('dispatcher')
   const hasFourriereModule = userModules.includes('fourriere')
   const canFourriereActions = isAdmin || hasFourriereModule  // Transferer/Domaine/Scratch/Imprimer
   const canOpenOdoo = hasOdooKey
+  const canConsulterDossier = isAdmin || isDispatcher          // Olivier 2026-05-27
 
   // URL de consultation : dispatchers vont sur la fiche dispatch, drivers
   // sur la fiche mission chauffeur. Si on a a la fois driver et admin,
@@ -122,6 +124,8 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         vehicle_model:      mission.vehicle_model,
         client_name:        mission.client_name,
         billed_to_name:     mission.billed_to_name,
+        incident_address:   mission.incident_address,
+        incident_city:      mission.incident_city,
         destination_address: mission.destination_address,
         destination_city:    mission.destination_city,
         // Donnees fourriere supplementaires (carte enrichie)
@@ -151,6 +155,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
       permissions={{
         canFourriereActions,
         canOpenOdoo,
+        canConsulterDossier,
       }}
       consultUrl={consultUrl}
       isElligibleForRel={isElligibleForRel}
