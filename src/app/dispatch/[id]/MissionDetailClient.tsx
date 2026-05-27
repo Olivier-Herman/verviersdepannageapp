@@ -416,6 +416,41 @@ function RelivrerButton({
   )
 }
 
+function PrintLabelButton({ missionId }: { missionId: string }) {
+  const [loading, setLoading] = useState(false)
+  const [status,  setStatus]  = useState<'idle' | 'ok' | 'error'>('idle')
+  const [error,   setError]   = useState<string | null>(null)
+
+  async function doPrint() {
+    setLoading(true); setStatus('idle'); setError(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/reprint-label`, { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur impression')
+      setStatus('ok')
+      setTimeout(() => setStatus('idle'), 3000)
+    } catch (e: any) {
+      setStatus('error'); setError(e.message || 'Erreur')
+      setTimeout(() => setStatus('idle'), 5000)
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="bg-surface border rounded-2xl p-4 hover:border-brand/30 transition md-card-enter">
+      <button
+        type="button"
+        onClick={doPrint}
+        disabled={loading}
+        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2"
+      >
+        {loading ? '⏳ Impression...' : '🖨️ Imprimer l\'étiquette parc'}
+      </button>
+      {status === 'ok'    && <p className="text-success text-xs mt-2 text-center">✅ Étiquette envoyée à l&apos;imprimante</p>}
+      {status === 'error' && <p className="text-critical text-xs mt-2 text-center">⚠ {error}</p>}
+    </div>
+  )
+}
+
 function MissionKmInfo({ missionId, refreshKey }: { missionId: string; refreshKey: string }) {
   const [data, setData]   = useState<{ total_km: number; segments: Array<{ label: string; km: number | null }>; error: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -2226,6 +2261,13 @@ export default function MissionDetailClient({
 
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
             <div className="space-y-5">
+
+              {/* Bouton "Imprimer etiquette" : visible pour les missions en parc
+                  (= avec etiquette physique). Reimprime via VD Soft -> printZPLRaw.
+                  Olivier 2026-05-27. */}
+              {(status === 'parked' || (initialMission as any).parc_zone_key) && (
+                <PrintLabelButton missionId={initialMission.id} />
+              )}
 
               {/* Bloc REL/Mission liée — visible EN HAUT du bloc droit (Olivier 2026-05-27 Fix I).
                   Affiche en priorité le contexte REL avant les actions et l assignation chauffeur. */}
