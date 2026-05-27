@@ -85,8 +85,16 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
   // Magnification 16 -> module size 16 dots, QR version auto -> ~530 dots
   // (peut varier selon longueur URL ; reste >480 dots dans tous les cas).
 
+  // Positions Y colonne droite (Olivier 2026-05-27 : fix overlap plate/VIN) :
+  //   y=15  DATE  (44pt -> finit y=59)
+  //   y=75  SOURCE (40pt sur 2 lignes max -> finit y=155)
+  //   y=200 Marque/Modele (26pt 1 ligne -> finit y=226)
+  //   y=250 Immat (50pt -> finit y=300)
+  //   y=320 VIN (22pt -> finit y=342)
+  //   y=555 Note pied (toute largeur)
+
   // VIN ligne (sautee si vide pour eviter espace vide laid)
-  const vinLine = vin ? `^FO560,260\n^A0N,22,22\n^FB240,2,0,L,0\n^FDVIN: ${vin}^FS\n` : ''
+  const vinLine = vin ? `^FO560,320\n^A0N,22,22\n^FB240,2,0,L,0\n^FDVIN: ${vin}^FS\n` : ''
 
   // Note pied (sautee si vide)
   const noteBlock = note ? `^FO15,555\n^A0N,24,24\n^FB780,1,0,L,0\n^FD${note}^FS\n` : ''
@@ -115,7 +123,7 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 
 ^FO560,200
 ^A0N,26,26
-^FB240,2,0,L,0
+^FB240,1,0,L,0
 ^FD${brandModel}^FS
 
 ^FO560,250
