@@ -31,25 +31,33 @@ export default async function QrMissionPage({ params }: { params: { id: string }
 
   const sb = createAdminClient()
 
-  // Lecture de la mission scannee
+  // Lecture de la mission scannee.
   // params.id accepte UUID OU mission_number numerique (Olivier 2026-05-27).
   // Le QR sur l etiquette utilise mission_number lisible (8 chiffres).
+  // Note : on construit 2 query separees pour eviter toute mutation du query
+  // builder Supabase JS entre les 2 appels.
   const idIsNumeric = /^\d+$/.test(params.id)
-  const baseQuery = sb
-    .from('incoming_missions')
-    .select(`
-      id, mission_number, external_id, dossier_number, source, mission_type, incident_type,
-      status, snc_scenario,
-      vehicle_plate, vehicle_brand, vehicle_model,
-      client_name, billed_to_name,
-      destination_address, destination_city,
-      assigned_to, parent_mission_id, completed_at
-    `)
-  const { data: mission, error } = idIsNumeric
-    ? await baseQuery.eq('mission_number', Number(params.id)).single()
-    : await baseQuery.eq('id', params.id).single()
+  const selectCols = `
+    id, mission_number, external_id, dossier_number, source, mission_type, incident_type,
+    status, snc_scenario,
+    vehicle_plate, vehicle_brand, vehicle_model,
+    client_name, billed_to_name,
+    destination_address, destination_city,
+    assigned_to, parent_mission_id, completed_at
+  `
+  const lookup = idIsNumeric
+    ? await sb.from('incoming_missions').select(selectCols).eq('mission_number', Number(params.id)).maybeSingle()
+    : await sb.from('incoming_missions').select(selectCols).eq('id', params.id).maybeSingle()
+  const { data: mission, error } = lookup
 
-  if (error || !mission) notFound()
+  if (error) {
+    console.error('[qr/mission] erreur SQL pour', params.id, ':', error.message)
+    notFound()
+  }
+  if (!mission) {
+    console.warn('[qr/mission] mission introuvable :', params.id, '(numeric:', idIsNumeric, ')')
+    notFound()
+  }
 
   // Detecte une REL fille existante pour ce parent (idempotence)
   const { data: existingRel } = await sb
