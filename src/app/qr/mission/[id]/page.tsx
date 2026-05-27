@@ -1,17 +1,19 @@
 // src/app/qr/mission/[id]/page.tsx
 //
-// Page d atterrissage quand un chauffeur scanne le QR d une etiquette REL
-// collee sur un vehicule en parc. Affiche le contexte mission + 2 actions :
-//   - Consulter le dossier (vue chauffeur)
-//   - Relivrer le vehicule (cree la REL fille + assigne le chauffeur scanneur)
+// Hub unifie de mission scannee depuis le QR de l etiquette parc.
+// Olivier 2026-05-27 : porte toutes les fonctions de l ancienne page /v/[id]
+// pour ne pas regresser, avec les permissions par fonction :
 //
-// Eligibilite pour l action "Relivrer" :
-//   - REM+REL en parc (assurances)
-//   - Siabis Couvert scenario rem_depot en parc
-//   - Siabis Non Couvert scenario rem_depot en parc
-//
-// Si une REL fille existe deja avec un autre chauffeur assigne, l UI propose
-// une confirmation pour reassigner (cas de remplacement).
+//   - Carte vehicule riche (zone, date entree, motif, VIN, etc.) - tous
+//   - Restituer (avec paiement)   - tous users auth
+//   - Restituer sans frais        - tous users auth
+//   - Relivrer (REM+REL)          - drivers
+//   - Transferer vers une zone    - admin / superadmin / fourriere
+//   - Envoyer au Domaine          - admin / superadmin / fourriere
+//   - Scratch / Mettre en epave   - admin / superadmin / fourriere
+//   - Imprimer une etiquette      - admin / superadmin / fourriere
+//   - Ouvrir dans Odoo            - users avec odoo_api_key non vide
+//   - Consulter le dossier        - tous
 
 import { redirect, notFound } from 'next/navigation'
 import { getServerSession }   from 'next-auth'
@@ -78,10 +80,25 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const isRemRelMission = mission.mission_type === 'REM+REL'
   const isElligibleForRel = isParked && (isRemRelMission || isSiabisRemDepot)
 
-  // Determine le role du scanneur pour le bouton "Consulter le dossier"
+  // Determine roles + modules + odoo_api_key du scanneur pour les permissions par fonction.
   const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
-  const isDispatcher = userRoles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))
-  const isDriver     = userRoles.includes('driver')
+  const userModules: string[] = Array.isArray(user.modules) ? user.modules : []
+  const isDriver = userRoles.includes('driver')
+
+  // Recupere odoo_api_key de l user (utilise pour bouton "Ouvrir dans Odoo")
+  const { data: dbUser } = await sb
+    .from('users')
+    .select('odoo_api_key')
+    .eq('id', user.id || '')
+    .maybeSingle()
+  const hasOdooKey = Boolean(dbUser?.odoo_api_key)
+
+  // Permissions par fonction (Olivier 2026-05-27)
+  const isAdmin = userRoles.some(r => ['admin', 'superadmin'].includes(r))
+  const hasFourriereModule = userModules.includes('fourriere')
+  const canFourriereActions = isAdmin || hasFourriereModule  // Transferer/Domaine/Scratch/Imprimer
+  const canOpenOdoo = hasOdooKey
+
   // URL de consultation : dispatchers vont sur la fiche dispatch, drivers
   // sur la fiche mission chauffeur. Si on a a la fois driver et admin,
   // on privilegie la vue chauffeur (cas mobile dans le parc).
@@ -100,12 +117,23 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         mission_type:       mission.mission_type,
         status:             mission.status,
         vehicle_plate:      mission.vehicle_plate,
+        vehicle_vin:        mission.vehicle_vin,
         vehicle_brand:      mission.vehicle_brand,
         vehicle_model:      mission.vehicle_model,
         client_name:        mission.client_name,
         billed_to_name:     mission.billed_to_name,
         destination_address: mission.destination_address,
         destination_city:    mission.destination_city,
+        // Donnees fourriere supplementaires (carte enrichie)
+        parc_zone_key:      mission.parc_zone_key,
+        parc_row_number:    mission.parc_row_number,
+        parc_slot_index:    mission.parc_slot_index,
+        intervention_date:  mission.intervention_date,
+        received_at:        mission.received_at,
+        parked_at:          mission.parked_at,
+        incident_type:      mission.incident_type,
+        // Pour bouton "Ouvrir dans Odoo" + appels endpoints /api/helpdesk/[ticketId]/...
+        odoo_ticket_id:     mission.odoo_ticket_id || null,
       }}
       existingRel={existingRel ? {
         id:             existingRel.id,
@@ -119,6 +147,10 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         id:    user.id,
         name:  user.name || '',
         isDriver,
+      }}
+      permissions={{
+        canFourriereActions,
+        canOpenOdoo,
       }}
       consultUrl={consultUrl}
       isElligibleForRel={isElligibleForRel}

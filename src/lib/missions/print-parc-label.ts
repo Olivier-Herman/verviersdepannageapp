@@ -66,15 +66,13 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
     }
     // Autres sources : note vide (Mal Garee chargement, etc.)
 
-    // URL QR : priorise /v/[odooTicketId] (page fourriere complete legacy avec
-    // toutes les fonctions Transferer/Domaine/Scratch/Imprimer/Ouvrir Odoo).
-    // Fallback /qr/mission/[number] pour les missions sans ticket Odoo (Appel
-    // Prive Fix 5 ou autres sources migrees vers VD Soft direct).
-    // Olivier 2026-05-27 : on a perdu des fonctions critiques avec le passage
-    // a /qr/mission/[id] minimaliste, on restaure le pointage legacy.
-    const qrTarget = input.odooTicketId
-      ? `/v/${input.odooTicketId}`
-      : `/qr/mission/${input.missionNumber != null ? input.missionNumber : input.missionId}`
+    // URL QR : /qr/mission/[mission_number] = hub unifie VD Soft (Olivier
+    // 2026-05-27 : VD Soft = source de verite). Le hub porte toutes les
+    // fonctions ex-/v/[id] : Restituer/Restituer sans frais/Transferer/Domaine/
+    // Scratch/Imprimer/Ouvrir Odoo, conditionnees aux permissions de l user.
+    // Privilegie mission_number (8 chiffres) si dispo (URL courte = QR dense),
+    // fallback UUID sinon.
+    const qrTarget = `/qr/mission/${input.missionNumber != null ? input.missionNumber : input.missionId}`
     const zpl = buildParcLabelZPL({
       qrUrl: `${baseUrl}${qrTarget}`,
       motif: input.motif,
