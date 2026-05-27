@@ -5,15 +5,18 @@
 // https://palaeobiologic-carola-steeply.ngrok-free.dev
 //
 // Endpoints :
-//   - GET  /           : healthcheck
-//   - POST /print      : flow LEGACY, le PC compose le ZPL depuis des champs métier
-//                        (utilisé par lib/print/zebra.ts dans VD Soft)
-//   - POST /print-raw  : flow NOUVEAU, le PC reçoit du ZPL déjà composé par VD Soft
-//                        (utilisé par lib/print/zebra-raw.ts dans VD Soft).
-//                        Permet d'avoir N designs côté VD Soft sans modifier ce serveur.
+//   - GET  /health     : healthcheck
+//   - POST /print      : flow LEGACY, le PC compose le ZPL depuis des champs
+//                        métier (qrUrl, motif, date, note, plate, vin, brand,
+//                        model). Utilisé par lib/print/zebra.ts dans VD Soft.
+//   - POST /print-raw  : flow NOUVEAU, le PC reçoit du ZPL déjà composé par
+//                        VD Soft. Utilisé par lib/print/zebra-raw.ts.
+//                        Permet N designs côté VD Soft sans modifier ce serveur.
 //
 // Imprimante : Zebra ZD421, 203dpi, USB.
 // Driver Windows : "ZDesigner ZD421-203dpi ZPL" en mode passthrough/raw.
+// Méthode d'impression : P/Invoke winspool.drv (RawPrint) pour garantir le
+// passage du ZPL brut sans interprétation par le spouler Windows.
 //
 // Versioning : ce fichier est versionné dans le repo verviers-app
 // (infra/zebra-server/server.js). Toute modif doit y être faite, puis
@@ -21,141 +24,227 @@
 // → tâche "ZebraServer" → Fin + Démarrer.
 
 const express = require("express");
+const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 const { exec } = require("child_process");
-const fs       = require("fs");
-const path     = require("path");
-const cors     = require("cors");
+const os = require("os");
 
-const app  = express();
-const PORT = 3000;
-const PRINTER_NAME = "ZDesigner ZD421-203dpi ZPL"; // nom exact dans Windows
+const app = express();
+const PRINTER_NAME = "ZDesigner ZD421-203dpi ZPL";
+const SERVER_PORT  = 3000;
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
 // ─────────────────────────────────────────────────────────────────────
-// Helper commun : envoie un ZPL à l'imprimante via spouleur Windows
+// LEGACY : compose le ZPL côté PC depuis les champs métier
+// Utilisé par l'endpoint /print (compat ascendante avec lib/print/zebra.ts).
+// Template équivalent côté VD Soft : src/lib/print/zpl-templates/parc-label.ts.
 // ─────────────────────────────────────────────────────────────────────
-function sendZplToPrinter(zpl, res, label = "label") {
-  try {
-    const tmpFile = path.join(process.env.TEMP, `${label}_${Date.now()}.zpl`);
-    fs.writeFileSync(tmpFile, zpl, "binary");
+function buildZpl({ qrUrl, motif, date, note, plate, vin, brand, model }) {
+  const clean = (s) =>
+    (s || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9 \-\/\.\,\(\)]/g, "")
+      .substring(0, 40);
 
-    const ps  = `Get-Content -Raw '${tmpFile}' | Out-Printer -Name '${PRINTER_NAME}'`;
-    const cmd = `powershell -Command "${ps}"`;
+  const motifClean  = clean(motif);
+  const dateClean   = clean(date);
+  const noteClean   = clean(note);
+  const plateClean  = clean(plate);
+  const vinClean    = (vin || "").replace(/[^A-Z0-9]/gi, "").substring(0, 17).toUpperCase();
+  const brandModel  = clean([brand, model].filter(Boolean).join(" "));
 
-    exec(cmd, (err) => {
-      try { fs.unlinkSync(tmpFile); } catch (_) {}
-      if (err) {
-        console.error("Erreur impression:", err.message);
-        return res.status(500).json({ ok: false, error: err.message });
-      }
-      return res.json({ ok: true });
-    });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Helper LEGACY : compose le ZPL côté PC depuis les champs métier
-// Utilisé par l'endpoint /print uniquement (compat ascendante).
-// Le template ZPL équivalent côté VD Soft est dans
-// src/lib/print/zpl-templates/parc-label.ts du repo verviers-app.
-// ─────────────────────────────────────────────────────────────────────
-function buildZPL({ qrUrl, motif, date, note }) {
-  // Note : "TDC" hardcode supprime (etait un bug de l initialisation
-  // du script — TDC est un motif possible, pas une signature fixe).
-  return `^XA
-^CI28
+  // ZD421 203dpi - 812x609 dots
+  let zpl = `^XA
+^POI
 ^PW812
 ^LL609
-^LH0,0
-^PR2
+^LS0
 ~SD30
+^PR2
 
-^FO30,30
-^A0N,70,70
-^FD${escapeZPL(motif)}^FS
+^FO126,5
+^BQN,2,12
+^FDQA,${qrUrl}^FS
 
-^FO500,40
-^A0N,40,40
-^FD${escapeZPL(date)}^FS
+^FO20,415
+^A0N,55,55
+^FD${motifClean}^FS
 
-^FO180,140
-^BQN,2,14
-^FDLA,${escapeZPL(qrUrl)}^FS
+^FO400,420
+^A0N,50,50
+^FD${dateClean}^FS`;
 
-^FO30,520
+  // Marque / Modele
+  if (brandModel) {
+    zpl += `
+^FO20,472
+^A0N,30,30
+^FD${brandModel}^FS`;
+  }
+
+  // Plaque
+  if (plateClean) {
+    zpl += `
+^FO20,505
+^A0N,30,30
+^FDImmat: ${plateClean}^FS`;
+  }
+
+  // VIN
+  if (vinClean) {
+    zpl += `
+^FO20,538
+^A0N,26,26
+^FDVIN: ${vinClean}^FS`;
+  }
+
+  // Note
+  if (noteClean) {
+    zpl += `
+^FO20,568
 ^A0N,28,28
-^FB752,2,0,L,0
-^FD${escapeZPL(note)}^FS
-
-^XZ`;
-}
-
-function escapeZPL(s) {
-  if (!s) return "";
-  return String(s)
-    .replace(/\^/g, " ")
-    .replace(/~/g, " ")
-    .replace(/\\/g, "/");
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// LEGACY : POST /print
-// Body attendu : { qrUrl, motif, date, note }
-// → le PC compose le ZPL puis imprime
-// ─────────────────────────────────────────────────────────────────────
-app.post("/print", (req, res) => {
-  const { qrUrl, motif, date, note } = req.body;
-  if (!qrUrl) {
-    return res.status(400).json({ ok: false, error: "qrUrl requis" });
+^FD${noteClean}^FS`;
   }
-  const zpl = buildZPL({
-    qrUrl,
-    motif: motif || "",
-    date:  date  || "",
-    note:  note  || "",
-  });
-  return sendZplToPrinter(zpl, res, "label");
-});
+
+  zpl += "\n^XZ\n";
+  return zpl;
+}
 
 // ─────────────────────────────────────────────────────────────────────
-// NOUVEAU : POST /print-raw
-// Body attendu : { zpl: "^XA...^XZ" } déjà composé par VD Soft.
-// → le PC fait juste le forwarding à l'imprimante.
-//
-// Permet N designs différents côté VD Soft sans modifier ce serveur :
-// étiquettes parc, restitution, AVP, destruction, transfert, etc.
-// Chaque template ZPL est versionné dans le repo verviers-app sous
-// src/lib/print/zpl-templates/.
+// Helper commun : envoie un ZPL brut a l'imprimante via P/Invoke winspool.drv
+// Garantit le mode RAW (pas d'interpretation du spouler Windows).
+// Utilise par /print ET /print-raw.
 // ─────────────────────────────────────────────────────────────────────
-app.post("/print-raw", (req, res) => {
-  const { zpl } = req.body;
-  if (!zpl || typeof zpl !== "string" || !zpl.includes("^XA")) {
-    return res.status(400).json({
-      ok: false,
-      error: "zpl manquant ou invalide (doit contenir ^XA)",
+function printZpl(zpl) {
+  return new Promise((resolve, reject) => {
+    const tmpFile = path.join(os.tmpdir(), `zebra_${Date.now()}.zpl`);
+    fs.writeFileSync(tmpFile, zpl, "ascii");
+
+    const ps = `
+$printerName = "${PRINTER_NAME}"
+$file = "${tmpFile.replace(/\\/g, "\\\\")}"
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class RawPrint {
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct DOCINFO {
+        [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+    }
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern int StartDocPrinter(IntPtr h, int l, ref DOCINFO d);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern bool EndDocPrinter(IntPtr h);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern bool StartPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern bool EndPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode)] public static extern bool WritePrinter(IntPtr h, IntPtr b, int c, out int w);
+}
+"@
+$bytes = [System.IO.File]::ReadAllBytes($file)
+$h = [IntPtr]::Zero
+[RawPrint]::OpenPrinter($printerName, [ref]$h, [IntPtr]::Zero) | Out-Null
+$di = New-Object RawPrint+DOCINFO
+$di.pDocName = "ZPL"
+$di.pDataType = "RAW"
+[RawPrint]::StartDocPrinter($h, 1, [ref]$di) | Out-Null
+[RawPrint]::StartPagePrinter($h) | Out-Null
+$ptr = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($bytes.Length)
+[System.Runtime.InteropServices.Marshal]::Copy($bytes, 0, $ptr, $bytes.Length)
+$w = 0
+[RawPrint]::WritePrinter($h, $ptr, $bytes.Length, [ref]$w) | Out-Null
+[System.Runtime.InteropServices.Marshal]::FreeHGlobal($ptr)
+[RawPrint]::EndPagePrinter($h) | Out-Null
+[RawPrint]::EndDocPrinter($h) | Out-Null
+[RawPrint]::ClosePrinter($h) | Out-Null
+Write-Output "OK"
+`;
+
+    const psFile = path.join(os.tmpdir(), `print_${Date.now()}.ps1`);
+    fs.writeFileSync(psFile, ps, "utf8");
+
+    exec(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, (err, stdout, stderr) => {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      try { fs.unlinkSync(psFile); } catch (_) {}
+      if (err) reject(new Error(stderr || err.message));
+      else resolve();
     });
-  }
-  return sendZplToPrinter(zpl, res, "label_raw");
-});
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Healthcheck
 // ─────────────────────────────────────────────────────────────────────
+app.get("/health", (req, res) => res.json({ ok: true }));
+
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    service: "Zebra Print Server (Verviers Dépannage)",
+    service: "Zebra Print Server (Verviers Depannage)",
     endpoints: [
-      "POST /print       — legacy, body { qrUrl, motif, date, note }",
-      "POST /print-raw   — body { zpl }",
-      "GET  /            — this healthcheck",
+      "GET  /health     - healthcheck",
+      "POST /print      - legacy, body { qrUrl, motif, date, note, plate, vin, brand, model }",
+      "POST /print-raw  - body { zpl }",
     ],
     printer: PRINTER_NAME,
   });
 });
 
-app.listen(PORT, () => console.log(`Zebra server listening on ${PORT}`));
+// ─────────────────────────────────────────────────────────────────────
+// LEGACY : POST /print
+// Body : { qrUrl, motif, date, note, plate, vin, brand, model }
+// → le PC compose le ZPL via buildZpl() puis imprime
+// ─────────────────────────────────────────────────────────────────────
+app.post("/print", async (req, res) => {
+  const { qrUrl, motif, date, note, plate, vin, brand, model } = req.body;
+  if (!qrUrl) return res.status(400).json({ ok: false, error: "qrUrl requis" });
+  console.log(`[PRINT] ${new Date().toLocaleTimeString()} - ${motif} ${date} ${plate || ""}`);
+  console.log(`[QR] ${qrUrl}`);
+  try {
+    await printZpl(buildZpl({ qrUrl, motif, date, note, plate, vin, brand, model }));
+    console.log("[OK] Imprime");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(`[ERR] ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// NOUVEAU : POST /print-raw
+// Body : { zpl: "^XA...^XZ" } deja compose par VD Soft.
+// → le PC fait juste le forwarding a l'imprimante via la meme methode P/Invoke.
+//
+// Permet N designs differents cote VD Soft sans modifier ce serveur :
+// etiquettes parc, restitution, AVP, destruction, transfert, etc.
+// Chaque template ZPL est versionne dans le repo verviers-app sous
+// src/lib/print/zpl-templates/.
+// ─────────────────────────────────────────────────────────────────────
+app.post("/print-raw", async (req, res) => {
+  const { zpl } = req.body;
+  if (!zpl || typeof zpl !== "string" || !zpl.includes("^XA")) {
+    return res.status(400).json({ ok: false, error: "zpl manquant ou invalide (doit contenir ^XA)" });
+  }
+  console.log(`[PRINT-RAW] ${new Date().toLocaleTimeString()} - ${zpl.length} chars`);
+  try {
+    await printZpl(zpl);
+    console.log("[OK] Imprime (raw)");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(`[ERR] ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.listen(SERVER_PORT, "0.0.0.0", () => {
+  console.log("========================================");
+  console.log(" Serveur Zebra ZD421 - Verviers Depannage");
+  console.log(`  http://192.168.129.54:${SERVER_PORT}`);
+  console.log(" Endpoints : GET /health, POST /print, POST /print-raw");
+  console.log("========================================");
+});
