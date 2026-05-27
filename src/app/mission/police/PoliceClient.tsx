@@ -523,22 +523,46 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     if (data.ok) {
       setCreatedMissionId(data.missionId || null)
       setDone(true)
-      // Sources avec paiement direct : on ne redirige PAS automatiquement,
-      // le chauffeur choisit (encaisser maintenant ou plus tard). Pour les
-      // autres types (accident, saisie, ...) : redirection auto comme avant.
-      // EXCEPTION Olivier 2026-05-26 : Mal Garee scenario deplacement_paye =
-      // encaissement OBLIGATOIRE, on auto-redirige direct sur /encaissement.
+      // Olivier 2026-05-27 : sources avec encaissement OBLIGATOIRE (Mal Garee
+      // deplacement_paye + Appel Prive DSP/REM client + SNC dsp/rem_client) =
+      // auto-redirect immediat vers /encaissement, sans ecran intermediaire ni
+      // bouton "Plus tard". Le chauffeur ne peut PAS skipper.
+      // Pour les autres sources avec encaissement OPTIONNEL (mal_garee chargement,
+      // snc rem_depot, appel_prive REM depot, ...) : ecran de choix (bouton
+      // encaisser maintenant OU plus tard).
+      // Pour les autres types (accident, saisie, ...) : redirect auto dashboard.
       const needsPayment = ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
-      const malGareeForceEncaisse = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
-      if (malGareeForceEncaisse && data.missionId) {
+      const needsImmediatePayment =
+        (selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye') ||
+        (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
+        (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
+
+      if (needsImmediatePayment && data.missionId) {
+        // Calcul du montant prefill selon source
+        const prefillAmt = selectedType === 'mal_garee'
+          ? 125
+          : selectedType === 'appel_prive' && amountToCollect !== ''
+            ? Number(amountToCollect)
+            : null
+        // Motif label / precision selon source
+        const motifLabel = selectedType === 'mal_garee'
+          ? 'Mal Garée'
+          : selectedType === 'appel_prive'
+            ? 'Intervention Privée'
+            : 'Siabis'
+        const motifPrecision = selectedType === 'mal_garee'
+          ? `Déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`
+          : selectedType === 'appel_prive'
+            ? `${appelPriveType || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+            : `${sncScenario || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
         const url = `/encaissement?prefill_mission_id=${data.missionId}`
           + `&prefill_plate=${encodeURIComponent(plate || vin || '')}`
           + `&prefill_brand=${encodeURIComponent(brand || '')}`
           + `&prefill_model=${encodeURIComponent(model || '')}`
-          + `&prefill_amount=125`
+          + (prefillAmt != null ? `&prefill_amount=${prefillAmt}` : '')
           + `&prefill_location=${encodeURIComponent(location || '')}`
-          + `&prefill_motif_label=${encodeURIComponent('Mal Garée')}`
-          + `&prefill_motif_precision=${encodeURIComponent(`Déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`)}`
+          + `&prefill_motif_label=${encodeURIComponent(motifLabel)}`
+          + `&prefill_motif_precision=${encodeURIComponent(motifPrecision)}`
           + `&return_to=/mission/${data.missionId}`
         setTimeout(() => { window.location.href = url }, 800)
       } else if (!needsPayment) {
@@ -557,9 +581,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // amount). Le chauffeur peut choisir d encaisser maintenant ou plus tard.
   if (done) {
     const needsPayment = selectedType && ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
-    // Mal Garee scenario 'deplacement_paye' : encaissement OBLIGATOIRE 125 EUR TVAC.
-    // Pas de bouton "plus tard" dans ce cas.
     const malGareeDeplacementPaye = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
+    // Encaissement OBLIGATOIRE = pas de bouton "Plus tard" (Olivier 2026-05-27).
+    // 3 cas : Mal Garee deplacement_paye + Appel Prive DSP/REM client + SNC dsp/rem_client.
+    const needsImmediatePaymentSuccess =
+      malGareeDeplacementPaye ||
+      (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
+      (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
     // Estimation : pour Appel Prive on prefere le total TVAC du preview tarif
     // (forfait negocie OU tarif source). Pour Mal Garee deplacement paye : 125 fixe.
     // Pour les autres on laisse vide, l ecran encaissement re-calculera depuis la mission.
@@ -606,11 +634,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
 
         {needsPayment && encaissementUrl && (
           <div className="pt-2 space-y-2">
-            {malGareeDeplacementPaye && (
+            {needsImmediatePaymentSuccess && (
               <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3 mb-2">
                 <p className="text-red-900 text-sm font-bold">⚠️ Encaissement obligatoire</p>
                 <p className="text-red-800 text-xs mt-1">
-                  Redirection automatique vers l&apos;encaissement... Le client doit payer les 125€ TVAC avant de partir.
+                  Redirection automatique vers l&apos;encaissement... Le client doit payer avant de partir.
                 </p>
               </div>
             )}
@@ -624,9 +652,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 <span className="font-normal opacity-90 text-sm">— {prefillAmount.toFixed(2)} €</span>
               )}
             </button>
-            {/* Bouton "Plus tard" : masque pour Mal Garee deplacement paye
-                (encaissement obligatoire, le client paye sur place). */}
-            {!malGareeDeplacementPaye && (
+            {/* Bouton "Plus tard" : masque pour les sources encaissement obligatoire
+                (Mal Garee deplacement_paye + Privé direct + SNC direct).
+                Le client paye sur place avant de partir. */}
+            {!needsImmediatePaymentSuccess && (
               <button
                 type="button"
                 onClick={() => router.push('/dashboard')}
@@ -1187,13 +1216,35 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-critical text-sm">{err}</div>}
       </div>
 
-      {/* Bottom button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface/95 border-t border px-4 py-4 shadow-lg">
-        <button onClick={handleSubmit} disabled={loading}
-          className={`w-full py-4 ${cfg!.color} disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-md`}>
-          {loading ? '⏳ Création en cours...' : `${cfg!.icon} Créer la mission`}
-        </button>
-      </div>
+      {/* Bottom button — label dynamique selon scenario.
+          Olivier 2026-05-27 : pour les sources avec encaissement direct
+          chauffeur (Mal Garee deplacement_paye, Appel Prive DSP/REM client,
+          SNC dsp/rem_client), le label rend explicite que l etape suivante
+          sera l encaissement (auto-redirect immediat sans ecran intermediaire). */}
+      {(() => {
+        const needsImmediatePayment =
+          (selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye') ||
+          (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
+          (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
+        const submitLabel = loading
+          ? '⏳ Création en cours...'
+          : needsImmediatePayment
+            ? `💳 Créer et encaisser`
+            : `${cfg!.icon} Créer la mission`
+        return (
+          <div className="fixed bottom-0 left-0 right-0 bg-surface/95 border-t border px-4 py-4 shadow-lg">
+            <button onClick={handleSubmit} disabled={loading}
+              className={`w-full py-4 ${cfg!.color} disabled:opacity-50 text-white font-bold rounded-2xl text-base shadow-md`}>
+              {submitLabel}
+            </button>
+            {needsImmediatePayment && !loading && (
+              <p className="text-ink-muted text-xs text-center mt-2">
+                ⚠️ Encaissement obligatoire — redirection automatique vers la page paiement après création
+              </p>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Modal Marques */}
       {showBrands && (

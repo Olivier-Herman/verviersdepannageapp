@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Plan de test VD Soft — v2 (post-fixes) — 27/05/2026</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.4;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  h1 {
+    font-size: 18pt;
+    margin: 0 0 4pt 0;
+    color: #b91c1c;
+  }
+  h2 {
+    font-size: 14pt;
+    margin: 18pt 0 6pt 0;
+    padding: 4pt 8pt;
+    background: #fee2e2;
+    border-left: 4pt solid #b91c1c;
+    color: #7f1d1d;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11.5pt;
+    margin: 10pt 0 3pt 0;
+    color: #1e3a8a;
+    page-break-after: avoid;
+  }
+  .subtitle { color: #6b7280; font-size: 10pt; margin-bottom: 14pt; }
+  .pending {
+    background: #fef3c7;
+    border: 1pt dashed #f59e0b;
+    padding: 4pt 8pt;
+    margin: 6pt 0;
+    font-size: 9.5pt;
+    color: #92400e;
+    border-radius: 3pt;
+  }
+  ul.checks { list-style: none; padding: 0; margin: 4pt 0 6pt 0; }
+  ul.checks li {
+    margin: 2pt 0;
+    padding-left: 18pt;
+    position: relative;
+  }
+  ul.checks li::before {
+    content: "☐";
+    position: absolute;
+    left: 0;
+    font-size: 13pt;
+    line-height: 1;
+    top: -1pt;
+  }
+  .expected {
+    background: #ecfdf5;
+    border-left: 3pt solid #10b981;
+    padding: 3pt 8pt;
+    margin: 4pt 0;
+    font-size: 9.5pt;
+  }
+  .expected strong { color: #065f46; }
+  .precond {
+    background: #eff6ff;
+    border-left: 3pt solid #3b82f6;
+    padding: 3pt 8pt;
+    margin: 4pt 0;
+    font-size: 9.5pt;
+  }
+  .notes {
+    border: 1pt dashed #9ca3af;
+    background: #fafafa;
+    padding: 6pt;
+    margin: 6pt 0 10pt 0;
+    min-height: 30pt;
+    font-size: 9pt;
+    color: #6b7280;
+    border-radius: 3pt;
+  }
+  .notes::before { content: "Notes : "; font-weight: bold; color: #4b5563; }
+  table.toc {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8pt 0 18pt 0;
+    font-size: 9.5pt;
+  }
+  table.toc td {
+    padding: 2pt 4pt;
+    border-bottom: 0.5pt solid #e5e7eb;
+  }
+  table.toc td:first-child { width: 18pt; font-weight: bold; color: #b91c1c; }
+  table.toc td:last-child  { width: 80pt; text-align: right; color: #6b7280; }
+  .section-num { color: #b91c1c; margin-right: 6pt; }
+  .pagebreak { page-break-before: always; }
+  hr.thin {
+    border: none;
+    border-top: 0.5pt solid #d1d5db;
+    margin: 10pt 0;
+  }
+  code {
+    background: #f3f4f6;
+    padding: 0 3pt;
+    border-radius: 2pt;
+    font-size: 9.5pt;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+  }
+  .priority {
+    display: inline-block;
+    padding: 1pt 5pt;
+    border-radius: 2pt;
+    font-size: 8pt;
+    font-weight: bold;
+    vertical-align: middle;
+    margin-left: 6pt;
+  }
+  .priority.critical { background: #fee2e2; color: #991b1b; }
+  .priority.normal   { background: #dbeafe; color: #1e40af; }
+  .priority.bonus    { background: #f3e8ff; color: #6b21a8; }
+  .changelog {
+    background: #f0fdf4;
+    border: 1pt solid #86efac;
+    padding: 8pt 12pt;
+    margin: 6pt 0 18pt 0;
+    border-radius: 4pt;
+    font-size: 9.5pt;
+  }
+  .changelog strong { color: #166534; }
+</style>
+</head>
+<body>
+
+<h1>Plan de test VD Soft v2 — Session 2026-05-27</h1>
+<p class="subtitle">Mise à jour suite à ton 1er passage de test. 13 scénarios consolidés avec les corrections poussées (commits <code>eb48fc2</code> + commits suivants).</p>
+
+<div class="changelog">
+  <strong>📋 Récap des corrections poussées depuis la 1ère version du PDF :</strong>
+  <ul style="margin: 4pt 0 0 18pt; padding: 0;">
+    <li><strong>Form chauffeur :</strong> Plaque + VIN sur 2 lignes séparées (boutons appareil photo accessibles)</li>
+    <li><strong>Form chauffeur :</strong> Propriétaire JAMAIS obligatoire — le client est lié auto via le module encaissement</li>
+    <li><strong>Appel Privé REM client direct :</strong> nouveau champ "Adresse destination" OBLIGATOIRE avec autocomplete Google</li>
+    <li><strong>Tarif DSP :</strong> nouveau tarif <code>police_accident/depannage</code> (PCD + KIL + MOE, sans 2×TD ni ECOPERLE)</li>
+    <li><strong>Bug arrondi 125 TVAC → 125.01 :</strong> corrigé via <code>total_tvac_exact</code> (plus d'aller-retour HT × 1.21)</li>
+    <li><strong>Module encaissement :</strong> skip plaque + lookup véhicule si on vient d'une mission (démarre page 3 motif)</li>
+    <li><strong>Module encaissement :</strong> motif principal auto-sélectionné via <code>prefill_motif_label</code></li>
+    <li><strong>Auto-lien plaque :</strong> vérif synchrone au clic "Rechercher" (plus de problème de debounce)</li>
+    <li><strong>Fiche dispatch :</strong> bloc RELivrer + REL liée + REM parente déplacés EN HAUT du bloc droit</li>
+    <li><strong>Workflow encaissement obligatoire :</strong> pour Mal Garée déplacement payé + Appel Privé DSP/REM client + SNC dsp/rem_client → bouton submit devient "💳 Créer et encaisser" + auto-redirect immédiat sans écran intermédiaire (impossible de skipper)</li>
+  </ul>
+</div>
+
+<h2>Sommaire des tests</h2>
+<table class="toc">
+  <tr><td>1</td><td>Form chauffeur — Plaque/VIN sur 2 lignes (boutons photo visibles)</td><td>Fix A</td></tr>
+  <tr><td>2</td><td>Mal Garée — Bloc Blocage police avant Remarques</td><td>Fix 1</td></tr>
+  <tr><td>3</td><td>Mal Garée — Déplacement avec paiement 125€ (workflow forcé)</td><td>Fix 6+refactor</td></tr>
+  <tr><td>4</td><td>Appel Privé DSP — Tarif estimé via police_accident/depannage</td><td>Fix 2+B</td></tr>
+  <tr><td>5</td><td>Appel Privé — Forfait 125 TVAC pas d'arrondi 125.01</td><td>Fix C</td></tr>
+  <tr><td>6</td><td>Appel Privé REM client direct — Adresse destination obligatoire + paiement avant</td><td>Fix 3+D+E+refactor</td></tr>
+  <tr><td>7</td><td>Appel Privé REM dépôt — Champ adresse relivraison optionnel</td><td>Fix 11</td></tr>
+  <tr><td>8</td><td>SNC dsp/rem_client — Auto-link client + paiement avant</td><td>Fix 3 light+refactor</td></tr>
+  <tr><td>9</td><td>Encaissement — Skip plaque + lookup si mission liée + motif auto</td><td>Fix G+H</td></tr>
+  <tr><td>10</td><td>Numéro mission #10000XXX partout</td><td>Fix 8</td></tr>
+  <tr><td>11</td><td>Encaissement standalone — Auto-lien mission par plaque</td><td>Fix F + Chantier 4</td></tr>
+  <tr><td>12</td><td>Scan QR étiquette = Hub Restituer / Restituer sans frais</td><td>Chantier 3</td></tr>
+  <tr><td>13</td><td>Dispatch fiche — Bloc REL en haut + REL autocomplete + redirect</td><td>Fix I + Fix 7</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">1.</span>Form chauffeur — Plaque + VIN sur 2 lignes <span class="priority normal">UX</span></h2>
+<div class="precond">Préconditions : connecté en chauffeur, route <code>/mission/police</code>.</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>"Créer une mission" → choisir n'importe quel type (Mal Garée par ex)</li>
+  <li>Aller dans le bloc "Véhicule"</li>
+  <li>Vérifier que Plaque et VIN sont sur 2 lignes séparées (pas en grid 2 colonnes)</li>
+  <li>Vérifier que les <strong>boutons 📷 sont bien visibles et cliquables</strong> à côté de chaque input</li>
+</ul>
+<div class="expected"><strong>Résultat :</strong> chaque input prend toute la largeur, bouton appareil photo de 48px à droite.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">2.</span>Mal Garée — Bloc Blocage police avant Remarques <span class="priority normal">UX</span></h2>
+<div class="precond">Connecté en chauffeur. Mal Garée scénario "Chargement et mise en parc" (défaut).</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Sélectionner Mal Garée → scroller vers le bas du form</li>
+  <li>Vérifier que "🚓 Blocage police" apparaît AVANT "Remarques"</li>
+</ul>
+<div class="expected">Ordre : Blocage police → Remarques.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">3.</span>Mal Garée — Déplacement avec paiement 125€ (workflow forcé) <span class="priority critical">Critique</span></h2>
+<div class="precond">Migration SQL <code>202605271100_police_accident_depannage</code> appliquée (cf SQL ci-dessous).</div>
+<div class="pending">⚠️ Migration à appliquer dans Supabase si pas encore fait — voir fin du document.</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Créer Mal Garée → sélectionner scénario "💳 Déplacement avec paiement"</li>
+  <li>Vérifier que le bloc "🚓 Blocage police" <strong>disparaît</strong></li>
+  <li>Bouton submit affiche maintenant "💳 Créer et encaisser" (PAS "Créer la mission")</li>
+  <li>Message ⚠️ "Encaissement obligatoire — redirection automatique" sous le bouton</li>
+  <li>Cliquer le bouton</li>
+  <li>Écran succès affiche bandeau ROUGE "⚠️ Encaissement obligatoire"</li>
+  <li>Auto-redirection immédiate (~800ms) vers /encaissement</li>
+  <li>Page encaissement : démarre directement sur "Lieu intervention" (pas la page plaque, pas la page lookup véhicule)</li>
+  <li>Vérifier que sont précomplétés : plaque, brand, model, <strong>montant 125,00€</strong>, <strong>adresse</strong> (=lieu intervention), <strong>motif principal "Mal Garée"</strong> auto-sélectionné, <strong>précision "Déplacement payé — XXX"</strong></li>
+  <li>Valider le paiement (cash/Sumup) → retour fiche mission</li>
+  <li>Vérifier que la mission est status <strong>in_progress</strong> (pas parked)</li>
+  <li>Cliquer "🏁 Terminer" → mission passe en <strong>to_invoice</strong></li>
+  <li>Vérifier facturation : mission visible avec badge "⚠ 125€ encaissé"</li>
+</ul>
+<div class="expected"><strong>Aucun bouton "Plus tard" disponible.</strong> Le chauffeur ne peut pas skipper l'encaissement.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">4.</span>Appel Privé DSP — Tarif estimé via police_accident/depannage <span class="priority critical">Critique</span></h2>
+<div class="precond">Migration SQL Fix B appliquée.</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Créer Appel Privé → choisir "🔧 DSP"</li>
+  <li>Sans saisir de forfait : vérifier que le bandeau vert "Tarif estimé" affiche maintenant les lignes <strong>PCD + KIL + MOE</strong> (et PAS d'erreur "Aucun tarif")</li>
+  <li>Vérifier qu'il n'y a PAS de ligne TD ni ECOPERLE</li>
+  <li>Total HTVA + TVAC affiché correctement</li>
+</ul>
+<div class="expected">DSP fonctionne, fallback tarif police_accident/depannage applique 3 lignes (sans treuil ni écoperle).</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">5.</span>Appel Privé — Forfait 125 TVAC ne devient PAS 125.01 <span class="priority critical">Bug</span></h2>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Créer Appel Privé DSP</li>
+  <li>Dans "Paiement à réclamer au client", saisir <strong>125</strong></li>
+  <li>Le bandeau vert "Tarif estimé" doit afficher <strong>Total TVAC 125,00 €</strong> (pas 125,01)</li>
+  <li>Cliquer "Créer et encaisser"</li>
+  <li>Sur la page encaissement, le montant pré-rempli doit être <strong>125,00 €</strong></li>
+</ul>
+<div class="expected">Plus de dérive d'arrondi flottant 103.31 × 1.21 = 125.0051 → 125.01. Le TVAC saisi est conservé exact.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">6.</span>Appel Privé REM client direct — Destination obligatoire + paiement avant <span class="priority critical">Refactor</span></h2>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Créer Appel Privé → type "🚛 REM" → destination "🏠 Livraison directe client"</li>
+  <li>Vérifier que le bloc Propriétaire affiche bandeau bleu "💡 Le client sera lié automatiquement lors de l'encaissement" (PAS un bandeau ambré obligatoire)</li>
+  <li>Vérifier qu'un nouveau champ <strong>"Adresse de destination *"</strong> apparaît</li>
+  <li>Tester l'autocomplete Google sur ce champ</li>
+  <li>Soumettre SANS adresse destination → erreur "Adresse de destination obligatoire"</li>
+  <li>Saisir une adresse → bouton submit affiche "💳 Créer et encaisser"</li>
+  <li>Cliquer → auto-redirect vers /encaissement (même comportement que Mal Garée déplacement payé)</li>
+  <li>Encaisser → workflow normal</li>
+</ul>
+<div class="expected">Adresse destination obligatoire, propriétaire optionnel, encaissement obligatoire avant clôture.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">7.</span>Appel Privé REM dépôt — Champ adresse relivraison optionnel <span class="priority normal">Workflow</span></h2>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Créer Appel Privé → type REM → destination "🏢 Passage par dépôt Pepinster"</li>
+  <li>Vérifier que le bloc Propriétaire devient optionnel</li>
+  <li>Champ "Adresse de relivraison (optionnelle)" apparaît</li>
+  <li>Tester avec adresse remplie et sans (les 2 doivent passer le submit)</li>
+  <li>Soumettre → écran succès avec bouton "💳 Encaisser maintenant" + bouton "Plus tard, retour au dashboard" (les 2 disponibles car encaissement optionnel ici)</li>
+</ul>
+<div class="expected">Différent de REM client direct : pas d'encaissement obligatoire, le client peut payer plus tard au bureau.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">8.</span>SNC dsp/rem_client — Auto-link client + paiement avant <span class="priority critical">Refactor</span></h2>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Créer SNC → scénario DSP (ou REM avec paiement immédiat)</li>
+  <li>Bandeau bleu "💡 Le client sera lié automatiquement..." dans bloc Propriétaire</li>
+  <li>Bouton submit "💳 Créer et encaisser" + message obligatoire</li>
+  <li>Soumettre sans remplir propriétaire (optionnel)</li>
+  <li>Auto-redirect /encaissement avec motif "Siabis" pré-sélectionné</li>
+  <li>Recherche/sélection client Odoo → valider encaissement</li>
+  <li>Retour fiche mission → vérifier billed_to_id rempli avec le client choisi</li>
+</ul>
+<div class="expected">Workflow paiement avant clôture forcé pour SNC direct. Pour SNC rem_depot : encaissement optionnel (workflow standard).</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">9.</span>Encaissement — Skip plaque + lookup + motif auto <span class="priority normal">UX</span></h2>
+<div class="precond">Avoir créé une mission avec encaissement précomplété (cf tests 3, 5, 6, 8).</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Sur le module encaissement après une création mission, vérifier qu'on arrive directement sur "Lieu intervention" (page 3) — PAS sur la saisie plaque (page 0)</li>
+  <li>Vérifier que la plaque + brand + model viennent de la mission (pas de re-recherche véhicule Odoo en double)</li>
+  <li>Le motif principal est <strong>auto-sélectionné</strong> selon la source (Mal Garée / Intervention Privée / Siabis)</li>
+  <li>Le motif précision est rempli (ex: "Déplacement payé — 2JBY431")</li>
+  <li>L'adresse du lieu d'intervention est remplie</li>
+  <li>Le montant est rempli</li>
+  <li>Continuer le workflow → motif → paiement → validation</li>
+</ul>
+<div class="expected"><strong>Plus aucune saisie en doublon.</strong> Le chauffeur clique juste "Continuer" sur les premières pages.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">10.</span>Numéro de mission #10000XXX partout dans l'UI <span class="priority normal">Structure</span></h2>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Vérifier sur <code>/dispatch</code> les badges #10000XXX</li>
+  <li>Tester URL directe <code>/dispatch/10000XXX</code></li>
+  <li>Search bar dispatch : tester recherche par numéro</li>
+</ul>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">11.</span>Encaissement standalone — Auto-lien mission par plaque <span class="priority critical">Re-test</span></h2>
+<div class="precond">Une mission existe en BD avec status parked/in_progress (ex: Mal Garée).</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Aller sur <code>/encaissement</code> directement (mode standalone)</li>
+  <li>Saisir la plaque de la mission ouverte (ex: 2DXW357)</li>
+  <li>Cliquer "Rechercher →"</li>
+  <li>Vérifier le bandeau VERT "💡 Mission ouverte trouvée pour cette plaque #10000XXX"</li>
+  <li>Si le bandeau n'apparaît pas en debounce, il doit apparaître au moment du clic Rechercher (vérification synchrone ajoutée)</li>
+  <li>Cliquer "💳 Encaisser cette mission →" → redirige vers mode prefilled</li>
+  <li>Cas négatif : saisir une plaque inconnue → pas de bandeau, flow standalone normal</li>
+</ul>
+<div class="expected">Auto-détection mission ouverte fonctionnelle même en cas de clic rapide.</div>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">12.</span>Scan QR étiquette = Hub Restituer / Restituer sans frais <span class="priority normal">Workflow</span></h2>
+<div class="precond">Une mission en parc (Mal Garée par ex).</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Aller sur <code>/qr/mission/[uuid-ou-numero]</code> directement</li>
+  <li>Vérifier les 2 boutons "💳 Restituer (avec paiement)" + "🆓 Restituer sans frais"</li>
+  <li>Tester "💳 Restituer" → redirige vers /encaissement précomplété</li>
+  <li>Tester "🆓 Restituer sans frais" → modal motif obligatoire → mission completed</li>
+</ul>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<h2><span class="section-num">13.</span>Dispatch fiche — Bloc REL en haut + autocomplete + redirect <span class="priority normal">UX</span></h2>
+<div class="precond">Connecté dispatcher. Mission en parc Transit (ex: SNC rem_depot).</div>
+<h3>Étapes</h3>
+<ul class="checks">
+  <li>Aller sur <code>/dispatch/[id]</code> d'une mission parked</li>
+  <li>Vérifier que le bloc "🅿️ Véhicule en parc" (RelivrerButton) apparaît EN HAUT de la colonne droite (avant le bloc Actions/Statut)</li>
+  <li>Si la mission a une REL liée : l'encart "🚛 Relivraison liée" aussi en haut</li>
+  <li>Si c'est une REL : encart "🚗 Mission parente (REM)" en haut</li>
+  <li>Pour test REL création : saisir adresse via Google autocomplete → cliquer "Créer la mission de relivraison" → confirmer → redirection automatique vers la nouvelle fiche REL</li>
+</ul>
+<div class="notes"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<hr class="thin">
+<h2>⚠️ Migration SQL à appliquer AVANT les tests</h2>
+<p style="font-size: 10pt;">Si pas encore fait, exécute dans Supabase SQL Editor :</p>
+<pre style="background:#f3f4f6;padding:8pt;border-radius:3pt;font-size:8.5pt;overflow:auto;">
+INSERT INTO public.source_tariffs (
+  source, mission_type, pricing_mode, vehicle_class, km_basis, effective_from, notes
+)
+SELECT 'police_accident', 'depannage', 'lines', 'car', 'total', CURRENT_DATE,
+  'Tarif Police Accident DSP. PCD + KIL + MOE (sans TD ni ECOPERLE).'
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.source_tariffs
+  WHERE source = 'police_accident' AND mission_type = 'depannage'
+    AND vehicle_class = 'car' AND effective_to IS NULL
+);
+
+INSERT INTO public.source_tariff_lines (
+  source, mission_type, position, kind, name, default_qty, default_price, apply_surcharges, notes
+)
+SELECT * FROM (VALUES
+  ('police_accident'::text, 'depannage'::text, 1, 'SERV-PEC'::text, 'Prise en charge degat (PCD)'::text,
+   1::numeric, 109.00::numeric, true, 'Toujours x1.'::text),
+  ('police_accident', 'depannage', 2, 'SERV-KM', 'Kilometre depart + retour depot (KIL)',
+   NULL::numeric, 2.20, true, 'qty saisie a la facturation.'),
+  ('police_accident', 'depannage', 3, 'SERV-DIV', 'Main d oeuvre depannage (MOE)',
+   1::numeric, 60.00, true, 'Toujours x1.')
+) AS t(source, mission_type, position, kind, name, default_qty, default_price, apply_surcharges, notes)
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.source_tariff_lines
+  WHERE source = 'police_accident' AND mission_type = 'depannage'
+);
+
+NOTIFY pgrst, 'reload schema';
+</pre>
+
+<hr class="thin">
+<h2>Bugs rencontrés à signaler</h2>
+<div class="notes" style="min-height: 100pt;"></div>
+
+<h2>Améliorations à proposer</h2>
+<div class="notes" style="min-height: 100pt;"></div>
+
+</body>
+</html>
