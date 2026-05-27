@@ -35,7 +35,8 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     .select(`
       id, mission_number, source, intervention_date, received_at,
       vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
-      destination_address, redelivery_address, snc_scenario
+      destination_address, redelivery_address, snc_scenario,
+      odoo_ticket_id
     `)
   const { data: mission, error } = idIsNumeric
     ? await baseQuery.eq('mission_number', Number(params.id)).maybeSingle()
@@ -75,6 +76,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const result = await printVdSoftParcLabel({
     missionId:        mission.id,
     missionNumber:    mission.mission_number ?? null,
+    odooTicketId:     mission.odoo_ticket_id ?? null,
     source:           mission.source,
     motif,
     interventionDate: mission.intervention_date || mission.received_at,

@@ -24,7 +24,8 @@ import { printZPLRaw }       from '@/lib/print/zebra-raw'
 
 export interface PrintParcLabelInput {
   missionId:        string                          // id VD Soft (UUID, fallback URL)
-  missionNumber?:   number | null                   // numero lisible 8 chiffres (preferred pour URL QR, plus court)
+  missionNumber?:   number | null                   // numero lisible 8 chiffres (utilise pour /qr/mission/[number] si pas de ticket Odoo)
+  odooTicketId?:    number | null                   // ticket Helpdesk Odoo (utilise pour /v/[ticketId] - page fourriere complete avec actions Transferer/Domaine/Scratch)
   source:           string                          // 'police_mg', 'police_snc', 'sia_couvert', 'prive', etc.
   motif:            string                          // SOURCE colonne droite (ex: 'APPEL PRIVE', 'SIABIS NON COUVERT')
   interventionDate: string                          // ISO date string pour formatter DD/MM/YY
@@ -65,14 +66,17 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
     }
     // Autres sources : note vide (Mal Garee chargement, etc.)
 
+    // URL QR : priorise /v/[odooTicketId] (page fourriere complete legacy avec
+    // toutes les fonctions Transferer/Domaine/Scratch/Imprimer/Ouvrir Odoo).
+    // Fallback /qr/mission/[number] pour les missions sans ticket Odoo (Appel
+    // Prive Fix 5 ou autres sources migrees vers VD Soft direct).
+    // Olivier 2026-05-27 : on a perdu des fonctions critiques avec le passage
+    // a /qr/mission/[id] minimaliste, on restaure le pointage legacy.
+    const qrTarget = input.odooTicketId
+      ? `/v/${input.odooTicketId}`
+      : `/qr/mission/${input.missionNumber != null ? input.missionNumber : input.missionId}`
     const zpl = buildParcLabelZPL({
-      // URL QR = page Hub /qr/mission/[id] (Chantier 3 Olivier 2026-05-27) :
-      // boutons Restituer / Restituer sans frais / Relivrer. PAS /dispatch
-      // (vue dispatcher reservee admin/dispatcher). Le QR doit servir au
-      // chauffeur ou au client qui scanne sur le terrain.
-      // Privilegie mission_number (8 chiffres) si dispo pour URL plus courte
-      // = QR plus dense lisible. Fallback UUID sinon.
-      qrUrl: `${baseUrl}/qr/mission/${input.missionNumber != null ? input.missionNumber : input.missionId}`,
+      qrUrl: `${baseUrl}${qrTarget}`,
       motif: input.motif,
       date:  dateStr,
       note,

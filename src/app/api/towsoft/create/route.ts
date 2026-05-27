@@ -374,6 +374,9 @@ export async function POST(req: Request) {
         snc_requires_balisage: isSnc ? Boolean(sncRequiresBalisage) : false,
         snc_scenario:          isSnc ? (sncScenario || null) : null,
         odoo_task_id:       null,
+        // Persiste odoo_ticket_id pour reconstruire URL QR /v/[ticketId] plus tard.
+        // Olivier 2026-05-27 : evite double-source (towsoft_queue + reverse lookup).
+        odoo_ticket_id:     odooTicketId || null,
         created_at:         nowIso,
         updated_at:         nowIso,
       })
@@ -411,6 +414,7 @@ export async function POST(req: Request) {
         await printVdSoftParcLabel({
           missionId:        vdMissionId,
           missionNumber:    vdData?.mission_number ?? null,
+          odooTicketId:     odooTicketId ?? null,
           source:           vdSource,
           motif:            motifLabel,
           interventionDate: interventionISO,
