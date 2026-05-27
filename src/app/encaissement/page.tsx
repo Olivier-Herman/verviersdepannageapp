@@ -36,6 +36,9 @@ export default async function EncaissementPage({
     // la description (ex: "Mal Garee 2JBY431 - Deplacement avec paiement").
     location:          searchParams?.prefill_location   || '',
     motif_precision:   searchParams?.prefill_motif_precision || '',
+    // Olivier 2026-05-27 : label du motif a pre-selectionner (Fix H).
+    // L UI essaye de matcher dans la liste motifs[] par label OU value.
+    motif_label:       searchParams?.prefill_motif_label || '',
     return_to:         searchParams?.return_to          || (hasFourrierePrefill ? '/recherche' : '/mission'),
     // Fourriere
     type:              searchParams?.prefill_type as 'fourriere' | undefined,

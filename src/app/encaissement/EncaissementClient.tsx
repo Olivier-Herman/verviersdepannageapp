@@ -153,6 +153,8 @@ interface Prefill {
   // Olivier 2026-05-26 : adresse + motif precision precompletes depuis la mission
   location?:        string
   motif_precision?: string
+  // Olivier 2026-05-27 : label du motif a pre-selectionner (matching dans motifs[])
+  motif_label?:     string
   return_to?:  string
   // Prefill fourriere (bouton "Restituer" depuis /recherche)
   type?:       'fourriere'
@@ -175,7 +177,12 @@ export default function EncaissementClient({
 }) {
   const router = useRouter()
 
-  const [page, setPage] = useState(0)
+  // Si on vient d une mission (prefill mission_id), on skip page 0 (saisie plaque)
+  // et page 1 (lookup vehicule Odoo) car ces infos sont deja remplies depuis
+  // la mission liee. On demarre directement page 3 (lieu intervention) car le
+  // motif est aussi auto-pre-rempli via le mecanisme prefill_motif_label (Fix G/H
+  // Olivier 2026-05-27). Operation en doublon evitee.
+  const [page, setPage] = useState(prefill?.mission_id ? 3 : 0)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -278,16 +285,31 @@ export default function EncaissementClient({
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [modelOther, setModelOther] = useState('')
 
-  // Page 2 — motif (pre-selectionne "fourriere" si prefill type=fourriere)
-  const fourriereMotif = useMemo(() => {
-    if (prefill?.type !== 'fourriere') return null
-    return motifs.find(m =>
-      m.value.toLowerCase().includes('fourri') ||
-      m.label.toLowerCase().includes('fourri')
-    ) || null
-  }, [prefill?.type, motifs])
-  const [motif, setMotif] = useState(fourriereMotif?.value || '')
-  const [motifLabel, setMotifLabel] = useState(fourriereMotif?.label || '')
+  // Page 2 — motif (pre-selectionne depuis prefill : type=fourriere OU label arbitraire)
+  // Olivier 2026-05-27 (Fix H) : si prefill.motif_label fourni (ex: "Mal Garée",
+  // "Intervention Privée"), on cherche un match insensible casse dans motifs[]
+  // pour pre-selectionner. Fallback sur type=fourriere si label vide.
+  const prefilledMotif = useMemo(() => {
+    if (prefill?.motif_label) {
+      const needle = prefill.motif_label.toLowerCase().trim()
+      const match = motifs.find(m =>
+        m.label.toLowerCase().includes(needle) ||
+        m.value.toLowerCase().includes(needle) ||
+        needle.includes(m.label.toLowerCase()) ||
+        needle.includes(m.value.toLowerCase())
+      )
+      if (match) return match
+    }
+    if (prefill?.type === 'fourriere') {
+      return motifs.find(m =>
+        m.value.toLowerCase().includes('fourri') ||
+        m.label.toLowerCase().includes('fourri')
+      ) || null
+    }
+    return null
+  }, [prefill?.motif_label, prefill?.type, motifs])
+  const [motif, setMotif] = useState(prefilledMotif?.value || '')
+  const [motifLabel, setMotifLabel] = useState(prefilledMotif?.label || '')
   const [motifPrecision, setMotifPrecision] = useState(prefill?.motif_precision || '')
 
   // Page 3
@@ -355,10 +377,16 @@ export default function EncaissementClient({
         const loc = [m.incident_address, m.incident_city].filter(Boolean).join(', ')
         if (loc)                 setLocation(prev => prev || loc)
       }
-      // Estimate : pre-remplit le montant TVAC si pas deja set
-      if (est?.ok && typeof est.total_eur === 'number' && est.total_eur > 0) {
-        const tvac = Math.round(est.total_eur * 1.21 * 100) / 100
-        setAmount(prev => prev || String(tvac))
+      // Estimate : pre-remplit le montant TVAC si pas deja set.
+      // Olivier 2026-05-27 (Fix C) : utiliser total_tvac_exact si fourni
+      // (forfait TVAC saisi a la creation) pour eviter derive d arrondi.
+      if (est?.ok) {
+        const tvac = typeof est.total_tvac_exact === 'number' && est.total_tvac_exact > 0
+          ? est.total_tvac_exact
+          : (typeof est.total_eur === 'number' && est.total_eur > 0
+              ? Math.round(est.total_eur * 1.21 * 100) / 100
+              : null)
+        if (tvac != null) setAmount(prev => prev || String(tvac))
       }
     })
     return () => { cancelled = true }
@@ -448,9 +476,23 @@ export default function EncaissementClient({
    * /api/vehicles/lookup-by-plate (multi-match supporté Phase 1) et appelle
    * onSelect / onCreateNew selon le résultat.
    */
-  const checkPlate = () => {
+  const checkPlate = async () => {
     if (plate.length < 3) { setError('Immatriculation trop courte'); return }
     setError('')
+    // Olivier 2026-05-27 (Fix F) : check synchrone "mission ouverte" AVANT
+    // d ouvrir la modal Lookup vehicule Odoo. Si trouvee, le bandeau vert
+    // s affiche et l user peut cliquer "Encaisser cette mission" sans passer
+    // par le lookup Odoo. Sinon, fallback flow standalone normal.
+    if (!prefill?.mission_id && !openMission) {
+      try {
+        const r = await fetch(`/api/missions/open-by-plate?plate=${encodeURIComponent(plate)}`)
+        const j = await r.json()
+        if (j.found && j.mission) {
+          setOpenMission(j.mission)
+          return  // bandeau vert affiche → user clique "Encaisser cette mission"
+        }
+      } catch (e) { /* silent : on continue vers le flow standalone */ }
+    }
     setShowLookup(true)
   }
 

@@ -78,8 +78,15 @@ export async function POST(req: Request) {
 
   // Construit des lignes synthetiques cote UI a partir du breakdown.
   // Le total_eur du estimate est HTVA (tous les calculs source_tariffs sont HT).
+  // Bug Olivier 2026-05-27 (Fix C) : si forfait TVAC saisi (amountToCollect)
+  // OU si estimate retourne total_tvac_exact, ne PAS faire HT*1.21 (erreur
+  // arrondi flottant : 103.31 * 1.21 = 125.0051 -> 125.01 au lieu de 125.00).
   const totalHtva = estimate.total_eur
-  const totalTvac = Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
+  const totalTvac = estimate.total_tvac_exact != null
+    ? estimate.total_tvac_exact
+    : amountToCollect != null && amountToCollect > 0
+      ? amountToCollect
+      : Math.round(totalHtva * (1 + TVA_RATE) * 100) / 100
 
   const lines: Array<{ name: string; qty: number; price_unit: number; kind?: string }> = []
 

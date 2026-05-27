@@ -190,6 +190,10 @@ export interface PriceEstimate {
   surcharge_pct: number  // % de majoration applicable (0 si rien)
   surcharge_eur: number  // subtotal * surcharge_pct / 100
   total_eur:     number  // subtotal + surcharge_eur
+  // Olivier 2026-05-27 (Fix C) : TVAC exact si l user a saisi un forfait TVAC.
+  // Evite la derive d arrondi flottant lors d un aller-retour HT*1.21.
+  // Quand present, le frontend affiche cette valeur telle quelle pour le TVAC.
+  total_tvac_exact?: number
   is_autofac:    boolean // si autofacturation (info pour dispatcher)
   tariff_id:     string  // id du source_tariff utilise
   tariff_doc_path: string | null
@@ -277,6 +281,10 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
         surcharge_pct: 0,
         surcharge_eur: 0,
         total_eur:     amountHt,
+        // Olivier 2026-05-27 (Fix C) : amount TVAC exact saisi par l user.
+        // Evite l aller-retour HT*1.21 qui derive (103.31 * 1.21 = 125.0051 -> 125.01 KO).
+        // Le frontend doit utiliser total_tvac_exact en priorite pour l affichage TVAC.
+        total_tvac_exact: amountTvac,
         is_autofac:    false,
         tariff_id:     'prive-forfait',
         tariff_doc_path: null,

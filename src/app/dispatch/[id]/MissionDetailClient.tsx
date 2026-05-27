@@ -2227,6 +2227,42 @@ export default function MissionDetailClient({
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
             <div className="space-y-5">
 
+              {/* Bloc REL/Mission liée — visible EN HAUT du bloc droit (Olivier 2026-05-27 Fix I).
+                  Affiche en priorité le contexte REL avant les actions et l assignation chauffeur. */}
+              {status === 'parked' && !linkedChild && !['police_mg', 'police_rodeo'].includes(initialMission.source) && (
+                <RelivrerButton
+                  missionId={initialMission.id}
+                  initialRedeliveryAddress={(initialMission as any).redelivery_address}
+                  originalDestination={initialMission.destination_address || ''}
+                  parentSource={initialMission.source}
+                  gmKey={googleMapsKey}
+                />
+              )}
+
+              {linkedChild && (
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4">
+                  <p className="text-purple-400 text-xs font-bold uppercase tracking-wide mb-2">🚛 Relivraison liée</p>
+                  <p className="text-ink text-sm font-medium">{linkedChild.mission_number != null ? `#${linkedChild.mission_number}` : (linkedChild.external_id || linkedChild.dossier_number || linkedChild.id.slice(0, 8))}</p>
+                  <p className="text-ink-muted text-xs mb-3">Statut : {linkedChild.status}</p>
+                  <Link href={`/dispatch/${linkedChild.id}`}
+                    className="block w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium text-center transition">
+                    Ouvrir la fiche REL →
+                  </Link>
+                </div>
+              )}
+
+              {linkedParent && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+                  <p className="text-amber-400 text-xs font-bold uppercase tracking-wide mb-2">🚗 Mission parente (REM)</p>
+                  <p className="text-ink text-sm font-medium">{linkedParent.mission_number != null ? `#${linkedParent.mission_number}` : (linkedParent.external_id || linkedParent.dossier_number || linkedParent.id.slice(0, 8))}</p>
+                  <p className="text-ink-muted text-xs mb-3">Issue du remorquage initial</p>
+                  <Link href={`/dispatch/${linkedParent.id}`}
+                    className="block w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-medium text-center transition">
+                    Ouvrir la fiche REM parente →
+                  </Link>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
 
@@ -2551,18 +2587,8 @@ export default function MissionDetailClient({
                 </div>
               </div>
 
-              {/* Bouton Relivrer — visible uniquement quand mission en parc et pas encore de REL.
-                  Mais pas pour les missions fourriere police (Mal Garee, Rodeo, etc.) qui ont
-                  leur propre flow de sortie (restitution au proprietaire). */}
-              {status === 'parked' && !linkedChild && !['police_mg', 'police_rodeo'].includes(initialMission.source) && (
-                <RelivrerButton
-                  missionId={initialMission.id}
-                  initialRedeliveryAddress={(initialMission as any).redelivery_address}
-                  originalDestination={initialMission.destination_address || ''}
-                  parentSource={initialMission.source}
-                  gmKey={googleMapsKey}
-                />
-              )}
+              {/* Bouton Relivrer + encarts linkedChild/linkedParent : DEPLACES EN HAUT
+                  du bloc droit (Olivier 2026-05-27 Fix I). Ne PAS dupliquer ici. */}
 
               {/* Bouton "Gérer SNC dépôt" : visible pour les SNC en zone Transit (scenario rem_depot).
                   Ouvre un modal avec 3 actions : créer REL / abandonné / repris par assistance. */}
@@ -2608,31 +2634,8 @@ export default function MissionDetailClient({
                 </>
               )}
 
-              {/* Encart REL existante — si une mission REL a deja ete creee pour ce parc */}
-              {linkedChild && (
-                <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4">
-                  <p className="text-purple-400 text-xs font-bold uppercase tracking-wide mb-2">🚛 Relivraison liée</p>
-                  <p className="text-ink text-sm font-medium">{linkedChild.mission_number != null ? `#${linkedChild.mission_number}` : (linkedChild.external_id || linkedChild.dossier_number || linkedChild.id.slice(0, 8))}</p>
-                  <p className="text-ink-muted text-xs mb-3">Statut : {linkedChild.status}</p>
-                  <Link href={`/dispatch/${linkedChild.id}`}
-                    className="block w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium text-center transition">
-                    Ouvrir la fiche REL →
-                  </Link>
-                </div>
-              )}
-
-              {/* Encart REM parente — si cette mission est elle-meme une REL */}
-              {linkedParent && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-                  <p className="text-amber-400 text-xs font-bold uppercase tracking-wide mb-2">🚗 Mission parente (REM)</p>
-                  <p className="text-ink text-sm font-medium">{linkedParent.mission_number != null ? `#${linkedParent.mission_number}` : (linkedParent.external_id || linkedParent.dossier_number || linkedParent.id.slice(0, 8))}</p>
-                  <p className="text-ink-muted text-xs mb-3">Issue du remorquage initial</p>
-                  <Link href={`/dispatch/${linkedParent.id}`}
-                    className="block w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium text-center transition">
-                    Ouvrir la fiche REM →
-                  </Link>
-                </div>
-              )}
+              {/* Encarts linkedChild + linkedParent : DEPLACES EN HAUT du bloc droit
+                  (Olivier 2026-05-27 Fix I). Ne PAS dupliquer ici. */}
 
               {/* Bouton dossier Odoo FSM */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">

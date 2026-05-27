@@ -246,8 +246,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   useEffect(() => {
     destAcRef.current = null  // reset au changement de scenario
     const isSiabis = selectedType === 'snc' || selectedType === 'sc'
-    const isPriveDepot = selectedType === 'appel_prive' && appelPriveType === 'REM' && appelPriveDestination === 'depot'
-    if (!isSiabis && !isPriveDepot) return
+    // Olivier 2026-05-27 : autocomplete destination pour tous les REM Appel Prive
+    // (client direct ET depot), pas seulement depot.
+    const isPriveRem = selectedType === 'appel_prive' && appelPriveType === 'REM'
+    if (!isSiabis && !isPriveRem) return
     if (isSiabis && sncScenario !== 'rem_client' && sncScenario !== 'rem_depot') return
 
     const init = () => {
@@ -456,13 +458,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       if (appelPriveType === 'REM' && !appelPriveDestination) {
         setErr('Choisis la destination du remorquage (client direct ou dépôt)'); return
       }
-      // Owner obligatoire pour DSP ou REM client direct (facturation directe)
-      const ownerNeeded = appelPriveType === 'DSP'
-        || (appelPriveType === 'REM' && appelPriveDestination === 'client')
-      if (ownerNeeded && (!ownerFirstName.trim() || !ownerLastName.trim() || !ownerPhone.trim())) {
-        setErr('Coordonnées propriétaire obligatoires (prénom, nom, téléphone) pour la facturation')
-        return
+      // REM client direct : adresse destination OBLIGATOIRE (calcul tarif + livraison).
+      if (appelPriveType === 'REM' && appelPriveDestination === 'client' && !destination.trim()) {
+        setErr('Adresse de destination obligatoire pour une REM client direct'); return
       }
+      // Owner : plus jamais obligatoire dans le form chauffeur (Olivier 2026-05-27).
+      // Le client sera recupere via le module encaissement (recherche/creation
+      // Odoo) qui auto-link a la mission. Plus simple et evite la double saisie.
     }
     // Si plaque vide, utiliser le VIN
     const finalPlate = plate.trim() || vin.trim()
@@ -525,9 +527,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       // le chauffeur choisit (encaisser maintenant ou plus tard). Pour les
       // autres types (accident, saisie, ...) : redirection auto comme avant.
       // EXCEPTION Olivier 2026-05-26 : Mal Garee scenario deplacement_paye =
-      // encaissement OBLIGATOIRE, on auto-redirige direct sur /encaissement
-      // SANS passer par l ecran de choix (sinon le chauffeur peut cloturer
-      // sans paiement et le client part sans payer).
+      // encaissement OBLIGATOIRE, on auto-redirige direct sur /encaissement.
       const needsPayment = ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
       const malGareeForceEncaisse = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
       if (malGareeForceEncaisse && data.missionId) {
@@ -537,9 +537,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           + `&prefill_model=${encodeURIComponent(model || '')}`
           + `&prefill_amount=125`
           + `&prefill_location=${encodeURIComponent(location || '')}`
-          + `&prefill_motif_precision=${encodeURIComponent(`Mal Garée déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`)}`
+          + `&prefill_motif_label=${encodeURIComponent('Mal Garée')}`
+          + `&prefill_motif_precision=${encodeURIComponent(`Déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`)}`
           + `&return_to=/mission/${data.missionId}`
-        // Petit delai pour que le toast de succes soit visible
         setTimeout(() => { window.location.href = url }, 800)
       } else if (!needsPayment) {
         setTimeout(() => router.push('/dashboard'), 2000)
@@ -568,16 +568,24 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       : (malGareeDeplacementPaye ? 125 : (selectedType === 'snc' ? (sncPreview?.total_tvac ?? null) : null))
     // Description courte du motif d encaissement selon source (Olivier 2026-05-26).
     // Permet au chauffeur de ne pas re-saisir manuellement la description dans
-    // le module encaissement.
-    const motifPrecision = malGareeDeplacementPaye
-      ? `Mal Garée déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`
+    // le module encaissement. Olivier 2026-05-27 (Fix H) : ajout motif_label
+    // pour auto-selectionner le motif principal dans la liste.
+    const motifLabel = malGareeDeplacementPaye
+      ? 'Mal Garée'
       : selectedType === 'appel_prive'
-        ? `Appel Privé ${appelPriveType || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+        ? 'Intervention Privée'
         : selectedType === 'snc'
-          ? `Siabis Non Couvert ${sncScenario || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+          ? 'Siabis'
           : selectedType === 'mal_garee'
-            ? `Mal Garée — ${(plate || vin || '').trim().toUpperCase()}`
+            ? 'Mal Garée'
             : ''
+    const motifPrecision = malGareeDeplacementPaye
+      ? `Déplacement payé — ${(plate || vin || '').trim().toUpperCase()}`
+      : selectedType === 'appel_prive'
+        ? `${appelPriveType || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+        : selectedType === 'snc'
+          ? `${sncScenario || ''} — ${(plate || vin || '').trim().toUpperCase()}`.trim()
+          : `${(plate || vin || '').trim().toUpperCase()}`
     const encaissementUrl = createdMissionId
       ? `/encaissement?prefill_mission_id=${createdMissionId}`
         + `&prefill_plate=${encodeURIComponent(plate || vin || '')}`
@@ -585,6 +593,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         + `&prefill_model=${encodeURIComponent(model || '')}`
         + (prefillAmount != null ? `&prefill_amount=${prefillAmount}` : '')
         + `&prefill_location=${encodeURIComponent(location || '')}`
+        + (motifLabel ? `&prefill_motif_label=${encodeURIComponent(motifLabel)}` : '')
         + `&prefill_motif_precision=${encodeURIComponent(motifPrecision)}`
         + `&return_to=/dashboard`
       : null
@@ -689,34 +698,34 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           </div>
         </Section>
 
-        {/* Véhicule */}
+        {/* Véhicule — plaque et VIN sur 2 lignes separees pour laisser de la
+            place aux boutons appareil photo (etaient ecrases en grid-cols-2).
+            Olivier 2026-05-27. */}
         <Section title="Véhicule">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-ink-secondary text-xs font-medium mb-1">
-                Plaque<span className="text-critical ml-0.5">*</span>
-              </label>
-              <div className="flex gap-1.5">
-                <input type="text" value={plate}
-                  onChange={e => {
-                    setPlate(e.target.value.toUpperCase())
-                    if (vehicleFromOdoo) setVehicleFromOdoo(false)
-                  }}
-                  onBlur={searchVehicleByPlate}
-                  placeholder="1ABC234"
-                  className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
-                <ScanButton mode="plate" value={plate} onScan={text => { setPlate(text); if (vehicleFromOdoo) setVehicleFromOdoo(false) }}
-                  className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
-              </div>
+          <div>
+            <label className="block text-ink-secondary text-xs font-medium mb-1">
+              Plaque<span className="text-critical ml-0.5">*</span>
+            </label>
+            <div className="flex gap-2">
+              <input type="text" value={plate}
+                onChange={e => {
+                  setPlate(e.target.value.toUpperCase())
+                  if (vehicleFromOdoo) setVehicleFromOdoo(false)
+                }}
+                onBlur={searchVehicleByPlate}
+                placeholder="1ABC234"
+                className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+              <ScanButton mode="plate" value={plate} onScan={text => { setPlate(text); if (vehicleFromOdoo) setVehicleFromOdoo(false) }}
+                className="px-3 bg-brand/10 text-brand rounded-xl text-sm flex items-center justify-center min-w-[48px]" label="📷" />
             </div>
-            <div>
-              <label className="block text-ink-secondary text-xs font-medium mb-1">VIN</label>
-              <div className="flex gap-1.5">
-                <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder="Optionnel"
-                  className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
-                <ScanButton mode="vin" value={vin} onScan={setVin}
-                  className="px-2.5 bg-brand/10 text-brand rounded-xl text-sm flex items-center" label="📷" />
-              </div>
+          </div>
+          <div>
+            <label className="block text-ink-secondary text-xs font-medium mb-1">VIN</label>
+            <div className="flex gap-2">
+              <input value={vin} onChange={e => setVin(e.target.value.toUpperCase())} placeholder="Optionnel"
+                className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+              <ScanButton mode="vin" value={vin} onScan={setVin}
+                className="px-3 bg-brand/10 text-brand rounded-xl text-sm flex items-center justify-center min-w-[48px]" label="📷" />
             </div>
           </div>
 
@@ -767,37 +776,31 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           {!cfg!.hidePolice && <LInput label="Nom du policier" value={officerName} onChange={setOfficerName} />}
         </Section>
 
-        {/* Propriétaire — obligatoire pour Appel Privé DSP / REM client direct
-            (necessaire pour facturation). Optionnel pour REM avec depot et
-            pour les autres types (Mal Garee, etc.).
-            Pour SNC (Olivier 2026-05-26) : champ propriétaire optionnel partout,
-            on s appuie sur la recherche/creation client du module encaissement
-            qui auto-lie le client a la mission a la validation du paiement. */}
+        {/* Propriétaire — toujours optionnel. Pour les sources avec paiement
+            direct (Appel Prive, SNC dsp/rem_client, Mal Garee deplacement_paye),
+            le client sera lie automatiquement via le module encaissement
+            (recherche/creation Odoo). Olivier 2026-05-27. */}
         {!cfg!.hideOwner && (() => {
-          const ownerRequired = selectedType === 'appel_prive' && (
-            appelPriveType === 'DSP'
-            || (appelPriveType === 'REM' && appelPriveDestination === 'client')
-          )
           const isSnc = selectedType === 'snc'
           const sncDirectPayment = isSnc && (sncScenario === 'dsp' || sncScenario === 'rem_client')
+          const priveDirectPayment = selectedType === 'appel_prive' && (
+            appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client')
+          )
+          const malGareePaye = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
+          const autoLinkViaPayment = sncDirectPayment || priveDirectPayment || malGareePaye
           return (
-            <Section title={`Propriétaire${ownerRequired ? ' *' : ' (optionnel)'}`}>
-              {ownerRequired && (
-                <p className="text-amber-800 text-xs bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                  Coordonnées obligatoires — nécessaires pour la facturation (pas de mise en parc).
-                </p>
-              )}
-              {sncDirectPayment && (
+            <Section title="Propriétaire (optionnel)">
+              {autoLinkViaPayment && (
                 <p className="text-blue-800 text-xs bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
                   💡 Le client sera lié automatiquement à la mission lors de l&apos;encaissement
                   (recherche / création depuis le module paiement).
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3">
-                <LInput label="Prénom" value={ownerFirstName} onChange={setOwnerFirstName} required={ownerRequired} />
-                <LInput label="Nom" value={ownerLastName} onChange={setOwnerLastName} required={ownerRequired} />
+                <LInput label="Prénom" value={ownerFirstName} onChange={setOwnerFirstName} />
+                <LInput label="Nom" value={ownerLastName} onChange={setOwnerLastName} />
               </div>
-              <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" required={ownerRequired} />
+              <LInput label="Téléphone" value={ownerPhone} onChange={setOwnerPhone} type="tel" />
             </Section>
           )
         })()}
@@ -870,14 +873,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 </div>
               )}
 
-              {/* Adresse de relivraison : visible si REM depot. Optionnel — si vide,
-                  la note etiquette affiche "En attente d info adresse de relivraison".
-                  Olivier 2026-05-26 : chauffeur peut deja saisir au depot pour
-                  pre-remplir la fiche dispatch (utilise l autocomplete partage). */}
-              {appelPriveType === 'REM' && appelPriveDestination === 'depot' && (
+              {/* Adresse de destination : visible si REM (client direct OU depot).
+                  Pour REM client direct : OBLIGATOIRE (calcul tarif + livraison).
+                  Pour REM depot : OPTIONNEL (relivraison future, pre-remplit etiquette).
+                  Olivier 2026-05-27. */}
+              {appelPriveType === 'REM' && appelPriveDestination && (
                 <div>
                   <label className="text-xs font-medium text-ink-secondary mb-1.5 block">
-                    Adresse de relivraison (optionnelle)
+                    {appelPriveDestination === 'client'
+                      ? <>Adresse de destination <span className="text-critical">*</span></>
+                      : 'Adresse de relivraison (optionnelle)'}
                   </label>
                   <input
                     ref={destinationRef}
@@ -887,7 +892,9 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                     className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-green-500"
                   />
                   <p className="text-xs text-ink-muted mt-1">
-                    💡 Si renseignée, sera imprimée sur l&apos;étiquette parc. Sinon : &quot;En attente d&apos;info adresse de relivraison&quot;.
+                    {appelPriveDestination === 'client'
+                      ? '💡 Adresse où le véhicule sera livré. Permet aussi le calcul de tarif km exact.'
+                      : '💡 Si renseignée, sera imprimée sur l\'étiquette parc. Sinon : "En attente d\'info adresse de relivraison".'}
                   </p>
                 </div>
               )}
