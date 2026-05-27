@@ -377,13 +377,13 @@ export async function POST(req: Request) {
         created_at:         nowIso,
         updated_at:         nowIso,
       })
-      .select('id')
+      .select('id, mission_number')
       .single()
 
     if (vdErr) {
       console.error('[towsoft/create] INSERT incoming_missions echec (non bloquant):', vdErr.message)
     } else {
-      console.log('[towsoft/create] VD Soft mission cree:', vdData?.id, 'source:', vdSource, 'zone:', vdZone)
+      console.log('[towsoft/create] VD Soft mission cree:', vdData?.id, '#' + vdData?.mission_number, 'source:', vdSource, 'zone:', vdZone)
       vdMissionId = vdData?.id || null
 
       // Impression etiquette parc depuis VD Soft (chantier "Etiquettes VD Soft
@@ -410,6 +410,7 @@ export async function POST(req: Request) {
           : (type === 'sc' ? 'SIABIS COUVERT' : 'SIABIS NON COUVERT')
         await printVdSoftParcLabel({
           missionId:        vdMissionId,
+          missionNumber:    vdData?.mission_number ?? null,
           source:           vdSource,
           motif:            motifLabel,
           interventionDate: interventionISO,

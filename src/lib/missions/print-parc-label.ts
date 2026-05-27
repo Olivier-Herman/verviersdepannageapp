@@ -23,7 +23,8 @@ import { buildParcLabelZPL } from '@/lib/print/zpl-templates/parc-label'
 import { printZPLRaw }       from '@/lib/print/zebra-raw'
 
 export interface PrintParcLabelInput {
-  missionId:        string                          // id VD Soft (UUID)
+  missionId:        string                          // id VD Soft (UUID, fallback URL)
+  missionNumber?:   number | null                   // numero lisible 8 chiffres (preferred pour URL QR, plus court)
   source:           string                          // 'police_mg', 'police_snc', 'sia_couvert', 'prive', etc.
   motif:            string                          // SOURCE colonne droite (ex: 'APPEL PRIVE', 'SIABIS NON COUVERT')
   interventionDate: string                          // ISO date string pour formatter DD/MM/YY
@@ -65,7 +66,13 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
     // Autres sources : note vide (Mal Garee chargement, etc.)
 
     const zpl = buildParcLabelZPL({
-      qrUrl: `${baseUrl}/dispatch/${input.missionId}`,
+      // URL QR = page Hub /qr/mission/[id] (Chantier 3 Olivier 2026-05-27) :
+      // boutons Restituer / Restituer sans frais / Relivrer. PAS /dispatch
+      // (vue dispatcher reservee admin/dispatcher). Le QR doit servir au
+      // chauffeur ou au client qui scanne sur le terrain.
+      // Privilegie mission_number (8 chiffres) si dispo pour URL plus courte
+      // = QR plus dense lisible. Fallback UUID sinon.
+      qrUrl: `${baseUrl}/qr/mission/${input.missionNumber != null ? input.missionNumber : input.missionId}`,
       motif: input.motif,
       date:  dateStr,
       note,

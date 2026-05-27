@@ -32,7 +32,10 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const sb = createAdminClient()
 
   // Lecture de la mission scannee
-  const { data: mission, error } = await sb
+  // params.id accepte UUID OU mission_number numerique (Olivier 2026-05-27).
+  // Le QR sur l etiquette utilise mission_number lisible (8 chiffres).
+  const idIsNumeric = /^\d+$/.test(params.id)
+  const baseQuery = sb
     .from('incoming_missions')
     .select(`
       id, mission_number, external_id, dossier_number, source, mission_type, incident_type,
@@ -42,8 +45,9 @@ export default async function QrMissionPage({ params }: { params: { id: string }
       destination_address, destination_city,
       assigned_to, parent_mission_id, completed_at
     `)
-    .eq('id', params.id)
-    .single()
+  const { data: mission, error } = idIsNumeric
+    ? await baseQuery.eq('mission_number', Number(params.id)).single()
+    : await baseQuery.eq('id', params.id).single()
 
   if (error || !mission) notFound()
 
