@@ -17,7 +17,7 @@ export async function GET() {
   const sb = createAdminClient()
   const [zonesRes, depotsRes] = await Promise.all([
     sb.from('parc_zones').select('key, label, sort_order').eq('active', true).order('sort_order'),
-    sb.from('depots').select('id, name, address, city, is_default').eq('active', true).order('name'),
+    sb.from('depots').select('id, name, address, is_default').eq('active', true).order('sort_order').order('name'),
   ])
 
   if (zonesRes.error) return NextResponse.json({ error: zonesRes.error.message }, { status: 500 })

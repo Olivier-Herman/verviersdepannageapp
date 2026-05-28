@@ -429,7 +429,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
   onDone:         () => void
 }) {
   const [zones,   setZones]   = useState<Array<{ key: string; label: string }>>([])
-  const [depots,  setDepots]  = useState<Array<{ id: string; name: string; city?: string; is_default?: boolean }>>([])
+  const [depots,  setDepots]  = useState<Array<{ id: string; name: string; address?: string; is_default?: boolean }>>([])
   const [depotId, setDepotId] = useState<string>(currentDepotId || '')
   const [zoneKey, setZoneKey] = useState<string>(currentZone || '')
   const [loading, setLoading] = useState(true)
@@ -497,7 +497,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
                 <option value="">— Choisir un dépôt —</option>
                 {depots.map(d => (
                   <option key={d.id} value={d.id}>
-                    {d.name}{d.city ? ` (${d.city})` : ''}{d.is_default ? ' · défaut' : ''}
+                    {d.name}{d.address ? ` — ${d.address}` : ''}{d.is_default ? ' · défaut' : ''}
                   </option>
                 ))}
               </select>
