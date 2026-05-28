@@ -6,6 +6,8 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser }    from '@/lib/push'
 import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
+import { isRemorquage }        from '@/lib/missions/mission-types'
 
 export async function GET(
   req: Request,
@@ -84,6 +86,31 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Olivier 2026-05-28 : auto-conversion REM -> REM+REL si on vient de saisir
+  // une adresse de relivraison sur une mission parquee + REM + source eligible.
+  // (Le mecanisme se declenche au update : pas besoin de bouton manuel pour la
+  // plupart des cas, il suffit de saisir l adresse.)
+  const justGotAddress = ('destination_address' in body || 'redelivery_address' in body)
+    && !!(data.destination_address || (data as any).redelivery_address)
+  if (
+    justGotAddress
+    && data.status === 'parked'
+    && isRemorquage(data.mission_type)
+    && isRelEligibleSource(data.source, (data as any).snc_scenario)
+  ) {
+    await supabase
+      .from('incoming_missions')
+      .update({ mission_type: 'REM+REL', updated_at: new Date().toISOString() })
+      .eq('id', params.id)
+    await supabase.from('mission_logs').insert({
+      mission_id: params.id,
+      action:     'auto_convert_to_rem_rel',
+      notes:      `Conversion auto REM -> REM+REL apres saisie adresse de relivraison`,
+      metadata:   { trigger: 'address_set', previous_type: data.mission_type },
+    })
+    ;(data as any).mission_type = 'REM+REL'
+  }
 
   // Notification push au chauffeur si demandé (modifications dispatcher après assignation).
   // Ne pas spammer pour les changements automatiques (ping silencieux d'adresse, etc).

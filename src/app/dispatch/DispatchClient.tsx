@@ -142,7 +142,7 @@ const TABS = [
   { key: 'dispatching', label: 'En attente',  countKey: 'dispatching' as const },
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
-  { key: 'parked',      label: 'En Parc',     countKey: 'parked'      as const },
+  { key: 'parked',      label: 'À Relivrer',  countKey: 'parked'      as const },
   { key: 'all',         label: 'Toutes',      countKey: null },
 ]
 // Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees

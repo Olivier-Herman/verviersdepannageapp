@@ -5,6 +5,8 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
 import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
+import { isRemorquage }        from '@/lib/missions/mission-types'
 
 export const maxDuration = 60   // hook PDF via waitUntil peut prendre 30s+
 
@@ -133,7 +135,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -295,10 +297,18 @@ export async function POST(req: Request) {
     if (closing_data.discharge_sig)           updatePayload.discharge_sig         = closing_data.discharge_sig
   }
 
-  // Olivier 2026-05-28 (clarification) : la conversion REM -> REM+REL ne se
-  // fait PLUS automatiquement. Le vehicule reste en REM en parc. Le dispatcher
-  // decidera manuellement (bouton "Gerer la mise en parc") de la passer en
-  // REM+REL si l assistance reprend / le client paye / etc.
+  // Olivier 2026-05-28 : auto-conversion REM -> REM+REL au moment du parked
+  // si :
+  //   - source eligible a la relivraison
+  //   - ET adresse de relivraison deja connue (destination_address ou
+  //     redelivery_address). Sans adresse, on attend qu elle soit saisie
+  //     (au prochain PATCH /api/missions/[id], la conversion sera faite la).
+  if (updatePayload.status === 'parked' && isRemorquage(mission.mission_type)) {
+    const hasAddr = !!((mission as any).redelivery_address || (mission as any).destination_address)
+    if (hasAddr && isRelEligibleSource(mission.source, (mission as any).snc_scenario)) {
+      updatePayload.mission_type = 'REM+REL'
+    }
+  }
 
   const { data: updated, error: updateError } = await supabase
     .from('incoming_missions').update(updatePayload).eq('id', mission_id).select().single()

@@ -416,6 +416,137 @@ function RelivrerButton({
   )
 }
 
+/**
+ * Bouton "Gérer la mise en parc" — saisie de l'adresse de relivraison +
+ * conversion REM -> REM+REL.
+ * Olivier 2026-05-28 : la conversion se déclenche dès qu'une adresse de
+ * relivraison est connue (paiement reçu / reprise assistance → on a une
+ * adresse). Ce bouton permet de saisir/modifier cette adresse depuis la
+ * fiche dispatch et de convertir en un clic.
+ */
+function ManageParkButton({ missionId, source, currentAddress, gmKey, onConverted }: {
+  missionId:      string
+  source:         string
+  currentAddress: string
+  gmKey:          string
+  onConverted:    () => void
+}) {
+  const [open,    setOpen]    = useState(false)
+  const [reason,  setReason]  = useState<'paye' | 'assistance_reprise' | 'autre'>('paye')
+  const [notes,   setNotes]   = useState('')
+  const [addr,    setAddr]    = useState(currentAddress || '')
+  const [lat,     setLat]     = useState<number | null>(null)
+  const [lng,     setLng]     = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+
+  async function doConvert() {
+    if (!addr.trim()) {
+      setError('Adresse de relivraison requise')
+      return
+    }
+    setLoading(true); setError(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/convert-to-rem-rel`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          reason,
+          notes:              notes.trim() || undefined,
+          redelivery_address: addr.trim(),
+          redelivery_lat:     lat,
+          redelivery_lng:     lng,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur conversion')
+      setOpen(false)
+      setNotes('')
+      onConverted()
+    } catch (e: any) {
+      setError(e.message)
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 md-card-enter">
+      <div className="flex items-start gap-2 mb-2">
+        <span className="text-xl">🅿️</span>
+        <div className="flex-1">
+          <p className="text-amber-900 text-sm font-bold uppercase tracking-wide">Véhicule en parc — REM</p>
+          <p className="text-amber-800 text-xs mt-0.5">
+            {currentAddress
+              ? 'Confirme l\'adresse de relivraison pour passer en REM+REL.'
+              : 'En attente d\'un paiement client ou d\'une reprise par une assistance. Saisis l\'adresse de relivraison ci-dessous pour convertir.'}
+          </p>
+        </div>
+      </div>
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition mt-2"
+        >
+          Gérer la mise en parc →
+        </button>
+      )}
+      {open && (
+        <div className="space-y-3 mt-3">
+          <div>
+            <label className="block text-amber-900 text-xs font-semibold mb-1.5">Adresse de relivraison *</label>
+            <AddressField
+              value={addr}
+              onChange={setAddr}
+              onSelect={(a, la, ln) => { setAddr(a); setLat(la); setLng(ln) }}
+              gmKey={gmKey}
+              placeholder="Adresse où livrer le véhicule"
+              className="bg-white border border-amber-200 text-amber-900"
+            />
+          </div>
+          <div>
+            <label className="block text-amber-900 text-xs font-semibold mb-1.5">Motif</label>
+            <div className="grid grid-cols-1 gap-1.5">
+              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-amber-200 rounded-lg cursor-pointer hover:border-amber-400 transition">
+                <input type="radio" name="conv-reason" checked={reason === 'paye'} onChange={() => setReason('paye')} />
+                <span className="text-sm text-amber-900">💳 Facture payée par le client</span>
+              </label>
+              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-amber-200 rounded-lg cursor-pointer hover:border-amber-400 transition">
+                <input type="radio" name="conv-reason" checked={reason === 'assistance_reprise'} onChange={() => setReason('assistance_reprise')} />
+                <span className="text-sm text-amber-900">🛡️ Repris par une assistance</span>
+              </label>
+              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-amber-200 rounded-lg cursor-pointer hover:border-amber-400 transition">
+                <input type="radio" name="conv-reason" checked={reason === 'autre'} onChange={() => setReason('autre')} />
+                <span className="text-sm text-amber-900">📝 Autre</span>
+              </label>
+            </div>
+          </div>
+          <div>
+            <label className="block text-amber-900 text-xs font-semibold mb-1.5">Note (optionnelle)</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder={reason === 'assistance_reprise' ? "Ex: Touring, dossier #..." : 'Détails...'}
+              className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-900 focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          {error && <p className="text-critical text-xs">⚠ {error}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => { setOpen(false); setError(null) }} disabled={loading}
+              className="flex-1 py-2 bg-white border border-amber-300 text-amber-900 rounded-xl text-sm font-medium">
+              Annuler
+            </button>
+            <button onClick={doConvert} disabled={loading || !addr.trim()}
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
+              {loading ? '⏳ Conversion...' : 'Passer en REM+REL'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PrintLabelButton({ missionId }: { missionId: string }) {
   const [loading, setLoading] = useState(false)
   const [status,  setStatus]  = useState<'idle' | 'ok' | 'error'>('idle')
@@ -2268,6 +2399,26 @@ export default function MissionDetailClient({
               {(status === 'parked' || (initialMission as any).parc_zone_key) &&
                 (userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
                 <PrintLabelButton missionId={initialMission.id} />
+              )}
+
+              {/* Bouton "Gérer la mise en parc" — saisie adresse + conversion REM+REL.
+                  Visible pour toute mission REM (pas encore REM+REL) en parc dont la
+                  source autorise une relivraison (helper isRelEligibleSource cote serveur). */}
+              {status === 'parked' && !linkedChild
+                && (initialMission.mission_type === 'REM' || /^rem$/i.test(initialMission.mission_type || ''))
+                && !['police_mg', 'police_rodeo', 'police_saisie', 'police_avp'].includes(initialMission.source)
+                && !(initialMission.source === 'police_snc' && initialMission.snc_scenario !== 'rem_depot') && (
+                <ManageParkButton
+                  missionId={initialMission.id}
+                  source={initialMission.source}
+                  currentAddress={
+                    (initialMission as any).redelivery_address
+                    || initialMission.destination_address
+                    || ''
+                  }
+                  gmKey={googleMapsKey}
+                  onConverted={() => router.refresh()}
+                />
               )}
 
               {/* Bloc REL/Mission liée — visible EN HAUT du bloc droit (Olivier 2026-05-27 Fix I).
