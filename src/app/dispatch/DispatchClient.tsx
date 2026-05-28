@@ -703,6 +703,9 @@ export default function DispatchClient({
   }, [])
   const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
   const [loading,        setLoading]        = useState(true)
+  // Indicateur subtil "mise a jour temps reel" affiche pendant les
+  // refresh silencieux (realtime + polling). Olivier 2026-05-28.
+  const [liveSyncing,    setLiveSyncing]    = useState(false)
   const [search,         setSearch]         = useState('')
   const [dispatchMode,   setDispatchMode]   = useState<'manual'|'auto'>('manual')
   const [modeLoading,    setModeLoading]    = useState(false)
@@ -732,14 +735,20 @@ export default function DispatchClient({
 
   // ── Chargement missions + statuts chauffeurs ──────────────────────────────
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // Olivier 2026-05-28 : load() accepte un flag `silent` pour distinguer le
+  // chargement initial (skeleton visible) du rafraichissement de fond
+  // (realtime + polling : pas de flash, juste un indicateur "live" subtil).
+  // Cela permet la propagation temps reel sur tous les ecrans connectes sans
+  // le re-render perceptible (skeleton -> contenu) qui flashait l interface.
+  const load = useCallback(async (opts: { silent?: boolean } = {}) => {
+    const silent = opts.silent === true
+    if (silent) setLiveSyncing(true)
+    else setLoading(true)
     try {
       const params = new URLSearchParams({ status: activeTab, sort: sortMode })
       if (sourceFilter) params.set('source', sourceFilter)
       if (search)       params.set('q', search)
 
-      // Mode carte : on charge en parallèle les missions actives globales (toutes statuses)
       const requests: Promise<Response>[] = [
         fetch(`/api/missions/list?${params}`),
         fetch('/api/users/driver-status'),
@@ -763,32 +772,32 @@ export default function DispatchClient({
     } catch (e) {
       console.error(e)
     } finally {
-      setLoading(false)
+      if (silent) setLiveSyncing(false)
+      else setLoading(false)
     }
   }, [activeTab, sourceFilter, search, viewMode, sortMode])
 
   useEffect(() => { load() }, [load])
 
   // ── Realtime : nouvelle mission ou changement de statut ──────────────────
-  // Chaque INSERT/UPDATE/DELETE sur incoming_missions trigger un reload.
-  // Évite au dispatcher de devoir F5 pour voir les nouveautés.
-  // Suspendu si une modal est ouverte (évite le clignotement).
+  // Chaque INSERT/UPDATE/DELETE sur incoming_missions trigger un reload
+  // SILENCIEUX (pas de skeleton, pas de flash). Cela propage l action d un
+  // dispatcher sur tous les ecrans connectes en quelques centaines de ms.
+  // Suspendu si une modal est ouverte (evite reload pendant une edition).
   useEffect(() => {
     const channel = sb.channel('dispatch-missions')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'incoming_missions' },
-        () => { if (modalOpenCount === 0) load() }
+        () => { if (modalOpenCount === 0) load({ silent: true }) }
       )
       .subscribe()
     return () => { sb.removeChannel(channel) }
   }, [load, modalOpenCount])
 
   // ── Polling 20s : statuts chauffeurs (positions GPS, gardes) ─────────────
-  // Realtime serait possible mais lourd (chaque ping GPS = update users).
-  // Polling court suffit pour le besoin temps réel.
-  // Suspendu si une modal est ouverte.
+  // Filet de securite si un event realtime est rate. Silencieux egalement.
   useEffect(() => {
-    const id = setInterval(() => { if (modalOpenCount === 0) load() }, 20_000)
+    const id = setInterval(() => { if (modalOpenCount === 0) load({ silent: true }) }, 20_000)
     return () => clearInterval(id)
   }, [load, modalOpenCount])
 
@@ -874,7 +883,7 @@ export default function DispatchClient({
               ))}
             </select>
 
-            <button onClick={load}
+            <button onClick={() => load()}
               className="hidden sm:block p-2 bg-surface border border rounded-xl text-ink-secondary hover:text-ink transition"
               title="Actualiser">
               ↻
@@ -907,6 +916,21 @@ export default function DispatchClient({
 
             {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
             <DispatcherOnDutyBadge userRole={userRole} />
+
+            {/* Indicateur live : pulse subtil quand un event realtime / polling
+                refresh les missions en arriere-plan. Donne un feedback visuel
+                que l ecran est en sync avec les autres dispatchers. */}
+            <div
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] uppercase tracking-wider transition-opacity ${
+                liveSyncing
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700 opacity-100'
+                  : 'bg-surface border text-ink-faint opacity-70'
+              }`}
+              title={liveSyncing ? 'Mise à jour en cours…' : 'Synchronisation temps réel active'}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${liveSyncing ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-400'}`}></span>
+              <span className="hidden sm:inline">{liveSyncing ? 'Sync…' : 'Live'}</span>
+            </div>
 
             {/* Import VAB — bouton dedie (orange ambre pour signal action externe) */}
             <VabImportButton onImportDone={() => load()} />
