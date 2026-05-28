@@ -1170,7 +1170,10 @@ export default function NewMissionClient({
 
               {/* 4. Client facturé + Client assisté (apparaissent apres choix d un type) */}
               {showClients && (<>
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+              <div
+                className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter relative"
+                style={showClientDrop ? { zIndex: 50 } : undefined}
+              >
                 <h2 className="text-ink font-semibold text-sm mb-4">🧾 Client facturé</h2>
                 <div className="relative mb-3">
                   <label className="block text-ink-muted text-xs mb-1.5">Rechercher un client</label>
@@ -1288,7 +1291,10 @@ export default function NewMissionClient({
               {showRest && (<>
 
               {/* 6. Véhicule */}
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+              <div
+                className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter relative"
+                style={showVehicleDrop ? { zIndex: 50 } : undefined}
+              >
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-ink font-semibold text-sm">🚗 Véhicule</h2>
                   {/* Toggle Voiture/Moto : pilote la grille tarifaire Police Accident (PCD voiture vs PC moto). */}
