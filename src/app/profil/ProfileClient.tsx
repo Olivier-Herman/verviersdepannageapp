@@ -570,10 +570,11 @@ export default function ProfileClient({ user }: { user: any }) {
                 : 'Activer le mode audio'}
           </button>
           {audioMode && (
-            <p className="text-ink-muted text-xs mt-3">
-              💡 Maintiens le doigt 0,5 seconde sur un texte (adresse, motif, remarque…) pour l'écouter.
-              Relâche pour arrêter.
-            </p>
+            <ul className="text-ink-muted text-xs mt-3 space-y-1 list-disc pl-4">
+              <li>Maintiens le doigt 0,5 s sur un texte → il est lu à voix haute. Relâche pour arrêter.</li>
+              <li>Quand tu cliques dans un champ de formulaire, son libellé est lu.</li>
+              <li>Les messages d'erreur qui apparaissent sont lus automatiquement.</li>
+            </ul>
           )}
         </div>
 
