@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const { data: lines, error: lErr } = await sb
     .from('source_tariff_lines')
-    .select('id, position, kind, name, default_qty, default_price, apply_surcharges, effective_from, effective_to, notes')
+    .select('id, position, kind, name, default_qty, default_price, apply_surcharges, free_days, parc_count_from, effective_from, effective_to, notes')
     .eq('source', tariff.source)
     .eq('mission_type', tariff.mission_type)
     .order('position', { ascending: true })

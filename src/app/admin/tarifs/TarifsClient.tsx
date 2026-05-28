@@ -51,6 +51,8 @@ interface Bracket {
 
 type LineKind = 'SERV-PEC' | 'SERV-KM' | 'SERV-PARC' | 'SERV-MAJ' | 'SERV-DIV'
 
+type ParcCountFrom = 'parked_at' | 'intervention_date'
+
 interface TariffLine {
   id:               number
   position:         number
@@ -60,6 +62,7 @@ interface TariffLine {
   default_price:    number | null
   apply_surcharges: boolean
   free_days:        number
+  parc_count_from:  ParcCountFrom
   effective_from:   string
   effective_to:     string | null
 }
@@ -247,7 +250,7 @@ export default function TarifsClient(props: Props) {
   const [linesList, setLinesList] = useState<TariffLine[]>([])
   const [linesLoading, setLinesLoading] = useState(false)
   const [showAddLine, setShowAddLine] = useState(false)
-  const [newLine, setNewLine] = useState<Partial<TariffLine>>({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0 })
+  const [newLine, setNewLine] = useState<Partial<TariffLine>>({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0, parc_count_from: 'parked_at' })
 
   async function openLines(t: Tariff) {
     setLinesModal(t)
@@ -308,12 +311,13 @@ export default function TarifsClient(props: Props) {
         default_price:    newLine.default_price,
         apply_surcharges: newLine.apply_surcharges,
         free_days:        newLine.free_days ?? 0,
+        parc_count_from:  newLine.parc_count_from ?? 'parked_at',
       }),
     })
     const j = await res.json()
     if (!res.ok) { alert(`Erreur : ${j.error}`); return }
     setShowAddLine(false)
-    setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0 })
+    setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0, parc_count_from: 'parked_at' })
     await reloadLines()
   }
 
@@ -1144,6 +1148,7 @@ export default function TarifsClient(props: Props) {
                         <th className="text-right p-2 w-20">Qté défaut</th>
                         <th className="text-right p-2 w-24">PU défaut</th>
                         <th className="text-center p-2 w-20" title="Jours gratuits (gardiennage uniquement)">Jours offerts</th>
+                        <th className="text-center p-2 w-32" title="Compte depuis (gardiennage uniquement)">Compte depuis</th>
                         <th className="text-center p-2 w-20">Majorable ?</th>
                         <th className="text-right p-2 w-16"></th>
                       </tr>
@@ -1216,6 +1221,24 @@ export default function TarifsClient(props: Props) {
                             )}
                           </td>
                           <td className="p-2 text-center">
+                            {line.kind === 'SERV-PARC' ? (
+                              <select
+                                defaultValue={line.parc_count_from || 'parked_at'}
+                                onChange={e => {
+                                  const v = e.target.value as ParcCountFrom
+                                  if (v !== line.parc_count_from) updateLine(line, { parc_count_from: v })
+                                }}
+                                title="Référence de début. Mal Garée = intervention. Autres = mise en parc."
+                                className="bg-surface border rounded px-1 py-0.5 text-xs w-full"
+                              >
+                                <option value="parked_at">Mise en parc</option>
+                                <option value="intervention_date">Intervention</option>
+                              </select>
+                            ) : (
+                              <span className="text-ink-faint text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
                             <input
                               type="checkbox"
                               checked={line.apply_surcharges}
@@ -1257,11 +1280,21 @@ export default function TarifsClient(props: Props) {
                             )}
                           </td>
                           <td className="p-2 text-center">
+                            {newLine.kind === 'SERV-PARC' ? (
+                              <select value={newLine.parc_count_from || 'parked_at'} onChange={e => setNewLine({ ...newLine, parc_count_from: e.target.value as ParcCountFrom })} title="Référence de début" className="bg-surface border rounded px-1 py-0.5 text-xs w-full">
+                                <option value="parked_at">Mise en parc</option>
+                                <option value="intervention_date">Intervention</option>
+                              </select>
+                            ) : (
+                              <span className="text-ink-faint text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
                             <input type="checkbox" checked={newLine.apply_surcharges ?? true} onChange={e => setNewLine({ ...newLine, apply_surcharges: e.target.checked })} />
                           </td>
                           <td className="p-2 text-right">
                             <button onClick={createLine} className="text-xs px-2 py-1 bg-brand text-surface rounded mr-1">✓</button>
-                            <button onClick={() => { setShowAddLine(false); setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0 }) }} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
+                            <button onClick={() => { setShowAddLine(false); setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0, parc_count_from: 'parked_at' }) }} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
                           </td>
                         </tr>
                       )}

@@ -645,7 +645,7 @@ async function estimateLinesTemplate(
   // que les 6 lignes police_accident existent bien (cf bug Olivier 2026-05-25).
   const { data: linesRaw, error: linesErr } = await sb
     .from('source_tariff_lines')
-    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class, effective_to, free_days')
+    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class, effective_to, free_days, parc_count_from')
     .eq('source', source)
     .eq('mission_type', missionType)
     .lte('effective_from', today)
@@ -672,14 +672,21 @@ async function estimateLinesTemplate(
   // on prend received_at comme proxy (date de reception ~= date d entree parc
   // pour les missions Police fourriere). Le fallback ne tire que sur des
   // grilles qui ont effectivement une ligne SERV-PARC (= sources fourriere).
-  let autoParcJours = 0
-  const parkedRef = mission.parked_at || mission.received_at
-  if (parkedRef) {
-    const parcStart = new Date(parkedRef)
-    const parcEnd = new Date()
-    const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-    autoParcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  // Olivier 2026-05-28 : on ne compte JAMAIS le jour d arrivee dans le
+  // gardiennage. -> Math.floor (seuls les jours pleins ecoules sont factures).
+  // La reference de debut est parked_at par defaut, mais peut etre
+  // intervention_date selon la ligne SERV-PARC (cas Mal Garee).
+  // Le calcul global ci-dessous reste base sur parked_at (utilise par les
+  // sources sans parc_count_from ou avec 'parked_at'). Les lignes avec
+  // parc_count_from='intervention_date' recalculent autoQty plus bas.
+  function joursPleinsEcoules(ref: string | null | undefined): number {
+    if (!ref) return 0
+    const start = new Date(ref).getTime()
+    const diffMs = Math.max(0, Date.now() - start)
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
   }
+  const autoParcJoursParked       = joursPleinsEcoules(mission.parked_at || mission.received_at)
+  const autoParcJoursIntervention = joursPleinsEcoules(mission.intervention_date || mission.received_at)
   let autoKm = 0
   if (mission.total_km != null || mission.charged_km != null) {
     // Preview cote dispatch : on choisit la bonne valeur selon tariff.km_basis.
@@ -733,11 +740,18 @@ async function estimateLinesTemplate(
     const qtyConfigured = l.default_qty != null ? Number(l.default_qty) : null
     let autoQty: number | null = qtyConfigured
     if (qtyConfigured == null) {
-      if (l.kind === 'SERV-PARC' && autoParcJours > 0) {
-        // Olivier 2026-05-28 : free_days = jours offerts (ex: SC = 3).
-        // Quantite facturable = max(0, jours_passes - jours_offerts).
+      if (l.kind === 'SERV-PARC') {
+        // Olivier 2026-05-28 :
+        // - Reference de depart selon parc_count_from (parked_at par defaut,
+        //   intervention_date pour Mal Garee).
+        // - free_days = jours offerts (ex: SC = 3).
+        // - Jour d arrivee jamais compte (Math.floor : seuls jours pleins).
+        // -> qty facturable = max(0, jours_pleins_ecoules - free_days).
+        const ref = l.parc_count_from === 'intervention_date'
+          ? autoParcJoursIntervention
+          : autoParcJoursParked
         const freeDays = Number(l.free_days || 0)
-        autoQty = Math.max(0, autoParcJours - freeDays)
+        autoQty = Math.max(0, ref - freeDays)
       }
       if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)
     }

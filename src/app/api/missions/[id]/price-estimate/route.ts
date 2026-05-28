@@ -75,30 +75,37 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       // On va chercher la ligne SERV-PARC configuree pour cette source dans
       // source_tariff_lines, et on calcule les jours auto depuis parked_at
       // (fallback received_at pour les missions legacy sans parked_at).
-      let parcJoursElapsed = 0       // jours bruts passes en parc
-      let parcFreeDays     = 0       // jours offerts (SC = 3, SNC = 0)
-      let parcJours        = 0       // jours facturables = max(0, elapsed - free)
+      // Olivier 2026-05-28 :
+      // - Jour d arrivee jamais compte (Math.floor : jours pleins ecoules).
+      // - Reference de depart selon parc_count_from (parked_at par defaut,
+      //   intervention_date pour Mal Garee).
+      // - free_days = jours offerts (SC = 3, autres = 0).
+      let parcJoursElapsed = 0
+      let parcFreeDays     = 0
+      let parcJours        = 0
       let parcPrixJour     = 0
       let parcLineLabel    = 'Frais de gardiennage (par jour)'
-      const parkedRef      = mission.parked_at || mission.received_at
-      if (parkedRef) {
-        const today = new Date().toISOString().slice(0, 10)
-        const { data: parcLines } = await sb
-          .from('source_tariff_lines')
-          .select('name, default_price, effective_to, free_days')
-          .eq('source', mission.source)
-          .eq('kind', 'SERV-PARC')
-          .lte('effective_from', today)
-        const parcLine = (parcLines || []).find(l => !l.effective_to || l.effective_to >= today)
-        if (parcLine && parcLine.default_price != null) {
-          const parcStart = new Date(parkedRef)
-          const parcEnd   = new Date()
-          const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-          parcJoursElapsed = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+      let parcRefLabel     = 'mise en parc'
+      const today = new Date().toISOString().slice(0, 10)
+      const { data: parcLines } = await sb
+        .from('source_tariff_lines')
+        .select('name, default_price, effective_to, free_days, parc_count_from')
+        .eq('source', mission.source)
+        .eq('kind', 'SERV-PARC')
+        .lte('effective_from', today)
+      const parcLine = (parcLines || []).find(l => !l.effective_to || l.effective_to >= today)
+      if (parcLine && parcLine.default_price != null) {
+        const refSource = parcLine.parc_count_from === 'intervention_date'
+          ? (mission.intervention_date || mission.received_at)
+          : (mission.parked_at         || mission.received_at)
+        if (refSource) {
+          const diffMs = Math.max(0, Date.now() - new Date(refSource).getTime())
+          parcJoursElapsed = Math.floor(diffMs / (1000 * 60 * 60 * 24))
           parcFreeDays     = Number(parcLine.free_days || 0)
           parcJours        = Math.max(0, parcJoursElapsed - parcFreeDays)
           parcPrixJour     = Number(parcLine.default_price)
           parcLineLabel    = parcLine.name || parcLineLabel
+          parcRefLabel     = parcLine.parc_count_from === 'intervention_date' ? 'intervention' : 'mise en parc'
         }
       }
       const parcEur   = parcJours * parcPrixJour
@@ -113,12 +120,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         let note: string
         if (parcFreeDays > 0) {
           note = parcJours > 0
-            ? `${parcJours} jour(s) facturable(s) × ${parcPrixJour.toFixed(2)} € (${parcJoursElapsed} j. en parc – ${parcFreeDays} offert(s))`
-            : `${parcJoursElapsed}/${parcFreeDays} jour(s) offert(s) écoulés, encore gratuit`
+            ? `${parcJours} jour(s) facturable(s) × ${parcPrixJour.toFixed(2)} € (${parcJoursElapsed} j. depuis ${parcRefLabel} – ${parcFreeDays} offert(s))`
+            : `${parcJoursElapsed} j. depuis ${parcRefLabel}, encore dans la période de ${parcFreeDays} jour(s) offert(s)`
         } else {
           note = parcJours > 0
-            ? `${parcJours} jour(s) × ${parcPrixJour.toFixed(2)} €`
-            : `${parcPrixJour.toFixed(2)} €/jour (entrée parc non datée)`
+            ? `${parcJours} jour(s) × ${parcPrixJour.toFixed(2)} € (depuis ${parcRefLabel}, jour d'arrivée non compté)`
+            : `${parcPrixJour.toFixed(2)} €/jour (jour d'arrivée non compté)`
         }
         breakdown.push({ label: parcLineLabel, amount: parcEur, note })
       }

@@ -52,6 +52,9 @@ export async function PATCH(req: Request, { params }: { params: { lineId: string
   if (body.free_days !== undefined) {
     patch.free_days = body.free_days === null || body.free_days === '' ? 0 : Math.max(0, Math.floor(Number(body.free_days)))
   }
+  if (body.parc_count_from !== undefined) {
+    patch.parc_count_from = body.parc_count_from === 'intervention_date' ? 'intervention_date' : 'parked_at'
+  }
 
   if (Object.keys(patch).length <= 1) {
     return NextResponse.json({ error: 'Au moins un champ requis' }, { status: 400 })
