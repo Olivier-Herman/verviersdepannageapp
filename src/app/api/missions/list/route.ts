@@ -72,12 +72,12 @@ export async function GET(req: Request) {
     query = query.in('status', ['in_progress', 'delivering'])
   } else if (status === 'parked') {
     // Olivier 2026-05-28 : onglet "En parc" du Dispatch = uniquement les
-    // missions REM+REL (vehicule en parc en attente de relivraison). Les
-    // autres missions parquees (Mal Garee, Saisie, Rodeo, etc.) sont gerees
-    // depuis Fourriere, pas depuis Dispatch.
+    // vehicules en zone K (zone dediee aux vehicules en attente de
+    // relivraison ou de gestion dispatch). Les autres zones (A-L, Box,
+    // Transit hors K) sont gerees depuis Fourriere.
     query = query
       .eq('status', 'parked')
-      .in('mission_type', ['REM+REL', 'rem+rel', 'REM_REL', 'rem_rel'])
+      .eq('parc_zone_key', 'K')
   } else if (status === 'completed') {
     // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
     // chauffeur, en attente de validation employe facturation. Le tampon
@@ -146,23 +146,22 @@ export async function GET(req: Request) {
   }
 
   // Compteurs par statut (exclu les archivees pour coherence avec la liste)
-  // On selectionne aussi mission_type pour pouvoir compter uniquement les
-  // REM+REL dans l onglet "En parc" (cf filter ligne 73-83).
+  // On selectionne aussi parc_zone_key pour compter uniquement les vehicules
+  // en zone K dans l onglet "En parc" (cf filter ligne 73-82).
   const { data: counts } = await supabase
     .from('incoming_missions')
-    .select('status, mission_type')
+    .select('status, parc_zone_key')
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
     .is('archived_at', null)
 
-  const PARKED_REM_REL_VARIANTS = new Set(['REM+REL', 'rem+rel', 'REM_REL', 'rem_rel'])
   const counters = {
     new:         counts?.filter(m => m.status === 'new').length         || 0,
     dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => ['in_progress','delivering'].includes(m.status)).length || 0,
-    parked:      counts?.filter(m => m.status === 'parked' && PARKED_REM_REL_VARIANTS.has(m.mission_type || '')).length || 0,
+    parked:      counts?.filter(m => m.status === 'parked' && (m as any).parc_zone_key === 'K').length || 0,
     completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }

@@ -12,8 +12,6 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
-import { isRemorquage }        from '@/lib/missions/mission-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,18 +59,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Si on force "parked" → set parked_at si pas déjà
   if (body.status === 'parked') {
     update.parked_at = now
-
-    // Olivier 2026-05-28 : auto-conversion REM -> REM+REL si la source est
-    // eligible a une relivraison (Assistance, SNC paye/pris en charge,
-    // Accident, Siabis Couvert).
-    const { data: m } = await sb
-      .from('incoming_missions')
-      .select('source, mission_type, snc_scenario')
-      .eq('id', params.id)
-      .maybeSingle()
-    if (m && isRemorquage(m.mission_type) && isRelEligibleSource(m.source, (m as any).snc_scenario)) {
-      update.mission_type = 'REM+REL'
-    }
+    // Olivier 2026-05-28 (clarification) : pas d auto-conversion en REM+REL.
+    // Le dispatcher decide manuellement via "Gerer la mise en parc".
   }
 
   const { error } = await sb.from('incoming_missions').update(update).eq('id', params.id)
