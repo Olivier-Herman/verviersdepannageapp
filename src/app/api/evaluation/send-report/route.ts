@@ -9,7 +9,8 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendEmail }         from '@/lib/emails'
 
-const RECIPIENT = 'mobi@verviersdepannage.be'
+// Rapport final envoye a Olivier (perso) ET a l adresse interne (mobi).
+const RECIPIENTS = ['info@olivierherman.be', 'mobi@verviersdepannage.be']
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   success: { label: '✅ Réussi',     color: '#10b981' },
@@ -146,8 +147,10 @@ export async function POST() {
   `
 
   try {
-    await sendEmail(RECIPIENT, subject, html, 'VD Soft Évaluation')
-    console.log(`[evaluation/send-report] Email envoye a ${RECIPIENT} pour user ${user.id}`)
+    // Premier destinataire = to, autres = cc
+    const [toAddr, ...ccAddrs] = RECIPIENTS
+    await sendEmail(toAddr, subject, html, 'VD Soft Évaluation', ccAddrs)
+    console.log(`[evaluation/send-report] Email envoye a ${RECIPIENTS.join(', ')} pour user ${user.id}`)
 
     // Marque la session : declenche la purge auto 6h plus tard via cron
     // /api/cron/cleanup-test-data. Si l user renvoie son rapport apres une
@@ -166,7 +169,7 @@ export async function POST() {
       console.error('[evaluation/send-report] Erreur upsert evaluation_sessions:', sessionErr.message)
     }
 
-    return NextResponse.json({ ok: true, recipient: RECIPIENT, count: stats.total })
+    return NextResponse.json({ ok: true, recipients: RECIPIENTS, count: stats.total })
   } catch (e: any) {
     console.error('[evaluation/send-report] Erreur email:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
