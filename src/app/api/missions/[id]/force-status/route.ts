@@ -28,7 +28,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   const userId = (session.user as any).id
 
-  const body = await req.json() as { status?: string; reset_assignment?: boolean }
+  const body = await req.json() as {
+    status?:           string
+    reset_assignment?: boolean
+    // Olivier 2026-05-28 : pour "Forcer en parc", le dispatcher choisit
+    // explicitement le depot de depart et la zone du parc.
+    depot_depart_id?:  string | null
+    parc_zone_key?:    string | null
+    parc_row_number?:  number | null
+    parc_slot_index?:  number | null
+  }
   if (!body.status || !(ALLOWED_STATUS as readonly string[]).includes(body.status)) {
     return NextResponse.json({ error: `Status invalide. Allowed: ${ALLOWED_STATUS.join(', ')}` }, { status: 400 })
   }
@@ -58,11 +67,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     update.completed_at = now
   }
 
-  // Si on force "parked" → set parked_at si pas déjà
+  // Si on force "parked" → set parked_at + (optionnel) depot + zone parc
   if (body.status === 'parked') {
     update.parked_at = now
-    // Olivier 2026-05-28 : auto-conversion REM -> REM+REL si source eligible
-    // ET adresse de relivraison deja connue. Sans adresse, attente saisie.
+
+    // Olivier 2026-05-28 : depot et zone parc obligatoires pour "Forcer en parc".
+    if (body.depot_depart_id !== undefined) {
+      update.depot_depart_id = body.depot_depart_id || null
+    }
+    if (body.parc_zone_key !== undefined) {
+      update.parc_zone_key = body.parc_zone_key || null
+    }
+    if (body.parc_row_number !== undefined) {
+      update.parc_row_number = body.parc_row_number != null ? Number(body.parc_row_number) : null
+    }
+    if (body.parc_slot_index !== undefined) {
+      update.parc_slot_index = body.parc_slot_index != null ? Number(body.parc_slot_index) : null
+    }
+
+    // Auto-conversion REM -> REM+REL si source eligible ET adresse de
+    // relivraison deja connue. Sans adresse, attente saisie.
     const { data: m } = await sb
       .from('incoming_missions')
       .select('source, mission_type, snc_scenario, destination_address, redelivery_address')

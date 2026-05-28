@@ -417,6 +417,130 @@ function RelivrerButton({
 }
 
 /**
+ * Modal "Forcer en parc" — choix du depot et de la zone parc avant de
+ * passer la mission en parked. Olivier 2026-05-28 : forcer la mise en parc
+ * exige de selectionner le depot ET le parc.
+ */
+function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDone }: {
+  missionId:      string
+  currentDepotId: string | null
+  currentZone:    string | null
+  onClose:        () => void
+  onDone:         () => void
+}) {
+  const [zones,   setZones]   = useState<Array<{ key: string; label: string }>>([])
+  const [depots,  setDepots]  = useState<Array<{ id: string; name: string; city?: string; is_default?: boolean }>>([])
+  const [depotId, setDepotId] = useState<string>(currentDepotId || '')
+  const [zoneKey, setZoneKey] = useState<string>(currentZone || '')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/parc/zones-and-depots')
+      .then(r => r.json())
+      .then(j => {
+        setZones(j.zones || [])
+        setDepots(j.depots || [])
+        // Pre-selection : depot par defaut si pas encore choisi
+        if (!depotId) {
+          const def = (j.depots || []).find((d: any) => d.is_default)
+          if (def) setDepotId(def.id)
+        }
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function submit() {
+    if (!depotId) { setError('Sélectionne un dépôt'); return }
+    if (!zoneKey) { setError('Sélectionne une zone de parc'); return }
+    setSubmitting(true); setError(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/force-status`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          status:          'parked',
+          depot_depart_id: depotId,
+          parc_zone_key:   zoneKey,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      onDone()
+    } catch (e: any) {
+      setError(e.message)
+    } finally { setSubmitting(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-surface border rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <h3 className="text-ink font-bold text-base mb-1">🅿️ Forcer en parc</h3>
+        <p className="text-ink-muted text-xs mb-4">
+          Choisis le dépôt de départ et la zone du parc pour cette mission.
+        </p>
+
+        {loading ? (
+          <p className="text-ink-faint text-sm py-6 text-center">Chargement…</p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-ink-secondary text-xs font-semibold mb-1.5">Dépôt</label>
+              <select
+                value={depotId}
+                onChange={e => setDepotId(e.target.value)}
+                className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm"
+              >
+                <option value="">— Choisir un dépôt —</option>
+                {depots.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}{d.city ? ` (${d.city})` : ''}{d.is_default ? ' · défaut' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-ink-secondary text-xs font-semibold mb-1.5">Zone du parc</label>
+              <div className="grid grid-cols-4 gap-2">
+                {zones.map(z => (
+                  <button key={z.key}
+                    type="button"
+                    onClick={() => setZoneKey(z.key)}
+                    className={`p-2 rounded-xl border text-center transition ${
+                      zoneKey === z.key
+                        ? 'bg-brand text-white border-brand shadow'
+                        : 'bg-surface-2 hover:bg-surface-hover border-surface-hover text-ink'
+                    }`}>
+                    <div className="font-display font-bold text-sm">{z.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && <p className="text-critical text-xs">⚠ {error}</p>}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={onClose} disabled={submitting}
+                className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm font-medium">
+                Annuler
+              </button>
+              <button onClick={submit} disabled={submitting || !depotId || !zoneKey}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
+                {submitting ? '⏳ ...' : 'Forcer en parc'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Bouton "Gérer la mise en parc" — saisie de l'adresse de relivraison +
  * conversion REM -> REM+REL.
  * Olivier 2026-05-28 : la conversion se déclenche dès qu'une adresse de
@@ -940,6 +1064,7 @@ export default function MissionDetailClient({
 
   const [selectedDriver, setSelectedDriver]   = useState(initialMission.assigned_to || '')
   const [showDriverModal, setShowDriverModal] = useState(false)
+  const [showForceParkModal, setShowForceParkModal] = useState(false)
   const [depots, setDepots]                   = useState<Array<{id:string;name:string;address:string;is_default:boolean}>>([])
   const [depotId, setDepotId]                 = useState<string>(initialMission.depot_depart_id || '')
   // Stops intermédiaires : liste de {id, label, address, lat, lng, sort_order}
@@ -2676,24 +2801,12 @@ export default function MissionDetailClient({
                     </button>
 
                     <button type="button"
-                      onClick={async () => {
-                        if (!confirm('Forcer en "Mise en parc" ?')) return
-                        try {
-                          await fetch(`/api/missions/${initialMission.id}/force-status`, {
-                            method:  'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body:    JSON.stringify({ status: 'parked' }),
-                          })
-                          setStatus('parked')
-                          setM(prev => ({ ...prev, status: 'parked', parked_at: new Date().toISOString() } as any))
-                          router.refresh()
-                        } catch (e: any) { alert('Erreur : ' + e.message) }
-                      }}
+                      onClick={() => setShowForceParkModal(true)}
                       className="w-full flex items-center gap-3 px-4 py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-left transition">
                       <span className="text-xl flex-shrink-0">🅿️</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-amber-400 text-sm font-semibold">Forcer en parc</p>
-                        <p className="text-ink-muted text-xs">Passe en "Mise en parc" sans pointage chauffeur</p>
+                        <p className="text-ink-muted text-xs">Sélection dépôt + zone, puis mise en parc</p>
                       </div>
                     </button>
                   </div>
@@ -2911,6 +3024,22 @@ export default function MissionDetailClient({
         </div>
         </div>
       </div>
+
+      {/* Modal "Forcer en parc" : sélection dépôt + zone parc */}
+      {showForceParkModal && (
+        <ForceParkModal
+          missionId={initialMission.id}
+          currentDepotId={depotId || null}
+          currentZone={(initialMission as any).parc_zone_key || null}
+          onClose={() => setShowForceParkModal(false)}
+          onDone={() => {
+            setShowForceParkModal(false)
+            setStatus('parked')
+            setM(prev => ({ ...prev, status: 'parked', parked_at: new Date().toISOString() } as any))
+            router.refresh()
+          }}
+        />
+      )}
 
       {/* Modal de sélection chauffeur avec ETA temps réel + cap 90 km/h camion */}
       {showDriverModal && (
