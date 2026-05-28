@@ -921,8 +921,12 @@ export default function NewMissionClient({
     >
       <style>{`
         @keyframes nm-fade-up {
+          /* Olivier 2026-05-28 : on finit sur transform: none (pas translateY(0))
+             pour ne PAS laisser un stacking context permanent sur la card. Sinon
+             les dropdowns z-50 (recherche client / vehicule) restent prisonniers
+             de la card et les cards suivantes leur passent par dessus. */
           from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: translateY(0); }
+          to   { opacity: 1; transform: none; }
         }
         @keyframes nm-pulse-glow {
           0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 46, 0.0); }
