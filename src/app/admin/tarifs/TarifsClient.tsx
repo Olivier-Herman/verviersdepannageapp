@@ -59,6 +59,7 @@ interface TariffLine {
   default_qty:      number | null
   default_price:    number | null
   apply_surcharges: boolean
+  free_days:        number
   effective_from:   string
   effective_to:     string | null
 }
@@ -246,7 +247,7 @@ export default function TarifsClient(props: Props) {
   const [linesList, setLinesList] = useState<TariffLine[]>([])
   const [linesLoading, setLinesLoading] = useState(false)
   const [showAddLine, setShowAddLine] = useState(false)
-  const [newLine, setNewLine] = useState<Partial<TariffLine>>({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true })
+  const [newLine, setNewLine] = useState<Partial<TariffLine>>({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0 })
 
   async function openLines(t: Tariff) {
     setLinesModal(t)
@@ -306,12 +307,13 @@ export default function TarifsClient(props: Props) {
         default_qty:      newLine.default_qty,
         default_price:    newLine.default_price,
         apply_surcharges: newLine.apply_surcharges,
+        free_days:        newLine.free_days ?? 0,
       }),
     })
     const j = await res.json()
     if (!res.ok) { alert(`Erreur : ${j.error}`); return }
     setShowAddLine(false)
-    setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true })
+    setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0 })
     await reloadLines()
   }
 
@@ -1141,6 +1143,7 @@ export default function TarifsClient(props: Props) {
                         <th className="text-left p-2">Description</th>
                         <th className="text-right p-2 w-20">Qté défaut</th>
                         <th className="text-right p-2 w-24">PU défaut</th>
+                        <th className="text-center p-2 w-20" title="Jours gratuits (gardiennage uniquement)">Jours offerts</th>
                         <th className="text-center p-2 w-20">Majorable ?</th>
                         <th className="text-right p-2 w-16"></th>
                       </tr>
@@ -1195,6 +1198,24 @@ export default function TarifsClient(props: Props) {
                             />
                           </td>
                           <td className="p-2 text-center">
+                            {line.kind === 'SERV-PARC' ? (
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                defaultValue={line.free_days ?? 0}
+                                onBlur={e => {
+                                  const v = e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0
+                                  if (v !== line.free_days) updateLine(line, { free_days: v })
+                                }}
+                                title="Jours offerts avant facturation (ex: SC = 3)"
+                                className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-center"
+                              />
+                            ) : (
+                              <span className="text-ink-faint text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
                             <input
                               type="checkbox"
                               checked={line.apply_surcharges}
@@ -1229,11 +1250,18 @@ export default function TarifsClient(props: Props) {
                             <input type="number" step="0.01" placeholder="PU" value={newLine.default_price ?? ''} onChange={e => setNewLine({ ...newLine, default_price: e.target.value === '' ? null : parseFloat(e.target.value) })} className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right" />
                           </td>
                           <td className="p-2 text-center">
+                            {newLine.kind === 'SERV-PARC' ? (
+                              <input type="number" min="0" step="1" placeholder="0" value={newLine.free_days ?? 0} onChange={e => setNewLine({ ...newLine, free_days: e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0 })} title="Jours offerts" className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-center" />
+                            ) : (
+                              <span className="text-ink-faint text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
                             <input type="checkbox" checked={newLine.apply_surcharges ?? true} onChange={e => setNewLine({ ...newLine, apply_surcharges: e.target.checked })} />
                           </td>
                           <td className="p-2 text-right">
                             <button onClick={createLine} className="text-xs px-2 py-1 bg-brand text-surface rounded mr-1">✓</button>
-                            <button onClick={() => { setShowAddLine(false); setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true }) }} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
+                            <button onClick={() => { setShowAddLine(false); setNewLine({ kind: 'SERV-PEC', name: '', position: 0, default_qty: 1, default_price: 0, apply_surcharges: true, free_days: 0 }) }} className="text-xs px-2 py-1 bg-surface-hover rounded">✕</button>
                           </td>
                         </tr>
                       )}

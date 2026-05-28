@@ -43,6 +43,7 @@ export async function POST(req: Request) {
   const defaultQty  = body.default_qty === null || body.default_qty === undefined ? null : Number(body.default_qty)
   const defaultPrice = body.default_price === null || body.default_price === undefined ? null : Number(body.default_price)
   const applySurch  = body.apply_surcharges !== undefined ? Boolean(body.apply_surcharges) : true
+  const freeDays    = body.free_days != null ? Math.max(0, Math.floor(Number(body.free_days))) : 0
 
   const sb = createAdminClient()
   const { data, error } = await sb
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       default_qty:     defaultQty,
       default_price:   defaultPrice,
       apply_surcharges: applySurch,
+      free_days:       freeDays,
       created_by:      user.id || null,
     })
     .select()

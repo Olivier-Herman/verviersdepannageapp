@@ -49,6 +49,9 @@ export async function PATCH(req: Request, { params }: { params: { lineId: string
     patch.apply_surcharges = Boolean(body.apply_surcharges)
   }
   if (body.notes !== undefined) patch.notes = body.notes || null
+  if (body.free_days !== undefined) {
+    patch.free_days = body.free_days === null || body.free_days === '' ? 0 : Math.max(0, Math.floor(Number(body.free_days)))
+  }
 
   if (Object.keys(patch).length <= 1) {
     return NextResponse.json({ error: 'Au moins un champ requis' }, { status: 400 })

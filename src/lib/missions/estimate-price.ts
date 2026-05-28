@@ -645,7 +645,7 @@ async function estimateLinesTemplate(
   // que les 6 lignes police_accident existent bien (cf bug Olivier 2026-05-25).
   const { data: linesRaw, error: linesErr } = await sb
     .from('source_tariff_lines')
-    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class, effective_to')
+    .select('id, position, kind, name, default_qty, default_price, default_price_majore, apply_surcharges, vehicle_class, effective_to, free_days')
     .eq('source', source)
     .eq('mission_type', missionType)
     .lte('effective_from', today)
@@ -733,7 +733,12 @@ async function estimateLinesTemplate(
     const qtyConfigured = l.default_qty != null ? Number(l.default_qty) : null
     let autoQty: number | null = qtyConfigured
     if (qtyConfigured == null) {
-      if (l.kind === 'SERV-PARC' && autoParcJours > 0) autoQty = autoParcJours
+      if (l.kind === 'SERV-PARC' && autoParcJours > 0) {
+        // Olivier 2026-05-28 : free_days = jours offerts (ex: SC = 3).
+        // Quantite facturable = max(0, jours_passes - jours_offerts).
+        const freeDays = Number(l.free_days || 0)
+        autoQty = Math.max(0, autoParcJours - freeDays)
+      }
       if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)
     }
     // Choix du prix : si majoration applicable ET la ligne a un prix majore

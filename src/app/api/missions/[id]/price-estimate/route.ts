@@ -75,29 +75,33 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       // On va chercher la ligne SERV-PARC configuree pour cette source dans
       // source_tariff_lines, et on calcule les jours auto depuis parked_at
       // (fallback received_at pour les missions legacy sans parked_at).
-      let parcJours = 0
-      let parcPrixJour = 0
-      let parcLineLabel = 'Frais de gardiennage (par jour)'
-      const parkedRef = mission.parked_at || mission.received_at
+      let parcJoursElapsed = 0       // jours bruts passes en parc
+      let parcFreeDays     = 0       // jours offerts (SC = 3, SNC = 0)
+      let parcJours        = 0       // jours facturables = max(0, elapsed - free)
+      let parcPrixJour     = 0
+      let parcLineLabel    = 'Frais de gardiennage (par jour)'
+      const parkedRef      = mission.parked_at || mission.received_at
       if (parkedRef) {
         const today = new Date().toISOString().slice(0, 10)
         const { data: parcLines } = await sb
           .from('source_tariff_lines')
-          .select('name, default_price, effective_to')
+          .select('name, default_price, effective_to, free_days')
           .eq('source', mission.source)
           .eq('kind', 'SERV-PARC')
           .lte('effective_from', today)
         const parcLine = (parcLines || []).find(l => !l.effective_to || l.effective_to >= today)
         if (parcLine && parcLine.default_price != null) {
           const parcStart = new Date(parkedRef)
-          const parcEnd = new Date()
-          const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-          parcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-          parcPrixJour = Number(parcLine.default_price)
-          parcLineLabel = parcLine.name || parcLineLabel
+          const parcEnd   = new Date()
+          const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
+          parcJoursElapsed = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+          parcFreeDays     = Number(parcLine.free_days || 0)
+          parcJours        = Math.max(0, parcJoursElapsed - parcFreeDays)
+          parcPrixJour     = Number(parcLine.default_price)
+          parcLineLabel    = parcLine.name || parcLineLabel
         }
       }
-      const parcEur = parcJours * parcPrixJour
+      const parcEur   = parcJours * parcPrixJour
       const totalHtva = depannageTotal + parcEur
 
       const breakdown = sncLines.map(l => ({
@@ -105,15 +109,18 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         amount: l.qty * l.price_unit,
         note: l.qty > 1 ? `${l.qty} × ${l.price_unit.toFixed(4)} €` : undefined,
       }))
-      // Ajoute la ligne gardiennage si applicable
       if (parcPrixJour > 0) {
-        breakdown.push({
-          label: parcLineLabel,
-          amount: parcEur > 0 ? parcEur : 0,
-          note: parcJours > 0
+        let note: string
+        if (parcFreeDays > 0) {
+          note = parcJours > 0
+            ? `${parcJours} jour(s) facturable(s) × ${parcPrixJour.toFixed(2)} € (${parcJoursElapsed} j. en parc – ${parcFreeDays} offert(s))`
+            : `${parcJoursElapsed}/${parcFreeDays} jour(s) offert(s) écoulés, encore gratuit`
+        } else {
+          note = parcJours > 0
             ? `${parcJours} jour(s) × ${parcPrixJour.toFixed(2)} €`
-            : `${parcPrixJour.toFixed(2)} €/jour (entree parc non datee)`,
-        })
+            : `${parcPrixJour.toFixed(2)} €/jour (entrée parc non datée)`
+        }
+        breakdown.push({ label: parcLineLabel, amount: parcEur, note })
       }
 
       return NextResponse.json({

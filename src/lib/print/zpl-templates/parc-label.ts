@@ -99,11 +99,14 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
   // Note pied (sautee si vide)
   const noteBlock = note ? `^FO15,555\n^A0N,24,24\n^FB780,1,0,L,0\n^FD${note}^FS\n` : ''
 
+  // ^LH16,0 = decale TOUT le label de 16 dots (= 2mm @ 8dpmm) vers la droite.
+  // Olivier 2026-05-28 : marge gauche supplementaire pour ne pas etre limite
+  // quand le rouleau est legerement decentre (couvrait le bord gauche du QR).
   return `^XA
 ^CI28
 ^PW812
 ^LL609
-^LH0,0
+^LH16,0
 ^PR2
 ~SD30
 
