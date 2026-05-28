@@ -99,18 +99,6 @@ export const TEST_CATALOG: TestSection[] = [
         ],
         permissions: 'Tout le monde',
       },
-      {
-        id: '7', label: 'Scanner une étiquette de véhicule',
-        description: 'Chaque véhicule en parc a une étiquette avec un QR. Le scanner ouvre directement sa fiche.',
-        procedure: [
-          'Trouve une étiquette imprimée sur un véhicule en parc',
-          'Ouvre l\'appareil photo de ton iPhone',
-          'Vise le QR (tu peux être à distance, depuis un Clark par exemple)',
-          'Une notification "Ouvrir dans Safari" apparaît',
-          'Tape dessus : la fiche du véhicule s\'ouvre avec les boutons d\'action disponibles selon ton rôle',
-        ],
-        permissions: 'Tout le monde',
-      },
     ],
   },
 
@@ -167,14 +155,15 @@ export const TEST_CATALOG: TestSection[] = [
       },
       {
         id: '68', label: 'Imprimer une étiquette parc',
-        description: 'Bouton pour envoyer l\'étiquette directement à l\'imprimante Zebra.',
+        description: 'Bouton pour envoyer l\'étiquette à l\'imprimante. ⚠️ Nécessite le module Fourrière activé sur ton compte.',
         procedure: [
           'Sur une fiche mission dont le véhicule est en parc',
-          'Clique "🖨️ Imprimer l\'étiquette parc"',
-          'Tu vois "Étiquette envoyée"',
+          'Si tu as le module Fourrière activé : un bouton "🖨️ Imprimer l\'étiquette parc" est visible',
+          'Sans le module Fourrière : le bouton est absent (c\'est normal)',
+          'Clique → message "Étiquette envoyée"',
           'Va vérifier que l\'étiquette sort bien de l\'imprimante',
         ],
-        permissions: 'Dispatcher / Admin / Module fourrière',
+        permissions: 'Module fourrière / Admin (pas Dispatcher seul)',
       },
       {
         id: '75', label: 'Créer une mission manuellement',
@@ -404,6 +393,19 @@ export const TEST_CATALOG: TestSection[] = [
     title: 'Casquette Chauffeur — Encaisser',
     emoji: '💳',
     functions: [
+      {
+        id: '7', label: 'Scanner l\'étiquette d\'un véhicule en parc',
+        description: 'Maintenant que tu as mis un véhicule en parc (étape précédente), une étiquette a été imprimée. Tu peux la scanner pour ouvrir directement la fiche.',
+        procedure: [
+          'Va chercher l\'étiquette qui sort de l\'imprimante après la mise en parc',
+          'Ouvre l\'appareil photo de ton iPhone',
+          'Vise le QR (tu peux être à distance, depuis un Clark par exemple)',
+          'Une notification "Ouvrir dans Safari" apparaît',
+          'Tape dessus : la fiche du véhicule s\'ouvre avec les boutons d\'action disponibles selon ton rôle',
+        ],
+        permissions: 'Tout le monde',
+        tip: 'Cette même étiquette servira aussi pour les questions suivantes (Restituer, Restituer sans frais, Prendre une relivraison).',
+      },
       {
         id: '40', label: 'Encaisser un client depuis une mission',
         description: 'Bouton Encaisser sur la fiche mission : tout est précomplété.',

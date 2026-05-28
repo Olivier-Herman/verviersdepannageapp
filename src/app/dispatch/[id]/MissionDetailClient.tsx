@@ -2262,10 +2262,11 @@ export default function MissionDetailClient({
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
             <div className="space-y-5">
 
-              {/* Bouton "Imprimer etiquette" : visible pour les missions en parc
-                  (= avec etiquette physique). Reimprime via VD Soft -> printZPLRaw.
-                  Olivier 2026-05-27. */}
-              {(status === 'parked' || (initialMission as any).parc_zone_key) && (
+              {/* Bouton "Imprimer etiquette" : visible UNIQUEMENT pour les users
+                  avec module fourriere (ou admin/superadmin). Olivier 2026-05-28 :
+                  le dispatcher seul ne doit pas avoir ce bouton. */}
+              {(status === 'parked' || (initialMission as any).parc_zone_key) &&
+                (userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
                 <PrintLabelButton missionId={initialMission.id} />
               )}
 

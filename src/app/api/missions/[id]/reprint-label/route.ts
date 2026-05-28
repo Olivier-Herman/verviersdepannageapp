@@ -8,7 +8,8 @@
 // Compose le ZPL via le template VD Soft (buildParcLabelZPL) avec les vraies
 // donnees de la mission, puis envoie au PC Zebra via printZPLRaw.
 //
-// Acces : admin / superadmin / dispatcher (pas chauffeur).
+// Acces : admin / superadmin OU module fourriere active (Olivier 2026-05-28 :
+// le dispatcher seul n a pas le droit, il faut avoir le module fourriere).
 
 import { NextResponse }            from 'next/server'
 import { getServerSession }        from 'next-auth'
@@ -23,9 +24,13 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const user = session.user as any
-  const roles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
-  const hasAccess = roles.some(r => ['admin', 'superadmin', 'dispatcher', 'driver'].includes(r))
-  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const roles:   string[] = Array.isArray(user.roles)   ? user.roles   : [user.role].filter(Boolean)
+  const modules: string[] = Array.isArray(user.modules) ? user.modules : []
+  const isAdmin       = roles.some(r => ['admin', 'superadmin'].includes(r))
+  const hasFourriere  = modules.includes('fourriere')
+  if (!isAdmin && !hasFourriere) {
+    return NextResponse.json({ error: 'Forbidden — module fourriere requis' }, { status: 403 })
+  }
 
   // Accepte UUID OR mission_number numerique (Olivier 2026-05-27).
   const idIsNumeric = /^\d+$/.test(params.id)
