@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Mode d'emploi Chauffeur — VD Soft</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  /* Header */
+  .cover {
+    text-align: center;
+    padding: 30mm 0 20mm 0;
+    page-break-after: always;
+  }
+  .cover h1 {
+    font-size: 28pt;
+    color: #b91c1c;
+    margin: 0 0 8pt 0;
+  }
+  .cover h2 {
+    font-size: 16pt;
+    color: #6b7280;
+    margin: 0 0 30pt 0;
+    font-weight: normal;
+  }
+  .cover .badge {
+    display: inline-block;
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 6pt 14pt;
+    border-radius: 24pt;
+    font-size: 11pt;
+    font-weight: bold;
+    margin-bottom: 20pt;
+  }
+  .cover .intro {
+    max-width: 130mm;
+    margin: 0 auto;
+    text-align: left;
+    font-size: 11pt;
+    color: #374151;
+    line-height: 1.7;
+  }
+  /* Sommaire */
+  .toc {
+    page-break-after: always;
+  }
+  .toc h1 {
+    font-size: 20pt;
+    color: #b91c1c;
+    margin: 0 0 14pt 0;
+    border-bottom: 2pt solid #b91c1c;
+    padding-bottom: 6pt;
+  }
+  .toc h2 {
+    font-size: 13pt;
+    color: #1e3a8a;
+    margin: 16pt 0 4pt 0;
+  }
+  .toc table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+  .toc td {
+    padding: 3pt 6pt;
+    border-bottom: 0.5pt dotted #d1d5db;
+  }
+  .toc td:first-child {
+    width: 28pt;
+    font-weight: bold;
+    color: #b91c1c;
+  }
+  .toc td:last-child {
+    width: 30pt;
+    text-align: right;
+    color: #6b7280;
+  }
+  /* Sections */
+  h1.section {
+    font-size: 20pt;
+    color: #b91c1c;
+    background: #fee2e2;
+    padding: 8pt 12pt;
+    border-left: 6pt solid #b91c1c;
+    margin: 24pt 0 12pt 0;
+    page-break-before: always;
+    page-break-after: avoid;
+  }
+  h2.subsection {
+    font-size: 15pt;
+    color: #1e3a8a;
+    margin: 18pt 0 8pt 0;
+    padding-bottom: 4pt;
+    border-bottom: 1.5pt solid #1e3a8a;
+    page-break-after: avoid;
+  }
+  /* Fonction */
+  .function {
+    background: #fafafa;
+    border-left: 4pt solid #1e3a8a;
+    padding: 8pt 12pt;
+    margin: 10pt 0;
+    border-radius: 4pt;
+    page-break-inside: avoid;
+  }
+  .function h3 {
+    font-size: 12pt;
+    color: #1e3a8a;
+    margin: 0 0 4pt 0;
+  }
+  .function h3 .num {
+    display: inline-block;
+    background: #1e3a8a;
+    color: white;
+    padding: 1pt 7pt;
+    border-radius: 3pt;
+    font-size: 10pt;
+    margin-right: 6pt;
+    min-width: 22pt;
+    text-align: center;
+  }
+  .function .desc {
+    font-size: 10pt;
+    color: #374151;
+    margin: 4pt 0;
+  }
+  .function .label {
+    font-size: 9pt;
+    color: #6b7280;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    margin-top: 6pt;
+  }
+  .function ol, .function ul {
+    margin: 4pt 0 4pt 14pt;
+    padding: 0;
+    font-size: 10pt;
+  }
+  .function li { margin: 2pt 0; }
+  .function .tip {
+    background: #ecfdf5;
+    border-left: 3pt solid #10b981;
+    padding: 4pt 8pt;
+    margin: 6pt 0 0 0;
+    font-size: 9pt;
+    color: #065f46;
+    border-radius: 2pt;
+  }
+  .function .warn {
+    background: #fef3c7;
+    border-left: 3pt solid #f59e0b;
+    padding: 4pt 8pt;
+    margin: 6pt 0 0 0;
+    font-size: 9pt;
+    color: #92400e;
+    border-radius: 2pt;
+  }
+  code {
+    background: #f3f4f6;
+    padding: 0 3pt;
+    border-radius: 2pt;
+    font-size: 9.5pt;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+  }
+  .legend {
+    display: flex;
+    gap: 6pt;
+    margin: 4pt 0 0 0;
+    font-size: 9pt;
+    color: #6b7280;
+  }
+  .legend .where {
+    background: #dbeafe;
+    color: #1e40af;
+    padding: 1pt 5pt;
+    border-radius: 2pt;
+  }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- COUVERTURE                                              -->
+<!-- ─────────────────────────────────────────────────────── -->
+<div class="cover">
+  <div class="badge">VERVIERS DÉPANNAGE</div>
+  <h1>Mode d'emploi</h1>
+  <h2>Application VD Soft — Profil Chauffeur</h2>
+  <div class="intro">
+    <p><strong>Ce guide t'accompagne dans l'utilisation quotidienne de VD Soft.</strong></p>
+    <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...) et 32 fonctions spécifiques au métier de chauffeur (création de missions, workflow terrain, encaissement, scan QR).</p>
+    <p>📱 <strong>Toutes les fonctions sont accessibles depuis ton iPhone</strong> (application VD Soft installée depuis l'App Store ou ajoutée à l'écran d'accueil via Safari).</p>
+    <p>🆘 <strong>En cas de problème</strong> : contacte ton dispatcher de garde ou un admin. Les bugs et améliorations remontent dans GitHub.</p>
+    <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- SOMMAIRE                                                -->
+<!-- ─────────────────────────────────────────────────────── -->
+<div class="toc">
+  <h1>Sommaire</h1>
+
+  <h2>A. Fonctions communes (tous utilisateurs)</h2>
+  <table>
+    <tr><td>1</td><td>Voir le Dashboard avec widgets actifs</td><td>p. 4</td></tr>
+    <tr><td>2</td><td>Recherche globale (plaque / dossier / client / mission)</td><td>p. 4</td></tr>
+    <tr><td>3</td><td>Voir et modifier son profil</td><td>p. 4</td></tr>
+    <tr><td>4</td><td>Changer son mot de passe</td><td>p. 4</td></tr>
+    <tr><td>5</td><td>Personnaliser l'ordre du menu de gauche</td><td>p. 5</td></tr>
+    <tr><td>6</td><td>Voir ses notifications push reçues</td><td>p. 5</td></tr>
+    <tr><td>7</td><td>Scanner un QR d'étiquette parc → Hub mission</td><td>p. 5</td></tr>
+  </table>
+
+  <h2>B1. Mes Missions — liste & navigation</h2>
+  <table>
+    <tr><td>10</td><td>Voir liste « Mes Missions » (assignées, en cours, livraison)</td><td>p. 6</td></tr>
+    <tr><td>11</td><td>Voir détails d'une mission assignée</td><td>p. 6</td></tr>
+    <tr><td>12</td><td>Filtrer mes missions (en cours / terminées)</td><td>p. 6</td></tr>
+  </table>
+
+  <h2>B2. Création de missions</h2>
+  <table>
+    <tr><td>13</td><td>Créer une mission Police (Accident/Saisie/Rodéo/Mal Garée/...)</td><td>p. 7</td></tr>
+    <tr><td>14</td><td>Créer une mission classique (sans police)</td><td>p. 9</td></tr>
+    <tr><td>15</td><td>Mal Garée : choisir « Chargement parc » ou « Déplacement payé 125€ »</td><td>p. 9</td></tr>
+    <tr><td>16</td><td>Appel Privé : DSP/REM + destination + forfait négocié</td><td>p. 10</td></tr>
+    <tr><td>17</td><td>SNC : scénario DSP / REM client / REM dépôt + balisage</td><td>p. 11</td></tr>
+    <tr><td>18</td><td>Saisir une adresse avec autocomplete Google</td><td>p. 11</td></tr>
+    <tr><td>19</td><td>Scanner la plaque ou le VIN avec la caméra (OCR)</td><td>p. 12</td></tr>
+    <tr><td>20</td><td>Lookup véhicule Odoo (autocomplete par plaque)</td><td>p. 12</td></tr>
+  </table>
+
+  <h2>B3. Workflow d'une mission en cours</h2>
+  <table>
+    <tr><td>25</td><td>Accepter / Refuser une mission qui m'est assignée</td><td>p. 13</td></tr>
+    <tr><td>26</td><td>Marquer « En route »</td><td>p. 13</td></tr>
+    <tr><td>27</td><td>Marquer « Sur place »</td><td>p. 13</td></tr>
+    <tr><td>28</td><td>Ajouter des photos (VIN, kilométrage, dégâts, signature)</td><td>p. 14</td></tr>
+    <tr><td>29</td><td>Mettre le véhicule en parc (zone choisie)</td><td>p. 14</td></tr>
+    <tr><td>30</td><td>Clôturer la mission DSP / REM / DPR</td><td>p. 15</td></tr>
+    <tr><td>31</td><td>Démarrer une livraison REL (multi-stops)</td><td>p. 15</td></tr>
+    <tr><td>32</td><td>Arriver / Repartir d'un stop intermédiaire</td><td>p. 16</td></tr>
+    <tr><td>33</td><td>Saisir une décharge typée à la livraison</td><td>p. 16</td></tr>
+    <tr><td>34</td><td>Modifier le type de mission en cours (ex: REM → DPR)</td><td>p. 16</td></tr>
+    <tr><td>35</td><td>Modifier les destinations en cours</td><td>p. 17</td></tr>
+  </table>
+
+  <h2>B4. Encaissement client</h2>
+  <table>
+    <tr><td>40</td><td>Encaisser un client lié à une mission (cash / Sumup / Bancontact)</td><td>p. 18</td></tr>
+    <tr><td>41</td><td>Demander une dérogation paiement</td><td>p. 19</td></tr>
+    <tr><td>42</td><td>Auto-link client (recherche/création client dans encaissement)</td><td>p. 19</td></tr>
+    <tr><td>43</td><td>Restituer un véhicule en parc avec paiement (via scan QR)</td><td>p. 20</td></tr>
+    <tr><td>44</td><td>Restituer un véhicule sans frais via scan QR</td><td>p. 20</td></tr>
+    <tr><td>45</td><td>Prendre une relivraison (REL) via scan QR</td><td>p. 21</td></tr>
+  </table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- A. FONCTIONS COMMUNES                                   -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">A. Fonctions communes</h1>
+
+<div class="function">
+  <h3><span class="num">1</span>Voir le Dashboard</h3>
+  <p class="desc">C'est l'écran d'accueil de l'app. Tu y vois en un coup d'œil les widgets qui te concernent : missions actives, encaissements récents, raccourcis vers tes pages favorites.</p>
+  <p class="label">Comment y accéder</p>
+  <ol>
+    <li>Ouvre l'app VD Soft (icône rouge sur ton iPhone)</li>
+    <li>Connecte-toi si nécessaire (login + mot de passe ou Sign in with Apple)</li>
+    <li>Tu arrives directement sur le Dashboard</li>
+    <li>Ou clique sur l'icône 🏠 dans la barre de gauche</li>
+  </ol>
+  <div class="tip">💡 Le Dashboard est personnalisable depuis « Mon Profil ». Tu peux activer/désactiver chaque widget.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">2</span>Recherche globale</h3>
+  <p class="desc">Cherche n'importe quoi dans l'app : une plaque, un numéro de mission, un client, un encaissement, une avance de fonds...</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Clique sur l'icône 🔍 dans la barre de gauche, OU appuie <code>Cmd+K</code> sur Mac</li>
+    <li>Tape ta recherche (ex: « 1ABC234 » ou « Dupont »)</li>
+    <li>Les résultats apparaissent en temps réel, classés par catégorie</li>
+    <li>Clique un résultat pour ouvrir la fiche correspondante</li>
+  </ol>
+  <div class="tip">💡 La recherche fonctionne aussi sur les emails de mailboxes M365 (mais réservé aux admins). Pour toi, elle se concentre sur tes missions.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">3</span>Voir et modifier son profil</h3>
+  <p class="desc">Ton profil contient ton nom, ton email, ta photo, tes préférences de notification, et l'ordre personnalisé du menu de gauche.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Clique sur ton nom en bas à gauche de la sidebar</li>
+    <li>Tu arrives sur la page <code>/profil</code></li>
+    <li>Modifie ce que tu veux (nom affiché, avatar, préférences)</li>
+    <li>Les changements sont sauvegardés automatiquement</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">4</span>Changer son mot de passe</h3>
+  <p class="desc">Si tu veux changer ton mot de passe (recommandé tous les 6 mois).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Va sur « Mon Profil »</li>
+    <li>Onglet « Sécurité » ou bouton « Changer mot de passe »</li>
+    <li>Saisis ton mot de passe actuel, puis le nouveau (2 fois)</li>
+    <li>Valide</li>
+  </ol>
+  <div class="warn">⚠️ Si tu utilises Sign in with Apple, ton mot de passe est géré par Apple — pas besoin d'en avoir un dans VD Soft.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">5</span>Personnaliser l'ordre du menu</h3>
+  <p class="desc">Mets en tête les sections que tu utilises le plus souvent.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Va sur « Mon Profil »</li>
+    <li>Section « Ordre du menu »</li>
+    <li>Glisse-déplace les items dans l'ordre voulu</li>
+    <li>Sauvegarde automatique</li>
+  </ol>
+  <div class="tip">💡 Ce réglage est lié à ton compte. Tu le retrouves sur tous tes devices.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">6</span>Notifications push</h3>
+  <p class="desc">Tu reçois des notifications quand : une mission t'est assignée, un client a payé, un transfert d'argent te concerne, une mission est urgente, etc.</p>
+  <p class="label">Comment ça marche</p>
+  <ol>
+    <li>Active les notifications dans iOS Réglages → VD Soft → Notifications</li>
+    <li>Les push arrivent automatiquement quand l'app est en background</li>
+    <li>Tape une notif pour ouvrir directement la mission concernée</li>
+    <li>Tu peux désactiver certaines catégories dans « Mon Profil » → « Notifications »</li>
+  </ol>
+  <div class="warn">⚠️ Si tu reçois trop de notifs, ne désactive pas tout — désactive uniquement les catégories non critiques (ex: « Cash transfer reçus »). Les notifs missions doivent rester actives.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">7</span>Scanner un QR d'étiquette parc</h3>
+  <p class="desc">Sur chaque véhicule en parc fourrière, une étiquette est collée avec un QR code. Le scanner ouvre instantanément la fiche véhicule avec toutes les actions possibles.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Ouvre l'app Appareil photo de ton iPhone (ou Safari + scan QR)</li>
+    <li>Pointe vers le QR de l'étiquette (peut être scanné à distance, ex: depuis un Clark)</li>
+    <li>Une notif iOS « Ouvrir dans Safari » apparaît → tape</li>
+    <li>Tu arrives sur le Hub mission avec tous les boutons d'action disponibles selon ton rôle</li>
+  </ol>
+  <div class="tip">💡 Le QR contient l'URL <code>app.verviersdepannage.com/qr/mission/[numero]</code>. Si tu n'as pas Internet, l'app affichera une erreur — connecte-toi à un réseau 4G ou Wifi.</div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- B. CHAUFFEUR                                            -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">B. Profil Chauffeur</h1>
+
+<h2 class="subsection">B1. Mes Missions — liste et navigation</h2>
+
+<div class="function">
+  <h3><span class="num">10</span>Voir la liste « Mes Missions »</h3>
+  <p class="desc">Liste toutes les missions qui t'ont été assignées par le dispatcher (ou que tu as créées toi-même), classées par statut.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Clique sur 🚗 « Mes Missions » dans la barre de gauche</li>
+    <li>Tu vois 2 sections :
+      <ul>
+        <li><strong>En cours</strong> : missions actives (assignée, acceptée, en route, sur place, en livraison)</li>
+        <li><strong>Terminées</strong> : missions clôturées (limite 20 dernières)</li>
+      </ul>
+    </li>
+    <li>Clique une mission pour ouvrir sa fiche</li>
+  </ol>
+  <div class="tip">💡 Le numéro affiché en haut de chaque carte est le <code>#10000XXX</code> — c'est ton numéro de référence à utiliser au téléphone.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">11</span>Voir détails d'une mission</h3>
+  <p class="desc">Tout ce dont tu as besoin pour exécuter la mission : véhicule, adresses, client, instructions dispatch, photos déjà prises, encaissement attendu.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Depuis la liste, clique sur la mission</li>
+    <li>Ou va directement sur <code>app.verviersdepannage.com/mission/{numero}</code></li>
+    <li>Tu vois 4 grands blocs :
+      <ul>
+        <li><strong>Infos mission</strong> : type, source, dossier, client, véhicule</li>
+        <li><strong>Adresses</strong> : intervention + destination(s) avec GPS</li>
+        <li><strong>Actions</strong> : boutons selon ton statut (Accepter / En route / Sur place / Terminer)</li>
+        <li><strong>Encaissement</strong> : montant à réclamer + bouton « 💳 Ouvrir l'encaissement »</li>
+      </ul>
+    </li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">12</span>Filtrer mes missions</h3>
+  <p class="desc">Pour retrouver une mission précise dans la liste.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Les onglets « En cours » et « Terminées » filtrent automatiquement</li>
+    <li>Pour une recherche plus précise, utilise la recherche globale (fonction 2)</li>
+  </ol>
+</div>
+
+<h2 class="subsection">B2. Création de missions</h2>
+
+<div class="function">
+  <h3><span class="num">13</span>Créer une mission Police</h3>
+  <p class="desc">Création de missions liées à la police : Accident, Saisie, Rodéo, Mal Garée, Siabis (non couvert ou couvert), AVP, Appel Privé. C'est le formulaire principal pour les chauffeurs sur le terrain.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur le Dashboard ou « Mes Missions », clique sur « 📞 Créer une mission »</li>
+    <li>Ou va directement sur <code>/mission/police</code></li>
+    <li>Sélectionne le type :
+      <ul>
+        <li>🚨 <strong>Police Accident</strong></li>
+        <li>⚖️ <strong>Saisie</strong></li>
+        <li>🏎️ <strong>Rodéo</strong></li>
+        <li>🚫 <strong>Mal Garée</strong> (cf fonction 15 pour les 2 scénarios)</li>
+        <li>🛣️ <strong>Siabis Non Couvert</strong> (cf fonction 17)</li>
+        <li>🛣️ <strong>Siabis Couvert</strong></li>
+        <li>📞 <strong>Appel Privé</strong> (cf fonction 16)</li>
+        <li>🔲 <strong>AVP</strong> (Abandon de Véhicule sur la Voie Publique)</li>
+      </ul>
+    </li>
+    <li>Remplis le formulaire :
+      <ul>
+        <li><strong>Date / Heure</strong> : automatique, modifiable</li>
+        <li><strong>Véhicule</strong> : plaque (obligatoire) + VIN (optionnel) → marque/modèle proposés automatiquement (lookup Odoo)</li>
+        <li><strong>Intervention</strong> : adresse avec autocomplete Google (cf 18), zone police, nom policier</li>
+        <li><strong>Propriétaire</strong> : optionnel (sera lié auto via encaissement si besoin)</li>
+        <li><strong>Spécifique selon type</strong> : scénario, montant à encaisser, balisage, etc.</li>
+        <li><strong>Remarques</strong> : observations libres</li>
+        <li><strong>Photos</strong> : ajoute les photos d'arrivée</li>
+      </ul>
+    </li>
+    <li>Vérifie tout puis clique « Créer la mission » en bas (ou « 💳 Créer et encaisser » selon scénario)</li>
+  </ol>
+  <div class="warn">⚠️ Pour Mal Garée Déplacement payé et Appel Privé direct, le bouton submit lance directement l'encaissement obligatoire. Le client doit payer avant de partir.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">14</span>Créer une mission classique (sans police)</h3>
+  <p class="desc">Pour les interventions hors police : dépannage privé sans police, intervention pour une assurance non automatisée, etc. (peu courant pour un chauffeur, généralement via dispatcher).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Va sur <code>/mission/new</code></li>
+    <li>Remplis le formulaire (similaire au form police mais sans bloc « Zone police »)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">15</span>Mal Garée — choisir le scénario</h3>
+  <p class="desc">Pour les missions Mal Garée, 2 scénarios possibles :</p>
+  <ol>
+    <li><strong>🚛 Chargement et mise en parc</strong> (cas classique) :
+      <ul>
+        <li>Tu charges le véhicule sur la dépanneuse</li>
+        <li>Tu le mets en zone L du parc</li>
+        <li>Restitution ultérieure au propriétaire (avec frais de gardiennage)</li>
+        <li>Pas d'encaissement immédiat</li>
+      </ul>
+    </li>
+    <li><strong>💳 Déplacement avec paiement</strong> (125€ TVAC) :
+      <ul>
+        <li>Tu arrives sur place pour charger</li>
+        <li>Le client arrive AVANT que tu charges</li>
+        <li>Tu ne charges pas, le client paie le déplacement</li>
+        <li>Encaissement IMMÉDIAT 125€ TVAC obligatoire</li>
+        <li>Pas de mise en parc</li>
+      </ul>
+    </li>
+  </ol>
+  <p class="label">Workflow scénario « Déplacement payé »</p>
+  <ol>
+    <li>Sélectionne « 💳 Déplacement avec paiement »</li>
+    <li>Le bloc « 🚓 Blocage police » disparaît (pas pertinent ici)</li>
+    <li>Bouton submit devient « 💳 Créer et encaisser »</li>
+    <li>Au clic → mission créée + redirection automatique vers encaissement</li>
+    <li>Sur la page encaissement : plaque, marque, modèle, montant 125€, adresse, motif « Mal Garée » sont précomplétés</li>
+    <li>Le client paie (cash / Sumup) → retour fiche mission</li>
+    <li>Clique « 🏁 Terminer » → mission passe en facturation</li>
+  </ol>
+  <div class="warn">⚠️ Pas de bouton « Plus tard ». Le client doit payer avant de partir, sinon la mission reste ouverte et le chauffeur de garde devra gérer.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">16</span>Appel Privé — DSP/REM + destination + forfait</h3>
+  <p class="desc">Pour un appel privé reçu au standard, tu dois indiquer :</p>
+  <ol>
+    <li><strong>Type d'intervention</strong> :
+      <ul>
+        <li>🔧 <strong>DSP</strong> (Dépannage sur place) : pas de chargement véhicule</li>
+        <li>🚛 <strong>REM</strong> (Remorquage)</li>
+      </ul>
+    </li>
+    <li><strong>Pour REM</strong>, choisir destination :
+      <ul>
+        <li>🏠 <strong>Livraison directe client</strong> → adresse destination OBLIGATOIRE, paiement immédiat, pas d'étiquette parc</li>
+        <li>🏢 <strong>Passage par dépôt Pepinster</strong> → mise en parc Transit, étiquette imprimée, client peut payer plus tard au bureau</li>
+      </ul>
+    </li>
+    <li><strong>Forfait négocié</strong> : montant TVAC convenu au téléphone (optionnel — si vide, tarif Privé en vigueur appliqué)</li>
+    <li>Le tarif estimé s'affiche en live sous le sélecteur de type</li>
+  </ol>
+  <p class="label">Bonus DSP / REM client direct</p>
+  <ul>
+    <li>Bouton submit devient « 💳 Créer et encaisser »</li>
+    <li>Auto-redirection vers encaissement après création</li>
+    <li>Client = lié auto via encaissement (recherche dans Odoo ou création)</li>
+  </ul>
+</div>
+
+<div class="function">
+  <h3><span class="num">17</span>SNC — scénario + balisage</h3>
+  <p class="desc">Pour Siabis Non Couvert (SNC) :</p>
+  <ol>
+    <li><strong>Scénario</strong> :
+      <ul>
+        <li>🔧 <strong>DSP</strong> : dépannage sur autoroute, client paie en direct</li>
+        <li>🚛 <strong>REM avec paiement immédiat</strong> : remorquage vers destination + paiement immédiat</li>
+        <li>🏢 <strong>REM vers dépôt Pepinster</strong> : mise en zone Transit, le client passera au bureau ensuite</li>
+      </ul>
+    </li>
+    <li><strong>Balisage Périphérique / Voie Rapide</strong> : coché auto si autoroute</li>
+    <li>Le tarif live affiche le forfait + km supplémentaires (au-delà de 30 km inclus pour SC, sans limite pour SNC)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">18</span>Saisir une adresse avec autocomplete Google</h3>
+  <p class="desc">Tous les champs adresse de l'app utilisent l'autocomplete Google Maps. Plus besoin de taper toute l'adresse à la main.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Clique dans le champ « Adresse »</li>
+    <li>Commence à taper les premiers caractères (rue, ville, ou nom d'établissement)</li>
+    <li>Des propositions apparaissent en dessous</li>
+    <li>Clique sur la bonne proposition → l'adresse complète est insérée (avec coordonnées GPS)</li>
+  </ol>
+  <div class="tip">💡 L'autocomplete fonctionne pour : Belgique, France, Pays-Bas, Luxembourg, Allemagne. Tu peux taper aussi des établissements (ex: « Garage Untel » ou « McDonald's Verviers »).</div>
+  <div class="warn">⚠️ Vérifie toujours visuellement que l'adresse proposée correspond bien à ce que tu cherchais. Google peut proposer une rue homonyme dans une autre ville.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">19</span>Scanner plaque ou VIN avec la caméra</h3>
+  <p class="desc">Évite de taper à la main la plaque ou le VIN. La caméra fait de l'OCR (reconnaissance de caractères).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur le champ « Plaque » ou « VIN », clique sur l'icône 📷 à droite</li>
+    <li>iOS demande l'autorisation caméra (accepter)</li>
+    <li>Pointe la caméra vers la plaque ou le VIN du véhicule</li>
+    <li>L'OCR détecte automatiquement le texte et le remplit dans le champ</li>
+  </ol>
+  <div class="tip">💡 La caméra fonctionne aussi dans le noir avec le flash automatique. Maintiens la caméra stable, à 20-30 cm du texte à scanner.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">20</span>Lookup véhicule Odoo</h3>
+  <p class="desc">Quand tu saisis une plaque, l'app cherche automatiquement si ce véhicule existe déjà dans Odoo (notre base véhicules). Si oui, elle te propose de le lier pour éviter de re-saisir marque/modèle.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Tape la plaque dans le champ correspondant</li>
+    <li>Quand tu cliques en dehors du champ (onBlur), l'app fait la recherche</li>
+    <li>Si match unique → marque/modèle/VIN sont auto-remplis. Badge vert « ✓ Véhicule existant Odoo utilisé »</li>
+    <li>Si plusieurs matches → modal te demande de choisir le bon</li>
+    <li>Si aucun match → tu peux créer un nouveau véhicule (saisie manuelle marque/modèle)</li>
+  </ol>
+</div>
+
+<h2 class="subsection">B3. Workflow d'une mission en cours</h2>
+
+<div class="function">
+  <h3><span class="num">25</span>Accepter / Refuser une mission assignée</h3>
+  <p class="desc">Quand un dispatcher t'assigne une mission, tu reçois une notif push. Tu peux Accepter ou Refuser depuis la fiche.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Ouvre la mission (depuis la liste ou via la notif)</li>
+    <li>Bouton vert « ✓ Accepter » → la mission passe en statut « accepted », tu peux la démarrer</li>
+    <li>Bouton rouge « ✗ Refuser » → la mission retourne au dispatcher pour réassignation. Précise le motif (busy, trop loin, etc.)</li>
+  </ol>
+  <div class="warn">⚠️ Refuser sans raison valable fait perdre du temps au dispatcher. Si tu peux la faire, accepte-la.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">26</span>Marquer « En route »</h3>
+  <p class="desc">Indique au dispatcher que tu te mets en route vers l'incident. Active la géolocalisation pour la vue carte.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche mission, après avoir accepté</li>
+    <li>Bouton « 🚗 En route »</li>
+    <li>iOS demande accès position (autoriser)</li>
+    <li>La mission passe en statut « in_progress »</li>
+    <li>Le dispatcher voit ta position en temps réel sur la carte</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">27</span>Marquer « Sur place »</h3>
+  <p class="desc">Indique que tu es arrivé(e) sur le lieu d'intervention.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bouton « 📍 Sur place » apparaît dès que tu es à proximité du lieu</li>
+    <li>Clique → statut reste « in_progress » mais l'app log l'arrivée (horodatage)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">28</span>Ajouter des photos</h3>
+  <p class="desc">Photos obligatoires pour clôturer une mission : VIN, kilométrage, dégâts éventuels, signature client.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bouton « 📷 Ajouter photo » sur la fiche mission</li>
+    <li>Catégorise chaque photo : <strong>VIN</strong>, <strong>Km</strong>, <strong>Dégât</strong>, <strong>Signature</strong>, <strong>Autre</strong></li>
+    <li>Les photos sont compressées automatiquement (max 1200px) pour économiser ton forfait data</li>
+    <li>Stockées dans Supabase Storage, liées à la mission</li>
+  </ol>
+  <div class="tip">💡 Pour fermer une mission DSP/REM, il faut au minimum 1 photo. Pour DPR (Déplacement pour rien), aucune photo n'est requise.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">29</span>Mettre le véhicule en parc</h3>
+  <p class="desc">Une fois arrivé au dépôt avec le véhicule, tu indiques dans quelle zone tu l'as garé.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bouton « 🅿️ Mise en parc » sur la fiche mission</li>
+    <li>Sélectionne la zone (A, Transit, etc.) selon où tu as physiquement garé</li>
+    <li>Optionnel : précise la rangée + slot si configuré</li>
+    <li>La mission passe en statut « parked »</li>
+  </ol>
+  <div class="warn">⚠️ Tu n'as accès qu'aux zones A et Transit en dépose. Les zones L (Mal Garée), J (Rodéo), etc. sont gérées par le service fourrière.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">30</span>Clôturer une mission DSP / REM / DPR</h3>
+  <p class="desc">Fin de mission. Tu indiques le type effectif et fournis les pièces requises.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bouton « 🏁 Terminer » sur la fiche mission</li>
+    <li>Choisis le type final :
+      <ul>
+        <li><strong>DSP</strong> (Dépannage Réussi) : si tu as réparé sur place</li>
+        <li><strong>REM</strong> (Remorquage Confirmé) : si tu as remorqué le véhicule</li>
+        <li><strong>REL</strong> (Relivraison Livrée) : si c'est une mission REL</li>
+        <li><strong>DPR</strong> (Déplacement pour rien) : si tu n'as rien fait (client absent, problème déjà résolu, etc.) — motif obligatoire</li>
+      </ul>
+    </li>
+    <li>Fournis :
+      <ul>
+        <li>Photos (sauf DPR)</li>
+        <li>Signature client (sauf DPR)</li>
+        <li>Notes de clôture (optionnel)</li>
+        <li>Pour DPR : motif (parmi : Client absent, Véhicule déjà parti, Adresse erronée, etc., ou Autre)</li>
+      </ul>
+    </li>
+    <li>Valide → la mission passe en statut « to_invoice » (visible côté facturation)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">31</span>Démarrer une livraison REL</h3>
+  <p class="desc">Pour les missions de relivraison (REL), tu charges le véhicule depuis le parc et le livres à une destination (ou plusieurs si multi-stops).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche REL (status « assigned » ou « in_progress »)</li>
+    <li>Bouton « Démarrer livraison »</li>
+    <li>Statut passe à « delivering »</li>
+    <li>Va prendre le véhicule au parc, puis route vers destination</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">32</span>Arriver / Repartir d'un stop intermédiaire</h3>
+  <p class="desc">Si une mission a plusieurs destinations (waypoints), tu marques chaque arrivée/départ.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche en livraison, la liste des stops s'affiche</li>
+    <li>Bouton « Arriver » au stop → horodate l'arrivée</li>
+    <li>Bouton « Repartir » → horodate le départ</li>
+    <li>Continue vers le prochain stop</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">33</span>Saisir une décharge typée</h3>
+  <p class="desc">À la livraison, certains clients doivent signer une décharge spécifique (Touring, Ethias, etc.) qui dégage la responsabilité du transporteur.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Lors de la clôture REL, modal « Décharge » s'affiche selon le client</li>
+    <li>Le client signe sur l'écran de ton iPhone (signpad)</li>
+    <li>La décharge typée est sauvegardée comme PDF et liée à la mission</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">34</span>Modifier le type de mission en cours</h3>
+  <p class="desc">Tu peux convertir une REM en DPR si tu te rends compte sur place que le véhicule n'est pas à charger (ex: déjà parti, plaque erronée).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche mission en cours, menu « Changer type »</li>
+    <li>Sélectionne le nouveau type (ex: REM → DPR)</li>
+    <li>Précise le motif</li>
+    <li>L'app log le changement dans l'historique mission</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">35</span>Modifier les destinations en cours</h3>
+  <p class="desc">Si le client te demande de livrer ailleurs que prévu, ou si le dispatcher modifie une adresse.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Menu « Modifier adresses » sur la fiche</li>
+    <li>Ajoute / supprime / modifie les destinations avec l'autocomplete Google</li>
+    <li>L'ordre des stops est respecté</li>
+    <li>Sauvegarde → le dispatcher est notifié de la modification</li>
+  </ol>
+</div>
+
+<h2 class="subsection">B4. Encaissement client</h2>
+
+<div class="function">
+  <h3><span class="num">40</span>Encaisser un client lié à une mission</h3>
+  <p class="desc">Encaissement direct sur la fiche mission. Toutes les infos sont précomplétées (plaque, marque, modèle, montant, adresse, motif).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche mission, bouton « 💳 Ouvrir l'encaissement » ou « Encaisser le paiement »</li>
+    <li>Tu arrives sur la page encaissement avec tout déjà rempli</li>
+    <li>Vérifie le montant (modifiable si besoin de complément)</li>
+    <li>Choisis le mode de paiement :
+      <ul>
+        <li><strong>Cash</strong> → entre direct dans la caisse chauffeur</li>
+        <li><strong>Sumup</strong> → flow Sumup auto (déclenche le terminal Sumup ou app Sumup mobile)</li>
+        <li><strong>Bancantact (Sumup manuel)</strong> → si Sumup auto échoue</li>
+        <li><strong>Virement / Autre</strong> → marquer comme payé sans flux argent</li>
+      </ul>
+    </li>
+    <li>Valide → reçu email auto envoyé au client si email présent</li>
+    <li>Retour fiche mission → badge « ✅ Payée »</li>
+  </ol>
+  <div class="warn">⚠️ Encaisser ne clôture PAS la mission. Tu dois ENSUITE cliquer « 🏁 Terminer » pour passer en facturation. (Workflow en 2 étapes distinctes voulu).</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">41</span>Demander une dérogation paiement</h3>
+  <p class="desc">Cas spécial : le client refuse de payer ou conteste le montant. Tu peux demander une dérogation au dispatcher (paiement reporté, sans frais, remise).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur l'écran encaissement, en bas, lien « Demande de dérogation »</li>
+    <li>Saisis le motif (Litige client, Geste commercial, Erreur dispatch...)</li>
+    <li>Le dispatcher en service reçoit une notif et doit valider/refuser</li>
+    <li>Procédure 5-tap : il doit confirmer 5 fois consécutives en moins de 30 sec pour valider (sécurité anti-clic accidentel)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">42</span>Auto-link client via encaissement</h3>
+  <p class="desc">Quand tu encaisses, tu peux rechercher un client existant Odoo ou en créer un. Ce client est automatiquement lié à la mission (champ « client facturé »).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur l'encaissement, page « Client »</li>
+    <li>Saisis le nom du client → recherche live dans Odoo</li>
+    <li>Si tu trouves le bon client → clique pour le sélectionner</li>
+    <li>Sinon, clique « Nouveau client » → formulaire complet (Google Maps autocomplete pour l'adresse, vérif VAT pour les pros)</li>
+    <li>Valide → le client est créé dans Odoo ET lié auto à la mission</li>
+  </ol>
+  <div class="tip">💡 Pas besoin de saisir le client dans le formulaire de création mission — fais-le ici, c'est plus efficace.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">43</span>Restituer un véhicule en parc — avec paiement</h3>
+  <p class="desc">Quand un client vient récupérer son véhicule au dépôt, tu scannes l'étiquette QR pour ouvrir le Hub mission. De là, tu peux directement faire l'encaissement.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Scanne le QR de l'étiquette parc sur le véhicule</li>
+    <li>Hub mission s'ouvre → carte véhicule (plaque, brand, model, zone, date entrée parc)</li>
+    <li>Bouton vert « 💳 Restituer (avec paiement) »</li>
+    <li>Clique → redirige vers encaissement précomplété :
+      <ul>
+        <li>Mission liée, plaque, marque, modèle, adresse intervention</li>
+        <li>Motif principal auto-sélectionné selon source (Mal Garée / Rodéo / Siabis / etc.)</li>
+        <li>Précision motif courte</li>
+      </ul>
+    </li>
+    <li>Le montant doit être calculé par la facturation, à toi de le saisir manuellement (forfait dépannage + gardiennage cumulé)</li>
+    <li>Encaissement → reçu email → retour fiche dispatch</li>
+  </ol>
+  <div class="tip">💡 Le QR Hub est le moyen le plus rapide d'encaisser une restitution. Pas besoin de chercher la mission dans la liste.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">44</span>Restituer un véhicule sans frais</h3>
+  <p class="desc">Cas spécial : la direction a décidé de restituer le véhicule sans facturer (geste commercial, erreur du dossier, etc.).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Scanne le QR de l'étiquette parc</li>
+    <li>Bouton ambré « 🆓 Restituer sans frais »</li>
+    <li>Modal s'ouvre demandant le motif (obligatoire)</li>
+    <li>Saisis le motif (ex: « Geste commercial demande Olivier »)</li>
+    <li>Confirme</li>
+    <li>La mission passe en statut « completed » avec flag « no_charge » + motif consigné dans l'audit</li>
+  </ol>
+  <div class="warn">⚠️ Cette action est irréversible. Sois certain du motif et qu'il vient d'une demande direction validée. L'audit garde la trace.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">45</span>Prendre une relivraison (REL) via scan QR</h3>
+  <p class="desc">Si tu arrives au dépôt et qu'il y a un véhicule à relivrer (assistance Touring/Ethias/etc. ou Siabis dépôt ou Appel Privé dépôt), tu peux directement t'assigner la mission REL en scannant le QR.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Scanne le QR de l'étiquette parc</li>
+    <li>Hub mission affiche les infos véhicule + un bouton « 🚛 Relivrer ce véhicule »</li>
+    <li>Clique → <strong>modal de confirmation</strong> apparaît avec :
+      <ul>
+        <li>Plaque + marque/modèle du véhicule</li>
+        <li>Adresse de relivraison</li>
+        <li>Message « Merci de confirmer qu'il s'agit bien du véhicule que tu souhaites relivrer »</li>
+      </ul>
+    </li>
+    <li>Vérifie bien que c'est le bon véhicule (anti-erreur sur les véhicules de même marque/modèle en parc)</li>
+    <li>Clique « Confirmer » → la mission REL fille est créée (ou prise si existante)</li>
+    <li>Tu es auto-assigné(e) à cette REL</li>
+    <li>Redirection vers la fiche REL → tu démarres ton workflow REL standard (chargement véhicule + livraison)</li>
+  </ol>
+  <div class="warn">⚠️ Si la REL est déjà assignée à un autre chauffeur, tu vois un message « REL déjà assignée à X ». Tu peux confirmer pour la reprendre — le précédent assignataire recevra une notif « Mission REL reprise ».</div>
+  <div class="tip">💡 Adresse de relivraison vide ? Le message « En attente d'info adresse de relivraison » apparaît dans la modal. Contacte le dispatcher avant de partir, il doit te la fournir.</div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- FIN                                                     -->
+<!-- ─────────────────────────────────────────────────────── -->
+<hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
+
+<div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
+  <p style="margin: 0;">Mode d'emploi VD Soft — Profil Chauffeur · Version du 28/05/2026</p>
+  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte le dispatcher de garde.</p>
+</div>
+
+</body>
+</html>

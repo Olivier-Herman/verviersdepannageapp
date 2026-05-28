@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Mode d'emploi Dispatcher — VD Soft</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.5; color: #1a1a1a; margin: 0; }
+  .cover { text-align: center; padding: 30mm 0 20mm 0; page-break-after: always; }
+  .cover h1 { font-size: 28pt; color: #047857; margin: 0 0 8pt 0; }
+  .cover h2 { font-size: 16pt; color: #6b7280; margin: 0 0 30pt 0; font-weight: normal; }
+  .cover .badge { display: inline-block; background: #d1fae5; color: #047857; padding: 6pt 14pt; border-radius: 24pt; font-size: 11pt; font-weight: bold; margin-bottom: 20pt; }
+  .cover .intro { max-width: 130mm; margin: 0 auto; text-align: left; font-size: 11pt; color: #374151; line-height: 1.7; }
+  .toc { page-break-after: always; }
+  .toc h1 { font-size: 20pt; color: #047857; margin: 0 0 14pt 0; border-bottom: 2pt solid #047857; padding-bottom: 6pt; }
+  .toc h2 { font-size: 13pt; color: #1e3a8a; margin: 16pt 0 4pt 0; }
+  .toc table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  .toc td { padding: 3pt 6pt; border-bottom: 0.5pt dotted #d1d5db; }
+  .toc td:first-child { width: 28pt; font-weight: bold; color: #047857; }
+  .toc td:last-child { width: 30pt; text-align: right; color: #6b7280; }
+  h1.section { font-size: 20pt; color: #047857; background: #d1fae5; padding: 8pt 12pt; border-left: 6pt solid #047857; margin: 24pt 0 12pt 0; page-break-before: always; page-break-after: avoid; }
+  h2.subsection { font-size: 15pt; color: #1e3a8a; margin: 18pt 0 8pt 0; padding-bottom: 4pt; border-bottom: 1.5pt solid #1e3a8a; page-break-after: avoid; }
+  .function { background: #fafafa; border-left: 4pt solid #1e3a8a; padding: 8pt 12pt; margin: 10pt 0; border-radius: 4pt; page-break-inside: avoid; }
+  .function h3 { font-size: 12pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+  .function h3 .num { display: inline-block; background: #1e3a8a; color: white; padding: 1pt 7pt; border-radius: 3pt; font-size: 10pt; margin-right: 6pt; min-width: 22pt; text-align: center; }
+  .function .desc { font-size: 10pt; color: #374151; margin: 4pt 0; }
+  .function .label { font-size: 9pt; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; margin-top: 6pt; }
+  .function ol, .function ul { margin: 4pt 0 4pt 14pt; padding: 0; font-size: 10pt; }
+  .function li { margin: 2pt 0; }
+  .function .tip { background: #ecfdf5; border-left: 3pt solid #10b981; padding: 4pt 8pt; margin: 6pt 0 0 0; font-size: 9pt; color: #065f46; border-radius: 2pt; }
+  .function .warn { background: #fef3c7; border-left: 3pt solid #f59e0b; padding: 4pt 8pt; margin: 6pt 0 0 0; font-size: 9pt; color: #92400e; border-radius: 2pt; }
+  code { background: #f3f4f6; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; font-family: "SF Mono", Monaco, Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="badge">VERVIERS DÉPANNAGE</div>
+  <h1>Mode d'emploi</h1>
+  <h2>Application VD Soft — Profil Dispatcher</h2>
+  <div class="intro">
+    <p><strong>Ce guide est destiné aux dispatchers et administrateurs qui gèrent les missions au quotidien.</strong></p>
+    <p>Il couvre 7 fonctions communes à tous + ~35 fonctions Dispatcher (vue globale, gestion missions, création, restitution, auto-dispatch).</p>
+    <p>📱 Interface optimisée bureau (écran large) mais utilisable aussi en mobile.</p>
+    <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou Olivier directement.</p>
+    <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
+  </div>
+</div>
+
+<div class="toc">
+  <h1>Sommaire</h1>
+
+  <h2>A. Fonctions communes (tous utilisateurs)</h2>
+  <table>
+    <tr><td>1</td><td>Voir le Dashboard avec widgets actifs</td><td>p. 4</td></tr>
+    <tr><td>2</td><td>Recherche globale (plaque / dossier / client / mission)</td><td>p. 4</td></tr>
+    <tr><td>3</td><td>Voir et modifier son profil</td><td>p. 4</td></tr>
+    <tr><td>4</td><td>Changer son mot de passe</td><td>p. 5</td></tr>
+    <tr><td>5</td><td>Personnaliser l'ordre du menu de gauche</td><td>p. 5</td></tr>
+    <tr><td>6</td><td>Voir ses notifications push reçues</td><td>p. 5</td></tr>
+    <tr><td>7</td><td>Scanner un QR d'étiquette parc → Hub mission</td><td>p. 5</td></tr>
+  </table>
+
+  <h2>C1. Vue globale dispatch</h2>
+  <table>
+    <tr><td>50</td><td>Voir le tableau de bord dispatch (toutes missions actives)</td><td>p. 6</td></tr>
+    <tr><td>51</td><td>Vue carte des missions actives (avec géolocalisation)</td><td>p. 6</td></tr>
+    <tr><td>52</td><td>Filtrer par statut (En attente / En cours / En parc / Terminées)</td><td>p. 7</td></tr>
+    <tr><td>53</td><td>Filtrer par source</td><td>p. 7</td></tr>
+    <tr><td>54</td><td>Rechercher mission (plaque / numéro / dossier / client)</td><td>p. 7</td></tr>
+    <tr><td>55</td><td>Tampon couleur source + status sur chaque carte</td><td>p. 7</td></tr>
+    <tr><td>56</td><td>Indicateur global de charge dispatch</td><td>p. 8</td></tr>
+    <tr><td>57</td><td>Toggler mode dispatch (manuel / auto-dispatch)</td><td>p. 8</td></tr>
+  </table>
+
+  <h2>C2. Gestion d'une mission</h2>
+  <table>
+    <tr><td>60</td><td>Ouvrir fiche dispatch détaillée d'une mission</td><td>p. 9</td></tr>
+    <tr><td>61</td><td>Confirmer / Refuser une mission en statut « new »</td><td>p. 9</td></tr>
+    <tr><td>62</td><td>Assigner / Déléguer un chauffeur manuellement</td><td>p. 10</td></tr>
+    <tr><td>63</td><td>Forcer le statut d'une mission (admin)</td><td>p. 10</td></tr>
+    <tr><td>64</td><td>Modifier les infos mission</td><td>p. 11</td></tr>
+    <tr><td>65</td><td>Ajouter / retirer un avertissement</td><td>p. 11</td></tr>
+    <tr><td>66</td><td>Modifier le client facturé (recherche Odoo)</td><td>p. 12</td></tr>
+    <tr><td>67</td><td>Voir le compte rendu de clôture (photos, signature)</td><td>p. 12</td></tr>
+    <tr><td>68</td><td>Imprimer une étiquette parc pour cette mission</td><td>p. 13</td></tr>
+    <tr><td>69</td><td>Voir les kilomètres calculés</td><td>p. 13</td></tr>
+    <tr><td>70</td><td>Annuler / Ignorer une mission</td><td>p. 13</td></tr>
+    <tr><td>71</td><td>Archiver une mission</td><td>p. 14</td></tr>
+  </table>
+
+  <h2>C3. Création de missions</h2>
+  <table>
+    <tr><td>75</td><td>Créer une mission manuelle complète depuis dispatch</td><td>p. 15</td></tr>
+    <tr><td>76</td><td>Créer une mission avec destinations multiples (waypoints)</td><td>p. 16</td></tr>
+    <tr><td>77</td><td>Saisir adresses avec autocomplete + calcul km/durée</td><td>p. 16</td></tr>
+    <tr><td>78</td><td>Lier un client Odoo existant ou créer un nouveau</td><td>p. 17</td></tr>
+    <tr><td>79</td><td>Choisir avertissement (Périphérique auto pour SNC)</td><td>p. 17</td></tr>
+    <tr><td>80</td><td>Saisir un montant à encaisser (pour Privé)</td><td>p. 17</td></tr>
+  </table>
+
+  <h2>C4. Restitution / parc</h2>
+  <table>
+    <tr><td>85</td><td>Restituer un véhicule en parc (3 modes)</td><td>p. 18</td></tr>
+    <tr><td>86</td><td>Gérer une mission SNC en zone Transit</td><td>p. 19</td></tr>
+    <tr><td>87</td><td>Créer une relivraison (REL) depuis fiche dispatch</td><td>p. 19</td></tr>
+    <tr><td>88</td><td>Voir les missions liées (REM parente / REL enfant)</td><td>p. 20</td></tr>
+  </table>
+
+  <h2>C5. Auto-dispatch</h2>
+  <table>
+    <tr><td>90</td><td>Configurer les règles d'auto-dispatch</td><td>p. 20</td></tr>
+    <tr><td>91</td><td>Voir l'état d'une tentative auto-dispatch en cours</td><td>p. 21</td></tr>
+    <tr><td>92</td><td>Voir la trace de la tentative (chauffeur, push, appels)</td><td>p. 21</td></tr>
+    <tr><td>93</td><td>Interrompre une auto-dispatch en cours</td><td>p. 22</td></tr>
+  </table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- A. COMMUNES                                             -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">A. Fonctions communes</h1>
+
+<div class="function">
+  <h3><span class="num">1</span>Voir le Dashboard</h3>
+  <p class="desc">Écran d'accueil avec widgets actifs : missions par statut, encaissements récents, indicateurs auto-dispatch.</p>
+  <ol>
+    <li>Ouvre l'app VD Soft, connecte-toi</li>
+    <li>Tu arrives directement sur le Dashboard ou clique sur 🏠</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">2</span>Recherche globale</h3>
+  <p class="desc">Cherche plaque, mission #, client, encaissement, avance dans toute l'app.</p>
+  <ol>
+    <li>Clique sur 🔍 dans la sidebar ou appuie <code>Cmd+K</code></li>
+    <li>Tape ta recherche, les résultats sont classés par catégorie</li>
+  </ol>
+  <div class="tip">💡 La recherche couvre aussi les emails M365 des mailboxes auxquelles tu as accès (pour retrouver le contexte d'une mission).</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">3</span>Voir et modifier son profil</h3>
+  <ol>
+    <li>Clique sur ton nom en bas à gauche de la sidebar</li>
+    <li>Modifie nom, avatar, préférences (notifications, ordre menu)</li>
+    <li>Sauvegarde automatique</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">4</span>Changer son mot de passe</h3>
+  <ol>
+    <li>Profil → Sécurité</li>
+    <li>Ancien + nouveau (2 fois)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">5</span>Personnaliser l'ordre du menu</h3>
+  <ol>
+    <li>Profil → Ordre du menu → glisse-déplace</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">6</span>Notifications push</h3>
+  <p class="desc">Tu reçois des push pour : nouvelles missions (dispatch_new_mission), demande dérogation (derogation_request), alertes admin, etc.</p>
+  <ol>
+    <li>Active dans iOS Réglages → VD Soft</li>
+    <li>Personnalise les catégories dans ton profil</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">7</span>Scanner un QR d'étiquette parc</h3>
+  <p class="desc">Hub mission accessible directement depuis le terrain (parc fourrière).</p>
+  <ol>
+    <li>App Appareil photo iOS → pointe le QR</li>
+    <li>Tu arrives sur le Hub avec : carte véhicule + actions selon tes permissions</li>
+    <li>En tant que dispatcher : tu peux Consulter le dossier (bouton « 👁 Consulter ») et Relivrer (avec sélecteur chauffeur)</li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- C. DISPATCHER                                           -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">C. Profil Dispatcher</h1>
+
+<h2 class="subsection">C1. Vue globale dispatch</h2>
+
+<div class="function">
+  <h3><span class="num">50</span>Tableau de bord dispatch</h3>
+  <p class="desc">Vue d'ensemble de toutes les missions actives (créées, en cours, en parc, à confirmer). Le cœur de ton métier.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Clique sur 📡 « Dispatch » dans la sidebar → <code>/dispatch</code></li>
+    <li>Tu vois la liste des missions en cours classées par statut</li>
+    <li>Chaque carte affiche : numéro #10000XXX, source (avec couleur), plaque, marque/modèle, client, adresse, statut</li>
+    <li>Clique sur une carte pour ouvrir la fiche détaillée</li>
+  </ol>
+  <div class="tip">💡 Le numéro #10000XXX est ton identifiant principal pour communiquer avec les chauffeurs au téléphone.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">51</span>Vue carte des missions actives</h3>
+  <p class="desc">Représentation géographique en temps réel des missions et chauffeurs.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur <code>/dispatch</code>, clique sur l'onglet « Carte » en haut</li>
+    <li>Ou direct <code>/dispatch?view=map</code></li>
+    <li>Carte Google Maps centrée sur Verviers</li>
+    <li>Marqueurs colorés selon source mission</li>
+    <li>Position des chauffeurs en temps réel (si ils ont autorisé géoloc + activé "En route")</li>
+    <li>Clique un marqueur pour voir les infos de la mission</li>
+  </ol>
+  <div class="tip">💡 Utile pour voir d'un coup d'œil quel chauffeur est le plus proche d'une nouvelle intervention.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">52</span>Filtrer par statut</h3>
+  <p class="desc">Sidebar avec onglets pour naviguer dans les sous-statuts.</p>
+  <p class="label">Onglets disponibles</p>
+  <ul>
+    <li><strong>En attente</strong> (new) : missions à confirmer ou ignorer</li>
+    <li><strong>En commande</strong> (dispatching) : missions confirmées en attente de chauffeur</li>
+    <li><strong>Assignées</strong> (assigned/accepted) : un chauffeur a été assigné</li>
+    <li><strong>En cours</strong> (in_progress/delivering) : chauffeur en intervention</li>
+    <li><strong>En parc</strong> (parked) : véhicules dans le parc en attente</li>
+    <li><strong>À facturer</strong> (to_invoice/completed) : missions terminées</li>
+  </ul>
+  <div class="tip">💡 Compteurs sur chaque onglet pour avoir une vision rapide.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">53</span>Filtrer par source</h3>
+  <p class="desc">Concentrer ta vue sur une source spécifique (Touring, Ethias, Police Accident, etc.).</p>
+  <ol>
+    <li>Dans le filtre source en haut, sélectionne la source</li>
+    <li>Liste filtrée live</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">54</span>Rechercher une mission</h3>
+  <p class="desc">Barre de recherche dans dispatch pour trouver rapidement une mission précise.</p>
+  <ol>
+    <li>Barre en haut de la liste dispatch</li>
+    <li>Tape : plaque, numéro mission (#10000XXX), numéro dossier, nom client, ou adresse incident</li>
+    <li>Filtre live à chaque caractère</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">55</span>Tampon couleur source + status</h3>
+  <p class="desc">Visualisation rapide du contexte d'une mission grâce aux couleurs.</p>
+  <p class="label">Codes couleurs</p>
+  <ul>
+    <li><strong>Source</strong> : badge couleur unique par source (Touring violet, Ethias rouge, etc., configurable dans /admin/sources)</li>
+    <li><strong>Statut</strong> : couleur de fond ou liseré (vert=terminée, orange=en cours, gris=annulée, etc.)</li>
+  </ul>
+</div>
+
+<div class="function">
+  <h3><span class="num">56</span>Indicateur global de charge dispatch</h3>
+  <p class="desc">En haut du dispatch, indicateurs visuels du nombre de missions par statut.</p>
+  <ol>
+    <li>Visible en permanence dans le header dispatch</li>
+    <li>Format : « 12 en attente · 8 en cours · 15 en parc · 5 à facturer »</li>
+    <li>Aide à voir si tu es submergé ou si tu peux respirer</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">57</span>Toggler mode dispatch (manuel / auto)</h3>
+  <p class="desc">Activer ou désactiver l'auto-dispatch (système Azure/Teams Phone qui essaye d'assigner automatiquement les missions à un chauffeur disponible).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Toggle en haut du dispatch « Mode auto-dispatch » : ON / OFF</li>
+    <li>ON : les nouvelles missions confirmées déclenchent un push + appel auto au chauffeur disponible</li>
+    <li>OFF : tu assignes manuellement chaque mission</li>
+  </ol>
+  <div class="tip">💡 En journée chargée tu peux laisser ON pour gagner du temps. Le soir / WE tu peux passer OFF pour avoir le contrôle total.</div>
+</div>
+
+<h2 class="subsection">C2. Gestion d'une mission</h2>
+
+<div class="function">
+  <h3><span class="num">60</span>Ouvrir fiche dispatch détaillée</h3>
+  <p class="desc">Vue complète d'une mission avec toutes les infos + actions.</p>
+  <ol>
+    <li>Depuis dispatch, clique sur la carte mission</li>
+    <li>Ou directement <code>/dispatch/[id]</code> (avec UUID OU mission_number)</li>
+    <li>Fiche avec :
+      <ul>
+        <li>Header : numéro #, source, statut</li>
+        <li>Bloc gauche : véhicule, client, adresses, photos, logs, encart facturation</li>
+        <li>Bloc droit : actions, dépôt départ, assignation chauffeur, REL liée, Imprimer étiquette, dossier Odoo</li>
+      </ul>
+    </li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">61</span>Confirmer / Refuser une mission en « new »</h3>
+  <p class="desc">Toutes les missions parsées depuis email arrivent en statut « new ». Tu dois confirmer (= validation pour mise en dispatch) ou refuser.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche d'une mission « new »</li>
+    <li>Bouton vert « ✅ Confirmer la mission » : passe en « dispatching », prête à être assignée</li>
+    <li>Bouton rouge « ✗ Refuser » : passe en « ignored » (ne pollue plus le dispatch). Précise un motif optionnel.</li>
+  </ol>
+  <div class="warn">⚠️ Vérifie systématiquement les warnings avant de confirmer (véhicule électrique, périphérique, etc.). Le chauffeur les verra.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">62</span>Assigner un chauffeur manuellement</h3>
+  <p class="desc">Choisir un chauffeur spécifique pour cette mission (au lieu de l'auto-dispatch).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche dispatch, bloc « Assignation chauffeur » (colonne droite)</li>
+    <li>Sélecteur : liste des chauffeurs actifs disponibles</li>
+    <li>Choisis un chauffeur → push notif envoyée + mission passe en « assigned »</li>
+    <li>Pour délier : bouton X à côté du chauffeur sélectionné (retour en « dispatching »)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">63</span>Forcer le statut d'une mission (admin)</h3>
+  <p class="desc">Cas exceptionnel : tu veux forcer un statut spécifique (ex: skip étape, debug, correction d'erreur).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche dispatch, menu actions admin</li>
+    <li>« Forcer statut » : sélecteur (new, dispatching, assigned, in_progress, parked, delivering, completed, to_invoice)</li>
+    <li>Confirme</li>
+    <li>Log dans mission_logs avec « status_forced »</li>
+  </ol>
+  <div class="warn">⚠️ Action admin uniquement. Toujours laisser une trace dans les logs.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">64</span>Modifier les infos mission</h3>
+  <p class="desc">Si le parsing IA a fait une erreur, ou si le client/assureur précise des infos en cours de mission.</p>
+  <p class="label">Champs modifiables</p>
+  <ul>
+    <li>Type de mission (REM, DSP, REM+REL, DPR, Transport)</li>
+    <li>Adresses (intervention + destination(s) + waypoints)</li>
+    <li>Véhicule (plaque, marque, modèle, VIN)</li>
+    <li>Client (auto-link via encaissement ou recherche manuelle)</li>
+    <li>Description / remarques</li>
+    <li>Warnings / particularités</li>
+  </ul>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche, clique « Modifier » ou directement sur le champ</li>
+    <li>Modifie</li>
+    <li>« 💾 Sauvegarder les modifications » → notif au chauffeur si déjà assigné</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">65</span>Ajouter / retirer un avertissement</h3>
+  <p class="desc">Warnings critiques à transmettre au chauffeur : Véhicule électrique, Cle absente, Périphérique, Complexe, etc.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bloc « Warnings » sur la fiche dispatch</li>
+    <li>Coche les warnings applicables (liste configurable)</li>
+    <li>Pour SNC/SC : warning « Périphérique » s'auto-coche</li>
+    <li>Affiché en rouge sur la fiche chauffeur pour visibilité maximale</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">66</span>Modifier le client facturé</h3>
+  <p class="desc">Le client_facturé est le partner Odoo qui sera sur le devis. Souvent l'assistance (Touring, Ethias) mais parfois le client direct (Privé).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bloc « Facturation » sur la fiche dispatch</li>
+    <li>Recherche dans la liste des partners Odoo</li>
+    <li>Sélectionne le bon</li>
+    <li>billed_to_id + billed_to_name mis à jour en BD</li>
+  </ol>
+  <div class="tip">💡 L'auto-link lors de l'encaissement remplit automatiquement ce champ.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">67</span>Voir le compte rendu de clôture</h3>
+  <p class="desc">Quand le chauffeur clôture, tu vois ses photos, sa signature client, ses notes.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche d'une mission « completed » ou « to_invoice »</li>
+    <li>Onglet « Clôture » ou section dédiée</li>
+    <li>Galerie photos (cliquables pour zoom)</li>
+    <li>Signature client (image)</li>
+    <li>Type final (DSP/REM/REL/DPR + motif DPR si applicable)</li>
+    <li>Notes de clôture du chauffeur</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">68</span>Imprimer une étiquette parc</h3>
+  <p class="desc">Réimprimer l'étiquette ZPL pour cette mission (cas étiquette tombée, déchirée, ou impression manuelle souhaitée).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur la fiche dispatch, en haut à droite : bouton bleu « 🖨️ Imprimer l'étiquette parc »</li>
+    <li>L'étiquette sort de la Zebra ZD421 au bureau</li>
+    <li>Format paysage 4×3" avec QR XXL + zone, plaque, marque/modèle, VIN, source, date</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">69</span>Voir les kilomètres calculés</h3>
+  <p class="desc">Distance auto calculée via Google Distance Matrix : dépôt → incident → destination → retour dépôt.</p>
+  <p class="label">Comment ça marche</p>
+  <ol>
+    <li>Bloc « Kilométrage » sur la fiche dispatch</li>
+    <li>Total km affiché en haut</li>
+    <li>Détail par segment (chaque tronçon avec km)</li>
+    <li>Auto-mis à jour si tu modifies une adresse</li>
+    <li>Utilisé par la facturation pour la ligne KIL</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">70</span>Annuler / Ignorer une mission</h3>
+  <p class="desc">Mission qui ne va finalement pas être réalisée (ex: client a appelé pour annuler, erreur dispatch).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Menu actions sur la fiche</li>
+    <li>« Annuler » : statut = cancelled, mission grise dans la liste</li>
+    <li>« Ignorer » : statut = ignored (différent de cancelled, pour les missions qu'on ne devait jamais traiter)</li>
+    <li>Motif optionnel mais recommandé</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">71</span>Archiver une mission</h3>
+  <p class="desc">Sortir une mission de la liste dispatch standard (sans la supprimer). Auto-archivée 7 jours après facturation.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Menu actions sur fiche d'une mission terminée</li>
+    <li>« Archiver » : archived_at = now</li>
+    <li>Mission disparaît du dispatch standard, reste visible dans /admin/archives</li>
+    <li>Désarchivable depuis /missions-terminees</li>
+  </ol>
+</div>
+
+<h2 class="subsection">C3. Création de missions</h2>
+
+<div class="function">
+  <h3><span class="num">75</span>Créer une mission manuelle</h3>
+  <p class="desc">Formulaire complet de création depuis le dispatch (pour les missions arrivées par téléphone, hors email parsing).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bouton « + Créer une mission » dans le dispatch → <code>/dispatch/new</code></li>
+    <li>Choisis la source (Touring, Ethias, Privé, Police Accident, etc.)</li>
+    <li>Choisis le type (REM, DSP, REM+REL, DPR, Transport)</li>
+    <li>Remplis : véhicule, adresses (autocomplete), client, warnings, montant à encaisser si Privé</li>
+    <li>Pour SNC/SC : warning Périphérique auto + champ scénario</li>
+    <li>Submit → mission créée en statut « dispatching » (saute le « new » car validation déjà faite par toi)</li>
+    <li>Email + GitHub Action TowSoft + push admin/dispatcher déclenchés</li>
+  </ol>
+  <div class="warn">⚠️ Pour les Privé, vérifie le forfait avec le client AVANT de soumettre. Le montant est passé au chauffeur en briefing.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">76</span>Destinations multiples (waypoints)</h3>
+  <p class="desc">Pour les missions avec plusieurs livraisons (Transport multi-clients par exemple).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Dans le formulaire, bloc « Destinations »</li>
+    <li>Bouton « + Ajouter une destination »</li>
+    <li>Chaque destination : nom (optionnel) + adresse autocomplete</li>
+    <li>Réorder via drag&drop</li>
+    <li>Le chauffeur voit les stops dans l'ordre + peut marquer chaque arrivée/départ</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">77</span>Autocomplete adresses + calcul km/durée</h3>
+  <p class="desc">Toutes les adresses utilisent l'autocomplete Google Maps + DirectionsService pour calculer la distance et la durée totale de la mission.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Tape les premières lettres → suggestions Google</li>
+    <li>Sélectionne → adresse complète + lat/lng insérées</li>
+    <li>Bloc « Récap » : distance totale + durée affichées en temps réel</li>
+    <li>Auto-mis à jour si tu modifies une adresse</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">78</span>Lier ou créer un client Odoo</h3>
+  <p class="desc">Pour les missions avec un client identifié (souvent pour les Privé, ou les assurances qui demandent leur partner spécifique).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Bloc « Client » → champ recherche</li>
+    <li>Tape nom ou VAT → recherche live Odoo</li>
+    <li>Sélectionne un résultat OU bouton « + Créer un nouveau client »</li>
+    <li>Modal CreateClient avec : nom, VAT (vérif VIES auto pour les pros), adresse (Google autocomplete), tél, email</li>
+    <li>Valide → client créé dans Odoo + lié à la mission</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">79</span>Warning Périphérique auto pour SNC</h3>
+  <p class="desc">Pour les Siabis (Non Couvert ou Couvert), le warning « Périphérique / Voie Rapide » s'active automatiquement.</p>
+  <p class="label">Comment ça marche</p>
+  <ol>
+    <li>Quand tu sélectionnes source = Siabis (police_snc ou sia_couvert)</li>
+    <li>Warning « Périphérique » coché auto</li>
+    <li>Tu peux le décocher si la mission n'est pas sur autoroute</li>
+    <li>Sinon, transmis au chauffeur pour qu'il prévoie balisage</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">80</span>Saisir un montant à encaisser (Privé)</h3>
+  <p class="desc">Pour les Appel Privé, tu peux pré-saisir le montant TVAC négocié au téléphone.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Source = Privé</li>
+    <li>Bloc « Encaissement » → champ « Montant à encaisser (TVAC) »</li>
+    <li>Saisis le montant (ex: 200)</li>
+    <li>Transmis au chauffeur en briefing</li>
+    <li>Précomplété dans le module encaissement quand le chauffeur encaisse</li>
+  </ol>
+  <div class="warn">⚠️ Le montant est en TVAC (ce que le client paie). L'app convertit en HTVA automatiquement pour la facturation.</div>
+</div>
+
+<h2 class="subsection">C4. Restitution / parc</h2>
+
+<div class="function">
+  <h3><span class="num">85</span>Restituer un véhicule en parc (3 modes)</h3>
+  <p class="desc">Quand un client vient récupérer son véhicule au dépôt. 3 modes selon situation.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche dispatch d'une mission « parked » avec source restituable (Mal Garée, Rodéo, AVP, SNC, etc.)</li>
+    <li>Bouton « 🔑 Restituer le véhicule »</li>
+    <li>Modal RestituerMalGareeModal (générique) :
+      <ul>
+        <li>Recherche / sélection partner Odoo</li>
+        <li>Calcul auto : forfait source + km + gardiennage (jours auto)</li>
+        <li>Choisis mode : Invoice (Odoo direct), Driver cash, ou No charge</li>
+        <li>Multi-paiements : cash + Bancontact + driver_encaissement</li>
+        <li>Vérifs : police_blocked, levée saisie Rodéo</li>
+      </ul>
+    </li>
+    <li>Confirme → mission completed (Invoice/No charge) ou to_invoice (Driver cash)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">86</span>Gérer une mission SNC en zone Transit</h3>
+  <p class="desc">Quand une mission SNC rem_depot est en parc Transit, tu as des actions spécifiques (créer REL, marquer abandonné, repris par assistance).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche dispatch d'une mission SNC en zone Transit</li>
+    <li>Bouton « 🛣️ Gérer la mise en dépôt SNC »</li>
+    <li>Modal avec 3 actions :
+      <ul>
+        <li><strong>Créer REL</strong> : le client veut récupérer son véhicule, on crée une mission REL pour livrer</li>
+        <li><strong>Abandonné</strong> : le client ne donne plus signe → mission cancelled</li>
+        <li><strong>Repris par assistance</strong> : une assistance reprend le dossier (Touring/Ethias) → on bascule la source</li>
+      </ul>
+    </li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">87</span>Créer une relivraison (REL)</h3>
+  <p class="desc">Création de la mission de relivraison depuis le dispatch pour une mission REM en parc.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche dispatch d'une mission REM+REL en parc</li>
+    <li>Bloc « 🅿️ Véhicule en parc » en haut de la colonne droite</li>
+    <li>Champ « Adresse de relivraison » avec autocomplete Google Maps</li>
+    <li>Saisis l'adresse fournie par l'assistance</li>
+    <li>Bouton « 🚛 Créer la mission de relivraison »</li>
+    <li>Confirmation modal</li>
+    <li>Redirection automatique vers la nouvelle fiche REL</li>
+    <li>Tu peux ensuite assigner un chauffeur pour la REL</li>
+  </ol>
+  <div class="tip">💡 Tu peux aussi créer la REL directement depuis le Hub QR scan, avec sélecteur chauffeur (= assignation immédiate). Pratique si tu es sur place au parc.</div>
+</div>
+
+<div class="function">
+  <h3><span class="num">88</span>Voir les missions liées (REM ↔ REL)</h3>
+  <p class="desc">Visualiser la chaîne complète d'une mission REM+REL.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche dispatch, colonne droite en haut</li>
+    <li>Si REL fille existe : encart violet « 🚛 Relivraison liée » avec #, statut, bouton « Ouvrir »</li>
+    <li>Si c'est une REL : encart ambré « 🚗 Mission parente (REM) » avec lien</li>
+    <li>Navigation rapide entre les 2 missions</li>
+  </ol>
+</div>
+
+<h2 class="subsection">C5. Auto-dispatch</h2>
+
+<div class="function">
+  <h3><span class="num">90</span>Configurer les règles d'auto-dispatch</h3>
+  <p class="desc">Paramétrage Azure / Teams Phone qui gère l'attribution automatique des nouvelles missions.</p>
+  <p class="label">Comment faire (admin)</p>
+  <ol>
+    <li><code>/admin/dispatch</code> ou <code>/admin/settings</code></li>
+    <li>Paramètres :
+      <ul>
+        <li>Règles jour / nuit (différent traitement selon plage horaire)</li>
+        <li>Sources éligibles auto-dispatch (toutes vs liste blanche)</li>
+        <li>Délai push notif avant appel</li>
+        <li>Nombre de tentatives d'appel</li>
+        <li>Chauffeurs disponibles (rotation, garde)</li>
+      </ul>
+    </li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">91</span>Voir l'état d'une tentative en cours</h3>
+  <p class="desc">Indicateur sur la fiche mission quand l'auto-dispatch tourne.</p>
+  <p class="label">Comment ça s'affiche</p>
+  <ol>
+    <li>Sur fiche dispatch, bandeau en haut « En cours d'assignation à Jean Dupont » ou « Tentative d'appel à... »</li>
+    <li>Statut visible aussi dans la liste dispatch (icône clignotante)</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">92</span>Voir la trace d'une tentative</h3>
+  <p class="desc">Audit complet d'une tentative auto-dispatch (qui a été appelé, réponse, push envoyés).</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche mission, lien « Voir tentative auto-dispatch »</li>
+    <li>Ou direct <code>/mission/auto-dispatch/[attemptId]</code></li>
+    <li>Timeline complète : push_sent, call_1_sent, call_2_sent, succès/échec</li>
+    <li>Chauffeurs contactés en cascade</li>
+  </ol>
+</div>
+
+<div class="function">
+  <h3><span class="num">93</span>Interrompre une auto-dispatch</h3>
+  <p class="desc">Si tu veux reprendre la main et assigner manuellement, tu peux interrompre une tentative.</p>
+  <p class="label">Comment faire</p>
+  <ol>
+    <li>Sur fiche mission en cours d'auto-dispatch</li>
+    <li>Bouton « Annuler tentative » dans l'encart auto-dispatch</li>
+    <li>Mission revient en statut « dispatching » (à assigner)</li>
+    <li>Tu peux maintenant assigner manuellement à un chauffeur précis</li>
+  </ol>
+</div>
+
+<hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
+
+<div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
+  <p style="margin: 0;">Mode d'emploi VD Soft — Profil Dispatcher · Version du 28/05/2026</p>
+  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
+</div>
+
+</body>
+</html>
