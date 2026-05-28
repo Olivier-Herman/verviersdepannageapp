@@ -41,7 +41,7 @@
   <h2>Application VD Soft — Profil Dispatcher</h2>
   <div class="intro">
     <p><strong>Ce guide est destiné aux dispatchers et administrateurs qui gèrent les missions au quotidien.</strong></p>
-    <p>Il couvre 7 fonctions communes à tous + ~35 fonctions Dispatcher (vue globale, gestion missions, création, restitution, auto-dispatch).</p>
+    <p>Il couvre 7 fonctions communes à tous + ~35 fonctions Dispatcher (vue globale, gestion missions, création, restitution).</p>
     <p>📱 Interface optimisée bureau (écran large) mais utilisable aussi en mobile.</p>
     <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou Olivier directement.</p>
     <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
@@ -71,7 +71,6 @@
     <tr><td>54</td><td>Rechercher mission (plaque / numéro / dossier / client)</td><td>p. 7</td></tr>
     <tr><td>55</td><td>Tampon couleur source + status sur chaque carte</td><td>p. 7</td></tr>
     <tr><td>56</td><td>Indicateur global de charge dispatch</td><td>p. 8</td></tr>
-    <tr><td>57</td><td>Toggler mode dispatch (manuel / auto-dispatch)</td><td>p. 8</td></tr>
   </table>
 
   <h2>C2. Gestion d'une mission</h2>
@@ -108,13 +107,6 @@
     <tr><td>88</td><td>Voir les missions liées (REM parente / REL enfant)</td><td>p. 20</td></tr>
   </table>
 
-  <h2>C5. Auto-dispatch</h2>
-  <table>
-    <tr><td>90</td><td>Configurer les règles d'auto-dispatch</td><td>p. 20</td></tr>
-    <tr><td>91</td><td>Voir l'état d'une tentative auto-dispatch en cours</td><td>p. 21</td></tr>
-    <tr><td>92</td><td>Voir la trace de la tentative (chauffeur, push, appels)</td><td>p. 21</td></tr>
-    <tr><td>93</td><td>Interrompre une auto-dispatch en cours</td><td>p. 22</td></tr>
-  </table>
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
@@ -124,7 +116,7 @@
 
 <div class="function">
   <h3><span class="num">1</span>Voir le Dashboard</h3>
-  <p class="desc">Écran d'accueil avec widgets actifs : missions par statut, encaissements récents, indicateurs auto-dispatch.</p>
+  <p class="desc">Écran d'accueil avec widgets actifs : missions par statut, encaissements récents, raccourcis.</p>
   <ol>
     <li>Ouvre l'app VD Soft, connecte-toi</li>
     <li>Tu arrives directement sur le Dashboard ou clique sur 🏠</li>
@@ -273,16 +265,6 @@
   </ol>
 </div>
 
-<div class="function">
-  <h3><span class="num">57</span>Toggler mode dispatch (manuel / auto)</h3>
-  <p class="desc">Activer ou désactiver l'auto-dispatch (système Azure/Teams Phone qui essaye d'assigner automatiquement les missions à un chauffeur disponible).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Toggle en haut du dispatch « Mode auto-dispatch » : ON / OFF</li>
-    <li>ON : les nouvelles missions confirmées déclenchent un push + appel auto au chauffeur disponible</li>
-    <li>OFF : tu assignes manuellement chaque mission</li>
-  </ol>
-  <div class="tip">💡 En journée chargée tu peux laisser ON pour gagner du temps. Le soir / WE tu peux passer OFF pour avoir le contrôle total.</div>
 </div>
 
 <h2 class="subsection">C2. Gestion d'une mission</h2>
@@ -317,7 +299,7 @@
 
 <div class="function">
   <h3><span class="num">62</span>Assigner un chauffeur manuellement</h3>
-  <p class="desc">Choisir un chauffeur spécifique pour cette mission (au lieu de l'auto-dispatch).</p>
+  <p class="desc">Choisir un chauffeur spécifique pour cette mission.</p>
   <p class="label">Comment faire</p>
   <ol>
     <li>Sur fiche dispatch, bloc « Assignation chauffeur » (colonne droite)</li>
@@ -597,59 +579,6 @@
   </ol>
 </div>
 
-<h2 class="subsection">C5. Auto-dispatch</h2>
-
-<div class="function">
-  <h3><span class="num">90</span>Configurer les règles d'auto-dispatch</h3>
-  <p class="desc">Paramétrage Azure / Teams Phone qui gère l'attribution automatique des nouvelles missions.</p>
-  <p class="label">Comment faire (admin)</p>
-  <ol>
-    <li><code>/admin/dispatch</code> ou <code>/admin/settings</code></li>
-    <li>Paramètres :
-      <ul>
-        <li>Règles jour / nuit (différent traitement selon plage horaire)</li>
-        <li>Sources éligibles auto-dispatch (toutes vs liste blanche)</li>
-        <li>Délai push notif avant appel</li>
-        <li>Nombre de tentatives d'appel</li>
-        <li>Chauffeurs disponibles (rotation, garde)</li>
-      </ul>
-    </li>
-  </ol>
-</div>
-
-<div class="function">
-  <h3><span class="num">91</span>Voir l'état d'une tentative en cours</h3>
-  <p class="desc">Indicateur sur la fiche mission quand l'auto-dispatch tourne.</p>
-  <p class="label">Comment ça s'affiche</p>
-  <ol>
-    <li>Sur fiche dispatch, bandeau en haut « En cours d'assignation à Jean Dupont » ou « Tentative d'appel à... »</li>
-    <li>Statut visible aussi dans la liste dispatch (icône clignotante)</li>
-  </ol>
-</div>
-
-<div class="function">
-  <h3><span class="num">92</span>Voir la trace d'une tentative</h3>
-  <p class="desc">Audit complet d'une tentative auto-dispatch (qui a été appelé, réponse, push envoyés).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Sur fiche mission, lien « Voir tentative auto-dispatch »</li>
-    <li>Ou direct <code>/mission/auto-dispatch/[attemptId]</code></li>
-    <li>Timeline complète : push_sent, call_1_sent, call_2_sent, succès/échec</li>
-    <li>Chauffeurs contactés en cascade</li>
-  </ol>
-</div>
-
-<div class="function">
-  <h3><span class="num">93</span>Interrompre une auto-dispatch</h3>
-  <p class="desc">Si tu veux reprendre la main et assigner manuellement, tu peux interrompre une tentative.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Sur fiche mission en cours d'auto-dispatch</li>
-    <li>Bouton « Annuler tentative » dans l'encart auto-dispatch</li>
-    <li>Mission revient en statut « dispatching » (à assigner)</li>
-    <li>Tu peux maintenant assigner manuellement à un chauffeur précis</li>
-  </ol>
-</div>
 
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
