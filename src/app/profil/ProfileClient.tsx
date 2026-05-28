@@ -108,6 +108,33 @@ export default function ProfileClient({ user }: { user: any }) {
     }
   }
 
+  // ── Mode audio (assistance lecture) ──────────────────────
+  const [audioMode,        setAudioMode]        = useState<boolean>(!!user?.audio_mode)
+  const [audioModeLoading, setAudioModeLoading] = useState(false)
+
+  async function toggleAudioMode() {
+    const newVal = !audioMode
+    setAudioModeLoading(true)
+    setAudioMode(newVal)
+    try {
+      const res = await fetch('/api/users/me/audio-mode', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ audio_mode: newVal }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        setAudioMode(!newVal)
+        alert(j.error || 'Erreur sauvegarde')
+      }
+    } catch (e: any) {
+      setAudioMode(!newVal)
+      alert(e.message || 'Erreur sauvegarde')
+    } finally {
+      setAudioModeLoading(false)
+    }
+  }
+
   // ── Documents ────────────────────────────────────────────
   const [documents,   setDocuments]   = useState<DriverDocument[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
@@ -520,6 +547,35 @@ export default function ProfileClient({ user }: { user: any }) {
 
         {/* Helper component pour les toggles notif */}
         {/* (defini en local ci-dessous, hors render) */}
+
+        {/* Mode audio — assistance lecture (long-press sur tout texte) */}
+        <div className="bg-surface border rounded-2xl p-5">
+          <h2 className="text-ink font-bold mb-1">🔊 Mode assistance audio</h2>
+          <p className="text-ink-muted text-xs mb-4">
+            Active la lecture à voix haute par appui long sur n'importe quel texte de l'app.
+            Utile pour les chauffeurs qui préfèrent écouter plutôt que lire.
+          </p>
+          <button
+            type="button"
+            onClick={toggleAudioMode}
+            disabled={audioModeLoading}
+            className={`w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
+              audioMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-surface-hover text-ink-secondary hover:bg-surface-2'
+            }`}
+          >
+            {audioModeLoading
+              ? '⏳ En cours…'
+              : audioMode
+                ? '✅ Mode audio activé — appui long = lecture'
+                : 'Activer le mode audio'}
+          </button>
+          {audioMode && (
+            <p className="text-ink-muted text-xs mt-3">
+              💡 Maintiens le doigt 0,5 seconde sur un texte (adresse, motif, remarque…) pour l'écouter.
+              Relâche pour arrêter.
+            </p>
+          )}
+        </div>
 
         {/* Documents */}
         <div className="bg-surface border border rounded-2xl p-5">

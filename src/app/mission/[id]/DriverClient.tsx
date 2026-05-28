@@ -10,6 +10,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
 import OcrScanModal from '@/components/OcrScanModal'
+import { TtsButton } from '@/components/audio/TtsButton'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -425,6 +426,52 @@ function ScreenWrap({ title, sub, back, children }: { title: string; sub?: strin
         </div>
       </div>
       {children}
+    </div>
+  )
+}
+
+// ─── Briefing audio : un seul bouton qui lit l essentiel de la mission ─────
+// (type + adresse + vehicule + montant + alertes). Utile pour conduite,
+// gants, ou chauffeur non-lecteur.
+const SOURCE_TTS_LABELS: Record<string, string> = {
+  police_mg:       'Mal Garée',
+  police_rodeo:    'Rodéo',
+  police_avp:      'Accident voie publique',
+  police_accident: 'Accident',
+  police_saisie:   'Saisie',
+  police_snc:      'Siabis non couvert',
+  sia_couvert:     'Siabis couvert',
+  prive:           'Appel privé',
+}
+
+function BriefingTtsButton({ mission }: { mission: Mission }) {
+  const parts: string[] = []
+  const typeLabel = SOURCE_TTS_LABELS[mission.source || ''] || mission.source || 'Mission'
+  parts.push(`Mission ${typeLabel}.`)
+  const addr = [mission.incident_address, mission.incident_city].filter(Boolean).join(', ')
+  if (addr) parts.push(`Adresse : ${addr}.`)
+  if (mission.destination_address) parts.push(`Destination : ${mission.destination_address}.`)
+  const veh = [mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')
+  if (veh || mission.vehicle_plate) {
+    parts.push(`Véhicule : ${veh}${mission.vehicle_plate ? `, plaque ${mission.vehicle_plate.toUpperCase()}` : ''}.`)
+  }
+  if (mission.amount_to_collect && mission.amount_to_collect > 0) {
+    parts.push(`Montant à encaisser : ${mission.amount_to_collect} euros.`)
+  }
+  if (Array.isArray(mission.warnings) && mission.warnings.length > 0) {
+    parts.push(`Particularités : ${mission.warnings.join(', ')}.`)
+  }
+  if (mission.incident_description) parts.push(`Description : ${mission.incident_description}.`)
+
+  const briefing = parts.join(' ')
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-3">
+      <TtsButton text={briefing} size="lg" />
+      <div className="flex-1 text-left">
+        <p className="text-blue-900 text-sm font-semibold leading-tight">Écouter le briefing</p>
+        <p className="text-blue-700 text-xs">Type, adresse, véhicule, montant, particularités</p>
+      </div>
     </div>
   )
 }
@@ -2203,15 +2250,22 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       <div className="px-4 py-4 space-y-3">
 
+        {/* 🔊 Briefing audio : lit type + adresse + vehicule + montant + alertes.
+            Visible pour tous (utile en conduite/avec gants/non-lecteur). */}
+        <BriefingTtsButton mission={M} />
+
         {/* ⚠ Particularites du dispatch — bandeau ROUGE bien lisible
             en theme clair iOS (text-red-700 + bg-red-50). */}
         {Array.isArray(M.warnings) && M.warnings.length > 0 && (
           <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xl">⚠️</span>
-              <p className="text-red-700 text-sm font-bold uppercase tracking-wide">
-                Particularités à connaître
-              </p>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⚠️</span>
+                <p className="text-red-700 text-sm font-bold uppercase tracking-wide">
+                  Particularités à connaître
+                </p>
+              </div>
+              <TtsButton text={`Particularités à connaître : ${(M.warnings || []).join(', ')}`} size="md" />
             </div>
             <div className="flex flex-wrap gap-2">
               {M.warnings.map((w, i) => (
@@ -2382,7 +2436,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             )}
             {M.remarks_billing && (
               <div className="text-sm pt-1 border-t border">
-                <p className="text-ink-muted text-xs mb-0.5">📝 Remarques facturation</p>
+                <div className="flex items-center justify-between mb-0.5">
+                  <p className="text-ink-muted text-xs">📝 Remarques facturation</p>
+                  <TtsButton text={M.remarks_billing} size="sm" />
+                </div>
                 <p className="text-ink">{M.remarks_billing}</p>
               </div>
             )}
@@ -2392,7 +2449,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         {/* Description */}
         {M.incident_description && (
           <div className="bg-surface border border rounded-2xl p-4">
-            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Description</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Description</p>
+              <TtsButton text={M.incident_description} size="sm" />
+            </div>
             <p className="text-ink text-sm">{M.incident_description}</p>
           </div>
         )}

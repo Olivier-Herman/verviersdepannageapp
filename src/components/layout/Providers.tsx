@@ -1,9 +1,16 @@
 'use client'
 
-import { SessionProvider } from 'next-auth/react'
-import { useEffect }       from 'react'
-import { ThemeProvider }   from '@/components/theme/ThemeProvider'
-import SheetStackProvider  from '@/components/sheets/SheetStackProvider'
+import { SessionProvider, useSession } from 'next-auth/react'
+import { useEffect }                   from 'react'
+import { ThemeProvider }               from '@/components/theme/ThemeProvider'
+import SheetStackProvider              from '@/components/sheets/SheetStackProvider'
+import { AudioModeProvider }           from '@/components/audio/AudioModeProvider'
+
+function AudioModeMount() {
+  const { data: session } = useSession()
+  const enabled = !!(session?.user as any)?.audioMode
+  return <AudioModeProvider enabled={enabled} />
+}
 
 export default function Providers({ children }: { children: React.ReactNode }) {
 
@@ -23,6 +30,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <SessionProvider>
+        <AudioModeMount />
         <SheetStackProvider>{children}</SheetStackProvider>
       </SessionProvider>
     </ThemeProvider>

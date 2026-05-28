@@ -351,7 +351,7 @@ export const authOptions: NextAuthOptions = {
               loadModules(token.id as string),
               loadOdooAccess(token.id as string),
               loadNavOrder(token.id as string),
-              supabase.from('users').select('name, email, avatar_url').eq('id', token.id).maybeSingle(),
+              supabase.from('users').select('name, email, avatar_url, audio_mode').eq('id', token.id).maybeSingle(),
             ])
             ;(session.user as any).modules        = fresh
             ;(session.user as any).hasOdooAccess  = odooAccess
@@ -360,16 +360,21 @@ export const authOptions: NextAuthOptions = {
               session.user.name  = dbUser.data.name || session.user.name
               session.user.email = dbUser.data.email || session.user.email
               session.user.image = dbUser.data.avatar_url || session.user.image
+              ;(session.user as any).audioMode = !!dbUser.data.audio_mode
+            } else {
+              ;(session.user as any).audioMode = false
             }
           } catch {
             ;(session.user as any).modules        = token.modules || []
             ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
             ;(session.user as any).navOrder       = null
+            ;(session.user as any).audioMode      = false
           }
         } else {
           ;(session.user as any).modules        = token.modules || []
           ;(session.user as any).hasOdooAccess  = !!token.hasOdooAccess
           ;(session.user as any).navOrder       = null
+          ;(session.user as any).audioMode      = false
         }
       }
       return session
