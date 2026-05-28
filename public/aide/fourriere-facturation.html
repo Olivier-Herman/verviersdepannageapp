@@ -4,732 +4,732 @@
 <meta charset="UTF-8">
 <title>Mode d'emploi Fourrière + Facturation — VD Soft</title>
 <style>
-  @page { size: A4; margin: 16mm 14mm; }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.5; color: #1a1a1a; margin: 0; }
-  .cover { text-align: center; padding: 30mm 0 20mm 0; page-break-after: always; }
-  .cover h1 { font-size: 28pt; color: #6b21a8; margin: 0 0 8pt 0; }
-  .cover h2 { font-size: 16pt; color: #6b7280; margin: 0 0 30pt 0; font-weight: normal; }
-  .cover .badge { display: inline-block; background: #f3e8ff; color: #6b21a8; padding: 6pt 14pt; border-radius: 24pt; font-size: 11pt; font-weight: bold; margin-bottom: 20pt; }
-  .cover .intro { max-width: 130mm; margin: 0 auto; text-align: left; font-size: 11pt; color: #374151; line-height: 1.7; }
-  .toc { page-break-after: always; }
-  .toc h1 { font-size: 20pt; color: #6b21a8; margin: 0 0 14pt 0; border-bottom: 2pt solid #6b21a8; padding-bottom: 6pt; }
-  .toc h2 { font-size: 13pt; color: #1e3a8a; margin: 16pt 0 4pt 0; }
-  .toc table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-  .toc td { padding: 3pt 6pt; border-bottom: 0.5pt dotted #d1d5db; }
-  .toc td:first-child { width: 28pt; font-weight: bold; color: #6b21a8; }
-  .toc td:last-child { width: 30pt; text-align: right; color: #6b7280; }
-  h1.section { font-size: 20pt; color: #6b21a8; background: #f3e8ff; padding: 8pt 12pt; border-left: 6pt solid #6b21a8; margin: 24pt 0 12pt 0; page-break-before: always; page-break-after: avoid; }
-  h2.subsection { font-size: 15pt; color: #1e3a8a; margin: 18pt 0 8pt 0; padding-bottom: 4pt; border-bottom: 1.5pt solid #1e3a8a; page-break-after: avoid; }
-  .function { background: #fafafa; border-left: 4pt solid #1e3a8a; padding: 8pt 12pt; margin: 10pt 0; border-radius: 4pt; page-break-inside: avoid; }
-  .function h3 { font-size: 12pt; color: #1e3a8a; margin: 0 0 4pt 0; }
-  .function h3 .num { display: inline-block; background: #1e3a8a; color: white; padding: 1pt 7pt; border-radius: 3pt; font-size: 10pt; margin-right: 6pt; min-width: 22pt; text-align: center; }
-  .function .desc { font-size: 10pt; color: #374151; margin: 4pt 0; }
-  .function .label { font-size: 9pt; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; margin-top: 6pt; }
-  .function ol, .function ul { margin: 4pt 0 4pt 14pt; padding: 0; font-size: 10pt; }
-  .function li { margin: 2pt 0; }
-  .function .tip { background: #ecfdf5; border-left: 3pt solid #10b981; padding: 4pt 8pt; margin: 6pt 0 0 0; font-size: 9pt; color: #065f46; border-radius: 2pt; }
-  .function .warn { background: #fef3c7; border-left: 3pt solid #f59e0b; padding: 4pt 8pt; margin: 6pt 0 0 0; font-size: 9pt; color: #92400e; border-radius: 2pt; }
-  code { background: #f3f4f6; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; font-family: "SF Mono", Monaco, Consolas, monospace; }
+ @page { size: A4; margin: 16mm 14mm; }
+ * { box-sizing: border-box; }
+ body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.5; color: #1a1a1a; margin: 0; }
+.cover { text-align: center; padding: 30mm 0 20mm 0; page-break-after: always; }
+.cover h1 { font-size: 28pt; color: #6b21a8; margin: 0 0 8pt 0; }
+.cover h2 { font-size: 16pt; color: #6b7280; margin: 0 0 30pt 0; font-weight: normal; }
+.cover.badge { display: inline-block; background: #f3e8ff; color: #6b21a8; padding: 6pt 14pt; border-radius: 24pt; font-size: 11pt; font-weight: bold; margin-bottom: 20pt; }
+.cover.intro { max-width: 130mm; margin: 0 auto; text-align: left; font-size: 11pt; color: #374151; line-height: 1.7; }
+.toc { page-break-after: always; }
+.toc h1 { font-size: 20pt; color: #6b21a8; margin: 0 0 14pt 0; border-bottom: 2pt solid #6b21a8; padding-bottom: 6pt; }
+.toc h2 { font-size: 13pt; color: #1e3a8a; margin: 16pt 0 4pt 0; }
+.toc table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+.toc td { padding: 3pt 6pt; border-bottom: 0.5pt dotted #d1d5db; }
+.toc td:first-child { width: 28pt; font-weight: bold; color: #6b21a8; }
+.toc td:last-child { width: 30pt; text-align: right; color: #6b7280; }
+ h1.section { font-size: 20pt; color: #6b21a8; background: #f3e8ff; padding: 8pt 12pt; border-left: 6pt solid #6b21a8; margin: 24pt 0 12pt 0; page-break-before: always; page-break-after: avoid; }
+ h2.subsection { font-size: 15pt; color: #1e3a8a; margin: 18pt 0 8pt 0; padding-bottom: 4pt; border-bottom: 1.5pt solid #1e3a8a; page-break-after: avoid; }
+.function { background: #fafafa; border-left: 4pt solid #1e3a8a; padding: 8pt 12pt; margin: 10pt 0; border-radius: 4pt; page-break-inside: avoid; }
+.function h3 { font-size: 12pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+.function h3.num { display: inline-block; background: #1e3a8a; color: white; padding: 1pt 7pt; border-radius: 3pt; font-size: 10pt; margin-right: 6pt; min-width: 22pt; text-align: center; }
+.function.desc { font-size: 10pt; color: #374151; margin: 4pt 0; }
+.function.label { font-size: 9pt; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; margin-top: 6pt; }
+.function ol,.function ul { margin: 4pt 0 4pt 14pt; padding: 0; font-size: 10pt; }
+.function li { margin: 2pt 0; }
+.function.tip { background: #ecfdf5; border-left: 3pt solid #10b981; padding: 4pt 8pt; margin: 6pt 0 0 0; font-size: 9pt; color: #065f46; border-radius: 2pt; }
+.function.warn { background: #fef3c7; border-left: 3pt solid #f59e0b; padding: 4pt 8pt; margin: 6pt 0 0 0; font-size: 9pt; color: #92400e; border-radius: 2pt; }
+ code { background: #f3f4f6; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; font-family: "SF Mono", Monaco, Consolas, monospace; }
 </style>
 </head>
 <body>
 
 <div class="cover">
-  <div class="badge">VERVIERS DÉPANNAGE</div>
-  <h1>Mode d'emploi</h1>
-  <h2>Application VD Soft — Profils Fourrière & Facturation</h2>
-  <div class="intro">
-    <p><strong>Ce guide est destiné aux utilisateurs disposant du module « fourriere » et / ou « facturation ».</strong></p>
-    <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), 12 fonctions Fourrière (inventaire, actions par véhicule, restitution) et 12 fonctions Facturation (validation factures, devis Odoo, missions terminées) + l'encaissement bureau.</p>
-    <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
-    <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
-    <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
-  </div>
+ <div class="badge">VERVIERS DÉPANNAGE</div>
+ <h1>Mode d'emploi</h1>
+ <h2>Application VD Soft — Profils Fourrière & Facturation</h2>
+ <div class="intro">
+ <p><strong>Ce guide est destiné aux utilisateurs disposant du module « fourriere » et / ou « facturation ».</strong></p>
+ <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), 12 fonctions Fourrière (inventaire, actions par véhicule, restitution) et 12 fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
+ <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
+ <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
+ </div>
 </div>
 
 <div class="toc">
-  <h1>Sommaire</h1>
+ <h1>Sommaire</h1>
 
-  <h2>A. Fonctions communes (tous utilisateurs)</h2>
-  <table>
-    <tr><td>1</td><td>Voir le Dashboard avec widgets actifs</td><td>p. 4</td></tr>
-    <tr><td>2</td><td>Recherche globale (plaque / dossier / client / mission)</td><td>p. 4</td></tr>
-    <tr><td>3</td><td>Voir et modifier son profil</td><td>p. 4</td></tr>
-    <tr><td>4</td><td>Changer son mot de passe</td><td>p. 5</td></tr>
-    <tr><td>5</td><td>Personnaliser l'ordre du menu de gauche</td><td>p. 5</td></tr>
-    <tr><td>6</td><td>Voir ses notifications push reçues</td><td>p. 5</td></tr>
-    <tr><td>7</td><td>Scanner un QR d'étiquette parc → Hub mission</td><td>p. 5</td></tr>
-  </table>
+ <h2>A. Fonctions communes (tous utilisateurs)</h2>
+ <table>
+ <tr><td>1</td><td>Voir le Dashboard avec widgets actifs</td><td>p. 4</td></tr>
+ <tr><td>2</td><td>Recherche globale (plaque / dossier / client / mission)</td><td>p. 4</td></tr>
+ <tr><td>3</td><td>Voir et modifier son profil</td><td>p. 4</td></tr>
+ <tr><td>4</td><td>Changer son mot de passe</td><td>p. 5</td></tr>
+ <tr><td>5</td><td>Personnaliser l'ordre du menu de gauche</td><td>p. 5</td></tr>
+ <tr><td>6</td><td>Voir ses notifications push reçues</td><td>p. 5</td></tr>
+ <tr><td>7</td><td>Scanner un QR d'étiquette parc → Hub mission</td><td>p. 5</td></tr>
+ </table>
 
-  <h2>D1. Fourrière — Inventaire parc</h2>
-  <table>
-    <tr><td>100</td><td>Voir liste véhicules en fourrière (par zone)</td><td>p. 6</td></tr>
-    <tr><td>101</td><td>Plan visuel du parc (drag&drop emplacements)</td><td>p. 6</td></tr>
-    <tr><td>102</td><td>Inventaire détaillé (recherche, statut, motif)</td><td>p. 7</td></tr>
-    <tr><td>103</td><td>Voir véhicules destinés à destruction (AVP date+60j)</td><td>p. 7</td></tr>
-    <tr><td>104</td><td>Voir véhicules non-localisés (en parc sans zone/rangée)</td><td>p. 7</td></tr>
-    <tr><td>105</td><td>Bloquer manuellement un emplacement</td><td>p. 8</td></tr>
-    <tr><td>106</td><td>Réorganiser l'ordre d'affichage des zones</td><td>p. 8</td></tr>
-  </table>
+ <h2>D1. Fourrière — Inventaire parc</h2>
+ <table>
+ <tr><td>100</td><td>Voir liste véhicules en fourrière (par zone)</td><td>p. 6</td></tr>
+ <tr><td>101</td><td>Plan visuel du parc (glisser-déposer emplacements)</td><td>p. 6</td></tr>
+ <tr><td>102</td><td>Inventaire détaillé (recherche, statut, motif)</td><td>p. 7</td></tr>
+ <tr><td>103</td><td>Voir véhicules destinés à destruction (AVP date+60j)</td><td>p. 7</td></tr>
+ <tr><td>104</td><td>Voir véhicules non-localisés (en parc sans zone/rangée)</td><td>p. 7</td></tr>
+ <tr><td>105</td><td>Bloquer manuellement un emplacement</td><td>p. 8</td></tr>
+ <tr><td>106</td><td>Réorganiser l'ordre d'affichage des zones</td><td>p. 8</td></tr>
+ </table>
 
-  <h2>D2. Fourrière — Actions par véhicule</h2>
-  <table>
-    <tr><td>110</td><td>Transférer un véhicule vers une autre zone</td><td>p. 9</td></tr>
-    <tr><td>111</td><td>Envoyer un véhicule au Domaine</td><td>p. 9</td></tr>
-    <tr><td>112</td><td>Mettre un véhicule en épave / Scratch</td><td>p. 10</td></tr>
-    <tr><td>113</td><td>Imprimer / réimprimer une étiquette parc</td><td>p. 10</td></tr>
-    <tr><td>114</td><td>Voir l'historique d'un véhicule</td><td>p. 10</td></tr>
-    <tr><td>115</td><td>Calculer le gardiennage cumulé</td><td>p. 10</td></tr>
-  </table>
+ <h2>D2. Fourrière — Actions par véhicule</h2>
+ <table>
+ <tr><td>110</td><td>Transférer un véhicule vers une autre zone</td><td>p. 9</td></tr>
+ <tr><td>111</td><td>Envoyer un véhicule au Domaine</td><td>p. 9</td></tr>
+ <tr><td>112</td><td>Mettre un véhicule en épave / Scratch</td><td>p. 10</td></tr>
+ <tr><td>113</td><td>Imprimer / réimprimer une étiquette parc</td><td>p. 10</td></tr>
+ <tr><td>114</td><td>Voir l'historique d'un véhicule</td><td>p. 10</td></tr>
+ <tr><td>115</td><td>Calculer le gardiennage cumulé</td><td>p. 10</td></tr>
+ </table>
 
-  <h2>D3. Fourrière — Restitution</h2>
-  <table>
-    <tr><td>120</td><td>Restituer un véhicule avec paiement (3 modes)</td><td>p. 11</td></tr>
-    <tr><td>121</td><td>Restituer sans frais (motif requis)</td><td>p. 12</td></tr>
-    <tr><td>122</td><td>Driver cash (mode non Odoo)</td><td>p. 12</td></tr>
-    <tr><td>123</td><td>Restituer un Rodéo (avec vérif levée saisie)</td><td>p. 13</td></tr>
-    <tr><td>124</td><td>Restituer un véhicule bloqué police</td><td>p. 13</td></tr>
-  </table>
+ <h2>D3. Fourrière — Restitution</h2>
+ <table>
+ <tr><td>120</td><td>Restituer un véhicule avec paiement (3 modes)</td><td>p. 11</td></tr>
+ <tr><td>121</td><td>Restituer sans frais (motif requis)</td><td>p. 12</td></tr>
+ <tr><td>122</td><td>Cash chauffeur (mode non)</td><td>p. 12</td></tr>
+ <tr><td>123</td><td>Restituer un Rodéo (avec vérif levée saisie)</td><td>p. 13</td></tr>
+ <tr><td>124</td><td>Restituer un véhicule bloqué police</td><td>p. 13</td></tr>
+ </table>
 
-  <h2>E. Facturation</h2>
-  <table>
-    <tr><td>130</td><td>Voir liste des missions à facturer</td><td>p. 14</td></tr>
-    <tr><td>131</td><td>Badge « X€ encaissé » sur chaque mission</td><td>p. 14</td></tr>
-    <tr><td>132</td><td>Ouvrir la modal de facturation (sections groupées)</td><td>p. 14</td></tr>
-    <tr><td>133</td><td>Préparer un devis Odoo (forfait + km + parc + surcharges)</td><td>p. 15</td></tr>
-    <tr><td>134</td><td>Voir les missions liées REM+REL pour grouper</td><td>p. 15</td></tr>
-    <tr><td>135</td><td>Voir les encaissements liés (mode/montant/chauffeur)</td><td>p. 16</td></tr>
-    <tr><td>136</td><td>Marquer comme « facturée manuellement »</td><td>p. 16</td></tr>
-    <tr><td>137</td><td>Marquer comme « sans frais » (motif)</td><td>p. 16</td></tr>
-    <tr><td>138</td><td>Drafts persistants (reprise auto)</td><td>p. 17</td></tr>
-    <tr><td>139</td><td>Voir les missions terminées (archives)</td><td>p. 17</td></tr>
-    <tr><td>140</td><td>Filtrer terminées par statut</td><td>p. 17</td></tr>
-    <tr><td>141</td><td>Désarchiver une mission</td><td>p. 17</td></tr>
-  </table>
+ <h2>E. Facturation</h2>
+ <table>
+ <tr><td>130</td><td>Voir liste des missions à facturer</td><td>p. 14</td></tr>
+ <tr><td>131</td><td>Badge « X€ encaissé » sur chaque mission</td><td>p. 14</td></tr>
+ <tr><td>132</td><td>Ouvrir la modal de facturation (sections groupées)</td><td>p. 14</td></tr>
+ <tr><td>133</td><td>Préparer un devis (forfait + km + parc + surcharges)</td><td>p. 15</td></tr>
+ <tr><td>134</td><td>Voir les missions liées REM+REL pour grouper</td><td>p. 15</td></tr>
+ <tr><td>135</td><td>Voir les encaissements liés (mode/montant/chauffeur)</td><td>p. 16</td></tr>
+ <tr><td>136</td><td>Marquer comme « facturée manuellement »</td><td>p. 16</td></tr>
+ <tr><td>137</td><td>Marquer comme « sans frais » (motif)</td><td>p. 16</td></tr>
+ <tr><td>138</td><td>Drafts persistants (reprise auto)</td><td>p. 17</td></tr>
+ <tr><td>139</td><td>Voir les missions terminées (archives)</td><td>p. 17</td></tr>
+ <tr><td>140</td><td>Filtrer terminées par statut</td><td>p. 17</td></tr>
+ <tr><td>141</td><td>Désarchiver une mission</td><td>p. 17</td></tr>
+ </table>
 
-  <h2>F1. Encaissement bureau (passage caisse)</h2>
-  <table>
-    <tr><td>145</td><td>Encaisser un client au passage caisse (sans mission)</td><td>p. 18</td></tr>
-    <tr><td>146</td><td>Auto-détecter une mission ouverte par plaque</td><td>p. 18</td></tr>
-    <tr><td>147</td><td>Encaisser via Sumup</td><td>p. 19</td></tr>
-    <tr><td>148</td><td>Encaisser en cash / Bancontact / virement</td><td>p. 19</td></tr>
-    <tr><td>149</td><td>Envoyer un reçu email au client</td><td>p. 19</td></tr>
-    <tr><td>150</td><td>Voir liste des encaissements récents</td><td>p. 19</td></tr>
-  </table>
+ <h2>F1. Encaissement bureau (passage caisse)</h2>
+ <table>
+ <tr><td>145</td><td>Encaisser un client au passage caisse (sans mission)</td><td>p. 18</td></tr>
+ <tr><td>146</td><td>Auto-détecter une mission ouverte par plaque</td><td>p. 18</td></tr>
+ <tr><td>147</td><td>Encaisser via Sumup</td><td>p. 19</td></tr>
+ <tr><td>148</td><td>Encaisser en cash / Bancontact / virement</td><td>p. 19</td></tr>
+ <tr><td>149</td><td>Envoyer un reçu email au client</td><td>p. 19</td></tr>
+ <tr><td>150</td><td>Voir liste des encaissements récents</td><td>p. 19</td></tr>
+ </table>
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
-<!-- A. COMMUNES (copie depuis driver, abrégé)               -->
+<!-- A. COMMUNES (copie depuis driver, abrégé) -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">A. Fonctions communes</h1>
 
 <div class="function">
-  <h3><span class="num">1</span>Voir le Dashboard</h3>
-  <p class="desc">Écran d'accueil avec widgets actifs (missions, encaissements, raccourcis).</p>
-  <p class="label">Comment y accéder</p>
-  <ol>
-    <li>Ouvre l'app VD Soft</li>
-    <li>Connecte-toi</li>
-    <li>Tu arrives directement sur le Dashboard, ou clique sur 🏠</li>
-  </ol>
+ <h3><span class="num">1</span>Voir le Dashboard</h3>
+ <p class="desc">Écran d'accueil avec widgets actifs (missions, encaissements, raccourcis).</p>
+ <p class="label">Comment y accéder</p>
+ <ol>
+ <li>Ouvre l'app VD Soft</li>
+ <li>Connecte-toi</li>
+ <li>Tu arrives directement sur le Dashboard, ou clique sur 🏠</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">2</span>Recherche globale</h3>
-  <p class="desc">Cherche plaque, mission #, client, encaissement, avance.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Clique sur 🔍 ou appuie <code>Cmd+K</code></li>
-    <li>Tape ta recherche</li>
-    <li>Résultats classés par catégorie</li>
-  </ol>
+ <h3><span class="num">2</span>Recherche globale</h3>
+ <p class="desc">Cherche plaque, mission #, client, encaissement, avance.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Clique sur 🔍 ou appuie <code>Cmd+K</code></li>
+ <li>Tape ta recherche</li>
+ <li>Résultats classés par catégorie</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">3</span>Voir et modifier son profil</h3>
-  <p class="desc">Ton nom, email, photo, préférences notification.</p>
-  <ol>
-    <li>Clique sur ton nom en bas à gauche de la sidebar</li>
-    <li>Page <code>/profil</code></li>
-    <li>Modifs auto-sauvegardées</li>
-  </ol>
+ <h3><span class="num">3</span>Voir et modifier son profil</h3>
+ <p class="desc">Ton nom, email, photo, préférences notification.</p>
+ <ol>
+ <li>Clique sur ton nom en bas à gauche de la menu de gauche</li>
+ <li>Page <code>/profil</code></li>
+ <li>Modifs auto-sauvegardées</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">4</span>Changer son mot de passe</h3>
-  <p class="desc">Recommandé tous les 6 mois.</p>
-  <ol>
-    <li>Profil → onglet « Sécurité »</li>
-    <li>Saisis ancien + nouveau (2 fois)</li>
-  </ol>
-  <div class="warn">⚠️ Si tu utilises Sign in with Apple, le mot de passe est géré par Apple.</div>
+ <h3><span class="num">4</span>Changer son mot de passe</h3>
+ <p class="desc">Recommandé tous les 6 mois.</p>
+ <ol>
+ <li>Profil → onglet « Sécurité »</li>
+ <li>Saisis ancien + nouveau (2 fois)</li>
+ </ol>
+ <div class="warn">⚠️ Si tu utilises Sign in with Apple, le mot de passe est géré par Apple.</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">5</span>Personnaliser l'ordre du menu</h3>
-  <p class="desc">Mets en tête les pages les plus utilisées.</p>
-  <ol>
-    <li>Profil → « Ordre du menu »</li>
-    <li>Glisse-déplace, sauvegarde auto</li>
-  </ol>
+ <h3><span class="num">5</span>Personnaliser l'ordre du menu</h3>
+ <p class="desc">Mets en tête les pages les plus utilisées.</p>
+ <ol>
+ <li>Profil → « Ordre du menu »</li>
+ <li>Glisse-déplace, sauvegarde auto</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">6</span>Notifications push</h3>
-  <p class="desc">Tu reçois des notifs pour : nouvelle mission, encaissement, transfert d'argent, urgences.</p>
-  <ol>
-    <li>Active dans iOS Réglages → VD Soft → Notifications</li>
-    <li>Tape une notif pour ouvrir la mission concernée</li>
-  </ol>
+ <h3><span class="num">6</span>Notifications push</h3>
+ <p class="desc">Tu reçois des notifs pour : nouvelle mission, encaissement, transfert d'argent, urgences.</p>
+ <ol>
+ <li>Active dans iOS Réglages → VD Soft → Notifications</li>
+ <li>Tape une notif pour ouvrir la mission concernée</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">7</span>Scanner un QR d'étiquette parc</h3>
-  <p class="desc">Sur chaque véhicule en parc, un QR ouvre le Hub mission avec toutes les actions.</p>
-  <ol>
-    <li>App Appareil photo iOS → pointe vers le QR</li>
-    <li>Notif iOS « Ouvrir dans Safari » → tape</li>
-    <li>Hub mission s'ouvre, boutons selon tes permissions</li>
-  </ol>
-  <div class="tip">💡 Avec le module fourrière, tu vois TOUS les boutons : Transférer, Domaine, Scratch, Imprimer, Ouvrir Odoo (si tu as la clé API), + Restituer.</div>
+ <h3><span class="num">7</span>Scanner un QR d'étiquette parc</h3>
+ <p class="desc">Sur chaque véhicule en parc, un QR ouvre le Hub mission avec toutes les actions.</p>
+ <ol>
+ <li>App Appareil photo iOS → pointe vers le QR</li>
+ <li>Notif iOS « Ouvrir dans Safari » → tape</li>
+ <li>Hub mission s'ouvre, boutons selon tes permissions</li>
+ </ol>
+ <div class="tip">💡 Avec le module fourrière, tu vois TOUS les boutons : Transférer, Domaine, Scratch, Imprimer, Ouvrir (si tu as la clé API), + Restituer.</div>
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
-<!-- D. FOURRIÈRE                                            -->
+<!-- D. FOURRIÈRE -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">D. Fourrière</h1>
 
 <h2 class="subsection">D1. Inventaire parc</h2>
 
 <div class="function">
-  <h3><span class="num">100</span>Liste véhicules en fourrière par zone</h3>
-  <p class="desc">Vue d'ensemble des véhicules présents dans chaque zone du parc (A, J, K, L, Transit, etc.).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Clique sur 🚓 « Fourrière » dans la sidebar</li>
-    <li>Tu arrives sur <code>/fourriere</code></li>
-    <li>Voir véhicules groupés par zone</li>
-    <li>Compteurs en haut : nb véhicules par zone, places libres</li>
-  </ol>
+ <h3><span class="num">100</span>Liste véhicules en fourrière par zone</h3>
+ <p class="desc">Vue d'ensemble des véhicules présents dans chaque zone du parc (A, J, K, L, Transit, etc.).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Clique sur 🚓 « Fourrière » dans la menu de gauche</li>
+ <li>Tu arrives sur <code>/fourriere</code></li>
+ <li>Voir véhicules groupés par zone</li>
+ <li>Compteurs en haut : nb véhicules par zone, places libres</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">101</span>Plan visuel du parc</h3>
-  <p class="desc">Représentation graphique du parc avec drag&drop pour réorganiser les véhicules.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Fourrière → onglet « Plan visuel » ou direct <code>/fourriere/plan</code></li>
-    <li>Plan avec zones colorées, chaque case = un emplacement</li>
-    <li>Drag & drop : déplace un véhicule d'une case à l'autre</li>
-    <li>Sauvegarde automatique en temps réel (Realtime Supabase)</li>
-    <li>Recherche véhicule en haut (plaque, marque)</li>
-  </ol>
-  <div class="tip">💡 Le plan est en temps réel : si un collègue déplace un véhicule, tu le vois bouger live.</div>
+ <h3><span class="num">101</span>Plan visuel du parc</h3>
+ <p class="desc">Représentation graphique du parc avec glisser-déposer pour réorganiser les véhicules.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fourrière → onglet « Plan visuel » ou direct <code>/fourriere/plan</code></li>
+ <li>Plan avec zones colorées, chaque case = un emplacement</li>
+ <li>Glisser-déposer : déplace un véhicule d'une case à l'autre</li>
+ <li>Sauvegarde automatique en temps réel (Realtime Supabase)</li>
+ <li>Recherche véhicule en haut (plaque, marque)</li>
+ </ol>
+ <div class="tip">💡 Le plan est en temps réel : si un collègue déplace un véhicule, tu le vois bouger live.</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">102</span>Inventaire détaillé</h3>
-  <p class="desc">Liste tabulaire complète avec filtres (statut, motif, source, dates entrée/sortie).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Fourrière → onglet « Inventaire » ou <code>/fourriere/inventaire</code></li>
-    <li>Filtres en haut : zone, source, motif, dates</li>
-    <li>Tri par colonne (date entrée, jours en parc, plaque)</li>
-    <li>Export CSV / PDF possible (admin)</li>
-  </ol>
+ <h3><span class="num">102</span>Inventaire détaillé</h3>
+ <p class="desc">Liste tabulaire complète avec filtres (statut, motif, source, dates entrée/sortie).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fourrière → onglet « Inventaire » ou <code>/fourriere/inventaire</code></li>
+ <li>Filtres en haut : zone, source, motif, dates</li>
+ <li>Tri par colonne (date entrée, jours en parc, plaque)</li>
+ <li>Export CSV / PDF possible (admin)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">103</span>Véhicules destinés à destruction</h3>
-  <p class="desc">Liste des AVP éligibles à destruction (date d'enlèvement + 60 jours, accord avec la Ville).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li><code>/fourriere/destruction</code></li>
-    <li>Liste les véhicules dont la date d'entrée parc + 60 jours est passée</li>
-    <li>Procédure de destruction : marquer comme « Détruit » + log</li>
-  </ol>
-  <div class="warn">⚠️ Action irréversible. Toujours vérifier les conditions légales avant.</div>
+ <h3><span class="num">103</span>Véhicules destinés à destruction</h3>
+ <p class="desc">Liste des AVP éligibles à destruction (date d'enlèvement + 60 jours, accord avec la Ville).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li><code>/fourriere/destruction</code></li>
+ <li>Liste les véhicules dont la date d'entrée parc + 60 jours est passée</li>
+ <li>Procédure de destruction : marquer comme « Détruit » + log</li>
+ </ol>
+ <div class="warn">⚠️ Action irréversible. Toujours vérifier les conditions légales avant.</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">104</span>Véhicules non-localisés</h3>
-  <p class="desc">Véhicules en parc mais sans zone/rangée définie. Aide à les retrouver et les positionner.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li><code>/fourriere/non-localises</code></li>
-    <li>Liste les véhicules sans <code>parc_zone_key</code></li>
-    <li>Clique un véhicule pour lui attribuer une zone/rangée/slot</li>
-  </ol>
+ <h3><span class="num">104</span>Véhicules non-localisés</h3>
+ <p class="desc">Véhicules en parc mais sans zone/rangée définie. Aide à les retrouver et les positionner.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li><code>/fourriere/non-localises</code></li>
+ <li>Liste les véhicules sans <code>parc_zone_key</code></li>
+ <li>Clique un véhicule pour lui attribuer une zone/rangée/slot</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">105</span>Bloquer un emplacement</h3>
-  <p class="desc">Marquer un emplacement comme indisponible (panne, casse, photo manquante, etc.).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Dans le plan visuel ou inventaire, sélectionne un emplacement</li>
-    <li>Bouton « Bloquer »</li>
-    <li>Saisis le motif (manual / missing_label / panne / autre)</li>
-    <li>L'emplacement devient gris dans le plan, indisponible pour assignation</li>
-  </ol>
+ <h3><span class="num">105</span>Bloquer un emplacement</h3>
+ <p class="desc">Marquer un emplacement comme indisponible (panne, casse, photo manquante, etc.).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Dans le plan visuel ou inventaire, sélectionne un emplacement</li>
+ <li>Bouton « Bloquer »</li>
+ <li>Saisis le motif (manual / missing_label / panne / autre)</li>
+ <li>L'emplacement devient gris dans le plan, indisponible pour assignation</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">106</span>Réorganiser l'ordre d'affichage des zones</h3>
-  <p class="desc">Personnaliser l'ordre des zones (sort_order) pour l'équipe.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Admin → <code>/admin/parc</code></li>
-    <li>Drag & drop des zones</li>
-    <li>Sauvegarde auto pour tous les users</li>
-  </ol>
+ <h3><span class="num">106</span>Réorganiser l'ordre d'affichage des zones</h3>
+ <p class="desc">Personnaliser l'ordre des zones (sort_order) pour l'équipe.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Admin → <code>/admin/parc</code></li>
+ <li>Glisser-déposer des zones</li>
+ <li>Sauvegarde auto pour tous les users</li>
+ </ol>
 </div>
 
 <h2 class="subsection">D2. Actions par véhicule</h2>
 
 <div class="function">
-  <h3><span class="num">110</span>Transférer un véhicule vers une autre zone</h3>
-  <p class="desc">Déplacer physiquement un véhicule dans le parc et mettre à jour son emplacement dans l'app.</p>
-  <p class="label">Comment faire (Hub QR)</p>
-  <ol>
-    <li>Scanne le QR de l'étiquette du véhicule</li>
-    <li>Hub mission → bouton « 🚛 Transférer vers une zone »</li>
-    <li>Modal s'ouvre : grille des zones disponibles (A, J, K, L, Transit, etc.)</li>
-    <li>Sélectionne la zone cible</li>
-    <li>Suggestion automatique de rangée + slot disponible (calcul auto basé sur les places libres)</li>
-    <li>Optionnel : choisis manuellement la rangée (bouton « Choisir rangée »)</li>
-    <li>Confirme → mise à jour Odoo + VD Soft + log</li>
-  </ol>
-  <p class="label">Comment faire (depuis l'inventaire)</p>
-  <ol>
-    <li><code>/fourriere/inventaire</code> ou plan visuel</li>
-    <li>Sélectionne le véhicule</li>
-    <li>Action « Transférer » dans le menu</li>
-  </ol>
-  <div class="tip">💡 La suggestion auto évite de surcharger une rangée. Si la zone est pleine, message d'erreur affiché.</div>
+ <h3><span class="num">110</span>Transférer un véhicule vers une autre zone</h3>
+ <p class="desc">Déplacer physiquement un véhicule dans le parc et mettre à jour son emplacement dans l'app.</p>
+ <p class="label">Comment faire (Hub QR)</p>
+ <ol>
+ <li>Scanne le QR de l'étiquette du véhicule</li>
+ <li>Hub mission → bouton « 🚛 Transférer vers une zone »</li>
+ <li>Modal s'ouvre : grille des zones disponibles (A, J, K, L, Transit, etc.)</li>
+ <li>Sélectionne la zone cible</li>
+ <li>Suggestion automatique de rangée + slot disponible (calcul automatique basé sur les places libres)</li>
+ <li>Optionnel : choisis manuellement la rangée (bouton « Choisir rangée »)</li>
+ <li>Confirme → mise à jour + VD Soft + log</li>
+ </ol>
+ <p class="label">Comment faire (depuis l'inventaire)</p>
+ <ol>
+ <li><code>/fourriere/inventaire</code> ou plan visuel</li>
+ <li>Sélectionne le véhicule</li>
+ <li>Action « Transférer » dans le menu</li>
+ </ol>
+ <div class="tip">💡 La suggestion auto évite de surcharger une rangée. Si la zone est pleine, message d'erreur affiché.</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">111</span>Envoyer un véhicule au Domaine</h3>
-  <p class="desc">Marquer un véhicule comme transféré à l'administration du Domaine (procédure légale épave).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Hub QR → bouton « 🏢 Envoyer au Domaine »</li>
-    <li>Modal de confirmation</li>
-    <li>Confirme → le véhicule passe en zone I (Domaine) dans Odoo</li>
-  </ol>
+ <h3><span class="num">111</span>Envoyer un véhicule au Domaine</h3>
+ <p class="desc">Marquer un véhicule comme transféré à l'administration du Domaine (procédure légale épave).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Hub QR → bouton « 🏢 Envoyer au Domaine »</li>
+ <li>Modal de confirmation</li>
+ <li>Confirme → le véhicule passe en zone I (Domaine) dans </li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">112</span>Mettre un véhicule en épave / Scratch</h3>
-  <p class="desc">Marquer un véhicule comme épave (destruction définitive, accord obtenu).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Hub QR → bouton rouge « ⚠️ Scratch / Mettre en épave »</li>
-    <li>Modal d'avertissement (action irréversible côté Odoo)</li>
-    <li>Confirme</li>
-  </ol>
-  <div class="warn">⚠️ <strong>Action irréversible.</strong> Ne jamais utiliser si tu n'as pas les documents requis (accord Ville, AVP +60j, etc.).</div>
+ <h3><span class="num">112</span>Mettre un véhicule en épave / Scratch</h3>
+ <p class="desc">Marquer un véhicule comme épave (destruction définitive, accord obtenu).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Hub QR → bouton rouge « ⚠️ Scratch / Mettre en épave »</li>
+ <li>Une fenêtre d'avertissement s'affiche (action irréversible)</li>
+ <li>Confirme</li>
+ </ol>
+ <div class="warn">⚠️ <strong>Action irréversible.</strong> Ne jamais utiliser si tu n'as pas les documents requis (accord Ville, AVP +60j, etc.).</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">113</span>Imprimer / réimprimer une étiquette parc</h3>
-  <p class="desc">Réimpression de l'étiquette ZPL (Zebra) à coller sur le véhicule. Utile si l'étiquette est tombée, déchirée ou illisible.</p>
-  <p class="label">Comment faire (Hub QR)</p>
-  <ol>
-    <li>Hub QR → bouton « 🖨 Imprimer une étiquette »</li>
-    <li>Confirmation « Étiquette envoyée à l'imprimante »</li>
-    <li>L'étiquette sort de la Zebra ZD421 du bureau</li>
-  </ol>
-  <p class="label">Comment faire (depuis fiche dispatch)</p>
-  <ol>
-    <li>Va sur <code>/dispatch/[id]</code> de la mission</li>
-    <li>En haut à droite : bouton bleu « 🖨️ Imprimer l'étiquette parc »</li>
-  </ol>
-  <div class="tip">💡 L'étiquette contient un QR vers le Hub mission, plus toutes les infos visuelles (plaque, marque, modèle, VIN, source, date entrée, zone).</div>
+ <h3><span class="num">113</span>Imprimer / réimprimer une étiquette parc</h3>
+ <p class="desc">Réimpression de l'étiquette (Zebra) à coller sur le véhicule. Utile si l'étiquette est tombée, déchirée ou illisible.</p>
+ <p class="label">Comment faire (Hub QR)</p>
+ <ol>
+ <li>Hub QR → bouton « 🖨 Imprimer une étiquette »</li>
+ <li>Confirmation « Étiquette envoyée à l'imprimante »</li>
+ <li>L'étiquette sort de la Zebra ZD421 du bureau</li>
+ </ol>
+ <p class="label">Comment faire (depuis fiche dispatch)</p>
+ <ol>
+ <li>Va sur <code>/dispatch/[id]</code> de la mission</li>
+ <li>En haut à droite : bouton bleu « 🖨️ Imprimer l'étiquette parc »</li>
+ </ol>
+ <div class="tip">💡 L'étiquette contient un QR vers le Hub mission, plus toutes les infos visuelles (plaque, marque, modèle, VIN, source, date entrée, zone).</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">114</span>Voir l'historique d'un véhicule</h3>
-  <p class="desc">Voir tous les changements de zone, déplacements et actions sur le véhicule.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Sur la fiche véhicule (inventaire ou plan)</li>
-    <li>Onglet « Historique »</li>
-    <li>Liste chronologique des actions (qui, quand, action)</li>
-  </ol>
+ <h3><span class="num">114</span>Voir l'historique d'un véhicule</h3>
+ <p class="desc">Voir tous les changements de zone, déplacements et actions sur le véhicule.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Sur la fiche véhicule (inventaire ou plan)</li>
+ <li>Onglet « Historique »</li>
+ <li>Liste chronologique des actions (qui, quand, action)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">115</span>Calculer le gardiennage cumulé</h3>
-  <p class="desc">Le système calcule automatiquement les jours en parc et le montant de gardiennage selon le tarif source.</p>
-  <p class="label">Comment ça marche</p>
-  <ol>
-    <li>Sur la fiche mission ou véhicule, le « gardiennage cumulé » s'affiche</li>
-    <li>Formule : (date_jour - date_entrée_parc) × tarif/jour</li>
-    <li>Tarifs spécifiques par source (Mal Garée 20€/jour voiture, 10€/jour moto, Rodéo min 3 jours, etc.)</li>
-    <li>Pris en compte automatiquement dans le devis facturation</li>
-  </ol>
+ <h3><span class="num">115</span>Calculer le gardiennage cumulé</h3>
+ <p class="desc">Le système calcule automatiquement les jours en parc et le montant de gardiennage selon le tarif source.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Sur la fiche mission ou véhicule, le « gardiennage cumulé » s'affiche</li>
+ <li>Formule : (date_jour - date_entrée_parc) × tarif/jour</li>
+ <li>Tarifs spécifiques par source (Mal Garée 20€/jour voiture, 10€/jour moto, Rodéo min 3 jours, etc.)</li>
+ <li>Pris en compte automatiquement dans le devis facturation</li>
+ </ol>
 </div>
 
 <h2 class="subsection">D3. Restitution</h2>
 
 <div class="function">
-  <h3><span class="num">120</span>Restituer un véhicule avec paiement (3 modes)</h3>
-  <p class="desc">Procédure de restitution au propriétaire avec paiement. 3 modes selon la situation.</p>
-  <p class="label">Mode 1 : Facture Odoo directe (Invoice)</p>
-  <ol>
-    <li>Tu as une clé API Odoo configurée sur ton profil</li>
-    <li>Le devis Odoo est créé direct + envoyé au client</li>
-    <li>Mission passe en statut « completed »</li>
-  </ol>
-  <p class="label">Mode 2 : Driver cash</p>
-  <ol>
-    <li>Tu n'as pas de clé API Odoo OU tu encaisses manuellement (cash, Sumup)</li>
-    <li>La mission passe en « to_invoice » (en attente facturation bureau)</li>
-    <li>L'employé facturation finalise le devis ensuite</li>
-  </ol>
-  <p class="label">Mode 3 : Restitution mixte (multi-paiements)</p>
-  <ol>
-    <li>Plusieurs modes en même temps (ex: 100€ cash + 65€ Bancontact)</li>
-    <li>Note paiement formatée auto : « Payé par 100€ espèces + 65€ Bancontact »</li>
-  </ol>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Sur la fiche dispatch <code>/dispatch/[id]</code> d'une mission en parc</li>
-    <li>Bouton « 🔑 Restituer le véhicule »</li>
-    <li>Modal RestituerMalGareeModal (générique toutes sources) :
-      <ul>
-        <li>Recherche/création partner Odoo</li>
-        <li>Calcul auto : forfait + km + gardiennage (jours auto-calculés)</li>
-        <li>Saisie paiements multi-modes</li>
-        <li>Vérification police_blocked / levée saisie si applicable</li>
-      </ul>
-    </li>
-    <li>Confirme</li>
-  </ol>
+ <h3><span class="num">120</span>Restituer un véhicule avec paiement (3 modes)</h3>
+ <p class="desc">Procédure de restitution au propriétaire avec paiement. 3 modes selon la situation.</p>
+ <p class="label">Mode 1 : Facture directe (Invoice)</p>
+ <ol>
+ <li>Tu as une clé facturation configurée sur ton profil</li>
+ <li>Le devis est créé direct + envoyé au client</li>
+ <li>Mission passe en statut « Terminée »</li>
+ </ol>
+ <p class="label">Mode 2 : Cash chauffeur</p>
+ <ol>
+ <li>Tu n'as pas de clé facturation OU tu encaisses manuellement (cash, Sumup)</li>
+ <li>La mission passe en « À facturer » (en attente facturation bureau)</li>
+ <li>L'employé facturation finalise le devis ensuite</li>
+ </ol>
+ <p class="label">Mode 3 : Restitution mixte (multi-paiements)</p>
+ <ol>
+ <li>Plusieurs modes en même temps (ex: 100€ cash + 65€ Bancontact)</li>
+ <li>Note paiement formatée auto : « Payé par 100€ espèces + 65€ Bancontact »</li>
+ </ol>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Sur la fiche dispatch <code>/dispatch/[id]</code> d'une mission en parc</li>
+ <li>Bouton « 🔑 Restituer le véhicule »</li>
+ <li>Modal RestituerMalGareeModal (générique toutes sources) :
+ <ul>
+ <li>Recherche/création client</li>
+ <li>Calcul automatique : forfait + kilomètres + gardiennage (jours auto-calculés)</li>
+ <li>Saisie paiements multi-modes</li>
+ <li>Vérification / levée saisie si applicable</li>
+ </ul>
+ </li>
+ <li>Confirme</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">121</span>Restituer sans frais (motif requis)</h3>
-  <p class="desc">Restitution sans paiement (geste commercial, erreur dossier, demande direction).</p>
-  <p class="label">Comment faire (Hub QR)</p>
-  <ol>
-    <li>Scanne le QR de l'étiquette</li>
-    <li>Bouton ambré « 🆓 Restituer sans frais »</li>
-    <li>Modal demande le motif (obligatoire, consigné dans l'audit)</li>
-    <li>Saisis le motif détaillé</li>
-    <li>Confirme → mission passe en « completed » avec flag <code>no_charge</code> + motif en BD</li>
-  </ol>
-  <p class="label">Comment faire (depuis fiche dispatch)</p>
-  <ol>
-    <li>Bouton « 🔑 Restituer » → mode « Sans frais » dans la modal</li>
-  </ol>
-  <div class="warn">⚠️ Cette action est traçable. Toujours s'assurer que le motif est validé par la direction.</div>
+ <h3><span class="num">121</span>Restituer sans frais (motif requis)</h3>
+ <p class="desc">Restitution sans paiement (geste commercial, erreur dossier, demande direction).</p>
+ <p class="label">Comment faire (Hub QR)</p>
+ <ol>
+ <li>Scanne le QR de l'étiquette</li>
+ <li>Bouton ambré « 🆓 Restituer sans frais »</li>
+ <li>Modal demande le motif (obligatoire, consigné dans l'audit)</li>
+ <li>Saisis le motif détaillé</li>
+ <li>Confirme → mission passe en « Terminée » avec motif</li>
+ </ol>
+ <p class="label">Comment faire (depuis fiche dispatch)</p>
+ <ol>
+ <li>Bouton « 🔑 Restituer » → mode « Sans frais » dans la modal</li>
+ </ol>
+ <div class="warn">⚠️ Cette action est traçable. Toujours s'assurer que le motif est validé par la direction.</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">122</span>Driver cash (mode non Odoo)</h3>
-  <p class="desc">Mode utilisé quand le chauffeur encaisse mais ne peut pas créer le devis Odoo (pas de clé API).</p>
-  <p class="label">Workflow</p>
-  <ol>
-    <li>Chauffeur clique « Restituer » → choisit « Driver cash »</li>
-    <li>Saisit les paiements (cash / Sumup / Bancontact)</li>
-    <li>Mission passe en « to_invoice »</li>
-    <li>Visible dans <code>/facturation</code> avec badge « ⚠ X€ encaissé »</li>
-    <li>L'employé facturation crée le devis Odoo ensuite (cf fonction 133)</li>
-  </ol>
+ <h3><span class="num">122</span>Cash chauffeur (mode non)</h3>
+ <p class="desc">Mode utilisé quand l'encaissement se fait sur le terrain sans passer par la facturation.</p>
+ <p class="label">Workflow</p>
+ <ol>
+ <li>Chauffeur clique « Restituer » → choisit « Cash chauffeur »</li>
+ <li>Saisit les paiements (cash / Sumup / Bancontact)</li>
+ <li>Mission passe en « À facturer »</li>
+ <li>Visible dans <code>/facturation</code> avec badge « ⚠ X€ encaissé »</li>
+ <li>L'employé facturation crée le devis ensuite (cf fonction 133)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">123</span>Restituer un Rodéo (avec vérif levée saisie)</h3>
-  <p class="desc">Les Rodéos exigent une levée de saisie validée avant restitution.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Bouton « Restituer » sur une mission Rodéo</li>
-    <li>Si <code>police_levee_saisie_ok = false</code> : modal demande de confirmer la levée de saisie</li>
-    <li>Coche « Levée de saisie reçue » + upload du document si applicable</li>
-    <li>Procède au paiement comme une restitution standard</li>
-    <li>Minimum 3 jours de gardiennage appliqué pour Rodéo</li>
-  </ol>
-  <div class="warn">⚠️ Pas de restitution Rodéo possible sans levée de saisie validée.</div>
+ <h3><span class="num">123</span>Restituer un Rodéo (avec vérif levée saisie)</h3>
+ <p class="desc">Les Rodéos exigent une levée de saisie validée avant restitution.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Bouton « Restituer » sur une mission Rodéo</li>
+ <li>Si <code>police_levee_saisie_ok = false</code> : modal demande de confirmer la levée de saisie</li>
+ <li>Coche « Levée de saisie reçue » + upload du document si applicable</li>
+ <li>Procède au paiement comme une restitution standard</li>
+ <li>Minimum 3 jours de gardiennage appliqué pour Rodéo</li>
+ </ol>
+ <div class="warn">⚠️ Pas de restitution Rodéo possible sans levée de saisie validée.</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">124</span>Restituer un véhicule bloqué police</h3>
-  <p class="desc">Quand le policier a exigé que le propriétaire passe au commissariat avant restitution (police_blocked = true).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Bouton « Restituer » sur une mission avec police_blocked=true</li>
-    <li>Modal demande de confirmer que le propriétaire est passé au commissariat</li>
-    <li>Coche « Vérification police OK »</li>
-    <li>Procède au paiement</li>
-  </ol>
-  <div class="tip">💡 Souvent pour les véhicules étrangers ou cas particuliers.</div>
+ <h3><span class="num">124</span>Restituer un véhicule bloqué police</h3>
+ <p class="desc">Quand le policier a exigé que le propriétaire passe au commissariat avant restitution ( = true).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Bouton « Restituer » sur une mission avec =true</li>
+ <li>Modal demande de confirmer que le propriétaire est passé au commissariat</li>
+ <li>Coche « Vérification police OK »</li>
+ <li>Procède au paiement</li>
+ </ol>
+ <div class="tip">💡 Souvent pour les véhicules étrangers ou cas particuliers.</div>
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
-<!-- E. FACTURATION                                          -->
+<!-- E. FACTURATION -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">E. Facturation</h1>
 
 <div class="function">
-  <h3><span class="num">130</span>Liste des missions à facturer</h3>
-  <p class="desc">Toutes les missions clôturées par les chauffeurs en attente de validation facturation (statut <code>to_invoice</code>).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Clique sur 🧾 « Facturation » dans la sidebar → <code>/facturation</code></li>
-    <li>Liste les missions en statut to_invoice</li>
-    <li>Tri chronologique (plus récentes en haut, date completed)</li>
-    <li>Recherche par mission #, plaque, dossier, client (haut de page)</li>
-  </ol>
+ <h3><span class="num">130</span>Liste des missions à facturer</h3>
+ <p class="desc">Toutes les missions clôturées par les chauffeurs en attente de validation facturation.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Clique sur 🧾 « Facturation » dans le menu de gauche</li>
+ <li>La liste affiche toutes les missions à facturer</li>
+ <li>Tri chronologique (plus récentes en haut)</li>
+ <li>Recherche par numéro mission, plaque, dossier, ou client (haut de page)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">131</span>Badge « X€ encaissé »</h3>
-  <p class="desc">Indique que le chauffeur a déjà encaissé X€ chez le client (mode driver_cash).</p>
-  <p class="label">Comment ça marche</p>
-  <ol>
-    <li>Sur chaque carte mission, badge ambré « ⚠ X€ encaissé » si payment_amount > 0</li>
-    <li>Permet de NE PAS REFACTURER le client</li>
-    <li>Tu dois juste valider le devis correspondant côté Odoo</li>
-  </ol>
+ <h3><span class="num">131</span>Badge « X€ encaissé »</h3>
+ <p class="desc">Indique qu'un montant a déjà été encaissé sur place. Affiché sur la carte de la mission.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Sur chaque carte mission, badge ambré « ⚠ X€ encaissé » si un encaissement existe</li>
+ <li>Permet de NE PAS REFACTURER le client</li>
+ <li>Tu valides simplement le devis correspondant</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">132</span>Ouvrir la modal de facturation</h3>
-  <p class="desc">Vue détaillée de la mission avec sections groupées pour préparer le devis Odoo.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Clique « Facturer → » sur une mission dans la liste</li>
-    <li>Modal FacturerModal s'ouvre avec sections :
-      <ul>
-        <li><strong>Mission</strong> : plaque, brand, model, source, dates</li>
-        <li><strong>Client</strong> : billed_to (Odoo partner) + recherche/création</li>
-        <li><strong>Lignes devis</strong> : forfait + km + gardiennage + surcharges (auto-calculées)</li>
-        <li><strong>Encaissements liés</strong> : si déjà payé en partie (cf 135)</li>
-        <li><strong>Mission liée REM+REL</strong> : si applicable (cf 134)</li>
-        <li><strong>Actions</strong> : Créer devis Odoo / Marquer manuel / Sans frais</li>
-      </ul>
-    </li>
-  </ol>
+ <h3><span class="num">132</span>Ouvrir la modal de facturation</h3>
+ <p class="desc">Vue détaillée de la mission avec sections groupées pour préparer le devis.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Clique « Facturer → » sur une mission dans la liste</li>
+ <li>La fenêtre de facturation s'ouvre avec ces sections :
+ <ul>
+ <li><strong>Mission</strong> : plaque, marque, modèle, source, dates</li>
+ <li><strong>Client</strong> : recherche / création du client à facturer</li>
+ <li><strong>Lignes devis</strong> : forfait + kilomètres + gardiennage + surcharges (calculées automatiquement)</li>
+ <li><strong>Encaissements liés</strong> : si déjà payé en partie (cf 135)</li>
+ <li><strong>Mission liée REM+REL</strong> : si applicable (cf 134)</li>
+ <li><strong>Actions</strong> : Créer le devis / Marquer manuel / Sans frais</li>
+ </ul>
+ </li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">133</span>Préparer un devis Odoo</h3>
-  <p class="desc">Création automatique du devis dans Odoo à partir des données mission.</p>
-  <p class="label">Lignes générées auto</p>
-  <ul>
-    <li><strong>Forfait</strong> : selon source/mission_type (ex: 165.29€ HTVA pour Mal Garée PECMG, 109€ pour Police Accident PCD, etc.)</li>
-    <li><strong>Treuil</strong> : 2x TD pour Accident voiture (chargement), 0 pour DSP/DPR</li>
-    <li><strong>Km</strong> : KIL × distance départ+intervention+retour dépôt (auto via Google Distance Matrix)</li>
-    <li><strong>Main d'œuvre</strong> : MOE pour les dépannages</li>
-    <li><strong>Ecoperle</strong> : pour les accidents (ECOPERLE, non majorable)</li>
-    <li><strong>Gardiennage</strong> : SERV-PARC × jours en parc (20€/jour voiture, 10€/jour moto)</li>
-    <li><strong>Surcharges</strong> : majoration % horaire selon source/client</li>
-  </ul>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Modal facturation ouverte (cf 132)</li>
-    <li>Vérifier les lignes auto-générées</li>
-    <li>Modifier quantités / prix si besoin</li>
-    <li>Choisir le partner Odoo (client facturé)</li>
-    <li>Clique « Créer devis Odoo »</li>
-    <li>Devis créé en mode brouillon dans Odoo, prêt à envoyer</li>
-    <li>Mission passe en statut « completed » + invoice_method = 'auto'</li>
-  </ol>
+ <h3><span class="num">133</span>Préparer un devis </h3>
+ <p class="desc">Création automatique du devis dans à partir des données mission.</p>
+ <p class="label">Lignes générées auto</p>
+ <ul>
+ <li><strong>Forfait</strong> : selon source/mission_type (ex: 165.29€ HTVA pour Mal Garée PECMG, 109€ pour Police Accident PCD, etc.)</li>
+ <li><strong>Treuil</strong> : 2x TD pour Accident voiture (chargement), 0 pour DSP/DPR</li>
+ <li><strong>Km</strong> : KIL × distance départ+intervention+retour dépôt (auto via Google Maps)</li>
+ <li><strong>Main d'œuvre</strong> : MOE pour les dépannages</li>
+ <li><strong>Ecoperle</strong> : pour les accidents (ECOPERLE, non majorable)</li>
+ <li><strong>Gardiennage</strong> : SERV-PARC × jours en parc (20€/jour voiture, 10€/jour moto)</li>
+ <li><strong>Surcharges</strong> : majoration % horaire selon source/client</li>
+ </ul>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Modal facturation ouverte (cf 132)</li>
+ <li>Vérifier les lignes auto-générées</li>
+ <li>Modifier quantités / prix si besoin</li>
+ <li>Choisir le client (client facturé)</li>
+ <li>Clique « Créer devis »</li>
+ <li>Devis créé en mode brouillon dans, prêt à envoyer</li>
+ <li>Mission passe en statut « Terminée » + invoice_method = 'auto'</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">134</span>Missions liées REM+REL</h3>
-  <p class="desc">Pour les missions REM avec relivraison ultérieure (REL), tu peux grouper les 2 sur un même devis.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Sur la modal facturation d'une REM</li>
-    <li>Si une REL fille existe, encart « Missions liées » s'affiche</li>
-    <li>Tu peux inclure les lignes REL dans le devis REM (1 devis pour les 2)</li>
-    <li>Pratique pour Touring/Ethias qui veulent un seul devis par dossier</li>
-  </ol>
+ <h3><span class="num">134</span>Missions liées REM+REL</h3>
+ <p class="desc">Pour les missions REM avec relivraison ultérieure (REL), tu peux grouper les 2 sur un même devis.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Sur la modal facturation d'une REM</li>
+ <li>Si une REL fille existe, encart « Missions liées » s'affiche</li>
+ <li>Tu peux inclure les lignes REL dans le devis REM (1 devis pour les 2)</li>
+ <li>Pratique pour Touring/Ethias qui veulent un seul devis par dossier</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">135</span>Encaissements liés</h3>
-  <p class="desc">Vue détaillée des paiements déjà reçus du client (chauffeur ou bureau).</p>
-  <p class="label">Comment ça s'affiche</p>
-  <ol>
-    <li>Dans la modal facturation, section « Encaissements liés »</li>
-    <li>Format : « 125,00 € espèces reçu par Jean Dupont le 27/05/26 14:32 »</li>
-    <li>Plusieurs paiements possibles (multi-modes)</li>
-    <li>Total payé affiché en haut</li>
-    <li>Reste à facturer = montant devis - total payé</li>
-  </ol>
-  <div class="tip">💡 Si le client a payé tout ou partie au chauffeur, tu peux noter le solde dans le devis Odoo (acompte / paiement comptant).</div>
+ <h3><span class="num">135</span>Encaissements liés</h3>
+ <p class="desc">Vue détaillée des paiements déjà reçus du client (chauffeur ou bureau).</p>
+ <p class="label">Comment ça s'affiche</p>
+ <ol>
+ <li>Dans la modal facturation, section « Encaissements liés »</li>
+ <li>Format : « 125,00 € espèces reçu par Jean Dupont le 27/05/26 14:32 »</li>
+ <li>Plusieurs paiements possibles (multi-modes)</li>
+ <li>Total payé affiché en haut</li>
+ <li>Reste à facturer = montant devis - total payé</li>
+ </ol>
+ <div class="tip">💡 Si le client a payé tout ou partie au chauffeur, tu peux noter le solde dans le devis (acompte / paiement comptant).</div>
 </div>
 
 <div class="function">
-  <h3><span class="num">136</span>Marquer comme facturée manuellement</h3>
-  <p class="desc">Si tu factures hors Odoo (cas exceptionnel, facture papier, ancienne procédure).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Modal facturation → bouton « Marquer comme facturée manuellement »</li>
-    <li>Saisis numéro de facture + (optionnel) URL document</li>
-    <li>Mission passe en « completed » + invoice_method = 'manual' + invoice_number</li>
-  </ol>
+ <h3><span class="num">136</span>Marquer comme facturée manuellement</h3>
+ <p class="desc">Si tu factures hors (cas exceptionnel, facture papier, ancienne procédure).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Modal facturation → bouton « Marquer comme facturée manuellement »</li>
+ <li>Saisis numéro de facture + (optionnel) URL document</li>
+ <li>Mission passe en « Terminée » + invoice_method = 'manual' + invoice_number</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">137</span>Marquer comme sans frais</h3>
-  <p class="desc">Mission clôturée sans facturation (geste commercial, demande direction, erreur).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Modal facturation → bouton « Marquer sans frais »</li>
-    <li>Motif obligatoire (audit)</li>
-    <li>Mission passe en « completed » + no_charge_at + no_charge_reason</li>
-  </ol>
+ <h3><span class="num">137</span>Marquer comme sans frais</h3>
+ <p class="desc">Mission clôturée sans facturation (geste commercial, demande direction, erreur).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fenêtre facturation → bouton « Marquer sans frais »</li>
+ <li>Le motif est obligatoire (traçabilité)</li>
+ <li>La mission passe en « Terminée — sans frais » avec ton motif enregistré</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">138</span>Drafts persistants</h3>
-  <p class="desc">Si tu fermes la modal sans valider, ton brouillon est conservé. Tu reprends là où tu en étais.</p>
-  <p class="label">Comment ça marche</p>
-  <ol>
-    <li>Tu commences à éditer un devis (modifie quantité, sélectionne client, etc.)</li>
-    <li>Tu fermes la modal (clic ailleurs, navigation)</li>
-    <li>Sauvegarde auto en localStorage</li>
-    <li>Tu reviens sur la mission plus tard → la modal se rouvre avec ton brouillon</li>
-  </ol>
+ <h3><span class="num">138</span>Brouillons sauvegardés automatiquement</h3>
+ <p class="desc">Si tu fermes la fenêtre sans valider, ton brouillon est conservé. Tu reprends là où tu en étais.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Tu commences à éditer un devis (modifie quantité, sélectionne client, etc.)</li>
+ <li>Tu fermes la modal (clic ailleurs, navigation)</li>
+ <li>Sauvegarde auto en localStorage</li>
+ <li>Tu reviens sur la mission plus tard → la modal se rouvre avec ton brouillon</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">139</span>Voir les missions terminées</h3>
-  <p class="desc">Toutes les missions au-delà de to_invoice : facturées, sans frais, annulées, archivées.</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Clique sur 📂 « Missions terminées » → <code>/missions-terminees</code></li>
-    <li>Liste paginée des missions clôturées</li>
-    <li>Recherche par tous les champs</li>
-  </ol>
+ <h3><span class="num">139</span>Voir les missions terminées</h3>
+ <p class="desc">Toutes les missions au-delà de À facturer : facturées, sans frais, annulées, archivées.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Clique sur 📂 « Missions terminées » → <code>/missions-terminees</code></li>
+ <li>Liste paginée des missions clôturées</li>
+ <li>Recherche par tous les champs</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">140</span>Filtrer terminées par statut</h3>
-  <p class="desc">Onglets pour naviguer dans les sous-types.</p>
-  <p class="label">Onglets disponibles</p>
-  <ul>
-    <li><strong>Tous</strong> : toutes les terminées (sauf parse_error)</li>
-    <li><strong>À facturer</strong> : statut to_invoice</li>
-    <li><strong>Facturées</strong> : completed avec invoiced_at</li>
-    <li><strong>Sans frais</strong> : completed avec no_charge_at</li>
-    <li><strong>Annulées</strong> : cancelled</li>
-    <li><strong>Archivées</strong> : archived_at non null (toggle visibilité)</li>
-  </ul>
+ <h3><span class="num">140</span>Filtrer terminées par statut</h3>
+ <p class="desc">Onglets pour naviguer dans les sous-types.</p>
+ <p class="label">Onglets disponibles</p>
+ <ul>
+ <li><strong>Tous</strong> : toutes les missions terminées</li>
+ <li><strong>À facturer</strong> : en attente de facturation</li>
+ <li><strong>Facturées</strong> : facture déjà émise</li>
+ <li><strong>Sans frais</strong> : clôturée sans encaissement ni facture</li>
+ <li><strong>Annulées</strong> : missions annulées</li>
+ <li><strong>Archivées</strong> : missions archivées (visibilité activable)</li>
+ </ul>
 </div>
 
 <div class="function">
-  <h3><span class="num">141</span>Désarchiver une mission</h3>
-  <p class="desc">Remettre une mission archivée dans la liste dispatch standard (cas erreur d'archivage, besoin de re-traiter).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Sur une mission archivée, bouton « Désarchiver » (menu actions)</li>
-    <li>Confirmation</li>
-    <li>archived_at = null → réapparaît dans dispatch</li>
-  </ol>
+ <h3><span class="num">141</span>Désarchiver une mission</h3>
+ <p class="desc">Remettre une mission archivée dans la liste dispatch standard (cas erreur d'archivage, besoin de re-traiter).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Sur une mission archivée, bouton « Désarchiver » (menu actions)</li>
+ <li>Confirmation</li>
+ <li>La mission réapparaît dans le tableau Dispatch</li>
+ </ol>
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
-<!-- F1. ENCAISSEMENT BUREAU                                 -->
+<!-- F1. ENCAISSEMENT BUREAU -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">F. Encaissement bureau (passage caisse)</h1>
 
 <div class="function">
-  <h3><span class="num">145</span>Encaisser un client au passage caisse</h3>
-  <p class="desc">Quand un client se présente au bureau pour payer (sans mission ouverte associée OU pour une mission existante).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Va sur 💵 « Finance » → ou direct <code>/encaissement</code></li>
-    <li>Page 0 : saisis la plaque du véhicule</li>
-    <li>L'app cherche auto une mission ouverte (cf 146)</li>
-    <li>Continue le workflow standard (vehicule → marque/modèle → motif → adresse → montant → paiement → client)</li>
-  </ol>
+ <h3><span class="num">145</span>Encaisser un client au passage caisse</h3>
+ <p class="desc">Quand un client se présente au bureau pour payer (sans mission ouverte associée OU pour une mission existante).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Va sur 💵 « Finance » → ou direct <code>/encaissement</code></li>
+ <li>Page 0 : saisis la plaque du véhicule</li>
+ <li>L'app cherche auto une mission ouverte (cf 146)</li>
+ <li>Continue le workflow standard (vehicule → marque/modèle → motif → adresse → montant → paiement → client)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">146</span>Auto-détection mission ouverte par plaque</h3>
-  <p class="desc">Si une mission est ouverte pour cette plaque (en parc ou en cours), un bandeau vert te le signale.</p>
-  <p class="label">Comment ça marche</p>
-  <ol>
-    <li>Tu saisis la plaque (ex: 2DXW357)</li>
-    <li>Bandeau vert apparaît : « 💡 Mission ouverte trouvée pour cette plaque #10000XXX · source · status »</li>
-    <li>Détails : source, montant à percevoir, marque/modèle, client</li>
-    <li>Bouton « 💳 Encaisser cette mission → » redirige vers encaissement précomplété (plaque, marque, modèle, montant, adresse, motif tous remplis)</li>
-    <li>Si la mission n'est pas la bonne, ignore le bandeau et continue en flow standalone</li>
-  </ol>
+ <h3><span class="num">146</span>Auto-détection mission ouverte par plaque</h3>
+ <p class="desc">Si une mission est ouverte pour cette plaque (en parc ou en cours), un bandeau vert te le signale.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Tu saisis la plaque (ex: 2DXW357)</li>
+ <li>Bandeau vert apparaît : « 💡 Mission ouverte trouvée pour cette plaque #10000XXX · source · status »</li>
+ <li>Détails : source, montant à percevoir, marque/modèle, client</li>
+ <li>Bouton « 💳 Encaisser cette mission → » redirige vers encaissement précomplété (plaque, marque, modèle, montant, adresse, motif tous remplis)</li>
+ <li>Si la mission n'est pas la bonne, ignore le bandeau et continue en flow standalone</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">147</span>Encaisser via Sumup</h3>
-  <p class="desc">Paiement par carte bancaire via terminal Sumup (Bancontact / Visa / MasterCard).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Page paiement → choisis « Sumup »</li>
-    <li>L'app lance Sumup (terminal physique ou app mobile)</li>
-    <li>Le client tape sa carte</li>
-    <li>Polling auto du statut paiement (max 60 sec)</li>
-    <li>Si OK → encaissement validé + référence Sumup stockée</li>
-    <li>Si échec → choisis un autre mode (cash, Bancontact manuel, etc.)</li>
-  </ol>
+ <h3><span class="num">147</span>Encaisser via Sumup</h3>
+ <p class="desc">Paiement par carte bancaire via terminal Sumup (Bancontact / Visa / MasterCard).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Page paiement → choisis « Sumup »</li>
+ <li>L'app lance Sumup (terminal physique ou app mobile)</li>
+ <li>Le client tape sa carte</li>
+ <li>Polling auto du statut paiement (max 60 sec)</li>
+ <li>Si OK → encaissement validé + référence Sumup stockée</li>
+ <li>Si échec → choisis un autre mode (cash, Bancontact manuel, etc.)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">148</span>Encaisser en cash / Bancontact / virement</h3>
-  <p class="desc">Autres modes de paiement disponibles.</p>
-  <p class="label">Modes disponibles</p>
-  <ul>
-    <li><strong>Cash</strong> : entre direct dans la caisse de l'user (registre)</li>
-    <li><strong>Sumup manuel</strong> : si Sumup auto échoue</li>
-    <li><strong>Bancontact</strong> : note manuelle (paiement physique avec preuve)</li>
-    <li><strong>Virement</strong> : marqué comme attendu, à valider quand argent reçu</li>
-    <li><strong>Unpaid</strong> : enregistré mais pas encore payé (devis envoyé)</li>
-  </ul>
+ <h3><span class="num">148</span>Encaisser en cash / Bancontact / virement</h3>
+ <p class="desc">Autres modes de paiement disponibles.</p>
+ <p class="label">Modes disponibles</p>
+ <ul>
+ <li><strong>Cash</strong> : entre direct dans la caisse de l'user (registre)</li>
+ <li><strong>Sumup manuel</strong> : si Sumup auto échoue</li>
+ <li><strong>Bancontact</strong> : note manuelle (paiement physique avec preuve)</li>
+ <li><strong>Virement</strong> : marqué comme attendu, à valider quand argent reçu</li>
+ <li><strong>Unpaid</strong> : enregistré mais pas encore payé (devis envoyé)</li>
+ </ul>
 </div>
 
 <div class="function">
-  <h3><span class="num">149</span>Envoyer un reçu email au client</h3>
-  <p class="desc">Le client reçoit automatiquement un reçu par email après paiement (si email saisi).</p>
-  <p class="label">Comment ça marche</p>
-  <ol>
-    <li>Quand tu valides l'encaissement, si client_email est rempli :</li>
-    <li>Email automatique envoyé avec :
-      <ul>
-        <li>Référence intervention</li>
-        <li>Montant + mode de paiement</li>
-        <li>Plaque + marque/modèle</li>
-        <li>Adresse intervention</li>
-        <li>Nom du chauffeur</li>
-      </ul>
-    </li>
-    <li>Template HTML responsive (lisible mobile + desktop)</li>
-  </ol>
+ <h3><span class="num">149</span>Envoyer un reçu email au client</h3>
+ <p class="desc">Le client reçoit automatiquement un reçu par email après paiement (si email saisi).</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Quand tu valides l'encaissement, si client_email est rempli :</li>
+ <li>Email automatique envoyé avec :
+ <ul>
+ <li>Référence intervention</li>
+ <li>Montant + mode de paiement</li>
+ <li>Plaque + marque/modèle</li>
+ <li>Adresse intervention</li>
+ <li>Nom du chauffeur</li>
+ </ul>
+ </li>
+ <li>Template HTML responsive (lisible mobile + desktop)</li>
+ </ol>
 </div>
 
 <div class="function">
-  <h3><span class="num">150</span>Voir les encaissements récents</h3>
-  <p class="desc">Vue d'ensemble des encaissements (le tien si tu es chauffeur, tous si admin).</p>
-  <p class="label">Comment faire</p>
-  <ol>
-    <li>Va sur <code>/encaissements</code> (avec un s)</li>
-    <li>Liste paginée (max 200) des derniers encaissements</li>
-    <li>Filtres par mode paiement, chauffeur, date</li>
-    <li>Inclut aussi : avances de fonds, transferts entre collègues, paiements Odoo</li>
-  </ol>
+ <h3><span class="num">150</span>Voir les encaissements récents</h3>
+ <p class="desc">Vue d'ensemble des encaissements (le tien si tu es chauffeur, tous si admin).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Va sur <code>/encaissements</code> (avec un s)</li>
+ <li>Liste paginée (max 200) des derniers encaissements</li>
+ <li>Filtres par mode paiement, chauffeur, date</li>
+ <li>Inclut aussi : avances de fonds, transferts entre collègues, paiements </li>
+ </ol>
 </div>
 
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
-  <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 28/05/2026</p>
-  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 28/05/2026</p>
+ <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 
 </body>
