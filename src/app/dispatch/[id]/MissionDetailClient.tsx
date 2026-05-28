@@ -455,7 +455,6 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
 
   async function submit() {
     if (!depotId) { setError('Sélectionne un dépôt'); return }
-    if (!zoneKey) { setError('Sélectionne une zone de parc'); return }
     setSubmitting(true); setError(null)
     try {
       const r = await fetch(`/api/missions/${missionId}/force-status`, {
@@ -464,7 +463,9 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
         body:    JSON.stringify({
           status:          'parked',
           depot_depart_id: depotId,
-          parc_zone_key:   zoneKey,
+          // Zone optionnelle : null si dépôt sans zones (uniquement Pepinster
+          // a des zones aujourd hui ; les autres entrepots deposent sans zone).
+          parc_zone_key:   zoneKey || null,
         }),
       })
       const j = await r.json()
@@ -504,7 +505,18 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
             </div>
 
             <div>
-              <label className="block text-ink-secondary text-xs font-semibold mb-1.5">Zone du parc</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-ink-secondary text-xs font-semibold">Zone du parc <span className="text-ink-muted font-normal">(optionnel)</span></label>
+                {zoneKey && (
+                  <button type="button" onClick={() => setZoneKey('')}
+                    className="text-xs text-ink-muted hover:text-ink underline">
+                    Effacer
+                  </button>
+                )}
+              </div>
+              <p className="text-ink-muted text-[11px] mb-2">
+                Seul Pepinster a des zones. Pour les autres dépôts, laisse vide.
+              </p>
               <div className="grid grid-cols-4 gap-2">
                 {zones.map(z => (
                   <button key={z.key}
@@ -528,7 +540,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
                 className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm font-medium">
                 Annuler
               </button>
-              <button onClick={submit} disabled={submitting || !depotId || !zoneKey}
+              <button onClick={submit} disabled={submitting || !depotId}
                 className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
                 {submitting ? '⏳ ...' : 'Forcer en parc'}
               </button>
