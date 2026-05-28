@@ -11,6 +11,7 @@
     { "path": "/api/cron/auto-archive",              "schedule": "0 3 * * *"    },
     { "path": "/api/cron/sync-mission-pdf",          "schedule": "30 3 * * *"   },
     { "path": "/api/cron/auto-dispatch-tick",        "schedule": "* * * * *"    },
-    { "path": "/api/cron/mg-to-avp",                 "schedule": "0 4 * * *"    }
+    { "path": "/api/cron/mg-to-avp",                 "schedule": "0 4 * * *"    },
+    { "path": "/api/cron/cleanup-test-data",         "schedule": "0 * * * *"    }
   ]
 }

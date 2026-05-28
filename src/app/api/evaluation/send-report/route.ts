@@ -148,6 +148,24 @@ export async function POST() {
   try {
     await sendEmail(RECIPIENT, subject, html, 'VD Soft Évaluation')
     console.log(`[evaluation/send-report] Email envoye a ${RECIPIENT} pour user ${user.id}`)
+
+    // Marque la session : declenche la purge auto 6h plus tard via cron
+    // /api/cron/cleanup-test-data. Si l user renvoie son rapport apres une
+    // purge precedente, on remet purged_at a NULL pour qu une nouvelle purge
+    // ait lieu.
+    const now = new Date().toISOString()
+    const { error: sessionErr } = await sb
+      .from('evaluation_sessions')
+      .upsert({
+        user_id:        user.id,
+        report_sent_at: now,
+        purged_at:      null,
+        updated_at:     now,
+      }, { onConflict: 'user_id' })
+    if (sessionErr) {
+      console.error('[evaluation/send-report] Erreur upsert evaluation_sessions:', sessionErr.message)
+    }
+
     return NextResponse.json({ ok: true, recipient: RECIPIENT, count: stats.total })
   } catch (e: any) {
     console.error('[evaluation/send-report] Erreur email:', e.message)
