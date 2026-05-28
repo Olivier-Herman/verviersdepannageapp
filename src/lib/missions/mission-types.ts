@@ -32,31 +32,45 @@ export const isTrajetVide = (t: string | null | undefined): boolean =>
 export const isTransport = (t: string | null | undefined): boolean =>
   normalizeType(t) === 'transport'
 
+/** True si Relivraison (vehicule en parc -> client). */
+export const isRelivraison = (t: string | null | undefined): boolean =>
+  ['rel', 'relivraison'].includes(normalizeType(t))
+
+/** True si Remorquage avec etape parc puis relivraison (REM+REL). */
+export const isRemRel = (t: string | null | undefined): boolean =>
+  ['rem+rel', 'rem_rel', 'remrel'].includes(normalizeType(t))
+
 /** Variantes DB pour filter .in() Supabase (qui ne supporte pas insensible
  *  casse nativement). Utilise avec .in('mission_type', TYPE_VARIANTS[canon]). */
 export const TYPE_VARIANTS: Record<string, string[]> = {
-  remorquage:  ['rem', 'REM', 'Rem', 'remorquage', 'Remorquage', 'REMORQUAGE'],
-  depannage:   ['dsp', 'DSP', 'Dsp', 'depannage', 'Depannage', 'DEPANNAGE', 'reparation_place', 'REPARATION_PLACE'],
-  trajet_vide: ['trajet_vide', 'TRAJET_VIDE'],
-  transport:   ['transport', 'Transport', 'TRANSPORT'],
+  remorquage:   ['rem', 'REM', 'Rem', 'remorquage', 'Remorquage', 'REMORQUAGE'],
+  depannage:    ['dsp', 'DSP', 'Dsp', 'depannage', 'Depannage', 'DEPANNAGE', 'reparation_place', 'REPARATION_PLACE'],
+  trajet_vide:  ['trajet_vide', 'TRAJET_VIDE'],
+  transport:    ['transport', 'Transport', 'TRANSPORT'],
+  relivraison:  ['rel', 'REL', 'Rel', 'relivraison', 'Relivraison', 'RELIVRAISON'],
+  remorquage_relivraison: ['rem+rel', 'REM+REL', 'rem_rel', 'REM_REL'],
 }
 
 /** Label court par defaut (REM, DSP, Transport, TVD). */
 export const TYPE_LABEL_SHORT: Record<string, string> = {
-  remorquage:       'REM',
-  depannage:        'DSP',
-  reparation_place: 'DSP', // alias
-  transport:        'Transport',
-  trajet_vide:      'TVD',
+  remorquage:             'REM',
+  depannage:              'DSP',
+  reparation_place:       'DSP', // alias
+  transport:              'Transport',
+  trajet_vide:            'TVD',
+  relivraison:            'REL',
+  remorquage_relivraison: 'REM+REL',
 }
 
 /** Label long avec emoji pour notif / affichage detaille. */
 export const TYPE_LABEL_LONG: Record<string, string> = {
-  remorquage:       '🚛 Remorquage',
-  depannage:        '🔧 Dépannage',
-  reparation_place: '🔧 Dépannage', // alias
-  transport:        '🚐 Transport',
-  trajet_vide:      '📍 Trajet à vide',
+  remorquage:             '🚛 Remorquage',
+  depannage:              '🔧 Dépannage',
+  reparation_place:       '🔧 Dépannage', // alias
+  transport:              '🚐 Transport',
+  trajet_vide:            '📍 Trajet à vide',
+  relivraison:            '🚚 Relivraison',
+  remorquage_relivraison: '🚛 Remorquage + 🚚 Relivraison',
 }
 
 /** Helper pour recuperer le label depuis n importe quelle valeur DB.

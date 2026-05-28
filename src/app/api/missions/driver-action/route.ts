@@ -5,6 +5,8 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
 import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
+import { isRemorquage } from '@/lib/missions/mission-types'
 
 export const maxDuration = 60   // hook PDF via waitUntil peut prendre 30s+
 
@@ -133,7 +135,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -293,6 +295,17 @@ export async function POST(req: Request) {
     if (closing_data.discharge_motif)         updatePayload.discharge_motif       = closing_data.discharge_motif
     if (closing_data.discharge_name)          updatePayload.discharge_name        = closing_data.discharge_name
     if (closing_data.discharge_sig)           updatePayload.discharge_sig         = closing_data.discharge_sig
+  }
+
+  // ── Auto-conversion REM -> REM+REL au moment du parked ──────────────────
+  // Olivier 2026-05-28 : "Un REM mis en parc doit devenir REM+REL si une
+  // relivraison est possible dans le scenario (Assistance, SNC paye/pris en
+  // charge, Accident, Siabis Couvert)". Cela permet ensuite la creation d une
+  // mission REL (relivraison) depuis le hub QR ou la fiche dispatch.
+  if (updatePayload.status === 'parked' && isRemorquage(mission.mission_type)) {
+    if (isRelEligibleSource(mission.source, (mission as any).snc_scenario)) {
+      updatePayload.mission_type = 'REM+REL'
+    }
   }
 
   const { data: updated, error: updateError } = await supabase

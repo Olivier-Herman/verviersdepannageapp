@@ -78,7 +78,12 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
                                ? input.sourceOverride.trim()
                                : parent.source,
       source_format:         'auto_rel',
-      mission_type:          'remorquage',
+      // Olivier 2026-05-28 : la mission REL a son propre type 'REL' (et son
+      // propre tarif source/relivraison configurable dans /admin/tarifs).
+      // Avant : 'remorquage' -> l estimation utilisait le tarif REM, ce qui
+      // est faux car la REL a un tarif distinct (un seul trajet parc->client,
+      // pas de prise en charge initiale).
+      mission_type:          'REL',
       incident_type:         'relivraison',
       incident_description:  `Relivraison après mise en parc — Mission parent : ${parent.external_id || parent.id.slice(0, 8)}`,
       // Client + véhicule hérités

@@ -9,7 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
-import { normalizeType, isRemorquage, isDsp, isTrajetVide } from '@/lib/missions/mission-types'
+import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
 
 /**
  * Determine si une date/heure tombe dans la plage "majorée" IPA :
@@ -237,7 +237,15 @@ interface MissionLike {
 
 /** Map mission_type DB vers le canonical attendu en source_tariffs (lowercase). */
 function canonicalType(t: string | null): string | null {
-  if (isRemorquage(t)) return 'remorquage'
+  // Olivier 2026-05-28 :
+  // - REL = mission enfant de relivraison (vehicule en parc -> client). A son
+  //   propre tarif source/relivraison configurable dans /admin/tarifs.
+  // - REM+REL = mission parente (remorquage avec etape parc, REL prevue ensuite).
+  //   Reste facturee au tarif REM (le remorquage initial est la facture du
+  //   parent ; la relivraison est facturee separement sur la fiche REL enfant).
+  if (isRelivraison(t)) return 'relivraison'
+  if (isRemRel(t))      return 'remorquage'
+  if (isRemorquage(t))  return 'remorquage'
   if (isDsp(t))         return 'depannage'
   if (isTrajetVide(t))  return 'trajet_vide'
   if (!t) return null
