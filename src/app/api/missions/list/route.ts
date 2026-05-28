@@ -71,7 +71,13 @@ export async function GET(req: Request) {
   } else if (status === 'in_progress') {
     query = query.in('status', ['in_progress', 'delivering'])
   } else if (status === 'parked') {
-    query = query.eq('status', 'parked')
+    // Olivier 2026-05-28 : onglet "En parc" du Dispatch = uniquement les
+    // missions REM+REL (vehicule en parc en attente de relivraison). Les
+    // autres missions parquees (Mal Garee, Saisie, Rodeo, etc.) sont gerees
+    // depuis Fourriere, pas depuis Dispatch.
+    query = query
+      .eq('status', 'parked')
+      .in('mission_type', ['REM+REL', 'rem+rel', 'REM_REL', 'rem_rel'])
   } else if (status === 'completed') {
     // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
     // chauffeur, en attente de validation employe facturation. Le tampon
@@ -140,20 +146,23 @@ export async function GET(req: Request) {
   }
 
   // Compteurs par statut (exclu les archivees pour coherence avec la liste)
+  // On selectionne aussi mission_type pour pouvoir compter uniquement les
+  // REM+REL dans l onglet "En parc" (cf filter ligne 73-83).
   const { data: counts } = await supabase
     .from('incoming_missions')
-    .select('status')
+    .select('status, mission_type')
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
     .is('archived_at', null)
 
+  const PARKED_REM_REL_VARIANTS = new Set(['REM+REL', 'rem+rel', 'REM_REL', 'rem_rel'])
   const counters = {
     new:         counts?.filter(m => m.status === 'new').length         || 0,
     dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => ['in_progress','delivering'].includes(m.status)).length || 0,
-    parked:      counts?.filter(m => m.status === 'parked').length || 0,
+    parked:      counts?.filter(m => m.status === 'parked' && PARKED_REM_REL_VARIANTS.has(m.mission_type || '')).length || 0,
     completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }

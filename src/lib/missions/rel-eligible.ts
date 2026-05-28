@@ -14,11 +14,11 @@
 //   - police_rodeo            : idem
 //   - police_saisie           : pas de relivraison
 //   - police_avp              : pas de relivraison
-//   - prive                   : le remorquage prive ne fait pas de step parc
-// SNC : eligible uniquement si snc_scenario = 'rem_client' ou 'rem_depot'
-// (= cas ou il y a remorquage, donc parc puis relivraison possible).
-// SC (sia_couvert) : eligible.
-// Toutes les autres sources (assistance : touring, ethias, axa, etc.) : eligibles.
+// SNC : eligible uniquement si snc_scenario = 'rem_depot'. Olivier 2026-05-28 :
+// "SNC rem_client est un REM Direct et donc pas un REM+REL" — le vehicule
+// est livre directement chez le client, pas de step parc.
+// SC (sia_couvert), Accident, Assistance (Touring, Ethias, AXA...) : eligibles.
+// Prive : eligible aussi (Olivier 2026-05-28).
 
 const POLICE_NON_RELIVRABLES = new Set([
   'police_mg',
@@ -33,11 +33,9 @@ export function isRelEligibleSource(
 ): boolean {
   if (!source) return false
   const s = source.toLowerCase().trim()
-  if (s === 'prive') return false
   if (POLICE_NON_RELIVRABLES.has(s)) return false
   if (s === 'police_snc') {
-    const scen = (sncScenario || '').toLowerCase()
-    return scen === 'rem_client' || scen === 'rem_depot'
+    return (sncScenario || '').toLowerCase() === 'rem_depot'
   }
   return true
 }

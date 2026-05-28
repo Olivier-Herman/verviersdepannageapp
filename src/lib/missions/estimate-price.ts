@@ -260,6 +260,16 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     return emptyEstimate(source, missionType || 'inconnu', 'Source ou type mission manquant')
   }
 
+  // === MISSION REL (relivraison) ===
+  // Olivier 2026-05-28 : tarif par defaut = on refacture uniquement les km
+  // parcourus, au tarif km de la source. Pas de km inclus, pas de prise en
+  // charge, pas de treuil. Le tarif km est lu en priorite depuis la grille
+  // source_tariff_lines (kind=SERV-KM) configuree pour cette source (memes
+  // valeurs que pour la REM). Fallback : source_tariffs.km_extra_price.
+  if (missionType === 'relivraison') {
+    return await estimateRelivraisonPrice(mission, source)
+  }
+
   // === OVERRIDE FORFAIT NEGOCIE (toute source) ===
   // Si le dispatcher a saisi un amount_to_collect (TVAC) lors de la creation,
   // ce forfait remplace TOUT le calcul tarifaire (1 seule ligne "Forfait
@@ -852,6 +862,139 @@ async function estimateLinesTemplate(
     tariff_doc_name:  tariff.source_document_name,
     breakdown,
     template_lines:   templateLines,
+  }
+}
+
+/**
+ * Tarification REL (relivraison) : on facture uniquement les kilometres
+ * parcourus (parc -> client) au tarif km de la source. Pas de prise en
+ * charge, pas de treuil, pas de km inclus, pas de gardiennage.
+ *
+ * Olivier 2026-05-28 : "Par defaut on refacture les kilometres au tarif
+ * kilometrique sans aucun km inclu et sans prise en charge ni Treuil, etc...
+ * On ne reprend que les kilometres."
+ *
+ * Source du prix au km (par ordre de priorite) :
+ *   1. source_tariff_lines avec kind='SERV-KM' pour cette source (default_price
+ *      ou default_price_majore selon plage horaire)
+ *   2. source_tariffs.km_extra_price (mode forfait/brackets)
+ */
+async function estimateRelivraisonPrice(
+  mission: MissionLike,
+  source:  string,
+): Promise<PriceEstimate> {
+  const sb = createAdminClient()
+  const today = new Date().toISOString().slice(0, 10)
+
+  // 1. Lookup prix km via source_tariff_lines (kind=SERV-KM)
+  const { data: kmLinesRaw } = await sb
+    .from('source_tariff_lines')
+    .select('name, default_price, default_price_majore, effective_to')
+    .eq('source', source)
+    .eq('kind', 'SERV-KM')
+    .lte('effective_from', today)
+  const kmLine = (kmLinesRaw || []).find(l => !l.effective_to || l.effective_to >= today)
+
+  // 2. Fallback : source_tariffs.km_extra_price (mode forfait)
+  let kmPriceNormal: number | null = null
+  let kmPriceMajored: number | null = null
+  let priceLabel = 'Kilomètres relivraison'
+  if (kmLine && kmLine.default_price != null) {
+    kmPriceNormal  = Number(kmLine.default_price)
+    kmPriceMajored = kmLine.default_price_majore != null ? Number(kmLine.default_price_majore) : null
+    priceLabel = kmLine.name || priceLabel
+  } else {
+    const { data: tariffsRaw } = await sb
+      .from('source_tariffs')
+      .select('km_extra_price, effective_to')
+      .eq('source', source)
+      .eq('mission_type', 'remorquage')
+      .lte('effective_from', today)
+      .order('effective_from', { ascending: false })
+    const t = (tariffsRaw || []).find(t => !t.effective_to || t.effective_to >= today)
+    if (t && t.km_extra_price != null) {
+      kmPriceNormal = Number(t.km_extra_price)
+    }
+  }
+
+  if (kmPriceNormal == null || kmPriceNormal <= 0) {
+    return emptyEstimate(source, 'relivraison',
+      `Aucun tarif kilometrique configure pour la source ${source}. Ajoute une ligne SERV-KM dans /admin/tarifs pour cette source.`)
+  }
+
+  // 3. Determine le prix km a appliquer selon majoration horaire eventuelle
+  let surchargePct = 0
+  let surchargeNote = ''
+  const interventionDateStr = mission.intervention_date || mission.received_at
+  if (interventionDateStr) {
+    try {
+      const applicable = await getApplicableSurcharges({
+        source:            mission.source,
+        client_name:       mission.client_name,
+        mission_type:      mission.mission_type,
+        incident_type:     mission.incident_type || null,
+        parent_mission_id: mission.parent_mission_id || null,
+      }, new Date(interventionDateStr))
+      if (applicable.length > 0) {
+        surchargePct = applicable.reduce((s, x) => s + Number(x.rate_pct || 0), 0)
+        surchargeNote = applicable.map(x => `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`).join(', ')
+      }
+    } catch {}
+  }
+  const isMajored = surchargePct > 0
+  const kmPrice = (isMajored && kmPriceMajored != null) ? kmPriceMajored : kmPriceNormal
+
+  // 4. Recupere les kilometres
+  let km = 0
+  if (mission.charged_km != null) {
+    km = Number(mission.charged_km)
+  } else if (mission.total_km != null) {
+    km = Number(mission.total_km)
+  } else if (mission.distance_km != null) {
+    km = Number(mission.distance_km)
+  } else if (mission.id) {
+    try {
+      const computed = await computeMissionKm(mission.id)
+      km = computed.chargedKm ?? computed.totalKm ?? 0
+    } catch {}
+  }
+  km = Math.max(0, Math.ceil(km))
+
+  const total = Math.round(km * kmPrice * 100) / 100
+
+  // 5. Si la ligne SERV-KM avait un prix majore distinct, la majoration est
+  // deja incluse dans le prix unitaire (pas de SERV-MAJ a ajouter). Sinon on
+  // applique la majoration sur le subtotal.
+  const hasOwnMajorPrice = kmLine && kmLine.default_price_majore != null
+  const surchargeEur = !hasOwnMajorPrice && isMajored
+    ? Math.round(total * surchargePct) / 100
+    : 0
+  const finalTotal = total + surchargeEur
+
+  return {
+    ok:            true,
+    source,
+    mission_type:  'relivraison',
+    pricing_mode:  'forfait',
+    forfait:       total,
+    km_charged:    km,
+    km_inclus:     0,
+    km_extra:      km,
+    km_extra_eur:  total,
+    parc_jours:    0,
+    parc_eur:      0,
+    subtotal_eur:  total,
+    surcharge_pct: hasOwnMajorPrice ? 0 : surchargePct,
+    surcharge_eur: surchargeEur,
+    total_eur:     finalTotal,
+    is_autofac:    false,
+    tariff_id:     `${source}-relivraison-km`,
+    tariff_doc_path: null,
+    tariff_doc_name: null,
+    breakdown: [
+      { label: priceLabel, amount: total, note: `${km} km × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
+      ...(surchargeEur > 0 ? [{ label: `Majoration horaire (+${surchargePct}%)`, amount: surchargeEur, note: surchargeNote }] : []),
+    ],
   }
 }
 
