@@ -43,7 +43,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .from('incoming_missions')
     .select(`
       id, external_id, source, mission_type, status, snc_scenario,
-      vehicle_plate, destination_address, destination_city,
+      parc_zone_key,
+      vehicle_plate, destination_address, destination_city, redelivery_address,
       incident_address, incident_lat, incident_lng
     `)
     .eq('id', params.id)
@@ -53,11 +54,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // 2. Verification eligibilite
+  // Olivier 2026-05-28 : ajout Appel Prive REM depot (zone Transit).
   const isParked = parent.status === 'parked'
   const isRemRel = parent.mission_type === 'REM+REL'
   const isSiabisRemDepot = ['police_snc', 'sia_couvert'].includes(parent.source || '')
                         && parent.snc_scenario === 'rem_depot'
-  if (!isParked || !(isRemRel || isSiabisRemDepot)) {
+  const isPriveDepot = parent.source === 'prive' && parent.parc_zone_key === 'Transit'
+  if (!isParked || !(isRemRel || isSiabisRemDepot || isPriveDepot)) {
     return NextResponse.json({
       ok: false,
       error: `Mission non eligible pour relivraison (statut=${parent.status}, type=${parent.mission_type})`,

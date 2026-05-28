@@ -81,6 +81,7 @@ export default function QrMissionClient({
   const [toast,        setToast]        = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [confirmingReassign, setConfirmingReassign] = useState(false)
   // Modales
+  const [showRelConfirm, setShowRelConfirm] = useState(false)
   const [showNoCharge,   setShowNoCharge]   = useState(false)
   const [noChargeReason, setNoChargeReason] = useState('')
   const [actionMenu,     setActionMenu]     = useState<null | 'transfer' | 'domaine' | 'scratch'>(null)
@@ -293,6 +294,46 @@ export default function QrMissionClient({
           </div>
         )}
 
+        {/* Modal confirmation Relivrer — affiche adresse de relivraison +
+            véhicule pour éviter les erreurs (mauvais véhicule de même marque/modele).
+            Olivier 2026-05-28. */}
+        {showRelConfirm && (
+          <div className="bg-blue-50 border-2 border-blue-300 rounded-2xl p-4 space-y-3">
+            <p className="text-blue-900 font-semibold text-sm">🚛 Confirmer la relivraison</p>
+            <div className="bg-surface border rounded-xl p-3 space-y-1.5">
+              <div>
+                <p className="text-ink-muted text-xs uppercase tracking-wider">Véhicule à relivrer</p>
+                <p className="text-ink font-mono font-bold">{mission.vehicle_plate || '—'}</p>
+                {brandModel && <p className="text-ink-secondary text-sm">{brandModel}</p>}
+              </div>
+              <div className="pt-2 border-t">
+                <p className="text-ink-muted text-xs uppercase tracking-wider">Adresse de relivraison</p>
+                {address ? (
+                  <p className="text-ink text-sm leading-tight">{address}</p>
+                ) : (
+                  <p className="text-amber-700 text-xs italic">
+                    ⚠ Pas d&apos;adresse définie — contacte le dispatcher avant de partir
+                  </p>
+                )}
+              </div>
+            </div>
+            <p className="text-blue-800 text-xs">
+              Merci de confirmer qu&apos;il s&apos;agit bien du véhicule que tu souhaites relivrer.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowRelConfirm(false)} disabled={working}
+                className="flex-1 py-2.5 bg-surface border text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-hover transition">
+                Annuler
+              </button>
+              <button onClick={() => { setShowRelConfirm(false); doRelivrer(false) }}
+                disabled={working}
+                className="flex-1 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-bold transition disabled:opacity-40">
+                {working ? <><Loader2 size={16} className="inline animate-spin" /> ...</> : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Modal Restituer sans frais (motif obligatoire) */}
         {showNoCharge && (
           <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
@@ -391,14 +432,16 @@ export default function QrMissionClient({
         )}
 
         {/* Actions principales — affichage conditionnel par permission */}
-        {!confirmingReassign && !showNoCharge && !actionMenu && (
+        {!confirmingReassign && !showNoCharge && !actionMenu && !showRelConfirm && (
           <div className="space-y-3 pt-2">
 
-            {/* Relivrer (driver seulement) */}
+            {/* Relivrer (driver seulement) — ouvre une modal de confirmation
+                avec l adresse de relivraison pour eviter qu un chauffeur prenne
+                par erreur un vehicule de meme marque/modele (Olivier 2026-05-28). */}
             {canRelivrer && (
-              <button onClick={() => doRelivrer(false)} disabled={working}
+              <button onClick={() => setShowRelConfirm(true)} disabled={working}
                 className="w-full py-4 bg-brand hover:opacity-90 text-white rounded-2xl text-base font-bold transition disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-brand/20">
-                {working ? <><Loader2 size={20} className="animate-spin" /> Création...</> : <><Truck size={20} /> Relivrer ce véhicule</>}
+                <Truck size={20} /> Relivrer ce véhicule
               </button>
             )}
 
