@@ -55,6 +55,7 @@ interface Permissions {
   canFourriereActions: boolean   // Transferer / Domaine / Scratch / Imprimer
   canOpenOdoo:         boolean   // Lien direct Odoo (besoin odoo_api_key)
   canConsulterDossier: boolean   // Consulter le dossier (admin/superadmin/dispatcher)
+  canRelivrerAsDispatcher: boolean  // Dispatcher peut creer REL + selectionner chauffeur cible
 }
 
 const DOMAINE_STATE_ID = 13   // Zone I — Domaine
@@ -66,7 +67,7 @@ const fmtDate = (iso: string | null) => {
 }
 
 export default function QrMissionClient({
-  mission, existingRel, currentUser, permissions, consultUrl, isElligibleForRel,
+  mission, existingRel, currentUser, permissions, consultUrl, isElligibleForRel, activeDrivers = [],
 }: {
   mission:            Mission
   existingRel:        ExistingRel | null
@@ -74,6 +75,7 @@ export default function QrMissionClient({
   permissions:        Permissions
   consultUrl:         string
   isElligibleForRel:  boolean
+  activeDrivers?:     { id: string; name: string }[]   // pour selecteur Relivrer dispatcher
 }) {
   const router = useRouter()
   const [working,      setWorking]      = useState(false)
@@ -82,6 +84,8 @@ export default function QrMissionClient({
   const [confirmingReassign, setConfirmingReassign] = useState(false)
   // Modales
   const [showRelConfirm, setShowRelConfirm] = useState(false)
+  // Selecteur chauffeur (dispatcher uniquement) — vide = auto-assign au scanneur
+  const [selectedDriverId, setSelectedDriverId] = useState<string>('')
   const [showNoCharge,   setShowNoCharge]   = useState(false)
   const [noChargeReason, setNoChargeReason] = useState('')
   const [actionMenu,     setActionMenu]     = useState<null | 'transfer' | 'domaine' | 'scratch'>(null)
@@ -96,8 +100,10 @@ export default function QrMissionClient({
   const address    = [mission.destination_address, mission.destination_city].filter(Boolean).join(', ')
   const entryDate  = mission.parked_at || mission.intervention_date || mission.received_at
 
-  // Bouton "Relivrer" disponible si mission eligible REL + user driver
-  const canRelivrer = isElligibleForRel && currentUser.isDriver
+  // Bouton "Relivrer" disponible si mission eligible REL + (driver OU dispatcher avec selecteur).
+  // Olivier 2026-05-28 : ajout dispatcher avec selecteur chauffeur.
+  const canRelivrer = isElligibleForRel && (currentUser.isDriver || permissions.canRelivrerAsDispatcher)
+  const isDispatcherMode = !currentUser.isDriver && permissions.canRelivrerAsDispatcher
   // Existing REL deja prise par quelqu un d autre que le scanneur
   const existingTakenByOther = existingRel?.assigned_to && existingRel.assigned_to !== currentUser.id
 
@@ -106,12 +112,22 @@ export default function QrMissionClient({
   const canRestituer = mission.status === 'parked' && RESTITUABLE_SOURCES.includes(mission.source || '')
 
   async function doRelivrer(confirmReassign: boolean = false) {
+    // En mode dispatcher : selection chauffeur obligatoire
+    if (isDispatcherMode && !selectedDriverId) {
+      setError('Sélectionne un chauffeur à qui assigner la relivraison')
+      return
+    }
     setWorking(true); setError(null)
     try {
       const r = await fetch(`/api/missions/${mission.id}/qr-rel-action`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ confirm_reassign: confirmReassign }),
+        body:    JSON.stringify({
+          confirm_reassign:        confirmReassign,
+          // Olivier 2026-05-28 : si dispatcher, on envoie le chauffeur cible
+          // (sinon backend auto-assign au scanneur).
+          assigned_to_driver_id:   isDispatcherMode ? selectedDriverId : undefined,
+        }),
       })
       const j = await r.json()
       if (!r.ok || !j.ok) {
@@ -296,6 +312,7 @@ export default function QrMissionClient({
 
         {/* Modal confirmation Relivrer — affiche adresse de relivraison +
             véhicule pour éviter les erreurs (mauvais véhicule de même marque/modele).
+            Si dispatcher : selecteur chauffeur cible.
             Olivier 2026-05-28. */}
         {showRelConfirm && (
           <div className="bg-blue-50 border-2 border-blue-300 rounded-2xl p-4 space-y-3">
@@ -317,16 +334,41 @@ export default function QrMissionClient({
                 )}
               </div>
             </div>
+
+            {/* Selecteur chauffeur en mode dispatcher */}
+            {isDispatcherMode && (
+              <div>
+                <label className="block text-blue-900 text-xs font-semibold uppercase tracking-wider mb-1">
+                  Assigner à un chauffeur <span className="text-critical">*</span>
+                </label>
+                <select
+                  value={selectedDriverId}
+                  onChange={e => setSelectedDriverId(e.target.value)}
+                  className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-blue-500"
+                >
+                  <option value="">— Sélectionner un chauffeur —</option>
+                  {activeDrivers.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                <p className="text-blue-700 text-xs mt-1">
+                  💡 Le chauffeur recevra une notification push avec la mission REL assignée.
+                </p>
+              </div>
+            )}
+
             <p className="text-blue-800 text-xs">
-              Merci de confirmer qu&apos;il s&apos;agit bien du véhicule que tu souhaites relivrer.
+              {isDispatcherMode
+                ? `Merci de confirmer le véhicule et le chauffeur sélectionné.`
+                : `Merci de confirmer qu'il s'agit bien du véhicule que tu souhaites relivrer.`}
             </p>
             <div className="flex gap-2">
-              <button onClick={() => setShowRelConfirm(false)} disabled={working}
+              <button onClick={() => { setShowRelConfirm(false); setSelectedDriverId(''); setError(null) }} disabled={working}
                 className="flex-1 py-2.5 bg-surface border text-ink-secondary rounded-xl text-sm font-medium hover:bg-surface-hover transition">
                 Annuler
               </button>
               <button onClick={() => { setShowRelConfirm(false); doRelivrer(false) }}
-                disabled={working}
+                disabled={working || (isDispatcherMode && !selectedDriverId)}
                 className="flex-1 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-bold transition disabled:opacity-40">
                 {working ? <><Loader2 size={16} className="inline animate-spin" /> ...</> : 'Confirmer'}
               </button>

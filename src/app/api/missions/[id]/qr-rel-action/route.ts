@@ -28,13 +28,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const user = session.user as any
   const userId   = user.id
   const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
-  const isDriver = userRoles.includes('driver') || userRoles.some(r => ['admin', 'superadmin'].includes(r))
-  if (!isDriver) {
-    return NextResponse.json({ ok: false, error: 'Seul un chauffeur peut prendre une REL' }, { status: 403 })
+  const isAdminOrDispatcher = userRoles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))
+  const isDriver = userRoles.includes('driver')
+  if (!isDriver && !isAdminOrDispatcher) {
+    return NextResponse.json({ ok: false, error: 'Acces refuse' }, { status: 403 })
   }
 
   const body = await req.json().catch(() => ({}))
   const confirmReassign = !!body.confirm_reassign
+  // Olivier 2026-05-28 : dispatcher peut assigner a un chauffeur specifique.
+  // Sinon (chauffeur scanneur) : auto-assignation au scanneur (userId).
+  const targetDriverId: string = (isAdminOrDispatcher && body.assigned_to_driver_id)
+    ? String(body.assigned_to_driver_id)
+    : userId
 
   const sb = createAdminClient()
 
@@ -80,7 +86,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   if (existingRel) {
     // REL deja existante : verifier l assigne actuel
-    if (existingRel.assigned_to && existingRel.assigned_to !== userId && !confirmReassign) {
+    if (existingRel.assigned_to && existingRel.assigned_to !== targetDriverId && !confirmReassign) {
       // Conflit : demande confirmation au scanneur
       let currentAssigneeName = 'un autre chauffeur'
       const { data: u } = await sb.from('users').select('name').eq('id', existingRel.assigned_to).single()
@@ -93,31 +99,40 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       }, { status: 409 })
     }
     // Reassigner si necessaire
-    wasReassigned = existingRel.assigned_to && existingRel.assigned_to !== userId
+    wasReassigned = Boolean(existingRel.assigned_to && existingRel.assigned_to !== targetDriverId)
     relMissionId = existingRel.id
-    if (existingRel.assigned_to !== userId) {
+    if (existingRel.assigned_to !== targetDriverId) {
       await sb.from('incoming_missions')
         .update({
-          assigned_to: userId,
+          assigned_to: targetDriverId,
           status:      'assigned',
           assigned_at: new Date().toISOString(),
         })
         .eq('id', relMissionId)
       await sb.from('mission_logs').insert({
         mission_id: relMissionId,
-        actor_id:   userId,
+        actor_id:   userId,  // l acteur reste l user qui a clique (peut etre dispatcher)
         action:     'assigned',
         notes:      wasReassigned
-          ? `Reassigne via scan QR REL (anciennement assigne a ${existingRel.assigned_to})`
-          : 'Assigne via scan QR REL',
-        metadata:   { qr_scan: true, reassigned: wasReassigned },
+          ? `Reassigne via scan QR REL a ${targetDriverId} (anciennement ${existingRel.assigned_to}) par ${userId}`
+          : `Assigne via scan QR REL a ${targetDriverId} par ${userId}`,
+        metadata:   { qr_scan: true, reassigned: wasReassigned, assigned_by: userId, assigned_to: targetDriverId },
       })
       // Notifier l ancien assigne qu il n est plus dessus
       if (wasReassigned && existingRel.assigned_to) {
         sendPushToUser(existingRel.assigned_to, {
           title: 'Mission REL reprise',
-          body:  `La relivraison ${existingRel.external_id} a ete reprise par un autre chauffeur via scan QR.`,
+          body:  `La relivraison ${existingRel.external_id} a ete reassignee.`,
           url:   `/dispatch/${relMissionId}`,
+          tag:   `mission-rel-${relMissionId}`,
+        }).catch(() => {})
+      }
+      // Si dispatcher a assigne a un chauffeur tiers, notifier le nouveau driver
+      if (targetDriverId !== userId) {
+        sendPushToUser(targetDriverId, {
+          title: '🚛 Nouvelle relivraison assignee',
+          body:  `Tu as ete assigne(e) a la REL ${existingRel.external_id}.`,
+          url:   `/mission/${relMissionId}`,
           tag:   `mission-rel-${relMissionId}`,
         }).catch(() => {})
       }
@@ -129,33 +144,38 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       parkAddress:        parent.incident_address || '',
       parkLat:            parent.incident_lat,
       parkLng:            parent.incident_lng,
-      redeliveryAddress: [parent.destination_address, parent.destination_city].filter(Boolean).join(', '),
+      redeliveryAddress: parent.redelivery_address || [parent.destination_address, parent.destination_city].filter(Boolean).join(', '),
     })
     if (!result) {
       return NextResponse.json({ ok: false, error: 'Echec creation REL' }, { status: 500 })
     }
     relMissionId = result.id
-    // Assigner immediatement au scanneur
+    // Assigner immediatement au targetDriver (scanneur OU chauffeur selectionne par dispatcher)
     await sb.from('incoming_missions')
       .update({
-        assigned_to: userId,
+        assigned_to: targetDriverId,
         status:      'assigned',
         assigned_at: new Date().toISOString(),
       })
       .eq('id', relMissionId)
     await sb.from('mission_logs').insert({
       mission_id: relMissionId,
-      actor_id:   userId,
+      actor_id:   userId,  // l acteur reste l user qui a clique
       action:     'assigned',
-      notes:      'Cree et assigne via scan QR REL',
-      metadata:   { qr_scan: true, created_via_qr: true },
+      notes:      `Cree via scan QR REL et assigne a ${targetDriverId} par ${userId}`,
+      metadata:   { qr_scan: true, created_via_qr: true, assigned_by: userId, assigned_to: targetDriverId },
     })
   }
+
+  // Redirect : dispatcher -> fiche dispatch (suivi). Driver scanneur -> fiche mission chauffeur.
+  const redirectUrl = (isAdminOrDispatcher && targetDriverId !== userId)
+    ? `/dispatch/${relMissionId}`
+    : `/mission/${relMissionId}`
 
   return NextResponse.json({
     ok:           true,
     mission_id:   relMissionId,
-    redirect_url: `/mission/${relMissionId}`,
+    redirect_url: redirectUrl,
     reassigned:   wasReassigned,
   })
 }

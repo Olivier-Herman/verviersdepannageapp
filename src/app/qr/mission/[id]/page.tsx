@@ -102,6 +102,19 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const canFourriereActions = isAdmin || hasFourriereModule  // Transferer/Domaine/Scratch/Imprimer
   const canOpenOdoo = hasOdooKey
   const canConsulterDossier = isAdmin || isDispatcher          // Olivier 2026-05-27
+  const canRelivrerAsDispatcher = isAdmin || isDispatcher      // Olivier 2026-05-28 : dispatcher peut creer REL + assigner driver
+
+  // Si dispatcher : charge la liste des drivers actifs pour le selecteur d assignation REL
+  let activeDrivers: { id: string; name: string }[] = []
+  if (canRelivrerAsDispatcher && isElligibleForRel) {
+    const { data: drivers } = await sb
+      .from('users')
+      .select('id, name')
+      .or('role.eq.driver,roles.cs.{driver}')
+      .eq('active', true)
+      .order('name', { ascending: true })
+    activeDrivers = (drivers || []).map(d => ({ id: d.id, name: d.name || 'Sans nom' }))
+  }
 
   // URL de consultation : dispatchers vont sur la fiche dispatch, drivers
   // sur la fiche mission chauffeur. Si on a a la fois driver et admin,
@@ -158,7 +171,9 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         canFourriereActions,
         canOpenOdoo,
         canConsulterDossier,
+        canRelivrerAsDispatcher,
       }}
+      activeDrivers={activeDrivers}
       consultUrl={consultUrl}
       isElligibleForRel={isElligibleForRel}
     />
