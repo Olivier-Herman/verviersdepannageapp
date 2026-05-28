@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Eye, Truck, Loader2, AlertTriangle, CheckCircle2, Building2, AlertOctagon, Printer, ExternalLink, MapPin, Calendar, FileText } from 'lucide-react'
 import { FOURRIERE_ZONES, SCRATCH_STATE_ID } from '@/lib/fourriere'
+import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 
 interface Mission {
   id:                 string
@@ -406,28 +407,9 @@ export default function QrMissionClient({
               <>
                 <button
                   onClick={() => {
-                    // Mapping source -> motif label affiche dans encaissement
-                    const MOTIF_LABELS: Record<string, string> = {
-                      'police_mg':       'Mal Garée',
-                      'police_rodeo':    'Rodéo',
-                      'police_avp':      'AVP',
-                      'police_accident': 'Accident',
-                      'police_saisie':   'Saisie',
-                      'police_snc':      'Siabis',
-                      'sia_couvert':     'Siabis',
-                      'prive':           'Intervention Privée',
-                    }
-                    const motifLabel = MOTIF_LABELS[mission.source || ''] || ''
-                    const motifPrecision = `${motifLabel} — ${(mission.vehicle_plate || '').trim().toUpperCase()}`.trim()
-                    const loc = [mission.incident_address, mission.incident_city].filter(Boolean).join(', ')
-                    const url = `/encaissement?prefill_mission_id=${mission.id}`
-                      + `&prefill_plate=${encodeURIComponent(mission.vehicle_plate || '')}`
-                      + `&prefill_brand=${encodeURIComponent(mission.vehicle_brand || '')}`
-                      + `&prefill_model=${encodeURIComponent(mission.vehicle_model || '')}`
-                      + `&prefill_location=${encodeURIComponent(loc)}`
-                      + (motifLabel ? `&prefill_motif_label=${encodeURIComponent(motifLabel)}` : '')
-                      + `&prefill_motif_precision=${encodeURIComponent(motifPrecision)}`
-                      + `&return_to=/dispatch/${mission.id}`
+                    const url = buildEncaissementUrl(mission as any, {
+                      returnTo: `/dispatch/${mission.id}`,
+                    })
                     window.location.href = url
                   }}
                   disabled={working}

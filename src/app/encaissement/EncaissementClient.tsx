@@ -9,6 +9,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
+import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import type { VehicleMatch } from '@/types/vehicles'
 
 // ─────────────────────────────────────────────────────────
@@ -253,6 +254,7 @@ export default function EncaissementClient({
     id: string; mission_number: number | null; source: string;
     mission_type: string | null; vehicle_brand: string | null; vehicle_model: string | null;
     amount_to_collect: number | null; status: string; client_name: string | null;
+    incident_address: string | null; incident_city: string | null;
   }>(null)
   // Debounce 400ms sur changement de plaque (mode standalone uniquement).
   useEffect(() => {
@@ -724,12 +726,18 @@ export default function EncaissementClient({
             <button
               type="button"
               onClick={() => {
-                const url = `/encaissement?prefill_mission_id=${openMission.id}`
-                  + `&prefill_plate=${encodeURIComponent(plate)}`
-                  + `&prefill_brand=${encodeURIComponent(openMission.vehicle_brand || '')}`
-                  + `&prefill_model=${encodeURIComponent(openMission.vehicle_model || '')}`
-                  + (openMission.amount_to_collect != null ? `&prefill_amount=${openMission.amount_to_collect}` : '')
-                  + `&return_to=/mission/${openMission.id}`
+                const url = buildEncaissementUrl({
+                  id:               openMission.id,
+                  source:           openMission.source,
+                  vehicle_plate:    plate,
+                  vehicle_brand:    openMission.vehicle_brand,
+                  vehicle_model:    openMission.vehicle_model,
+                  incident_address: openMission.incident_address,
+                  incident_city:    openMission.incident_city,
+                }, {
+                  amount:   openMission.amount_to_collect,
+                  returnTo: `/mission/${openMission.id}`,
+                })
                 window.location.href = url
               }}
               className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition"

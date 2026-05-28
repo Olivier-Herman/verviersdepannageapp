@@ -49,6 +49,7 @@ export async function GET(req: Request) {
       id, mission_number, external_id, source, mission_type, status,
       vehicle_plate, vehicle_brand, vehicle_model,
       client_name, billed_to_name,
+      incident_address, incident_city,
       amount_to_collect, payment_amount, payment_collected_at, payment_mode,
       received_at, intervention_date, parked_at, created_at
     `)

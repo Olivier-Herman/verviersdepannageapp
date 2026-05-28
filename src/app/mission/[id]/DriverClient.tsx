@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
+import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
@@ -1625,7 +1626,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           ? (isToInvoice
               ? <div className="bg-amber-600/20 border border-amber-500/30 rounded-2xl p-4 text-center"><p className="text-amber-400 font-semibold">📄 Facture à envoyer</p></div>
               : <div className="bg-green-600/20 border border-green-500/30 rounded-2xl p-4 text-center"><p className="text-green-400 font-semibold">✅ Payée</p></div>)
-          : <a href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${Math.max(0, requiredAmount - (M.payment_amount ?? 0))}&return_to=/mission/${M.id}`} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-brand text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
+          : <a href={buildEncaissementUrl(M as any, { amount: Math.max(0, requiredAmount - (M.payment_amount ?? 0)), returnTo: `/mission/${M.id}` })} onClick={() => setTimeout(() => setPaid(true), 3000)} className="w-full flex items-center justify-center py-4 bg-brand text-white font-semibold rounded-2xl">💳 Ouvrir l'encaissement</a>}
       </div>
       <div className="px-4 py-4 border-t border">
         <button onClick={() => setScreen('main')} className="w-full py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">← Retour</button>
@@ -2297,7 +2298,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 </p>
                 <div className="flex flex-col gap-2">
                   <a
-                    href={`/encaissement?prefill_mission_id=${M.id}&prefill_plate=${plate(M.vehicle_plate || '')}&prefill_brand=${M.vehicle_brand || ''}&prefill_model=${M.vehicle_model || ''}&prefill_amount=${Math.max(0, requiredAmount - (M.payment_amount ?? 0))}&return_to=/mission/${M.id}`}
+                    href={buildEncaissementUrl(M as any, { amount: Math.max(0, requiredAmount - (M.payment_amount ?? 0)), returnTo: `/mission/${M.id}` })}
                     onClick={() => setTimeout(() => setPaid(true), 3000)}
                     className="w-full flex items-center justify-center py-3 bg-brand text-white font-semibold rounded-xl text-sm"
                   >
