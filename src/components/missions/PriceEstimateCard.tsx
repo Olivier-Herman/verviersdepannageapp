@@ -98,37 +98,101 @@ export default function PriceEstimateCard({ missionId }: Props) {
       </button>
 
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-surface-hover space-y-2">
-          {data.breakdown.map((line, i) => (
-            <div key={i} className="flex items-baseline justify-between gap-2 text-xs">
-              <div className="flex-1">
-                <span className="text-ink-secondary">{line.label}</span>
-                {line.note && <span className="text-ink-faint ml-2">— {line.note}</span>}
-              </div>
-              <span className={line.amount && line.amount > 0 ? 'font-medium' : 'text-ink-faint'}>
-                {line.amount != null ? fmt(line.amount) : '—'}
-              </span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-surface-hover">
-            <span className="text-ink-secondary text-xs">Sous-total HT</span>
-            <span className="font-medium">{fmt(data.subtotal_eur)}</span>
-          </div>
-          {data.surcharge_pct > 0 && (
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="text-ink-faint">Majoration ({data.surcharge_pct}%)</span>
-              <span className="font-medium">+{fmt(data.surcharge_eur)}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-surface-hover">
-            <span className="font-semibold">Total HTVA</span>
-            <span className="font-display font-bold text-base">{fmt(data.total_eur)}</span>
-          </div>
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="text-ink-muted">Total TVAC ({Math.round(TVA_RATE * 100)}%)</span>
-            <span className="font-medium text-ink-muted">{fmt(toTvac(data.total_eur))}</span>
-          </div>
-          <div className="text-[10px] text-ink-faint pt-2">
+        <div className="mt-3 pt-3 border-t border-surface-hover space-y-3">
+          {(() => {
+            // Olivier 2026-05-28 : 2 sections distinctes (Depannage / Gardiennage)
+            // + sous-totaux + total general. Classification par label (Parc /
+            // Gardiennage / SERV-PARC).
+            const isGardiennage = (label: string) =>
+              /\b(parc|gardiennage|serv-parc)\b/i.test(label)
+            const depannageLines  = data.breakdown.filter(l => !isGardiennage(l.label))
+            const gardiennageLines = data.breakdown.filter(l =>  isGardiennage(l.label))
+
+            // La majoration s applique au depannage (pas au gardiennage)
+            const depannageBase = depannageLines.reduce((s, l) => s + (l.amount || 0), 0)
+            const depannageSubtotal = depannageBase + (data.surcharge_eur || 0)
+            const gardiennageSubtotal = gardiennageLines.reduce((s, l) => s + (l.amount || 0), 0)
+
+            return (
+              <>
+                {/* SECTION DEPANNAGE */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🚛</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-ink-secondary">Tarif dépannage</span>
+                  </div>
+                  {depannageLines.length === 0 && (
+                    <p className="text-xs text-ink-faint italic">Aucune ligne dépannage</p>
+                  )}
+                  {depannageLines.map((line, i) => (
+                    <div key={i} className="flex items-baseline justify-between gap-2 text-xs">
+                      <div className="flex-1">
+                        <span className="text-ink-secondary">{line.label}</span>
+                        {line.note && <span className="text-ink-faint ml-2">— {line.note}</span>}
+                      </div>
+                      <span className={line.amount && line.amount > 0 ? 'font-medium' : 'text-ink-faint'}>
+                        {line.amount != null ? fmt(line.amount) : '—'}
+                      </span>
+                    </div>
+                  ))}
+                  {data.surcharge_pct > 0 && (
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-ink-faint">Majoration ({data.surcharge_pct}%)</span>
+                      <span className="font-medium">+{fmt(data.surcharge_eur)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-surface-hover">
+                    <span className="text-ink-secondary text-xs font-semibold">Sous-total dépannage HT</span>
+                    <span className="font-medium text-sm">{fmt(depannageSubtotal)}</span>
+                  </div>
+                </div>
+
+                {/* SECTION GARDIENNAGE */}
+                <div className="space-y-2 pt-2 border-t border-surface-hover">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🅿️</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-ink-secondary">Tarif gardiennage</span>
+                  </div>
+                  {gardiennageLines.length === 0 && (
+                    <p className="text-xs text-ink-faint italic">
+                      Pas de gardiennage (véhicule pas en parc ou tarif non configuré)
+                    </p>
+                  )}
+                  {gardiennageLines.map((line, i) => (
+                    <div key={i} className="flex items-baseline justify-between gap-2 text-xs">
+                      <div className="flex-1">
+                        <span className="text-ink-secondary">{line.label}</span>
+                        {line.note && <span className="text-ink-faint ml-2">— {line.note}</span>}
+                      </div>
+                      <span className={line.amount && line.amount > 0 ? 'font-medium' : 'text-ink-faint'}>
+                        {line.amount != null ? fmt(line.amount) : '—'}
+                      </span>
+                    </div>
+                  ))}
+                  {gardiennageLines.length > 0 && (
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-surface-hover">
+                      <span className="text-ink-secondary text-xs font-semibold">Sous-total gardiennage HT</span>
+                      <span className="font-medium text-sm">{fmt(gardiennageSubtotal)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* TOTAL GENERAL */}
+                <div className="pt-2 border-t-2 border-ink/20 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold">Total général HTVA</span>
+                    <span className="font-display font-bold text-base">{fmt(data.total_eur)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-ink-muted">Total TVAC ({Math.round(TVA_RATE * 100)}%)</span>
+                    <span className="font-medium text-ink-muted">{fmt(toTvac(data.total_eur))}</span>
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+
+          <div className="text-[10px] text-ink-faint pt-2 border-t border-surface-hover">
             Tarif source {data.source.toUpperCase()} / {data.mission_type}
             {data.tariff_doc_name && (
               <>
@@ -144,7 +208,7 @@ export default function PriceEstimateCard({ missionId }: Props) {
               </>
             )}
           </div>
-          <p className="text-[10px] text-ink-faint italic pt-1">
+          <p className="text-[10px] text-ink-faint italic">
             ⚠️ Estimation indicative. Le montant facturé final peut différer (négociation, conditions spéciales, etc.).
           </p>
         </div>

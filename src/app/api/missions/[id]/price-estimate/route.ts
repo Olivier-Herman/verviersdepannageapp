@@ -69,8 +69,53 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         missionRef,
         variant,
       })
-      const totalHtva = sncLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
-      // Format PriceEstimate compatible avec PriceEstimateCard
+      const depannageTotal = sncLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
+
+      // Olivier 2026-05-28 : le SNC ne calculait pas le gardiennage du tout.
+      // On va chercher la ligne SERV-PARC configuree pour cette source dans
+      // source_tariff_lines, et on calcule les jours auto depuis parked_at
+      // (fallback received_at pour les missions legacy sans parked_at).
+      let parcJours = 0
+      let parcPrixJour = 0
+      let parcLineLabel = 'Frais de gardiennage (par jour)'
+      const parkedRef = mission.parked_at || mission.received_at
+      if (parkedRef) {
+        const today = new Date().toISOString().slice(0, 10)
+        const { data: parcLines } = await sb
+          .from('source_tariff_lines')
+          .select('name, default_price, effective_to')
+          .eq('source', mission.source)
+          .eq('kind', 'SERV-PARC')
+          .lte('effective_from', today)
+        const parcLine = (parcLines || []).find(l => !l.effective_to || l.effective_to >= today)
+        if (parcLine && parcLine.default_price != null) {
+          const parcStart = new Date(parkedRef)
+          const parcEnd = new Date()
+          const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
+          parcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+          parcPrixJour = Number(parcLine.default_price)
+          parcLineLabel = parcLine.name || parcLineLabel
+        }
+      }
+      const parcEur = parcJours * parcPrixJour
+      const totalHtva = depannageTotal + parcEur
+
+      const breakdown = sncLines.map(l => ({
+        label: l.name,
+        amount: l.qty * l.price_unit,
+        note: l.qty > 1 ? `${l.qty} × ${l.price_unit.toFixed(4)} €` : undefined,
+      }))
+      // Ajoute la ligne gardiennage si applicable
+      if (parcPrixJour > 0) {
+        breakdown.push({
+          label: parcLineLabel,
+          amount: parcEur > 0 ? parcEur : 0,
+          note: parcJours > 0
+            ? `${parcJours} jour(s) × ${parcPrixJour.toFixed(2)} €`
+            : `${parcPrixJour.toFixed(2)} €/jour (entree parc non datee)`,
+        })
+      }
+
       return NextResponse.json({
         ok:            true,
         source:        mission.source,
@@ -81,21 +126,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         km_inclus:     0,
         km_extra:      0,
         km_extra_eur:  0,
-        parc_jours:    0,
-        parc_eur:      0,
+        parc_jours:    parcJours,
+        parc_eur:      parcEur,
         subtotal_eur:  totalHtva,
         surcharge_pct: metrics.is_majored ? 50 : 0,
-        surcharge_eur: 0,  // deja integre dans les prix majores
+        surcharge_eur: 0,
         total_eur:     totalHtva,
         is_autofac:    false,
         tariff_id:     `snc-${variant}`,
         tariff_doc_path: null,
         tariff_doc_name: null,
-        breakdown: sncLines.map(l => ({
-          label: l.name,
-          amount: l.qty * l.price_unit,
-          note: l.qty > 1 ? `${l.qty} × ${l.price_unit.toFixed(4)} €` : undefined,
-        })),
+        breakdown,
       })
     } catch (e: any) {
       console.error('[price-estimate SNC]', e.message)
