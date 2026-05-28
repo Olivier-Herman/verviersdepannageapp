@@ -252,50 +252,54 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     return emptyEstimate(source, missionType || 'inconnu', 'Source ou type mission manquant')
   }
 
-  // === SOURCE 'prive' (Appel Privé) ===
-  // Particulier qui appelle directement (pas police, pas assistance).
-  //   Cas 1 : forfait TVAC saisi -> 1 seule ligne, HT = TVAC/1.21
-  //   Cas 2 : pas de forfait -> bascule du calcul sur 'police_accident'
-  //           (avec ses majorations horaires). La source originale 'prive'
-  //           reste preservee dans l estimate retourne pour le tracking.
-  if (source === 'prive') {
-    const amountTvac = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
-      ? Number(mission.amount_to_collect)
-      : null
+  // === OVERRIDE FORFAIT NEGOCIE (toute source) ===
+  // Si le dispatcher a saisi un amount_to_collect (TVAC) lors de la creation,
+  // ce forfait remplace TOUT le calcul tarifaire (1 seule ligne "Forfait
+  // negocie"). S applique aux Appels Prive, Police Accident, Mal Garee, etc.
+  // — partout ou le dispatcher peut negocier un montant direct avec le client.
+  // Olivier 2026-05-28 : avant, override seulement pour 'prive', ce qui faisait
+  // afficher en parallele le calcul police complet + le forfait en TVAC =
+  // incoherence (HTVA 427.85 € + TVAC 250 €).
+  const amountTvac = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
+    ? Number(mission.amount_to_collect)
+    : null
 
-    if (amountTvac != null) {
-      const amountHt = Math.round((amountTvac / 1.21) * 100) / 100
-      return {
-        ok:            true,
-        source:        'prive',
-        mission_type:  missionType,
-        pricing_mode:  'forfait',
-        forfait:       amountHt,
-        km_charged:    0,
-        km_inclus:     0,
-        km_extra:      0,
-        km_extra_eur:  0,
-        parc_jours:    0,
-        parc_eur:      0,
-        subtotal_eur:  amountHt,
-        surcharge_pct: 0,
-        surcharge_eur: 0,
-        total_eur:     amountHt,
-        // Olivier 2026-05-27 (Fix C) : amount TVAC exact saisi par l user.
-        // Evite l aller-retour HT*1.21 qui derive (103.31 * 1.21 = 125.0051 -> 125.01 KO).
-        // Le frontend doit utiliser total_tvac_exact en priorite pour l affichage TVAC.
-        total_tvac_exact: amountTvac,
-        is_autofac:    false,
-        tariff_id:     'prive-forfait',
-        tariff_doc_path: null,
-        tariff_doc_name: null,
-        breakdown: [
-          { label: 'Forfait négocié', amount: amountHt, note: `${amountTvac.toFixed(2)} € TVAC saisi à la création` },
-        ],
-      }
+  if (amountTvac != null) {
+    const amountHt = Math.round((amountTvac / 1.21) * 100) / 100
+    return {
+      ok:            true,
+      source,
+      mission_type:  missionType,
+      pricing_mode:  'forfait',
+      forfait:       amountHt,
+      km_charged:    0,
+      km_inclus:     0,
+      km_extra:      0,
+      km_extra_eur:  0,
+      parc_jours:    0,
+      parc_eur:      0,
+      subtotal_eur:  amountHt,
+      surcharge_pct: 0,
+      surcharge_eur: 0,
+      total_eur:     amountHt,
+      // Olivier 2026-05-27 (Fix C) : amount TVAC exact saisi par l user.
+      // Evite l aller-retour HT*1.21 qui derive (103.31 * 1.21 = 125.0051 -> 125.01 KO).
+      total_tvac_exact: amountTvac,
+      is_autofac:    false,
+      tariff_id:     `${source}-forfait-negocie`,
+      tariff_doc_path: null,
+      tariff_doc_name: null,
+      breakdown: [
+        { label: 'Forfait négocié', amount: amountHt, note: `${amountTvac.toFixed(2)} € TVAC saisi à la création (remplace le tarif ${source})` },
+      ],
     }
+  }
 
-    // Pas de forfait -> tarif police_accident + majorations
+  // === SOURCE 'prive' (Appel Privé) — fallback sans forfait ===
+  // Pas de forfait saisi -> on bascule sur le tarif police_accident
+  // (avec ses majorations horaires). La source originale 'prive' reste
+  // preservee dans l estimate retourne pour le tracking.
+  if (source === 'prive') {
     const fallback = await estimateMissionPrice({ ...mission, source: 'police_accident' })
     return {
       ...fallback,
