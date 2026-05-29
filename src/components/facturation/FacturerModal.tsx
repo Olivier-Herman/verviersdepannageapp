@@ -452,7 +452,7 @@ function MissionBlock({
           <span className="text-xs px-2 py-0.5 rounded bg-ink-faint/15 text-ink-muted" title={m.no_charge_reason || undefined}>
             {m.status === 'completed'
               ? (m.no_charge_at
-                  ? `🚫 sans frais${m.no_charge_reason ? ' — ' + m.no_charge_reason : ''}`
+                  ? `🚫 Annulée${m.no_charge_reason ? ' — ' + m.no_charge_reason : ''}`
                   : m.invoice_method === 'auto'
                     ? 'auto-facturée'
                     : `facturée ${m.invoice_number || ''}`)
@@ -786,7 +786,7 @@ function MissionBlock({
             onClick={onNoCharge}
             className="w-full py-2 bg-transparent hover:bg-surface-hover disabled:opacity-50 border border-dashed text-ink-secondary hover:text-ink rounded-xl text-xs font-medium transition"
           >
-            🚫 Intervention sans frais
+            🚫 Annuler la mission
           </button>
         </div>
       )}
@@ -1042,7 +1042,7 @@ export default function FacturerModal({
                 onClick={() => askNoCharge(readyIds, 'chaîne complète')}
                 className="w-full py-2 bg-transparent hover:bg-surface-hover disabled:opacity-50 border border-dashed text-ink-secondary hover:text-ink rounded-xl text-xs font-medium transition"
               >
-                🚫 Toute la chaîne sans frais
+                🚫 Annuler toute la chaîne
               </button>
             </div>
           )}
@@ -1062,9 +1062,9 @@ export default function FacturerModal({
           <div onClick={e => e.stopPropagation()}
                className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
             <div>
-              <h3 className="text-ink font-semibold text-base">🚫 Intervention sans frais</h3>
+              <h3 className="text-ink font-semibold text-base">🚫 Annuler la mission</h3>
               <p className="text-ink-muted text-xs mt-1">Pour {noChargePrompt.label}</p>
-              <p className="text-ink-secondary text-xs mt-2">Motif obligatoire (min 4 caractères) — ex: Momo, geste commercial, ami, etc.</p>
+              <p className="text-ink-secondary text-xs mt-2">Motif obligatoire (min 4 caractères) — ex: geste commercial, dossier en litige, etc.</p>
             </div>
             <textarea
               autoFocus
@@ -1092,7 +1092,7 @@ export default function FacturerModal({
                 onClick={confirmNoCharge}
                 className="flex-1 py-2.5 bg-warning hover:opacity-90 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
               >
-                {busy ? '⏳…' : 'Valider sans frais'}
+                {busy ? '⏳…' : 'Confirmer l\'annulation'}
               </button>
             </div>
           </div>
