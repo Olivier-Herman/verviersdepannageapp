@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 const SUPABASE_PROJECT = 'kwfhddlebmssymbflxgj'
-const APK_FILENAME     = 'vd-soft-android-v1.0.0.apk'
+const APK_FILENAME     = 'vd-soft-android-v1.0.1.apk'
 
 const APK_URL = `https://${SUPABASE_PROJECT}.supabase.co/storage/v1/object/public/app-builds/${APK_FILENAME}`
 

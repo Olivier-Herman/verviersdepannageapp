@@ -5,8 +5,10 @@
 //
 // Stack :
 //   - @capacitor/camera : capture photo
-//   - @capacitor-community/image-to-text : OCR (Apple Vision sur iOS,
-//     ML Kit sur Android)
+//   - iOS     : plugin Swift custom `TextRecognition` (App/App/TextRecognitionPlugin.swift)
+//               base sur Apple Vision (VNRecognizeTextRequest)
+//   - Android : @capacitor-community/image-to-text (ML Kit Text Recognition v2)
+//               Necessite google-services.json dans android/app/
 //
 // Web fallback : le bouton n est pas affiche cote web (ne fonctionne qu en
 // app native iOS/Android). Cf hidden via Capacitor.isNativePlatform().
@@ -80,21 +82,17 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
     try {
       // Dynamic imports : aucun crash si lance dans un navigateur web
       const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
-      const { registerPlugin } = await import('@capacitor/core')
-
-      // Plugin custom defini cote iOS (App/App/TextRecognitionPlugin.swift)
-      // Utilise Apple Vision Framework (VNRecognizeTextRequest).
-      // Pour Android, faudra coder un equivalent Kotlin/Java via Google ML Kit.
-      const TextRecognition = registerPlugin<{
-        detectText(opts: { filename: string }): Promise<{ textDetections: { text: string; confidence: number }[] }>
-      }>('TextRecognition')
+      const { Capacitor, registerPlugin } = await import('@capacitor/core')
+      const platform = Capacitor.getPlatform()
 
       const photo = await Camera.getPhoto({
         quality:        85,
         // Crop iOS seulement quand on cible explicitement le VIN (besoin
         // d isoler sur plaquette de portiere). Pour 'plate' et 'any' on
         // garde rapide — l user peut toujours refaire une photo si besoin.
-        allowEditing:   mode === 'vin',
+        // Sur Android, allowEditing peut etre instable selon les versions
+        // de la Camera Intent — on desactive pour fiabilite.
+        allowEditing:   mode === 'vin' && platform === 'ios',
         resultType:     CameraResultType.Uri,
         source:         CameraSource.Camera,
         saveToGallery:  false,
@@ -102,8 +100,22 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
       })
       setTaken(true)
 
-      const data = await TextRecognition.detectText({ filename: photo.path! })
-      const rawDetections = data.textDetections || []
+      // Branching plateforme :
+      //  - iOS     : plugin Swift custom 'TextRecognition' (Apple Vision)
+      //  - Android : @capacitor-community/image-to-text (ML Kit v2, confidence
+      //              non fournie — on met 0.8 par defaut pour le ranking)
+      let rawDetections: { text: string; confidence?: number }[] = []
+      if (platform === 'android') {
+        const { Ocr } = await import('@capacitor-community/image-to-text')
+        const data = await Ocr.detectText({ filename: photo.path! })
+        rawDetections = (data.textDetections || []).map(d => ({ text: d.text, confidence: 0.8 }))
+      } else {
+        const TextRecognition = registerPlugin<{
+          detectText(opts: { filename: string }): Promise<{ textDetections: { text: string; confidence: number }[] }>
+        }>('TextRecognition')
+        const data = await TextRecognition.detectText({ filename: photo.path! })
+        rawDetections = data.textDetections || []
+      }
 
       // Normalisation : pour 'any' on tente les 2 modes (plate puis vin).
       const candidates: Detection[] = []
