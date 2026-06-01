@@ -24,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
   { href: '/missions-terminees', label: 'Missions terminées', icon: '📂', moduleId: 'facturation_or_missions' },
+  { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/stats',             label: 'Statistiques',        icon: '📊', moduleId: 'stats' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
@@ -69,6 +70,9 @@ export function filterNavItems(opts: {
     }
     if (item.moduleId === 'facturation_or_missions') {
       return userModules.includes('facturation') || userModules.includes('missions')
+    }
+    if (item.moduleId === 'facturation_or_admin') {
+      return isAdmin || userModules.includes('facturation')
     }
     return userModules.includes(item.moduleId)
   })

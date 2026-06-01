@@ -430,6 +430,118 @@ export async function sendAdvancePurchaseEmail(params: {
     throw new Error(`Graph sendMail (advance) error: ${err}`)
   }
 }
+
+// ─── Email : Amende / PV → boîte achat ────────────────────
+// Olivier 2026-06-01 : meme destinataire que sendAdvancePurchaseEmail (boite
+// achats Odoo) pour encodage. PV converti en PDF si image, attache directement.
+export async function sendFinePurchaseEmail(params: {
+  to:                string
+  plate:             string
+  amount:            number
+  infractionDate:    string             // ISO date
+  infractionPlace?:  string
+  infractionType?:   string
+  infractionRef?:    string
+  photoUrl:          string
+  driverName?:       string
+  missionRef?:       string
+  employeeName:      string             // qui a saisi (admin)
+  notes?:            string
+}): Promise<void> {
+  const { to, plate, amount, infractionDate, infractionPlace, infractionType,
+          infractionRef, photoUrl, driverName, missionRef, employeeName, notes } = params
+
+  // Telecharger le PV
+  const imageResponse = await fetch(photoUrl)
+  if (!imageResponse.ok) throw new Error(`Impossible de récupérer le PV : ${photoUrl}`)
+
+  const imageBuffer = await imageResponse.arrayBuffer()
+  const contentType = imageResponse.headers.get('content-type') ?? 'image/jpeg'
+
+  let attachmentBase64: string
+  let attachmentContentType: string
+  let attachmentFilename: string
+
+  if (contentType.includes('pdf')) {
+    attachmentBase64      = Buffer.from(imageBuffer).toString('base64')
+    attachmentContentType = 'application/pdf'
+    attachmentFilename    = `PV-${plate}-${Date.now()}.pdf`
+  } else {
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const pdfDoc = await PDFDocument.create()
+      const image  = contentType.includes('png')
+        ? await pdfDoc.embedPng(imageBuffer)
+        : await pdfDoc.embedJpg(imageBuffer)
+
+      const A4_W = 595, A4_H = 842
+      const ratio  = Math.min(A4_W / image.width, A4_H / image.height, 1)
+      const width  = image.width  * ratio
+      const height = image.height * ratio
+      const page   = pdfDoc.addPage([width, height])
+      page.drawImage(image, { x: 0, y: 0, width, height })
+
+      attachmentBase64      = Buffer.from(await pdfDoc.save()).toString('base64')
+      attachmentContentType = 'application/pdf'
+      attachmentFilename    = `PV-${plate}-${Date.now()}.pdf`
+    } catch {
+      attachmentBase64      = Buffer.from(imageBuffer).toString('base64')
+      attachmentContentType = contentType
+      attachmentFilename    = `PV-${plate}-${Date.now()}.jpg`
+    }
+  }
+
+  const formattedDate = new Date(infractionDate).toLocaleString('fr-BE', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  })
+
+  const subject = `PV / Amende — ${plate} — ${formatEur(amount)}${driverName ? ' — ' + driverName : ''}`
+  const html = emailLayout(`
+    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111;">PV / Amende reçu</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#888;">
+      Saisie par <strong>${employeeName}</strong> — veuillez encoder dans les achats.
+    </p>
+    <div style="background:#f8f8f8;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        ${infoRow('Immatriculation', `<strong>${plate}</strong>`)}
+        ${infoRow('Montant',         `<strong>${formatEur(amount)}</strong>`)}
+        ${infoRow('Date infraction', formattedDate)}
+        ${infractionPlace ? infoRow('Lieu',        infractionPlace) : ''}
+        ${infractionType  ? infoRow('Type',        infractionType)  : ''}
+        ${infractionRef   ? infoRow('Réf. PV',     `<strong>${infractionRef}</strong>`) : ''}
+        ${driverName      ? infoRow('Chauffeur',   `<strong>${driverName}</strong>`) : infoRow('Chauffeur', '<em>non identifié</em>')}
+        ${missionRef      ? infoRow('Mission liée', missionRef) : ''}
+        ${notes           ? infoRow('Notes',       notes) : ''}
+      </table>
+    </div>
+  `, subject)
+
+  const token = await getAppToken()
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: html },
+        toRecipients: [{ emailAddress: { address: to } }],
+        attachments: [{
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name:          attachmentFilename,
+          contentType:   attachmentContentType,
+          contentBytes:  attachmentBase64,
+        }],
+      },
+      saveToSentItems: true,
+    })
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Graph sendMail (fine) error: ${err}`)
+  }
+}
+
 // ─── Email : Rapport check véhicule non-conforme ──────────
 export async function sendCheckVehiculeNonConformeReport(data: {
   vehicleName:   string
