@@ -43,16 +43,24 @@ export async function POST(req: Request) {
     // Assigner à un chauffeur
     const { data: driver } = await supabase
       .from('users')
-      .select('id, name')
+      .select('id, name, current_truck_id')
       .eq('id', driver_id)
       .single()
 
+    // Olivier 2026-06-01 : si on assigne/reassigne a un chauffeur, on
+    // synchronise le truck_id de la mission avec le current_truck du
+    // chauffeur. Cas : la mission etait sur Franck (Vanette 3) puis on la
+    // reassigne a Momo (Plateau Iveco) -> le truck_id de la mission doit
+    // pointer vers le truck de Momo (sinon le matching amendes serait faux).
+    // Si le nouveau chauffeur n'a pas de current_truck, on remet a null
+    // (sera resaisi a sa prochaine action via le hook driver-action).
     await supabase
       .from('incoming_missions')
       .update({
         status:      'assigned',
         assigned_to: driver_id,
         assigned_at: now,
+        truck_id:    (driver as any)?.current_truck_id || null,
       })
       .eq('id', mission_id)
 
@@ -133,9 +141,12 @@ export async function POST(req: Request) {
 
   } else {
     // Retirer l'assignation (retour à new)
+    // Olivier 2026-06-01 : on remet aussi truck_id a null pour eviter une
+    // attribution erronee si la mission est ensuite reassignee a un autre
+    // chauffeur avec un autre camion.
     await supabase
       .from('incoming_missions')
-      .update({ status: 'dispatching', assigned_to: null, assigned_at: null })
+      .update({ status: 'dispatching', assigned_to: null, assigned_at: null, truck_id: null })
       .eq('id', mission_id)
 
     await supabase.from('mission_logs').insert({
