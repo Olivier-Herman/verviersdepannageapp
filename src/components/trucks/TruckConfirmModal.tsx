@@ -47,22 +47,28 @@ export function TruckConfirmModal() {
     const concerned = roles.some(r => ROLES_WITH_TRUCK.includes(r))
     if (!concerned) return
 
-    fetch('/api/users/me/current-truck')
-      .then(r => r.json())
-      .then((data: CurrentTruckState) => {
-        setState(data)
-        // Si pas de current_truck ET pas de default : ouvre direct selection
-        // Si needs_confirmation : ouvre la confirmation
-        if (!data.current_truck && !data.default_truck) {
-          // Pas de truck du tout → force selection (silent : utilisateur peut fermer)
-          setView('select')
-          loadTrucks()
-        } else if (data.needs_confirmation) {
-          // Suggere le current_truck si dispo, sinon le default
-          setView('confirm')
-        }
-      })
-      .catch(() => {})
+    // Olivier 2026-06-01 : pre-check : si l admin n a pas encore configure de
+    // depanneuses, on n affiche RIEN (pas de modal bloquant). L admin doit
+    // d abord aller sur /admin/trucks pour configurer.
+    Promise.all([
+      fetch('/api/users/me/current-truck').then(r => r.json()),
+      fetch('/api/trucks').then(r => r.json()),
+    ]).then(([currentData, trucksData]: [CurrentTruckState, { trucks: Truck[] }]) => {
+      const trucksList = trucksData?.trucks || []
+      setTrucks(trucksList)
+      setState(currentData)
+
+      // Aucune depanneuse configuree -> on ne montre rien (pas bloquant)
+      if (trucksList.length === 0) return
+
+      // Si pas de current_truck ET pas de default : ouvre selection
+      if (!currentData.current_truck && !currentData.default_truck) {
+        setView('select')
+      } else if (currentData.needs_confirmation) {
+        // Suggere le current_truck si dispo, sinon le default
+        setView('confirm')
+      }
+    }).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
 
@@ -71,8 +77,10 @@ export function TruckConfirmModal() {
       const res = await fetch('/api/trucks')
       const data = await res.json()
       setTrucks(data.trucks || [])
+      return data.trucks || []
     } catch (e: any) {
       setError(e.message)
+      return []
     }
   }
 
@@ -160,7 +168,12 @@ export function TruckConfirmModal() {
             </div>
 
             {trucks.length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-4">Chargement...</p>
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 text-center">
+                <p className="text-amber-900 font-semibold">⚠️ Aucune dépanneuse configurée</p>
+                <p className="text-amber-700 text-xs mt-2">
+                  L'administrateur n'a pas encore ajouté les dépanneuses dans <strong>/admin/trucks</strong>. Préviens-le pour qu'il les saisisse.
+                </p>
+              </div>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {trucks.map(t => (
@@ -180,13 +193,11 @@ export function TruckConfirmModal() {
 
             {error && <p className="text-red-600 text-xs text-center">⚠ {error}</p>}
 
-            {/* Permettre de fermer sans choix uniquement si on a déjà un truck */}
-            {state?.current_truck && (
-              <button onClick={() => setView('closed')} disabled={busy}
-                className="w-full py-2 text-gray-500 text-sm">
-                Plus tard
-              </button>
-            )}
+            {/* Bouton "Fermer" toujours visible (jamais bloquer l app, meme si truck non choisi) */}
+            <button onClick={() => setView('closed')} disabled={busy}
+              className="w-full py-2 text-gray-500 text-sm hover:text-gray-700">
+              {trucks.length === 0 ? 'Fermer' : 'Plus tard'}
+            </button>
           </>
         )}
       </div>
