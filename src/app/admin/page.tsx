@@ -158,6 +158,8 @@ export default async function AdminPage() {
           desc="Anciennes missions / documents archivés." />
         <Card href="/admin/cash" icon={Wallet} label="Caisses"
           desc="Caisses chauffeurs, mouvements, contrôle." />
+        <Card href="/admin/amendes" icon={FileText} label="Amendes / PV"
+          desc="Liste des PV reçus, stats par chauffeur, attribution manuelle." />
         <Card href="/admin/tgr" icon={Truck} label="Service TGR"
           desc="Configuration du service Touring Gros Recouvrement." />
       </Group>

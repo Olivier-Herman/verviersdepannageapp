@@ -25,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
   { href: '/missions-terminees', label: 'Missions terminées', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
+  { href: '/admin/trucks',      label: 'Dépanneuses',         icon: '🚚', moduleId: 'admin' },
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/stats',             label: 'Statistiques',        icon: '📊', moduleId: 'stats' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
