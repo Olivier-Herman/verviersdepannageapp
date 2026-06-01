@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Shield, Wallet, X } from 'lucide-react'
+import { T }    from '@/lib/i18n/T'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -37,12 +39,12 @@ interface Mission {
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<string, { label: string; dot: string; row: string }> = {
-  assigned:    { label: 'À accepter', dot: 'bg-blue-400',   row: 'border-l-blue-500'   },
-  accepted:    { label: 'Acceptée',   dot: 'bg-indigo-400', row: 'border-l-indigo-500' },
-  in_progress: { label: 'En cours',   dot: 'bg-orange-400', row: 'border-l-orange-500' },
-  parked:      { label: 'En dépôt',   dot: 'bg-yellow-400', row: 'border-l-yellow-500' },
-  completed:   { label: 'Terminée',   dot: 'bg-green-400',  row: 'border-l-green-500'  },
+const STATUS_CONFIG: Record<string, { label: string; i18nKey: string; dot: string; row: string }> = {
+  assigned:    { label: 'À accepter', i18nKey: 'mission_list.status_to_accept',  dot: 'bg-blue-400',   row: 'border-l-blue-500'   },
+  accepted:    { label: 'Acceptée',   i18nKey: 'mission_list.status_accepted',   dot: 'bg-indigo-400', row: 'border-l-indigo-500' },
+  in_progress: { label: 'En cours',   i18nKey: 'mission_list.status_in_progress',dot: 'bg-orange-400', row: 'border-l-orange-500' },
+  parked:      { label: 'En dépôt',   i18nKey: 'mission_list.status_parked',     dot: 'bg-yellow-400', row: 'border-l-yellow-500' },
+  completed:   { label: 'Terminée',   i18nKey: 'mission_list.status_completed',  dot: 'bg-green-400',  row: 'border-l-green-500'  },
 }
 
 const TYPE_SHORT: Record<string, string> = {
@@ -73,6 +75,7 @@ export default function MissionListClient({
   currentUserId?: string
 }) {
   const router = useRouter()
+  const { t } = useT()
   const [missions, setMissions] = useState<Mission[]>(initialMissions)
   const [showChoice, setShowChoice] = useState(false)
 
@@ -105,11 +108,11 @@ export default function MissionListClient({
         {active.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-ink-muted">
             <p className="text-5xl mb-4">🚗</p>
-            <p className="text-lg font-semibold text-ink mb-1">Aucune mission</p>
-            <p className="text-sm mb-6">Vous n&apos;avez pas de mission assignée</p>
+            <p className="text-lg font-semibold text-ink mb-1"><T k="mission_list.empty_title" /></p>
+            <p className="text-sm mb-6"><T k="mission_list.empty_subtitle" /></p>
             <button type="button" onClick={() => setShowChoice(true)}
               className="flex items-center gap-2 px-5 py-3 bg-brand text-white rounded-2xl font-semibold">
-              + Nouvelle intervention
+              <T k="mission_list.new_intervention" />
             </button>
           </div>
         )}
@@ -117,7 +120,7 @@ export default function MissionListClient({
         {active.length > 0 && (
           <>
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide px-1 mb-3">
-              En cours · {active.length}
+              <T k="mission_list.section_in_progress" /> · {active.length}
             </p>
             {active.map(m => <MissionRow key={m.id} mission={m} router={router} />)}
           </>
@@ -129,7 +132,7 @@ export default function MissionListClient({
         type="button"
         onClick={() => setShowChoice(true)}
         className="fixed bottom-6 right-5 w-16 h-16 bg-brand rounded-full shadow-2xl flex items-center justify-center text-ink text-3xl font-bold transition active:scale-95 z-20"
-        title="Nouvelle intervention">
+        title={t('mission_list.new_intervention_title')}>
         +
       </button>
 
@@ -140,7 +143,7 @@ export default function MissionListClient({
           <div onClick={e => e.stopPropagation()}
             className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-3 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-ink font-bold text-lg">Quel type d&apos;intervention ?</h3>
+              <h3 className="text-ink font-bold text-lg"><T k="mission_list.choice_modal_title" /></h3>
               <button type="button" onClick={() => setShowChoice(false)}
                 className="text-ink-muted hover:text-ink p-1">
                 <X size={20} />
@@ -155,8 +158,8 @@ export default function MissionListClient({
                 <Shield size={20} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-ink font-semibold">Appel Police</p>
-                <p className="text-ink-muted text-xs mt-0.5">Accident · Saisie · Mal garée · SNC · AVP · Appel Privé</p>
+                <p className="text-ink font-semibold"><T k="mission_list.choice_police" /></p>
+                <p className="text-ink-muted text-xs mt-0.5"><T k="mission_list.choice_police_desc" /></p>
               </div>
             </button>
 
@@ -168,8 +171,8 @@ export default function MissionListClient({
                 <Wallet size={20} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-ink font-semibold">Intervention avec encaissement</p>
-                <p className="text-ink-muted text-xs mt-0.5">Mission privée à encaisser directement par le chauffeur</p>
+                <p className="text-ink font-semibold"><T k="mission_list.choice_with_cash" /></p>
+                <p className="text-ink-muted text-xs mt-0.5"><T k="mission_list.choice_with_cash_desc" /></p>
               </div>
             </button>
           </div>
@@ -195,7 +198,7 @@ function MissionRow({ mission, router }: { mission: Mission; router: ReturnType<
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-            <span className="text-ink-secondary text-xs font-medium">{cfg.label}</span>
+            <span className="text-ink-secondary text-xs font-medium"><T k={cfg.i18nKey} /></span>
             {mission.mission_type && (
               <span className="bg-surface-hover text-ink-secondary text-xs px-1.5 py-0.5 rounded font-medium">
                 {TYPE_SHORT[mission.mission_type] || mission.mission_type}
@@ -205,7 +208,7 @@ function MissionRow({ mission, router }: { mission: Mission; router: ReturnType<
           </div>
 
           <p className="text-ink font-bold text-base leading-tight truncate">
-            {mission.client_name || 'Client inconnu'}
+            {mission.client_name || <T k="mission_list.unknown_client" />}
           </p>
 
           {(mission.vehicle_plate || mission.vehicle_brand) && (
@@ -235,13 +238,13 @@ function MissionRow({ mission, router }: { mission: Mission; router: ReturnType<
       {mission.status !== 'completed' && (
         <div className="flex items-center gap-3 mt-3 pt-3 border-t border overflow-x-auto">
           {[
-            { label: 'Acceptée',  ts: mission.accepted_at,  dot: 'bg-indigo-400' },
-            { label: 'En route',  ts: mission.on_way_at,    dot: 'bg-amber-400'  },
-            { label: 'Sur place', ts: mission.on_site_at,   dot: 'bg-orange-400' },
+            { i18nKey: 'mission_list.timeline_accepted', ts: mission.accepted_at, dot: 'bg-indigo-400' },
+            { i18nKey: 'mission_list.timeline_on_way',   ts: mission.on_way_at,   dot: 'bg-amber-400'  },
+            { i18nKey: 'mission_list.timeline_on_site',  ts: mission.on_site_at,  dot: 'bg-orange-400' },
           ].map(step => (
-            <div key={step.label} className={`flex items-center gap-1.5 flex-shrink-0 ${step.ts ? 'opacity-100' : 'opacity-30'}`}>
+            <div key={step.i18nKey} className={`flex items-center gap-1.5 flex-shrink-0 ${step.ts ? 'opacity-100' : 'opacity-30'}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${step.ts ? step.dot : 'bg-ink-faint'}`} />
-              <span className="text-xs text-ink-muted">{step.label}</span>
+              <span className="text-xs text-ink-muted"><T k={step.i18nKey} /></span>
               {step.ts && <span className="text-xs text-ink-secondary">{fmt(step.ts)}</span>}
             </div>
           ))}

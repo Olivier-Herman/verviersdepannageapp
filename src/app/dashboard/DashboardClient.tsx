@@ -6,6 +6,8 @@ import Link from 'next/link'
 import type { Session } from 'next-auth'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import { T } from '@/lib/i18n/T'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 // ─────────────────────────────────────────────────────────
 // CONFIGURATION DES SECTIONS
@@ -23,39 +25,42 @@ const ICON_COLOR_CLASSES: Record<IconColor, string> = {
 }
 
 interface ActionItem {
-  id:       string
-  label:    string
-  subtitle: string
-  href:     string
-  icon:     string
-  color:    IconColor
+  id:           string
+  label:        string  // fallback FR si i18nKey absent
+  subtitle:     string
+  href:         string
+  icon:         string
+  color:        IconColor
+  i18nKey?:     string  // cle dictionnaire (dashboard.tile_xxx_label)
+  i18nSubKey?:  string  // cle dictionnaire pour le sous-titre
 }
 
 interface ModuleItem {
-  id:    string
-  label: string
-  href:  string
-  icon:  string
-  color: IconColor
+  id:        string
+  label:     string
+  href:      string
+  icon:      string
+  color:     IconColor
+  i18nKey?:  string
 }
 
 // Section 1 — actions principales (mises en avant, grandes cards)
 // `police_mission` est conditionnel sur hasTowsoft (1ère position si présent)
 const MAIN_ACTIONS: ActionItem[] = [
-  { id: 'police_mission',  label: 'Créer une mission',      subtitle: 'Police · Saisie · Mal Garée · SNC', href: '/mission/police', icon: '🚨', color: 'brand'   },
-  { id: 'encaissement',    label: 'Encaissement Chauffeur', subtitle: 'Espèces · Carte · Virement',         href: '/encaissement',   icon: '💳', color: 'success' },
-  { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info'    },
-  { id: 'driver_missions', label: 'Mes Missions',           subtitle: 'Mes interventions du jour',          href: '/mission',        icon: '🚗', color: 'warning' },
-  { id: 'avance_fonds',    label: 'Avance de Fonds',        subtitle: 'Demander une avance',                href: '/avance-fonds',   icon: '💰', color: 'success' },
+  { id: 'police_mission',  label: 'Créer une mission',      subtitle: 'Police · Saisie · Mal Garée · SNC', href: '/mission/police', icon: '🚨', color: 'brand',   i18nKey: 'dashboard.tile_police_label',   i18nSubKey: 'dashboard.tile_police_subtitle' },
+  { id: 'encaissement',    label: 'Encaissement Chauffeur', subtitle: 'Espèces · Carte · Virement',         href: '/encaissement',   icon: '💳', color: 'success', i18nKey: 'dashboard.tile_cash_label',     i18nSubKey: 'dashboard.tile_cash_subtitle' },
+  { id: 'missions',        label: 'Dispatch Missions',      subtitle: 'Pipeline temps réel',                href: '/dispatch',       icon: '📡', color: 'info',    i18nKey: 'dashboard.tile_dispatch_label', i18nSubKey: 'dashboard.tile_dispatch_subtitle' },
+  { id: 'driver_missions', label: 'Mes Missions',           subtitle: 'Mes interventions du jour',          href: '/mission',        icon: '🚗', color: 'warning', i18nKey: 'dashboard.tile_missions_label', i18nSubKey: 'dashboard.tile_missions_subtitle' },
+  { id: 'avance_fonds',    label: 'Avance de Fonds',        subtitle: 'Demander une avance',                href: '/avance-fonds',   icon: '💰', color: 'success', i18nKey: 'dashboard.tile_advance_label',  i18nSubKey: 'dashboard.tile_advance_subtitle' },
 ]
 
 // Section 2 — modules secondaires (cards compactes)
 const MODULES: ModuleItem[] = [
-  { id: 'check_vehicle', label: 'Check Véhicule',  href: '/check-vehicule', icon: '🔍', color: 'info'    },
-  { id: 'tgr',           label: 'TGR Touring',     href: '/services/tgr',   icon: '🛡️', color: 'purple'  },
-  { id: 'finance',       label: 'Finance',         href: '/finance',        icon: '💵', color: 'success' },
-  { id: 'admin',         label: 'Administration',  href: '/admin',          icon: '⚙️', color: 'alert'   },
-  { id: 'depose',        label: 'Dépose Véhicule', href: '/depose',         icon: '🗺️', color: 'warning' },
+  { id: 'check_vehicle', label: 'Check Véhicule',  href: '/check-vehicule', icon: '🔍', color: 'info',    i18nKey: 'dashboard.tile_check_label'   },
+  { id: 'tgr',           label: 'TGR Touring',     href: '/services/tgr',   icon: '🛡️', color: 'purple',  i18nKey: 'dashboard.tile_tgr_label'     },
+  { id: 'finance',       label: 'Finance',         href: '/finance',        icon: '💵', color: 'success', i18nKey: 'dashboard.tile_finance_label' },
+  { id: 'admin',         label: 'Administration',  href: '/admin',          icon: '⚙️', color: 'alert',   i18nKey: 'dashboard.tile_admin_label'   },
+  { id: 'depose',        label: 'Dépose Véhicule', href: '/depose',         icon: '🗺️', color: 'warning', i18nKey: 'dashboard.tile_depose_label'  },
 ]
 
 // Section 3 — appels rapides
@@ -66,9 +71,9 @@ const CALL_MODULE_MAP: Record<string, string> = {
 }
 
 const CALL_MODULES = [
-  { id: 'depannage', label: 'Dépannage',  icon: '🚗' },
-  { id: 'fourriere', label: 'Fourrière',  icon: '🚓' },
-  { id: 'rentacar',  label: 'Rent A Car', icon: '🔑' },
+  { id: 'depannage', label: 'Dépannage',  icon: '🚗', i18nKey: 'dashboard.tile_depannage_label' },
+  { id: 'fourriere', label: 'Fourrière',  icon: '🚓', i18nKey: 'dashboard.tile_fourriere_label' },
+  { id: 'rentacar',  label: 'Rent A Car', icon: '🔑', i18nKey: 'dashboard.tile_rentacar_label'  },
 ]
 
 // ─────────────────────────────────────────────────────────
@@ -140,9 +145,9 @@ export default function DashboardClient({
               </div>
               <div>
                 <h1 className="font-display text-ink text-2xl lg:text-3xl font-bold leading-tight">
-                  Bonjour {session.user?.name?.split(' ')[0] || ''}
+                  <T k="dashboard.hello" params={{ name: session.user?.name?.split(' ')[0] || '' }} />
                 </h1>
-                <p className="text-ink-muted text-sm mt-1">Voici tes actions et modules disponibles.</p>
+                <p className="text-ink-muted text-sm mt-1"><T k="dashboard.intro" /></p>
               </div>
             </div>
           </div>
@@ -151,7 +156,7 @@ export default function DashboardClient({
           {visibleActions.length > 0 && (
             <section className="mb-8 ambient-fade-up ambient-stagger-1">
               <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-                Actions principales
+                <T k="dashboard.section_main" />
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {visibleActions.map(item => <ActionCard key={item.id} item={item} />)}
@@ -163,7 +168,7 @@ export default function DashboardClient({
           {visibleModules.length > 0 && (
             <section className="mb-8 ambient-fade-up ambient-stagger-2">
               <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-                Modules
+                <T k="dashboard.section_modules" />
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {visibleModules.map(item => <ModuleCard key={item.id} item={item} />)}
@@ -175,7 +180,7 @@ export default function DashboardClient({
           {visibleCalls.length > 0 && (
             <section className="mb-4 ambient-fade-up ambient-stagger-3">
               <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-                Appels rapides
+                <T k="dashboard.section_calls" />
               </h2>
               <div className="flex flex-wrap gap-2">
                 {visibleCalls.map(c => (
@@ -189,8 +194,8 @@ export default function DashboardClient({
           {isEmpty && (
             <div className="text-center py-16 border-2 border-dashed rounded-card text-ink-muted ambient-fade-up">
               <p className="text-4xl mb-3" aria-hidden="true">🔒</p>
-              <p className="font-display font-semibold text-ink mb-1">Aucun module activé</p>
-              <p className="text-sm">Contacte un administrateur pour t&apos;attribuer des accès.</p>
+              <p className="font-display font-semibold text-ink mb-1"><T k="dashboard.empty_title" /></p>
+              <p className="text-sm"><T k="dashboard.empty_subtitle" /></p>
             </div>
           )}
         </div>
@@ -216,10 +221,14 @@ function ActionCard({ item }: { item: ActionItem }) {
         {item.icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-display text-ink font-bold text-[15px] leading-tight">{item.label}</p>
-        <p className="text-ink-muted text-xs mt-1">{item.subtitle}</p>
+        <p className="font-display text-ink font-bold text-[15px] leading-tight">
+          {item.i18nKey ? <T k={item.i18nKey} /> : item.label}
+        </p>
+        <p className="text-ink-muted text-xs mt-1">
+          {item.i18nSubKey ? <T k={item.i18nSubKey} /> : item.subtitle}
+        </p>
         <p className="text-ink-secondary text-xs font-semibold mt-3 group-hover:text-brand transition-colors">
-          Ouvrir →
+          <T k="dashboard.open" />
         </p>
       </div>
     </Link>
@@ -238,7 +247,9 @@ function ModuleCard({ item }: { item: ModuleItem }) {
       >
         {item.icon}
       </div>
-      <span className="text-ink text-sm font-medium truncate">{item.label}</span>
+      <span className="text-ink text-sm font-medium truncate">
+        {item.i18nKey ? <T k={item.i18nKey} /> : item.label}
+      </span>
     </Link>
   )
 }
@@ -247,17 +258,18 @@ function QuickCall({
   item,
   phone,
 }: {
-  item: { id: string; label: string; icon: string }
+  item: { id: string; label: string; icon: string; i18nKey?: string }
   phone?: string
 }) {
+  const { t } = useT()
   if (!phone) {
     return (
       <span
-        title="Numéro non configuré"
+        title={t('errors.generic')}
         className="inline-flex items-center gap-2 bg-surface border rounded-md px-3.5 py-2 text-sm font-medium text-ink-faint opacity-50 cursor-not-allowed"
       >
         <span aria-hidden="true">{item.icon}</span>
-        <span>{item.label}</span>
+        <span>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>
       </span>
     )
   }
@@ -267,7 +279,7 @@ function QuickCall({
       className="inline-flex items-center gap-2 bg-surface border rounded-md px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface-hover hover:border-strong transition-colors"
     >
       <span aria-hidden="true">{item.icon}</span>
-      <span>{item.label}</span>
+      <span>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>
     </a>
   )
 }
