@@ -27,5 +27,9 @@ export default async function AdminCashPage() {
     .order('created_at', { ascending: false })
     .limit(200)
 
-  return <AdminCashClient drivers={drivers || []} entries={entries || []} />
+  return <AdminCashClient
+    drivers={drivers || []}
+    entries={entries || []}
+    userRole={session.user.role}
+  />
 }

@@ -504,15 +504,19 @@ export default function CashClient({
           }`}>
             <div className="flex items-start justify-between mb-1">
               {(() => {
-                const isAvance = e.type === 'remise' && e.notes?.startsWith('Avance de fonds')
-                const isOdoo   = !!e.odoo_payment_id
-                const other    = e.other_user_name
-                const label = e.type === 'encaissement'
-                  ? (isOdoo ? '+ Encaissement Odoo' : '+ Encaissement espèces')
+                const isAvance     = e.type === 'remise' && e.notes?.startsWith('Avance de fonds')
+                const isAdjustment = e.notes?.startsWith('⚙ Ajustement superadmin')
+                const isOdoo       = !!e.odoo_payment_id
+                const other        = e.other_user_name
+                const label = isAdjustment
+                  ? (e.type === 'encaissement' ? '⚙ Ajustement administrateur (+)' : '⚙ Ajustement administrateur (−)')
+                  : e.type === 'encaissement'
+                    ? (isOdoo ? '+ Encaissement Odoo' : '+ Encaissement espèces')
                   : e.type === 'reception' ? (other ? `↓ Réception de ${other}` : '↓ Réception transfert')
                   : isAvance               ? '↓ Avance de fonds'
                   :                         (other ? `↑ Transfert vers ${other}` : '↑ Transfert')
-                const color = e.type === 'encaissement' ? 'text-green-400'
+                const color = isAdjustment ? 'text-amber-500'
+                  : e.type === 'encaissement' ? 'text-green-400'
                   : e.type === 'reception' ? 'text-blue-400'
                   : isAvance               ? 'text-orange-400'
                   :                         'text-red-400'
