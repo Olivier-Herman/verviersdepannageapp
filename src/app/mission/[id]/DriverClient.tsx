@@ -11,6 +11,8 @@ import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEn
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
 import OcrScanModal from '@/components/OcrScanModal'
 import { TtsButton } from '@/components/audio/TtsButton'
+import { T }    from '@/lib/i18n/T'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -81,13 +83,14 @@ const TYPE_BADGE: Record<string, [string, string]> = {
   depannage: ['DSP', 'bg-brand'], remorquage: ['REM', 'bg-blue-600'],
   reparation_place: ['DSP', 'bg-brand'], transport: ['REM', 'bg-blue-600'],
 }
-const STATUS_BADGE: Record<string, [string, string]> = {
-  assigned:    ['À accepter',  'bg-blue-600'],
-  accepted:    ['Acceptée',    'bg-indigo-600'],
-  in_progress: ['En cours',    'bg-orange-500'],
-  parked:      ['En dépôt',    'bg-amber-600'],
+// [label fallback FR, classe Tailwind bg, cle i18n optionnelle]
+const STATUS_BADGE: Record<string, [string, string, string?]> = {
+  assigned:    ['À accepter',  'bg-blue-600',   'mission_list.status_to_accept'],
+  accepted:    ['Acceptée',    'bg-indigo-600', 'mission_list.status_accepted'],
+  in_progress: ['En cours',    'bg-orange-500', 'mission_list.status_in_progress'],
+  parked:      ['En dépôt',    'bg-amber-600',  'mission_detail.status_parked'],
   delivering:  ['En livraison','bg-teal-600'],
-  completed:   ['Terminée',    'bg-green-600'],
+  completed:   ['Terminée',    'bg-green-600',  'mission_list.status_completed'],
 }
 const STOP_COLORS: Record<string, string> = {
   client: '#7c3aed', vr: '#0f766e', dest: '#2563eb', depot: '#d97706', custom: '#64748b',
@@ -854,6 +857,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     : M.on_way_at && M.status === 'in_progress' ? 'En route' : STATUS_BADGE[M.status]?.[0] || M.status
   const statusBg   = M.status === 'parked' ? 'bg-amber-600' : M.on_site_at ? 'bg-orange-500'
     : M.on_way_at && M.status === 'in_progress' ? 'bg-amber-500' : STATUS_BADGE[M.status]?.[1] || 'bg-ink-faint'
+  const statusI18nKey = M.status === 'parked' ? 'mission_detail.status_parked'
+    : M.on_site_at ? 'mission_detail.status_on_site'
+    : M.on_way_at && M.status === 'in_progress' ? 'mission_detail.status_on_way'
+    : STATUS_BADGE[M.status]?.[2] || null
 
   // Google Maps
   useEffect(() => {
@@ -1995,7 +2002,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           <button onClick={() => router.push('/mission')} className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</button>
           <div className="flex items-center gap-2">
             <span className={`px-2.5 py-1 rounded-md text-xs font-bold text-ink ${tbg}`}>{tbl}</span>
-            <span className={`px-2.5 py-1 rounded-md text-xs font-medium text-ink ${statusBg}`}>{statusStr}</span>
+            <span className={`px-2.5 py-1 rounded-md text-xs font-medium text-ink ${statusBg}`}>
+              {statusI18nKey ? <T k={statusI18nKey} /> : statusStr}
+            </span>
           </div>
         </div>
         <h1 className="text-ink font-semibold text-lg truncate mt-1">{M.client_name || 'Client inconnu'}</h1>
@@ -2553,18 +2562,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
-        {/* Avance de fonds — bouton lie a la mission. Olivier 2026-06-01 :
-            le chauffeur saisit une avance (achat piece / carburant / peage)
-            depuis la mission. La facture est liee + ajoutee au devis lors
-            de la facturation. */}
-        {['assigned', 'accepted', 'in_progress', 'parked', 'delivering'].includes(M.status) && !isReadOnly && (
-          <a
-            href={`/avance-fonds?mission_id=${M.id}&plate=${encodeURIComponent(M.vehicle_plate || '')}&brand=${encodeURIComponent(M.vehicle_brand || '')}&model=${encodeURIComponent(M.vehicle_model || '')}&mission_ref=${encodeURIComponent(M.dossier_number || M.external_id || '')}`}
-            className="block w-full py-3 bg-indigo-50 border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-100 text-indigo-900 rounded-2xl text-sm font-bold text-center transition"
-          >
-            💰 Avance de fonds pour cette mission
-          </a>
-        )}
+        {/* Avance de fonds : deplacee dans la grille "Autres actions" sur place
+            (cf <button "Avance de fonds"> dans showGrid) — Olivier 2026-06-01.
+            Avant : bouton visible sur la fiche, encombrait la vue meme avant arrivee.
+            Maintenant : accessible uniquement quand on a deja un statut actif
+            (sur place / charge / delivering / parked) via le bouton "Autres actions". */}
 
 
 
@@ -2578,25 +2580,25 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {M.status === 'assigned' && (
             <>
               <p className="text-ink-secondary text-xs text-center px-2">
-                Vérifie les infos avant d'accepter. Une fois acceptée, le dispatch est notifié.
+                <T k="mission_detail.btn_accept_hint" />
               </p>
               <button onClick={() => api('accept')} disabled={loading}
                 className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-                {loading ? '⏳…' : '✅ Accepter la mission'}
+                {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_accept" />}
               </button>
             </>
           )}
           {M.status === 'accepted' && (
             <button onClick={() => initNav ? api('on_way') : setShowNav(true)} disabled={loading}
               className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-              {loading ? '⏳…' : (rel ? '🚗 En route vers le parc' : '🚗 En route')}
+              {loading ? <T k="mission_detail.loading" /> : (rel ? <T k="mission_detail.btn_on_way_park" /> : <T k="mission_detail.btn_on_way" />)}
             </button>
           )}
           {/* "Sur place" : skip pour les REL (on demarre du parc, pas d arrivee a marquer) */}
           {M.status === 'in_progress' && !onSite && !rel && (
             <button onClick={() => api('on_site')} disabled={loading}
               className="w-full py-4 bg-orange-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-              {loading ? '⏳…' : '📍 Sur place'}
+              {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_on_site" />}
             </button>
           )}
 
@@ -2605,13 +2607,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <>
               <button onClick={() => api('load_vehicle')} disabled={loading}
                 className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-                {loading ? '⏳…' : '🚛 Véhicule chargé sur le camion'}
+                {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_loaded_truck" />}
               </button>
               <button
                 onClick={() => { setDprFromRem(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 disabled={loading}
                 className="w-full py-3 bg-surface border border hover:border-red-500/60 text-ink-secondary hover:text-red-400 font-medium rounded-2xl text-sm">
-                ❌ Refus / Impossible — Convertir en DPR
+                <T k="mission_detail.btn_refuse_dpr" />
               </button>
             </>
           )}
@@ -2620,7 +2622,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {rel && M.status === 'in_progress' && !loaded && (
             <button onClick={() => api('load_vehicle')} disabled={loading}
               className="w-full py-4 bg-blue-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-              {loading ? '⏳…' : '🚛 Véhicule chargé au parc'}
+              {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_loaded_park" />}
             </button>
           )}
 
@@ -2629,7 +2631,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <>
               <button onClick={() => { setCloseType(rel ? 'rel' : 'rem'); setScreen('close') }} disabled={loading}
                 className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                📍 Arrivé à destination
+                <T k="mission_detail.btn_arrived_dest" />
                 {M.destination_address && (
                   <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
                 )}
@@ -2645,7 +2647,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     setScreen('close')
                   }} disabled={loading}
                   className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-                  🅿️ Mise en parc
+                  <T k="mission_detail.btn_park" />
                 </button>
               )}
             </>
@@ -2657,13 +2659,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               {totPh < 3 && (
                 <button onClick={() => goPhotos('main')}
                   className="w-full py-4 bg-orange-500 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
-                  📷 Photos <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
+                  <T k="mission_detail.btn_photos" /> <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
                 </button>
               )}
               {totPh >= 3 && (
                 <button onClick={() => { setCloseType('dsp'); setScreen('close') }}
                   className="w-full py-4 bg-green-600 text-ink font-bold rounded-2xl text-base">
-                  🏁 Terminer
+                  <T k="mission_detail.btn_finish" />
                 </button>
               )}
             </>
@@ -2673,8 +2675,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               Le dispatcher prendra le relais pour créer la REL si besoin. */}
           {M.status === 'parked' && (
             <div className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-center">
-              <p className="text-amber-400 text-sm font-semibold">🅿️ Véhicule déposé au parc</p>
-              <p className="text-amber-300/80 text-xs mt-1">Mission terminée pour toi. Le dispatcher gère la suite.</p>
+              <p className="text-amber-400 text-sm font-semibold"><T k="mission_detail.parked_card_title" /></p>
+              <p className="text-amber-300/80 text-xs mt-1"><T k="mission_detail.parked_card_subtitle" /></p>
             </div>
           )}
 
@@ -2682,7 +2684,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {(onSite || M.status === 'parked' || M.status === 'delivering' || loaded) && (
             <button onClick={() => setShowGrid(true)}
               className="w-full py-3 bg-surface border border hover:border-zinc-600 text-ink-secondary hover:text-ink font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
-              ☰ Autres actions
+              <T k="mission_detail.btn_other_actions" />
             </button>
           )}
         </div>
@@ -2705,14 +2707,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <button onClick={() => { setShowGrid(false); goPhotos('main') }}
                 className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${totPh > 0 ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
                 <span className="text-2xl">📷</span>
-                <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-ink-secondary'}`}>Photos</span>
+                <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-ink-secondary'}`}><T k="mission_detail.action_photos" /></span>
                 {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">{totPh}</span>}
               </button>
               {/* Décharge */}
               <button onClick={() => { setShowGrid(false); resetDischargeForm(); setDischFrom('main'); setScreen('decharge') }}
                 className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch.length > 0 ? 'bg-amber-600/20 border-amber-600/40' : 'bg-surface border'}`}>
                 <span className="text-2xl">📋</span>
-                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-ink-secondary'}`}>Décharge</span>
+                <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-ink-secondary'}`}><T k="mission_detail.action_discharge" /></span>
                 {disch.length > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-ink">{disch.length}</span>}
               </button>
               {/* Encaisser */}
@@ -2726,35 +2728,51 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   <span className="text-2xl">{isToInvoice ? '📄' : '💳'}</span>
                   <span className={`text-sm font-medium ${
                     paidEffective ? (isToInvoice ? 'text-amber-400' : 'text-green-400') : 'text-ink-secondary'
-                  }`}>{paidEffective ? (isToInvoice ? 'À facturer' : 'Payée') : 'Encaisser'}</span>
+                  }`}>
+                    {paidEffective ? (isToInvoice ? <T k="mission_detail.action_to_invoice" /> : <T k="mission_detail.action_paid" />) : <T k="mission_detail.action_collect" />}
+                  </span>
                   {paidEffective && <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold text-ink ${isToInvoice ? 'bg-amber-500' : 'bg-green-500'}`}>✓</span>}
                 </button>
+              )}
+              {/* Avance de fonds — Olivier 2026-06-01 : deplace depuis la fiche
+                  principale vers cette grille (visible quand on est sur place,
+                  pas avant). */}
+              {['accepted', 'in_progress', 'parked', 'delivering'].includes(M.status) && (
+                <a
+                  href={`/avance-fonds?mission_id=${M.id}&plate=${encodeURIComponent(M.vehicle_plate || '')}&brand=${encodeURIComponent(M.vehicle_brand || '')}&model=${encodeURIComponent(M.vehicle_model || '')}&mission_ref=${encodeURIComponent(M.dossier_number || M.external_id || '')}`}
+                  onClick={() => setShowGrid(false)}
+                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-indigo-600/10 border-indigo-600/30 transition active:scale-95">
+                  <span className="text-2xl">💰</span>
+                  <span className="text-sm font-medium text-indigo-400"><T k="mission_detail.action_advance" /></span>
+                </a>
               )}
               {/* DSP↔REM */}
               <button onClick={() => changeType(rem ? 'DSP' : 'REM')} disabled={loading}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-blue-600/10 border-blue-600/30 transition active:scale-95 disabled:opacity-50">
                 <span className="text-2xl">🔄</span>
-                <span className="text-sm font-medium text-blue-400">{rem ? 'REM → DSP' : 'DSP → REM'}</span>
+                <span className="text-sm font-medium text-blue-400">
+                  {rem ? <T k="mission_detail.action_swap_to_dsp" /> : <T k="mission_detail.action_swap_to_rem" />}
+                </span>
               </button>
               {/* Mise en parc (REM uniquement) */}
               {rem && (
                 <button onClick={() => { setShowGrid(false); setShowPark(true) }}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-amber-600/10 border-amber-600/30 transition active:scale-95">
                   <span className="text-2xl">🅿️</span>
-                  <span className="text-sm font-medium text-amber-400">Mise en parc</span>
+                  <span className="text-sm font-medium text-amber-400"><T k="mission_detail.action_park" /></span>
                 </button>
               )}
               {/* DPR — ouvre la modal motif avant de basculer */}
               <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-surface border transition active:scale-95">
                 <span className="text-2xl">❌</span>
-                <span className="text-sm font-medium text-ink-secondary">DPR</span>
+                <span className="text-sm font-medium text-ink-secondary"><T k="mission_detail.action_dpr" /></span>
               </button>
               {/* Terminer */}
               <button onClick={() => { setShowGrid(false); setCloseType(rem ? 'rem' : 'dsp'); setScreen('close') }}
-                className={`${rem ? '' : 'col-span-2'} rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-brand border-brand transition active:scale-95`}>
+                className="col-span-2 rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-brand border-brand transition active:scale-95">
                 <span className="text-2xl">🏁</span>
-                <span className="text-sm font-bold text-ink">Terminer</span>
+                <span className="text-sm font-bold text-ink"><T k="mission_detail.action_finish" /></span>
               </button>
             </div>
           </div>
