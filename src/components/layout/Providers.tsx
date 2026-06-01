@@ -6,11 +6,19 @@ import { ThemeProvider }               from '@/components/theme/ThemeProvider'
 import SheetStackProvider              from '@/components/sheets/SheetStackProvider'
 import { AudioModeProvider }           from '@/components/audio/AudioModeProvider'
 import { TruckConfirmModal }           from '@/components/trucks/TruckConfirmModal'
+import { I18nProvider }                from '@/lib/i18n/I18nProvider'
+import type { Lang }                   from '@/lib/i18n/types'
 
 function AudioModeMount() {
   const { data: session } = useSession()
   const enabled = !!(session?.user as any)?.audioMode
   return <AudioModeProvider enabled={enabled} />
+}
+
+function I18nMount({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession()
+  const lang = ((session?.user as any)?.language || 'fr') as Lang
+  return <I18nProvider initialLang={lang}>{children}</I18nProvider>
 }
 
 export default function Providers({ children }: { children: React.ReactNode }) {
@@ -33,7 +41,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <SessionProvider>
         <AudioModeMount />
         <TruckConfirmModal />
-        <SheetStackProvider>{children}</SheetStackProvider>
+        <I18nMount>
+          <SheetStackProvider>{children}</SheetStackProvider>
+        </I18nMount>
       </SessionProvider>
     </ThemeProvider>
   )

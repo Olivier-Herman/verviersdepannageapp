@@ -6,6 +6,7 @@ import { signOutCascade as signOut } from '@/lib/auth-signout'
 import AppShell      from '@/components/layout/AppShell'
 import NavOrderEditor from '@/components/profil/NavOrderEditor'
 import AuthProvidersSection from '@/components/profile/AuthProvidersSection'
+import { LanguageSelector } from '@/components/profile/LanguageSelector'
 import { filterNavItems } from '@/components/layout/nav-items'
 
 // ── Types documents ────────────────────────────────────────
@@ -576,6 +577,16 @@ export default function ProfileClient({ user }: { user: any }) {
               <li>Les messages d'erreur qui apparaissent sont lus automatiquement.</li>
             </ul>
           )}
+        </div>
+
+        {/* Langue d affichage (i18n) */}
+        <div className="bg-surface border rounded-2xl p-5">
+          <h2 className="text-ink font-bold mb-1">🌍 Langue d'affichage</h2>
+          <p className="text-ink-muted text-xs mb-4">
+            Choisis ta langue principale. En mode Albanais, le texte français est affiché en plus
+            petit entre parenthèses — utile si quelqu'un t'aide à utiliser l'app.
+          </p>
+          <LanguageSelector />
         </div>
 
         {/* Documents */}

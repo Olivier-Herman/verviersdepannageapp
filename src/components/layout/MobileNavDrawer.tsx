@@ -8,6 +8,7 @@ import { useSession } from 'next-auth/react'
 import { filterNavItems } from './nav-items'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
+import { T } from '@/lib/i18n/T'
 import { UserBlock, StatusToggle, FooterActions } from './AppShell'
 
 interface Props {
@@ -88,7 +89,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
                     : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
                 }`}>
                 <span className="text-base">{item.icon}</span>
-                {item.label}
+                {item.i18nKey ? <T k={item.i18nKey} /> : item.label}
               </Link>
             )
           })}

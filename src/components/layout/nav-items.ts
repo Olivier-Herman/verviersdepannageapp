@@ -9,30 +9,31 @@
 
 export interface NavItem {
   href:     string
-  label:    string
+  label:    string             // Libelle par defaut (francais), affiche si i18nKey absent
+  i18nKey?: string             // Cle dans le dictionnaire i18n (cf src/lib/i18n/dictionaries) pour affichage bilingue en mode sq
   icon:     string
   moduleId: string | null
   role?:    'dispatcher_or_admin' | 'superadmin'
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard',     label: 'Dashboard',        icon: '🏠', moduleId: null },
-  { href: '/recherche',     label: 'Recherche',        icon: '🔍', moduleId: null },
+  { href: '/dashboard',     label: 'Dashboard',        i18nKey: 'nav.dashboard',     icon: '🏠', moduleId: null },
+  { href: '/recherche',     label: 'Recherche',        i18nKey: 'nav.search',        icon: '🔍', moduleId: null },
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
-  { href: '/mission',       label: 'Mes Missions',     icon: '🚗', moduleId: 'driver_missions' },
-  { href: '/services/tgr',  label: 'TGR Touring',      icon: '🛡️', moduleId: 'tgr' },
+  { href: '/mission',       label: 'Mes Missions',     i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
+  { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
   { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
-  { href: '/missions-terminees', label: 'Missions terminées', icon: '📂', moduleId: 'facturation_or_missions' },
+  { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
   { href: '/admin/trucks',      label: 'Dépanneuses',         icon: '🚚', moduleId: 'admin' },
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/stats',             label: 'Statistiques',        icon: '📊', moduleId: 'stats' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
-  { href: '/check-vehicule',label: 'Check Véhicule',   icon: '🔧', moduleId: 'check_vehicle' },
+  { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: 'check_vehicle' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
-  { href: '/aide',          label: 'Aide',             icon: '📖', moduleId: null },
+  { href: '/aide',          label: 'Aide',             i18nKey: 'nav.help',          icon: '📖', moduleId: null },
   { href: '/assistant',     label: 'Assistant IA',     icon: '🤖', moduleId: null, role: 'superadmin' },
   // 'Mon Profil' retire de la sidebar : doublon avec le UserBlock cliquable
   // en bas qui pointe deja vers /profil.

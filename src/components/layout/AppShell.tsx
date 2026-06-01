@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import NotificationsProvider from '@/components/notifications/NotificationsProvider'
+import { T } from '@/lib/i18n/T'
 import WatchPairingBridge from '@/components/watch/WatchPairingBridge'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
@@ -109,8 +110,8 @@ export default function AppShell({
                 }`}
               >
                 <span className="text-base">{item.icon}</span>
-                {!collapsed && item.label}
-                {collapsed && <span className={TOOLTIP_CLS}>{item.label}</span>}
+                {!collapsed && (item.i18nKey ? <T k={item.i18nKey} /> : item.label)}
+                {collapsed && <span className={TOOLTIP_CLS}>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>}
               </Link>
             )
           })}

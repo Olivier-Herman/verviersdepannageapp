@@ -1,0 +1,137 @@
+// Dictionnaire francais (source). Chaque cle DOIT etre presente ici ;
+// les autres langues fallback sur le francais si la traduction manque.
+//
+// Convention :
+//  - Organise par domaine (common, missions, dispatch, police...)
+//  - Interpolation : {name} dans la string, params {name: 'Olivier'}
+
+export const fr = {
+  common: {
+    save:        'Enregistrer',
+    cancel:      'Annuler',
+    close:       'Fermer',
+    back:        'Retour',
+    yes:         'Oui',
+    no:          'Non',
+    ok:          'OK',
+    loading:     'Chargement…',
+    error:       'Erreur',
+    confirm:     'Confirmer',
+    delete:      'Supprimer',
+    edit:        'Modifier',
+    search:      'Rechercher',
+    refresh:     'Actualiser',
+    next:        'Suivant',
+    previous:    'Précédent',
+    today:       'Aujourd\'hui',
+    yesterday:   'Hier',
+    tomorrow:    'Demain',
+    none:        'Aucun',
+    optional:    'Optionnel',
+    required:    'Obligatoire',
+    add:         'Ajouter',
+    update:      'Mettre à jour',
+    settings:    'Paramètres',
+    profile:     'Profil',
+    logout:      'Se déconnecter',
+    language:    'Langue',
+  },
+
+  nav: {
+    dashboard:     'Tableau de bord',
+    search:        'Recherche',
+    my_missions:   'Mes missions',
+    missions:      'Missions',
+    new_mission:   'Nouvelle mission',
+    cash:          'Caisse',
+    advance:       'Avance de fonds',
+    park:          'Parc',
+    check:         'Check véhicule',
+    finished:      'Missions terminées',
+    services_tgr:  'TGR Touring',
+    help:          'Aide',
+    profile:       'Mon profil',
+  },
+
+  missions: {
+    title:        'Mes missions',
+    empty:        'Aucune mission en cours',
+    accept:       'Accepter',
+    refuse:       'Refuser',
+    en_route:     'En route',
+    on_site:      'Sur place',
+    loaded:       'Chargé',
+    delivered:    'Livré',
+    finish:       'Terminer',
+    in_progress:  'En cours',
+    pending:      'En attente',
+    completed:    'Terminée',
+    cancelled:    'Annulée',
+    address_from: 'Adresse de prise en charge',
+    address_to:   'Adresse de dépose',
+    vehicle:      'Véhicule',
+    plate:        'Plaque',
+    client:       'Client',
+    source:       'Source',
+    notes:        'Remarques',
+    photo:        'Photo',
+    take_photo:   'Prendre une photo',
+    scan_plate:   'Scanner la plaque',
+    scan_vin:     'Scanner le VIN',
+    payment:      'Paiement',
+    no_charge:    'Sans frais',
+    truck:        'Dépanneuse',
+  },
+
+  status: {
+    new:         'Nouvelle',
+    assigned:    'Assignée',
+    en_route:    'En route',
+    on_site:     'Sur place',
+    loaded:      'Chargé',
+    delivered:   'Livré',
+    to_invoice:  'À facturer',
+    completed:   'Terminée',
+    cancelled:   'Annulée',
+  },
+
+  payment: {
+    cash:        'Espèces',
+    card:        'Carte bancaire',
+    transfer:    'Virement',
+    invoice:     'Sur facture',
+    qr:          'QR code',
+    no_charge:   'Sans frais',
+    amount:      'Montant',
+    method:      'Mode de paiement',
+    receipt:     'Reçu',
+    paid:        'Payé',
+    unpaid:      'Non payé',
+  },
+
+  notifications: {
+    new_mission:        'Nouvelle mission reçue',
+    mission_assigned:   'Mission assignée',
+    mission_updated:    'Mission mise à jour',
+    permission_request: 'Activez les notifications pour ne rater aucune mission',
+  },
+
+  errors: {
+    generic:       'Une erreur est survenue',
+    network:       'Pas de connexion internet',
+    unauthorized:  'Accès refusé',
+    not_found:     'Introuvable',
+    try_again:     'Réessayer',
+  },
+
+  audio: {
+    listen:        'Écouter',
+    stop:          'Arrêter',
+    play_again:    'Réécouter',
+    speed_slow:    'Lent',
+    speed_normal:  'Normal',
+    speed_fast:    'Rapide',
+  },
+}
+
+export type Dictionary = typeof fr
