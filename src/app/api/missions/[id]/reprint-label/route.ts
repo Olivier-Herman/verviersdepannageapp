@@ -41,6 +41,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       id, mission_number, source, intervention_date, received_at,
       vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
       destination_address, redelivery_address, snc_scenario,
+      saisie_motif_code, saisie_motif_label,
       odoo_ticket_id
     `)
   const { data: mission, error } = idIsNumeric
@@ -62,7 +63,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     'sia_couvert':     'SIABIS COUVERT',
     'prive':           'APPEL PRIVE',
   }
-  const motif = MOTIF_LABELS[mission.source] || String(mission.source || '').toUpperCase()
+  // Olivier 2026-06-01 (demande Franck) : pour Police-Saisie, on remplace le
+  // mot "SAISIE" par le motif specifique choisi a la creation (defaut assurance,
+  // alcool, etc.). Si pas de motif (anciennes missions ou champ vide), fallback
+  // sur "SAISIE".
+  let motif = MOTIF_LABELS[mission.source] || String(mission.source || '').toUpperCase()
+  if (mission.source === 'police_saisie' && (mission as any).saisie_motif_label) {
+    motif = String((mission as any).saisie_motif_label).toUpperCase()
+  }
 
   // Adresse de relivraison si pertinent : pour les sources qui passent en parc
   // en vue d une relivraison ulterieure (Prive depot, SNC rem_depot).

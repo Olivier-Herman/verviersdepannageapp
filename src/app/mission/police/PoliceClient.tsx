@@ -92,6 +92,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [ownerPhone,     setOwnerPhone]     = useState('')
   const [remarks,        setRemarks]        = useState('')
   const [policeBlocked,  setPoliceBlocked]  = useState(false)
+  // Saisie : motif obligatoire choisi dans la liste configuree en admin
+  // (demande Franck 2026-06-01). Le label apparaitra sur l etiquette parc.
+  const [saisieMotifCode,  setSaisieMotifCode]  = useState<string>('')
+  const [saisieMotifs,     setSaisieMotifs]     = useState<Array<{ id: string; code: string; label: string; label_short: string | null; icon: string | null }>>([])
+  const [loadingSaisieMotifs, setLoadingSaisieMotifs] = useState(false)
   // Mal Garee scenario : 'chargement' (defaut, mise en parc) ou 'deplacement_paye'
   // (client arrive avant chargement, paye le deplacement 125 EUR TVAC, pas de
   // mise en parc, mission close apres encaissement). Olivier 2026-05-26.
@@ -237,6 +242,24 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         else existing.addEventListener('load', init)
       }
     }
+  }, [selectedType])
+
+  // ──────────── Chargement des motifs de saisie (au passage en type 'saisie') ────────────
+  useEffect(() => {
+    if (selectedType !== 'saisie') return
+    if (saisieMotifs.length > 0 || loadingSaisieMotifs) return
+    setLoadingSaisieMotifs(true)
+    fetch('/api/saisie-motifs')
+      .then(r => r.json())
+      .then(d => setSaisieMotifs(d.motifs || []))
+      .catch(() => {})
+      .finally(() => setLoadingSaisieMotifs(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedType])
+
+  // Reset du motif quand on change de type
+  useEffect(() => {
+    if (selectedType !== 'saisie') setSaisieMotifCode('')
   }, [selectedType])
 
   // ──────────── Autocomplete destination (SNC rem_client / rem_depot + Prive REM depot) ────────────
@@ -451,6 +474,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     if (!plate && !vin)   { setErr('Plaque ou VIN requis'); return }
     if (!brand)           { setErr('La marque du véhicule est requise'); return }
     if (!model)           { setErr('Le modèle du véhicule est requis'); return }
+    // Saisie : motif obligatoire (demande Franck 2026-06-01).
+    if (selectedType === 'saisie' && !saisieMotifCode) {
+      setErr('Le motif de la saisie est obligatoire'); return
+    }
     // Appel Privé : DSP/REM obligatoire, et pour REM le scenario destination
     // doit etre choisi explicitement.
     if (selectedType === 'appel_prive') {
@@ -514,6 +541,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         appelPriveDestination: selectedType === 'appel_prive' ? (appelPriveDestination || null) : null,
         // Mal Garee scenario : chargement (parc) ou deplacement_paye (encaissement direct).
         malGareeScenario: selectedType === 'mal_garee' ? malGareeScenario : null,
+        // Saisie : code + label du motif (label snapshot pour resilience).
+        saisieMotifCode:  selectedType === 'saisie' ? saisieMotifCode : null,
+        saisieMotifLabel: selectedType === 'saisie'
+          ? (saisieMotifs.find(m => m.code === saisieMotifCode)?.label_short
+              || saisieMotifs.find(m => m.code === saisieMotifCode)?.label
+              || null)
+          : null,
       }),
     })
 
@@ -1014,6 +1048,39 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
                 </button>
               ))}
             </div>
+          </Section>
+        )}
+
+        {/* Motif de saisie — obligatoire pour Police-Saisie (demande Franck 2026-06-01).
+            Liste configuree dans /admin/saisie-motifs. Le motif choisi apparait sur l etiquette parc. */}
+        {selectedType === 'saisie' && (
+          <Section title="⚖️ Motif de la saisie *">
+            {loadingSaisieMotifs ? (
+              <p className="text-ink-faint text-sm text-center py-4">Chargement…</p>
+            ) : saisieMotifs.length === 0 ? (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 text-center">
+                <p className="text-amber-900 font-semibold">⚠️ Aucun motif configuré</p>
+                <p className="text-amber-700 text-xs mt-1">L admin doit configurer la liste via /admin/saisie-motifs avant que tu puisses créer cette mission.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto p-1">
+                {saisieMotifs.map(m => {
+                  const selected = saisieMotifCode === m.code
+                  return (
+                    <button key={m.id} type="button"
+                      onClick={() => setSaisieMotifCode(m.code)}
+                      className={`p-3 rounded-xl border-2 transition text-center ${
+                        selected
+                          ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
+                          : 'border-strong bg-surface hover:border-purple-300'
+                      }`}>
+                      <div className="text-2xl mb-1">{m.icon || '⚖️'}</div>
+                      <div className={`text-xs font-semibold leading-tight ${selected ? 'text-purple-900' : 'text-ink'}`}>{m.label}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </Section>
         )}
 

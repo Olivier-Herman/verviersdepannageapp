@@ -64,6 +64,9 @@ export async function POST(req: Request) {
     // Mal Garee scenario : 'chargement' (defaut, parc) ou 'deplacement_paye'
     // (client arrive avant chargement, paye 125 EUR TVAC pour le deplacement).
     malGareeScenario,
+    // Saisie : motif obligatoire + label snapshot (demande Franck 2026-06-01).
+    saisieMotifCode,
+    saisieMotifLabel,
   } = body
 
   if (!type || !date || !time || !location) {
@@ -373,6 +376,9 @@ export async function POST(req: Request) {
         // SNC-specifiques
         snc_requires_balisage: isSnc ? Boolean(sncRequiresBalisage) : false,
         snc_scenario:          isSnc ? (sncScenario || null) : null,
+        // Saisie : motif obligatoire + label snapshot (demande Franck 2026-06-01)
+        saisie_motif_code:     type === 'saisie' ? (saisieMotifCode  || null) : null,
+        saisie_motif_label:    type === 'saisie' ? (saisieMotifLabel || null) : null,
         odoo_task_id:       null,
         // Persiste odoo_ticket_id pour reconstruire URL QR /v/[ticketId] plus tard.
         // Olivier 2026-05-27 : evite double-source (towsoft_queue + reverse lookup).
