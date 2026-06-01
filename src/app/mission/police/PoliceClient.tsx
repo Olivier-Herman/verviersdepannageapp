@@ -7,6 +7,8 @@ import { Loader2 } from 'lucide-react'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
+import { useT } from '@/lib/i18n/I18nProvider'
+import { T }    from '@/lib/i18n/T'
 
 type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'appel_prive' | 'avp'
 
@@ -75,6 +77,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function PoliceClient({ userRole = 'driver' }: { userRole?: string }) {
   const isSuperAdmin = userRole === 'superadmin'
   const router = useRouter()
+  const { t } = useT()
   const [selectedType, setSelectedType] = useState<MissionType | null>(null)
   const { date: initDate, time: initTime } = nowFormatted()
 
@@ -663,7 +666,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     <div className="min-h-screen bg-page flex flex-col items-center justify-center px-4">
       <div className="bg-surface rounded-3xl shadow-lg p-8 text-center max-w-sm w-full space-y-4">
         <div className="text-6xl">✅</div>
-        <h1 className="text-ink text-2xl font-bold">Mission créée</h1>
+        <h1 className="text-ink text-2xl font-bold"><T k="create_mission.mission_created" /></h1>
         <p className="text-ink-muted text-sm">Email envoyé — TowSoft en cours de mise à jour</p>
 
         {needsPayment && encaissementUrl && (
@@ -725,10 +728,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   if (!selectedType) return (
     <div className="min-h-screen bg-page px-4 pt-12 pb-8">
       <button onClick={() => router.push('/dashboard')} className="mb-6 text-ink-muted text-sm flex items-center gap-1">
-        ← Retour
+        ← <T k="encaissement.btn_back" />
       </button>
-      <h1 className="text-ink text-2xl font-bold mb-1">Créer une mission</h1>
-      <p className="text-ink-muted text-sm mb-8">Sélectionne le type d&apos;intervention</p>
+      <h1 className="text-ink text-2xl font-bold mb-1"><T k="create_mission.title_create" /></h1>
+      <p className="text-ink-muted text-sm mb-8"><T k="create_mission.scenario" /></p>
       <div className="space-y-3">
         {(Object.entries(TYPE_CONFIG) as [MissionType, typeof TYPE_CONFIG[MissionType]][]).map(([type, conf]) => (
           <button key={type} onClick={() => setSelectedType(type)}
@@ -754,7 +757,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       <div className="px-4 py-5 space-y-4">
 
         {/* Date/Heure */}
-        <Section title="Date & Heure">
+        <Section title={t('create_mission.section_datetime')}>
           <div className="grid grid-cols-2 gap-3">
             <LInput label="Date" value={date} onChange={setDate} placeholder="DD-MM-YYYY" />
             <LInput label="Heure" value={time} onChange={setTime} placeholder="HH:MM" />
@@ -764,7 +767,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {/* Véhicule — plaque et VIN sur 2 lignes separees pour laisser de la
             place aux boutons appareil photo (etaient ecrases en grid-cols-2).
             Olivier 2026-05-27. */}
-        <Section title="Véhicule">
+        <Section title={t('create_mission.section_vehicle')}>
           <div>
             <label className="block text-ink-secondary text-xs font-medium mb-1">
               Plaque<span className="text-critical ml-0.5">*</span>
@@ -822,7 +825,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         </Section>
 
         {/* Intervention */}
-        <Section title="Intervention">
+        <Section title={t('create_mission.section_intervention')}>
           <div>
             <label className="block text-ink-secondary text-xs font-medium mb-1">Lieu d&apos;intervention <span className="text-critical">*</span></label>
             <div className="flex gap-2">
@@ -852,7 +855,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           const malGareePaye = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
           const autoLinkViaPayment = sncDirectPayment || priveDirectPayment || malGareePaye
           return (
-            <Section title="Propriétaire (optionnel)">
+            <Section title={t('create_mission.section_owner_optional')}>
               {autoLinkViaPayment && (
                 <p className="text-blue-800 text-xs bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
                   💡 Le client sera lié automatiquement à la mission lors de l&apos;encaissement
@@ -871,7 +874,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {/* Appel Privé : type DSP/REM + forfait TVAC (optionnel) + preview tarif.
             Si forfait vide -> facturation fallback sur tarif Prive en vigueur. */}
         {selectedType === 'appel_prive' && (
-          <Section title="📞 Détails Appel Privé">
+          <Section title={t('create_mission.section_private_call')}>
             <div className="space-y-3">
               {/* Type d intervention */}
               <div>
@@ -1027,7 +1030,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             paiement (125 EUR TVAC, client arrive avant chargement, pas de parc).
             Olivier 2026-05-26. */}
         {selectedType === 'mal_garee' && (
-          <Section title="🚫 Scénario Mal Garée">
+          <Section title={t('create_mission.section_mal_garee')}>
             <div className="grid grid-cols-1 gap-2">
               {([
                 { key: 'chargement',      label: '🚛 Chargement et mise en parc',  desc: 'Workflow standard : véhicule chargé et mis en zone L. Restitution ultérieure au propriétaire (avec gardiennage).' },
@@ -1054,7 +1057,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         {/* Motif de saisie — obligatoire pour Police-Saisie (demande Franck 2026-06-01).
             Liste configuree dans /admin/saisie-motifs. Le motif choisi apparait sur l etiquette parc. */}
         {selectedType === 'saisie' && (
-          <Section title="⚖️ Motif de la saisie *">
+          <Section title={t('create_mission.section_saisie_motif')}>
             {loadingSaisieMotifs ? (
               <p className="text-ink-faint text-sm text-center py-4">Chargement…</p>
             ) : saisieMotifs.length === 0 ? (
@@ -1089,7 +1092,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             Si actif, la restitution exigera une confirmation que le
             proprietaire est bien passe au commissariat. */}
         {selectedType === 'mal_garee' && malGareeScenario === 'chargement' && (
-          <Section title="🚓 Blocage police">
+          <Section title={t('create_mission.section_police_block')}>
             <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-strong rounded-xl hover:border-blue-500 transition">
               <input
                 type="checkbox"
@@ -1110,7 +1113,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         )}
 
         {/* Remarques */}
-        <Section title="Remarques">
+        <Section title={t('create_mission.section_remarks')}>
           <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
             placeholder="Observations..."
             className="w-full bg-surface border border-strong rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none focus:border-blue-500" />
@@ -1118,7 +1121,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
 
         {/* SNC (Siabis Non Couvert) + SC (Siabis Couvert) : scenario + balisage + assistance (SC) */}
         {(selectedType === 'snc' || selectedType === 'sc') && (
-          <Section title={selectedType === 'sc' ? '🛣️ Détails Siabis Couvert' : '🛣️ Détails SNC'}>
+          <Section title={selectedType === 'sc' ? t('create_mission.section_sia_covered') : t('create_mission.section_snc')}>
             <div className="space-y-3">
               {/* Nom assistance (SC uniquement) */}
               {selectedType === 'sc' && (
@@ -1259,7 +1262,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             restitution (Olivier 2026-05-24). */}
 
         {/* Photos */}
-        <Section title={`Photos (${photos.length})`}>
+        <Section title={`${t('create_mission.section_photos')} (${photos.length})`}>
           {previews.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-2">
               {previews.map((src, i) => (
@@ -1294,10 +1297,10 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
           (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
         const submitLabel = loading
-          ? '⏳ Création en cours...'
+          ? `⏳ ${t('create_mission.creating')}`
           : needsImmediatePayment
-            ? `💳 Créer et encaisser`
-            : `${cfg!.icon} Créer la mission`
+            ? `💳 ${t('create_mission.create_mission_btn')}`
+            : `${cfg!.icon} ${t('create_mission.create_mission_btn')}`
         return (
           <div className="fixed bottom-0 left-0 right-0 bg-surface/95 border-t border px-4 py-4 shadow-lg">
             <button onClick={handleSubmit} disabled={loading}
@@ -1318,7 +1321,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-bold text-ink">Sélectionner une marque</h2>
+              <h2 className="font-bold text-ink"><T k="create_mission.select_brand" /></h2>
               <button onClick={() => setShowBrands(false)} className="text-ink-faint text-xl">✕</button>
             </div>
             <div className="px-4 py-2">

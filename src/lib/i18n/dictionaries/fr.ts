@@ -307,6 +307,22 @@ export const fr = {
     saisie_motif_required:  'Choisis un motif',
     create_mission_btn:     'Créer la mission',
     creating:               'Création…',
+    mission_created:        'Mission créée',
+    title_create:           'Créer une mission',
+    // sections du formulaire
+    section_datetime:       'Date & Heure',
+    section_vehicle:        'Véhicule',
+    section_intervention:   'Intervention',
+    section_owner_optional: 'Propriétaire (optionnel)',
+    section_private_call:   '📞 Détails Appel Privé',
+    section_mal_garee:      '🚫 Scénario Mal Garée',
+    section_saisie_motif:   '⚖️ Motif de la saisie *',
+    section_police_block:   '🚓 Blocage police',
+    section_remarks:        'Remarques',
+    section_sia_covered:    '🛣️ Détails Siabis Couvert',
+    section_snc:            '🛣️ Détails SNC',
+    section_photos:         'Photos',
+    select_brand:           'Sélectionner une marque',
   },
 }
 
