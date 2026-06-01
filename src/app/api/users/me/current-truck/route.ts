@@ -38,7 +38,7 @@ export async function GET() {
     .from('users')
     .select(`
       id,
-      default_truck_id, current_truck_id, current_truck_set_at,
+      default_truck_id, current_truck_id, current_truck_set_at, truck_confirm_disabled,
       default_truck:trucks!users_default_truck_id_fkey(id, name, plate, active),
       current_truck:trucks!users_current_truck_id_fkey(id, name, plate, active)
     `)
@@ -47,16 +47,19 @@ export async function GET() {
 
   if (!u) return NextResponse.json({ error: 'User introuvable' }, { status: 404 })
 
+  const confirmDisabled = !!(u as any).truck_confirm_disabled
   const setAt = u.current_truck_set_at ? new Date(u.current_truck_set_at) : null
   const threshold = lastThreshold(new Date())
-  const needsConfirmation = !setAt || setAt < threshold
+  // Si confirm_disabled, on ne demande jamais confirmation (Olivier 2026-06-01)
+  const needsConfirmation = confirmDisabled ? false : (!setAt || setAt < threshold)
 
   return NextResponse.json({
-    default_truck:        u.default_truck,
-    current_truck:        u.current_truck,
-    current_truck_set_at: u.current_truck_set_at,
-    needs_confirmation:   needsConfirmation,
-    threshold:            threshold.toISOString(),
+    default_truck:          u.default_truck,
+    current_truck:          u.current_truck,
+    current_truck_set_at:   u.current_truck_set_at,
+    needs_confirmation:     needsConfirmation,
+    confirm_disabled:       confirmDisabled,
+    threshold:              threshold.toISOString(),
   })
 }
 

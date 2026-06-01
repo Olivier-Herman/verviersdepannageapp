@@ -22,7 +22,7 @@ export default async function AdminTrucksPage() {
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true }),
     sb.from('users')
-      .select('id, name, email, role, default_truck_id, current_truck_id')
+      .select('id, name, email, role, default_truck_id, current_truck_id, truck_confirm_disabled')
       .or('role.in.(driver,dispatcher,admin,superadmin),roles.ov.{driver,dispatcher,admin,superadmin}')
       .eq('active', true)
       .order('name'),

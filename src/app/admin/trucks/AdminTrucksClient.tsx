@@ -17,12 +17,13 @@ interface Truck {
 }
 
 interface Driver {
-  id:               string
-  name:             string
-  email:            string
-  role:             string
-  default_truck_id: string | null
-  current_truck_id: string | null
+  id:                       string
+  name:                     string
+  email:                    string
+  role:                     string
+  default_truck_id:         string | null
+  current_truck_id:         string | null
+  truck_confirm_disabled?:  boolean
 }
 
 const EMPTY: Partial<Truck> = {
@@ -99,6 +100,23 @@ export default function AdminTrucksClient({ initialTrucks, initialDrivers }: {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erreur')
       setDrivers(drivers.map(d => d.id === userId ? { ...d, default_truck_id: truckId } : d))
+    } catch (e: any) {
+      setError(e.message)
+    } finally { setSavingAssign(null) }
+  }
+
+  async function toggleConfirmDisabled(userId: string, disabled: boolean) {
+    setSavingAssign(userId)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/users/default-truck', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ user_id: userId, truck_confirm_disabled: disabled }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur')
+      setDrivers(drivers.map(d => d.id === userId ? { ...d, truck_confirm_disabled: disabled } : d))
     } catch (e: any) {
       setError(e.message)
     } finally { setSavingAssign(null) }
@@ -183,7 +201,7 @@ export default function AdminTrucksClient({ initialTrucks, initialDrivers }: {
                 const currentTruck = trucks.find(t => t.id === d.current_truck_id)
                 const inUse = currentTruck && currentTruck.id !== d.default_truck_id
                 return (
-                  <li key={d.id} className="bg-surface border rounded-xl p-3 flex items-center gap-3">
+                  <li key={d.id} className="bg-surface border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-ink font-medium text-sm">{d.name}</p>
                       <p className="text-ink-muted text-xs">{d.role}</p>
@@ -196,14 +214,27 @@ export default function AdminTrucksClient({ initialTrucks, initialDrivers }: {
                     <select
                       value={d.default_truck_id || ''}
                       onChange={e => assignDriverTruck(d.id, e.target.value || null)}
-                      disabled={savingAssign === d.id}
-                      className="bg-surface-2 border rounded-lg px-2 py-1.5 text-ink text-xs min-w-[180px]"
+                      disabled={savingAssign === d.id || d.truck_confirm_disabled}
+                      className="bg-surface-2 border rounded-lg px-2 py-1.5 text-ink text-xs min-w-[180px] disabled:opacity-50"
                     >
                       <option value="">— Aucune par défaut —</option>
                       {activeTrucks.map(t => (
                         <option key={t.id} value={t.id}>{t.name} ({t.plate})</option>
                       ))}
                     </select>
+                    {/* Toggle "Désactiver le modal" — Olivier 2026-06-01 */}
+                    <label
+                      title="Si coché, le modal de confirmation truck n'apparaîtra jamais pour cet user (ex: admin qui ne conduit pas)."
+                      className="flex items-center gap-1.5 text-xs text-ink-secondary cursor-pointer flex-shrink-0 whitespace-nowrap"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!d.truck_confirm_disabled}
+                        onChange={e => toggleConfirmDisabled(d.id, e.target.checked)}
+                        disabled={savingAssign === d.id}
+                      />
+                      Pas de modal
+                    </label>
                     {savingAssign === d.id && <span className="text-ink-faint text-xs">⏳</span>}
                   </li>
                 )

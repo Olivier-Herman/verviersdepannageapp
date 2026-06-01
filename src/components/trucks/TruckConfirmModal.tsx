@@ -26,6 +26,7 @@ interface CurrentTruckState {
   current_truck:        Truck | null
   current_truck_set_at: string | null
   needs_confirmation:   boolean
+  confirm_disabled?:    boolean
 }
 
 const ROLES_WITH_TRUCK = ['driver', 'dispatcher', 'admin', 'superadmin']
@@ -57,6 +58,10 @@ export function TruckConfirmModal() {
       const trucksList = trucksData?.trucks || []
       setTrucks(trucksList)
       setState(currentData)
+
+      // Olivier 2026-06-01 : si l user a desactive la confirmation (admin
+      // pur, dispatcher non-roulant, etc.), on n affiche jamais.
+      if (currentData.confirm_disabled) return
 
       // Aucune depanneuse configuree -> on ne montre rien (pas bloquant)
       if (trucksList.length === 0) return
