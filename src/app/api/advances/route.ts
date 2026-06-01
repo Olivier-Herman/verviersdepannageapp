@@ -12,11 +12,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { plate, amountHtva, paymentMethod, invoiceUrl, notes, brandName, modelName } = body
+    const { plate, amountHtva, paymentMethod, invoiceUrl, notes, brandName, modelName, missionId } = body
 
     if (!plate || !amountHtva || !paymentMethod || !invoiceUrl) {
       return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
     }
+    // missionId optionnel : si fourni, l avance est liee a la mission
+    // (highlight carte facturation + ajout auto ligne dans devis).
+    const validatedMissionId = missionId && typeof missionId === 'string' && missionId.trim()
+      ? missionId.trim()
+      : null
 
     const supabase        = createAdminClient()
     const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase().trim()
@@ -120,6 +125,7 @@ export async function POST(req: NextRequest) {
         purchase_email_sent: purchaseEmailSent,
         notes:               notes ?? null,
         status:              odooOrderId ? 'synced' : 'pending',
+        mission_id:          validatedMissionId,
       })
       .select().single()
 
@@ -141,6 +147,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const limit  = Math.min(parseInt(searchParams.get('limit')  ?? '20'), 100)
   const offset = Math.max(parseInt(searchParams.get('offset') ?? '0'),  0)
+  // Filtre optionnel : avances liees a une mission specifique
+  // (utilise par FacturerModal pour afficher les avances de la mission).
+  const missionIdFilter = searchParams.get('mission_id')
 
   const { data: me } = await supabase
     .from('users').select('id, role').eq('email', session.user.email).single()
@@ -154,6 +163,9 @@ export async function GET(req: NextRequest) {
 
   if (!['admin', 'superadmin'].includes(me.role)) {
     query = query.eq('user_id', me.id)
+  }
+  if (missionIdFilter) {
+    query = query.eq('mission_id', missionIdFilter)
   }
 
   const { data, error, count } = await query

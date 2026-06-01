@@ -94,12 +94,23 @@ export default async function FacturationPage() {
     ? await supabase.from('users').select('id, name').in('id', driverIds)
     : { data: [] }
 
+  // Olivier 2026-06-01 : avances de fonds liees aux missions a facturer.
+  // Permet de surligner les cartes qui demandent une attention particuliere
+  // (la ligne sera ajoutee automatiquement au devis avec le PDF de la facture).
+  const { data: advances } = allIds.size > 0
+    ? await supabase
+        .from('fund_advances')
+        .select('id, mission_id, amount_htva, plate, invoice_url')
+        .in('mission_id', [...allIds])
+    : { data: [] }
+
   return (
     <FacturationClient
       missions={missions || []}
       siblings={siblings}
       payments={payments || []}
       drivers={drivers || []}
+      advances={advances || []}
       userRole={role}
       userName={user.name || ''}
       userEmail={user.email}

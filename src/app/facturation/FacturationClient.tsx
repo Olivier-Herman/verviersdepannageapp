@@ -69,11 +69,20 @@ interface PaymentRow {
 
 interface DriverRow { id: string; name: string | null }
 
+interface AdvanceRow {
+  id:          string
+  mission_id:  string | null
+  amount_htva: number
+  plate:       string | null
+  invoice_url: string | null
+}
+
 interface Props {
   missions:    MissionRow[]
   siblings:    SiblingRow[]
   payments:    PaymentRow[]
   drivers:     DriverRow[]
+  advances?:   AdvanceRow[]
   userRole:    string
   userName:    string
   userEmail?:  string | null
@@ -119,9 +128,25 @@ const KIND_COLOR: Record<string, string> = {
 }
 
 export default function FacturationClient({
-  missions, siblings, payments, drivers,
+  missions, siblings, payments, drivers, advances = [],
   userRole, userName, userEmail, userModules,
 }: Props) {
+
+  // Olivier 2026-06-01 : map mission_id -> avances liees, pour highlight des
+  // cartes "A facturer" qui contiennent une avance de fonds (attention requise).
+  const advancesByMission = useMemo(() => {
+    const map = new Map<string, AdvanceRow[]>()
+    for (const a of advances) {
+      if (!a.mission_id) continue
+      const list = map.get(a.mission_id) || []
+      list.push(a)
+      map.set(a.mission_id, list)
+    }
+    return map
+  }, [advances])
+  const hasAdvances = (mid: string) => (advancesByMission.get(mid)?.length || 0) > 0
+  const totalAdvanceFor = (mid: string) =>
+    (advancesByMission.get(mid) || []).reduce((s, a) => s + Number(a.amount_htva || 0), 0)
   const [search, setSearch]     = useState('')
   const [sourceFilter, setSrc]  = useState<string>('all')
   const [selected, setSelected] = useState<MissionRow | null>(null)
@@ -237,14 +262,28 @@ export default function FacturationClient({
               const parentRow    = m.parent_mission_id ? siblingsByMission.byId.get(m.parent_mission_id) : null
               const hasChain     = childRels.length > 0 || !!parentRow
               const pays         = paymentsByMission.get(m.id) || []
+              const advs         = advancesByMission.get(m.id) || []
+              const hasAdv       = advs.length > 0
+              const advTotal     = advs.reduce((s, a) => s + Number(a.amount_htva || 0), 0)
 
               return (
                 <li key={m.id}>
                   <Link
                     href={`/dispatch/${m.id}`}
-                    className="block bg-surface border hover:bg-surface-hover rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3"
+                    className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${
+                      hasAdv
+                        ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
+                        : 'bg-surface border hover:bg-surface-hover'
+                    }`}
                   >
-                    <span className={`inline-flex items-center justify-center w-12 h-12 rounded-xl text-white text-xs font-bold flex-shrink-0 ${KIND_COLOR[kind]}`}>
+                    {/* Ruban "Avance" en coin haut-gauche — Olivier 2026-06-01 */}
+                    {hasAdv && (
+                      <div className="absolute top-0 left-0 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-br-lg uppercase tracking-wider">
+                        💰 {advs.length} Avance{advs.length > 1 ? 's' : ''}
+                      </div>
+                    )}
+
+                    <span className={`inline-flex items-center justify-center w-12 h-12 rounded-xl text-white text-xs font-bold flex-shrink-0 ${KIND_COLOR[kind]} ${hasAdv ? 'mt-3 sm:mt-0' : ''}`}>
                       {kind}
                     </span>
 
@@ -270,6 +309,12 @@ export default function FacturationClient({
                         Terminé le {fmtDateTime(m.completed_at)}
                       </p>
                     </div>
+
+                    {hasAdv && (
+                      <span className="px-2.5 py-1 bg-indigo-100 border-2 border-indigo-400 text-indigo-800 text-xs font-semibold rounded-lg whitespace-nowrap" title="Avances de fonds liées à ajouter au devis">
+                        💰 {advTotal.toFixed(2)} € HTVA
+                      </span>
+                    )}
 
                     {pays.length > 0 && (
                       <span className="px-2.5 py-1 bg-warning-soft border border-warning text-warning text-xs font-semibold rounded-lg whitespace-nowrap">

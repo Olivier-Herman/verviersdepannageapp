@@ -2538,6 +2538,16 @@ export default function MissionDetailClient({
                 <PrintLabelButton missionId={initialMission.id} />
               )}
 
+              {/* Avance de fonds — Olivier 2026-06-01 : permet a un dispatcher
+                  (ou admin) d enregistrer une avance liee a cette mission. La
+                  facture sera ajoutee au devis Odoo lors de la facturation. */}
+              <a
+                href={`/avance-fonds?mission_id=${initialMission.id}&plate=${encodeURIComponent(initialMission.vehicle_plate || '')}&brand=${encodeURIComponent(initialMission.vehicle_brand || '')}&model=${encodeURIComponent(initialMission.vehicle_model || '')}&mission_ref=${encodeURIComponent(initialMission.dossier_number || initialMission.external_id || '')}`}
+                className="block w-full py-3 bg-indigo-50 border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-100 text-indigo-900 rounded-2xl text-sm font-bold text-center transition md-card-enter"
+              >
+                💰 Avance de fonds pour cette mission
+              </a>
+
               {/* Bouton "Gérer la mise en parc" — saisie adresse + conversion REM+REL.
                   Visible pour toute mission REM (pas encore REM+REL) en parc dont la
                   source autorise une relivraison (helper isRelEligibleSource cote serveur). */}

@@ -1,8 +1,8 @@
 // src/app/avance-fonds/AvanceFondsClient.tsx
 'use client'
 
-import { useState, useRef }  from 'react'
-import { useRouter }          from 'next/navigation'
+import { useState, useRef, useEffect }  from 'react'
+import { useRouter, useSearchParams }    from 'next/navigation'
 import Link                   from 'next/link'
 import Image                  from 'next/image'
 import AppShell               from '@/components/layout/AppShell'
@@ -73,13 +73,24 @@ function BackBtn({ onClick }: { onClick: () => void }) {
 
 // ── Composant principal ─────────────────────────────────────
 export default function AvanceFondsClient({ user }: { user: any }) {
-  const router    = useRouter()
-  const fileRef   = useRef<HTMLInputElement>(null)
-  const cameraRef = useRef<HTMLInputElement>(null)
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const fileRef      = useRef<HTMLInputElement>(null)
+  const cameraRef    = useRef<HTMLInputElement>(null)
 
   const userRole    = user?.role ?? 'driver'
   const userName    = user?.name ?? ''
   const userModules = (user?.modules ?? []) as string[]
+
+  // Olivier 2026-06-01 : pre-remplissage depuis query params quand le wizard
+  // est ouvert depuis une fiche mission. mission_id sera envoye a l API pour
+  // lier l avance a la mission. plate/brand/model preremplis permettent de
+  // sauter les etapes correspondantes.
+  const missionId    = searchParams.get('mission_id') || null
+  const prefillPlate = searchParams.get('plate')      || ''
+  const prefillBrand = searchParams.get('brand')      || ''
+  const prefillModel = searchParams.get('model')      || ''
+  const missionRef   = searchParams.get('mission_ref') || ''
 
   const [step,          setStep]          = useState<Step>('photo')
   const [loading,       setLoading]       = useState(false)
@@ -91,6 +102,21 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const [models,        setModels]        = useState<Model[]>([])
   const [loadingBrands, setLoadingBrands] = useState(false)
 
+  // Pre-fill depuis query params (au mount uniquement). Si plate + brand +
+  // model sont tous fournis (cas typique : ouverture depuis fiche mission),
+  // on skip directement aux details apres la photo.
+  useEffect(() => {
+    if (prefillPlate || prefillBrand || prefillModel) {
+      setForm(f => ({
+        ...f,
+        plate:     prefillPlate ? normalizePlate(prefillPlate) : f.plate,
+        brandName: prefillBrand || f.brandName,
+        modelName: prefillModel || f.modelName,
+      }))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ── Helpers ───────────────────────────────────────────────
   const goBack = (s: Step) => { setError(null); setStep(s) }
 
@@ -98,7 +124,13 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     const file = e.target.files?.[0]
     if (!file) return
     setForm(f => ({ ...f, photoFile: file, photoPreview: URL.createObjectURL(file) }))
-    setStep('plate')
+    // Si plate + brand + model sont preremplis (depuis fiche mission),
+    // on saute directement a l'etape "details" (montant + paiement).
+    if (prefillPlate && prefillBrand && prefillModel) {
+      setStep('details')
+    } else {
+      setStep('plate')
+    }
   }
 
   const loadBrands = async () => {
@@ -188,6 +220,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           notes:         form.notes || undefined,
           brandName:     form.brandName || undefined,
           modelName:     form.modelName || undefined,
+          missionId:     missionId || undefined,
         }),
       })
       const data = await res.json()
@@ -207,10 +240,20 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     return null
   }
 
+  // Bandeau "Liée à la mission" affiche en haut quand on vient d une fiche.
+  const MissionBanner = () => missionId ? (
+    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-4 text-center">
+      <p className="text-blue-700 text-xs uppercase tracking-wider font-bold">🔗 Avance liée à la mission</p>
+      {missionRef && <p className="text-blue-900 text-sm font-semibold mt-0.5">{missionRef}</p>}
+      <p className="text-blue-700 text-[11px] mt-1">La facture sera ajoutée au devis lors de la facturation.</p>
+    </div>
+  ) : null
+
   // ── STEP : PHOTO ───────────────────────────────────────────
   if (step === 'photo') return (
     <AppShell title="Avance de fonds" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 gap-8 max-w-md mx-auto">
+        <MissionBanner />
         <div className="text-center">
           <div className="text-6xl mb-3">📄</div>
           <p className="text-ink font-semibold text-lg">Photographiez la facture</p>
@@ -506,19 +549,29 @@ export default function AvanceFondsClient({ user }: { user: any }) {
         <div>
           <h2 className="text-2xl font-bold text-ink">Avance enregistrée</h2>
           <p className="text-ink-muted mt-2 text-sm max-w-xs mx-auto">
-            La facture a été transmise au service comptable et le dossier véhicule mis à jour.
+            {missionId
+              ? `La facture est liée à la mission${missionRef ? ` ${missionRef}` : ''} et sera ajoutée au devis lors de la facturation.`
+              : 'La facture a été transmise au service comptable et le dossier véhicule mis à jour.'}
           </p>
         </div>
         <div className="bg-surface border border rounded-2xl p-4 w-full max-w-xs text-left space-y-3">
+          {missionId && missionRef && <Row label="Mission" value={missionRef} />}
           <Row label="Plaque"   value={normalizePlate(form.plate)} mono />
           <Row label="Montant"  value={`${formatEur(parseFloat(form.amountHtva))} HTVA`} />
           <Row label="Paiement" value={PAYMENT_METHODS.find(p => p.value === form.paymentMethod)?.label ?? form.paymentMethod} />
         </div>
         <div className="flex flex-col w-full max-w-xs gap-3">
-          <button onClick={() => router.push('/dashboard')}
-            className="w-full py-3 bg-brand hover:bg-brand/90 text-ink rounded-xl font-semibold">
-            Tableau de bord
-          </button>
+          {missionId ? (
+            <button onClick={() => router.push(`/mission/${missionId}`)}
+              className="w-full py-3 bg-brand hover:bg-brand/90 text-ink rounded-xl font-semibold">
+              ← Retour à la mission
+            </button>
+          ) : (
+            <button onClick={() => router.push('/dashboard')}
+              className="w-full py-3 bg-brand hover:bg-brand/90 text-ink rounded-xl font-semibold">
+              Tableau de bord
+            </button>
+          )}
           <button onClick={() => { setForm(EMPTY_FORM); setError(null); setStep('photo') }}
             className="w-full py-3 bg-surface border border text-ink-secondary rounded-xl font-medium">
             Nouvelle avance

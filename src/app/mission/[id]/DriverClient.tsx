@@ -2553,6 +2553,19 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
+        {/* Avance de fonds — bouton lie a la mission. Olivier 2026-06-01 :
+            le chauffeur saisit une avance (achat piece / carburant / peage)
+            depuis la mission. La facture est liee + ajoutee au devis lors
+            de la facturation. */}
+        {['assigned', 'accepted', 'in_progress', 'parked', 'delivering'].includes(M.status) && !isReadOnly && (
+          <a
+            href={`/avance-fonds?mission_id=${M.id}&plate=${encodeURIComponent(M.vehicle_plate || '')}&brand=${encodeURIComponent(M.vehicle_brand || '')}&model=${encodeURIComponent(M.vehicle_model || '')}&mission_ref=${encodeURIComponent(M.dossier_number || M.external_id || '')}`}
+            className="block w-full py-3 bg-indigo-50 border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-100 text-indigo-900 rounded-2xl text-sm font-bold text-center transition"
+          >
+            💰 Avance de fonds pour cette mission
+          </a>
+        )}
+
 
 
         {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}

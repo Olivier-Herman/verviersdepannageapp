@@ -241,6 +241,17 @@ function MissionBlock({
   const [surcharges, setSurcharges] = useState<SurchargeData | null>(null)
   const [estimate, setEstimate] = useState<PriceEstimateData | null>(null)
   const [estimateLoading, setEstimateLoading] = useState(true)
+  // Olivier 2026-06-01 : avances de fonds liees a cette mission. Affichees
+  // dans le UI + ajoutees automatiquement comme lignes SERV-DIV au devis.
+  const [linkedAdvances, setLinkedAdvances] = useState<Array<{
+    id:             string
+    plate:          string
+    amount_htva:    number
+    invoice_url:    string
+    payment_method: string
+    created_at:     string
+    notes?:         string | null
+  }>>([])
   const [quoteBusy, setQuoteBusy] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatusData | null>(null)
@@ -266,20 +277,32 @@ function MissionBlock({
       .then(r => r.json())
       .then(d => { if (!cancelled) setSurcharges(d) })
       .catch(() => {})
-    // Charge en parallele : estimate auto + draft sauvegarde
+    // Charge en parallele : estimate auto + draft sauvegarde + avances liees
     Promise.all([
       fetch(`/api/missions/${m.id}/price-estimate`).then(r => r.json()),
       fetch(`/api/missions/${m.id}/invoice-draft`).then(r => r.json()),
-    ]).then(([d, draftRes]: [PriceEstimateData, any]) => {
+      fetch(`/api/advances?mission_id=${m.id}&limit=50`).then(r => r.json()),
+    ]).then(([d, draftRes, advRes]: [PriceEstimateData, any, any]) => {
       if (cancelled) return
       setEstimate(d)
+      const advances = Array.isArray(advRes?.advances) ? advRes.advances : []
+      setLinkedAdvances(advances)
+      // Lignes generees pour les avances de fonds liees (1 ligne par avance,
+      // SERV-DIV, qty=1, PU=amount_htva). Inserees a la fin des lignes.
+      const advanceLines: CustomLine[] = advances.map((a: any) => ({
+        kind:       'SERV-DIV' as ProductKind,
+        name:       `Avance de fonds — ${a.plate}${a.created_at ? ' du ' + new Date(a.created_at).toLocaleDateString('fr-BE') : ''}`,
+        qty:        1,
+        price_unit: Number(a.amount_htva) || 0,
+      }))
+
       // 1) Si un brouillon existe en BDD : il prend la priorite
       if (draftRes?.draft?.lines && Array.isArray(draftRes.draft.lines)) {
         setCustomLines(draftRes.draft.lines)
         setHasDraft(true)
         setDraftSavedAt(draftRes.draft.updated_at)
       }
-      // 2) Sinon mode 'lines' : init auto depuis le template
+      // 2) Sinon mode 'lines' : init auto depuis le template + avances
       else if (d?.ok && d.pricing_mode === 'lines' && d.template_lines && d.template_lines.length > 0) {
         const initialLines: CustomLine[] = d.template_lines.map(tl => ({
           kind:       tl.kind,
@@ -295,7 +318,12 @@ function MissionBlock({
             price_unit: 0,
           })
         }
-        setCustomLines(initialLines)
+        // Avances ajoutees a la fin
+        setCustomLines([...initialLines, ...advanceLines])
+      }
+      // 3) Mode forfait ou autre : si avances presentes, on init quand meme
+      else if (advanceLines.length > 0) {
+        setCustomLines(advanceLines)
       }
     }).catch(() => {}).finally(() => { if (!cancelled) setEstimateLoading(false) })
     fetch(`/api/missions/${m.id}/quote-status`)
@@ -602,6 +630,44 @@ function MissionBlock({
               >
                 🔧 Créer les lignes manuellement
               </button>
+            </div>
+          )}
+
+          {/* Avances de fonds liees a cette mission — Olivier 2026-06-01.
+              Chaque avance ajoute automatiquement 1 ligne SERV-DIV au devis
+              avec son montant HTVA. Le PDF est cliquable pour verification. */}
+          {linkedAdvances.length > 0 && (
+            <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">💰</span>
+                <p className="text-indigo-900 text-xs font-bold uppercase tracking-wider">
+                  {linkedAdvances.length} avance{linkedAdvances.length > 1 ? 's' : ''} de fonds liée{linkedAdvances.length > 1 ? 's' : ''}
+                </p>
+              </div>
+              <p className="text-indigo-700 text-[11px] mb-2">
+                Ajoutée{linkedAdvances.length > 1 ? 's' : ''} automatiquement aux lignes du devis. Vérifie les montants HTVA.
+              </p>
+              <div className="space-y-1.5">
+                {linkedAdvances.map(a => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-indigo-900 text-xs font-semibold truncate">
+                        {a.plate} — {Number(a.amount_htva).toFixed(2).replace('.', ',')} € HTVA
+                      </p>
+                      <p className="text-indigo-700 text-[10px]">
+                        {new Date(a.created_at).toLocaleDateString('fr-BE')} · {a.payment_method}
+                        {a.notes ? ' · ' + a.notes : ''}
+                      </p>
+                    </div>
+                    {a.invoice_url && (
+                      <a href={a.invoice_url} target="_blank" rel="noopener noreferrer"
+                        className="flex-shrink-0 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-semibold rounded">
+                        📎 PDF
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
