@@ -5,6 +5,7 @@ import { useEffect }                   from 'react'
 import { ThemeProvider }               from '@/components/theme/ThemeProvider'
 import SheetStackProvider              from '@/components/sheets/SheetStackProvider'
 import { AudioModeProvider }           from '@/components/audio/AudioModeProvider'
+import { TruckConfirmModal }           from '@/components/trucks/TruckConfirmModal'
 
 function AudioModeMount() {
   const { data: session } = useSession()
@@ -31,6 +32,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <SessionProvider>
         <AudioModeMount />
+        <TruckConfirmModal />
         <SheetStackProvider>{children}</SheetStackProvider>
       </SessionProvider>
     </ThemeProvider>

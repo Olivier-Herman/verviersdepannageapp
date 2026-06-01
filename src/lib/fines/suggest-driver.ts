@@ -38,7 +38,18 @@ export interface SuggestDriverResult {
 /**
  * Suggere le chauffeur qui etait au volant d un vehicule a une date donnee.
  *
- * @param plate    Plaque du vehicule (sera normalisee : trim + uppercase + retrait espaces/tirets)
+ * Olivier 2026-06-01 : la plaque du PV correspond a une DEPANNEUSE VD
+ * (table trucks), pas au vehicule client remorque. On cherche donc :
+ * 1. Le truck VD dont la plaque correspond
+ * 2. Les missions qui utilisaient ce truck (via incoming_missions.truck_id)
+ *    autour de la date d infraction
+ * 3. Le chauffeur assigne sur chaque mission candidate
+ *
+ * Fallback : si pas de match via truck (plaque inconnue ou vieilles missions
+ * sans truck_id), on cherche aussi sur vehicle_plate au cas ou (rare mais
+ * possible si on saisit la plaque du vehicule client par erreur).
+ *
+ * @param plate    Plaque de la depanneuse (sera normalisee : trim + uppercase + retrait espaces/tirets)
  * @param date     Date+heure de l infraction
  */
 export async function suggestDriverForFine(
@@ -49,26 +60,54 @@ export async function suggestDriverForFine(
   const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase().trim()
 
   // Fenetre de recherche : +/- 6h autour de l infraction
-  // Captures les missions qui couvraient ce moment OU qui ont commence/fini juste autour.
   const sixHoursMs = 6 * 3600 * 1000
   const before = new Date(date.getTime() - sixHoursMs).toISOString()
   const after  = new Date(date.getTime() + sixHoursMs).toISOString()
 
-  // Toutes les missions sur cette plaque autour de la date.
-  // On large pour capter aussi les missions completed_at <= date+6h.
-  const { data: missions } = await sb
-    .from('incoming_missions')
-    .select(`
-      id, mission_number, external_id, vehicle_plate,
-      assigned_to,
-      assigned_at, on_way_at, on_site_at, loaded_at, parked_at,
-      delivering_at, completed_at, intervention_date, received_at,
-      assigned_user:users!incoming_missions_assigned_to_fkey(id, name)
-    `)
-    .ilike('vehicle_plate', normalizedPlate)
-    .or(`completed_at.gte.${before},and(completed_at.is.null,received_at.gte.${before})`)
-    .lte('received_at', after)
-    .limit(20)
+  // 1) Lookup truck VD par plaque
+  const { data: truck } = await sb
+    .from('trucks')
+    .select('id, name')
+    .ilike('plate', normalizedPlate)
+    .maybeSingle()
+
+  let missions: any[] = []
+  if (truck) {
+    // 2) Missions qui utilisaient ce truck autour de la date
+    const { data: byTruck } = await sb
+      .from('incoming_missions')
+      .select(`
+        id, mission_number, external_id, vehicle_plate, truck_id,
+        assigned_to,
+        assigned_at, on_way_at, on_site_at, loaded_at, parked_at,
+        delivering_at, completed_at, intervention_date, received_at,
+        assigned_user:users!incoming_missions_assigned_to_fkey(id, name)
+      `)
+      .eq('truck_id', truck.id)
+      .or(`completed_at.gte.${before},and(completed_at.is.null,received_at.gte.${before})`)
+      .lte('received_at', after)
+      .limit(20)
+    missions = byTruck || []
+  }
+
+  // 3) Fallback : essai sur vehicle_plate (cas saisie erronee — plaque du
+  //    vehicule client au lieu de la depanneuse) si rien trouve via truck.
+  if (missions.length === 0) {
+    const { data: byVehicle } = await sb
+      .from('incoming_missions')
+      .select(`
+        id, mission_number, external_id, vehicle_plate, truck_id,
+        assigned_to,
+        assigned_at, on_way_at, on_site_at, loaded_at, parked_at,
+        delivering_at, completed_at, intervention_date, received_at,
+        assigned_user:users!incoming_missions_assigned_to_fkey(id, name)
+      `)
+      .ilike('vehicle_plate', normalizedPlate)
+      .or(`completed_at.gte.${before},and(completed_at.is.null,received_at.gte.${before})`)
+      .lte('received_at', after)
+      .limit(20)
+    missions = byVehicle || []
+  }
 
   const candidates: DriverCandidate[] = []
   const dateMs = date.getTime()

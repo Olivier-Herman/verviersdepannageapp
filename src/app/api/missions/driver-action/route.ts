@@ -130,12 +130,12 @@ export async function POST(req: Request) {
   const supabase = createAdminClient()
 
   const { data: actor } = await supabase
-    .from('users').select('id, name').eq('email', session.user.email!).single()
+    .from('users').select('id, name, current_truck_id').eq('email', session.user.email!).single()
   if (!actor) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 })
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -158,6 +158,16 @@ export async function POST(req: Request) {
   const updatePayload: Record<string, unknown> = { updated_at: now }
   if (mapping.status)         updatePayload.status     = mapping.status
   if (mapping.timestampField) updatePayload[mapping.timestampField] = now
+
+  // Olivier 2026-06-01 : copie automatique de la depanneuse en service du
+  // chauffeur sur la mission, dès l'acceptation ou la première action. C'est
+  // ce truck_id qui sert au matching amendes plus tard. On le copie une fois,
+  // jamais ecrase (les changements de truck en cours de mission gardent la
+  // valeur d'origine — c'est avec ce camion qu'on a roule).
+  if (!mission.truck_id && (actor as any).current_truck_id
+      && ['accept', 'on_way', 'on_site', 'load_vehicle', 'park'].includes(action)) {
+    updatePayload.truck_id = (actor as any).current_truck_id
+  }
 
   // ── Sauvegarder photos en DB ────────────────────────────────────────────
   if (action === 'save_photos' && body.photo_urls?.length) {

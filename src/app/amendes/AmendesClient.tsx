@@ -244,12 +244,13 @@ export default function AmendesClient({ user }: { user: any }) {
           </div>
 
           <div>
-            <label className="block text-ink-muted text-xs uppercase tracking-wider font-medium mb-1.5">Plaque *</label>
+            <label className="block text-ink-muted text-xs uppercase tracking-wider font-medium mb-1.5">Plaque de la dépanneuse VD *</label>
             <input type="text" inputMode="text"
               value={form.plate}
               onChange={e => setForm(f => ({ ...f, plate: e.target.value.toUpperCase() }))}
               placeholder="Ex: 1ABC234"
               className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-sm font-mono uppercase" />
+            <p className="text-ink-faint text-[11px] mt-1">Plaque du camion VD au moment du PV (pas du véhicule client remorqué).</p>
           </div>
 
           <div>
@@ -333,8 +334,17 @@ export default function AmendesClient({ user }: { user: any }) {
           <>
             {form.suggestion.candidates.length === 0 ? (
               <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 text-center">
-                <p className="text-amber-900 font-semibold">⚠️ Aucun chauffeur trouvé</p>
-                <p className="text-amber-700 text-xs mt-1">Aucune mission sur cette plaque autour de cette date. Tu peux quand même soumettre — le chauffeur restera non identifié et pourra être attribué plus tard.</p>
+                <p className="text-amber-900 font-semibold">⚠️ Aucun chauffeur trouvé automatiquement</p>
+                <p className="text-amber-700 text-xs mt-1">
+                  Aucune mission VD avec cette dépanneuse autour de cette date. Vérifie la plaque saisie (doit être celle de la <strong>dépanneuse VD</strong>, pas du véhicule remorqué) ou choisis <strong>Indéterminé</strong> ci-dessous.
+                </p>
+                <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null }))}
+                  className={`mt-3 w-full p-3 rounded-xl border-2 transition ${
+                    form.selectedDriverId === null ? 'border-amber-600 bg-amber-100' : 'border-amber-300 bg-white hover:bg-amber-100'
+                  }`}>
+                  <span className="text-amber-900 font-bold text-sm">❓ Indéterminé</span>
+                  <p className="text-amber-700 text-[11px] mt-0.5">À attribuer plus tard manuellement depuis /admin/amendes</p>
+                </button>
               </div>
             ) : (
               <>
@@ -361,10 +371,10 @@ export default function AmendesClient({ user }: { user: any }) {
 
                   <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null }))}
                     className={`w-full text-left p-3 rounded-2xl border-2 transition ${
-                      form.selectedDriverId === null ? 'border-brand bg-brand/10' : 'border bg-surface hover:border-zinc-600'
+                      form.selectedDriverId === null ? 'border-amber-500 bg-amber-50' : 'border bg-surface hover:border-amber-400'
                     }`}>
-                    <span className="text-ink-muted text-sm">❓ Aucun de ceux-là / inconnu</span>
-                    <p className="text-ink-faint text-[11px] mt-0.5">L amende sera créée sans chauffeur. À attribuer plus tard manuellement.</p>
+                    <span className={`text-sm font-semibold ${form.selectedDriverId === null ? 'text-amber-900' : 'text-amber-700'}`}>❓ Indéterminé</span>
+                    <p className="text-amber-700 text-[11px] mt-0.5">Aucun chauffeur sélectionné. L amende sera enregistrée sans attribution, à compléter plus tard manuellement.</p>
                   </button>
                 </div>
               </>

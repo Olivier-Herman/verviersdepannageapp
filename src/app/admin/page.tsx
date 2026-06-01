@@ -112,6 +112,8 @@ export default async function AdminPage() {
         <Card href="/admin/depots" icon={MapPin} label="Dépôts"
           desc="Sites VD Soft (Pepinster, Aywaille...). Sert au calcul km et coordination."
           count={depots} />
+        <Card href="/admin/trucks" icon={Car} label="Dépanneuses"
+          desc="Camions VD utilisés par les chauffeurs. Assignation par défaut + matching amendes." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />
