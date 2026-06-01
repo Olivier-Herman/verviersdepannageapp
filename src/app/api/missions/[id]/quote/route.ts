@@ -15,6 +15,7 @@ import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { attachFileToOrder } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -240,16 +241,72 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // On a deja cree/maj le devis Odoo, on retourne quand meme l info
   }
 
+  // 6) Attach les PDF des avances de fonds liees au devis Odoo.
+  //    Olivier 2026-06-01 : la facture d achat de chaque avance doit etre
+  //    jointe au devis facturation final pour que la compta ait le PJ a portee
+  //    de clic dans le sale.order. Best-effort : si une attache echoue, on log
+  //    sans bloquer la creation du devis.
+  let advancesAttached = 0
+  const advanceAttachIds: string[] = []
+  try {
+    const { data: advances } = await sb
+      .from('fund_advances')
+      .select('id, invoice_url, plate, amount_htva')
+      .eq('mission_id', mission.id)
+      .not('invoice_url', 'is', null)
+
+    for (const adv of (advances || [])) {
+      if (!adv.invoice_url) continue
+      try {
+        const fileRes = await fetch(adv.invoice_url)
+        if (!fileRes.ok) {
+          console.error(`[quote] fetch invoice failed for advance ${adv.id}: HTTP ${fileRes.status}`)
+          continue
+        }
+        const buffer      = await fileRes.arrayBuffer()
+        const base64      = Buffer.from(buffer).toString('base64')
+        const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
+        const ext         = contentType.includes('pdf') ? 'pdf' : 'jpg'
+        const filename    = `avance-${adv.plate}-${Number(adv.amount_htva).toFixed(2)}.${ext}`
+        await attachFileToOrder(result.id, base64, filename, contentType)
+        advancesAttached++
+        advanceAttachIds.push(adv.id)
+      } catch (attachErr: any) {
+        console.error(`[quote] attach advance ${adv.id} failed:`, attachErr?.message)
+      }
+    }
+
+    // Log activite : attachement des avances au devis
+    if (advancesAttached > 0) {
+      await sb.from('activity_logs').insert({
+        user_id:     user.id || null,
+        action:      'advances_attached_to_quote',
+        entity_type: 'incoming_mission',
+        entity_id:   mission.id,
+        details: {
+          mission_ref:    missionRef,
+          quote_id:       result.id,
+          quote_url:      result.url,
+          advance_ids:    advanceAttachIds,
+          attached_count: advancesAttached,
+        },
+      })
+    }
+  } catch (e: any) {
+    console.error('[quote] attach advances bloc failed:', e?.message)
+  }
+
   return NextResponse.json({
     ok:    true,
     quote: { id: result.id, url: result.url },
     summary: {
-      mission_ref:   missionRef,
-      partner_id:    mission.billed_to_id,
-      partner_name:  mission.billed_to_name,
-      total_eur:     totalForResponse,
-      lines_count:   lines.length,
-      total_label:   fmtEur(totalForResponse),
+      mission_ref:        missionRef,
+      partner_id:         mission.billed_to_id,
+      partner_name:       mission.billed_to_name,
+      total_eur:          totalForResponse,
+      lines_count:        lines.length,
+      total_label:        fmtEur(totalForResponse),
+      advances_attached:  advancesAttached,
     },
   })
 }

@@ -131,6 +131,32 @@ export async function POST(req: NextRequest) {
 
     if (insertError) throw insertError
 
+    // Log activite : creation d avance (Olivier 2026-06-01).
+    // Permet l audit qui/quand/quel montant + lien mission/devis Odoo.
+    try {
+      await supabase.from('activity_logs').insert({
+        user_id:     me.id,
+        action:      'advance_created',
+        entity_type: 'fund_advance',
+        entity_id:   advance.id,
+        details: {
+          mission_id:          validatedMissionId,
+          plate:               normalizedPlate,
+          amount_htva:         htva,
+          payment_method:      paymentMethod,
+          brand_name:          brandName || null,
+          model_name:          modelName || null,
+          odoo_quote_id:       odooOrderId,
+          odoo_order_name:     odooOrderName,
+          purchase_email_sent: purchaseEmailSent,
+          invoice_url:         invoiceUrl,
+          source:              validatedMissionId ? 'mission' : 'standalone',
+        },
+      })
+    } catch (logErr: any) {
+      console.error('[advances] activity_logs insert failed:', logErr?.message)
+    }
+
     return NextResponse.json({ success: true, advance, orderName: odooOrderName })
 
   } catch (err: unknown) {
