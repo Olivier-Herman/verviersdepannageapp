@@ -29,7 +29,10 @@ interface CurrentTruckState {
   confirm_disabled?:    boolean
 }
 
-const ROLES_WITH_TRUCK = ['driver', 'dispatcher', 'admin', 'superadmin']
+// Olivier 2026-06-01 : modal reserve aux drivers (ceux qui conduisent vraiment).
+// Les admins/dispatchers/facturation n ont pas a etre interrompus 2x/jour.
+// Le toggle truck_confirm_disabled reste dispo pour les cas exceptionnels.
+const ROLES_WITH_TRUCK = ['driver']
 
 export function TruckConfirmModal() {
   const { data: session, status } = useSession()
