@@ -10,6 +10,8 @@ import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
+import { useT } from '@/lib/i18n/I18nProvider'
+import { T }    from '@/lib/i18n/T'
 import type { VehicleMatch } from '@/types/vehicles'
 
 // ─────────────────────────────────────────────────────────
@@ -91,7 +93,7 @@ function BaseShell({
           <button onClick={onBack}
             className="inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink text-sm font-medium transition-colors">
             <ArrowLeft size={14} />
-            Retour
+            <T k="encaissement.btn_back" />
           </button>
         </div>
       )}
@@ -177,6 +179,7 @@ export default function EncaissementClient({
   userModules?:  string[]
 }) {
   const router = useRouter()
+  const { t } = useT()
 
   // Si on vient d une mission (prefill mission_id), on skip page 0 (saisie plaque)
   // et page 1 (lookup vehicule Odoo) car ces infos sont deja remplies depuis
@@ -682,7 +685,7 @@ export default function EncaissementClient({
 
   // ── Page 0 — Immatriculation ──────────────────────────────
   if (page === 0) return (
-    <Shell title="Quelle est l'immatriculation ?" page={0} totalPages={TOTAL}>
+    <Shell title={t('encaissement.step_plate')} page={0} totalPages={TOTAL}>
       <div className="mt-4">
         <input
           value={plate}
@@ -770,7 +773,7 @@ export default function EncaissementClient({
 
   // ── Page 1 — Confirmation véhicule ───────────────────────
   if (page === 1 && odooVehicle) return (
-    <Shell title="Identification du véhicule" page={1} totalPages={TOTAL} onBack={() => setPage(0)}>
+    <Shell title={t('encaissement.step_identify_vehicle')} page={1} totalPages={TOTAL} onBack={() => setPage(0)}>
       <div className="mt-4">
         <div className="bg-surface border rounded-card shadow-card p-6 text-center mb-8">
           <p className="text-ink-muted text-xs uppercase tracking-wider mb-3">Le véhicule est-il un :</p>
@@ -793,7 +796,7 @@ export default function EncaissementClient({
 
   // ── Page 10 — Saisie marque ───────────────────────────────
   if (page === 10) return (
-    <Shell title="Quelle est la marque ?" page={2} totalPages={TOTAL} onBack={() => odooVehicle ? setPage(1) : setPage(0)}>
+    <Shell title={t('encaissement.step_brand')} page={2} totalPages={TOTAL} onBack={() => odooVehicle ? setPage(1) : setPage(0)}>
       <div className="mt-2 flex flex-col gap-2 max-h-[70vh] overflow-y-auto">
         {brands.map(b => (
           <ChoiceBtn key={b.id} label={b.name} selected={selectedBrandId === b.id}
@@ -805,7 +808,7 @@ export default function EncaissementClient({
 
   // ── Page 11 — Saisie modèle ───────────────────────────────
   if (page === 11) return (
-    <Shell title={`Quel modèle de ${selectedBrand} ?`} page={2} totalPages={TOTAL} onBack={() => setPage(10)}>
+    <Shell title={`${t('encaissement.step_brand')} ${selectedBrand} ?`} page={2} totalPages={TOTAL} onBack={() => setPage(10)}>
       <div className="mt-2 flex flex-col gap-2 max-h-[70vh] overflow-y-auto">
         {models.map(m => (
           <ChoiceBtn key={m.id} label={m.name} selected={selectedModelId === m.id}
@@ -820,7 +823,7 @@ export default function EncaissementClient({
 
   // ── Page 12 — Modèle Autre ────────────────────────────────
   if (page === 12) return (
-    <Shell title="Préciser le modèle" page={2} totalPages={TOTAL} onBack={() => setPage(11)}>
+    <Shell title={t('encaissement.step_model_other')} page={2} totalPages={TOTAL} onBack={() => setPage(11)}>
       <div className="mt-4">
         <input
           value={modelOther}
@@ -837,7 +840,7 @@ export default function EncaissementClient({
 
   // ── Page 2 — Motif ────────────────────────────────────────
   if (page === 2) return (
-    <Shell title="Quel est le motif ?" page={3} totalPages={TOTAL} onBack={() => {
+    <Shell title={t('encaissement.step_motif')} page={3} totalPages={TOTAL} onBack={() => {
       if (!odooVehicle || vehicleConfirmed === false) setPage(11)
       else setPage(1)
     }}>
@@ -855,7 +858,7 @@ export default function EncaissementClient({
 
   // ── Page 13 — Motif Autre ─────────────────────────────────
   if (page === 13) return (
-    <Shell title="Préciser le motif" page={3} totalPages={TOTAL} onBack={() => setPage(2)}>
+    <Shell title={t('encaissement.step_motif_other')} page={3} totalPages={TOTAL} onBack={() => setPage(2)}>
       <div className="mt-4">
         <input
           value={motifPrecision}
@@ -872,7 +875,7 @@ export default function EncaissementClient({
 
   // ── Page 3 — Lieu ─────────────────────────────────────────
   if (page === 3) return (
-    <Shell title="Lieu d'intervention" page={4} totalPages={TOTAL} onBack={() => setPage(motif === 'autre' ? 13 : 2)}>
+    <Shell title={t('encaissement.step_location')} page={4} totalPages={TOTAL} onBack={() => setPage(motif === 'autre' ? 13 : 2)}>
       <div className="mt-4">
         <div className="relative mb-2">
           <input
@@ -950,7 +953,7 @@ export default function EncaissementClient({
 
   // ── Page 4 — Montant & paiement ──────────────────────────
   if (page === 4) return (
-    <Shell title="Montant & paiement" page={5} totalPages={TOTAL} onBack={() => isNewClient ? setPage(8) : setPage(5)}>
+    <Shell title={t('encaissement.step_amount')} page={5} totalPages={TOTAL} onBack={() => isNewClient ? setPage(8) : setPage(5)}>
       <div className="mt-4">
         <div className="relative mb-6">
           <input
@@ -1066,7 +1069,7 @@ export default function EncaissementClient({
 
   // ── Page 5 — Sélection client ─────────────────────────────
   if (page === 5) return (
-    <Shell title="Qui est le client ?" page={6} totalPages={TOTAL} onBack={() => setPage(3)}>
+    <Shell title={t('encaissement.step_who_client')} page={6} totalPages={TOTAL} onBack={() => setPage(3)}>
       <div className="mt-2 flex flex-col gap-3">
         {previousClients.map(client => (
           <button key={client.id}
@@ -1087,7 +1090,7 @@ export default function EncaissementClient({
 
   // ── Page 6 — TVA ─────────────────────────────────────────
   if (page === 6) return (
-    <Shell title="Numéro de TVA ?" page={6} totalPages={TOTAL} onBack={() => setPage(5)}>
+    <Shell title={t('encaissement.step_vat')} page={6} totalPages={TOTAL} onBack={() => setPage(5)}>
       <div className="mt-4">
         <input
           value={clientVat}
@@ -1179,7 +1182,7 @@ export default function EncaissementClient({
 
   // ── Page 7 — Nom ─────────────────────────────────────────
   if (page === 7) return (
-    <Shell title="Nom du client" page={7} totalPages={TOTAL} onBack={() => setPage(6)}>
+    <Shell title={t('encaissement.step_client_name')} page={7} totalPages={TOTAL} onBack={() => setPage(6)}>
       <div className="mt-4">
         <input
           value={clientName}
@@ -1211,7 +1214,7 @@ export default function EncaissementClient({
 
   // ── Page 14 — Correspondances Odoo par nom ────────────────
   if (page === 14) return (
-    <Shell title="Ce client est-il déjà connu ?" page={7} totalPages={TOTAL} onBack={() => setPage(7)}>
+    <Shell title={t('encaissement.step_known_client')} page={7} totalPages={TOTAL} onBack={() => setPage(7)}>
       <div className="mt-2 flex flex-col gap-3">
         <p className="text-ink-muted text-xs mb-2">
           {odooNameMatches.length} correspondance{odooNameMatches.length > 1 ? 's' : ''} trouvée{odooNameMatches.length > 1 ? 's' : ''} pour "{clientName}"
@@ -1248,7 +1251,7 @@ export default function EncaissementClient({
 
   // ── Page 8 — Adresse + contact ───────────────────────────
   if (page === 8) return (
-    <Shell title="Coordonnées du client" page={8} totalPages={TOTAL} onBack={() => setPage(7)}>
+    <Shell title={t('encaissement.step_client_coords')} page={8} totalPages={TOTAL} onBack={() => setPage(7)}>
       <div className="mt-4 flex flex-col gap-4">
         <div>
           <label className={labelCls}>Adresse</label>
@@ -1302,7 +1305,7 @@ export default function EncaissementClient({
       : `${selectedBrand} ${selectedModel === 'Autre' ? (modelOther || 'Autre') : selectedModel}`
 
     return (
-      <Shell title="Récapitulatif" page={9} totalPages={TOTAL} onBack={() => setPage(4)}>
+      <Shell title={t('encaissement.step_recap')} page={9} totalPages={TOTAL} onBack={() => setPage(4)}>
         <div className="mt-2">
           {[
             { label: 'Immat', value: plate },
