@@ -38,7 +38,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const baseQuery = sb
     .from('incoming_missions')
     .select(`
-      id, mission_number, source, intervention_date, received_at,
+      id, mission_number, source, mission_type, intervention_date, received_at,
       vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
       destination_address, redelivery_address, snc_scenario,
       saisie_motif_code, saisie_motif_label,
@@ -72,16 +72,29 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     motif = String((mission as any).saisie_motif_label).toUpperCase()
   }
 
-  // Adresse de relivraison si pertinent : pour les sources qui passent en parc
-  // en vue d une relivraison ulterieure (Prive depot, SNC rem_depot).
-  // On utilise redelivery_address en priorite, sinon destination_address.
+  // Olivier 2026-06-01 : detection elargie de la relivraison.
+  // Une mission est "a relivrer" si :
+  //   - source = prive / police_snc rem_depot / sia_couvert (cas historiques)
+  //   - OU mission_type contient REL (REM+REL ou REL) — cas converti via
+  //     "Gerer la mise en parc" sur des sources comme police_accident
+  // Dans tous ces cas, le motif etiquette devient "RELIVRAISON" pour signaler
+  // au chauffeur qui imprime que ce vehicule est en attente de relivraison
+  // (peu importe la source d origine).
+  const mtNorm = String(mission.mission_type || '').toUpperCase()
+  const isRemRelType = mtNorm.includes('REL')
   const isRedelivery =
+    isRemRelType ||
     (mission.source === 'prive') ||
     (mission.source === 'police_snc' && mission.snc_scenario === 'rem_depot') ||
     (mission.source === 'sia_couvert')
   const redeliveryAddr = isRedelivery
     ? (mission.redelivery_address || mission.destination_address || null)
     : null
+  // Si c est une relivraison, on substitute le motif par RELIVRAISON pour
+  // que le chauffeur sache immediatement quoi en faire.
+  if (isRedelivery) {
+    motif = 'RELIVRAISON'
+  }
 
   // AVP : note speciale (date + 60j eligibilite destruction)
   const isAvp = mission.source === 'police_avp'
