@@ -8,6 +8,7 @@ import { AudioModeProvider }           from '@/components/audio/AudioModeProvide
 import { TruckConfirmModal }           from '@/components/trucks/TruckConfirmModal'
 import { I18nProvider }                from '@/lib/i18n/I18nProvider'
 import type { Lang }                   from '@/lib/i18n/types'
+import { PwaNativeGuard }              from '@/components/PwaNativeGuard'
 
 function AudioModeMount() {
   const { data: session } = useSession()
@@ -42,7 +43,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <AudioModeMount />
         <TruckConfirmModal />
         <I18nMount>
-          <SheetStackProvider>{children}</SheetStackProvider>
+          <PwaNativeGuard>
+            <SheetStackProvider>{children}</SheetStackProvider>
+          </PwaNativeGuard>
         </I18nMount>
       </SessionProvider>
     </ThemeProvider>
