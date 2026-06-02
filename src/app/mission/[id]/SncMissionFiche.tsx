@@ -55,6 +55,7 @@ interface Mission {
   remarks_billing?: string | null
   destination_address?: string; destination_name?: string
   destination_lat?: number; destination_lng?: number; redelivery_address?: string
+  extra_addresses?: Array<{ id?: string; label?: string; address?: string; lat?: number | null; lng?: number | null; sort_order?: number }> | null
   intervention_date?: string; received_at?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   loaded_at?: string
@@ -206,6 +207,7 @@ export default function SncMissionFiche({
             intervention_at:   interventionAt,
             billed_to_id:      M.billed_to_id ?? null,
             billed_to_name:    M.billed_to_name ?? null,
+            stops:             Array.isArray(M.extra_addresses) ? [...M.extra_addresses].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) : [],
           }),
           signal: ctrl.signal,
         })
@@ -276,6 +278,7 @@ export default function SncMissionFiche({
             intervention_at:   M.intervention_date || M.received_at || new Date().toISOString(),
             billed_to_id:      M.billed_to_id ?? null,
             billed_to_name:    M.billed_to_name ?? null,
+            stops:             Array.isArray(M.extra_addresses) ? [...M.extra_addresses].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) : [],
           }),
         })
         const pj = await pr.json().catch(() => null)
@@ -314,6 +317,7 @@ export default function SncMissionFiche({
             intervention_at: M.intervention_date || M.received_at || new Date().toISOString(),
             billed_to_id:    M.billed_to_id ?? null,
             billed_to_name:  M.billed_to_name ?? null,
+            stops:           Array.isArray(M.extra_addresses) ? [...M.extra_addresses].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) : [],
           }),
         })
         const pj = await pr.json().catch(() => null)

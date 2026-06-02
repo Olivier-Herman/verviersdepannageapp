@@ -28,7 +28,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       parent_mission_id, amount_to_collect,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage,
-      billed_to_id, billed_to_name,
+      billed_to_id, billed_to_name, special_tarif_htva,
+      extra_addresses,
       external_id, dossier_number
     `)
     .eq('id', params.id)
@@ -123,6 +124,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       && (mission as any).snc_scenario) {
     try {
       const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
+      // Stops chauffeur (extra_addresses) : ordonnes par sort_order
+      const rawStops = Array.isArray((missionDb as any).extra_addresses) ? (missionDb as any).extra_addresses : []
+      const stops    = [...rawStops].sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+        .map((s: any) => ({ lat: s.lat, lng: s.lng, label: s.label || s.address }))
       const metrics = await computeSncMetrics({
         scenario:          (mission as any).snc_scenario,
         requiresBalisage:  Boolean((mission as any).snc_requires_balisage),
@@ -134,6 +139,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         variant:           mission.source === 'sia_couvert' ? 'sc' : 'snc',
         billedToId:        (mission as any).billed_to_id,
         billedToName:      (mission as any).billed_to_name,
+        stops,
       })
       if (!metrics) {
         return NextResponse.json({

@@ -75,6 +75,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       billed_to_id, billed_to_name,
       amount_to_collect, special_tarif_htva,
+      incident_lat, incident_lng, destination_lat, destination_lng,
+      snc_scenario, snc_requires_balisage, extra_addresses,
       odoo_quote_id, odoo_quote_url
     `)
     .eq('id', params.id)
@@ -104,6 +106,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // SC = variant 'sc' (pas de km, forfait + balisage seulement).
     const variant = mission.source === 'sia_couvert' ? 'sc' : 'snc'
     const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
+    // Stops chauffeur (extra_addresses) ordonnes
+    const rawStops = Array.isArray((mission as any).extra_addresses) ? (mission as any).extra_addresses : []
+    const stops    = [...rawStops].sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+      .map((s: any) => ({ lat: s.lat, lng: s.lng, label: s.label || s.address }))
     const metrics = await computeSncMetrics({
       scenario:          (mission as any).snc_scenario,
       requiresBalisage:  Boolean((mission as any).snc_requires_balisage),
@@ -115,6 +121,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       variant,
       billedToId:        (mission as any).billed_to_id,
       billedToName:      (mission as any).billed_to_name,
+      stops,
     })
     if (metrics) {
       const sncLines = buildSncQuoteLines({

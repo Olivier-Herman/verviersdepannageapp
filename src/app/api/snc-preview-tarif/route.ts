@@ -59,6 +59,15 @@ export async function POST(req: Request) {
     }, { status: 400 })
   }
 
+  // Stops chauffeur (extra_addresses) passes par le client (deja ordonnes)
+  const stops = Array.isArray(body.stops)
+    ? body.stops.map((s: any) => ({
+        lat:   s.lat != null ? Number(s.lat) : null,
+        lng:   s.lng != null ? Number(s.lng) : null,
+        label: s.label || s.address || 'Stop',
+      }))
+    : []
+
   const metrics = await computeSncMetrics({
     scenario, requiresBalisage,
     interventionLat, interventionLng,
@@ -66,6 +75,7 @@ export async function POST(req: Request) {
     interventionAt,
     variant,
     billedToId, billedToName,
+    stops,
   })
 
   if (!metrics) {

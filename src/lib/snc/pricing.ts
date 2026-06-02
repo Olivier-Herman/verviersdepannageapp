@@ -56,6 +56,10 @@ export interface SncCalcInput {
    *  source_tariffs(source, 'remorquage') pour avoir km_price + km_inclus. */
   billedToId?:        number | null
   billedToName?:      string | null
+  /** Olivier 2026-06-02 PM : stops intermediaires ajoutes par le chauffeur
+   *  (extra_addresses). Inseres SEQUENTIELLEMENT dans le trajet avant la
+   *  destination finale. Ignore les stops sans lat/lng. */
+  stops?:             Array<{ lat: number | null; lng: number | null; label?: string }>
 }
 
 export interface SncCalcOutput {
@@ -330,51 +334,89 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   let kmDepanneuse = 0
   let kmLivraison  = 0
   const kmSegments: Array<{ label: string; km: number }> = []
+
+  // Stops chauffeur (extra_addresses), filtre sur ceux qui ont des coords
+  const stops = (input.stops || [])
+    .filter(s => s.lat != null && s.lng != null)
+    .map(s => ({ lat: Number(s.lat), lng: Number(s.lng), label: s.label || 'Stop' }))
+
   if (input.scenario === 'rem_client'
       && input.destinationLat != null && input.destinationLng != null) {
-    // SNC : depart -> intervention -> destination -> depart, calcule en un bloc
-    const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, input.destinationLat, input.destinationLng)
+    // SNC : depart -> intervention -> [stops...] -> destination -> depart
+    let prev = { lat: input.interventionLat, lng: input.interventionLng, label: 'intervention' }
+    let total = d1
+    kmSegments.push({ label: `${depart.name} → intervention`, km: d1 })
+    for (const s of stops) {
+      const seg = await calculateRouteKm(prev.lat, prev.lng, s.lat, s.lng)
+      total += seg
+      kmSegments.push({ label: `${prev.label} → ${s.label}`, km: seg })
+      prev = s
+    }
+    const d2 = await calculateRouteKm(prev.lat, prev.lng, input.destinationLat, input.destinationLng)
     const d3 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
-    kmDepanneuse = d1 + d2 + d3
+    total += d2 + d3
     kmSegments.push(
-      { label: `${depart.name} → intervention`,  km: d1 },
-      { label: `intervention → destination`,     km: d2 },
+      { label: `${prev.label} → destination`,    km: d2 },
       { label: `destination → ${depart.name}`,   km: d3 },
     )
+    kmDepanneuse = total
   } else if (input.scenario === 'rem_direct'
              && input.destinationLat != null && input.destinationLng != null) {
     // SC rem_direct (Olivier 2026-06-02 PM v3, formule finale) :
     //   - km_depanneuse = depart -> intervention -> depart
     //                     INTEGRALEMENT couvert par le forfait SC.
     //                     Calcule pour info uniquement (affichage), pas facture.
-    //   - km_livraison  = depart -> destination -> depart
+    //   - km_livraison  = depart -> [stops...] -> destination -> depart
     //                     SEUL segment facture, au tarif km de l ASSISTANCE
     //                     facturee (Touring, VAB...), moins km inclus
     //                     dans son forfait remorquage.
+    //                     Inclut les stops chauffeur (extra_addresses).
     kmDepanneuse = d1 + dRetour
-    const dL1 = await calculateRouteKm(depart.lat, depart.lng, input.destinationLat, input.destinationLng)
-    const dL2 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
-    kmLivraison = dL1 + dL2
     kmSegments.push(
       { label: `Dépannage  ${depart.name} → intervention (couvert forfait SC)`,  km: d1 },
       { label: `Dépannage  intervention → ${depart.name} (couvert forfait SC)`,  km: dRetour },
-      { label: `Livraison  ${depart.name} → destination`,                        km: dL1 },
-      { label: `Livraison  destination → ${depart.name}`,                        km: dL2 },
     )
-  } else if (input.scenario === 'rem_depot' && pepinster) {
-    // depart -> intervention -> Pepinster (mise en depot) -> depart (depanneuse rentre)
-    const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, pepinster.lat, pepinster.lng)
-    const d3 = depart.id === pepinster.id
-      ? 0  // depart = Pepinster, pas de retour
-      : await calculateRouteKm(pepinster.lat, pepinster.lng, depart.lat, depart.lng)
-    kmDepanneuse = d1 + d2 + d3
+    let prev = { lat: depart.lat, lng: depart.lng, label: depart.name }
+    let totalLiv = 0
+    for (const s of stops) {
+      const seg = await calculateRouteKm(prev.lat, prev.lng, s.lat, s.lng)
+      totalLiv += seg
+      kmSegments.push({ label: `Livraison  ${prev.label} → ${s.label}`, km: seg })
+      prev = s
+    }
+    const dToDest    = await calculateRouteKm(prev.lat, prev.lng, input.destinationLat, input.destinationLng)
+    const dFromDest  = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
+    totalLiv += dToDest + dFromDest
     kmSegments.push(
-      { label: `${depart.name} → intervention`,       km: d1 },
-      { label: `intervention → ${pepinster.name}`,    km: d2 },
+      { label: `Livraison  ${prev.label} → destination`,                         km: dToDest },
+      { label: `Livraison  destination → ${depart.name}`,                        km: dFromDest },
     )
-    if (d3 > 0) kmSegments.push({ label: `${pepinster.name} → ${depart.name}`, km: d3 })
+    kmLivraison = totalLiv
+  } else if (input.scenario === 'rem_depot' && pepinster) {
+    // depart -> intervention -> [stops...] -> Pepinster -> depart
+    let prev = { lat: input.interventionLat, lng: input.interventionLng, label: 'intervention' }
+    let total = d1
+    kmSegments.push({ label: `${depart.name} → intervention`, km: d1 })
+    for (const s of stops) {
+      const seg = await calculateRouteKm(prev.lat, prev.lng, s.lat, s.lng)
+      total += seg
+      kmSegments.push({ label: `${prev.label} → ${s.label}`, km: seg })
+      prev = s
+    }
+    const d2 = await calculateRouteKm(prev.lat, prev.lng, pepinster.lat, pepinster.lng)
+    total += d2
+    kmSegments.push({ label: `${prev.label} → ${pepinster.name}`, km: d2 })
+    const d3 = depart.id === pepinster.id
+      ? 0
+      : await calculateRouteKm(pepinster.lat, pepinster.lng, depart.lat, depart.lng)
+    if (d3 > 0) {
+      total += d3
+      kmSegments.push({ label: `${pepinster.name} → ${depart.name}`, km: d3 })
+    }
+    kmDepanneuse = total
   } else {
-    // dsp (ou rem_depot sans Pepinster configure) : depart -> intervention -> depart
+    // dsp (pas de stops applicables, DSP = sur place)
+    // ou rem_depot sans Pepinster configure : depart -> intervention -> depart
     kmDepanneuse = d1 + dRetour
     kmSegments.push(
       { label: `${depart.name} → intervention`,  km: d1 },
