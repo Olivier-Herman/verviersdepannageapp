@@ -4,10 +4,14 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DriverClient          from './DriverClient'
+import SncMissionFiche       from './SncMissionFiche'
 
-interface Props { params: { id: string } }
+interface Props {
+  params: { id: string }
+  searchParams?: { legacy?: string }
+}
 
-export default async function MissionDriverPage({ params }: Props) {
+export default async function MissionDriverPage({ params, searchParams }: Props) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/api/auth/signin')
 
@@ -28,6 +32,25 @@ export default async function MissionDriverPage({ params }: Props) {
   const isDriverOfMission = mission.assigned_to === currentUser.id
   const isStaff = ['admin', 'superadmin', 'dispatcher'].includes(currentUser.role)
   if (!isDriverOfMission && !isStaff) redirect('/dashboard')
+
+  // Olivier 2026-06-02 PM — Fiche dediee SNC/SC reclassifiees.
+  // Mirror visuel de PoliceClient pour les missions police_snc / sia_couvert
+  // recues depuis un canal externe. ?legacy=1 force le rendu DriverClient
+  // (necessaire pour le wizard photos / mise en parc / cloture complets
+  // pas encore portes).
+  const isSncFiche  = mission.source === 'police_snc' || mission.source === 'sia_couvert'
+  const forceLegacy = searchParams?.legacy === '1'
+
+  if (isSncFiche && !forceLegacy) {
+    return (
+      <SncMissionFiche
+        mission={mission}
+        currentUserId={currentUser.id}
+        isReadOnly={isStaff && !isDriverOfMission}
+        navApp={currentUser.nav_app || 'gmaps'}
+      />
+    )
+  }
 
   return (
     <DriverClient
