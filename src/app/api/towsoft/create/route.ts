@@ -418,7 +418,8 @@ export async function POST(req: Request) {
         // definira via le bouton "Relivrer" plus tard. Si non saisie maintenant,
         // l etiquette indique "En attente d info adresse de relivraison".
         // Pour Mal Garee chargement : pas de relivraison (le client recupere
-        // direct), on passe redeliveryAddr=undefined → la note reste vide.
+        // direct), on passe redeliveryAddr=undefined. La note est piloee par
+        // noteOverride selon police_blocked (Olivier 2026-06-02).
         const redeliveryAddr = isMalGareeChargement
           ? undefined
           : ((body.destination || body.redelivery_address || '').trim() || null)
@@ -427,6 +428,9 @@ export async function POST(req: Request) {
           : isMalGareeChargement
             ? 'MAL GAREE'
             : (type === 'sc' ? 'SIABIS COUVERT' : 'SIABIS NON COUVERT')
+        const noteOverride = isMalGareeChargement
+          ? (policeBlocked ? 'Blocage par police' : 'Pas de blocage')
+          : undefined
         await printVdSoftParcLabel({
           missionId:        vdMissionId,
           missionNumber:    vdData?.mission_number ?? null,
@@ -439,6 +443,7 @@ export async function POST(req: Request) {
           model:            model || null,
           vin:              vin   || null,
           redeliveryAddr,
+          noteOverride,
         })
       }
     }

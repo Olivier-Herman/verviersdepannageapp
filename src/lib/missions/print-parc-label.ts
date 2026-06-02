@@ -35,6 +35,7 @@ export interface PrintParcLabelInput {
   vin:              string | null
   redeliveryAddr?:  string | null                   // adresse de relivraison (REM depot)
   isAvp?:           boolean                         // si true, note = AVP date+60j
+  noteOverride?:    string                          // Olivier 2026-06-02 : si fourni, supplante la logique auto (utile pour Mal Garee : "Blocage par police" / "Pas de blocage")
 }
 
 /**
@@ -50,21 +51,30 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
     const dd = new Date(input.interventionDate)
     const dateStr = `${String(dd.getDate()).padStart(2, '0')}/${String(dd.getMonth()+1).padStart(2, '0')}/${String(dd.getFullYear()).slice(-2)}`
 
-    // Note typique selon contexte
+    // Note typique selon contexte. Priorite :
+    //   1. noteOverride explicite (cas Mal Garee chargement avec police_blocked, ...)
+    //   2. AVP date+60j
+    //   3. Relivraison (avec ou sans adresse)
+    //   4. Vide
     let note = ''
-    if (input.isAvp) {
+    if (input.noteOverride !== undefined) {
+      note = input.noteOverride
+    } else if (input.isAvp) {
       // AVP : date + 60 jours = eligibilite destruction (accord Ville)
       const eligDate = new Date(input.interventionDate)
       eligDate.setDate(eligDate.getDate() + 60)
       const pad = (n: number) => String(n).padStart(2, '0')
       note = `AVP ${pad(eligDate.getDate())}-${pad(eligDate.getMonth()+1)}-${eligDate.getFullYear()}`
-    } else if (input.redeliveryAddr !== undefined) {
+    } else if (input.redeliveryAddr !== undefined && input.redeliveryAddr !== null) {
       // Sources avec relivraison ulterieure : SNC rem_depot, Prive depot, ...
-      note = input.redeliveryAddr && input.redeliveryAddr.trim()
+      // Olivier 2026-06-02 : check explicite != null (avant : !== undefined ne
+      // suffisait pas car les callers passaient null, qui faisait tomber sur
+      // "En attente d info adresse de relivraison" meme pour les non-redelivery)
+      note = input.redeliveryAddr.trim()
         ? `Relivraison vers ${input.redeliveryAddr.trim()}`
         : 'En attente d info adresse de relivraison'
     }
-    // Autres sources : note vide (Mal Garee chargement, etc.)
+    // Autres sources : note vide (Mal Garee chargement sans noteOverride, etc.)
 
     // URL QR : /qr/mission/[mission_number] = hub unifie VD Soft (Olivier
     // 2026-05-27 : VD Soft = source de verite). Le hub porte toutes les

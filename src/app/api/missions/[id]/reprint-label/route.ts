@@ -99,6 +99,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // AVP : note speciale (date + 60j eligibilite destruction)
   const isAvp = mission.source === 'police_avp'
 
+  // Olivier 2026-06-02 : Mal Garee chargement → note basee sur police_blocked
+  // ("Blocage par police" / "Pas de blocage"). Autres sources : note par defaut
+  // (AVP date+60j, relivraison adresse, ou vide).
+  let noteOverride: string | undefined = undefined
+  if (mission.source === 'police_mg' && !isRedelivery) {
+    noteOverride = (mission as any).police_blocked ? 'Blocage par police' : 'Pas de blocage'
+  }
+
   const result = await printVdSoftParcLabel({
     missionId:        mission.id,
     missionNumber:    mission.mission_number ?? null,
@@ -112,6 +120,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     vin:              mission.vehicle_vin,
     redeliveryAddr,
     isAvp,
+    noteOverride,
   })
 
   if (!result.ok) {
