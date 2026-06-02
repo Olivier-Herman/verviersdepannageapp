@@ -112,6 +112,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       destinationLat:    (mission as any).destination_lat,
       destinationLng:    (mission as any).destination_lng,
       interventionAt:    mission.intervention_date || mission.received_at,
+      variant,
+      billedToId:        (mission as any).billed_to_id,
+      billedToName:      (mission as any).billed_to_name,
     })
     if (metrics) {
       const sncLines = buildSncQuoteLines({

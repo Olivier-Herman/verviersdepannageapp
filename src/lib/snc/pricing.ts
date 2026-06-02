@@ -518,21 +518,19 @@ export function buildSncQuoteLines(opts: {
   // facture au tarif km de l ASSISTANCE facturee, en deduisant les km inclus
   // dans son forfait remorquage (Touring 20, VAB 40, etc.).
   // Si l assistance n est pas identifiable, fallback sur SIAKIL standard.
+  //
+  // Olivier 2026-06-02 PM : sur la facture, label simple = "Relivraison".
+  // Le detail du calcul (km, inclus, tarif assistance) est visible dans
+  // l estimation du dispatch mais N APPARAIT PAS sur la facture Odoo.
   if (isScRemDirect && metrics.km_livraison) {
     const kmSurplus = Math.max(0, metrics.km_livraison - (metrics.livraison_km_inclus ?? 0))
     if (kmSurplus > 0) {
       const unitPrice = metrics.livraison_km_price && metrics.livraison_km_price > 0
         ? metrics.livraison_km_price
         : (m ? 1.6529 : 1.0744)
-      const assistanceLabel = metrics.livraison_assistance
-        ? ` ${metrics.livraison_assistance}`
-        : ''
-      const inclusLabel = (metrics.livraison_km_inclus ?? 0) > 0
-        ? ` (au-delà des ${metrics.livraison_km_inclus} km inclus${assistanceLabel ? ` —${assistanceLabel}` : ''})`
-        : assistanceLabel ? ` (tarif${assistanceLabel})` : ''
       lines.push({
         kind:       'SIAKIL', // tarif assistance, pas SIAKIL standard SNC
-        name:       `Kilomètre livraison directe${inclusLabel}`,
+        name:       `Relivraison`,
         qty:        kmSurplus,
         price_unit: unitPrice,
       })
