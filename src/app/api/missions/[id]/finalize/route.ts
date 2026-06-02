@@ -49,7 +49,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const { data: mission, error: getErr } = await supabase
     .from('incoming_missions')
-    .select('id, awaiting_payment, amount_to_collect, payment_amount, draft_params, status, source, mission_number')
+    .select('id, awaiting_payment, amount_to_collect, payment_amount, draft_params, status, source, mission_type, mission_number')
     .eq('id', missionId)
     .maybeSingle()
 
@@ -80,17 +80,22 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // (cas sans remorquage post-paiement) ou si le chauffeur doit encore livrer.
   //
   // Terminees apres paiement :
-  //   - Mal Garee deplacement_paye (juste un deplacement paye, pas de remorquage)
-  //   - SNC DSP (depannage sur place)
-  //   - Appel Prive DSP (depannage sur place)
+  //   - Mal Garee deplacement_paye : mission_type='trajet_vide', source='police_mg'
+  //   - SNC DSP                    : mission_type='depannage',   source='police_snc'
+  //   - Appel Prive DSP            : mission_type='depannage',   source='prive'
   //
   // Pas terminees (chauffeur doit encore charger + livrer) :
-  //   - SNC REM client
-  //   - Appel Prive REM client
+  //   - SNC REM client      : mission_type='remorquage', source='police_snc'
+  //   - Appel Prive REM client : mission_type='remorquage', source='prive'
+  //
+  // On utilise les champs DB (source + mission_type) en source de verite plutot
+  // que draft_params, qui peut etre vide si l ancienne version de la migration
+  // a ete appliquee (sans la colonne draft_params).
   const isFullyDoneAfterPayment =
-    (type === 'mal_garee'   && draft.malGareeScenario === 'deplacement_paye') ||
-    (type === 'snc'         && draft.sncScenario === 'dsp') ||
-    (type === 'appel_prive' && String(draft.appelPriveType || '').toUpperCase() === 'DSP')
+    // Trajet vide = pas de chargement = forcement done (Mal Garee deplacement_paye)
+    mission.mission_type === 'trajet_vide' ||
+    // Depannage = pas de remorquage = done apres paiement (SNC DSP / Prive DSP)
+    mission.mission_type === 'depannage'
 
   // Recup le nom chauffeur (pour le ticket Odoo + email)
   const { data: dbUser } = await supabase

@@ -2711,17 +2711,20 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </>
           )}
 
-          {/* DSP : sur place → photos / terminer (pas de chargement) */}
+          {/* DSP : sur place → photos / terminer (pas de chargement).
+              Olivier 2026-06-02 : pour mission_type='trajet_vide' (DPR ou
+              Mal Garee deplacement_paye), on ne charge pas et on ne depanne
+              pas → pas de photos requises, bouton Terminer direct. */}
           {!rem && onSite && M.status !== 'completed' && (
             <>
-              {totPh < 3 && (
+              {M.mission_type !== 'trajet_vide' && totPh < 3 && (
                 <button onClick={() => goPhotos('main')}
                   className="w-full py-4 bg-orange-500 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                   <T k="mission_detail.btn_photos" /> <span className="text-sm font-normal opacity-75">({totPh}/3)</span>
                 </button>
               )}
-              {totPh >= 3 && (
-                <button onClick={() => { setCloseType('dsp'); setScreen('close') }}
+              {(M.mission_type === 'trajet_vide' || totPh >= 3) && (
+                <button onClick={() => { setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close') }}
                   className="w-full py-4 bg-green-600 text-ink font-bold rounded-2xl text-base">
                   <T k="mission_detail.btn_finish" />
                 </button>
@@ -2761,13 +2764,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <button onClick={() => setShowGrid(false)} className="text-ink-muted text-2xl">×</button>
             </div>
             <div className="grid grid-cols-2 gap-3 p-4">
-              {/* Photos */}
-              <button onClick={() => { setShowGrid(false); goPhotos('main') }}
-                className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${totPh > 0 ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
-                <span className="text-2xl">📷</span>
-                <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-ink-secondary'}`}><T k="mission_detail.action_photos" /></span>
-                {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">{totPh}</span>}
-              </button>
+              {/* Photos — masque pour les missions sans chargement/depannage
+                  (DPR, Mal Garee deplacement_paye : mission_type='trajet_vide'). */}
+              {M.mission_type !== 'trajet_vide' && (
+                <button onClick={() => { setShowGrid(false); goPhotos('main') }}
+                  className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${totPh > 0 ? 'bg-green-600/20 border-green-600/40' : 'bg-surface border'}`}>
+                  <span className="text-2xl">📷</span>
+                  <span className={`text-sm font-medium ${totPh > 0 ? 'text-green-400' : 'text-ink-secondary'}`}><T k="mission_detail.action_photos" /></span>
+                  {totPh > 0 && <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-ink">{totPh}</span>}
+                </button>
+              )}
               {/* Décharge */}
               <button onClick={() => { setShowGrid(false); resetDischargeForm(); setDischFrom('main'); setScreen('decharge') }}
                 className={`relative rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border transition active:scale-95 ${disch.length > 0 ? 'bg-amber-600/20 border-amber-600/40' : 'bg-surface border'}`}>
