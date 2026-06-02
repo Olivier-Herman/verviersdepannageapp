@@ -66,7 +66,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
   // ── Preferences notif (categories) ───────────────────────
   const [notifPrefs, setNotifPrefs]         = useState<Record<string, boolean>>({})
-  const [notifProfile, setNotifProfile]     = useState<{ isDispatcher: boolean; isDriver: boolean } | null>(null)
+  const [notifProfile, setNotifProfile]     = useState<{ isDispatcher: boolean; isDriver: boolean; isFinance: boolean } | null>(null)
   const [notifPrefsLoading, setNotifPrefsLoading] = useState(true)
   const [notifSavingKey, setNotifSavingKey] = useState<string | null>(null)
 
@@ -478,69 +478,47 @@ export default function ProfileClient({ user }: { user: any }) {
           </div>
         )}
 
-        {/* Preferences notification — toggles par categorie */}
+        {/* Preferences notification — toggles par role (Olivier 2026-06-02).
+            Un user multi-roles peut couper d un coup toutes les notifs d un
+            role quand il bosse dans un autre. Le systeme est concu pour que
+            les notifs internes a un role soient toujours utiles, pas de
+            granularite par categorie. */}
         <div className="bg-surface border rounded-2xl p-5">
           <h2 className="text-ink font-bold mb-1">Préférences de notifications</h2>
           <p className="text-ink-muted text-xs mb-4">
-            Choisis les catégories que tu veux recevoir sur ton iPhone, ta Watch ou ton navigateur.
+            Active/désactive les notifications par rôle. Un toggle couvre toutes
+            les notifs liées à ce rôle (assignations, alertes, demandes…).
           </p>
           {notifPrefsLoading ? (
             <p className="text-ink-faint text-sm italic">Chargement…</p>
           ) : (
             <div className="space-y-2">
-              {notifProfile?.isDispatcher && (
-                <>
-                  <NotifToggle
-                    label="🚨 Nouvelles missions reçues"
-                    description="Notif quand une nouvelle mission entre (Touring, VAB, etc.)"
-                    enabled={notifPrefs.dispatch_new_mission !== false}
-                    saving={notifSavingKey === 'dispatch_new_mission'}
-                    onToggle={() => toggleNotifPref('dispatch_new_mission')}
-                  />
-                </>
-              )}
               {notifProfile?.isDriver && (
-                <>
-                  <NotifToggle
-                    label="🚗 Mission assignée"
-                    description="Notif quand un dispatcher t'assigne une mission"
-                    enabled={notifPrefs.driver_assigned !== false}
-                    saving={notifSavingKey === 'driver_assigned'}
-                    onToggle={() => toggleNotifPref('driver_assigned')}
-                  />
-                  <NotifToggle
-                    label="✏️ Mission modifiée"
-                    description="Notif quand un dispatcher modifie ta mission en cours"
-                    enabled={notifPrefs.driver_modified !== false}
-                    saving={notifSavingKey === 'driver_modified'}
-                    onToggle={() => toggleNotifPref('driver_modified')}
-                  />
-                </>
+                <NotifToggle
+                  label="🚗 Notifications chauffeur"
+                  description="Mission assignée, mission modifiée, etc."
+                  enabled={notifPrefs.role_driver !== false}
+                  saving={notifSavingKey === 'role_driver'}
+                  onToggle={() => toggleNotifPref('role_driver')}
+                />
               )}
-              <NotifToggle
-                label="💵 Transferts de caisse"
-                description="Validations et refus de transferts"
-                enabled={notifPrefs.cash_transfer !== false}
-                saving={notifSavingKey === 'cash_transfer'}
-                onToggle={() => toggleNotifPref('cash_transfer')}
-              />
               {notifProfile?.isDispatcher && (
-                <>
-                  <NotifToggle
-                    label="⚠️ Demandes de dérogation"
-                    description="Quand un chauffeur demande une dérogation paiement"
-                    enabled={notifPrefs.derogation_request !== false}
-                    saving={notifSavingKey === 'derogation_request'}
-                    onToggle={() => toggleNotifPref('derogation_request')}
-                  />
-                  <NotifToggle
-                    label="🛠 Alertes admin"
-                    description="Erreurs système, échecs sync, alertes Towsoft"
-                    enabled={notifPrefs.alert_admin !== false}
-                    saving={notifSavingKey === 'alert_admin'}
-                    onToggle={() => toggleNotifPref('alert_admin')}
-                  />
-                </>
+                <NotifToggle
+                  label="🚨 Notifications dispatcher"
+                  description="Nouvelles missions reçues, demandes de dérogation, alertes admin, etc."
+                  enabled={notifPrefs.role_dispatcher !== false}
+                  saving={notifSavingKey === 'role_dispatcher'}
+                  onToggle={() => toggleNotifPref('role_dispatcher')}
+                />
+              )}
+              {notifProfile?.isFinance && (
+                <NotifToggle
+                  label="💵 Notifications finance"
+                  description="Transferts de caisse, validations et refus."
+                  enabled={notifPrefs.role_finance !== false}
+                  saving={notifSavingKey === 'role_finance'}
+                  onToggle={() => toggleNotifPref('role_finance')}
+                />
               )}
             </div>
           )}

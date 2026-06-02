@@ -13,7 +13,15 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+// Nouveau systeme : 1 toggle par role (Olivier 2026-06-02). Les anciennes
+// clefs per-categorie restent acceptees en retro-compat (mais l UI n en
+// expose plus).
 const ALLOWED_KEYS = [
+  // Nouveau systeme par role
+  'role_driver',
+  'role_dispatcher',
+  'role_finance',
+  // Retro-compat
   'dispatch_new_mission',
   'driver_assigned',
   'driver_modified',
@@ -46,11 +54,15 @@ export async function GET() {
   const isDispatcher = ['admin', 'superadmin', 'dispatcher'].includes(data.role) ||
     roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))
   const isDriver = data.role === 'driver' || roles.includes('driver') || roles.includes('chauffeur')
+  // Finance : visible si l user a un module finance ou est admin/dispatcher
+  // (en pratique tous les roles peuvent recevoir des notifs de transfert
+  // de caisse, donc on l affiche pour tout le monde par defaut)
+  const isFinance = true
 
   return NextResponse.json({
     ok: true,
     preferences: data.notif_preferences || {},
-    profile: { isDispatcher, isDriver },
+    profile: { isDispatcher, isDriver, isFinance },
   })
 }
 

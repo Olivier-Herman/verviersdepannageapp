@@ -39,13 +39,29 @@ export type NotifType =
   | 'derogation_request'
   | 'alert_admin'
 
+/** Mapping NotifType → role_key dans notif_preferences.
+ *  Olivier 2026-06-02 : refacto vers toggles par role (au lieu de toggles
+ *  individuels par categorie). Un user multi-roles (ex: Matthieu driver +
+ *  dispatcher) coupe d un coup toutes les notifs d un role quand il bosse
+ *  dans l autre. */
+const NOTIF_TYPE_TO_ROLE_KEY: Record<NotifType, 'role_driver' | 'role_dispatcher' | 'role_finance'> = {
+  driver_assigned:      'role_driver',
+  driver_modified:      'role_driver',
+  dispatch_new_mission: 'role_dispatcher',
+  derogation_request:   'role_dispatcher',
+  alert_admin:          'role_dispatcher',
+  cash_transfer:        'role_finance',
+}
+
 /**
  * Filtre une liste d'user_ids selon les preferences notif_preferences.
- * En l absence d entree pour la cle, le user est considere comme actif
- * (defaut on = retro-compat).
+ * Defaut on = retro-compat. Si la clef role est explicitement false, on bloque.
+ * Lit aussi l ancienne clef per-categorie (driver_assigned, etc.) pour
+ * retro-compat avec les users qui ont deja sauvegarde avant ce refacto.
  */
 async function filterByNotifPref(userIds: string[], notifType?: NotifType): Promise<string[]> {
   if (!notifType || userIds.length === 0) return userIds
+  const roleKey = NOTIF_TYPE_TO_ROLE_KEY[notifType]
   const sb = createAdminClient()
   const { data } = await sb
     .from('users')
@@ -55,8 +71,11 @@ async function filterByNotifPref(userIds: string[], notifType?: NotifType): Prom
   return data
     .filter(u => {
       const pref = (u.notif_preferences || {}) as Record<string, unknown>
-      // explicite false → desactive, sinon active
-      return pref[notifType] !== false
+      // 1. Bloque si la clef de role est explicitement false (nouveau systeme)
+      if (roleKey && pref[roleKey] === false) return false
+      // 2. Retro-compat : bloque si l ancienne clef per-categorie est false
+      if (pref[notifType] === false) return false
+      return true
     })
     .map(u => u.id)
 }
