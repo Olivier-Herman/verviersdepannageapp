@@ -1,20 +1,41 @@
 // POST /api/missions/[id]/finalize
 //
 // Bascule une mission de awaiting_payment=true vers awaiting_payment=false
-// + declenche les hooks externes (queue TowSoft, Helpdesk Odoo, email,
-// GitHub dispatch) en relisant les draft_params snapshotes a la creation.
+// + declenche les hooks externes (ticket Helpdesk Odoo + email d alerte)
+// en relisant les draft_params snapshotes a la creation.
+//
+// Olivier 2026-06-01 : on SKIP TowSoft queue + GitHub dispatch pour ces
+// missions chauffeur (pas besoin, c est une mission ponctuelle locale).
+// On garde uniquement Odoo (pour le suivi facturation) + email d alerte
+// (pour le dispatcher).
 //
 // Cette route est appelee quand le chauffeur a fini d encaisser le solde
 // complet d une mission en mode draft (cf /api/missions/police/draft).
-//
-// Olivier 2026-06-01.
 
-import { NextResponse }      from 'next/server'
-import { getServerSession }  from 'next-auth'
-import { authOptions }       from '@/lib/auth'
-import { createAdminClient } from '@/lib/supabase'
+import { NextResponse }                     from 'next/server'
+import { getServerSession }                 from 'next-auth'
+import { authOptions }                      from '@/lib/auth'
+import { createAdminClient }                from '@/lib/supabase'
+import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 
 export const maxDuration = 60
+
+// Tags Odoo par type (copie de towsoft/create pour eviter import cyclique)
+const POLICE_TAGS: Record<string, number> = {
+  accident: 6, saisie: 5, rodeo: 5, snc: 15, mal_garee: 1, appel_prive: 25, avp: 10,
+}
+
+// Labels lisibles pour l email + le ticket Odoo
+const TYPE_LABELS: Record<string, string> = {
+  accident:    '🚨 Police Accident',
+  saisie:      '⚖️ Saisie',
+  rodeo:       '🏎️ Rodéo',
+  mal_garee:   '🚫 Mal Garée',
+  snc:         '🛣️ Siabis Non Couvert',
+  sc:          '🛣️ Siabis Couvert',
+  appel_prive: '📞 Appel Privé',
+  avp:         '🔲 AVP',
+}
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -24,17 +45,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!missionId) return NextResponse.json({ error: 'missionId requis' }, { status: 400 })
 
   const supabase = createAdminClient()
+  const user     = session.user as any
 
   const { data: mission, error: getErr } = await supabase
     .from('incoming_missions')
-    .select('id, awaiting_payment, amount_to_collect, payment_amount, draft_params, status')
+    .select('id, awaiting_payment, amount_to_collect, payment_amount, draft_params, status, source, mission_number')
     .eq('id', missionId)
     .maybeSingle()
 
   if (getErr || !mission) {
     return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
   }
-
   if (!mission.awaiting_payment) {
     return NextResponse.json({ error: 'Mission deja finalisee' }, { status: 400 })
   }
@@ -52,18 +73,98 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }, { status: 400 })
   }
 
-  // Update awaiting_payment=false. Les hooks externes (queue TowSoft, Helpdesk
-  // Odoo, email, GH dispatch) ne sont PAS encore declenches automatiquement
-  // ici — voir TODO ci-dessous. Pour cette iteration, la mission devient
-  // simplement visible cote dispatch qui peut l envoyer manuellement.
-  //
-  // TODO Olivier (iteration suivante) : factoriser la logique de hooks de
-  // /api/towsoft/create en un helper reutilisable + l appeler ici en relisant
-  // draft_params pour reconstruire les params POST.
+  const draft = (mission.draft_params || {}) as any
+  const type  = String(draft.type || '')
+
+  // Recup le nom chauffeur (pour le ticket Odoo + email)
+  const { data: dbUser } = await supabase
+    .from('users')
+    .select('name')
+    .eq('email', user.email)
+    .maybeSingle()
+  const chauffeurName = dbUser?.name || user.email || 'Chauffeur'
+
+  // ─── 1. Ticket Helpdesk Odoo (sauf appel_prive, source verite VD Soft) ───
+  let odooTicketId: number | null = null
+  if (type !== 'appel_prive') {
+    try {
+      const { createHelpdeskTicket } = await import('@/lib/odoo-fsm')
+      const tagIds = POLICE_TAGS[type] ? [POLICE_TAGS[type]] : []
+      const ownerFirst = draft.ownerFirstName || ''
+      const ownerLast  = draft.ownerLastName  || ''
+      const clientName = [ownerFirst, ownerLast].filter(Boolean).join(' ') || 'Inconnu'
+      const typeLabel  = TYPE_LABELS[type] || type
+      const description = buildPoliceEmailHtml({
+        type, typeLabel, chauffeurName,
+        date: draft.date || '', time: draft.time || '', location: draft.location || '',
+        plate: draft.plate || '', vin: draft.vin || '',
+        brand: draft.brand || '', model: draft.model || '',
+        ownerFirstName: ownerFirst, ownerLastName: ownerLast, ownerPhone: draft.ownerPhone || '',
+        remarks: draft.remarks || '',
+        photoUrls: draft.photoUrls || [],
+        parc: '',
+      })
+      const result = await createHelpdeskTicket({
+        supabaseId:        missionId,
+        dossierNumber:     `FINALIZED-${missionId.slice(0, 8)}`,
+        source:            type.toUpperCase(),
+        clientName,
+        vehiclePlate:      draft.plate || '',
+        vehicleBrand:      draft.brand || '',
+        vehicleModel:      draft.model || '',
+        vehicleVin:        draft.vin   || '',
+        city:              draft.location || '',
+        dateIntervention:  draft.date || '',
+        missionType:       type,
+        tagIds,
+        description,
+        teamId:            12,
+        stageId:           4,  // direct "Resolu" car deja paye/cloture
+      })
+      odooTicketId = result.ticketId
+    } catch (e: any) {
+      console.error('[finalize] Helpdesk Odoo echec:', e?.message || e)
+      // Non bloquant — on continue avec email + update mission
+    }
+  }
+
+  // ─── 2. Email d alerte au dispatcher ──────────────────────────────────
+  try {
+    await sendPoliceEmail({
+      type,
+      typeLabel:      TYPE_LABELS[type] || type,
+      chauffeurName,
+      date:           draft.date || '',
+      time:           draft.time || '',
+      location:       draft.location || '',
+      plate:          draft.plate || '',
+      vin:            draft.vin || '',
+      brand:          draft.brand || '',
+      model:          draft.model || '',
+      ownerFirstName: draft.ownerFirstName || '',
+      ownerLastName:  draft.ownerLastName  || '',
+      ownerPhone:     draft.ownerPhone || '',
+      remarks:        draft.remarks || '',
+      photoUrls:      draft.photoUrls || [],
+      parc:           '',
+    } as any)
+  } catch (e: any) {
+    console.error('[finalize] Email police echec:', e?.message || e)
+  }
+
+  // ─── 3. Update mission : awaiting_payment=false + odoo_ticket_id ──────
+  const dossierFinal = odooTicketId
+    ? `${(draft.type || 'POLICE').toUpperCase()}-${odooTicketId}`
+    : mission.mission_number
+      ? `LOCAL-${mission.mission_number}`
+      : `LOCAL-${missionId.slice(0, 8)}`
+
   const { error: updErr } = await supabase
     .from('incoming_missions')
     .update({
       awaiting_payment: false,
+      odoo_ticket_id:   odooTicketId,
+      dossier_number:   dossierFinal,
       updated_at:       new Date().toISOString(),
     })
     .eq('id', missionId)
@@ -76,5 +177,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     ok:        true,
     missionId,
     finalized: true,
+    odooTicketId,
+    dossierNumber: dossierFinal,
   })
 }
