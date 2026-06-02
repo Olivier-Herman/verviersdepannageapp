@@ -179,7 +179,10 @@ export async function getSncDepots(): Promise<SncDepot[]> {
   return (data || []) as SncDepot[]
 }
 
-/** Cherche le depot le plus proche du lieu d intervention (haversine). */
+/** Cherche le depot le plus proche du lieu d intervention (haversine).
+ *  Olivier 2026-06-02 PM : prefer findNearestDepotByRoute (Google Distance
+ *  Matrix) pour avoir le bon depot quand haversine donne un mauvais resultat
+ *  (routes sinueuses, autoroutes en sens unique). Garde celui-ci en fallback. */
 export function findNearestDepot(lat: number, lng: number, depots: SncDepot[]): SncDepot | null {
   if (depots.length === 0) return null
   let best: SncDepot | null = null
@@ -192,6 +195,44 @@ export function findNearestDepot(lat: number, lng: number, depots: SncDepot[]): 
     }
   }
   return best
+}
+
+/**
+ * Cherche le depot le plus proche du lieu d intervention via Google Distance
+ * Matrix (distance ROUTE, pas vol d oiseau). Fait UN seul appel API avec tous
+ * les depots en origins. Fallback haversine si Google echoue.
+ *
+ * Olivier 2026-06-02 PM : "Le dépôt en siabis doit être dynamique et calculé
+ * au plus proche de l'intervention. Donc ici, A27 Jalhay, il n'aurait pas dû
+ * indiquer Pepinster mais bien Tiège".
+ */
+export async function findNearestDepotByRoute(lat: number, lng: number, depots: SncDepot[]): Promise<SncDepot | null> {
+  if (depots.length === 0) return null
+  if (depots.length === 1) return depots[0]
+  if (!GMAPS_KEY) return findNearestDepot(lat, lng, depots)
+  try {
+    const origins = depots.map(d => `${d.lat},${d.lng}`).join('|')
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json` +
+                `?origins=${encodeURIComponent(origins)}` +
+                `&destinations=${lat},${lng}` +
+                `&mode=driving&units=metric&key=${GMAPS_KEY}`
+    const res = await fetch(url)
+    const j = await res.json()
+    const rows = Array.isArray(j.rows) ? j.rows : []
+    if (rows.length !== depots.length) return findNearestDepot(lat, lng, depots)
+    let best: SncDepot | null = null
+    let bestMeters = Infinity
+    for (let i = 0; i < depots.length; i++) {
+      const meters = rows[i]?.elements?.[0]?.distance?.value
+      if (typeof meters === 'number' && meters < bestMeters) {
+        bestMeters = meters
+        best = depots[i]
+      }
+    }
+    return best || findNearestDepot(lat, lng, depots)
+  } catch {
+    return findNearestDepot(lat, lng, depots)
+  }
 }
 
 /** Cherche le depot Pepinster parmi la liste (case-insensitive sur name). */
@@ -269,9 +310,13 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
 
   // Choix depot de depart pour la depanneuse : toujours le plus proche du lieu
   // d intervention parmi TOUS les depots actifs (regle Olivier).
+  // Olivier 2026-06-02 PM : utilise Distance Matrix Google (route reelle)
+  // au lieu de haversine. Sur A27 Jalhay, haversine pouvait donner Pepinster
+  // alors que Tiege est plus proche par route. Fallback haversine si Google
+  // echoue (pas de cle, quota, etc.).
   // Le depot retour = depot de depart pour la depanneuse, MEME en REM depot
   // (la depanneuse revient a son depot d origine apres avoir depose a Pepinster).
-  const depart = findNearestDepot(input.interventionLat, input.interventionLng, depots)
+  const depart = await findNearestDepotByRoute(input.interventionLat, input.interventionLng, depots)
   if (!depart) return null
 
   const pepinster = findPepinster(depots)
