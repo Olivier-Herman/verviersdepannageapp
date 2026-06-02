@@ -2209,29 +2209,64 @@ export default function MissionDetailClient({
                     <Field label="Source (apporteur)">
                       <DynamicSourceSelect value={form.source} onChange={f('source')} />
                     </Field>
-                    <Field label="Type de mission">
-                      <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
-                    </Field>
+                    {/* Olivier 2026-06-02 PM : pour SNC/SC le mission_type est
+                        derive automatiquement du scenario (dsp → depannage,
+                        rem_* → remorquage). On cache le champ pour eviter
+                        l incoherence. Auto-fill se fait dans onClick tuile. */}
+                    {!(form.source === 'police_snc' || form.source === 'sia_couvert') && (
+                      <Field label="Type de mission">
+                        <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
+                      </Field>
+                    )}
                     {(form.source === 'police_snc' || form.source === 'sia_couvert') && (
-                      <div className="col-span-2">
+                      <div className="col-span-2 space-y-2">
                         <Field label="Scénario SNC (optionnel — modifiable par le chauffeur)">
-                          <select
-                            value={form.snc_scenario || ''}
-                            onChange={e => f('snc_scenario')(e.target.value)}
-                            className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
-                          >
-                            <option value="">— Laisser le chauffeur choisir —</option>
-                            <option value="dsp">DSP — Dépannage sur place</option>
-                            {form.source === 'police_snc' && (
-                              <option value="rem_client">REM client — Paiement immédiat</option>
-                            )}
-                            {form.source === 'sia_couvert' && (
-                              <option value="rem_direct">REM directe — Sans passage dépôt</option>
-                            )}
-                            <option value="rem_depot">REM dépôt — Mise en parc Transit</option>
-                          </select>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {([
+                              { key: '',           label: '🤷 Laisser le chauffeur choisir', desc: 'Aucune pré-indication — le chauffeur décide selon ce qu\'il constate.' },
+                              { key: 'dsp',        label: '🔧 DSP — Dépannage sur place',  desc: 'Réparation sur autoroute.' },
+                              ...(form.source === 'police_snc' ? [{
+                                key: 'rem_client', label: '🚛 REM client',                 desc: 'Remorquage vers destination du client, paiement immédiat.',
+                              }] : []),
+                              ...(form.source === 'sia_couvert' ? [{
+                                key: 'rem_direct', label: '🚛 REM directe',                desc: 'Remorquage direct sans passage dépôt (forfait SC + km livraison).',
+                              }] : []),
+                              { key: 'rem_depot',  label: '🏢 REM dépôt Pepinster',        desc: 'Mise en zone Transit, relivraison ultérieure.' },
+                            ] as Array<{ key: string; label: string; desc: string }>).map(opt => {
+                              const isActive = (form.snc_scenario || '') === opt.key
+                              // Auto-derive mission_type depuis le scenario
+                              // (dsp → depannage, rem_* → remorquage, vide → garde)
+                              const derivedType = opt.key === 'dsp'
+                                ? 'depannage'
+                                : opt.key.startsWith('rem_')
+                                  ? 'remorquage'
+                                  : form.mission_type
+                              return (
+                                <button
+                                  key={opt.key || 'none'}
+                                  type="button"
+                                  onClick={() => setForm(prev => ({
+                                    ...prev,
+                                    snc_scenario: opt.key,
+                                    mission_type: derivedType,
+                                  }))}
+                                  className={`p-3 rounded-xl border-2 text-left transition ${
+                                    isActive
+                                      ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-300'
+                                      : 'bg-surface border hover:border-blue-400'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-ink font-semibold text-sm">{opt.label}</span>
+                                    {isActive && <span className="text-blue-700 text-xs font-bold flex-shrink-0">✓ Actif</span>}
+                                  </div>
+                                  <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
+                                </button>
+                              )
+                            })}
+                          </div>
                         </Field>
-                        <p className="text-blue-900 text-xs mt-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
+                        <p className="text-blue-900 text-xs bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
                           ℹ️ Tu peux pré-indiquer un scénario pour orienter le chauffeur. Il pourra le modifier depuis sa fiche selon ce qu&apos;il constate sur place.
                         </p>
                       </div>
