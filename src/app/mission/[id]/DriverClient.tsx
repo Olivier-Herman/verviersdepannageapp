@@ -46,7 +46,8 @@ interface Mission {
   snc_requires_balisage?: boolean | null
   police_blocked?: boolean | null
   remarks_billing?: string | null
-  destination_address?: string; destination_name?: string; redelivery_address?: string
+  destination_address?: string; destination_name?: string; destination_lat?: number; destination_lng?: number; redelivery_address?: string
+  intervention_date?: string; received_at?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   loaded_at?: string
   completed_at?: string; parked_at?: string; delivering_at?: string
@@ -963,14 +964,28 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // Quand le dispatch reclassifie une mission en Siabis non couvert / couvert
   // (source = police_snc / sia_couvert), le chauffeur doit choisir DSP / REM
   // client / REM depot. Adapte aussi mission_type automatiquement :
-  // dsp = depannage, rem_client/rem_depot = remorquage. Apres save, le
-  // realtime met M a jour et tout le flow SNC s active (suggested zone,
-  // quote, REL eligibility, snc-calc, etc.).
-  const [sncSaving, setSncSaving] = useState<string | null>(null)
+  // dsp = depannage, rem_client/rem_depot = remorquage.
+  //
+  // Apres choix, on appelle /api/snc-preview-tarif pour calculer le tarif
+  // SNC et PATCH amount_to_collect (sauf REM depot : pas d encaissement
+  // immediat, le client passera au bureau).
+  //
+  // Pour REM client : la destination doit etre saisie AVANT (lat/lng), sinon
+  // l API renvoie 400. On bloque le clic dans ce cas avec un message clair.
+  const [sncSaving, setSncSaving]   = useState<string | null>(null)
+  const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
+
   const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot') => {
+    setSncInfoMsg(null)
+    // REM client a besoin de la destination (lat/lng) pour estimer le tarif
+    if (scenario === 'rem_client' && (M.destination_lat == null || M.destination_lng == null)) {
+      setSncInfoMsg('Saisis d\'abord l\'adresse de destination (clique sur l\'itinéraire pour l\'ajouter).')
+      return
+    }
     setSncSaving(scenario); setErr('')
     try {
       const newType = scenario === 'dsp' ? 'depannage' : 'remorquage'
+      // 1) PATCH scenario + type
       const r = await fetch(`/api/missions/${M.id}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -979,11 +994,86 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(prev => ({ ...prev, snc_scenario: scenario as any, mission_type: newType }))
+
+      // 2) Calcul tarif SNC (sauf REM depot : pas d encaissement immediat)
+      if (scenario !== 'rem_depot' && M.incident_lat != null && M.incident_lng != null) {
+        const variant = M.source === 'sia_couvert' ? 'sc' : 'snc'
+        const pr = await fetch('/api/snc-preview-tarif', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            scenario,
+            variant,
+            requires_balisage: Boolean(M.snc_requires_balisage),
+            incident_lat:      M.incident_lat,
+            incident_lng:      M.incident_lng,
+            destination_lat:   M.destination_lat,
+            destination_lng:   M.destination_lng,
+            intervention_at:   M.intervention_date || (M as any).received_at || new Date().toISOString(),
+          }),
+        })
+        const pj = await pr.json().catch(() => null)
+        if (pr.ok && pj?.ok && typeof pj.total_tvac === 'number') {
+          // Pour SC (Siabis couvert) : facturation a l assistance, PAS
+          // d encaissement client (amount_to_collect reste null).
+          const amount = variant === 'sc' ? null : pj.total_tvac
+          await fetch(`/api/missions/${M.id}`, {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ amount_to_collect: amount }),
+          })
+          setM(prev => ({ ...prev, amount_to_collect: amount as any }))
+        }
+      } else if (scenario === 'rem_depot') {
+        // REM depot : pas d encaissement immediat
+        await fetch(`/api/missions/${M.id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ amount_to_collect: null }),
+        })
+        setM(prev => ({ ...prev, amount_to_collect: null as any }))
+      }
     } catch (e: any) {
       setErr(e.message || 'Impossible de définir le scénario')
     } finally {
       setSncSaving(null)
     }
+  }
+
+  // Toggle balisage SNC : re-PATCH + recalcule le tarif si scenario deja choisi
+  const toggleSncBalisage = async () => {
+    const next = !M.snc_requires_balisage
+    try {
+      await fetch(`/api/missions/${M.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ snc_requires_balisage: next }),
+      })
+      setM(prev => ({ ...prev, snc_requires_balisage: next }))
+      // Si scenario deja choisi et pas REM depot → recalcul du tarif
+      if (M.snc_scenario && M.snc_scenario !== 'rem_depot' && M.incident_lat != null && M.incident_lng != null) {
+        const variant = M.source === 'sia_couvert' ? 'sc' : 'snc'
+        const pr = await fetch('/api/snc-preview-tarif', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            scenario: M.snc_scenario, variant,
+            requires_balisage: next,
+            incident_lat:    M.incident_lat,    incident_lng: M.incident_lng,
+            destination_lat: M.destination_lat, destination_lng: M.destination_lng,
+            intervention_at: M.intervention_date || (M as any).received_at || new Date().toISOString(),
+          }),
+        })
+        const pj = await pr.json().catch(() => null)
+        if (pr.ok && pj?.ok && typeof pj.total_tvac === 'number' && variant !== 'sc') {
+          await fetch(`/api/missions/${M.id}`, {
+            method:  'PATCH', headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ amount_to_collect: pj.total_tvac }),
+          })
+          setM(prev => ({ ...prev, amount_to_collect: pj.total_tvac as any }))
+        }
+      }
+    } catch (e: any) { setErr(e.message || 'Erreur') }
   }
 
   // ── Changer type DSP↔REM ──────────────────────────────────────────────────
@@ -2476,6 +2566,28 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 </button>
               ))}
             </div>
+
+            {/* Toggle balisage (impacte le tarif si scenario != rem_depot) */}
+            <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border border-blue-300 rounded-xl">
+              <input
+                type="checkbox"
+                checked={Boolean(M.snc_requires_balisage)}
+                onChange={toggleSncBalisage}
+                className="mt-1 w-5 h-5"
+              />
+              <div className="flex-1">
+                <div className="text-ink text-sm font-medium">Intervention avec balisage</div>
+                <div className="text-ink-muted text-xs mt-0.5">
+                  Coche si un véhicule de sécurité a dû être placé (autoroute / voie rapide). Génère un supplément SIABAL.
+                </div>
+              </div>
+            </label>
+
+            {sncInfoMsg && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-2 text-amber-900 text-xs">
+                ⚠ {sncInfoMsg}
+              </div>
+            )}
           </div>
         )}
 
