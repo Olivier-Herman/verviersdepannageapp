@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Shield, Wallet, X } from 'lucide-react'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
+import { TruckSwitcher } from '@/components/trucks/TruckSwitcher'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -104,6 +105,13 @@ export default function MissionListClient({
   return (
     <div className="relative pb-24">
       <div className="px-4 py-4 space-y-2">
+
+        {/* Olivier 2026-06-02 : selecteur de depanneuse en haut de la liste.
+            Permet au chauffeur de changer rapidement sans attendre le modal
+            de seuil 7h/17h. */}
+        <div className="mb-3">
+          <TruckSwitcher />
+        </div>
 
         {active.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-ink-muted">
