@@ -38,6 +38,7 @@ export default async function FacturationPage() {
       incident_address, destination_address,
       received_at, intervention_date, completed_at,
       amount_to_collect, amount_collected, payment_method,
+      special_tarif_htva,
       assigned_to,
       invoice_method, invoice_number, invoice_url,
       no_charge_at, no_charge_reason,

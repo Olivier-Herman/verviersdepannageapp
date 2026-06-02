@@ -68,6 +68,33 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     destination_lng:         ovNum('destination_lng')     ?? missionDb.destination_lng,
     billed_to_id:            ovNum('billed_to_id')        ?? (missionDb as any).billed_to_id,
     billed_to_name:          ov('billed_to_name')         ?? (missionDb as any).billed_to_name,
+    special_tarif_htva:      ovNum('special_tarif_htva')  ?? (missionDb as any).special_tarif_htva,
+  }
+
+  // Olivier 2026-06-02 PM : tarif special HTVA → court-circuit total.
+  // Une seule ligne SERV-DIV "Intervention suivant prix convenu" qui ECRASE
+  // le calcul automatique (SNC, source_tariffs, etc.).
+  if (mission.special_tarif_htva != null && Number(mission.special_tarif_htva) > 0) {
+    const amount = Number(mission.special_tarif_htva)
+    return NextResponse.json({
+      ok:            true,
+      source:        mission.source,
+      mission_type:  mission.mission_type || 'autre',
+      pricing_mode:  'special',
+      forfait:       amount,
+      km_charged:    0, km_inclus: 0, km_extra: 0, km_extra_eur: 0,
+      parc_jours:    0, parc_eur: 0,
+      subtotal_eur:  amount,
+      surcharge_pct: 0, surcharge_eur: 0,
+      total_eur:     amount,
+      is_autofac:    false,
+      tariff_id:     'special',
+      tariff_doc_path: null, tariff_doc_name: null,
+      special_tarif: true,
+      breakdown: [
+        { label: 'Intervention suivant prix convenu', amount, note: 'Tarif spécial HTVA défini par le dispatcher' },
+      ],
+    })
   }
 
   // SNC / SC sans scenario : on retourne un message dedie au lieu de tomber

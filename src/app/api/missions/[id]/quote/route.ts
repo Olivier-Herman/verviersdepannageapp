@@ -74,7 +74,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       client_name, vehicle_plate, vehicle_mileage, vehicle_class,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       billed_to_id, billed_to_name,
-      amount_to_collect,
+      amount_to_collect, special_tarif_htva,
       odoo_quote_id, odoo_quote_url
     `)
     .eq('id', params.id)

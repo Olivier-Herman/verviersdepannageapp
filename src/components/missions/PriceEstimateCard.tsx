@@ -22,6 +22,7 @@ interface PriceEstimate {
   tariff_id:     string
   tariff_doc_path: string | null
   tariff_doc_name: string | null
+  special_tarif?: boolean   // Olivier 2026-06-02 PM : true si special_tarif_htva applique
   breakdown:     { label: string; amount: number | null; note?: string }[]
 }
 
@@ -41,6 +42,7 @@ interface Props {
     destination_lng?:       number | null
     billed_to_id?:          number | null
     billed_to_name?:        string | null
+    special_tarif_htva?:    number | null
   }
 }
 
@@ -106,15 +108,27 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
   }
 
   return (
-    <div className="bg-surface border rounded-xl p-4 text-sm">
+    <div className={`border rounded-xl p-4 text-sm ${
+      data.special_tarif
+        ? 'bg-amber-50 border-2 border-amber-500'
+        : 'bg-surface border'
+    }`}>
+      {data.special_tarif && (
+        <div className="mb-3 -mt-1 -mx-1 px-3 py-2 bg-amber-100 border-l-4 border-amber-600 rounded-r text-amber-900 text-xs font-semibold flex items-center gap-2">
+          <span className="text-base">⚡</span>
+          <span>Tarif spécial appliqué — calcul automatique ignoré</span>
+        </div>
+      )}
       <button
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center justify-between gap-2"
       >
         <div className="flex items-center gap-3">
-          <span className="text-xl">💰</span>
+          <span className="text-xl">{data.special_tarif ? '⚡' : '💰'}</span>
           <div className="text-left">
-            <div className="text-xs text-ink-faint uppercase tracking-wider">Estimation tarif</div>
+            <div className={`text-xs uppercase tracking-wider ${data.special_tarif ? 'text-amber-700 font-semibold' : 'text-ink-faint'}`}>
+              {data.special_tarif ? 'Tarif spécial (prix convenu)' : 'Estimation tarif'}
+            </div>
             <div className="text-xl font-display font-bold">{fmt(data.total_eur)} <span className="text-xs text-ink-faint font-normal">HTVA</span></div>
             <div className="text-xs text-ink-muted">{fmt(toTvac(data.total_eur))} TVAC</div>
           </div>

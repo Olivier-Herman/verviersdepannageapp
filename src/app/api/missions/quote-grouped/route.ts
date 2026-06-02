@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       client_name, vehicle_plate, vehicle_mileage,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       billed_to_id, billed_to_name,
-      amount_to_collect,
+      amount_to_collect, special_tarif_htva,
       incident_address, incident_city, destination_address, destination_name,
       odoo_quote_id, odoo_quote_url
     `)

@@ -30,6 +30,7 @@ interface MissionRow {
   amount_to_collect: number | null
   amount_collected: number | null
   payment_method: string | null
+  special_tarif_htva: number | null
   assigned_to: string | null
   invoice_method: string | null
   invoice_number: string | null
@@ -265,21 +266,30 @@ export default function FacturationClient({
               const advs         = advancesByMission.get(m.id) || []
               const hasAdv       = advs.length > 0
               const advTotal     = advs.reduce((s, a) => s + Number(a.amount_htva || 0), 0)
+              const hasSpecial   = m.special_tarif_htva != null && Number(m.special_tarif_htva) > 0
 
               return (
                 <li key={m.id}>
                   <Link
                     href={`/dispatch/${m.id}`}
                     className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${
-                      hasAdv
-                        ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
-                        : 'bg-surface border hover:bg-surface-hover'
+                      hasSpecial
+                        ? 'bg-amber-50 border-2 border-amber-500 hover:bg-amber-100 hover:border-amber-600'
+                        : hasAdv
+                          ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
+                          : 'bg-surface border hover:bg-surface-hover'
                     }`}
                   >
                     {/* Ruban "Avance" en coin haut-gauche — Olivier 2026-06-01 */}
                     {hasAdv && (
-                      <div className="absolute top-0 left-0 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-br-lg uppercase tracking-wider">
+                      <div className={`absolute top-0 left-0 text-white text-[10px] font-bold px-2 py-0.5 rounded-br-lg uppercase tracking-wider ${hasSpecial ? 'bg-amber-600' : 'bg-indigo-600'}`}>
                         💰 {advs.length} Avance{advs.length > 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {/* Ruban "Tarif spécial" — Olivier 2026-06-02 PM */}
+                    {hasSpecial && (
+                      <div className={`absolute top-0 ${hasAdv ? 'right-0 rounded-bl-lg' : 'left-0 rounded-br-lg'} bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider`}>
+                        ⚡ Tarif spécial
                       </div>
                     )}
 
@@ -313,6 +323,11 @@ export default function FacturationClient({
                     {hasAdv && (
                       <span className="px-2.5 py-1 bg-indigo-100 border-2 border-indigo-400 text-indigo-800 text-xs font-semibold rounded-lg whitespace-nowrap" title="Avances de fonds liées à ajouter au devis">
                         💰 {advTotal.toFixed(2)} € HTVA
+                      </span>
+                    )}
+                    {hasSpecial && (
+                      <span className="px-2.5 py-1 bg-amber-100 border-2 border-amber-500 text-amber-900 text-xs font-bold rounded-lg whitespace-nowrap" title="Tarif spécial HTVA — Intervention suivant prix convenu">
+                        ⚡ {Number(m.special_tarif_htva).toFixed(2)} € HTVA
                       </span>
                     )}
 

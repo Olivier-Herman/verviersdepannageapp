@@ -110,9 +110,10 @@ interface Mission {
   vehicle_class?:        'car' | 'moto' | string | null
   distance_km?:          number | null
   duration_min?:         number | null
-  snc_scenario?:         'dsp' | 'rem_client' | 'rem_depot' | string | null
+  snc_scenario?:         'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct' | string | null
   snc_requires_balisage?: boolean | null
   remarks_billing?:      string | null
+  special_tarif_htva?:   number | null
 }
 
 interface Stop {
@@ -786,7 +787,7 @@ function GeoStatusBanner({ status, onReview }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string | React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-ink-muted text-xs mb-1.5">{label}</label>
@@ -975,6 +976,9 @@ export default function MissionDetailClient({
     amount_to_collect:    initialMission.amount_to_collect != null  ? String(initialMission.amount_to_collect)  : '',
     // Olivier 2026-06-02 : modifiable quand source = police_snc/sia_couvert
     snc_scenario:         initialMission.snc_scenario               || '',
+    snc_requires_balisage: Boolean(initialMission.snc_requires_balisage),
+    // Olivier 2026-06-02 PM : tarif special HTVA (ecrase calcul automatique)
+    special_tarif_htva:   initialMission.special_tarif_htva != null ? String(initialMission.special_tarif_htva) : '',
   })
 
   // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,
@@ -2266,8 +2270,24 @@ export default function MissionDetailClient({
                             })}
                           </div>
                         </Field>
+                        {/* Toggle balisage (impacte le tarif live) */}
+                        <label className="flex items-start gap-3 cursor-pointer p-3 bg-surface border rounded-xl hover:border-blue-400">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(form.snc_requires_balisage)}
+                            onChange={e => setForm(prev => ({ ...prev, snc_requires_balisage: e.target.checked }))}
+                            className="mt-1 w-5 h-5"
+                          />
+                          <div className="flex-1">
+                            <div className="text-ink text-sm font-medium">Intervention avec balisage (véhicule de sécurité)</div>
+                            <div className="text-ink-muted text-xs mt-0.5">
+                              Coche si un véhicule de sécurité doit être placé (autoroute / voie rapide). Génère un supplément SIABAL.
+                            </div>
+                          </div>
+                        </label>
+
                         <p className="text-blue-900 text-xs bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
-                          ℹ️ Tu peux pré-indiquer un scénario pour orienter le chauffeur. Il pourra le modifier depuis sa fiche selon ce qu&apos;il constate sur place.
+                          ℹ️ Tu peux pré-indiquer scénario + balisage pour orienter le chauffeur. Il pourra les modifier depuis sa fiche selon ce qu&apos;il constate sur place.
                         </p>
                       </div>
                     )}
@@ -2437,7 +2457,7 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Montant garanti + Paiement client */}
+              {/* Montant garanti + Paiement client + Tarif special */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>💶</span> Montants
@@ -2449,6 +2469,40 @@ export default function MissionDetailClient({
                   <Field label="Paiement à réclamer au client (€)">
                     <Input value={form.amount_to_collect} onChange={f('amount_to_collect')} placeholder="0.00" />
                   </Field>
+                </div>
+
+                {/* Olivier 2026-06-02 PM : tarif special HTVA pour interventions
+                    hors cadre (prix convenu avec client/assistance). Si rempli,
+                    ECRASE le calcul automatique → une seule ligne SERV-DIV
+                    "Intervention suivant prix convenu" a la facturation.
+                    Pas visible cote chauffeur (pas un encaissement client). */}
+                <div className={`mt-4 border-2 rounded-xl p-3 ${
+                  form.special_tarif_htva && Number(form.special_tarif_htva) > 0
+                    ? 'border-amber-500 bg-amber-50'
+                    : 'border-dashed border-amber-300 bg-amber-50/30'
+                }`}>
+                  <Field label={
+                    <span className="flex items-center gap-2">
+                      <span className="text-amber-700 text-base">⚡</span>
+                      <span className="text-amber-900 font-semibold">Tarif spécial HTVA (écrase le calcul)</span>
+                    </span>
+                  }>
+                    <Input
+                      value={form.special_tarif_htva}
+                      onChange={f('special_tarif_htva')}
+                      placeholder="Ex: 250.00"
+                    />
+                  </Field>
+                  <p className="text-amber-900 text-xs mt-2">
+                    À utiliser uniquement si tu as convenu d&apos;un prix spécifique avec le client / l&apos;assistance.
+                    À la facturation, une <strong>seule ligne SERV-DIV</strong> sera générée avec la description
+                    <em> « Intervention suivant prix convenu »</em>. Le tarif normalement calculé sera ignoré.
+                  </p>
+                  {form.special_tarif_htva && Number(form.special_tarif_htva) > 0 && (
+                    <p className="text-amber-900 text-xs mt-1 font-semibold">
+                      🔔 Le tarif spécial est ACTIF — {Number(form.special_tarif_htva).toFixed(2)} € HTVA sera facturé.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -3116,15 +3170,17 @@ export default function MissionDetailClient({
           <PriceEstimateCard
             missionId={initialMission.id}
             overrides={{
-              source:                form.source,
-              mission_type:          form.mission_type,
-              snc_scenario:          form.snc_scenario || null,
-              incident_lat:          form.incident_lat   ? Number(form.incident_lat)   : null,
-              incident_lng:          form.incident_lng   ? Number(form.incident_lng)   : null,
-              destination_lat:       form.destination_lat ? Number(form.destination_lat) : null,
-              destination_lng:       form.destination_lng ? Number(form.destination_lng) : null,
-              billed_to_id:          billedPartnerId,
-              billed_to_name:        form.billed_to_name,
+              source:                 form.source,
+              mission_type:           form.mission_type,
+              snc_scenario:           form.snc_scenario || null,
+              snc_requires_balisage:  Boolean(form.snc_requires_balisage),
+              incident_lat:           form.incident_lat   ? Number(form.incident_lat)   : null,
+              incident_lng:           form.incident_lng   ? Number(form.incident_lng)   : null,
+              destination_lat:        form.destination_lat ? Number(form.destination_lat) : null,
+              destination_lng:        form.destination_lng ? Number(form.destination_lng) : null,
+              billed_to_id:           billedPartnerId,
+              billed_to_name:         form.billed_to_name,
+              special_tarif_htva:     form.special_tarif_htva ? Number(form.special_tarif_htva) : null,
             }}
           />
         </div>

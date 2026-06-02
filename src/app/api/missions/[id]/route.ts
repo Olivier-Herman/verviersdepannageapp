@@ -62,7 +62,7 @@ export async function PATCH(
     'destination_borne_km', 'destination_sens',
     'depot_depart_id',
     'extra_addresses',
-    'amount_guaranteed', 'amount_to_collect', 'amount_currency',
+    'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',
     'incident_at', 'intervention_date', 'remarks_general',
     // Olivier 2026-06-02 : snc_scenario doit etre modifiable cote dispatch.
     // Bug rapporte : changer source vers police_snc ne propageait pas le
@@ -82,7 +82,7 @@ export async function PATCH(
   for (const key of allowed) {
     if (key in body) {
       // Convertir les strings vides en null pour les champs numériques
-      if (['amount_guaranteed', 'amount_to_collect', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'billed_to_id', 'odoo_vehicle_id'].includes(key)) {
+      if (['amount_guaranteed', 'amount_to_collect', 'special_tarif_htva', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'billed_to_id', 'odoo_vehicle_id'].includes(key)) {
         updates[key] = body[key] === '' || body[key] == null ? null : Number(body[key]) || null
       } else {
         updates[key] = body[key] === '' ? null : body[key]

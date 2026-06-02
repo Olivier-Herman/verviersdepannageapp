@@ -12,10 +12,11 @@ import type { QuoteLine } from '@/lib/odoo-quote'
 import type { PriceEstimate } from '@/lib/missions/estimate-price'
 
 interface MissionLike {
-  id:           string
-  external_id?: string | null
-  dossier_number?: string | null
-  source?:      string | null
+  id:                  string
+  external_id?:        string | null
+  dossier_number?:     string | null
+  source?:             string | null
+  special_tarif_htva?: number | null
 }
 
 export function buildLinesFromEstimate(
@@ -24,6 +25,18 @@ export function buildLinesFromEstimate(
 ): QuoteLine[] {
   const lines: QuoteLine[] = []
   const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
+
+  // Olivier 2026-06-02 PM : tarif special HTVA → court-circuit complet.
+  // Une seule ligne SERV-DIV "Intervention suivant prix convenu" qui
+  // ECRASE le calcul automatique (SNC, source_tariffs, gardiennage, etc.).
+  if (mission.special_tarif_htva != null && Number(mission.special_tarif_htva) > 0) {
+    return [{
+      kind:       'SERV-DIV',
+      name:       `Intervention suivant prix convenu — ${missionRef}`,
+      qty:        1,
+      price_unit: Number(mission.special_tarif_htva),
+    }]
+  }
 
   if (estimate.pricing_mode === 'lines' && Array.isArray(estimate.template_lines)) {
     // Mode 'lines' (Police Accident, Saisie, etc.) : expose chaque ligne
