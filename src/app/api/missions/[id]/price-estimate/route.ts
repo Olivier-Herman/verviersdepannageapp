@@ -20,7 +20,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
-  const { data: mission, error } = await sb
+  const { data: missionDb, error } = await sb
     .from('incoming_missions')
     .select(`
       id, source, mission_type, client_name, vehicle_mileage,
@@ -28,12 +28,47 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       parent_mission_id, amount_to_collect,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage,
+      billed_to_id, billed_to_name,
       external_id, dossier_number
     `)
     .eq('id', params.id)
     .single()
 
-  if (error || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  if (error || !missionDb) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+
+  // Olivier 2026-06-02 : pour l estimation live cote dispatch, on accepte des
+  // overrides via query params. Permet au PriceEstimateCard de refleter le
+  // form en cours d edition (mission_type, source, snc_scenario…) sans
+  // attendre la sauvegarde + refresh.
+  const url = new URL(req.url)
+  const ov = (k: string) => {
+    const v = url.searchParams.get(k)
+    return v != null && v !== '' ? v : undefined
+  }
+  const ovNum = (k: string) => {
+    const v = url.searchParams.get(k)
+    if (v == null || v === '') return undefined
+    const n = Number(v)
+    return Number.isFinite(n) ? n : undefined
+  }
+  const ovBool = (k: string) => {
+    const v = url.searchParams.get(k)
+    if (v == null) return undefined
+    return v === '1' || v === 'true'
+  }
+  const mission = {
+    ...missionDb,
+    source:                  ov('source')                 ?? missionDb.source,
+    mission_type:            ov('mission_type')           ?? missionDb.mission_type,
+    snc_scenario:            ov('snc_scenario')           ?? (missionDb as any).snc_scenario,
+    snc_requires_balisage:   ovBool('snc_requires_balisage') ?? (missionDb as any).snc_requires_balisage,
+    incident_lat:            ovNum('incident_lat')        ?? missionDb.incident_lat,
+    incident_lng:            ovNum('incident_lng')        ?? missionDb.incident_lng,
+    destination_lat:         ovNum('destination_lat')     ?? missionDb.destination_lat,
+    destination_lng:         ovNum('destination_lng')     ?? missionDb.destination_lng,
+    billed_to_id:            ovNum('billed_to_id')        ?? (missionDb as any).billed_to_id,
+    billed_to_name:          ov('billed_to_name')         ?? (missionDb as any).billed_to_name,
+  }
 
   // SNC / SC : calcul specifique via lib/snc/pricing
   // Olivier 2026-05-25 : "Une fois sur la fiche dispatch, l estimation tarif
@@ -50,6 +85,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         destinationLat:    (mission as any).destination_lat,
         destinationLng:    (mission as any).destination_lng,
         interventionAt:    mission.intervention_date || mission.received_at,
+        variant:           mission.source === 'sia_couvert' ? 'sc' : 'snc',
+        billedToId:        (mission as any).billed_to_id,
+        billedToName:      (mission as any).billed_to_name,
       })
       if (!metrics) {
         return NextResponse.json({

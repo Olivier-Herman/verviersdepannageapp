@@ -27,25 +27,57 @@ interface PriceEstimate {
 
 interface Props {
   missionId: string
+  /** Olivier 2026-06-02 : overrides depuis le form en cours d edition cote
+   *  dispatch. Permet de voir le tarif live SANS save + refresh. L API
+   *  /api/missions/[id]/price-estimate les recoit en query params. */
+  overrides?: {
+    source?:                string
+    mission_type?:          string
+    snc_scenario?:          string | null
+    snc_requires_balisage?: boolean
+    incident_lat?:          number | null
+    incident_lng?:          number | null
+    destination_lat?:       number | null
+    destination_lng?:       number | null
+    billed_to_id?:          number | null
+    billed_to_name?:        string | null
+  }
 }
 
 const TVA_RATE = 0.21
 const fmt = (n: number | null | undefined) => n != null ? `${n.toFixed(2)} €` : '—'
 const toTvac = (htva: number) => Math.round(htva * (1 + TVA_RATE) * 100) / 100
 
-export default function PriceEstimateCard({ missionId }: Props) {
+export default function PriceEstimateCard({ missionId, overrides }: Props) {
   const [data, setData] = useState<PriceEstimate | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(false)
 
+  // Serialize overrides en query string (stable, debounced via useEffect dep)
+  const qs = (() => {
+    if (!overrides) return ''
+    const p = new URLSearchParams()
+    Object.entries(overrides).forEach(([k, v]) => {
+      if (v == null || v === '') return
+      if (typeof v === 'boolean') p.set(k, v ? '1' : '0')
+      else p.set(k, String(v))
+    })
+    const s = p.toString()
+    return s ? `?${s}` : ''
+  })()
+
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/missions/${missionId}/price-estimate`)
-      .then(r => r.json())
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [missionId])
+    const ctrl = new AbortController()
+    const handler = setTimeout(() => {
+      fetch(`/api/missions/${missionId}/price-estimate${qs}`, { signal: ctrl.signal })
+        .then(r => r.json())
+        .then(setData)
+        .catch(e => { if (e.name !== 'AbortError') setData(null) })
+        .finally(() => setLoading(false))
+    }, 400)  // debounce : evite de spammer pendant la saisie
+    return () => { clearTimeout(handler); ctrl.abort() }
+  }, [missionId, qs])
 
   if (loading) {
     return (

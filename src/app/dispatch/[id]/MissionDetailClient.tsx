@@ -3057,9 +3057,25 @@ export default function MissionDetailClient({
           </div>
         </div>
 
-        {/* Estimation tarif — tout en bas (non prioritaire) */}
+        {/* Estimation tarif — tout en bas (non prioritaire)
+            Olivier 2026-06-02 : overrides du form pour avoir le tarif live
+            quand le dispatcher change mission_type / source / SNC / adresses
+            sans avoir a sauvegarder + refresh. Le debounce est dans la card. */}
         <div className="px-4 lg:px-8 pt-4 pb-8">
-          <PriceEstimateCard missionId={initialMission.id} />
+          <PriceEstimateCard
+            missionId={initialMission.id}
+            overrides={{
+              source:                form.source,
+              mission_type:          form.mission_type,
+              snc_scenario:          form.snc_scenario || null,
+              incident_lat:          form.incident_lat   ? Number(form.incident_lat)   : null,
+              incident_lng:          form.incident_lng   ? Number(form.incident_lng)   : null,
+              destination_lat:       form.destination_lat ? Number(form.destination_lat) : null,
+              destination_lng:       form.destination_lng ? Number(form.destination_lng) : null,
+              billed_to_id:          billedPartnerId,
+              billed_to_name:        form.billed_to_name,
+            }}
+          />
         </div>
         </div>
       </div>
