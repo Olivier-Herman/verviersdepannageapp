@@ -70,6 +70,25 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     billed_to_name:          ov('billed_to_name')         ?? (missionDb as any).billed_to_name,
   }
 
+  // SNC / SC sans scenario : on retourne un message dedie au lieu de tomber
+  // sur le fallback "tarif police_snc/depannage indisponible".
+  // Olivier 2026-06-02 PM : le chauffeur choisit le scenario depuis sa fiche,
+  // donc avant son choix on ne peut pas calculer le tarif precis.
+  if ((mission.source === 'police_snc' || mission.source === 'sia_couvert')
+      && !(mission as any).snc_scenario) {
+    return NextResponse.json({
+      ok: false,
+      source: mission.source, mission_type: mission.mission_type || 'remorquage',
+      reason: mission.source === 'sia_couvert'
+        ? 'Siabis couvert : le chauffeur choisira le scénario (DSP / REM directe / REM dépôt) depuis sa fiche, le tarif sera calculé ensuite.'
+        : 'Siabis non couvert : le chauffeur choisira le scénario (DSP / REM client / REM dépôt) depuis sa fiche, le tarif sera calculé ensuite.',
+      forfait: null, km_charged: 0, km_inclus: 0, km_extra: 0, km_extra_eur: 0,
+      parc_jours: 0, parc_eur: 0, subtotal_eur: 0, surcharge_pct: 0, surcharge_eur: 0,
+      total_eur: 0, is_autofac: false, tariff_id: '', tariff_doc_path: null,
+      tariff_doc_name: null, breakdown: [],
+    })
+  }
+
   // SNC / SC : calcul specifique via lib/snc/pricing
   // Olivier 2026-05-25 : "Une fois sur la fiche dispatch, l estimation tarif
   // en bas de page n est plus disponible" pour SNC.
