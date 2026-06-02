@@ -195,21 +195,66 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       const parcEur   = parcJours * parcPrixJour
       const totalHtva = depannageTotal + parcEur
 
-      const breakdown = sncLines.map(l => ({
+      const breakdown: any[] = sncLines.map(l => ({
         label: l.name,
         amount: l.qty * l.price_unit,
         note: l.qty > 1 ? `${l.qty} × ${l.price_unit.toFixed(4)} €` : undefined,
       }))
-      // Olivier 2026-06-02 PM : indique le depot utilise pour le calcul
-      // (different du depot_depart_id fige). Evite la confusion quand on voit
-      // "Pepinster (defaut)" en haut de fiche mais le calcul est base sur Tiege.
-      if (metrics.depart_depot) {
-        breakdown.unshift({
-          label:  `📍 Dépôt de calcul : ${metrics.depart_depot}`,
-          amount: null as any,
-          note:   `Le plus proche par route (Google Maps). Différent du "Dépôt de départ" en haut de fiche (utilisé pour gardiennage).`,
+      // Olivier 2026-06-02 PM : detail visuel des elements pris en compte
+      // pour le calcul (depot, segments km, plage horaire, assistance, scenario).
+      // Permet au dispatcher de controler que tout est coherent.
+      const calcInfo: any[] = []
+      calcInfo.push({
+        label:  `📍 Dépôt de calcul : ${metrics.depart_depot}`,
+        amount: null,
+        note:   `Le plus proche par route (Google Maps). Différent du "Dépôt de départ" en haut de fiche (gardiennage).`,
+      })
+      if ((metrics as any).balisage_depot) {
+        calcInfo.push({
+          label:  `🚧 Dépôt balisage : ${(metrics as any).balisage_depot}`,
+          amount: null,
+          note:   `Le plus proche par route entre Pepinster et Aywaille.`,
         })
       }
+      calcInfo.push({
+        label:  `🎯 Scénario : ${(mission as any).snc_scenario}`,
+        amount: null,
+        note:   `Variant ${variant === 'sc' ? 'SC (Siabis couvert — facturation assistance)' : 'SNC (Siabis non couvert — paiement client/dépôt)'}`,
+      })
+      if (metrics.is_majored) {
+        calcInfo.push({
+          label:  `🌙 Plage horaire majorée`,
+          amount: null,
+          note:   `L intervention tombe dans une plage de majoration configurée dans /admin/surcharges.`,
+        })
+      }
+      if ((metrics as any).livraison_assistance) {
+        calcInfo.push({
+          label:  `🏷 Assistance facturée : ${(metrics as any).livraison_assistance}`,
+          amount: null,
+          note:   `Tarif km utilisé : ${((metrics as any).livraison_km_price ?? 0).toFixed(4)} €/km, ${(metrics as any).livraison_km_inclus ?? 0} km inclus dans son forfait.`,
+        })
+      }
+      // Segments km
+      if (Array.isArray((metrics as any).km_segments) && (metrics as any).km_segments.length > 0) {
+        for (const seg of (metrics as any).km_segments) {
+          calcInfo.push({
+            label:  `🛣 ${seg.label}`,
+            amount: null,
+            note:   `${seg.km} km (route Google)`,
+          })
+        }
+        const totalSnc  = metrics.km_depanneuse
+        const totalLiv  = (metrics as any).km_livraison
+        const totalBal  = metrics.km_balisage
+        calcInfo.push({
+          label:  `Σ Totaux`,
+          amount: null,
+          note:   `Dépanneuse ${totalSnc} km${totalLiv ? ` · Livraison ${totalLiv} km` : ''}${totalBal > 0 ? ` · Balisage ${totalBal} km` : ''}`,
+        })
+      }
+      // calcInfo en premier, puis lignes facturables
+      breakdown.unshift(...calcInfo)
       if (parcPrixJour > 0) {
         let note: string
         if (parcFreeDays > 0) {

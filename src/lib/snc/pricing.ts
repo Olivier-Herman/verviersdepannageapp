@@ -81,6 +81,9 @@ export interface SncCalcOutput {
   km_balisage:            number    // km balisage (aller-retour intervention depuis SON depot)
   is_majored:             boolean
   note:                   string    // explication calcul (visible facturation)
+  /** Olivier 2026-06-02 PM : detail visuel des segments km pour controle.
+   *  Affiche dans la breakdown PriceEstimateCard. */
+  km_segments?:           Array<{ label: string; km: number }>
 }
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
@@ -329,12 +332,18 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
 
   let kmDepanneuse = 0
   let kmLivraison  = 0
+  const kmSegments: Array<{ label: string; km: number }> = []
   if (input.scenario === 'rem_client'
       && input.destinationLat != null && input.destinationLng != null) {
     // SNC : depart -> intervention -> destination -> depart, calcule en un bloc
     const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, input.destinationLat, input.destinationLng)
     const d3 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
     kmDepanneuse = d1 + d2 + d3
+    kmSegments.push(
+      { label: `${depart.name} → intervention`,  km: d1 },
+      { label: `intervention → destination`,     km: d2 },
+      { label: `destination → ${depart.name}`,   km: d3 },
+    )
   } else if (input.scenario === 'rem_direct'
              && input.destinationLat != null && input.destinationLng != null) {
     // SC rem_direct (Olivier 2026-06-02 PM, formule corrigee) :
@@ -350,6 +359,12 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     const dL1 = await calculateRouteKm(depart.lat, depart.lng, input.destinationLat, input.destinationLng)
     const dL2 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
     kmLivraison = kmDepanneuse + dL1 + dL2
+    kmSegments.push(
+      { label: `Dépannage  ${depart.name} → intervention`,            km: d1 },
+      { label: `Dépannage  intervention → ${depart.name}`,            km: dRetour },
+      { label: `Livraison  ${depart.name} → destination`,             km: dL1 },
+      { label: `Livraison  destination → ${depart.name}`,             km: dL2 },
+    )
   } else if (input.scenario === 'rem_depot' && pepinster) {
     // depart -> intervention -> Pepinster (mise en depot) -> depart (depanneuse rentre)
     const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, pepinster.lat, pepinster.lng)
@@ -357,9 +372,18 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
       ? 0  // depart = Pepinster, pas de retour
       : await calculateRouteKm(pepinster.lat, pepinster.lng, depart.lat, depart.lng)
     kmDepanneuse = d1 + d2 + d3
+    kmSegments.push(
+      { label: `${depart.name} → intervention`,       km: d1 },
+      { label: `intervention → ${pepinster.name}`,    km: d2 },
+    )
+    if (d3 > 0) kmSegments.push({ label: `${pepinster.name} → ${depart.name}`, km: d3 })
   } else {
     // dsp (ou rem_depot sans Pepinster configure) : depart -> intervention -> depart
     kmDepanneuse = d1 + dRetour
+    kmSegments.push(
+      { label: `${depart.name} → intervention`,  km: d1 },
+      { label: `intervention → ${depart.name}`,  km: dRetour },
+    )
   }
 
   // Km balisage : le balisage part toujours de Pepinster OU Aywaille (le plus
@@ -379,6 +403,10 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
       const bal1 = await calculateRouteKm(balisageDepot.lat, balisageDepot.lng, input.interventionLat, input.interventionLng)
       const bal2 = await calculateRouteKm(input.interventionLat, input.interventionLng, balisageDepot.lat, balisageDepot.lng)
       kmBalisage = bal1 + bal2
+      kmSegments.push(
+        { label: `Balisage   ${balisageDepot.name} → intervention`,  km: bal1 },
+        { label: `Balisage   intervention → ${balisageDepot.name}`,  km: bal2 },
+      )
     }
   }
 
@@ -411,6 +439,7 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     livraison_km_inclus: livKmInclus,
     livraison_assistance: livAssistance,
     km_balisage:         kmBalisage,
+    km_segments:         kmSegments,
     is_majored:          isMajored,
     note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}.` +
           (kmLivraison > 0
