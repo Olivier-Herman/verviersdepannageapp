@@ -15,17 +15,9 @@ export default async function AdminGaragePartnersPage() {
   const sb = createAdminClient()
   const { data } = await sb
     .from('garage_partners')
-    .select(`*, garage_tariffs ( dsp_price, rem_price, dpr_price, currency )`)
+    .select('*')
     .order('active', { ascending: false })
     .order('name',   { ascending: true })
 
-  const partners = (data || []).map(p => ({
-    ...p,
-    tariffs: Array.isArray((p as any).garage_tariffs) && (p as any).garage_tariffs.length > 0
-      ? (p as any).garage_tariffs[0]
-      : { dsp_price: null, rem_price: null, dpr_price: null, currency: 'EUR' },
-    garage_tariffs: undefined,
-  }))
-
-  return <AdminGaragePartnersClient initialPartners={partners} />
+  return <AdminGaragePartnersClient initialPartners={(data || []) as any} />
 }

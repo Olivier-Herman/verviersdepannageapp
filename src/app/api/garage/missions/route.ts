@@ -86,31 +86,24 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
-  // Recup le partner pour billed_to (Odoo)
+  // Recup le partner pour billed_to (Odoo) + source_key
   const { data: partner } = await sb
     .from('garage_partners')
-    .select('id, name, odoo_partner_id')
+    .select('id, name, odoo_partner_id, source_key')
     .eq('id', partnerId)
     .maybeSingle()
   if (!partner) return NextResponse.json({ error: 'Partner introuvable' }, { status: 400 })
 
-  // Recup tarif applicable. A la creation, on stocke uniquement la
-  // prise_en_charge (= forfait min). Le calcul km se fera a la finalisation
-  // quand on aura la distance reelle (km releves cote chauffeur ou maps).
-  const { data: tariffs } = await sb
-    .from('garage_tariffs')
-    .select('dsp_prise_en_charge, rem_prise_en_charge, dpr_prise_en_charge')
-    .eq('garage_partner_id', partnerId)
-    .maybeSingle()
-
-  const tariffPrice = type === 'DSP' ? tariffs?.dsp_prise_en_charge : tariffs?.rem_prise_en_charge
-
+  // Olivier 2026-06-02 : pas d encaissement chauffeur pour les missions
+  // garage (facturation directe au garage via Odoo). amount_to_collect=null.
+  // Le calcul tarif (prise en charge + km) se fera cote facturation via le
+  // systeme source_tariffs en matchant sur (source=partner.source_key, mission_type).
   const nowIso     = new Date().toISOString()
   const externalId = `GRG-${Date.now().toString(36).toUpperCase()}`
 
   const { data: m, error } = await sb.from('incoming_missions').insert({
     external_id:             externalId,
-    source:                  'garage',
+    source:                  partner.source_key,  // ex: 'garage_abc123' (canonique catalog)
     mission_type:            type === 'DSP' ? 'depannage' : 'remorquage',
     status:                  'new',
     vehicle_plate:           plate,
@@ -121,7 +114,7 @@ export async function POST(req: Request) {
     client_phone:            body.contact_phone || null,
     billed_to_id:            partner.odoo_partner_id || null,
     billed_to_name:          partner.name,
-    amount_to_collect:       tariffPrice != null ? Number(tariffPrice) : null,
+    amount_to_collect:       null,  // pas d encaissement chauffeur
     remarks_general:         body.remarks || null,
     requested_by_garage_id:  partnerId,
     photos_visible_to_garage:false,  // dispatch decide d activer

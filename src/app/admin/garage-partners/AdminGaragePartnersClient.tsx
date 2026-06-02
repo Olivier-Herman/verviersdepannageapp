@@ -7,21 +7,9 @@ import { useState }   from 'react'
 import { useRouter }  from 'next/navigation'
 import Link           from 'next/link'
 
-interface Tariffs {
-  dsp_prise_en_charge: number | null
-  dsp_km_inclus:       number
-  dsp_km_price:        number | null
-  rem_prise_en_charge: number | null
-  rem_km_inclus:       number
-  rem_km_price:        number | null
-  dpr_prise_en_charge: number | null
-  dpr_km_inclus:       number
-  dpr_km_price:        number | null
-  currency:            string
-}
-
 interface Partner {
   id:              string
+  source_key:      string
   name:            string
   odoo_partner_id: number | null
   contact_email:   string | null
@@ -31,23 +19,11 @@ interface Partner {
   active:          boolean
   created_at:      string
   updated_at:      string
-  tariffs:         Tariffs
 }
 
 const EMPTY: Partial<Partner> = {
   name: '', odoo_partner_id: null, contact_email: '', contact_phone: '',
   address: '', notes: '', active: true,
-  tariffs: {
-    dsp_prise_en_charge: null, dsp_km_inclus: 0, dsp_km_price: null,
-    rem_prise_en_charge: null, rem_km_inclus: 0, rem_km_price: null,
-    dpr_prise_en_charge: null, dpr_km_inclus: 0, dpr_km_price: null,
-    currency: 'EUR',
-  },
-}
-
-function fmtEur(v: number | null): string {
-  if (v == null) return '—'
-  return v.toFixed(2) + ' €'
 }
 
 export default function AdminGaragePartnersClient({ initialPartners }: { initialPartners: Partner[] }) {
@@ -146,31 +122,14 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
                       {p.contact_email && <p>📧 {p.contact_email}</p>}
                       {p.contact_phone && <p>📞 {p.contact_phone}</p>}
                     </div>
-                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                      {(['dsp', 'rem', 'dpr'] as const).map(k => {
-                        const pec = (p.tariffs as any)[`${k}_prise_en_charge`]
-                        const inc = (p.tariffs as any)[`${k}_km_inclus`]
-                        const kp  = (p.tariffs as any)[`${k}_km_price`]
-                        return (
-                          <div key={k} className="bg-surface-2 rounded-lg px-2 py-1.5 text-center">
-                            <p className="text-ink-faint text-[10px] uppercase">{k.toUpperCase()}</p>
-                            {pec != null
-                              ? <>
-                                  <p className="text-ink font-semibold leading-tight">{fmtEur(pec)}</p>
-                                  <p className="text-ink-muted text-[10px] mt-0.5">
-                                    {inc} km incl. · {kp != null ? `${Number(kp).toFixed(2)} €/km` : '—'}
-                                  </p>
-                                </>
-                              : k === 'dpr'
-                                ? <p className="text-ink-faint italic text-[10px] mt-0.5">= DSP</p>
-                                : <p className="text-ink-faint italic text-[10px] mt-0.5">—</p>}
-                          </div>
-                        )
-                      })}
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <span className="font-mono bg-surface-2 text-ink-secondary px-2 py-0.5 rounded">{p.source_key}</span>
+                      <Link href={`/admin/tarifs?source=${p.source_key}`}
+                        className="text-brand hover:underline font-medium">Configurer tarifs →</Link>
                     </div>
                   </div>
                   <div className="flex flex-col gap-2 flex-shrink-0">
-                    <button onClick={() => { setError(null); setEditing(JSON.parse(JSON.stringify(p))) }}
+                    <button onClick={() => { setError(null); setEditing({ ...p }) }}
                       className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-xs">Modifier</button>
                     {p.active && (
                       <button onClick={() => softDelete(p)}
@@ -240,46 +199,13 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
             </div>
 
-            <div className="border-t pt-3 mt-3">
-              <p className="text-ink-muted text-xs font-semibold uppercase mb-2">💰 Tarifs (TVAC) · Prise en charge + km</p>
-              {(['dsp', 'rem', 'dpr'] as const).map(k => {
-                const label = k === 'dsp' ? 'DSP — Dépannage sur place'
-                            : k === 'rem' ? 'REM — Remorquage'
-                            : 'DPR — Déplacement pour rien (annulation tardive)'
-                return (
-                  <div key={k} className="mb-3">
-                    <p className="text-ink text-xs font-semibold mb-1.5">{label}</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="block text-ink-muted text-[10px] mb-1">Prise en charge €</label>
-                        <input type="number" step="0.01"
-                          value={(editing.tariffs as any)?.[`${k}_prise_en_charge`] ?? ''}
-                          onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), [`${k}_prise_en_charge`]: e.target.value === '' ? null : parseFloat(e.target.value) } })}
-                          placeholder={k === 'dpr' ? '(vide = DSP)' : '125.00'}
-                          className="w-full bg-surface-2 border rounded-xl px-2 py-1.5 text-ink text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-ink-muted text-[10px] mb-1">Km inclus</label>
-                        <input type="number"
-                          value={(editing.tariffs as any)?.[`${k}_km_inclus`] ?? 0}
-                          onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), [`${k}_km_inclus`]: parseInt(e.target.value, 10) || 0 } })}
-                          placeholder="0"
-                          className="w-full bg-surface-2 border rounded-xl px-2 py-1.5 text-ink text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-ink-muted text-[10px] mb-1">€ / km</label>
-                        <input type="number" step="0.01"
-                          value={(editing.tariffs as any)?.[`${k}_km_price`] ?? ''}
-                          onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), [`${k}_km_price`]: e.target.value === '' ? null : parseFloat(e.target.value) } })}
-                          placeholder="2.50"
-                          className="w-full bg-surface-2 border rounded-xl px-2 py-1.5 text-ink text-sm" />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              <p className="text-ink-faint text-[10px] mt-1">DPR (déplacement pour rien) utilisé pour annulation post-acceptation. Si Prise en charge vide → fallback DSP.</p>
-            </div>
+            {editing.id && (
+              <div className="border-t pt-3 mt-3 bg-info-soft/30 rounded-xl p-3">
+                <p className="text-ink-secondary text-xs">
+                  💰 <strong>Tarifs</strong> : gérés dans <Link href={`/admin/tarifs?source=${(editing as any).source_key || ''}`} className="text-brand font-semibold hover:underline">/admin/tarifs</Link> (même système que les assurances). Prise en charge, km inclus, prix km, surcharges horaires.
+                </p>
+              </div>
+            )}
 
             <label className="flex items-center gap-2 text-ink-secondary text-sm pt-2">
               <input type="checkbox" checked={editing.active !== false}

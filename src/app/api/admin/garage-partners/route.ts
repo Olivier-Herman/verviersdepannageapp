@@ -15,8 +15,8 @@ function requireAdmin(session: any): boolean {
 }
 
 /**
- * GET : liste tous les garages partners avec leurs tarifs (LEFT JOIN).
- * Inclut active=false pour visibilite admin (filtre cote UI).
+ * GET : liste tous les garages partners.
+ * Tarifs geres dans /admin/tarifs (source_tariffs), plus dans cette page.
  */
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -26,24 +26,19 @@ export async function GET() {
   const sb = createAdminClient()
   const { data, error } = await sb
     .from('garage_partners')
-    .select(`
-      *,
-      garage_tariffs ( dsp_price, rem_price, dpr_price, currency )
-    `)
+    .select('*')
     .order('active', { ascending: false })
     .order('name',   { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Flatten tariffs pour l UI
-  const partners = (data || []).map(p => ({
-    ...p,
-    tariffs: Array.isArray((p as any).garage_tariffs) && (p as any).garage_tariffs.length > 0
-      ? (p as any).garage_tariffs[0]
-      : { dsp_price: null, rem_price: null, dpr_price: null, currency: 'EUR' },
-    garage_tariffs: undefined,
-  }))
+  return NextResponse.json({ partners: data || [] })
+}
 
-  return NextResponse.json({ partners })
+function generateSourceKey(): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let s = ''
+  for (let i = 0; i < 6; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)]
+  return `garage_${s}`
 }
 
 /**
@@ -61,8 +56,18 @@ export async function POST(req: NextRequest) {
   if (!name) return NextResponse.json({ error: 'name requis' }, { status: 400 })
 
   const sb = createAdminClient()
+
+  // Genere une source_key unique (retry si collision)
+  let sourceKey = generateSourceKey()
+  for (let i = 0; i < 5; i++) {
+    const { data: existing } = await sb.from('mission_source_catalog').select('key').eq('key', sourceKey).maybeSingle()
+    if (!existing) break
+    sourceKey = generateSourceKey()
+  }
+
   const { data: partner, error: pErr } = await sb.from('garage_partners').insert({
     name,
+    source_key:      sourceKey,
     odoo_partner_id: body.odoo_partner_id != null && body.odoo_partner_id !== '' ? Number(body.odoo_partner_id) : null,
     contact_email:   body.contact_email   || null,
     contact_phone:   body.contact_phone   || null,
@@ -72,30 +77,15 @@ export async function POST(req: NextRequest) {
   }).select().single()
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
 
-  // Tarifs (optionnels a la creation, completables apres). 3 valeurs par
-  // type d intervention : prise_en_charge + km_inclus + km_price.
-  const tariffs = body.tariffs || {}
-  const num = (v: any) => v != null && v !== '' ? Number(v) : null
-  const int = (v: any) => v != null && v !== '' ? parseInt(v, 10) || 0 : 0
-  const { data: t, error: tErr } = await sb.from('garage_tariffs').upsert({
-    garage_partner_id:   partner.id,
-    dsp_prise_en_charge: num(tariffs.dsp_prise_en_charge),
-    dsp_km_inclus:       int(tariffs.dsp_km_inclus),
-    dsp_km_price:        num(tariffs.dsp_km_price),
-    rem_prise_en_charge: num(tariffs.rem_prise_en_charge),
-    rem_km_inclus:       int(tariffs.rem_km_inclus),
-    rem_km_price:        num(tariffs.rem_km_price),
-    dpr_prise_en_charge: num(tariffs.dpr_prise_en_charge),
-    dpr_km_inclus:       int(tariffs.dpr_km_inclus),
-    dpr_km_price:        num(tariffs.dpr_km_price),
-    currency:            tariffs.currency || 'EUR',
-    updated_at:          new Date().toISOString(),
-  }).select().single()
-  if (tErr) console.error('[garage-partners] tariffs upsert failed:', tErr.message)
-
-  return NextResponse.json({
-    partner: { ...partner, tariffs: t || null },
+  // Insert dans mission_source_catalog pour que les tarifs source_tariffs
+  // puissent matcher sur cette cle (meme pattern que touring, ethias, etc.).
+  await sb.from('mission_source_catalog').insert({
+    key:        sourceKey,
+    label:      name,
+    sort_order: 200,
   })
+
+  return NextResponse.json({ partner })
 }
 
 /**
@@ -124,48 +114,25 @@ export async function PATCH(req: NextRequest) {
   if (body.active           !== undefined) partnerPatch.active           = !!body.active
 
   if (Object.keys(partnerPatch).length > 1) {
-    const { error: pErr } = await sb.from('garage_partners').update(partnerPatch).eq('id', id)
+    const { data: updated, error: pErr } = await sb.from('garage_partners')
+      .update(partnerPatch).eq('id', id).select('source_key, name, active').single()
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
+    // Sync mission_source_catalog si nom ou active a change
+    if (updated?.source_key) {
+      await sb.from('mission_source_catalog')
+        .update({ label: updated.name, active: updated.active, updated_at: new Date().toISOString() })
+        .eq('key', updated.source_key)
+    }
   }
 
-  // Patch garage_tariffs (upsert) - structure prise_en_charge + km
-  if (body.tariffs) {
-    const t = body.tariffs
-    const num = (v: any) => v != null && v !== '' ? Number(v) : null
-    const int = (v: any) => v != null && v !== '' ? parseInt(v, 10) || 0 : 0
-    const { error: tErr } = await sb.from('garage_tariffs').upsert({
-      garage_partner_id:   id,
-      dsp_prise_en_charge: num(t.dsp_prise_en_charge),
-      dsp_km_inclus:       int(t.dsp_km_inclus),
-      dsp_km_price:        num(t.dsp_km_price),
-      rem_prise_en_charge: num(t.rem_prise_en_charge),
-      rem_km_inclus:       int(t.rem_km_inclus),
-      rem_km_price:        num(t.rem_km_price),
-      dpr_prise_en_charge: num(t.dpr_prise_en_charge),
-      dpr_km_inclus:       int(t.dpr_km_inclus),
-      dpr_km_price:        num(t.dpr_km_price),
-      currency:            t.currency || 'EUR',
-      updated_at:          new Date().toISOString(),
-    })
-    if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 })
-  }
-
-  // Renvoie partner + tarifs frais
+  // Renvoie partner frais
   const { data: fresh } = await sb
     .from('garage_partners')
-    .select(`*, garage_tariffs ( dsp_price, rem_price, dpr_price, currency )`)
+    .select('*')
     .eq('id', id)
     .single()
 
-  const partner = fresh ? {
-    ...fresh,
-    tariffs: Array.isArray((fresh as any).garage_tariffs) && (fresh as any).garage_tariffs.length > 0
-      ? (fresh as any).garage_tariffs[0]
-      : { dsp_price: null, rem_price: null, dpr_price: null, currency: 'EUR' },
-    garage_tariffs: undefined,
-  } : null
-
-  return NextResponse.json({ partner })
+  return NextResponse.json({ partner: fresh })
 }
 
 /**
@@ -184,8 +151,12 @@ export async function DELETE(req: NextRequest) {
   const { data, error } = await sb.from('garage_partners')
     .update({ active: false, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .select()
+    .select('source_key')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Desactiver aussi dans mission_source_catalog
+  if (data?.source_key) {
+    await sb.from('mission_source_catalog').update({ active: false }).eq('key', data.source_key)
+  }
   return NextResponse.json({ partner: data })
 }
