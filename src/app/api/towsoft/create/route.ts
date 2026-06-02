@@ -397,26 +397,36 @@ export async function POST(req: Request) {
 
       // Impression etiquette parc depuis VD Soft (chantier "Etiquettes VD Soft
       // globales", Olivier 2026-05-26). Sources migrees :
-      //   - Appel Prive REM 'depot' : pas de ticket Helpdesk donc seul VD Soft imprime
-      //   - SNC / SC 'rem_depot'    : double impression (callback Odoo + VD Soft) pour
-      //     transition. A desactiver cote callback quand format valide en parallele.
+      //   - Appel Prive REM 'depot' : pas de ticket Helpdesk → seul VD Soft imprime
+      //   - SNC / SC 'rem_depot'    : ticket Helpdesk + impression VD Soft (transition)
+      //   - Mal Garee 'chargement'  : ticket Helpdesk + impression VD Soft (transition,
+      //                               ajoute le 2026-06-02 — desactiver impression
+      //                               cote callback Odoo une fois valide en // ci)
       //
-      // TODO Mal Garee chargement / Rodeo / AVP : impressions toujours via callback
-      // Helpdesk Odoo. A migrer dans une iteration future.
-      const isSncDepot = isSnc && sncScenario === 'rem_depot'
+      // TODO Rodeo / AVP : impressions toujours via callback Helpdesk Odoo.
+      // A migrer dans une iteration future.
+      const isSncDepot           = isSnc && sncScenario === 'rem_depot'
+      const isMalGareeChargement = type === 'mal_garee' && malGareeScenario === 'chargement'
       const shouldPrintFromVdSoft = vdMissionId && (
         (isAppelPrive && appelPriveDestination === 'depot') ||
-        isSncDepot
+        isSncDepot ||
+        isMalGareeChargement
       )
       if (shouldPrintFromVdSoft && vdMissionId) {
         // Adresse de relivraison : pour Appel Prive le chauffeur peut la saisir
         // dans PoliceClient.tsx (Fix 11). Pour SNC depot, le dispatcher la
         // definira via le bouton "Relivrer" plus tard. Si non saisie maintenant,
         // l etiquette indique "En attente d info adresse de relivraison".
-        const redeliveryAddr = (body.destination || body.redelivery_address || '').trim() || null
+        // Pour Mal Garee chargement : pas de relivraison (le client recupere
+        // direct), on passe redeliveryAddr=undefined → la note reste vide.
+        const redeliveryAddr = isMalGareeChargement
+          ? undefined
+          : ((body.destination || body.redelivery_address || '').trim() || null)
         const motifLabel = isAppelPrive
           ? 'APPEL PRIVE'
-          : (type === 'sc' ? 'SIABIS COUVERT' : 'SIABIS NON COUVERT')
+          : isMalGareeChargement
+            ? 'MAL GAREE'
+            : (type === 'sc' ? 'SIABIS COUVERT' : 'SIABIS NON COUVERT')
         await printVdSoftParcLabel({
           missionId:        vdMissionId,
           missionNumber:    vdData?.mission_number ?? null,
