@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSession }          from 'next-auth/react'
+import { T }                   from '@/lib/i18n/T'
 
 interface Truck {
   id:     string
@@ -100,10 +101,10 @@ export function TruckSwitcher() {
               <p className="text-ink-muted text-xs font-mono">{current.plate}</p>
             </>
           ) : (
-            <p className="text-ink-muted text-sm">Aucune dépanneuse — appuie pour choisir</p>
+            <p className="text-ink-muted text-sm"><T k="truck_modal.switcher_none" /></p>
           )}
         </div>
-        <span className="text-ink-muted text-xs font-medium">Changer</span>
+        <span className="text-ink-muted text-xs font-medium"><T k="truck_modal.switcher_change" /></span>
       </button>
 
       {open && (
@@ -113,15 +114,15 @@ export function TruckSwitcher() {
                className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl border p-5 space-y-4">
             <div className="text-center">
               <div className="text-4xl mb-2">🚚</div>
-              <h3 className="text-gray-900 font-bold text-lg">Choisis ta dépanneuse</h3>
-              <p className="text-gray-500 text-xs mt-1">Modifiable à tout moment</p>
+              <h3 className="text-gray-900 font-bold text-lg"><T k="truck_modal.select_title" /></h3>
+              <p className="text-gray-500 text-xs mt-1"><T k="truck_modal.switcher_subtitle" /></p>
             </div>
 
             {trucks.length === 0 ? (
               <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 text-center">
-                <p className="text-amber-900 text-sm font-semibold">⚠️ Aucune dépanneuse configurée</p>
+                <p className="text-amber-900 text-sm font-semibold"><T k="truck_modal.no_trucks_title" /></p>
                 <p className="text-amber-700 text-xs mt-1">
-                  L&apos;administrateur doit les ajouter dans <strong>/admin/trucks</strong>.
+                  <T k="truck_modal.no_trucks_subtitle" />
                 </p>
               </div>
             ) : (
@@ -145,7 +146,7 @@ export function TruckSwitcher() {
                             <p className="text-gray-500 text-xs">{[t.brand, t.model].filter(Boolean).join(' · ')}</p>
                           )}
                         </div>
-                        {isCurrent && <span className="text-blue-600 text-sm font-bold">✓ Actuelle</span>}
+                        {isCurrent && <span className="text-blue-600 text-sm font-bold"><T k="truck_modal.current" /></span>}
                       </div>
                     </button>
                   )
@@ -155,7 +156,7 @@ export function TruckSwitcher() {
 
             <button onClick={() => setOpen(false)} disabled={busy}
               className="w-full py-2.5 text-gray-500 text-sm hover:text-gray-700">
-              Fermer
+              <T k="truck_modal.btn_close" />
             </button>
           </div>
         </div>

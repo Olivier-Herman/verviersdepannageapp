@@ -378,6 +378,41 @@ export const fr = {
     btn_continue:        'Continuer',
     btn_create:          'Créer la mission',
   },
+
+  truck_modal: {
+    confirm_title:       'Confirme ta dépanneuse',
+    confirm_question:    'Utilises-tu bien :',
+    select_title:        'Choisis ta dépanneuse',
+    select_subtitle:     'Pour aujourd\'hui — modifiable à tout moment dans ton profil.',
+    no_trucks_title:     '⚠️ Aucune dépanneuse configurée',
+    no_trucks_subtitle:  'L\'administrateur n\'a pas encore ajouté les dépanneuses. Préviens-le.',
+    btn_no_modify:       'Non, modifier',
+    btn_yes:             '✓ Oui',
+    btn_later:           'Plus tard',
+    btn_close:           'Fermer',
+    current:             '✓ Actuelle',
+    switcher_change:     'Changer',
+    switcher_none:       'Aucune dépanneuse — appuie pour choisir',
+    switcher_subtitle:   'Modifiable à tout moment',
+  },
+
+  ocr_scan: {
+    title_plate:         'Scan plaque',
+    title_vin:           'Scan VIN',
+    title_any:           'Scan plaque ou VIN',
+    helper_plate:        'Cadre la plaque, prends une photo nette. Toutes les nationalités fonctionnent.',
+    helper_vin:          'Rogne pour isoler les 17 caractères du VIN (l\'app proposera le crop après la photo).',
+    helper_any:          'Photographie la plaque ou la plaquette du VIN — l\'app détecte les deux formats.',
+    current_value:       'Valeur actuelle :',
+    btn_scan:            '📷 Scanner',
+    btn_again:           '🔄 Refaire',
+    btn_keep:            'Utiliser cette valeur',
+    no_results_plate:    'Aucune plaque détectée — essaie de te rapprocher ou améliore l\'éclairage',
+    no_results_vin:      'Aucun VIN de 17 caractères trouvé. Rapproche-toi de la plaquette et rogne pour isoler uniquement le VIN.',
+    no_results_any:      'Rien détecté — essaie de te rapprocher ou rogne pour isoler la plaque/VIN.',
+    web_only:            'Scan OCR disponible uniquement sur iPhone et Android. Saisis la plaque manuellement.',
+    suggestions:         'Suggestions',
+  },
 }
 
 export type Dictionary = typeof fr

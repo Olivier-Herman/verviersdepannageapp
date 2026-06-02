@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSession }          from 'next-auth/react'
+import { T }                   from '@/lib/i18n/T'
 
 interface Truck {
   id:     string
@@ -139,8 +140,8 @@ export function TruckConfirmModal() {
           <>
             <div className="text-center">
               <div className="text-5xl mb-3">🚚</div>
-              <h3 className="text-xl font-bold text-gray-900">Confirme ta dépanneuse</h3>
-              <p className="text-gray-600 text-sm mt-2">Utilises-tu bien :</p>
+              <h3 className="text-xl font-bold text-gray-900"><T k="truck_modal.confirm_title" /></h3>
+              <p className="text-gray-600 text-sm mt-2"><T k="truck_modal.confirm_question" /></p>
             </div>
 
             <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 text-center">
@@ -157,11 +158,11 @@ export function TruckConfirmModal() {
               <button onClick={() => { setView('select'); loadTrucks() }}
                 disabled={busy}
                 className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold disabled:opacity-50">
-                Non, modifier
+                <T k="truck_modal.btn_no_modify" />
               </button>
               <button onClick={confirmYes} disabled={busy}
                 className="py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold disabled:opacity-50">
-                {busy ? '⏳ ...' : '✓ Oui'}
+                {busy ? '⏳ ...' : <T k="truck_modal.btn_yes" />}
               </button>
             </div>
           </>
@@ -171,15 +172,15 @@ export function TruckConfirmModal() {
           <>
             <div className="text-center">
               <div className="text-5xl mb-3">🚚</div>
-              <h3 className="text-xl font-bold text-gray-900">Choisis ta dépanneuse</h3>
-              <p className="text-gray-600 text-sm mt-1">Pour aujourd'hui — modifiable à tout moment dans ton profil.</p>
+              <h3 className="text-xl font-bold text-gray-900"><T k="truck_modal.select_title" /></h3>
+              <p className="text-gray-600 text-sm mt-1"><T k="truck_modal.select_subtitle" /></p>
             </div>
 
             {trucks.length === 0 ? (
               <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 text-center">
-                <p className="text-amber-900 font-semibold">⚠️ Aucune dépanneuse configurée</p>
+                <p className="text-amber-900 font-semibold"><T k="truck_modal.no_trucks_title" /></p>
                 <p className="text-amber-700 text-xs mt-2">
-                  L'administrateur n'a pas encore ajouté les dépanneuses dans <strong>/admin/trucks</strong>. Préviens-le pour qu'il les saisisse.
+                  <T k="truck_modal.no_trucks_subtitle" />
                 </p>
               </div>
             ) : (
@@ -204,7 +205,7 @@ export function TruckConfirmModal() {
             {/* Bouton "Fermer" toujours visible (jamais bloquer l app, meme si truck non choisi) */}
             <button onClick={() => setView('closed')} disabled={busy}
               className="w-full py-2 text-gray-500 text-sm hover:text-gray-700">
-              {trucks.length === 0 ? 'Fermer' : 'Plus tard'}
+              {trucks.length === 0 ? <T k="truck_modal.btn_close" /> : <T k="truck_modal.btn_later" />}
             </button>
           </>
         )}
