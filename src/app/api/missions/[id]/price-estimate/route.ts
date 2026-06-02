@@ -200,6 +200,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         amount: l.qty * l.price_unit,
         note: l.qty > 1 ? `${l.qty} × ${l.price_unit.toFixed(4)} €` : undefined,
       }))
+      // Olivier 2026-06-02 PM : indique le depot utilise pour le calcul
+      // (different du depot_depart_id fige). Evite la confusion quand on voit
+      // "Pepinster (defaut)" en haut de fiche mais le calcul est base sur Tiege.
+      if (metrics.depart_depot) {
+        breakdown.unshift({
+          label:  `📍 Dépôt de calcul : ${metrics.depart_depot}`,
+          amount: null as any,
+          note:   `Le plus proche par route (Google Maps). Différent du "Dépôt de départ" en haut de fiche (utilisé pour gardiennage).`,
+        })
+      }
       if (parcPrixJour > 0) {
         let note: string
         if (parcFreeDays > 0) {
