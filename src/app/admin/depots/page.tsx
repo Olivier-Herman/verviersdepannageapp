@@ -17,5 +17,9 @@ export default async function DepotsAdminPage() {
     .select('*')
     .order('sort_order')
 
-  return <DepotsAdminClient initialDepots={depots || []} />
+  // Olivier 2026-06-02 PM : passer la cle Google explicitement pour charger
+  // l autocomplete Places. Sans ca le champ adresse n a pas la recherche.
+  const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+
+  return <DepotsAdminClient initialDepots={depots || []} googleMapsKey={googleMapsKey} />
 }

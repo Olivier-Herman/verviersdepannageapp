@@ -14,6 +14,7 @@ import { ArrowLeft, MapPin, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { loadGoogleMaps } from '@/components/AddressField'
 
 interface Depot {
   id: string
@@ -40,10 +41,11 @@ const inputCls =
 
 const labelCls = 'block text-ink-muted text-xs font-semibold mb-1.5 uppercase tracking-wider'
 
-function AddressInput({ value, onChange, onSelect }: {
+function AddressInput({ value, onChange, onSelect, gmKey }: {
   value: string
   onChange: (v: string) => void
   onSelect: (addr: string, lat: number, lng: number) => void
+  gmKey:  string
 }) {
   const ref   = useRef<HTMLInputElement>(null)
   const acRef = useRef<any>(null)
@@ -52,9 +54,14 @@ function AddressInput({ value, onChange, onSelect }: {
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange
   const onSelectRef = useRef(onSelect); onSelectRef.current = onSelect
 
+  // Olivier 2026-06-02 PM : charge Google Maps explicitement. Avant le code
+  // se contentait d attendre que window.google soit la — si la page /admin/depots
+  // etait ouverte directement (pas via un autre ecran qui charge Maps), le
+  // script n etait jamais charge → pas d autocomplete.
   useEffect(() => {
+    let cancelled = false
     const init = () => {
-      if (!ref.current || !(window as any).google?.maps?.places || acRef.current) return
+      if (cancelled || !ref.current || !(window as any).google?.maps?.places || acRef.current) return
       acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current, {
         componentRestrictions: { country: ['be','lu','fr','nl','de'] },
         fields: ['formatted_address','geometry'],
@@ -68,9 +75,15 @@ function AddressInput({ value, onChange, onSelect }: {
         }
       })
     }
-    if ((window as any).google) init()
-    else { const t = setInterval(() => { if ((window as any).google) { init(); clearInterval(t) } }, 300); return () => clearInterval(t) }
-  }, [])
+    if (gmKey) {
+      loadGoogleMaps(gmKey).then(init).catch(() => {})
+    } else {
+      // Fallback : si pas de cle passee (page legacy), polle quand meme
+      if ((window as any).google) init()
+      else { const t = setInterval(() => { if ((window as any).google) { init(); clearInterval(t) } }, 300); return () => { cancelled = true; clearInterval(t) } }
+    }
+    return () => { cancelled = true }
+  }, [gmKey])
 
   const handleGPS = () => {
     if (!navigator.geolocation) return
@@ -113,7 +126,7 @@ function AddressInput({ value, onChange, onSelect }: {
   )
 }
 
-export default function DepotsAdminClient({ initialDepots }: { initialDepots: Depot[] }) {
+export default function DepotsAdminClient({ initialDepots, googleMapsKey = '' }: { initialDepots: Depot[]; googleMapsKey?: string }) {
   const [depots,           setDepots]           = useState<Depot[]>(initialDepots)
   const [editing,          setEditing]          = useState<Partial<Depot> | null>(null)
   const [saving,           setSaving]           = useState(false)
@@ -259,6 +272,7 @@ export default function DepotsAdminClient({ initialDepots }: { initialDepots: De
                   value={editing.address || ''}
                   onChange={v => setEditing(e => ({ ...e!, address: v }))}
                   onSelect={(addr, lat, lng) => setEditing(e => ({ ...e!, address: addr, lat, lng }))}
+                  gmKey={googleMapsKey}
                 />
                 {editing.lat != null && (
                   <p className="text-success text-xs mt-1.5 flex items-center gap-1">
