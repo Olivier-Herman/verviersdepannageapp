@@ -90,9 +90,9 @@ export default function SelfServiceClient({ initialMissions, currentUserId }: { 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4">
       <div>
-        <h1 className="text-ink font-bold text-xl">📋 Missions à prendre</h1>
+        <h1 className="text-ink font-bold text-xl">🛒 Momo Market</h1>
         <p className="text-ink-muted text-sm mt-1">
-          Missions arrivées dans les <strong>{FRESH_MINUTES} dernières minutes</strong>, non encore attribuées.
+          Missions fraîches sur l&apos;étal — arrivées dans les <strong>{FRESH_MINUTES} dernières minutes</strong>, non encore attribuées.
           Clique sur « Je la prends » pour te l&apos;assigner.
         </p>
         <p className="text-ink-faint text-xs mt-1">

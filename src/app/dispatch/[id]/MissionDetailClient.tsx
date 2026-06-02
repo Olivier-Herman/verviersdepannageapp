@@ -973,6 +973,8 @@ export default function MissionDetailClient({
     destination_sens:     initialMission.destination_sens     || '',
     amount_guaranteed:    initialMission.amount_guaranteed != null ? String(initialMission.amount_guaranteed) : '',
     amount_to_collect:    initialMission.amount_to_collect != null  ? String(initialMission.amount_to_collect)  : '',
+    // Olivier 2026-06-02 : modifiable quand source = police_snc/sia_couvert
+    snc_scenario:         initialMission.snc_scenario               || '',
   })
 
   // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,
@@ -1522,6 +1524,13 @@ export default function MissionDetailClient({
       setSaveOk(true)
       setKmRefresh(k => k + 1)  // force le recalcul des KM avec les nouvelles données DB
       setTimeout(() => setSaveOk(false), 3000)
+    } else {
+      // Olivier 2026-06-02 : afficher l erreur (notamment le 400 "scenario SNC requis"
+      // quand on change source vers police_snc sans choisir le scenario).
+      try {
+        const j = await res.json()
+        if (j?.error) alert(`Sauvegarde impossible : ${j.error}`)
+      } catch { /* ignore */ }
     }
     setLoadingSave(false)
   }
@@ -2203,6 +2212,25 @@ export default function MissionDetailClient({
                     <Field label="Type de mission">
                       <Select value={form.mission_type} onChange={f('mission_type')} options={MISSION_TYPES} />
                     </Field>
+                    {(form.source === 'police_snc' || form.source === 'sia_couvert') && (
+                      <div className="col-span-2">
+                        <Field label="Scénario SNC (obligatoire)">
+                          <select
+                            value={form.snc_scenario || ''}
+                            onChange={e => f('snc_scenario')(e.target.value)}
+                            className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                          >
+                            <option value="">— Choisir —</option>
+                            <option value="dsp">DSP — dépannage sur place</option>
+                            <option value="rem_client">REM client — paiement immédiat</option>
+                            <option value="rem_depot">REM dépôt — Pepinster (mise en parc)</option>
+                          </select>
+                        </Field>
+                        <p className="text-amber-700 text-xs mt-1">
+                          ⚠️ Sans scénario, le comportement chauffeur, le tarif et les écrans REL ne s&apos;appliqueront pas comme une SNC.
+                        </p>
+                      </div>
+                    )}
                     <Field label="Type d'incident">
                       <Input value={form.incident_type} onChange={f('incident_type')} placeholder="Ex: pneu crevé, batterie..." />
                     </Field>

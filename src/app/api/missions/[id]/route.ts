@@ -64,7 +64,19 @@ export async function PATCH(
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency',
     'incident_at', 'intervention_date', 'remarks_general',
+    // Olivier 2026-06-02 : snc_scenario doit etre modifiable cote dispatch.
+    // Bug rapporte : changer source vers police_snc ne propageait pas le
+    // comportement SNC car snc_scenario restait NULL → quote, REL eligibility
+    // etc. retombaient sur les defauts de l ancienne source.
+    'snc_scenario', 'snc_requires_balisage',
   ]
+
+  // On charge l etat actuel pour comparer (notamment la source avant change).
+  const { data: before } = await supabase
+    .from('incoming_missions')
+    .select('source, snc_scenario')
+    .eq('id', params.id)
+    .maybeSingle()
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
@@ -78,6 +90,33 @@ export async function PATCH(
     }
   }
 
+  // Olivier 2026-06-02 : coherence source ↔ snc_scenario.
+  // Si la nouvelle source N EST PAS SNC (police_snc / sia_couvert), on reset
+  // snc_scenario a null pour que les helpers (quote, REL, snc-calc) repartent
+  // proprement. Sinon le scenario d une ancienne SNC contaminait la nouvelle
+  // source.
+  const SNC_SOURCES = new Set(['police_snc', 'sia_couvert'])
+  if ('source' in updates) {
+    const newSource = updates.source as string | null
+    if (!newSource || !SNC_SOURCES.has(newSource)) {
+      updates.snc_scenario        = null
+      updates.snc_requires_balisage = false
+    } else {
+      // Nouvelle source = SNC. Si le caller fournit un snc_scenario explicite,
+      // on l utilise. Sinon, si l ancien etait deja un snc valide on garde,
+      // sinon erreur (le dispatcher doit choisir).
+      const explicit = 'snc_scenario' in updates ? (updates.snc_scenario as string | null) : null
+      const carried  = before?.snc_scenario
+      const final    = explicit || carried || null
+      if (!final) {
+        return NextResponse.json({
+          error: 'Cette source est SNC (Siabis non couvert / couvert). Tu dois aussi choisir un scénario : DSP, REM client, ou REM dépôt.',
+        }, { status: 400 })
+      }
+      updates.snc_scenario = final
+    }
+  }
+
   const { data, error } = await supabase
     .from('incoming_missions')
     .update(updates)
@@ -86,6 +125,23 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Olivier 2026-06-02 : trace explicite quand la source change. Permet de
+  // remonter au dispatcher qui a recategorise une mission (ex: Touring →
+  // Siabis non couvert).
+  if (before?.source && 'source' in updates && updates.source !== before.source) {
+    await supabase.from('mission_logs').insert({
+      mission_id: params.id,
+      action:     'source_changed',
+      notes:      `Source changée : ${before.source} → ${updates.source}${updates.snc_scenario ? ` (scénario ${updates.snc_scenario})` : ''}`,
+      metadata:   {
+        from_source:   before.source,
+        to_source:     updates.source,
+        snc_scenario:  updates.snc_scenario ?? null,
+        actor:         (session.user as any)?.email || null,
+      },
+    })
+  }
 
   // Olivier 2026-05-28 : auto-conversion REM -> REM+REL si on vient de saisir
   // une adresse de relivraison sur une mission parquee + REM + source eligible.

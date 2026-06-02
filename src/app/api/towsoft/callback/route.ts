@@ -1,11 +1,22 @@
 // src/app/api/towsoft/callback/route.ts
-import { NextResponse }            from 'next/server'
-import { createAdminClient }       from '@/lib/supabase'
-import { printZebraLabelForTicket } from '@/lib/print/zebra'
+//
+// Callback TowSoft : appele par TowSoft (PC) quand la mission est encodee.
+// Met a jour le numero TowSoft dans le ticket Odoo correspondant.
+//
+// Olivier 2026-06-02 : DESACTIVE l impression d etiquette ici. La nouvelle
+// etiquette (format VD Soft) est imprimee directement depuis
+// /api/towsoft/create au moment de la creation cote chauffeur. Cela evitait
+// la double impression (callback Odoo ancien format + nouveau VD Soft).
+// Pour les Saisie en particulier, Olivier a constate que l ancienne
+// etiquette sortait toujours → c etait via ce callback. Maintenant
+// totalement coupe.
+
+import { NextResponse }      from 'next/server'
+import { createAdminClient } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { queue_id, mission_number, secret, print_label } = body
+  const { queue_id, mission_number, secret } = body
 
   if (secret !== process.env.TOWSOFT_CALLBACK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -37,17 +48,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 
-  // Impression étiquette (seulement si print_label !== false).
-  // Bascule du chemin Verviers-QR vers le helper verviers-app integre,
-  // qui utilise la meme imprimante Zebra (ZEBRA_REMOTE) et le meme format.
-  if (print_label !== false) {
-    const result = await printZebraLabelForTicket(queue.odoo_ticket_id)
-    if (result.ok) {
-      console.log(`[Callback] Impression OK ticket #${queue.odoo_ticket_id} plate=${result.plate || '?'} motif=${result.motif || '?'}`)
-    } else {
-      console.error(`[Callback] Impression echec ticket #${queue.odoo_ticket_id}:`, result.error)
-    }
-  }
-
-  return NextResponse.json({ ok: true })
+  // Impression desactivee — voir entete du fichier.
+  return NextResponse.json({ ok: true, print_skipped: true })
 }

@@ -1,6 +1,7 @@
-// Page Self-Service : missions disponibles depuis < 15 min, non assignees.
-// Le chauffeur clique "Je la prends" pour se l attribuer.
+// Page Momo Market (ex Self-Service) : missions disponibles depuis < 15 min,
+// non assignees. Le chauffeur clique "Je la prends" pour se l attribuer.
 // Olivier 2026-06-02 : pas de notif push (le dispatch appelle le chauffeur).
+// Olivier 2026-06-02 PM : renomme en "Momo Market" :-p
 
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -41,7 +42,7 @@ export default async function MissionsDispoPage() {
 
   return (
     <AppShell
-      title="Missions disponibles"
+      title="Momo Market"
       userRole={role}
       userName={user.name}
       userEmail={user.email}

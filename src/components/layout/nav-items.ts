@@ -21,7 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/recherche',     label: 'Recherche',        i18nKey: 'nav.search',        icon: '🔍', moduleId: null },
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
   { href: '/mission',          label: 'Mes Missions',        i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
-  { href: '/missions-dispo',   label: 'Self Service',                                      icon: '📋', moduleId: 'driver_missions' },
+  { href: '/missions-dispo',   label: 'Momo Market',                                       icon: '🛒', moduleId: 'driver_missions' },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
   { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
