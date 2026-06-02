@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import { T } from '@/lib/i18n/T'
 import MissionStamp from '@/components/missions/MissionStamp'
 import { ExternalLink, Search, Archive } from 'lucide-react'
 import { getSourceLabel, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
@@ -199,7 +200,7 @@ export default function MissionsTermineesClient({ catalogSources, userRole, user
             <span>📂</span>
           </div>
           <div>
-            <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Missions terminées</h1>
+            <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight"><T k="finished_missions.title" /></h1>
             <p className="text-ink-muted text-sm mt-1">Toutes les missions clôturées : à facturer, facturées, sans frais, annulées. Les archivées sont masquées par défaut.</p>
           </div>
         </div>
@@ -254,7 +255,7 @@ export default function MissionsTermineesClient({ catalogSources, userRole, user
           <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted text-sm">⏳ Chargement…</div>
         ) : missions.length === 0 ? (
           <div className="bg-surface border rounded-2xl p-10 text-center">
-            <p className="text-ink-muted text-sm">Aucune mission pour cette sélection.</p>
+            <p className="text-ink-muted text-sm"><T k="finished_missions.empty" /></p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

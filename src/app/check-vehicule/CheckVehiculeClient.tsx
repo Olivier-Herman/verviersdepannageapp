@@ -6,6 +6,8 @@ import { ClipboardCheck, Clock, CheckCircle2, AlertCircle, ChevronRight, Truck }
 import type { Session } from 'next-auth'
 import type { VehicleCheck } from '@/types'
 import AmbientBackground from '@/components/AmbientBackground'
+import { T }    from '@/lib/i18n/T'
+import { useT } from '@/lib/i18n/I18nProvider'
 
 const STATUS_CONFIG = {
   scheduled:     { label: 'Planifié',                   color: 'text-zinc-400',  bg: 'bg-zinc-800',        icon: Clock         },
@@ -58,13 +60,13 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
         <div className="bg-orange-500/15 border border-orange-500 rounded-xl p-4 flex items-start gap-3">
           <Truck className="text-orange-400 mt-0.5 flex-shrink-0" size={20} />
           <div>
-            <p className="text-orange-300 font-semibold">Contrôle en cours sur votre véhicule</p>
+            <p className="text-orange-300 font-semibold"><T k="check_vehicle.banner_title" /></p>
             <p className="text-orange-200 text-sm mt-1">
               Véhicule <strong>{activeCheck.vehicle?.plate}</strong>
               {activeCheck.claimed_by_user && ` · Responsable\u00a0: ${activeCheck.claimed_by_user.name}`}
             </p>
             <p className="text-orange-400 text-xs mt-1.5">
-              Présentez-vous avec le véhicule, les documents et le matériel.
+              <T k="check_vehicle.banner_subtitle" />
             </p>
           </div>
         </div>
@@ -73,7 +75,7 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
       {/* À prendre en charge (responsables) */}
       {isResponsible && pendingClaims.length > 0 && (
         <div className="bg-yellow-900/20 border border-yellow-600 rounded-xl p-4">
-          <p className="text-yellow-400 font-semibold text-sm mb-2">⚡ À prendre en charge</p>
+          <p className="text-yellow-400 font-semibold text-sm mb-2"><T k="check_vehicle.to_claim" /></p>
           {pendingClaims.map(c => (
             <button key={c.id} onClick={() => router.push(`/check-vehicule/${c.id}`)}
               className="w-full flex items-center justify-between bg-yellow-900/30 hover:bg-yellow-900/50 rounded-lg p-3 mt-1.5 transition"
@@ -81,7 +83,7 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
               <div className="text-left">
                 <p className="text-white font-medium">{c.vehicle?.name} — {c.vehicle?.plate}</p>
                 <p className="text-yellow-400 text-xs mt-0.5">
-                  Planifié le {new Date(c.scheduled_date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  <T k="check_vehicle.scheduled_for" /> {new Date(c.scheduled_date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
               </div>
               <ChevronRight className="text-yellow-400 flex-shrink-0" size={18} />
@@ -96,7 +98,7 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
           className="w-full flex items-center justify-between bg-blue-900/20 border border-blue-700 rounded-xl p-4 hover:bg-blue-900/30 transition"
         >
           <div className="text-left">
-            <p className="text-blue-400 text-xs font-semibold mb-1">EN COURS</p>
+            <p className="text-blue-400 text-xs font-semibold mb-1"><T k="check_vehicle.in_progress_tag" /></p>
             <p className="text-white font-medium">{c.vehicle?.name} — {c.vehicle?.plate}</p>
             {c.claimed_by_user && <p className="text-zinc-400 text-xs mt-0.5">Responsable\u00a0: {c.claimed_by_user.name}</p>}
           </div>
@@ -106,11 +108,11 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
 
       {/* Historique */}
       <div>
-        <h2 className="text-zinc-400 text-sm font-medium mb-3">Historique</h2>
+        <h2 className="text-zinc-400 text-sm font-medium mb-3"><T k="check_vehicle.history" /></h2>
         {completed.length === 0 ? (
           <div className="text-center py-12 text-zinc-600">
             <ClipboardCheck size={40} className="mx-auto mb-3 opacity-40" />
-            <p className="text-sm">Aucun contrôle terminé</p>
+            <p className="text-sm"><T k="check_vehicle.empty_history" /></p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -124,7 +126,7 @@ export default function CheckVehiculeClient({ session }: { session: Session }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-medium truncate">{c.vehicle?.name} — {c.vehicle?.plate}</p>
                   <p className="text-zinc-400 text-xs mt-0.5">
-                    Terminé le {c.completed_at ? new Date(c.completed_at).toLocaleDateString('fr-BE') : '—'}
+                    <T k="check_vehicle.completed_on" /> {c.completed_at ? new Date(c.completed_at).toLocaleDateString('fr-BE') : '—'}
                     {c.claimed_by_user && ` · ${c.claimed_by_user.name}`}
                   </p>
                 </div>

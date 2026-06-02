@@ -11,6 +11,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Script from 'next/script'
 import ScanButton from '@/components/ScanButton'
+import { T } from '@/lib/i18n/T'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -297,7 +298,7 @@ export default function NewDriverMissionClient() {
               ←
             </button>
             <div>
-              <h1 className="text-ink font-bold text-lg">Nouvelle intervention</h1>
+              <h1 className="text-ink font-bold text-lg"><T k="mission_list.new_intervention_title" /></h1>
               <p className="text-ink-muted text-xs">Étape {step} sur 4</p>
             </div>
           </div>
@@ -571,7 +572,7 @@ export default function NewDriverMissionClient() {
           {step === 2 && (
             <button onClick={() => { if (address) setStep(3) }} disabled={!address}
               className="w-full py-4 bg-brand disabled:opacity-40 text-white font-bold rounded-2xl text-base transition">
-              Continuer →
+              <T k="encaissement.btn_continue" /> →
             </button>
           )}
 
@@ -580,7 +581,7 @@ export default function NewDriverMissionClient() {
               {canSubmit && (
                 <button onClick={() => handleSubmit(false)} disabled={saving}
                   className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-ink font-bold rounded-2xl text-base transition">
-                  {saving ? '⏳ Création en cours…' : '✅ Créer et démarrer'}
+                  {saving ? '⏳ Création en cours…' : <>✅ <T k="create_mission.create_mission_btn" /></>}
                 </button>
               )}
               <button onClick={() => handleSubmit(true)} disabled={saving}

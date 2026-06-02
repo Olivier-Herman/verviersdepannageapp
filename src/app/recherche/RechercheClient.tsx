@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import AppShell from '@/components/layout/AppShell'
+import { T } from '@/lib/i18n/T'
 import { useSheetStack } from '@/components/sheets/SheetStackProvider'
 import ScanButton from '@/components/ScanButton'
 import { Search, Loader2, Sparkles, Clock, X, ExternalLink, FileText, ArrowRight } from 'lucide-react'
@@ -385,7 +386,7 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                     <Sparkles size={36} className="text-brand rs-pulse" />
                   </div>
                   <div>
-                    <h2 className="text-ink text-xl lg:text-2xl font-bold">Recherche globale</h2>
+                    <h2 className="text-ink text-xl lg:text-2xl font-bold"><T k="search.title" /></h2>
                     <p className="text-ink-muted text-sm mt-1">Tape au moins {MIN_LENGTH} caractères pour explorer toute l'app.</p>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto pt-3 text-left">
@@ -413,7 +414,7 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
                   <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-brand/20 to-purple-500/20 flex items-center justify-center text-3xl">
                     🔍
                   </div>
-                  <p className="text-ink font-semibold text-lg">Aucun résultat</p>
+                  <p className="text-ink font-semibold text-lg"><T k="search.no_results" /></p>
                   <p className="text-ink-muted text-sm">pour <span className="font-mono bg-surface-2 px-2 py-0.5 rounded">{query}</span></p>
                   <p className="text-ink-faint text-xs">Vérifie l'orthographe ou élargis la recherche en retirant des filtres.</p>
                 </div>

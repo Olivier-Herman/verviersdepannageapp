@@ -324,6 +324,60 @@ export const fr = {
     section_photos:         'Photos',
     select_brand:           'Sélectionner une marque',
   },
+
+  check_vehicle: {
+    banner_title:        'Contrôle en cours sur votre véhicule',
+    banner_subtitle:     'Présentez-vous avec le véhicule, les documents et le matériel.',
+    to_claim:            '⚡ À prendre en charge',
+    scheduled_for:       'Planifié le',
+    in_progress_tag:     'EN COURS',
+    responsible:         'Responsable',
+    history:             'Historique',
+    empty_history:       'Aucun contrôle terminé',
+    completed_on:        'Terminé le',
+    status_scheduled:    'Planifié',
+    status_pending:      'En attente de prise en charge',
+    status_in_progress:  'En cours',
+    status_completed:    'Terminé',
+  },
+
+  finished_missions: {
+    title:               'Missions terminées',
+    empty:               'Aucune mission terminée',
+    today:               'Aujourd\'hui',
+    yesterday:           'Hier',
+    earlier:             'Plus ancien',
+    filter_all:          'Toutes',
+    filter_to_invoice:   'À facturer',
+    filter_completed:    'Terminées',
+    filter_cancelled:    'Annulées',
+  },
+
+  search: {
+    title:               'Recherche',
+    placeholder:         'Plaque, dossier, client, téléphone…',
+    empty_query:         'Saisis une recherche pour trouver une mission, un véhicule ou un client.',
+    no_results:          'Aucun résultat',
+    section_missions:    'Missions',
+    section_vehicles:    'Véhicules en parc',
+    section_clients:     'Clients',
+    section_messages:    'Emails / messages',
+    open:                'Ouvrir',
+    in_progress:         'En cours',
+    completed:           'Terminée',
+  },
+
+  new_mission: {
+    title:               'Nouvelle mission',
+    intro:               'Crée une intervention privée avec encaissement direct.',
+    step_motif:          'Motif',
+    step_vehicle:        'Véhicule',
+    step_client:         'Client',
+    step_amount:         'Montant',
+    step_recap:          'Récapitulatif',
+    btn_continue:        'Continuer',
+    btn_create:          'Créer la mission',
+  },
 }
 
 export type Dictionary = typeof fr
