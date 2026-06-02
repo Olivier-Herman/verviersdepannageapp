@@ -2,7 +2,7 @@
 //
 // POST /api/snc-preview-tarif
 // Body : {
-//   scenario:          'dsp' | 'rem_client' | 'rem_depot',
+//   scenario:          'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct',
 //   requires_balisage: boolean,
 //   incident_lat, incident_lng,
 //   destination_lat?, destination_lng?,
@@ -29,8 +29,8 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const scenario = String(body.scenario || '').trim() as 'dsp' | 'rem_client' | 'rem_depot'
-  if (!['dsp', 'rem_client', 'rem_depot'].includes(scenario)) {
+  const scenario = String(body.scenario || '').trim() as 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct'
+  if (!['dsp', 'rem_client', 'rem_depot', 'rem_direct'].includes(scenario)) {
     return NextResponse.json({ error: 'scenario invalide' }, { status: 400 })
   }
   const variant = body.variant === 'sc' ? 'sc' : 'snc'
@@ -47,7 +47,8 @@ export async function POST(req: Request) {
       error:     'Coordonnées intervention manquantes (saisir le lieu via l autocomplete Google).',
     }, { status: 400 })
   }
-  if (scenario === 'rem_client' && (destinationLat == null || destinationLng == null)) {
+  if ((scenario === 'rem_client' || scenario === 'rem_direct')
+      && (destinationLat == null || destinationLng == null)) {
     return NextResponse.json({
       ok:        false,
       error:     'Coordonnées destination manquantes (saisir la destination via l autocomplete Google).',

@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   // depuis sa fiche si besoin.
   const isSnc       = body.source === 'police_snc' || body.source === 'sia_couvert'
   const isAvp       = body.source === 'police_avp'
-  const sncScenario = isSnc && ['dsp', 'rem_client', 'rem_depot'].includes(body.snc_scenario)
+  const sncScenario = isSnc && ['dsp', 'rem_client', 'rem_depot', 'rem_direct'].includes(body.snc_scenario)
     ? body.snc_scenario
     : null
 

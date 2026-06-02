@@ -9,7 +9,15 @@
 //
 // Logique km selon scenario :
 //   - dsp        : km depanneuse = depot -> intervention -> depot (aller-retour)
-//   - rem_client : km depanneuse = depot -> intervention -> destination -> depot
+//   - rem_client : km depanneuse = depot -> intervention -> destination -> depot (SNC)
+//   - rem_direct : SC uniquement. Olivier 2026-06-02 PM : le chauffeur fait
+//                  tout en une mission (intervention puis livraison directe)
+//                  mais on facture en 2 segments distincts :
+//                    - km_depanneuse  = depot -> intervention -> depot
+//                                       (couvert par le forfait SC + 30km inclus)
+//                    - km_livraison   = depot -> destination -> depot
+//                                       (entierement facture au tarif km, pas de
+//                                       seconde PEC, pas de 30km inclus)
 //   - rem_depot  : km depanneuse = depot -> intervention -> depot (Pepinster force)
 //   - balisage   : toujours depot -> intervention -> depot (rentre seul apres)
 //
@@ -32,7 +40,7 @@ export interface SncDepotKey {
 }
 
 export interface SncCalcInput {
-  scenario:           'dsp' | 'rem_client' | 'rem_depot'
+  scenario:           'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct'
   requiresBalisage:   boolean
   interventionLat:    number | null
   interventionLng:    number | null
@@ -49,6 +57,9 @@ export interface SncCalcOutput {
   balisage_depot?:        string    // nom du depot balisage (Pepinster ou Aywaille, le plus proche)
   balisage_depot_id?:     number | string
   km_depanneuse:          number    // total km depanneuse (depot -> ... -> depot)
+  /** SC + rem_direct uniquement : km depot -> destination -> depot facture en
+   *  supplement (pas couvert par les 30km inclus). 0 sinon. */
+  km_livraison?:          number
   km_balisage:            number    // km balisage (aller-retour intervention depuis SON depot)
   is_majored:             boolean
   note:                   string    // explication calcul (visible facturation)
@@ -182,11 +193,22 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   const dRetour  = await calculateRouteKm(input.interventionLat, input.interventionLng, depart.lat, depart.lng)
 
   let kmDepanneuse = 0
-  if (input.scenario === 'rem_client' && input.destinationLat != null && input.destinationLng != null) {
-    // depart -> intervention -> destination -> depart
+  let kmLivraison  = 0
+  if (input.scenario === 'rem_client'
+      && input.destinationLat != null && input.destinationLng != null) {
+    // SNC : depart -> intervention -> destination -> depart, calcule en un bloc
     const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, input.destinationLat, input.destinationLng)
     const d3 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
     kmDepanneuse = d1 + d2 + d3
+  } else if (input.scenario === 'rem_direct'
+             && input.destinationLat != null && input.destinationLng != null) {
+    // SC rem_direct (Olivier 2026-06-02 PM) : 2 segments factures separement
+    //   - km_depanneuse = depart -> intervention -> depart  (couvert forfait SC + 30km inclus)
+    //   - km_livraison  = depart -> destination -> depart   (entierement facture, sans 30km inclus)
+    kmDepanneuse = d1 + dRetour
+    const dL1 = await calculateRouteKm(depart.lat, depart.lng, input.destinationLat, input.destinationLng)
+    const dL2 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
+    kmLivraison = dL1 + dL2
   } else if (input.scenario === 'rem_depot' && pepinster) {
     // depart -> intervention -> Pepinster (mise en depot) -> depart (depanneuse rentre)
     const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, pepinster.lat, pepinster.lng)
@@ -223,9 +245,11 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     balisage_depot:    balisageDepotInfo?.name,
     balisage_depot_id: balisageDepotInfo?.id,
     km_depanneuse:     kmDepanneuse,
+    km_livraison:      kmLivraison > 0 ? kmLivraison : undefined,
     km_balisage:       kmBalisage,
     is_majored:        isMajored,
     note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}.` +
+          (kmLivraison > 0 ? ` Km livraison (SC rem_direct) : ${kmLivraison}.` : '') +
           (input.requiresBalisage && balisageDepotInfo
             ? ` Dépôt balisage : ${balisageDepotInfo.name}. Km balisage : ${kmBalisage}.`
             : '') +
@@ -282,6 +306,17 @@ export function buildSncQuoteLines(opts: {
       kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
       name:       `Kilomètre dépanneuse (au-delà des 30 km inclus)${m ? ' (majoré)' : ''}`,
       qty:        surplus,
+      price_unit: m ? 1.6529 : 1.0744,
+    })
+  }
+
+  // SC + rem_direct (Olivier 2026-06-02 PM) : km livraison factures
+  // ENTIEREMENT au tarif km (pas de 30km inclus, pas de seconde PEC).
+  if (variant === 'sc' && metrics.km_livraison && metrics.km_livraison > 0) {
+    lines.push({
+      kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
+      name:       `Kilomètre livraison directe${m ? ' (majoré)' : ''}`,
+      qty:        metrics.km_livraison,
       price_unit: m ? 1.6529 : 1.0744,
     })
   }

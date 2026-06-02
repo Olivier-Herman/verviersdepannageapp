@@ -95,16 +95,21 @@ export async function PATCH(
   // snc_scenario a null pour que les helpers (quote, REL, snc-calc) repartent
   // proprement. Sinon le scenario d une ancienne SNC contaminait la nouvelle
   // source.
-  // Olivier 2026-06-02 PM : si la nouvelle source EST SNC, on N IMPOSE PAS le
-  // scenario. Le chauffeur le choisira lui-meme depuis sa fiche (bandeau
-  // dedie dans DriverClient) — c est lui qui sait DSP / REM client / REM
-  // depot selon l intervention reelle.
+  // Olivier 2026-06-02 PM : si la nouvelle source EST SNC (police_snc seul,
+  // pas SC), on retire AUSSI billed_to_name + billed_to_id. En SNC c est le
+  // client final qui paie en direct, pas l assurance/assistance d origine.
+  // SC garde billed_to (l assistance facture).
   const SNC_SOURCES = new Set(['police_snc', 'sia_couvert'])
   if ('source' in updates) {
     const newSource = updates.source as string | null
     if (!newSource || !SNC_SOURCES.has(newSource)) {
       updates.snc_scenario        = null
       updates.snc_requires_balisage = false
+    } else if (newSource === 'police_snc' && before?.source !== 'police_snc') {
+      // Transformation VERS police_snc : on efface le client facture car
+      // l ancienne assistance (Touring, IMA, etc.) n est plus le payeur.
+      updates.billed_to_name = null
+      updates.billed_to_id   = null
     }
   }
 

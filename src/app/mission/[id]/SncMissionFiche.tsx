@@ -49,7 +49,7 @@ interface Mission {
   vehicle_class?: 'car' | 'moto' | string | null
   distance_km?: number | null
   duration_min?: number | null
-  snc_scenario?: 'dsp' | 'rem_client' | 'rem_depot' | string | null
+  snc_scenario?: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct' | string | null
   snc_requires_balisage?: boolean | null
   police_blocked?: boolean | null
   remarks_billing?: string | null
@@ -173,8 +173,9 @@ export default function SncMissionFiche({
       setSncPreview(null); setPreviewError(null)
       return
     }
-    // REM client : destination obligatoire pour calcul
-    if (M.snc_scenario === 'rem_client' && (M.destination_lat == null || M.destination_lng == null)) {
+    // REM client / REM direct : destination obligatoire pour calcul
+    if ((M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_direct')
+        && (M.destination_lat == null || M.destination_lng == null)) {
       setSncPreview(null); setPreviewError(null)
       return
     }
@@ -244,9 +245,10 @@ export default function SncMissionFiche({
 
   // ── Choix du scenario SNC + recalcul tarif + PATCH amount_to_collect ────
   // Reprend strictement la logique de pickSncScenario dans DriverClient.tsx
-  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot') => {
+  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
     setSncInfoMsg(null)
-    if (scenario === 'rem_client' && (M.destination_lat == null || M.destination_lng == null)) {
+    if ((scenario === 'rem_client' || scenario === 'rem_direct')
+        && (M.destination_lat == null || M.destination_lng == null)) {
       setSncInfoMsg('Saisis d\'abord l\'adresse de destination plus bas (avec autocomplete Google).')
       return
     }
@@ -374,6 +376,7 @@ export default function SncMissionFiche({
   const scenarioLabel =
     M.snc_scenario === 'dsp'        ? 'DSP — dépannage sur place'
   : M.snc_scenario === 'rem_client' ? 'REM avec paiement immédiat'
+  : M.snc_scenario === 'rem_direct' ? 'REM directe (sans passage dépôt)'
   : M.snc_scenario === 'rem_depot'  ? 'REM vers dépôt Pepinster'
   : 'Aucun scénario sélectionné'
 
@@ -388,6 +391,9 @@ export default function SncMissionFiche({
     && remaining > 0
     && M.status !== 'completed' && M.status !== 'to_invoice'
 
+  // SC rem_direct : pas d encaissement chauffeur (facturation assistance)
+  // mais pas non plus de mise en parc (livraison directe). Le bouton Finaliser
+  // suffit (geree plus bas).
   const showParkBtn =
     M.snc_scenario === 'rem_depot'
     && M.status !== 'parked'
@@ -512,6 +518,11 @@ export default function SncMissionFiche({
                     label: '🚛 REM avec paiement immédiat',
                     desc: 'Remorquage vers destination du client, paiement immédiat.',
                   }] : []),
+                  ...(isSC ? [{
+                    key: 'rem_direct' as const,
+                    label: '🚛 REM directe (sans dépôt)',
+                    desc: 'Remorquage directement vers la destination du client. Forfait SC + km livraison depuis le dépôt (pas de seconde prise en charge).',
+                  }] : []),
                   {
                     key: 'rem_depot' as const,
                     label: '🏢 REM vers dépôt Pepinster',
@@ -519,7 +530,7 @@ export default function SncMissionFiche({
                       ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.'
                       : 'Mise en zone Transit, le client passera au bureau ensuite.',
                   },
-                ]).map(opt => {
+                ] as Array<{ key: 'dsp' | 'rem_client' | 'rem_direct' | 'rem_depot'; label: string; desc: string }>).map(opt => {
                   const isActive = M.snc_scenario === opt.key
                   return (
                     <button
@@ -575,10 +586,13 @@ export default function SncMissionFiche({
           </Section>
         )}
 
-        {/* 7. Destination (REM client = obligatoire, REM depot = optionnel) */}
-        {(M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_depot') && !isReadOnly && (
+        {/* 7. Destination
+            REM client (SNC) = obligatoire
+            REM direct (SC)  = obligatoire
+            REM depot        = optionnelle (relivraison future) */}
+        {(M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_direct' || M.snc_scenario === 'rem_depot') && !isReadOnly && (
           <Section title={
-            M.snc_scenario === 'rem_client'
+            (M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_direct')
               ? 'Adresse de destination (livraison) *'
               : 'Adresse de relivraison future (optionnelle)'
           }>
@@ -596,7 +610,7 @@ export default function SncMissionFiche({
                 onSelect={onDestinationSelect}
                 gmKey={gmKey}
                 placeholder={
-                  M.snc_scenario === 'rem_client'
+                  (M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_direct')
                     ? 'Ex: Rue de la Gare 10, 4800 Verviers'
                     : 'Si déjà connue (optionnel)'
                 }
@@ -604,7 +618,8 @@ export default function SncMissionFiche({
               {savingDest && (
                 <p className={`text-xs ${accentText2}`}>⏳ Enregistrement de la destination…</p>
               )}
-              {M.snc_scenario === 'rem_client' && M.destination_lat == null && destinationText.trim() && (
+              {(M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_direct')
+                && M.destination_lat == null && destinationText.trim() && (
                 <p className="text-xs text-warning">
                   ⚠ Sélectionne l&apos;adresse dans les suggestions Google pour calculer le tarif.
                 </p>
@@ -618,10 +633,15 @@ export default function SncMissionFiche({
           </Section>
         )}
 
-        {/* 8. Preview tarif live (mirror PoliceClient 1297-1340) */}
-        {M.snc_scenario && M.snc_scenario !== 'rem_depot' && (
+        {/* 8. Preview tarif live (mirror PoliceClient 1297-1340)
+            Olivier 2026-06-02 PM : NE PAS afficher pour SC — c est l assistance
+            qui paie, le chauffeur n a pas besoin de voir le montant. */}
+        {!isSC && M.snc_scenario && M.snc_scenario !== 'rem_depot' && (
           M.incident_lat != null && M.incident_lng != null &&
-          (M.snc_scenario !== 'rem_client' || (M.destination_lat != null && M.destination_lng != null))
+          (
+            (M.snc_scenario !== 'rem_client' && M.snc_scenario !== 'rem_direct')
+            || (M.destination_lat != null && M.destination_lng != null)
+          )
         ) && (
           <div className={`${accentBgSoft} border-2 ${accentBorder} rounded-xl p-3 space-y-2`}>
             <div className="flex items-center justify-between">
