@@ -95,25 +95,16 @@ export async function PATCH(
   // snc_scenario a null pour que les helpers (quote, REL, snc-calc) repartent
   // proprement. Sinon le scenario d une ancienne SNC contaminait la nouvelle
   // source.
+  // Olivier 2026-06-02 PM : si la nouvelle source EST SNC, on N IMPOSE PAS le
+  // scenario. Le chauffeur le choisira lui-meme depuis sa fiche (bandeau
+  // dedie dans DriverClient) — c est lui qui sait DSP / REM client / REM
+  // depot selon l intervention reelle.
   const SNC_SOURCES = new Set(['police_snc', 'sia_couvert'])
   if ('source' in updates) {
     const newSource = updates.source as string | null
     if (!newSource || !SNC_SOURCES.has(newSource)) {
       updates.snc_scenario        = null
       updates.snc_requires_balisage = false
-    } else {
-      // Nouvelle source = SNC. Si le caller fournit un snc_scenario explicite,
-      // on l utilise. Sinon, si l ancien etait deja un snc valide on garde,
-      // sinon erreur (le dispatcher doit choisir).
-      const explicit = 'snc_scenario' in updates ? (updates.snc_scenario as string | null) : null
-      const carried  = before?.snc_scenario
-      const final    = explicit || carried || null
-      if (!final) {
-        return NextResponse.json({
-          error: 'Cette source est SNC (Siabis non couvert / couvert). Tu dois aussi choisir un scénario : DSP, REM client, ou REM dépôt.',
-        }, { status: 400 })
-      }
-      updates.snc_scenario = final
     }
   }
 

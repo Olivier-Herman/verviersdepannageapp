@@ -2214,21 +2214,10 @@ export default function MissionDetailClient({
                     </Field>
                     {(form.source === 'police_snc' || form.source === 'sia_couvert') && (
                       <div className="col-span-2">
-                        <Field label="Scénario SNC (obligatoire)">
-                          <select
-                            value={form.snc_scenario || ''}
-                            onChange={e => f('snc_scenario')(e.target.value)}
-                            className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
-                          >
-                            <option value="">— Choisir —</option>
-                            <option value="dsp">DSP — dépannage sur place</option>
-                            <option value="rem_client">REM client — paiement immédiat</option>
-                            <option value="rem_depot">REM dépôt — Pepinster (mise en parc)</option>
-                          </select>
-                        </Field>
-                        <p className="text-amber-700 text-xs mt-1">
-                          ⚠️ Sans scénario, le comportement chauffeur, le tarif et les écrans REL ne s&apos;appliqueront pas comme une SNC.
-                        </p>
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-blue-900">
+                          ℹ️ Source SNC : le chauffeur choisira lui-même le scénario (DSP / REM client / REM dépôt) depuis sa fiche.
+                          {form.snc_scenario && <> Scénario actuel : <strong>{form.snc_scenario}</strong>.</>}
+                        </div>
                       </div>
                     )}
                     <Field label="Type d'incident">

@@ -959,6 +959,33 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     } catch (e: any) { setErr(e.message || 'Erreur') }
   }
 
+  // Olivier 2026-06-02 PM : choix du scenario SNC depuis la fiche chauffeur.
+  // Quand le dispatch reclassifie une mission en Siabis non couvert / couvert
+  // (source = police_snc / sia_couvert), le chauffeur doit choisir DSP / REM
+  // client / REM depot. Adapte aussi mission_type automatiquement :
+  // dsp = depannage, rem_client/rem_depot = remorquage. Apres save, le
+  // realtime met M a jour et tout le flow SNC s active (suggested zone,
+  // quote, REL eligibility, snc-calc, etc.).
+  const [sncSaving, setSncSaving] = useState<string | null>(null)
+  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot') => {
+    setSncSaving(scenario); setErr('')
+    try {
+      const newType = scenario === 'dsp' ? 'depannage' : 'remorquage'
+      const r = await fetch(`/api/missions/${M.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ snc_scenario: scenario, mission_type: newType }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setM(prev => ({ ...prev, snc_scenario: scenario as any, mission_type: newType }))
+    } catch (e: any) {
+      setErr(e.message || 'Impossible de définir le scénario')
+    } finally {
+      setSncSaving(null)
+    }
+  }
+
   // ── Changer type DSP↔REM ──────────────────────────────────────────────────
   const changeType = async (newType: 'DSP' | 'REM') => {
     setShowGrid(false); setLoading(true); setErr('')
@@ -2409,6 +2436,45 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <div>
               <p className="text-amber-700 text-sm font-bold uppercase tracking-wide">Bloquée par la police</p>
               <p className="text-amber-900 text-xs">Le propriétaire doit être passé au commissariat avant restitution.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Olivier 2026-06-02 PM : choix du scenario SNC quand le dispatch
+            a reclassifie une mission en Siabis non couvert / couvert et que
+            le scenario n est pas encore choisi. 3 tuiles cliquables alignees
+            sur PoliceClient.tsx (memes labels, meme look). */}
+        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !M.snc_scenario && !isReadOnly && (
+          <div className="bg-blue-50 border-2 border-blue-500 rounded-2xl p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <span className="text-2xl">🚔</span>
+              <div>
+                <p className="text-blue-900 text-sm font-bold uppercase tracking-wide">
+                  Mission {M.source === 'police_snc' ? 'Siabis non couvert' : 'Siabis couvert'}
+                </p>
+                <p className="text-blue-900 text-xs mt-0.5">
+                  Choisis le scénario d&apos;intervention. Cela adapte l&apos;encaissement, la mise en parc et le tarif.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              {([
+                { key: 'dsp' as const,        label: '🔧 DSP — Dépannage sur place',     desc: M.source === 'sia_couvert' ? 'Réparation sur place, facturée à l\'assistance (pas d\'encaissement).' : 'Réparation sur place, client paie en direct au chauffeur.' },
+                ...(M.source === 'police_snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat', desc: 'Remorquage vers destination du client, paiement immédiat.' }] : []),
+                { key: 'rem_depot' as const,  label: '🏢 REM vers dépôt Pepinster',       desc: M.source === 'sia_couvert' ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.' : 'Mise en zone Transit, le client passera au bureau ensuite.' },
+              ]).map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => pickSncScenario(opt.key)}
+                  disabled={sncSaving !== null}
+                  className="p-3 rounded-xl border-2 border-blue-300 bg-surface text-left hover:border-blue-500 transition disabled:opacity-50"
+                >
+                  <div className="text-ink font-semibold text-sm">{opt.label}</div>
+                  <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
+                  {sncSaving === opt.key && <div className="text-blue-700 text-xs mt-1">⏳ Application en cours…</div>}
+                </button>
+              ))}
             </div>
           </div>
         )}
