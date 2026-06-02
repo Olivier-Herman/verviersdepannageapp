@@ -614,11 +614,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       // deplacement_paye + Appel Prive DSP/REM client + SNC dsp/rem_client) =
       // auto-redirect immediat vers /encaissement, sans ecran intermediaire ni
       // bouton "Plus tard". Le chauffeur ne peut PAS skipper.
-      // Pour les autres sources avec encaissement OPTIONNEL (mal_garee chargement,
-      // snc rem_depot, appel_prive REM depot, ...) : ecran de choix (bouton
-      // encaisser maintenant OU plus tard).
+      // Olivier 2026-06-02 : pour les missions avec mise en parc (mal_garee
+      // chargement, snc rem_depot, appel_prive REM depot), PAS d ecran de
+      // choix encaissement. Le paiement se fera plus tard via la recherche
+      // plaque ou le scan QR quand le client vient recuperer le vehicule.
       // Pour les autres types (accident, saisie, ...) : redirect auto dashboard.
-      const needsPayment = ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
+      const goesToParc =
+        (selectedType === 'mal_garee'   && malGareeScenario === 'chargement') ||
+        (selectedType === 'appel_prive' && appelPriveDestination === 'depot') ||
+        (selectedType === 'snc'         && sncScenario === 'rem_depot')
+      const needsPayment = ['appel_prive', 'mal_garee', 'snc'].includes(selectedType) && !goesToParc
       const needsImmediatePayment =
         (selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye') ||
         (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
@@ -667,7 +672,15 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   // ouvre /encaissement precomplete (mission_id + plate + brand + model +
   // amount). Le chauffeur peut choisir d encaisser maintenant ou plus tard.
   if (done) {
-    const needsPayment = selectedType && ['appel_prive', 'mal_garee', 'snc'].includes(selectedType)
+    // Olivier 2026-06-02 : les missions qui partent au parc (mise en depot)
+    // n ont PAS de proposition d encaissement sur l ecran de succes. Le
+    // paiement se fera plus tard via recherche plaque ou scan QR quand le
+    // client vient recuperer le vehicule.
+    const goesToParcSuccess =
+      (selectedType === 'mal_garee'   && malGareeScenario === 'chargement') ||
+      (selectedType === 'appel_prive' && appelPriveDestination === 'depot') ||
+      (selectedType === 'snc'         && sncScenario === 'rem_depot')
+    const needsPayment = selectedType && ['appel_prive', 'mal_garee', 'snc'].includes(selectedType) && !goesToParcSuccess
     const malGareeDeplacementPaye = selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye'
     // Encaissement OBLIGATOIRE = pas de bouton "Plus tard" (Olivier 2026-05-27).
     // 3 cas : Mal Garee deplacement_paye + Appel Prive DSP/REM client + SNC dsp/rem_client.
