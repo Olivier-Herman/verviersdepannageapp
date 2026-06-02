@@ -120,6 +120,8 @@ export default async function AdminPage() {
           desc="Liste des zones (Vesdre, Fagnes…) proposées au chauffeur lors de la création d'une mission Police. Une zone par défaut." />
         <Card href="/admin/garage-partners" icon={Users} label="Garages partenaires"
           desc="Comptes garages avec accès à leur espace /garage : Odoo partner ID, contact, tarifs DSP/REM/DPR. Multi-entités par email." />
+        <Card href="/admin/garage-users" icon={Users} label="Comptes garages"
+          desc="Users avec rôle garage. Création + liaison avec 1+ garages partenaires. Envoi email de bienvenue avec magic link." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />
