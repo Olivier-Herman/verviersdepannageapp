@@ -10,14 +10,18 @@
 // Logique km selon scenario :
 //   - dsp        : km depanneuse = depot -> intervention -> depot (aller-retour)
 //   - rem_client : km depanneuse = depot -> intervention -> destination -> depot (SNC)
-//   - rem_direct : SC uniquement. Olivier 2026-06-02 PM : le chauffeur fait
-//                  tout en une mission (intervention puis livraison directe)
-//                  mais on facture en 2 segments distincts :
+//   - rem_direct : SC uniquement. Olivier 2026-06-02 PM :
 //                    - km_depanneuse  = depot -> intervention -> depot
-//                                       (couvert par le forfait SC + 30km inclus)
-//                    - km_livraison   = depot -> destination -> depot
-//                                       (entierement facture au tarif km, pas de
-//                                       seconde PEC, pas de 30km inclus)
+//                                       INTEGRALEMENT couvert par le forfait SC
+//                                       (PAS de surplus a facturer, peu importe les km)
+//                    - km_livraison   = (depot -> intervention -> depot)
+//                                     + (depot -> destination -> depot)
+//                                       (double segment, calcul facturation comme si
+//                                       on avait fait 2 missions distinctes)
+//                                       Facture au tarif km de l ASSISTANCE
+//                                       (billed_to) via source_tariffs, en
+//                                       deduisant les km inclus du forfait
+//                                       remorquage assistance (ex: Touring 20 km).
 //   - rem_depot  : km depanneuse = depot -> intervention -> depot (Pepinster force)
 //   - balisage   : toujours depot -> intervention -> depot (rentre seul apres)
 //
@@ -49,6 +53,12 @@ export interface SncCalcInput {
   interventionAt:     Date | string | null
   /** 'snc' (defaut) = avec km. 'sc' = Siabis Couvert, forfait sans km. */
   variant?:           'snc' | 'sc'
+  /** Pour SC + rem_direct uniquement : identifie l assistance facturee
+   *  (id Odoo prioritaire, name en fallback). On remonte ensuite a la source
+   *  via mission_source_catalog.default_billed_to_id, puis on lit
+   *  source_tariffs(source, 'remorquage') pour avoir km_price + km_inclus. */
+  billedToId?:        number | null
+  billedToName?:      string | null
 }
 
 export interface SncCalcOutput {
@@ -57,9 +67,17 @@ export interface SncCalcOutput {
   balisage_depot?:        string    // nom du depot balisage (Pepinster ou Aywaille, le plus proche)
   balisage_depot_id?:     number | string
   km_depanneuse:          number    // total km depanneuse (depot -> ... -> depot)
-  /** SC + rem_direct uniquement : km depot -> destination -> depot facture en
-   *  supplement (pas couvert par les 30km inclus). 0 sinon. */
+  /** SC + rem_direct : double segment (depot->intervention->depot) +
+   *  (depot->destination->depot). 0 sinon. */
   km_livraison?:          number
+  /** SC + rem_direct : tarif km de l assistance (depuis source_tariffs).
+   *  null si pas trouve → buildSncQuoteLines fallback sur le tarif SIAKIL. */
+  livraison_km_price?:    number | null
+  /** SC + rem_direct : km inclus dans le forfait remorquage de l assistance
+   *  (Touring 20, VAB 40, etc.). 0 si pas trouve. */
+  livraison_km_inclus?:   number
+  /** SC + rem_direct : nom de l assistance utilise pour le calcul (si match). */
+  livraison_assistance?:  string | null
   km_balisage:            number    // km balisage (aller-retour intervention depuis SON depot)
   is_majored:             boolean
   note:                   string    // explication calcul (visible facturation)
@@ -75,6 +93,78 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   const dLng = toRad(lng2 - lng1)
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+/**
+ * SC + rem_direct (Olivier 2026-06-02 PM) : remonte du billed_to (assistance
+ * facturee) au tarif km / km_inclus correspondant.
+ *
+ * Chaine de recherche :
+ *   1. mission_source_catalog WHERE default_billed_to_id = billedToId
+ *      → recupere la source-key (ex: 'touring', 'vab')
+ *   2. fallback : mission_source_catalog WHERE default_billed_to_name ILIKE billedToName
+ *   3. source_tariffs WHERE source = key AND mission_type = 'remorquage'
+ *      ORDER BY effective_from DESC LIMIT 1
+ *      → recupere km_price + km_inclus
+ *
+ * Retourne null si rien trouve → buildSncQuoteLines fallback sur SIAKIL standard.
+ */
+export async function findAssistanceTariff(input: {
+  billedToId?:   number | null
+  billedToName?: string | null
+}): Promise<{ source_key: string; assistance_name: string; km_price: number; km_inclus: number } | null> {
+  if (!input.billedToId && !input.billedToName) return null
+  const sb = createAdminClient()
+
+  // 1. Recherche source par billed_to_id (prioritaire)
+  let sourceKey: string | null   = null
+  let assistanceName: string     = input.billedToName || ''
+  if (input.billedToId) {
+    const { data: sc } = await sb
+      .from('mission_source_catalog')
+      .select('key, default_billed_to_name')
+      .eq('default_billed_to_id', input.billedToId)
+      .eq('active', true)
+      .limit(1)
+      .maybeSingle()
+    if (sc?.key) {
+      sourceKey      = sc.key
+      assistanceName = sc.default_billed_to_name || assistanceName
+    }
+  }
+  // 2. Fallback : recherche par nom (ILIKE pour tolerer la casse / espaces)
+  if (!sourceKey && input.billedToName) {
+    const { data: sc } = await sb
+      .from('mission_source_catalog')
+      .select('key, default_billed_to_name')
+      .ilike('default_billed_to_name', input.billedToName.trim())
+      .eq('active', true)
+      .limit(1)
+      .maybeSingle()
+    if (sc?.key) {
+      sourceKey      = sc.key
+      assistanceName = sc.default_billed_to_name || input.billedToName
+    }
+  }
+  if (!sourceKey) return null
+
+  // 3. Tarif remorquage de cette source
+  const { data: tariff } = await sb
+    .from('source_tariffs')
+    .select('km_price, km_inclus')
+    .eq('source', sourceKey)
+    .eq('mission_type', 'remorquage')
+    .order('effective_from', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!tariff) return null
+
+  return {
+    source_key:      sourceKey,
+    assistance_name: assistanceName,
+    km_price:        Number(tariff.km_price)  || 0,
+    km_inclus:       Number(tariff.km_inclus) || 0,
+  }
 }
 
 /** Charge TOUS les depots actifs SNC (avec lat/lng valides). */
@@ -202,13 +292,19 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     kmDepanneuse = d1 + d2 + d3
   } else if (input.scenario === 'rem_direct'
              && input.destinationLat != null && input.destinationLng != null) {
-    // SC rem_direct (Olivier 2026-06-02 PM) : 2 segments factures separement
-    //   - km_depanneuse = depart -> intervention -> depart  (couvert forfait SC + 30km inclus)
-    //   - km_livraison  = depart -> destination -> depart   (entierement facture, sans 30km inclus)
+    // SC rem_direct (Olivier 2026-06-02 PM, formule corrigee) :
+    //   - km_depanneuse = depart -> intervention -> depart
+    //                     INTEGRALEMENT couvert par le forfait SC (pas de
+    //                     surplus a facturer, peu importe les km)
+    //   - km_livraison  = (depart -> intervention -> depart)
+    //                   + (depart -> destination -> depart)
+    //                     Double segment : on facture comme si on avait fait
+    //                     2 missions. Tarif km = celui de l assistance facturee
+    //                     (billedToName via source_tariffs), moins km_inclus.
     kmDepanneuse = d1 + dRetour
     const dL1 = await calculateRouteKm(depart.lat, depart.lng, input.destinationLat, input.destinationLng)
     const dL2 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
-    kmLivraison = dL1 + dL2
+    kmLivraison = kmDepanneuse + dL1 + dL2
   } else if (input.scenario === 'rem_depot' && pepinster) {
     // depart -> intervention -> Pepinster (mise en depot) -> depart (depanneuse rentre)
     const d2 = await calculateRouteKm(input.interventionLat, input.interventionLng, pepinster.lat, pepinster.lng)
@@ -239,17 +335,40 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
 
   const isMajored = await isSncMajored(input.interventionAt)
 
+  // SC + rem_direct : lookup tarif assistance facturee (km_price + km_inclus)
+  let livKmPrice: number | null  = null
+  let livKmInclus: number        = 0
+  let livAssistance: string | null = null
+  if (input.scenario === 'rem_direct' && kmLivraison > 0 && (input.billedToId || input.billedToName)) {
+    const at = await findAssistanceTariff({
+      billedToId:   input.billedToId,
+      billedToName: input.billedToName,
+    })
+    if (at) {
+      livKmPrice    = at.km_price
+      livKmInclus   = at.km_inclus
+      livAssistance = at.assistance_name
+    }
+  }
+
   return {
-    depart_depot:      depart.name,
-    depart_depot_id:   depart.id,
-    balisage_depot:    balisageDepotInfo?.name,
-    balisage_depot_id: balisageDepotInfo?.id,
-    km_depanneuse:     kmDepanneuse,
-    km_livraison:      kmLivraison > 0 ? kmLivraison : undefined,
-    km_balisage:       kmBalisage,
-    is_majored:        isMajored,
+    depart_depot:        depart.name,
+    depart_depot_id:     depart.id,
+    balisage_depot:      balisageDepotInfo?.name,
+    balisage_depot_id:   balisageDepotInfo?.id,
+    km_depanneuse:       kmDepanneuse,
+    km_livraison:        kmLivraison > 0 ? kmLivraison : undefined,
+    livraison_km_price:  livKmPrice,
+    livraison_km_inclus: livKmInclus,
+    livraison_assistance: livAssistance,
+    km_balisage:         kmBalisage,
+    is_majored:          isMajored,
     note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}.` +
-          (kmLivraison > 0 ? ` Km livraison (SC rem_direct) : ${kmLivraison}.` : '') +
+          (kmLivraison > 0
+            ? ` Km livraison (SC rem_direct) : ${kmLivraison}` +
+              (livAssistance ? ` (assistance ${livAssistance}, ${livKmInclus} km inclus, ${livKmPrice}€/km)` : ' (assistance non identifiée, fallback tarif standard)') +
+              '.'
+            : '') +
           (input.requiresBalisage && balisageDepotInfo
             ? ` Dépôt balisage : ${balisageDepotInfo.name}. Km balisage : ${kmBalisage}.`
             : '') +
@@ -293,6 +412,11 @@ export function buildSncQuoteLines(opts: {
   //      Olivier 2026-05-26 : "Pour Siabis couvert, on va compter le forfait
   //      incluant 30kms totaux. Le surplus de kilometre est facture au tarif
   //      de 1,0744eur htva en non majore et 1,6529eur htva en majore".
+  // SC + rem_direct : pas de surplus km depanneuse (le forfait SC couvre
+  // INTEGRALEMENT le segment depot-intervention-depot, peu importe les km).
+  // Olivier 2026-06-02 PM : "pas de kilometre a compter uniquement le forfait".
+  const isScRemDirect = variant === 'sc' && metrics.km_livraison && metrics.km_livraison > 0
+
   if (variant === 'snc' && metrics.km_depanneuse > 0) {
     lines.push({
       kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
@@ -300,7 +424,8 @@ export function buildSncQuoteLines(opts: {
       qty:        metrics.km_depanneuse,
       price_unit: m ? 1.65 : 1.0744,
     })
-  } else if (variant === 'sc' && metrics.km_depanneuse > 30) {
+  } else if (variant === 'sc' && !isScRemDirect && metrics.km_depanneuse > 30) {
+    // SC standard (dsp / rem_depot) : 30 km inclus dans le forfait, surplus facture.
     const surplus = metrics.km_depanneuse - 30
     lines.push({
       kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
@@ -310,15 +435,30 @@ export function buildSncQuoteLines(opts: {
     })
   }
 
-  // SC + rem_direct (Olivier 2026-06-02 PM) : km livraison factures
-  // ENTIEREMENT au tarif km (pas de 30km inclus, pas de seconde PEC).
-  if (variant === 'sc' && metrics.km_livraison && metrics.km_livraison > 0) {
-    lines.push({
-      kind:       m ? 'SIAKILMAJ' : 'SIAKIL',
-      name:       `Kilomètre livraison directe${m ? ' (majoré)' : ''}`,
-      qty:        metrics.km_livraison,
-      price_unit: m ? 1.6529 : 1.0744,
-    })
+  // SC + rem_direct (Olivier 2026-06-02 PM, formule corrigee) : km livraison
+  // = (depot -> intervention -> depot) + (depot -> destination -> depot),
+  // facture au tarif km de l ASSISTANCE facturee, en deduisant les km inclus
+  // dans son forfait remorquage (Touring 20, VAB 40, etc.).
+  // Si l assistance n est pas identifiable, fallback sur SIAKIL standard.
+  if (isScRemDirect && metrics.km_livraison) {
+    const kmSurplus = Math.max(0, metrics.km_livraison - (metrics.livraison_km_inclus ?? 0))
+    if (kmSurplus > 0) {
+      const unitPrice = metrics.livraison_km_price && metrics.livraison_km_price > 0
+        ? metrics.livraison_km_price
+        : (m ? 1.6529 : 1.0744)
+      const assistanceLabel = metrics.livraison_assistance
+        ? ` ${metrics.livraison_assistance}`
+        : ''
+      const inclusLabel = (metrics.livraison_km_inclus ?? 0) > 0
+        ? ` (au-delà des ${metrics.livraison_km_inclus} km inclus${assistanceLabel ? ` —${assistanceLabel}` : ''})`
+        : assistanceLabel ? ` (tarif${assistanceLabel})` : ''
+      lines.push({
+        kind:       'SIAKIL', // tarif assistance, pas SIAKIL standard SNC
+        name:       `Kilomètre livraison directe${inclusLabel}`,
+        qty:        kmSurplus,
+        price_unit: unitPrice,
+      })
+    }
   }
 
   // 3. Balisage (si applicable)

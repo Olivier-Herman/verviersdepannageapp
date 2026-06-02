@@ -41,7 +41,7 @@ interface Mission {
   incident_type?: string
   parent_mission_id?: string | null
   client_name?: string; client_phone?: string
-  billed_to_name?: string; source?: string; dossier_number?: string; external_id?: string
+  billed_to_name?: string; billed_to_id?: number | null; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
   incident_address?: string; incident_city?: string; incident_lat?: number; incident_lng?: number
   incident_description?: string; remarks_general?: string
@@ -204,6 +204,8 @@ export default function SncMissionFiche({
             destination_lat:   M.destination_lat,
             destination_lng:   M.destination_lng,
             intervention_at:   interventionAt,
+            billed_to_id:      M.billed_to_id ?? null,
+            billed_to_name:    M.billed_to_name ?? null,
           }),
           signal: ctrl.signal,
         })
@@ -272,6 +274,8 @@ export default function SncMissionFiche({
             destination_lat:   M.destination_lat,
             destination_lng:   M.destination_lng,
             intervention_at:   M.intervention_date || M.received_at || new Date().toISOString(),
+            billed_to_id:      M.billed_to_id ?? null,
+            billed_to_name:    M.billed_to_name ?? null,
           }),
         })
         const pj = await pr.json().catch(() => null)
@@ -308,6 +312,8 @@ export default function SncMissionFiche({
             incident_lat: M.incident_lat, incident_lng: M.incident_lng,
             destination_lat: M.destination_lat, destination_lng: M.destination_lng,
             intervention_at: M.intervention_date || M.received_at || new Date().toISOString(),
+            billed_to_id:    M.billed_to_id ?? null,
+            billed_to_name:  M.billed_to_name ?? null,
           }),
         })
         const pj = await pr.json().catch(() => null)

@@ -40,6 +40,10 @@ export async function POST(req: Request) {
   const destinationLat  = body.destination_lat != null ? Number(body.destination_lat) : null
   const destinationLng  = body.destination_lng != null ? Number(body.destination_lng) : null
   const interventionAt  = body.intervention_at || new Date().toISOString()
+  // SC + rem_direct : identifie l assistance facturee pour resolution du
+  // tarif km via mission_source_catalog.default_billed_to_id
+  const billedToId      = body.billed_to_id != null ? Number(body.billed_to_id) : null
+  const billedToName    = typeof body.billed_to_name === 'string' ? body.billed_to_name : null
 
   if (interventionLat == null || interventionLng == null) {
     return NextResponse.json({
@@ -60,6 +64,8 @@ export async function POST(req: Request) {
     interventionLat, interventionLng,
     destinationLat, destinationLng,
     interventionAt,
+    variant,
+    billedToId, billedToName,
   })
 
   if (!metrics) {
