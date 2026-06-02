@@ -16,6 +16,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useT }     from '@/lib/i18n/I18nProvider'
 
 type Mode = 'plate' | 'vin' | 'any'
 
@@ -63,19 +64,18 @@ function looksLikeVin(s: string): boolean {
 }
 
 export default function OcrScanModal({ mode, current, onPick, onClose }: Props) {
+  const { t } = useT()
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [hits,     setHits]     = useState<Detection[]>([])
   const [taken,    setTaken]    = useState(false)
 
-  const title  = mode === 'plate' ? 'Scan plaque'
-               : mode === 'vin'   ? 'Scan VIN'
-               : 'Scan plaque ou VIN'
-  const helper = mode === 'plate'
-    ? 'Cadre la plaque, prends une photo nette. Toutes les nationalités fonctionnent.'
-    : mode === 'vin'
-    ? 'Rogne pour isoler les 17 caractères du VIN (l\'app proposera le crop après la photo).'
-    : 'Photographie la plaque ou la plaquette du VIN — l\'app détecte les deux formats.'
+  const title  = mode === 'plate' ? t('ocr_scan.title_plate')
+               : mode === 'vin'   ? t('ocr_scan.title_vin')
+               : t('ocr_scan.title_any')
+  const helper = mode === 'plate' ? t('ocr_scan.helper_plate')
+               : mode === 'vin'   ? t('ocr_scan.helper_vin')
+               : t('ocr_scan.helper_any')
 
   async function scan() {
     setError(null); setLoading(true); setHits([]); setTaken(false)
@@ -154,12 +154,9 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
         .slice(0, 8)
 
       if (final.length === 0) {
-        setError(mode === 'vin'
-          ? 'Aucun VIN de 17 caractères trouvé. Rapproche-toi de la plaquette et rogne pour isoler uniquement le VIN.'
-          : mode === 'any'
-          ? 'Rien détecté — essaie de te rapprocher ou rogne pour isoler la plaque/VIN.'
-          : 'Aucune plaque détectée — essaie de te rapprocher ou améliore l\'éclairage'
-        )
+        setError(mode === 'vin' ? t('ocr_scan.no_results_vin')
+               : mode === 'any' ? t('ocr_scan.no_results_any')
+               : t('ocr_scan.no_results_plate'))
       } else {
         setHits(final)
       }
@@ -168,7 +165,7 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
       if (msg.includes('User cancelled') || msg.includes('canceled')) {
         // Sortie silencieuse
       } else if (msg.includes('not implemented')) {
-        setError('Scan disponible uniquement dans l\'app mobile (iOS/Android)')
+        setError(t('ocr_scan.web_only'))
       } else {
         setError(`Erreur : ${msg}`)
       }
@@ -191,7 +188,7 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
 
         {current && (
           <p className="text-ink-muted text-xs">
-            Valeur actuelle : <span className="font-mono font-bold text-ink">{current}</span>
+            {t('ocr_scan.current_value')} <span className="font-mono font-bold text-ink">{current}</span>
           </p>
         )}
 
@@ -213,7 +210,7 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
         {/* Résultats */}
         {hits.length > 0 && (
           <div className="space-y-2">
-            <p className="text-ink-muted text-xs">Choisis le bon texte :</p>
+            <p className="text-ink-muted text-xs">{t('ocr_scan.suggestions')}</p>
             {hits.map((d, i) => {
               const isLikely = (mode === 'plate' && looksLikePlate(d.text))
                              || (mode === 'vin'   && looksLikeVin(d.text))
@@ -239,7 +236,7 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
               onClick={scan}
               className="w-full py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm"
             >
-              🔄 Refaire une photo
+              {t('ocr_scan.btn_again')}
             </button>
           </div>
         )}

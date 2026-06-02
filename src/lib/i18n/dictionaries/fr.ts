@@ -396,6 +396,12 @@ export const fr = {
     switcher_subtitle:   'Modifiable à tout moment',
   },
 
+  banner: {
+    fallback_title:      'Notification',
+    open:                'Voir →',
+    close:               'Fermer',
+  },
+
   ocr_scan: {
     title_plate:         'Scan plaque',
     title_vin:           'Scan VIN',

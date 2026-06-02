@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { X, Bell, AlertTriangle, Truck, FileText, Check } from 'lucide-react'
 import { NOTIFICATION_TYPES } from '@/lib/notifications/types'
+import { useT }              from '@/lib/i18n/I18nProvider'
 
 interface NotifEvent {
   id:         string
@@ -61,6 +62,7 @@ export default function NotificationBanner({
   onDismiss:  () => void
   onMarkRead: () => void
 }) {
+  const { t } = useT()
   const [enter, setEnter] = useState(false)
 
   // Animation slide-in
@@ -83,7 +85,7 @@ export default function NotificationBanner({
   }, [notif.notif_type, onDismiss])
 
   const typeMeta  = NOTIFICATION_TYPES.find(t => t.key === notif.notif_type)
-  const title     = notif.payload?.title || typeMeta?.label || 'Notification'
+  const title     = notif.payload?.title || typeMeta?.label || t('banner.fallback_title')
   const body      = notif.payload?.body  || ''
   const actionUrl = notif.payload?.action_url
                  || (notif.payload?.mission_id ? `/dispatch/${notif.payload.mission_id}` : null)
@@ -107,7 +109,7 @@ export default function NotificationBanner({
               onClick={() => { onMarkRead() }}
               className="inline-block mt-2 text-brand text-xs font-medium hover:underline"
             >
-              Voir →
+              {t('banner.open')}
             </Link>
           )}
         </div>
@@ -115,7 +117,7 @@ export default function NotificationBanner({
           type="button"
           onClick={() => { setEnter(false); setTimeout(onDismiss, 200) }}
           className="flex-shrink-0 text-ink-muted hover:text-ink p-0.5"
-          aria-label="Fermer"
+          aria-label={t('banner.close')}
         >
           <X size={14} />
         </button>

@@ -392,6 +392,12 @@ export const sq: Dictionary = {
     switcher_subtitle:   'I ndryshueshëm në çdo kohë',
   },
 
+  banner: {
+    fallback_title:      'Njoftim',
+    open:                'Shiko →',
+    close:               'Mbyll',
+  },
+
   ocr_scan: {
     title_plate:         'Skano targën',
     title_vin:           'Skano VIN-in',
