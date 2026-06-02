@@ -118,6 +118,8 @@ export default async function AdminPage() {
           desc="Liste obligatoire à la création d'une mission Police-Saisie (défaut assurance, alcool, etc.). Apparait sur l'étiquette parc." />
         <Card href="/admin/police-zones" icon={ShieldCheck} label="Zones de police"
           desc="Liste des zones (Vesdre, Fagnes…) proposées au chauffeur lors de la création d'une mission Police. Une zone par défaut." />
+        <Card href="/admin/garage-partners" icon={Users} label="Garages partenaires"
+          desc="Comptes garages avec accès à leur espace /garage : Odoo partner ID, contact, tarifs DSP/REM/DPR. Multi-entités par email." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />
