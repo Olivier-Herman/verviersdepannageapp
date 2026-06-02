@@ -47,8 +47,11 @@ export function PwaNativeGuard({ children }: { children: React.ReactNode }) {
         <p className="text-gray-600 text-sm leading-relaxed">
           Télécharge l&apos;application iPhone en cliquant sur le lien envoyé par message pour continuer à l&apos;utiliser.
         </p>
+        <p className="text-gray-500 text-xs pt-2 border-t border-gray-100">
+          En cas de problème, contacter Mobi.
+        </p>
         <Link href="/api/auth/signout"
-          className="inline-block text-gray-400 hover:text-gray-600 text-xs underline pt-2">
+          className="inline-block text-gray-400 hover:text-gray-600 text-xs underline">
           Se déconnecter
         </Link>
       </div>
