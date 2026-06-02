@@ -128,6 +128,12 @@ export async function POST(req: Request) {
     isMalGareeDeplacementPaye ? 'in_progress' :
     'parked'
 
+  // Olivier 2026-06-02 : si le chauffeur cree une mission a paiement immediat,
+  // c est qu il est DEJA sur place (sinon il n encaisserait pas). On set
+  // on_site_at=now pour que la timeline reflete la realite et que le statut
+  // affiche soit "Sur place" plutot que "En route".
+  const onSiteAt = nowIso
+
   // Montant a encaisser
   const amount =
     isAppelPrive && amountToCollect != null && amountToCollect !== ''
@@ -163,6 +169,7 @@ export async function POST(req: Request) {
       destination_lat:     typeof destinationLat === 'number' ? destinationLat : null,
       destination_lng:     typeof destinationLng === 'number' ? destinationLng : null,
       intervention_date:   interventionISO,
+      on_site_at:          onSiteAt,
       driver_photos:       Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
       remarks_general:     remarks || null,
       police_blocked:      Boolean(policeBlocked),

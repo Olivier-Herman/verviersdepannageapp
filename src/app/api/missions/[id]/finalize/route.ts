@@ -76,6 +76,22 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const draft = (mission.draft_params || {}) as any
   const type  = String(draft.type || '')
 
+  // Olivier 2026-06-02 : determine si la mission est TERMINEE apres paiement
+  // (cas sans remorquage post-paiement) ou si le chauffeur doit encore livrer.
+  //
+  // Terminees apres paiement :
+  //   - Mal Garee deplacement_paye (juste un deplacement paye, pas de remorquage)
+  //   - SNC DSP (depannage sur place)
+  //   - Appel Prive DSP (depannage sur place)
+  //
+  // Pas terminees (chauffeur doit encore charger + livrer) :
+  //   - SNC REM client
+  //   - Appel Prive REM client
+  const isFullyDoneAfterPayment =
+    (type === 'mal_garee'   && draft.malGareeScenario === 'deplacement_paye') ||
+    (type === 'snc'         && draft.sncScenario === 'dsp') ||
+    (type === 'appel_prive' && String(draft.appelPriveType || '').toUpperCase() === 'DSP')
+
   // Recup le nom chauffeur (pour le ticket Odoo + email)
   const { data: dbUser } = await supabase
     .from('users')
@@ -159,14 +175,30 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       ? `LOCAL-${mission.mission_number}`
       : `LOCAL-${missionId.slice(0, 8)}`
 
+  const nowIso = new Date().toISOString()
+  const updatePayload: Record<string, any> = {
+    awaiting_payment: false,
+    odoo_ticket_id:   odooTicketId,
+    dossier_number:   dossierFinal,
+    updated_at:       nowIso,
+  }
+  // Si rien a faire apres paiement (depannage / deplacement paye), on passe
+  // directement la mission a 'completed' avec completed_at + payment_collected_at.
+  // Sinon (REM client : chauffeur doit encore charger + livrer), on laisse
+  // le statut tel quel et le chauffeur poursuit le flow normal de DriverClient.
+  if (isFullyDoneAfterPayment) {
+    updatePayload.status                = 'completed'
+    updatePayload.completed_at          = nowIso
+    if (!mission.payment_amount || mission.payment_amount === 0) {
+      // edge case : montant a encaisser = 0 (genre offert) — pas d insert
+      // dans interventions, mais on marque quand meme le paiement comme collecte
+      updatePayload.payment_collected_at = nowIso
+    }
+  }
+
   const { error: updErr } = await supabase
     .from('incoming_missions')
-    .update({
-      awaiting_payment: false,
-      odoo_ticket_id:   odooTicketId,
-      dossier_number:   dossierFinal,
-      updated_at:       new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', missionId)
 
   if (updErr) {
