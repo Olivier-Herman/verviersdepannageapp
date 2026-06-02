@@ -267,6 +267,110 @@
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
+<!-- 🆕 NOUVEAUTÉS — Juin 2026 -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">🆕 Nouveautés (juin 2026)</h1>
+
+<div class="function">
+ <h3><span class="num">N1</span>Encaisser avant de créer (Mal Garée déplacement payé, SNC DSP/REM client, Appel Privé DSP/REM client)</h3>
+ <p class="desc">Pour les missions où le client paye sur place avant que tu repartes, le workflow a changé : tu encaisses <strong>d'abord</strong>, et tu finalises la mission <strong>une fois le solde à zéro</strong>.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Remplis la fiche mission comme avant</li>
+ <li>Le bouton en bas n'est plus « Créer la mission » mais « 💳 Encaisser »</li>
+ <li>Tu cliques → la mission est créée en attente (pas envoyée au bureau) et tu arrives sur la fiche</li>
+ <li>Bandeau orange « ⏸ Mission en attente de paiement » s'affiche en bas</li>
+ <li>Clique sur « 💳 Encaisser le solde (XX €) » → tu vas dans /encaissement avec le montant pré-rempli</li>
+ <li>Tu peux encaisser en plusieurs fois (ex : 60 € en espèces + 65 € en SumUp). Le solde restant se met à jour automatiquement</li>
+ <li>Une fois le solde = 0, le bouton devient « ✅ Finaliser la mission » → tu cliques → le bureau est notifié + la mission passe en « Terminée »</li>
+ </ol>
+ <div class="tip">💡 Tant que la mission est « en attente de paiement », elle n'apparait pas dans le dispatch et personne n'est notifié. Pour finaliser, le client <strong>doit</strong> avoir payé l'intégralité.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N2</span>Avance de fonds — accessible depuis le menu « Autres actions »</h3>
+ <p class="desc">L'avance de fonds n'est plus affichée en gros sur la fiche mission dès le début. Elle est maintenant <strong>accessible quand tu es sur place</strong>, via le menu « ☰ Autres actions » en bas.</p>
+ <p class="label">Comment y accéder</p>
+ <ol>
+ <li>Sur la fiche d'une mission en cours, sur place ou plus avancé</li>
+ <li>Clique sur « ☰ Autres actions » en bas</li>
+ <li>Grille s'ouvre → tile « 💰 Avance de fonds » (indigo)</li>
+ <li>Clique → tu vas dans /avance-fonds avec la plaque + véhicule + référence mission pré-remplis</li>
+ </ol>
+</div>
+
+<div class="function">
+ <h3><span class="num">N3</span>Changer de dépanneuse — TruckSwitcher dans Mes Missions</h3>
+ <p class="desc">Tu peux changer ta dépanneuse à tout moment depuis le haut de ta page « Mes Missions », sans attendre le modal de confirmation 7h/17h.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Va dans « Mes Missions » (icône 🚗 dans la barre de gauche)</li>
+ <li>En haut, tu vois ta dépanneuse actuelle : nom + plaque + bouton « Changer »</li>
+ <li>Clique → modal avec toutes les dépanneuses disponibles. Ta dépanneuse actuelle est marquée « ✓ Actuelle »</li>
+ <li>Clique sur une autre → c'est immédiatement enregistré</li>
+ </ol>
+ <div class="tip">💡 Le modal de confirmation 7h/17h s'affiche toujours en début/fin de service pour vérifier que tu utilises la bonne dépanneuse.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N4</span>Langue d'affichage — version bilingue Albanais</h3>
+ <p class="desc">L'app peut être affichée en Albanais (Shqip) pour les chauffeurs qui le préfèrent. En mode Albanais, le texte français est affiché en plus petit entre parenthèses — utile si quelqu'un t'aide à utiliser l'app.</p>
+ <p class="label">Comment changer de langue</p>
+ <ol>
+ <li>Va dans « Mon Profil »</li>
+ <li>Section « 🌍 Langue d'affichage »</li>
+ <li>Clique sur « Shqip » → toute l'app passe en bilingue Albanais (français)</li>
+ </ol>
+ <div class="tip">💡 La saisie reste en français : plaques, VIN, motifs, adresses… seul l'affichage des libellés est bilingue.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N5</span>Notifications par rôle — désactivables quand tu changes de casquette</h3>
+ <p class="desc">Si tu es à la fois chauffeur et dispatcher (par exemple Matthieu), tu peux <strong>désactiver d'un coup</strong> toutes les notifications d'un rôle quand tu bosses dans l'autre.</p>
+ <p class="label">Comment ça marche</p>
+ <ol>
+ <li>Va dans « Mon Profil » → section « Préférences de notifications »</li>
+ <li>Tu vois jusqu'à 2 toggles selon ton profil :
+   <ul>
+     <li>🚗 <strong>Notifications chauffeur</strong> — mission assignée, modifiée, etc.</li>
+     <li>🚨 <strong>Notifications dispatcher</strong> — nouvelles missions, dérogations, alertes admin</li>
+   </ul>
+ </li>
+ <li>Désactive le rôle que tu ne veux pas être interrompu</li>
+ </ol>
+ <div class="tip">💡 Les notifications « 💵 Finance » (transferts de caisse) sont toujours actives — elles sont essentielles et ne peuvent pas être désactivées.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N6</span>Mal Garée chargement — pas d'encaissement à la création</h3>
+ <p class="desc">Pour les Mal Garée que tu emportes au parc, on ne te propose plus de bouton « Encaisser maintenant » à la création. Le client paiera quand il vient récupérer son véhicule (via la recherche plaque ou le scan du QR de l'étiquette).</p>
+ <p class="label">Workflow Mal Garée</p>
+ <ul>
+ <li><strong>Mal Garée chargement</strong> (mise en parc) → tu crées la mission → message « Mission créée » → retour dashboard automatique. Aucun encaissement à ce stade.</li>
+ <li><strong>Mal Garée déplacement payé 125 €</strong> (client paie sur place, on repart) → workflow encaisser-avant-créer (cf N1)</li>
+ </ul>
+</div>
+
+<div class="function">
+ <h3><span class="num">N7</span>Nouvelles étiquettes parc (Mal Garée, Rodéo, AVP, Accident, Saisie, Privé, SNC)</h3>
+ <p class="desc">Toutes les missions qui partent en parc impriment maintenant une étiquette du nouveau format VD Soft (le QR pointe vers le hub VD Soft, plus vers Odoo). La note imprimée dépend du type de mission :</p>
+ <ul>
+ <li><strong>Mal Garée chargement</strong> : « Pas de blocage » ou « Blocage par police » selon la case cochée</li>
+ <li><strong>Rodéo</strong> : « Restitution à partir du JJ/MM/AA avec LEVEE DE SAISIE uniquement » (J+3)</li>
+ <li><strong>Police Accident</strong> : pas de note (juste motif + plaque + véhicule)</li>
+ <li><strong>Police Saisie</strong> : « Zone de police - Nom du policier » si renseignés</li>
+ <li><strong>AVP</strong> : « AVP DD-MM-YYYY » (date d'éligibilité destruction = J+60)</li>
+ </ul>
+ <div class="tip">💡 Si tu veux modifier ou réimprimer une étiquette, va sur la fiche mission → action « Imprimer » (côté admin/fourrière).</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N8</span>Photos non requises pour les missions sans chargement (DPR + Mal Garée déplacement payé)</h3>
+ <p class="desc">Pour les missions où tu ne charges pas et où tu ne dépannes pas (= type « trajet vide »), tu n'as <strong>pas besoin de prendre 3 photos</strong> pour terminer. Le bouton « Terminer » est directement disponible.</p>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────── -->
 <!-- A. FONCTIONS COMMUNES -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">A. Fonctions communes</h1>

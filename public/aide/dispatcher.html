@@ -112,6 +112,50 @@
 <!-- ─────────────────────────────────────────────────────── -->
 <!-- A. COMMUNES -->
 <!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">🆕 Nouveautés (juin 2026)</h1>
+
+<div class="function">
+ <h3><span class="num">N1</span>Workflow encaisser-avant-créer côté chauffeur</h3>
+ <p class="desc">Quand un chauffeur crée une mission avec paiement immédiat obligatoire (Mal Garée déplacement payé, SNC DSP/REM client, Appel Privé DSP/REM client), la mission est créée en mode <strong>« en attente de paiement »</strong> (awaiting_payment=true) et <strong>n'est pas envoyée à TowSoft / Odoo / email</strong> tant qu'elle n'est pas finalisée.</p>
+ <p class="label">Ce qui se passe côté dispatch</p>
+ <ol>
+ <li>Le chauffeur clique « Encaisser » → mission créée en draft, awaiting_payment=true</li>
+ <li>Tant qu'elle est dans cet état, elle est <strong>invisible côté dispatch</strong> (pas dans le pipeline)</li>
+ <li>Aucune notif push, aucun email police, aucun ticket Helpdesk Odoo</li>
+ <li>Le chauffeur encaisse le solde (en une ou plusieurs fois)</li>
+ <li>Une fois solde = 0, il clique « Finaliser » → la mission devient visible dans le dispatch + ticket Helpdesk Odoo créé + email d'alerte envoyé</li>
+ </ol>
+ <div class="tip">💡 Si une mission reste en awaiting_payment trop longtemps (chauffeur abandonne), elle est visible via /admin/missions avec ce filtre. À nettoyer manuellement si nécessaire.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N2</span>Étiquettes parc — nouveau format VD Soft</h3>
+ <p class="desc">Toutes les missions qui partent en parc impriment maintenant le nouveau format VD Soft (QR vers hub VD Soft, template centralisé dans /admin/labels). Notes spécifiques par type :</p>
+ <ul>
+ <li><strong>Mal Garée</strong> : « Pas de blocage » / « Blocage par police »</li>
+ <li><strong>Rodéo</strong> : « Restitution à partir du J+3 avec LEVEE DE SAISIE uniquement »</li>
+ <li><strong>Police Accident</strong> : note vide</li>
+ <li><strong>Police Saisie</strong> : « Zone de police - Nom du policier » si renseignés</li>
+ <li><strong>AVP</strong> : « AVP DD-MM-YYYY » (J+60 éligibilité destruction)</li>
+ </ul>
+ <div class="tip">⚠️ Pendant la transition, le callback Odoo imprime ENCORE l'ancienne étiquette pour certains types. À désactiver côté Odoo (module Helpdesk) une fois validé.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N3</span>Zones de police gérées depuis /admin/police-zones</h3>
+ <p class="desc">Tu peux ajouter / modifier / supprimer / définir une zone par défaut depuis <strong>/admin → Zones de police</strong>. Plus de hardcode.</p>
+</div>
+
+<div class="function">
+ <h3><span class="num">N4</span>Notifications par rôle dans /profil</h3>
+ <p class="desc">Les préférences de notifications sont maintenant <strong>par rôle</strong>. Un user multi-rôle peut désactiver d'un coup toutes les notifs d'un rôle quand il bosse dans l'autre. Toggles : 🚗 Chauffeur · 🚨 Dispatcher. Les notifs Finance restent toujours actives.</p>
+</div>
+
+<div class="function">
+ <h3><span class="num">N5</span>App Android + iOS distribuables</h3>
+ <p class="desc">L'app native est dispo : iOS via App Store (lien Unlisted), Android via <strong>app.verviersdepannage.com/downloads/android</strong> (APK direct). Page d'onboarding propre : <strong>app.verviersdepannage.com/download</strong> avec QR code.</p>
+</div>
+
 <h1 class="section">A. Fonctions communes</h1>
 
 <div class="function">

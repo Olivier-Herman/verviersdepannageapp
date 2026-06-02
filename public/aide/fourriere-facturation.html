@@ -122,6 +122,46 @@
 <!-- ─────────────────────────────────────────────────────── -->
 <!-- A. COMMUNES (copie depuis driver, abrégé) -->
 <!-- ─────────────────────────────────────────────────────── -->
+<h1 class="section">🆕 Nouveautés (juin 2026)</h1>
+
+<div class="function">
+ <h3><span class="num">N1</span>Étiquettes parc — tout en nouveau format VD Soft</h3>
+ <p class="desc">Toutes les missions qui partent en parc impriment maintenant le nouveau format VD Soft directement (QR vers hub VD Soft, template centralisé dans <strong>/admin/labels</strong>). Plus de dépendance Odoo pour la génération.</p>
+ <p class="label">Notes spécifiques par type</p>
+ <ul>
+ <li><strong>Mal Garée chargement</strong> : « Pas de blocage » / « Blocage par police » selon la case cochée à la création</li>
+ <li><strong>Rodéo</strong> : « Restitution à partir du JJ/MM/AA avec LEVEE DE SAISIE uniquement » (date d'intervention + 3 jours)</li>
+ <li><strong>Police Accident</strong> : note vide</li>
+ <li><strong>Police Saisie</strong> : « Zone de police - Nom du policier » si renseignés</li>
+ <li><strong>AVP</strong> : « AVP DD-MM-YYYY » (date+60j éligibilité destruction)</li>
+ <li><strong>SNC depot + Privé depot</strong> : adresse de relivraison si fournie, sinon « En attente d'info adresse de relivraison »</li>
+ </ul>
+ <div class="tip">⚠️ Pendant la transition, le callback Odoo imprime ENCORE l'ancienne étiquette pour certains types → double impression possible. À désactiver côté Odoo (module Helpdesk) une fois validé.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">N2</span>Réimprimer une étiquette via /api/missions/[id]/reprint-label</h3>
+ <p class="desc">Pour réimprimer une étiquette parc avec le nouveau format à n'importe quel moment, depuis la console du navigateur (F12) connecté admin :</p>
+ <pre style="background:#f4f4f4;padding:8pt;border-radius:4pt;font-size:9pt;">fetch('/api/missions/MISSION_ID/reprint-label', { method: 'POST' })
+  .then(r =&gt; r.json()).then(console.log)</pre>
+ <p>Remplace MISSION_ID par l'UUID de la mission. Réponse : <code>{ok:true}</code> + étiquette sort sur la Zebra.</p>
+</div>
+
+<div class="function">
+ <h3><span class="num">N3</span>Mal Garée chargement — paiement à la restitution (pas à la création)</h3>
+ <p class="desc">Pour les Mal Garée que le chauffeur met en parc, il n'y a <strong>plus de proposition d'encaissement à la création</strong>. Le paiement se fera quand le client vient récupérer son véhicule, via la recherche plaque ou le scan QR de l'étiquette parc.</p>
+ <p class="label">Workflow Mal Garée à 2 cas</p>
+ <ul>
+ <li><strong>Mal Garée chargement</strong> (mise en parc) → mission créée + étiquette imprimée + statut « En dépôt ». Le chauffeur retourne au dashboard.</li>
+ <li><strong>Mal Garée déplacement payé 125 €</strong> (client paie sur place, pas de chargement) → workflow encaisser-avant-créer côté chauffeur (cf nouveautés driver).</li>
+ </ul>
+</div>
+
+<div class="function">
+ <h3><span class="num">N4</span>Zones de police gérées depuis /admin/police-zones</h3>
+ <p class="desc">Tu peux ajouter / modifier / supprimer / définir une zone par défaut depuis <strong>/admin → Zones de police</strong>. La liste alimente le formulaire chauffeur (création mission Police) et la note de l'étiquette Saisie.</p>
+</div>
+
 <h1 class="section">A. Fonctions communes</h1>
 
 <div class="function">
