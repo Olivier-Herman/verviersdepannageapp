@@ -103,6 +103,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   const [userAuthProvider, setUserAuthProvider] = useState('email_password')
   const [userTgrPush,      setUserTgrPush]      = useState(false)
   const [userHasOdooAccess, setUserHasOdooAccess] = useState(false)
+  const [userForceNative,  setUserForceNative]  = useState(false)
   const [userOdooApiKey,   setUserOdooApiKey]   = useState('')
   const [userOdooUid,      setUserOdooUid]      = useState('')
   const [showOdooKey,      setShowOdooKey]      = useState(false)
@@ -134,6 +135,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
     setUserAuthProvider(user.auth_provider || 'email_password')
     setUserTgrPush(!!user.tgr_push_notify)
     setUserHasOdooAccess(!!user.has_odoo_access)
+    setUserForceNative(!!user.force_native_app)
     setUserOdooApiKey(user.odoo_api_key || '')
     setUserOdooUid(user.odoo_uid ? String(user.odoo_uid) : '')
     setShowOdooKey(false)
@@ -198,6 +200,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           modules:         userModules,
           tgr_push_notify: userTgrPush,
           has_odoo_access: userHasOdooAccess,
+          force_native_app: userForceNative,
           odoo_api_key:    userOdooApiKey.trim() || null,
           odoo_uid:        userOdooUid.trim() ? parseInt(userOdooUid) : null,
           odoo_partner_id: userOdooId ? parseInt(userOdooId) : null,
@@ -437,6 +440,18 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
             <p className="text-ink-faint text-xs mt-0.5">Accès au PIN de validation caisse</p>
           </div>
           <Toggle value={userCanVerify} onChange={() => setUserCanVerify(!userCanVerify)} />
+        </div>
+      </div>
+
+      {/* ── App native obligatoire (Olivier 2026-06-02) ── */}
+      <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
+        <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Accès chauffeur</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <span className="block text-ink-muted text-xs font-semibold uppercase tracking-wider">Forcer l&apos;app native</span>
+            <p className="text-ink-faint text-xs mt-0.5">Si activé : ce chauffeur ne pourra utiliser que l&apos;app iOS native (page « version obsolète » s&apos;il essaie depuis Safari / PWA). Effet uniquement pour rôle = driver pur.</p>
+          </div>
+          <Toggle value={userForceNative} onChange={() => setUserForceNative(!userForceNative)} />
         </div>
       </div>
 
