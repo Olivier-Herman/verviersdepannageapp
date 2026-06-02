@@ -26,7 +26,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
   { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
-  { href: '/admin/trucks',      label: 'Dépanneuses',         icon: '🚚', moduleId: 'admin' },
+  // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
+  // secondaire, accessible via /admin → tuile + AdminNav latérale).
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/stats',             label: 'Statistiques',        icon: '📊', moduleId: 'stats' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
