@@ -2495,8 +2495,6 @@ export default function MissionDetailClient({
                   </Field>
                   <p className="text-amber-900 text-xs mt-2">
                     À utiliser uniquement si tu as convenu d&apos;un prix spécifique avec le client / l&apos;assistance.
-                    À la facturation, une <strong>seule ligne SERV-DIV</strong> sera générée avec la description
-                    <em> « Intervention suivant prix convenu »</em>. Le tarif normalement calculé sera ignoré.
                   </p>
                   {form.special_tarif_htva && Number(form.special_tarif_htva) > 0 && (
                     <p className="text-amber-900 text-xs mt-1 font-semibold">
