@@ -72,15 +72,24 @@ export async function POST(req: NextRequest) {
   }).select().single()
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
 
-  // Tarifs (optionnels a la creation, completables apres)
+  // Tarifs (optionnels a la creation, completables apres). 3 valeurs par
+  // type d intervention : prise_en_charge + km_inclus + km_price.
   const tariffs = body.tariffs || {}
+  const num = (v: any) => v != null && v !== '' ? Number(v) : null
+  const int = (v: any) => v != null && v !== '' ? parseInt(v, 10) || 0 : 0
   const { data: t, error: tErr } = await sb.from('garage_tariffs').upsert({
-    garage_partner_id: partner.id,
-    dsp_price: tariffs.dsp_price != null && tariffs.dsp_price !== '' ? Number(tariffs.dsp_price) : null,
-    rem_price: tariffs.rem_price != null && tariffs.rem_price !== '' ? Number(tariffs.rem_price) : null,
-    dpr_price: tariffs.dpr_price != null && tariffs.dpr_price !== '' ? Number(tariffs.dpr_price) : null,
-    currency:  tariffs.currency || 'EUR',
-    updated_at: new Date().toISOString(),
+    garage_partner_id:   partner.id,
+    dsp_prise_en_charge: num(tariffs.dsp_prise_en_charge),
+    dsp_km_inclus:       int(tariffs.dsp_km_inclus),
+    dsp_km_price:        num(tariffs.dsp_km_price),
+    rem_prise_en_charge: num(tariffs.rem_prise_en_charge),
+    rem_km_inclus:       int(tariffs.rem_km_inclus),
+    rem_km_price:        num(tariffs.rem_km_price),
+    dpr_prise_en_charge: num(tariffs.dpr_prise_en_charge),
+    dpr_km_inclus:       int(tariffs.dpr_km_inclus),
+    dpr_km_price:        num(tariffs.dpr_km_price),
+    currency:            tariffs.currency || 'EUR',
+    updated_at:          new Date().toISOString(),
   }).select().single()
   if (tErr) console.error('[garage-partners] tariffs upsert failed:', tErr.message)
 
@@ -119,16 +128,24 @@ export async function PATCH(req: NextRequest) {
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
   }
 
-  // Patch garage_tariffs (upsert)
+  // Patch garage_tariffs (upsert) - structure prise_en_charge + km
   if (body.tariffs) {
     const t = body.tariffs
+    const num = (v: any) => v != null && v !== '' ? Number(v) : null
+    const int = (v: any) => v != null && v !== '' ? parseInt(v, 10) || 0 : 0
     const { error: tErr } = await sb.from('garage_tariffs').upsert({
-      garage_partner_id: id,
-      dsp_price: t.dsp_price != null && t.dsp_price !== '' ? Number(t.dsp_price) : null,
-      rem_price: t.rem_price != null && t.rem_price !== '' ? Number(t.rem_price) : null,
-      dpr_price: t.dpr_price != null && t.dpr_price !== '' ? Number(t.dpr_price) : null,
-      currency:  t.currency || 'EUR',
-      updated_at: new Date().toISOString(),
+      garage_partner_id:   id,
+      dsp_prise_en_charge: num(t.dsp_prise_en_charge),
+      dsp_km_inclus:       int(t.dsp_km_inclus),
+      dsp_km_price:        num(t.dsp_km_price),
+      rem_prise_en_charge: num(t.rem_prise_en_charge),
+      rem_km_inclus:       int(t.rem_km_inclus),
+      rem_km_price:        num(t.rem_km_price),
+      dpr_prise_en_charge: num(t.dpr_prise_en_charge),
+      dpr_km_inclus:       int(t.dpr_km_inclus),
+      dpr_km_price:        num(t.dpr_km_price),
+      currency:            t.currency || 'EUR',
+      updated_at:          new Date().toISOString(),
     })
     if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 })
   }

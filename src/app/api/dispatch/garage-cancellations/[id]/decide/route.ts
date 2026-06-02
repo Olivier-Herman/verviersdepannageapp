@@ -50,12 +50,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .update({ status: 'cancelled', amount_to_collect: 0, updated_at: nowIso })
       .eq('id', cr.mission_id)
   } else if (decision === 'approved_billing_dpr') {
-    // Recup tarif DPR (fallback DSP)
+    // Recup tarif DPR (fallback DSP). Au stade annulation, pas de km reels
+    // a integrer → on facture juste la prise en charge.
     const { data: t } = await sb.from('garage_tariffs')
-      .select('dsp_price, dpr_price')
+      .select('dsp_prise_en_charge, dpr_prise_en_charge')
       .eq('garage_partner_id', cr.requested_by_garage_id)
       .maybeSingle()
-    const dprPrice = t?.dpr_price ?? t?.dsp_price ?? null
+    const dprPrice = t?.dpr_prise_en_charge ?? t?.dsp_prise_en_charge ?? null
     await sb.from('incoming_missions')
       .update({
         status:            'completed',

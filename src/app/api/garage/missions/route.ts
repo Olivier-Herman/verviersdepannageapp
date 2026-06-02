@@ -94,14 +94,16 @@ export async function POST(req: Request) {
     .maybeSingle()
   if (!partner) return NextResponse.json({ error: 'Partner introuvable' }, { status: 400 })
 
-  // Recup tarif applicable
+  // Recup tarif applicable. A la creation, on stocke uniquement la
+  // prise_en_charge (= forfait min). Le calcul km se fera a la finalisation
+  // quand on aura la distance reelle (km releves cote chauffeur ou maps).
   const { data: tariffs } = await sb
     .from('garage_tariffs')
-    .select('dsp_price, rem_price, dpr_price')
+    .select('dsp_prise_en_charge, rem_prise_en_charge, dpr_prise_en_charge')
     .eq('garage_partner_id', partnerId)
     .maybeSingle()
 
-  const tariffPrice = type === 'DSP' ? tariffs?.dsp_price : tariffs?.rem_price
+  const tariffPrice = type === 'DSP' ? tariffs?.dsp_prise_en_charge : tariffs?.rem_prise_en_charge
 
   const nowIso     = new Date().toISOString()
   const externalId = `GRG-${Date.now().toString(36).toUpperCase()}`

@@ -8,10 +8,16 @@ import { useRouter }  from 'next/navigation'
 import Link           from 'next/link'
 
 interface Tariffs {
-  dsp_price: number | null
-  rem_price: number | null
-  dpr_price: number | null
-  currency:  string
+  dsp_prise_en_charge: number | null
+  dsp_km_inclus:       number
+  dsp_km_price:        number | null
+  rem_prise_en_charge: number | null
+  rem_km_inclus:       number
+  rem_km_price:        number | null
+  dpr_prise_en_charge: number | null
+  dpr_km_inclus:       number
+  dpr_km_price:        number | null
+  currency:            string
 }
 
 interface Partner {
@@ -31,7 +37,12 @@ interface Partner {
 const EMPTY: Partial<Partner> = {
   name: '', odoo_partner_id: null, contact_email: '', contact_phone: '',
   address: '', notes: '', active: true,
-  tariffs: { dsp_price: null, rem_price: null, dpr_price: null, currency: 'EUR' },
+  tariffs: {
+    dsp_prise_en_charge: null, dsp_km_inclus: 0, dsp_km_price: null,
+    rem_prise_en_charge: null, rem_km_inclus: 0, rem_km_price: null,
+    dpr_prise_en_charge: null, dpr_km_inclus: 0, dpr_km_price: null,
+    currency: 'EUR',
+  },
 }
 
 function fmtEur(v: number | null): string {
@@ -136,22 +147,26 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
                       {p.contact_phone && <p>📞 {p.contact_phone}</p>}
                     </div>
                     <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                      <div className="bg-surface-2 rounded-lg px-2 py-1.5 text-center">
-                        <p className="text-ink-faint text-[10px] uppercase">DSP</p>
-                        <p className="text-ink font-semibold">{fmtEur(p.tariffs.dsp_price)}</p>
-                      </div>
-                      <div className="bg-surface-2 rounded-lg px-2 py-1.5 text-center">
-                        <p className="text-ink-faint text-[10px] uppercase">REM</p>
-                        <p className="text-ink font-semibold">{fmtEur(p.tariffs.rem_price)}</p>
-                      </div>
-                      <div className="bg-surface-2 rounded-lg px-2 py-1.5 text-center">
-                        <p className="text-ink-faint text-[10px] uppercase">DPR</p>
-                        <p className="text-ink font-semibold">
-                          {p.tariffs.dpr_price != null
-                            ? fmtEur(p.tariffs.dpr_price)
-                            : <span className="text-ink-faint italic text-[10px]">= DSP</span>}
-                        </p>
-                      </div>
+                      {(['dsp', 'rem', 'dpr'] as const).map(k => {
+                        const pec = (p.tariffs as any)[`${k}_prise_en_charge`]
+                        const inc = (p.tariffs as any)[`${k}_km_inclus`]
+                        const kp  = (p.tariffs as any)[`${k}_km_price`]
+                        return (
+                          <div key={k} className="bg-surface-2 rounded-lg px-2 py-1.5 text-center">
+                            <p className="text-ink-faint text-[10px] uppercase">{k.toUpperCase()}</p>
+                            {pec != null
+                              ? <>
+                                  <p className="text-ink font-semibold leading-tight">{fmtEur(pec)}</p>
+                                  <p className="text-ink-muted text-[10px] mt-0.5">
+                                    {inc} km incl. · {kp != null ? `${Number(kp).toFixed(2)} €/km` : '—'}
+                                  </p>
+                                </>
+                              : k === 'dpr'
+                                ? <p className="text-ink-faint italic text-[10px] mt-0.5">= DSP</p>
+                                : <p className="text-ink-faint italic text-[10px] mt-0.5">—</p>}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                   <div className="flex flex-col gap-2 flex-shrink-0">
@@ -226,31 +241,44 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
             </div>
 
             <div className="border-t pt-3 mt-3">
-              <p className="text-ink-muted text-xs font-semibold uppercase mb-2">💰 Tarifs (TVAC)</p>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-ink-muted text-xs font-semibold mb-1.5">DSP</label>
-                  <input type="number" step="0.01" value={editing.tariffs?.dsp_price ?? ''}
-                    onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), dsp_price: e.target.value === '' ? null : parseFloat(e.target.value) } })}
-                    placeholder="125.00"
-                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
-                </div>
-                <div>
-                  <label className="block text-ink-muted text-xs font-semibold mb-1.5">REM</label>
-                  <input type="number" step="0.01" value={editing.tariffs?.rem_price ?? ''}
-                    onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), rem_price: e.target.value === '' ? null : parseFloat(e.target.value) } })}
-                    placeholder="180.00"
-                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
-                </div>
-                <div>
-                  <label className="block text-ink-muted text-xs font-semibold mb-1.5">DPR</label>
-                  <input type="number" step="0.01" value={editing.tariffs?.dpr_price ?? ''}
-                    onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), dpr_price: e.target.value === '' ? null : parseFloat(e.target.value) } })}
-                    placeholder="(vide = DSP)"
-                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
-                </div>
-              </div>
-              <p className="text-ink-faint text-[10px] mt-1.5">DPR (déplacement pour rien) utilisé pour annulation post-acceptation. Si vide → fallback DSP.</p>
+              <p className="text-ink-muted text-xs font-semibold uppercase mb-2">💰 Tarifs (TVAC) · Prise en charge + km</p>
+              {(['dsp', 'rem', 'dpr'] as const).map(k => {
+                const label = k === 'dsp' ? 'DSP — Dépannage sur place'
+                            : k === 'rem' ? 'REM — Remorquage'
+                            : 'DPR — Déplacement pour rien (annulation tardive)'
+                return (
+                  <div key={k} className="mb-3">
+                    <p className="text-ink text-xs font-semibold mb-1.5">{label}</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-ink-muted text-[10px] mb-1">Prise en charge €</label>
+                        <input type="number" step="0.01"
+                          value={(editing.tariffs as any)?.[`${k}_prise_en_charge`] ?? ''}
+                          onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), [`${k}_prise_en_charge`]: e.target.value === '' ? null : parseFloat(e.target.value) } })}
+                          placeholder={k === 'dpr' ? '(vide = DSP)' : '125.00'}
+                          className="w-full bg-surface-2 border rounded-xl px-2 py-1.5 text-ink text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-ink-muted text-[10px] mb-1">Km inclus</label>
+                        <input type="number"
+                          value={(editing.tariffs as any)?.[`${k}_km_inclus`] ?? 0}
+                          onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), [`${k}_km_inclus`]: parseInt(e.target.value, 10) || 0 } })}
+                          placeholder="0"
+                          className="w-full bg-surface-2 border rounded-xl px-2 py-1.5 text-ink text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-ink-muted text-[10px] mb-1">€ / km</label>
+                        <input type="number" step="0.01"
+                          value={(editing.tariffs as any)?.[`${k}_km_price`] ?? ''}
+                          onChange={e => setEditing({ ...editing, tariffs: { ...(editing.tariffs || EMPTY.tariffs!), [`${k}_km_price`]: e.target.value === '' ? null : parseFloat(e.target.value) } })}
+                          placeholder="2.50"
+                          className="w-full bg-surface-2 border rounded-xl px-2 py-1.5 text-ink text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <p className="text-ink-faint text-[10px] mt-1">DPR (déplacement pour rien) utilisé pour annulation post-acceptation. Si Prise en charge vide → fallback DSP.</p>
             </div>
 
             <label className="flex items-center gap-2 text-ink-secondary text-sm pt-2">
