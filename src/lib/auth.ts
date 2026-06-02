@@ -390,7 +390,7 @@ export const authOptions: NextAuthOptions = {
               loadModules(token.id as string),
               loadOdooAccess(token.id as string),
               loadNavOrder(token.id as string),
-              supabase.from('users').select('name, email, avatar_url, audio_mode, language').eq('id', token.id).maybeSingle(),
+              supabase.from('users').select('name, email, avatar_url, audio_mode, language, must_change_password').eq('id', token.id).maybeSingle(),
             ])
             ;(session.user as any).modules        = fresh
             ;(session.user as any).hasOdooAccess  = odooAccess
@@ -401,6 +401,11 @@ export const authOptions: NextAuthOptions = {
               session.user.image = dbUser.data.avatar_url || session.user.image
               ;(session.user as any).audioMode = !!dbUser.data.audio_mode
               ;(session.user as any).language  = dbUser.data.language || 'fr'
+              // Olivier 2026-06-02 : re-fetch must_change_password depuis BDD
+              // (sinon le JWT garde l ancienne valeur et le middleware
+              // continue de rediriger vers /set-password apres update).
+              ;(session.user as any).mustChangePassword = !!dbUser.data.must_change_password
+              token.mustChangePassword = !!dbUser.data.must_change_password
             } else {
               ;(session.user as any).audioMode = false
               ;(session.user as any).language  = 'fr'
