@@ -31,8 +31,13 @@ export default function AutoDispatchButton({
   // Filtre type mission
   if (!missionType || !AUTO_DISPATCH_TYPES.includes(missionType)) return null
 
-  // Filtre permission
-  const allowed = ['admin', 'superadmin', 'dispatcher'].includes(userRole)
+  // Filtre permission — Olivier 2026-06-02 PM : retire le fallback dispatcher.
+  // Avant : tout dispatcher voyait le bouton meme sans module active. Momo
+  // signale le bug : "Auto dispatch n est pas active pour momo et pourtant
+  // il voit les bouton Auto sur les fiches".
+  // Maintenant : strict module auto_dispatch requis (admin/superadmin gardent
+  // l acces par defaut car ils ont tout).
+  const allowed = ['admin', 'superadmin'].includes(userRole)
                 || userModules.includes('auto_dispatch')
   if (!allowed) return null
 
