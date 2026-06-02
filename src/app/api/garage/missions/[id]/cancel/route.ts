@@ -49,6 +49,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await sb.from('incoming_missions')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', m.id)
+    // Notif email garage (confirmation annulation directe)
+    try {
+      const { notifyGarageOfMissionEvent } = await import('@/lib/notifications/garage')
+      await notifyGarageOfMissionEvent(m.id, 'cancelled_direct')
+    } catch { /* silent */ }
     return NextResponse.json({
       ok: true,
       direct: true,

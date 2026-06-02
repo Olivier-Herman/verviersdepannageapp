@@ -81,6 +81,13 @@ export async function POST(req: Request) {
       metadata:  { driver_id, driver_name: driver?.name }
     })
 
+    // Olivier 2026-06-02 : si mission demandee par un garage, notifier le garage
+    // que la mission est acceptee (best-effort, log silencieux).
+    try {
+      const { notifyGarageOfMissionEvent } = await import('@/lib/notifications/garage')
+      await notifyGarageOfMissionEvent(mission_id, 'accepted')
+    } catch (e) { /* silent */ }
+
     // Assignation directe depuis "En commande" (status='new') = confirmation
     // implicite : on cree le dossier Odoo comme le ferait /api/missions/confirm.
     // Best effort, non bloquant — si echec, "Creer dossier Odoo" reste dispo

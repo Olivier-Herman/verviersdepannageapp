@@ -78,5 +78,24 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .eq('id', params.id)
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
 
+  // Notif garage : selon decision
+  try {
+    const { notifyGarageOfMissionEvent } = await import('@/lib/notifications/garage')
+    const eventMap: Record<string, any> = {
+      approved_total:       'cancellation_approved_total',
+      approved_billing_dpr: 'cancellation_approved_dpr',
+      refused:              'cancellation_refused',
+    }
+    const ev = eventMap[decision]
+    if (ev) {
+      const opts: any = { decisionNote: note }
+      if (decision === 'approved_billing_dpr') {
+        const { data: m } = await sb.from('incoming_missions').select('amount_to_collect').eq('id', cr.mission_id).maybeSingle()
+        opts.amountDpr = m?.amount_to_collect ?? null
+      }
+      await notifyGarageOfMissionEvent(cr.mission_id, ev, opts)
+    }
+  } catch { /* silent */ }
+
   return NextResponse.json({ ok: true, decision })
 }
