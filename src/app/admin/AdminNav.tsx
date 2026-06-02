@@ -24,10 +24,13 @@ const GROUPS: NavGroup[] = [
   {
     title: 'Référentiel',
     items: [
-      { href: '/admin/sources',      label: 'Sources',      icon: Tag },
-      { href: '/admin/depots',       label: 'Dépôts',       icon: MapPin },
-      { href: '/admin/users',        label: 'Utilisateurs', icon: Users },
-      { href: '/admin/vr-locations', label: 'Lieux VR',     icon: Car },
+      { href: '/admin/sources',        label: 'Sources',         icon: Tag },
+      { href: '/admin/depots',         label: 'Dépôts',          icon: MapPin },
+      { href: '/admin/trucks',         label: 'Dépanneuses',     icon: Truck },
+      { href: '/admin/saisie-motifs',  label: 'Motifs de saisie', icon: Tag },
+      { href: '/admin/police-zones',   label: 'Zones de police', icon: ShieldCheck },
+      { href: '/admin/users',          label: 'Utilisateurs',    icon: Users },
+      { href: '/admin/vr-locations',   label: 'Lieux VR',        icon: Car },
     ],
   },
   {
