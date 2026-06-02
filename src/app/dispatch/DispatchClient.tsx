@@ -832,15 +832,23 @@ export default function DispatchClient({
 
   // ── Filtrage client-side ──────────────────────────────────────────────────
 
+  // Olivier 2026-06-03 : recherche elargie marque/modele + plaque normalisee.
+  // Plaque comparee SANS tirets/espaces dans les 2 sens pour matcher "1ABC123"
+  // qu on tape "1-ABC-123" ou inversement.
+  const normPlate = (s: string) => s.replace(/[-.\s]/g, '').toLowerCase()
   const filtered = missions.filter(m => {
     if (!search) return true
-    const q = search.toLowerCase()
+    const q     = search.toLowerCase()
+    const qPlate = normPlate(search)
+    const plate  = m.vehicle_plate ? normPlate(m.vehicle_plate) : ''
     return (
-      m.client_name?.toLowerCase().includes(q) ||
-      m.external_id?.toLowerCase().includes(q)  ||
-      m.mission_number?.toString().includes(q)  ||
-      m.vehicle_plate?.toLowerCase().includes(q) ||
-      m.incident_address?.toLowerCase().includes(q)
+      m.client_name?.toLowerCase().includes(q)        ||
+      m.external_id?.toLowerCase().includes(q)        ||
+      m.mission_number?.toString().includes(q)        ||
+      m.vehicle_brand?.toLowerCase().includes(q)      ||
+      m.vehicle_model?.toLowerCase().includes(q)      ||
+      m.incident_address?.toLowerCase().includes(q)   ||
+      (plate && plate.includes(qPlate))
     )
   })
 
