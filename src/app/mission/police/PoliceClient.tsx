@@ -25,7 +25,10 @@ const TYPE_CONFIG: Record<MissionType, { label: string; icon: string; color: str
 
 // Triees alphabetiquement pour la liste affichee. Le defaut (zone la plus
 // frequente, Verviers Depannage etant sur Verviers) est Vesdre.
-const POLICE_ZONES = ['Police Zone Fagnes', 'Police Zone Vesdre']
+// Olivier 2026-06-02 : les zones de police sont maintenant gerees depuis
+// /admin/police-zones (pattern zero-hardcode). Le fallback historique est
+// utilise au chargement initial le temps que /api/police-zones reponde.
+const POLICE_ZONES_FALLBACK = ['Police Zone Vesdre', 'Police Zone Fagnes']
 const DEFAULT_POLICE_ZONE = 'Police Zone Vesdre'
 
 function nowFormatted() {
@@ -89,6 +92,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [model,          setModel]          = useState('')
   const [location,       setLocation]       = useState('')
   const [policeZone,     setPoliceZone]     = useState(DEFAULT_POLICE_ZONE)
+  const [policeZones,    setPoliceZones]    = useState<string[]>(POLICE_ZONES_FALLBACK)
   const [officerName,    setOfficerName]    = useState('')
   const [ownerFirstName, setOwnerFirstName] = useState('')
   const [ownerLastName,  setOwnerLastName]  = useState('')
@@ -209,6 +213,21 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   }, [selectedBrandId])
 
   // Google Maps autocomplete — réinitialiser quand le formulaire apparaît
+  // Olivier 2026-06-02 : zones de police dynamiques (gerees dans /admin/police-zones)
+  useEffect(() => {
+    fetch('/api/police-zones')
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data?.zones) ? data.zones : []
+        if (list.length > 0) {
+          setPoliceZones(list.map((z: any) => z.name))
+          const def = list.find((z: any) => z.is_default)
+          if (def) setPoliceZone(def.name)
+        }
+      })
+      .catch(() => {/* fallback hardcode garde */})
+  }, [])
+
   useEffect(() => {
     if (!selectedType) return
     acRef.current = null // Reset pour forcer la réinit
@@ -901,7 +920,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
               </button>
             </div>
           </div>
-          {!cfg!.hidePolice && <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={POLICE_ZONES} />}
+          {!cfg!.hidePolice && <LSelect label="Zone de police" value={policeZone} onChange={setPoliceZone} options={policeZones} />}
           {!cfg!.hidePolice && <LInput label="Nom du policier" value={officerName} onChange={setOfficerName} />}
         </Section>
 

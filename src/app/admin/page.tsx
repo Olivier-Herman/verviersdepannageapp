@@ -116,6 +116,8 @@ export default async function AdminPage() {
           desc="Camions VD utilisés par les chauffeurs. Assignation par défaut + matching amendes." />
         <Card href="/admin/saisie-motifs" icon={Tag} label="Motifs de saisie"
           desc="Liste obligatoire à la création d'une mission Police-Saisie (défaut assurance, alcool, etc.). Apparait sur l'étiquette parc." />
+        <Card href="/admin/police-zones" icon={ShieldCheck} label="Zones de police"
+          desc="Liste des zones (Vesdre, Fagnes…) proposées au chauffeur lors de la création d'une mission Police. Une zone par défaut." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />
