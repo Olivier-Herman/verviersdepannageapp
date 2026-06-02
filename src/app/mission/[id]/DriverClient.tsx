@@ -54,6 +54,10 @@ interface Mission {
   payment_collected_at?: string | null; payment_mode?: string | null; payment_amount?: number | null
   park_stage_name?: string; extra_addresses?: Stop[]; driver_photos?: string[]
   photo_categories_covered?: string[]  // categories du wizard photos couvertes (persiste en BDD, multi-device)
+  // Workflow encaisser-avant-creer (Olivier 2026-06-01).
+  // true : mission creee en draft, en attente du paiement complet avant
+  // declenchement des hooks externes (TowSoft/Helpdesk/email).
+  awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
 interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
@@ -2573,8 +2577,62 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
       </div>
 
-      {/* Boutons de pointage */}
-      {!isReadOnly && (
+      {/* Olivier 2026-06-01 — Workflow encaisser-avant-creer.
+          Si la mission est en awaiting_payment, on remplace tous les boutons
+          d action normaux par :
+            - "Encaisser le solde (XX €)" tant qu il reste a payer
+            - "Finaliser la mission" quand solde = 0 (POST /api/missions/[id]/finalize) */}
+      {!isReadOnly && M.awaiting_payment && (() => {
+        const required = Number(M.amount_to_collect || 0)
+        const paid     = Number(M.payment_amount    || 0)
+        const remaining = Math.max(0, required - paid)
+        const isFullyPaid = required > 0 && paid + 0.01 >= required
+        const encUrl = buildEncaissementUrl(M as any, { amount: remaining, returnTo: `/mission/${M.id}` })
+
+        return (
+          <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
+            <div className="text-center px-2">
+              <p className="text-amber-400 text-xs font-semibold uppercase tracking-wide">
+                ⏸ Mission en attente de paiement
+              </p>
+              <p className="text-ink-secondary text-xs mt-1">
+                {isFullyPaid
+                  ? 'Paiement complet. Tu peux maintenant finaliser la mission.'
+                  : `Encaissé ${formatEur(paid, { suffix: false })} / ${formatEur(required, { suffix: false })} — reste ${formatEur(remaining, { suffix: false })} à encaisser.`}
+              </p>
+            </div>
+            {!isFullyPaid && (
+              <a href={encUrl}
+                className="w-full block text-center py-4 bg-amber-500 hover:bg-amber-600 text-ink font-bold rounded-2xl text-base">
+                💳 Encaisser le solde ({formatEur(remaining, { suffix: false })} €)
+              </a>
+            )}
+            {isFullyPaid && (
+              <button
+                onClick={async () => {
+                  setLoading(true); setErr('')
+                  try {
+                    const res = await fetch(`/api/missions/${M.id}/finalize`, { method: 'POST' })
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error || 'Erreur finalisation')
+                    // Recharge la mission pour passer en mode normal (sans awaiting_payment)
+                    router.refresh()
+                  } catch (e: any) {
+                    setErr(e.message || 'Erreur finalisation')
+                  } finally { setLoading(false) }
+                }}
+                disabled={loading}
+                className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+                {loading ? '⏳ Finalisation...' : '✅ Finaliser la mission'}
+              </button>
+            )}
+            {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2 text-center">⚠️ {err}</p>}
+          </div>
+        )
+      })()}
+
+      {/* Boutons de pointage normaux (uniquement si pas en attente paiement) */}
+      {!isReadOnly && !M.awaiting_payment && (
         <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
 
           {M.status === 'assigned' && (

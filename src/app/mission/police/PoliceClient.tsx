@@ -516,6 +516,56 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       } catch (e) { console.error('Upload photos:', e) }
     }
 
+    // Olivier 2026-06-01 — Workflow encaisser-avant-creer :
+    // Pour les scenarios avec paiement immediat obligatoire (Mal Garee
+    // deplacement_paye, Appel Prive DSP/REM client, SNC DSP/REM client),
+    // on cree la mission en mode DRAFT (awaiting_payment=true). Pas d envoi
+    // TowSoft / Helpdesk / email tant que le solde n est pas encaisse en
+    // totalite. Redirection vers la fiche mission qui sait afficher le
+    // bouton "Encaisser solde" puis "Finaliser" quand solde = 0.
+    const needsImmediatePaymentLocal =
+      (selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye') ||
+      (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
+      (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
+
+    if (needsImmediatePaymentLocal) {
+      const draftRes = await fetch('/api/missions/police/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: selectedType, date, time, plate: finalPlate, vin, brand, model,
+          location, policeZone, officerName,
+          ownerFirstName, ownerLastName, ownerPhone,
+          remarks, photoUrls,
+          policeBlocked,
+          sncRequiresBalisage,
+          sncScenario:           sncScenario || null,
+          incidentLat:           locationLat,
+          incidentLng:           locationLng,
+          destination,
+          destinationLat,
+          destinationLng,
+          amountToCollect:       selectedType === 'appel_prive' ? amountToCollect : null,
+          appelPriveType:        selectedType === 'appel_prive' ? (appelPriveType || null) : null,
+          appelPriveDestination: selectedType === 'appel_prive' ? (appelPriveDestination || null) : null,
+          malGareeScenario:      selectedType === 'mal_garee'   ? malGareeScenario : null,
+          // saisie n entre pas dans needsImmediatePayment donc rien a passer ici
+          saisieMotifCode:       null,
+          saisieMotifLabel:      null,
+        }),
+      })
+      const draftData = await draftRes.json()
+      setLoading(false)
+      if (!draftRes.ok || !draftData.ok) {
+        setErr(draftData.error || 'Erreur création mission en mode encaissement')
+        return
+      }
+      // Redirection directe vers la fiche mission qui pilotera l encaissement
+      window.location.href = `/mission/${draftData.missionId}`
+      return
+    }
+
+    // Flow normal (pas de paiement immediat) : creation directe + hooks externes
     const res = await fetch('/api/towsoft/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1296,10 +1346,14 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           (selectedType === 'mal_garee' && malGareeScenario === 'deplacement_paye') ||
           (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
           (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
+        // Olivier 2026-06-01 : pour les scenarios a paiement immediat, le
+        // bouton dit "Encaisser" (et non "Creer la mission") car la mission
+        // est creee en mode DRAFT et le chauffeur encaisse depuis la fiche.
+        // Le solde restant + bouton "Finaliser" sont affiches sur la fiche.
         const submitLabel = loading
           ? `⏳ ${t('create_mission.creating')}`
           : needsImmediatePayment
-            ? `💳 ${t('create_mission.create_mission_btn')}`
+            ? `💳 Encaisser`
             : `${cfg!.icon} ${t('create_mission.create_mission_btn')}`
         return (
           <div className="fixed bottom-0 left-0 right-0 bg-surface/95 border-t border px-4 py-4 shadow-lg">

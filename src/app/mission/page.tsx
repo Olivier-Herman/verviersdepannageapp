@@ -35,9 +35,9 @@ export default async function MissionListPage() {
 
   const { data: missions } = await supabase
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at')
+    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, awaiting_payment, amount_to_collect, payment_amount')
     .eq('assigned_to', user.id)
-    .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
+    .or('status.in.(assigned,accepted,in_progress,delivering,parked),awaiting_payment.eq.true')
     .order('assigned_at', { ascending: false })
     .limit(20)
 
