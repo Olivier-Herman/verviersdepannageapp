@@ -42,6 +42,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
       destination_address, redelivery_address, snc_scenario,
       saisie_motif_code, saisie_motif_label,
+      police_blocked, police_zone, officer_name,
       odoo_ticket_id
     `)
   const { data: mission, error } = idIsNumeric
@@ -99,12 +100,31 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // AVP : note speciale (date + 60j eligibilite destruction)
   const isAvp = mission.source === 'police_avp'
 
-  // Olivier 2026-06-02 : Mal Garee chargement → note basee sur police_blocked
-  // ("Blocage par police" / "Pas de blocage"). Autres sources : note par defaut
-  // (AVP date+60j, relivraison adresse, ou vide).
+  // Olivier 2026-06-02 : notes specifiques par source (s applique uniquement
+  // si pas une relivraison — sinon le motif RELIVRAISON et l adresse priment).
+  //   - Mal Garee     : "Blocage par police" / "Pas de blocage"
+  //   - Rodeo         : "Restitution a partir du J+3 avec LEVEE DE SAISIE uniquement"
+  //   - Accident      : note vide
+  //   - Police Saisie : "Zone de police + nom policier"
+  //   - AVP           : isAvp gere la note "AVP date+60j"
   let noteOverride: string | undefined = undefined
-  if (mission.source === 'police_mg' && !isRedelivery) {
-    noteOverride = (mission as any).police_blocked ? 'Blocage par police' : 'Pas de blocage'
+  if (!isRedelivery) {
+    if (mission.source === 'police_mg') {
+      noteOverride = (mission as any).police_blocked ? 'Blocage par police' : 'Pas de blocage'
+    } else if (mission.source === 'police_rodeo') {
+      const baseDate = new Date(mission.intervention_date || mission.received_at)
+      baseDate.setDate(baseDate.getDate() + 3)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const j3Str = `${pad(baseDate.getDate())}/${pad(baseDate.getMonth()+1)}/${String(baseDate.getFullYear()).slice(-2)}`
+      noteOverride = `Restitution a partir du ${j3Str} avec LEVEE DE SAISIE uniquement`
+    } else if (mission.source === 'police_accident') {
+      noteOverride = ''
+    } else if (mission.source === 'police_saisie') {
+      const zone = (mission as any).police_zone || ''
+      const officer = (mission as any).officer_name || ''
+      const parts = [zone, officer].filter(s => s && String(s).trim()).join(' - ')
+      noteOverride = parts || ''
+    }
   }
 
   const result = await printVdSoftParcLabel({

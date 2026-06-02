@@ -379,6 +379,11 @@ export async function POST(req: Request) {
         // Saisie : motif obligatoire + label snapshot (demande Franck 2026-06-01)
         saisie_motif_code:     type === 'saisie' ? (saisieMotifCode  || null) : null,
         saisie_motif_label:    type === 'saisie' ? (saisieMotifLabel || null) : null,
+        // Police zone + officier (Olivier 2026-06-02) : affichage sur etiquette
+        // pour Police Saisie. Pour les autres types police on les garde aussi
+        // pour traçabilité.
+        police_zone:           policeZone   || null,
+        officer_name:          officerName  || null,
         odoo_task_id:       null,
         // Persiste odoo_ticket_id pour reconstruire URL QR /v/[ticketId] plus tard.
         // Olivier 2026-05-27 : evite double-source (towsoft_queue + reverse lookup).
@@ -396,41 +401,60 @@ export async function POST(req: Request) {
       vdMissionId = vdData?.id || null
 
       // Impression etiquette parc depuis VD Soft (chantier "Etiquettes VD Soft
-      // globales", Olivier 2026-05-26). Sources migrees :
-      //   - Appel Prive REM 'depot' : pas de ticket Helpdesk → seul VD Soft imprime
-      //   - SNC / SC 'rem_depot'    : ticket Helpdesk + impression VD Soft (transition)
-      //   - Mal Garee 'chargement'  : ticket Helpdesk + impression VD Soft (transition,
-      //                               ajoute le 2026-06-02 — desactiver impression
-      //                               cote callback Odoo une fois valide en // ci)
-      //
-      // TODO Rodeo / AVP : impressions toujours via callback Helpdesk Odoo.
-      // A migrer dans une iteration future.
-      const isSncDepot           = isSnc && sncScenario === 'rem_depot'
-      const isMalGareeChargement = type === 'mal_garee' && malGareeScenario === 'chargement'
-      const shouldPrintFromVdSoft = vdMissionId && (
-        (isAppelPrive && appelPriveDestination === 'depot') ||
-        isSncDepot ||
-        isMalGareeChargement
-      )
+      // globales", Olivier 2026-05-26). Migration complete 2026-06-02 :
+      // toutes les missions qui partent en parc (computedStatus='parked')
+      // impriment maintenant via VD Soft. La double impression cote Odoo
+      // doit etre desactivee dans une iteration future via le module Helpdesk.
+      const shouldPrintFromVdSoft = vdMissionId && computedStatus === 'parked'
       if (shouldPrintFromVdSoft && vdMissionId) {
-        // Adresse de relivraison : pour Appel Prive le chauffeur peut la saisir
-        // dans PoliceClient.tsx (Fix 11). Pour SNC depot, le dispatcher la
-        // definira via le bouton "Relivrer" plus tard. Si non saisie maintenant,
-        // l etiquette indique "En attente d info adresse de relivraison".
-        // Pour Mal Garee chargement : pas de relivraison (le client recupere
-        // direct), on passe redeliveryAddr=undefined. La note est piloee par
-        // noteOverride selon police_blocked (Olivier 2026-06-02).
-        const redeliveryAddr = isMalGareeChargement
-          ? undefined
-          : ((body.destination || body.redelivery_address || '').trim() || null)
-        const motifLabel = isAppelPrive
-          ? 'APPEL PRIVE'
-          : isMalGareeChargement
-            ? 'MAL GAREE'
-            : (type === 'sc' ? 'SIABIS COUVERT' : 'SIABIS NON COUVERT')
-        const noteOverride = isMalGareeChargement
-          ? (policeBlocked ? 'Blocage par police' : 'Pas de blocage')
+        const isSncDepot           = isSnc && sncScenario === 'rem_depot'
+        const isMalGareeChargement = type === 'mal_garee' && malGareeScenario === 'chargement'
+        const isAvp                = type === 'avp'
+        const isRodeo              = type === 'rodeo'
+        const isAccident           = type === 'accident'
+        const isSaisie             = type === 'saisie'
+
+        // Motif affiche sur l etiquette (colonne droite)
+        const motifLabel =
+          isAppelPrive           ? 'APPEL PRIVE'
+          : isMalGareeChargement ? 'MAL GAREE'
+          : isRodeo              ? 'RODEO'
+          : isAvp                ? 'AVP'
+          : isAccident           ? 'ACCIDENT'
+          : isSaisie             ? (saisieMotifLabel || 'SAISIE').toUpperCase()
+          : type === 'sc'        ? 'SIABIS COUVERT'
+          :                        'SIABIS NON COUVERT'
+
+        // Adresse de relivraison : uniquement pour les sources concernees
+        // (Appel Prive depot + SNC/SC rem_depot). Pour les autres, undefined
+        // → la note ne tombera pas sur "En attente d info adresse de relivraison".
+        const wantsRedelivery = (isAppelPrive && appelPriveDestination === 'depot') || isSncDepot
+        const redeliveryAddr = wantsRedelivery
+          ? ((body.destination || body.redelivery_address || '').trim() || null)
           : undefined
+
+        // Note specifique selon source (Olivier 2026-06-02) :
+        //   - Mal Garee chargement : "Blocage par police" / "Pas de blocage"
+        //   - Rodeo                : "Restitution a partir du J+3 ..."
+        //   - Police Accident      : note vide
+        //   - Police Saisie        : "Zone de police + nom policier"
+        //   - AVP                  : laisse vide ici, isAvp gere la note date+60j
+        let noteOverride: string | undefined = undefined
+        if (isMalGareeChargement) {
+          noteOverride = policeBlocked ? 'Blocage par police' : 'Pas de blocage'
+        } else if (isRodeo) {
+          const j3 = new Date(interventionISO)
+          j3.setDate(j3.getDate() + 3)
+          const pad = (n: number) => String(n).padStart(2, '0')
+          const j3Str = `${pad(j3.getDate())}/${pad(j3.getMonth()+1)}/${String(j3.getFullYear()).slice(-2)}`
+          noteOverride = `Restitution a partir du ${j3Str} avec LEVEE DE SAISIE uniquement`
+        } else if (isAccident) {
+          noteOverride = ''
+        } else if (isSaisie) {
+          const parts = [policeZone, officerName].filter(s => s && String(s).trim()).join(' - ')
+          noteOverride = parts || ''
+        }
+
         await printVdSoftParcLabel({
           missionId:        vdMissionId,
           missionNumber:    vdData?.mission_number ?? null,
@@ -443,6 +467,7 @@ export async function POST(req: Request) {
           model:            model || null,
           vin:              vin   || null,
           redeliveryAddr,
+          isAvp,
           noteOverride,
         })
       }
