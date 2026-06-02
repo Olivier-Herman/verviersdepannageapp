@@ -132,9 +132,13 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email:    { label: 'Email',         type: 'email'    },
         password: { label: 'Mot de passe',  type: 'password' },
+        // Olivier 2026-06-02 : magic token pour l activation d un compte garage
+        // (email de bienvenue). Quand fourni, on bypasse le check mdp et on
+        // valide le HMAC du token. Cf [[project-espace-client-garages]].
+        magicToken: { label: 'Magic Token', type: 'text'     },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
+        if (!credentials?.email) return null
         const supabase = createAdminClient()
 
         const { data: user } = await supabase.from('users')
@@ -143,6 +147,41 @@ export const authOptions: NextAuthOptions = {
           .maybeSingle()
 
         if (!user || !user.active) return null
+
+        // ── Mode magic token (activation garage) ───────────────────────
+        if (credentials.magicToken) {
+          try {
+            const decoded   = Buffer.from(credentials.magicToken, 'base64url').toString('utf8')
+            const [userId, expiresStr, sig] = decoded.split(':')
+            const expires   = Number(expiresStr)
+            if (!userId || !expires || !sig) return null
+            if (userId !== user.id)         return null
+            if (Date.now() / 1000 > expires) return null  // expire
+            const secret   = process.env.NEXTAUTH_SECRET || 'dev-secret-change-me'
+            const expected = require('crypto').createHmac('sha256', secret)
+              .update(`${userId}:${expires}`).digest('hex').slice(0, 32)
+            if (expected !== sig) return null  // signature invalide
+
+            await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id)
+            await upsertAuthProviderLink(user.id, 'credentials', user.email.toLowerCase(), user.email.toLowerCase())
+
+            return {
+              id:                  user.id,
+              email:               user.email,
+              name:                user.name,
+              role:                user.role,
+              roles:               user.roles || [user.role],
+              mustChangePassword:  user.must_change_password,
+              image:               user.avatar_url,
+              hasOdooAccess:       !!user.has_odoo_access,
+            }
+          } catch {
+            return null
+          }
+        }
+
+        // ── Mode mot de passe standard ─────────────────────────────────
+        if (!credentials?.password) return null
 
         if (user.auth_provider !== 'email_password') {
           throw new Error(`WRONG_PROVIDER:${user.auth_provider}`)

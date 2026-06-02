@@ -24,6 +24,24 @@ export default withAuth(
       return NextResponse.redirect(new URL('/request-access/pending', req.url))
     }
 
+    // Olivier 2026-06-02 : isole les users role='garage' dans /garage uniquement.
+    // Ils n ont rien a faire dans /dashboard, /dispatch, /admin, /mission, etc.
+    if (token?.role === 'garage') {
+      if (!path.startsWith('/garage')) {
+        return NextResponse.redirect(new URL('/garage', req.url))
+      }
+      // Si must_change_password, force /garage/set-password sauf si deja dessus
+      if ((token as any)?.mustChangePassword && !path.startsWith('/garage/set-password')) {
+        return NextResponse.redirect(new URL('/garage/set-password', req.url))
+      }
+      return NextResponse.next()
+    }
+
+    // A l inverse, un user non-garage ne doit pas aller sur /garage (cas rare)
+    if (path.startsWith('/garage') && token?.role && token.role !== 'garage') {
+      return NextResponse.redirect(new URL('/dashboard', req.url))
+    }
+
     // Finance : accessible si encaissements OU caisse
     if (path.startsWith('/finance')) {
       if (token?.role === 'superadmin' || token?.role === 'admin') return NextResponse.next()
@@ -77,5 +95,6 @@ export const config = {
     '/profil/:path*',
     '/missions/:path*',
     '/dispatch/:path*',
+    '/garage/((?!login|activate).*)',  // /garage protege sauf login + activate (publics)
   ]
 }
