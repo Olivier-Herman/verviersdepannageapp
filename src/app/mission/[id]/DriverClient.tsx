@@ -2531,10 +2531,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         )}
 
         {/* Olivier 2026-06-02 PM : choix du scenario SNC quand le dispatch
-            a reclassifie une mission en Siabis non couvert / couvert et que
-            le scenario n est pas encore choisi. 3 tuiles cliquables alignees
-            sur PoliceClient.tsx (memes labels, meme look). */}
-        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !M.snc_scenario && !isReadOnly && (
+            a reclassifie une mission en Siabis non couvert / couvert. Les
+            3 tuiles restent toujours visibles et le chauffeur peut basculer
+            entre elles a tout moment (comme dans PoliceClient.tsx a la
+            creation). La tuile active est mise en evidence (bg + ring). */}
+        {(M.source === 'police_snc' || M.source === 'sia_couvert') && !isReadOnly && (
           <div className="bg-blue-50 border-2 border-blue-500 rounded-2xl p-4 space-y-3">
             <div className="flex items-start gap-2">
               <span className="text-2xl">🚔</span>
@@ -2543,7 +2544,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   Mission {M.source === 'police_snc' ? 'Siabis non couvert' : 'Siabis couvert'}
                 </p>
                 <p className="text-blue-900 text-xs mt-0.5">
-                  Choisis le scénario d&apos;intervention. Cela adapte l&apos;encaissement, la mise en parc et le tarif.
+                  Choisis le scénario d&apos;intervention. Tu peux changer tant que la mission n&apos;est pas clôturée.
                 </p>
               </div>
             </div>
@@ -2552,19 +2553,29 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 { key: 'dsp' as const,        label: '🔧 DSP — Dépannage sur place',     desc: M.source === 'sia_couvert' ? 'Réparation sur place, facturée à l\'assistance (pas d\'encaissement).' : 'Réparation sur place, client paie en direct au chauffeur.' },
                 ...(M.source === 'police_snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat', desc: 'Remorquage vers destination du client, paiement immédiat.' }] : []),
                 { key: 'rem_depot' as const,  label: '🏢 REM vers dépôt Pepinster',       desc: M.source === 'sia_couvert' ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.' : 'Mise en zone Transit, le client passera au bureau ensuite.' },
-              ]).map(opt => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => pickSncScenario(opt.key)}
-                  disabled={sncSaving !== null}
-                  className="p-3 rounded-xl border-2 border-blue-300 bg-surface text-left hover:border-blue-500 transition disabled:opacity-50"
-                >
-                  <div className="text-ink font-semibold text-sm">{opt.label}</div>
-                  <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
-                  {sncSaving === opt.key && <div className="text-blue-700 text-xs mt-1">⏳ Application en cours…</div>}
-                </button>
-              ))}
+              ]).map(opt => {
+                const isActive = M.snc_scenario === opt.key
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => pickSncScenario(opt.key)}
+                    disabled={sncSaving !== null}
+                    className={`p-3 rounded-xl border-2 text-left transition disabled:opacity-50 ${
+                      isActive
+                        ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-300'
+                        : 'bg-surface border-blue-300 hover:border-blue-500'
+                    }`}
+                  >
+                    <div className="text-ink font-semibold text-sm flex items-center justify-between">
+                      <span>{opt.label}</span>
+                      {isActive && <span className="text-blue-700 text-xs">✓ Actif</span>}
+                    </div>
+                    <div className="text-ink-muted text-xs mt-0.5">{opt.desc}</div>
+                    {sncSaving === opt.key && <div className="text-blue-700 text-xs mt-1">⏳ Application en cours…</div>}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Toggle balisage (impacte le tarif si scenario != rem_depot) */}
