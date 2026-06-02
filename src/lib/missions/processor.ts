@@ -477,11 +477,29 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
   // ne pourrait rien update faute de placeholderId. On retourne tôt avec
   // un status error pour que le caller (webhook ou poll-missions) le sache.
   try {
-    // 0. Anti-doublon atomique
-    // Placeholder créé avant lecture du message Graph : on utilise now() comme
-    // valeur initiale pour received_at + intervention_date (sub-phase D).
-    // Le vrai receivedDateTime du message remplacera ces valeurs à l'UPDATE
-    // final (ou parse_error / unknown sender).
+    // 0. Anti-doublon pre-check (Olivier 2026-06-02).
+    // Avant : on insertait directement le placeholder et on attrapait l erreur
+    // 23505 si source_email_id existait deja. PROBLEME : l INSERT consomme
+    // nextval('mission_number_seq') AVANT que la contrainte UNIQUE ne fire,
+    // donc chaque re-poll IMAP d un meme email faisait sauter le compteur
+    // mission_number (50+ numeros perdus par jour selon trafic).
+    // Maintenant : on fait un SELECT prealable pour skipper le doublon sans
+    // consommer la sequence. La race condition residuelle (2 polls paralleles
+    // sur le meme message) reste geree par le catch 23505 plus bas — rare.
+    const { data: existing } = await supabase
+      .from('incoming_missions')
+      .select('id')
+      .eq('source_email_id', messageId)
+      .maybeSingle()
+
+    if (existing?.id) {
+      console.log(`[Processor] Email deja traite (source_email_id=${msgIdShort}) — skip pre-INSERT`)
+      return { status: 'duplicate', externalId: 'already_processed', source: 'unknown' }
+    }
+
+    // Pas de doublon detecte → INSERT placeholder. received_at/intervention_date
+    // = now() pour respecter NOT NULL ; remplaces par le vrai receivedDateTime
+    // du message a l UPDATE final.
     console.log(`[Processor] step=insert_placeholder messageId=${msgIdShort}`)
     const placeholderTs = new Date().toISOString()
     const { error: lockError } = await supabase
@@ -498,7 +516,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     if (lockError) {
       if (lockError.code === '23505') {
-        console.log(`[Processor] Doublon ignoré: ${msgIdShort}`)
+        // Race condition : un autre poll concurrent a insere entre notre SELECT
+        // et notre INSERT. Pas grave, on skip.
+        console.log(`[Processor] Doublon ignoré (race condition): ${msgIdShort}`)
         return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
       }
       console.warn('[Processor] Lock warning:', lockError.message)
