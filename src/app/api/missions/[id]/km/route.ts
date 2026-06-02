@@ -77,10 +77,21 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   }
   const incident: Coord = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
 
-  // Dépôt — soit celui de la mission, soit le défaut
+  // Dépôt — pour SNC/SC : le plus proche par route (dynamique, Distance Matrix).
+  // Pour les autres sources : depot_depart_id figé, ou défaut.
+  // Olivier 2026-06-02 PM : "Le depot en siabis doit etre dynamique et calcule
+  // au plus proche de l intervention".
   let depot: Coord | null = null
   let depotName = ''
-  if (mission.depot_depart_id) {
+  const isSncOrSc = mission.source === 'police_snc' || mission.source === 'sia_couvert'
+
+  if (isSncOrSc) {
+    const { getSncDepots, findNearestDepotByRoute } = await import('@/lib/snc/pricing')
+    const all = await getSncDepots()
+    const nearest = await findNearestDepotByRoute(incident.lat, incident.lng, all)
+    if (nearest) { depot = { lat: nearest.lat, lng: nearest.lng }; depotName = nearest.name }
+  }
+  if (!depot && mission.depot_depart_id) {
     const { data: d } = await sb.from('depots').select('name, lat, lng').eq('id', mission.depot_depart_id).maybeSingle()
     if (d?.lat != null && d.lng != null) { depot = { lat: Number(d.lat), lng: Number(d.lng) }; depotName = d.name }
   }
