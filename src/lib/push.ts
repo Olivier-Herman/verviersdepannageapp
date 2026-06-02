@@ -43,14 +43,18 @@ export type NotifType =
  *  Olivier 2026-06-02 : refacto vers toggles par role (au lieu de toggles
  *  individuels par categorie). Un user multi-roles (ex: Matthieu driver +
  *  dispatcher) coupe d un coup toutes les notifs d un role quand il bosse
- *  dans l autre. */
-const NOTIF_TYPE_TO_ROLE_KEY: Record<NotifType, 'role_driver' | 'role_dispatcher' | 'role_finance'> = {
+ *  dans l autre.
+ *
+ *  cash_transfer : NON mappe — Olivier a decide que les notifs finance sont
+ *  essentielles et ne peuvent pas etre desactivees par le user.
+ */
+const NOTIF_TYPE_TO_ROLE_KEY: Partial<Record<NotifType, 'role_driver' | 'role_dispatcher'>> = {
   driver_assigned:      'role_driver',
   driver_modified:      'role_driver',
   dispatch_new_mission: 'role_dispatcher',
   derogation_request:   'role_dispatcher',
   alert_admin:          'role_dispatcher',
-  cash_transfer:        'role_finance',
+  // cash_transfer : intentionnellement non-mappe → toujours envoyee
 }
 
 /**
@@ -62,6 +66,10 @@ const NOTIF_TYPE_TO_ROLE_KEY: Record<NotifType, 'role_driver' | 'role_dispatcher
 async function filterByNotifPref(userIds: string[], notifType?: NotifType): Promise<string[]> {
   if (!notifType || userIds.length === 0) return userIds
   const roleKey = NOTIF_TYPE_TO_ROLE_KEY[notifType]
+  // cash_transfer (et tout type non mappe a un role) ne peut pas etre bloque
+  // par l user. On ignore aussi l ancienne clef per-categorie pour ces types
+  // pour respecter la decision Olivier (notif essentielle).
+  if (!roleKey) return userIds
   const sb = createAdminClient()
   const { data } = await sb
     .from('users')
@@ -72,7 +80,7 @@ async function filterByNotifPref(userIds: string[], notifType?: NotifType): Prom
     .filter(u => {
       const pref = (u.notif_preferences || {}) as Record<string, unknown>
       // 1. Bloque si la clef de role est explicitement false (nouveau systeme)
-      if (roleKey && pref[roleKey] === false) return false
+      if (pref[roleKey] === false) return false
       // 2. Retro-compat : bloque si l ancienne clef per-categorie est false
       if (pref[notifType] === false) return false
       return true

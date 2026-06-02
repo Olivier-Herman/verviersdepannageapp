@@ -511,15 +511,11 @@ export default function ProfileClient({ user }: { user: any }) {
                   onToggle={() => toggleNotifPref('role_dispatcher')}
                 />
               )}
-              {notifProfile?.isFinance && (
-                <NotifToggle
-                  label="💵 Notifications finance"
-                  description="Transferts de caisse, validations et refus."
-                  enabled={notifPrefs.role_finance !== false}
-                  saving={notifSavingKey === 'role_finance'}
-                  onToggle={() => toggleNotifPref('role_finance')}
-                />
-              )}
+              {/* Olivier 2026-06-02 : les notifs finance (transferts de caisse)
+                  sont essentielles, pas de toggle pour les desactiver. */}
+              <div className="bg-success-soft border border-success/30 rounded-xl px-4 py-3 text-xs text-success">
+                💵 <strong>Notifications finance toujours actives</strong> — les transferts de caisse sont essentiels et ne peuvent pas être désactivés.
+              </div>
             </div>
           )}
         </div>
