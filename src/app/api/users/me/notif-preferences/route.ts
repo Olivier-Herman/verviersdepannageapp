@@ -27,21 +27,25 @@ export async function GET() {
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
-  const { data } = await sb
+  const { data, error } = await sb
     .from('users')
-    .select('notif_preferences, role, roles, is_driver')
+    .select('notif_preferences, role, roles')
     .eq('email', session.user.email)
     .maybeSingle()
-  if (!data) return NextResponse.json({ error: 'User introuvable' }, { status: 404 })
+  if (error || !data) {
+    console.error('[notif-preferences] User select error:', error?.message)
+    return NextResponse.json({ error: 'User introuvable' }, { status: 404 })
+  }
 
   // Determine quels toggles afficher selon le profil du user :
   // - dispatch_*  : visible si role ∈ {admin, superadmin, dispatcher} OU dans roles[]
-  // - driver_*    : visible si role = 'driver' OU 'chauffeur' dans roles OU is_driver
-  // (rétro-compat : tout est visible si pas determinable)
+  // - driver_*    : visible si role = 'driver' OU 'chauffeur' dans roles
+  // Olivier 2026-06-02 : retire le champ is_driver qui n existe pas en BDD
+  // (causait erreur 42703 → API 404 → tous les toggles conditionnels masques)
   const roles: string[] = Array.isArray(data.roles) ? data.roles : []
   const isDispatcher = ['admin', 'superadmin', 'dispatcher'].includes(data.role) ||
     roles.some(r => ['admin', 'superadmin', 'dispatcher'].includes(r))
-  const isDriver = data.role === 'driver' || roles.includes('driver') || roles.includes('chauffeur') || data.is_driver === true
+  const isDriver = data.role === 'driver' || roles.includes('driver') || roles.includes('chauffeur')
 
   return NextResponse.json({
     ok: true,
