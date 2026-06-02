@@ -2214,10 +2214,26 @@ export default function MissionDetailClient({
                     </Field>
                     {(form.source === 'police_snc' || form.source === 'sia_couvert') && (
                       <div className="col-span-2">
-                        <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-blue-900">
-                          ℹ️ Source SNC : le chauffeur choisira lui-même le scénario (DSP / REM client / REM dépôt) depuis sa fiche.
-                          {form.snc_scenario && <> Scénario actuel : <strong>{form.snc_scenario}</strong>.</>}
-                        </div>
+                        <Field label="Scénario SNC (optionnel — modifiable par le chauffeur)">
+                          <select
+                            value={form.snc_scenario || ''}
+                            onChange={e => f('snc_scenario')(e.target.value)}
+                            className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                          >
+                            <option value="">— Laisser le chauffeur choisir —</option>
+                            <option value="dsp">DSP — Dépannage sur place</option>
+                            {form.source === 'police_snc' && (
+                              <option value="rem_client">REM client — Paiement immédiat</option>
+                            )}
+                            {form.source === 'sia_couvert' && (
+                              <option value="rem_direct">REM directe — Sans passage dépôt</option>
+                            )}
+                            <option value="rem_depot">REM dépôt — Mise en parc Transit</option>
+                          </select>
+                        </Field>
+                        <p className="text-blue-900 text-xs mt-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
+                          ℹ️ Tu peux pré-indiquer un scénario pour orienter le chauffeur. Il pourra le modifier depuis sa fiche selon ce qu&apos;il constate sur place.
+                        </p>
                       </div>
                     )}
                     <Field label="Type d'incident">
