@@ -210,6 +210,8 @@ interface MissionLike {
   client_name:        string | null
   vehicle_mileage:    number | null
   parked_at?:         string | null
+  delivering_at?:     string | null
+  completed_at?:      string | null
   intervention_date?: string | null
   received_at?:       string | null
   incident_type?:     string | null
@@ -407,12 +409,19 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   // 3. Calcul parc si parked_at est set
   let parcJours = 0
   let parcEur = 0
+  // Olivier 2026-06-02 PM : gardiennage UNIQUEMENT si passage en parc
+  // (parked_at non null). Date de fin = sortie effective (delivering_at)
+  // > cloture (completed_at) > aujourd hui (encore en parc).
+  // Math.floor : jour d arrivee non compte (jours pleins ecoules).
   if (mission.parked_at && tariff.parc_day_price) {
     const parcStart = new Date(mission.parked_at)
-    const parcEnd = new Date()
-    const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-    parcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-    parcEur = parcJours * Number(tariff.parc_day_price || 0)
+    const refEnd    = (mission as any).delivering_at
+                   || (mission as any).completed_at
+                   || new Date().toISOString()
+    const parcEnd   = new Date(refEnd)
+    const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
+    parcJours       = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    parcEur         = parcJours * Number(tariff.parc_day_price || 0)
   }
 
   let subtotal = forfait + kmExtraEur + parcEur
@@ -595,12 +604,19 @@ async function estimateBrackets(
   // 5. Parc si parked_at + parc_day_price (geree comme avant)
   let parcJours = 0
   let parcEur = 0
+  // Olivier 2026-06-02 PM : gardiennage UNIQUEMENT si passage en parc
+  // (parked_at non null). Date de fin = sortie effective (delivering_at)
+  // > cloture (completed_at) > aujourd hui (encore en parc).
+  // Math.floor : jour d arrivee non compte (jours pleins ecoules).
   if (mission.parked_at && tariff.parc_day_price) {
     const parcStart = new Date(mission.parked_at)
-    const parcEnd = new Date()
-    const diffMs = Math.max(0, parcEnd.getTime() - parcStart.getTime())
-    parcJours = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-    parcEur = parcJours * Number(tariff.parc_day_price || 0)
+    const refEnd    = (mission as any).delivering_at
+                   || (mission as any).completed_at
+                   || new Date().toISOString()
+    const parcEnd   = new Date(refEnd)
+    const diffMs    = Math.max(0, parcEnd.getTime() - parcStart.getTime())
+    parcJours       = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    parcEur         = parcJours * Number(tariff.parc_day_price || 0)
   }
 
   const total = tariffTotal + parcEur

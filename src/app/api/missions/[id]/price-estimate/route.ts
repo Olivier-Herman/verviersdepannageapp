@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .from('incoming_missions')
     .select(`
       id, source, mission_type, client_name, vehicle_mileage,
-      parked_at, intervention_date, received_at, incident_type,
+      parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type,
       parent_mission_id, amount_to_collect,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage,
@@ -170,6 +170,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       // - Reference de depart selon parc_count_from (parked_at par defaut,
       //   intervention_date pour Mal Garee).
       // - free_days = jours offerts (SC = 3, autres = 0).
+      // Olivier 2026-06-02 PM : le gardiennage ne se calcule QU EN CAS de
+      // passage en depot. Pas de parked_at = pas de gardiennage. Pas de
+      // fallback received_at (anciennement c etait un bug pour rem_direct /
+      // rem_client qui n ont pas de passage parc et se voyaient factures
+      // des jours de gardiennage fictifs depuis la reception).
+      //
+      // Cas particulier : 'intervention_date' (Mal Garee) compte depuis
+      // l intervention meme si pas formellement parked_at, car la voiture
+      // est "en attente sur la voirie" → tarif de gardiennage applicable.
       let parcJoursElapsed = 0
       let parcFreeDays     = 0
       let parcJours        = 0
@@ -185,11 +194,20 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         .lte('effective_from', today)
       const parcLine = (parcLines || []).find(l => !l.effective_to || l.effective_to >= today)
       if (parcLine && parcLine.default_price != null) {
+        // Date de debut : intervention_date (Mal Garee) OU parked_at strict (autres).
+        // PAS de fallback received_at — si pas parked_at sur les autres modes,
+        // c est que le vehicule n est jamais passe par le parc.
         const refSource = parcLine.parc_count_from === 'intervention_date'
           ? (mission.intervention_date || mission.received_at)
-          : (mission.parked_at         || mission.received_at)
+          : mission.parked_at  // strict : null si pas passe en parc
         if (refSource) {
-          const diffMs = Math.max(0, Date.now() - new Date(refSource).getTime())
+          // Date de fin : sortie effective (delivering_at) > completed_at >
+          // aujourd hui (encore en parc). Le vehicule ne genere du gardiennage
+          // QUE pendant son sejour reel.
+          const refEnd = (mission as any).delivering_at
+                       || (mission as any).completed_at
+                       || new Date().toISOString()
+          const diffMs = Math.max(0, new Date(refEnd).getTime() - new Date(refSource).getTime())
           parcJoursElapsed = Math.floor(diffMs / (1000 * 60 * 60 * 24))
           parcFreeDays     = Number(parcLine.free_days || 0)
           parcJours        = Math.max(0, parcJoursElapsed - parcFreeDays)
