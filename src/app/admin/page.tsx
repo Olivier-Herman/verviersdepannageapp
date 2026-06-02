@@ -122,6 +122,8 @@ export default async function AdminPage() {
           desc="Comptes garages avec accès à leur espace /garage : Odoo partner ID, contact, tarifs DSP/REM/DPR. Multi-entités par email." />
         <Card href="/admin/garage-users" icon={Users} label="Comptes garages"
           desc="Users avec rôle garage. Création + liaison avec 1+ garages partenaires. Envoi email de bienvenue avec magic link." />
+        <Card href="/admin/garage-cancellations" icon={AlertTriangle} label="Annulations garage"
+          desc="Demandes d'annulation des garages après acceptation. Choix : annulation totale (sans frais), facturation DPR, ou refus." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />
@@ -175,6 +177,8 @@ export default async function AdminPage() {
       <Group title="Réglages">
         <Card href="/admin/settings" icon={Settings} label="Paramètres généraux"
           desc="Variables système, intégrations, secrets." />
+        <Card href="/admin/adoption" icon={Users} label="Adoption"
+          desc="Qui utilise quoi : App native iOS/Android, PWA, ou Web. Stats + tableau croisé device_tokens + push_subscriptions + last_login." />
       </Group>
     </div>
   )
