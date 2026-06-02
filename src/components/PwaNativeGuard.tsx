@@ -37,44 +37,18 @@ export function PwaNativeGuard({ children }: { children: React.ReactNode }) {
   // Pas de blocage si pas concerne
   if (!forceNative || !isDriverPure || isNative) return <>{children}</>
 
-  // BLOCAGE
+  // BLOCAGE — message generique "version obsolete" (Olivier 2026-06-02 :
+  // pas de lien direct, le chauffeur a deja recu le lien par message).
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-white to-amber-50 px-4">
-      <div className="bg-white rounded-3xl shadow-2xl border-2 border-red-300 max-w-lg w-full p-8 text-center space-y-5">
-        <div className="text-6xl">📱</div>
-        <h1 className="text-2xl font-bold text-gray-900">Application native obligatoire</h1>
-        <p className="text-gray-700 text-base leading-relaxed">
-          Bonjour <strong>{session.user?.name}</strong>,<br />
-          ton compte est configuré pour utiliser <strong>uniquement l&apos;application native VD Soft</strong>.
-        </p>
-        <p className="text-gray-500 text-sm">
-          Le navigateur web ou la version PWA n&apos;est pas autorisée pour ton profil. Télécharge l&apos;app sur ton smartphone et reconnecte-toi.
-        </p>
-
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 space-y-3 text-left">
-          <a href="https://apps.apple.com/us/app/vd-soft/id6769551627" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-3 bg-black hover:bg-gray-800 text-white rounded-xl p-3 transition">
-            <div className="text-3xl"></div>
-            <div className="flex-1">
-              <p className="text-xs opacity-75">Pour iPhone</p>
-              <p className="font-bold">Télécharger sur l&apos;App Store</p>
-            </div>
-          </a>
-          <a href="https://app.verviersdepannage.com/downloads/android"
-            className="flex items-center gap-3 bg-green-600 hover:bg-green-700 text-white rounded-xl p-3 transition">
-            <div className="text-3xl">🤖</div>
-            <div className="flex-1">
-              <p className="text-xs opacity-75">Pour Android</p>
-              <p className="font-bold">Télécharger l&apos;APK</p>
-            </div>
-          </a>
-        </div>
-
-        <p className="text-gray-500 text-xs">
-          Pour toute question, contacte Olivier ou un administrateur.
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-white px-4">
+      <div className="bg-white rounded-3xl shadow-xl border border-gray-200 max-w-md w-full p-8 text-center space-y-4">
+        <div className="text-5xl">⚠️</div>
+        <h1 className="text-xl font-bold text-gray-900">Cette version de l&apos;app est obsolète</h1>
+        <p className="text-gray-600 text-sm leading-relaxed">
+          Télécharge l&apos;application iPhone en cliquant sur le lien envoyé par message pour continuer à l&apos;utiliser.
         </p>
         <Link href="/api/auth/signout"
-          className="inline-block text-gray-400 hover:text-gray-600 text-xs underline">
+          className="inline-block text-gray-400 hover:text-gray-600 text-xs underline pt-2">
           Se déconnecter
         </Link>
       </div>
