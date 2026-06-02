@@ -137,9 +137,14 @@ export async function GET(req: Request) {
   const qRaw = (searchParams.get('q') || '').trim()
   if (qRaw.length < 2) return NextResponse.json({ results: [], categories: {} })
 
-  // Filtre par categories : ?cats=mission,invoice  (vide = toutes)
+  // Filtre par categories : ?cats=mission,invoice
+  // Olivier 2026-06-03 : si aucune cat fournie, on tombe sur MISSIONS uniquement
+  // (pas plus toutes les categories par defaut, trop bruyant). L user clique
+  // sur les chips pour elargir (factures, emails, vehicules...).
   const catsParam = (searchParams.get('cats') || '').trim()
-  const wantedCats = catsParam ? new Set(catsParam.split(',').map(c => c.trim()).filter(Boolean)) : null
+  const wantedCats = catsParam
+    ? new Set(catsParam.split(',').map(c => c.trim()).filter(Boolean))
+    : new Set(['mission'])
   const wants = (cat: string) => !wantedCats || wantedCats.has(cat)
 
   // Mode "full" : utilise par la page /recherche pour ratisser plus large

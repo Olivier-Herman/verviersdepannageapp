@@ -93,11 +93,11 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
   const [loading,       setLoading]       = useState(false)
   const [total,         setTotal]         = useState(0)
   const [error,         setError]         = useState<string | null>(null)
-  // Olivier 2026-06-03 : par defaut, recherche sur Missions uniquement.
-  // L user clique sur les autres chips pour elargir (encaissements, factures,
-  // emails, vehicules...). S il deselectionne mission, on retombe sur mission
-  // par defaut (empeche d avoir aucune categorie active).
-  const [activeCats,    setActiveCats]    = useState<Set<string>>(new Set(['mission']))
+  // Olivier 2026-06-03 : Set vide par defaut (aucun chip highlighted),
+  // mais l API applique automatiquement cats=mission si aucune cat n est
+  // fournie. L user clique sur les autres chips pour elargir explicitement
+  // (encaissements, factures, emails, vehicules...).
+  const [activeCats,    setActiveCats]    = useState<Set<string>>(new Set())
   const [recent,        setRecent]        = useState<string[]>([])
   const debounceRef = useRef<any>(null)
   const abortRef    = useRef<AbortController | null>(null)
@@ -160,9 +160,6 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
       const next = new Set(prev)
       if (next.has(cat)) next.delete(cat)
       else next.add(cat)
-      // Olivier 2026-06-03 : jamais de Set totalement vide → revient sur mission
-      // par defaut. Comme ca on a toujours au moins une categorie ciblee.
-      if (next.size === 0) next.add('mission')
       return next
     })
   }
