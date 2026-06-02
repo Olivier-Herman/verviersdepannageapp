@@ -365,11 +365,15 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
   // Km balisage : le balisage part toujours de Pepinster OU Aywaille (le plus
   // proche de l intervention parmi ces 2 depots), pas du meme depot que la
   // depanneuse. Il fait aller-retour intervention puis rentre directement.
+  // Olivier 2026-06-02 PM : choix du depot balisage par DISTANCE ROUTE
+  // (findNearestDepotByRoute) au lieu de haversine, pour coherence avec le
+  // depot principal et pour eviter les mauvais choix sur autoroutes en sens
+  // unique.
   let kmBalisage = 0
   let balisageDepotInfo: { name: string; id: number | string } | null = null
   if (input.requiresBalisage) {
     const balisageDepots = findBalisageDepots(depots)
-    const balisageDepot = findNearestDepot(input.interventionLat, input.interventionLng, balisageDepots)
+    const balisageDepot = await findNearestDepotByRoute(input.interventionLat, input.interventionLng, balisageDepots)
     if (balisageDepot) {
       balisageDepotInfo = { name: balisageDepot.name, id: balisageDepot.id }
       const bal1 = await calculateRouteKm(balisageDepot.lat, balisageDepot.lng, input.interventionLat, input.interventionLng)
