@@ -10,18 +10,15 @@
 // Logique km selon scenario :
 //   - dsp        : km depanneuse = depot -> intervention -> depot (aller-retour)
 //   - rem_client : km depanneuse = depot -> intervention -> destination -> depot (SNC)
-//   - rem_direct : SC uniquement. Olivier 2026-06-02 PM :
+//   - rem_direct : SC uniquement. Olivier 2026-06-02 PM v3 (formule finale) :
 //                    - km_depanneuse  = depot -> intervention -> depot
-//                                       INTEGRALEMENT couvert par le forfait SC
-//                                       (PAS de surplus a facturer, peu importe les km)
-//                    - km_livraison   = (depot -> intervention -> depot)
-//                                     + (depot -> destination -> depot)
-//                                       (double segment, calcul facturation comme si
-//                                       on avait fait 2 missions distinctes)
-//                                       Facture au tarif km de l ASSISTANCE
-//                                       (billed_to) via source_tariffs, en
-//                                       deduisant les km inclus du forfait
-//                                       remorquage assistance (ex: Touring 20 km).
+//                                       INTEGRALEMENT couvert par le forfait SC.
+//                                       Calcule pour affichage uniquement.
+//                    - km_livraison   = depot -> destination -> depot
+//                                       SEUL segment facture. Tarif km =
+//                                       celui de l ASSISTANCE (billed_to) via
+//                                       source_tariffs, moins km inclus du
+//                                       forfait remorquage assistance (Touring 20, etc.).
 //   - rem_depot  : km depanneuse = depot -> intervention -> depot (Pepinster force)
 //   - balisage   : toujours depot -> intervention -> depot (rentre seul apres)
 //
@@ -346,24 +343,23 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     )
   } else if (input.scenario === 'rem_direct'
              && input.destinationLat != null && input.destinationLng != null) {
-    // SC rem_direct (Olivier 2026-06-02 PM, formule corrigee) :
+    // SC rem_direct (Olivier 2026-06-02 PM v3, formule finale) :
     //   - km_depanneuse = depart -> intervention -> depart
-    //                     INTEGRALEMENT couvert par le forfait SC (pas de
-    //                     surplus a facturer, peu importe les km)
-    //   - km_livraison  = (depart -> intervention -> depart)
-    //                   + (depart -> destination -> depart)
-    //                     Double segment : on facture comme si on avait fait
-    //                     2 missions. Tarif km = celui de l assistance facturee
-    //                     (billedToName via source_tariffs), moins km_inclus.
+    //                     INTEGRALEMENT couvert par le forfait SC.
+    //                     Calcule pour info uniquement (affichage), pas facture.
+    //   - km_livraison  = depart -> destination -> depart
+    //                     SEUL segment facture, au tarif km de l ASSISTANCE
+    //                     facturee (Touring, VAB...), moins km inclus
+    //                     dans son forfait remorquage.
     kmDepanneuse = d1 + dRetour
     const dL1 = await calculateRouteKm(depart.lat, depart.lng, input.destinationLat, input.destinationLng)
     const dL2 = await calculateRouteKm(input.destinationLat, input.destinationLng, depart.lat, depart.lng)
-    kmLivraison = kmDepanneuse + dL1 + dL2
+    kmLivraison = dL1 + dL2
     kmSegments.push(
-      { label: `Dépannage  ${depart.name} → intervention`,            km: d1 },
-      { label: `Dépannage  intervention → ${depart.name}`,            km: dRetour },
-      { label: `Livraison  ${depart.name} → destination`,             km: dL1 },
-      { label: `Livraison  destination → ${depart.name}`,             km: dL2 },
+      { label: `Dépannage  ${depart.name} → intervention (couvert forfait SC)`,  km: d1 },
+      { label: `Dépannage  intervention → ${depart.name} (couvert forfait SC)`,  km: dRetour },
+      { label: `Livraison  ${depart.name} → destination`,                        km: dL1 },
+      { label: `Livraison  destination → ${depart.name}`,                        km: dL2 },
     )
   } else if (input.scenario === 'rem_depot' && pepinster) {
     // depart -> intervention -> Pepinster (mise en depot) -> depart (depanneuse rentre)
