@@ -43,6 +43,8 @@ interface Props {
     billed_to_id?:          number | null
     billed_to_name?:        string | null
     special_tarif_htva?:    number | null
+    parked_at?:             string | null
+    delivering_at?:         string | null
   }
 }
 

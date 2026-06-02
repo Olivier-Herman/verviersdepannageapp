@@ -99,6 +99,7 @@ interface Mission {
   invoiced_at?:    string | null
   police_blocked?: boolean
   parked_at?:      string | null
+  delivering_at?:  string | null
   // Position dans le parc (mission parked). Cf migration 202605182100.
   parc_zone_key?:    string | null
   parc_row_number?:  number | null
@@ -195,6 +196,22 @@ function toDateTimeLocalString(d: Date): string {
 
 const FR_DAYS   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']
 const FR_MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+
+// Olivier 2026-06-02 PM : helpers ISO ↔ datetime-local input.
+// L input <type="datetime-local"> attend "YYYY-MM-DDTHH:MM" en heure LOCALE
+// du navigateur. On convertit dans les 2 sens pour les champs parked_at / delivering_at.
+function isoToLocalDt(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (!isFinite(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function localDtToIso(local: string): string | null {
+  if (!local) return null
+  const d = new Date(local)  // navigateur interprete comme heure locale
+  return isFinite(d.getTime()) ? d.toISOString() : null
+}
 
 function formatInterventionDate(local: string): string {
   if (!local) return 'Non définie — cliquez pour ajouter'
@@ -979,6 +996,9 @@ export default function MissionDetailClient({
     snc_requires_balisage: Boolean(initialMission.snc_requires_balisage),
     // Olivier 2026-06-02 PM : tarif special HTVA (ecrase calcul automatique)
     special_tarif_htva:   initialMission.special_tarif_htva != null ? String(initialMission.special_tarif_htva) : '',
+    // Olivier 2026-06-02 PM : dates parc modifiables (correction gardiennage)
+    parked_at:            isoToLocalDt(initialMission.parked_at),
+    delivering_at:        isoToLocalDt((initialMission as any).delivering_at),
   })
 
   // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,
@@ -1518,7 +1538,16 @@ export default function MissionDetailClient({
   const handleSave = async () => {
     setLoadingSave(true)
     setSaveOk(false)
-    const payload = { ...form, billed_to_id: billedPartnerId, depot_depart_id: depotId || null, extra_addresses: stops.length > 0 ? stops : null, _notify_driver: true }
+    // Convertit les datetime-local en ISO avant envoi (parked_at / delivering_at)
+    const payload = {
+      ...form,
+      parked_at:        localDtToIso(form.parked_at),
+      delivering_at:    localDtToIso(form.delivering_at),
+      billed_to_id:     billedPartnerId,
+      depot_depart_id:  depotId || null,
+      extra_addresses:  stops.length > 0 ? stops : null,
+      _notify_driver:   true,
+    }
     const res = await fetch(`/api/missions/${initialMission.id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -2502,6 +2531,35 @@ export default function MissionDetailClient({
                     </p>
                   )}
                 </div>
+
+                {/* Olivier 2026-06-02 PM : dates parc modifiables (entree / sortie).
+                    Le gardiennage est calcule sur cette fenetre uniquement. */}
+                <div className="mt-4 pt-4 border-t">
+                  <h3 className="text-ink font-semibold text-xs mb-3 flex items-center gap-2">
+                    <span>🅿️</span> Gardiennage (dates de passage en parc)
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Entrée parc">
+                      <input
+                        type="datetime-local"
+                        value={form.parked_at}
+                        onChange={e => f('parked_at')(e.target.value)}
+                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                      />
+                    </Field>
+                    <Field label="Sortie parc">
+                      <input
+                        type="datetime-local"
+                        value={form.delivering_at}
+                        onChange={e => f('delivering_at')(e.target.value)}
+                        className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand"
+                      />
+                    </Field>
+                  </div>
+                  <p className="text-ink-muted text-xs mt-2">
+                    Si vide : pas de gardiennage facturé. Sortie vide + entrée définie = encore en parc (facturé jusqu&apos;à aujourd&apos;hui).
+                  </p>
+                </div>
               </div>
 
               {/* Compte rendu cloture — visible des que le chauffeur a fini (to_invoice) */}
@@ -3179,6 +3237,8 @@ export default function MissionDetailClient({
               billed_to_id:           billedPartnerId,
               billed_to_name:         form.billed_to_name,
               special_tarif_htva:     form.special_tarif_htva ? Number(form.special_tarif_htva) : null,
+              parked_at:              localDtToIso(form.parked_at),
+              delivering_at:          localDtToIso(form.delivering_at),
             }}
           />
         </div>

@@ -64,6 +64,8 @@ export async function PATCH(
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',
     'incident_at', 'intervention_date', 'remarks_general',
+    // Olivier 2026-06-02 PM : dates parc modifiables (correction gardiennage post-coup).
+    'parked_at', 'delivering_at',
     // Olivier 2026-06-02 : snc_scenario doit etre modifiable cote dispatch.
     // Bug rapporte : changer source vers police_snc ne propageait pas le
     // comportement SNC car snc_scenario restait NULL → quote, REL eligibility

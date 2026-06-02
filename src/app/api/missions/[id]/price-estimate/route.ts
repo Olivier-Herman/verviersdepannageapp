@@ -70,6 +70,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     billed_to_id:            ovNum('billed_to_id')        ?? (missionDb as any).billed_to_id,
     billed_to_name:          ov('billed_to_name')         ?? (missionDb as any).billed_to_name,
     special_tarif_htva:      ovNum('special_tarif_htva')  ?? (missionDb as any).special_tarif_htva,
+    parked_at:               ov('parked_at')              ?? (missionDb as any).parked_at,
+    delivering_at:           ov('delivering_at')          ?? (missionDb as any).delivering_at,
   }
 
   // Olivier 2026-06-02 PM : tarif special HTVA → court-circuit total.
