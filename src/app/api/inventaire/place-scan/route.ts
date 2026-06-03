@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // 2. Resolution incoming_missions : plaque > external_id (= mission_num).
+  // 2. Resolution incoming_missions : plaque > external_id (= mission_num) > ticket_id.
   let mission: any = null
   if (plaque) {
     const { data } = await sb
@@ -99,14 +99,57 @@ export async function POST(req: Request) {
       .maybeSingle()
     mission = data
   }
+  // Olivier 2026-06-03 : ajout lookup par odoo_helpdesk_id (le ticket_id du scan
+  // est exactement le helpdesk_id Odoo). Couvre le cas ou la mission VD Soft
+  // existe avec une plaque differente / null (stub legacy_odoo).
+  if (!mission && ticketId) {
+    const { data } = await sb
+      .from('incoming_missions')
+      .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
+      .eq('odoo_helpdesk_id', ticketId)
+      .in('status', PARKED_STATUSES)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    mission = data
+  }
 
   if (!mission) {
-    // Pas dans incoming_missions VD Soft : c est un vehicule legacy Odoo-only.
-    // Pas d erreur cote scan ; juste retour "not_in_vd_soft".
+    // Pas dans incoming_missions VD Soft : on cree une stub minimaliste pour
+    // que le vehicule existe dans le parc. L enrichissement TowSoft / Odoo
+    // helpdesk se fera au prochain scan ou via /admin/parc/prepare-full-inventory.
+    const stubPayload: Record<string, any> = {
+      external_id:      ticketId ? `INVENTORY-${ticketId}` : `INVENTORY-${Date.now()}`,
+      vehicle_plate:    plaque || null,
+      parc_zone_key:    zoneKey,
+      parc_row_number:  Number.isInteger(rowNumber) && rowNumber > 0 ? rowNumber : null,
+      parc_slot_index:  Number.isInteger(slotIndex) && slotIndex > 0 ? slotIndex : null,
+      status:           'parked',
+      source:           'legacy_odoo',
+      received_at:      new Date().toISOString(),
+      parked_at:        new Date().toISOString(),
+      odoo_helpdesk_id: ticketId || null,
+    }
+    const { data: created, error: createErr } = await sb
+      .from('incoming_missions')
+      .insert(stubPayload)
+      .select('id')
+      .single()
+    if (createErr) {
+      return NextResponse.json({
+        ok: true,
+        placed: false,
+        reason: `creation echouee : ${createErr.message}`,
+      })
+    }
     return NextResponse.json({
       ok: true,
-      placed: false,
-      reason: 'not_in_vd_soft',
+      placed: true,
+      mission_id: created.id,
+      created: true,
+      was_at: null,
+      transferred: false,
+      swapped_with: null,
     })
   }
 

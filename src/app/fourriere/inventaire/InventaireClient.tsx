@@ -371,8 +371,20 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
     setProcessing(true)
     try {
       if (parsed.type === 'ours') {
-        // Cas 1 : QR Verviers-QR / verviers-app → reprint + tag mensuel
-        setCurrentItem({ status: 'loading', label: `Ticket #${parsed.ticketId} — réimpression…` })
+        // Cas 1 : QR Verviers-QR / verviers-app
+        // Olivier 2026-06-03 : ORDRE IMPORTANT : place-scan AVANT reprint.
+        //   1. place-scan cree la mission VD Soft (si absente) avec parc_zone_key
+        //      + odoo_helpdesk_id = ticketId
+        //   2. reprint enrichit la mission existante via TowSoft + imprime etiquette
+        // L ordre inverse (legacy) faisait que reprint cherchait une mission par
+        // helpdesk_id qui n existait pas encore -> aucun enrichissement.
+        setCurrentItem({ status: 'loading', label: `Ticket #${parsed.ticketId} — placement…` })
+
+        const place = await placeOnPlan({
+          ticket_id:   parseInt(String(parsed.ticketId), 10),
+        })
+
+        setCurrentItem({ status: 'loading', label: `Ticket #${parsed.ticketId} — enrichissement TowSoft + impression…` })
 
         const res = await fetch('/api/inventaire/reprint', {
           method:  'POST',
@@ -388,18 +400,20 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
         if (!res.ok || !data.ok) throw new Error(data.error || 'Erreur')
 
         playWinSound()
-        // Positionnement sur le plan visuel (silencieux si pas de rangee selectionnee)
-        const place = await placeOnPlan({
-          plaque:      data.plate || undefined,
-          ticket_id:   parseInt(String(parsed.ticketId), 10),
-          mission_num: data.missionNum || undefined,
-        })
-        const placedHere = place?.placed ? `${parcZoneKey}${parcRowNumber}-${nextSlot}` : undefined
+        // Olivier 2026-06-03 : affichage explicite si le placement a echoue
+        // (mission introuvable + creation stub KO). Sinon "OK" voire transfert.
+        const placedHere = place?.placed
+          ? (parcRowNumber != null ? `${parcZoneKey}${parcRowNumber}-${nextSlot}` : `${parcZoneKey} (bordel)`)
+          : undefined
         const transferFrom = place?.transferred && place.was_at
           ? `${place.was_at.zone_key}${place.was_at.row_number}-${place.was_at.slot_index}`
           : undefined
+        let msg: string | undefined
+        if (transferFrom) msg = `↔ Transféré de ${transferFrom}`
+        else if (place?.placed && (place as any).created) msg = '✨ Mission VD Soft créée'
+        else if (!place?.placed) msg = `⚠ Non placé : ${place?.reason || 'inconnu'}`
         const result: ResultItem = {
-          status:      'ok',
+          status:      place?.placed === false ? 'error' : 'ok',
           type:        'reprint',
           // Si on a la plaque, on l affiche en titre. Sinon fallback ticket #.
           label:       data.plate || `Ticket #${parsed.ticketId}`,
@@ -414,7 +428,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           motif:       data.motif || undefined,
           missionNum:  data.missionNum || undefined,
           dateMission: data.dateEntree || undefined,
-          msg:         transferFrom ? `↔ Transféré de ${transferFrom}` : undefined,
+          msg,
         }
         setCurrentItem(result)
         setItems(prev => [result, ...prev])
