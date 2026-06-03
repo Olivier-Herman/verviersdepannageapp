@@ -129,14 +129,26 @@ export async function POST(req: Request) {
         if (!vehicleId) continue
         if (interventionDateByVehicle.has(vehicleId)) continue  // garde le plus recent (order DESC)
 
-        // Format date d entree Odoo : 'YYYY-MM-DD' ou 'YYYY-MM-DD HH:MM:SS'
+        // Format date d entree Odoo : 'YYYY-MM-DD' (date seule) ou 'YYYY-MM-DD HH:MM:SS'
+        // Olivier 2026-06-03 : si x_studio_date_dentree est juste une date,
+        // on combine avec l HEURE de create_date pour avoir une heure realiste
+        // (sinon T00:00:00 UTC = 02h Bruxelles = aberrant).
         let dateStr: string | null = null
-        if (t.x_studio_date_dentree) {
-          // Date format Odoo : 'YYYY-MM-DD' -> ajoute T00:00:00 pour ISO
+        if (t.x_studio_date_dentree && t.create_date) {
           const raw = String(t.x_studio_date_dentree)
-          dateStr = raw.includes('T') ? raw : `${raw}T00:00:00`
+          if (raw.includes('T') || raw.includes(' ')) {
+            // x_studio_date_dentree a deja l heure
+            dateStr = raw.includes('T') ? raw : raw.replace(' ', 'T')
+          } else {
+            // Date seule : combine avec heure de create_date (proxy le plus proche)
+            const dateOnly = raw.slice(0, 10)
+            const timeOnly = String(t.create_date).slice(11, 19) || '12:00:00'
+            dateStr = `${dateOnly}T${timeOnly}`
+          }
+        } else if (t.x_studio_date_dentree) {
+          const raw = String(t.x_studio_date_dentree)
+          dateStr = raw.includes('T') ? raw : `${raw}T12:00:00`  // midi par defaut
         } else if (t.create_date) {
-          // create_date Odoo : 'YYYY-MM-DD HH:MM:SS' -> remplace espace par T
           dateStr = String(t.create_date).replace(' ', 'T')
         }
         if (dateStr) {

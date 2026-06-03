@@ -242,6 +242,9 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
       {/* Enrichir manquants : batch TowSoft pour les missions encore en source=legacy_odoo */}
       <EnrichBatchBlock />
 
+      {/* Refresh dates : sync rapide depuis Odoo create_date (sans Browserless) */}
+      <RefreshDatesBlock />
+
       {/* Settings destruction AVP : email destinataire Ville de Verviers */}
       <div className="bg-surface-2 border rounded-2xl p-4">
         <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
@@ -752,6 +755,65 @@ function EnrichBatchBlock() {
               {busy ? '⏳' : `↻ Continuer (${result.remaining} restantes)`}
             </button>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Bloc "Refresh dates" — corrige les heures suspectes (00:00 UTC = 02h
+// Bruxelles) en allant chercher create_date du ticket Odoo (HH:MM:SS).
+// Rapide (1 appel Odoo, pas de Browserless).
+// ─────────────────────────────────────────────────────────────────────────
+function RefreshDatesBlock() {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<null | { candidates: number; updated: number; skipped: number; message: string }>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run() {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/admin/parc/refresh-dates', { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setResult(j)
+    } catch (e: any) {
+      setError(e.message || 'Erreur')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-surface-2 border rounded-2xl p-4 mt-4">
+      <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
+        🕒 Corriger les heures suspectes (02h Bruxelles)
+      </h2>
+      <p className="text-ink-muted text-xs mb-3">
+        Pour les missions creees par <code className="bg-surface px-1 rounded">prepare-full-inventory</code> avec heure
+        d intervention bidon (02h Bruxelles = 00h UTC, car <code className="bg-surface px-1 rounded">x_studio_date_dentree</code> Odoo
+        ne contient que la date). Recupere l <strong>heure reelle</strong> depuis <code className="bg-surface px-1 rounded">helpdesk.ticket.create_date</code>.
+        <br/>
+        <strong>Rapide</strong> : 1 batch Odoo (~5s, pas de Browserless). Ne touche que les missions a heure suspecte.
+      </p>
+      <button
+        onClick={run}
+        disabled={busy}
+        className="px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+        {busy ? '⏳ En cours…' : '🕒 Lancer la correction des heures'}
+      </button>
+      {error && (
+        <div className="mt-3 bg-critical/10 border border-critical/30 rounded-lg p-3 text-critical text-xs">
+          ❌ {error}
+        </div>
+      )}
+      {result && (
+        <div className="mt-3 bg-surface border rounded-lg p-3 text-xs">
+          <p className="text-ink font-semibold">
+            ✓ {result.updated} missions mises a jour · {result.candidates} candidates · {result.skipped} skipped
+          </p>
+          <p className="text-ink-muted mt-1">{result.message}</p>
         </div>
       )}
     </div>
