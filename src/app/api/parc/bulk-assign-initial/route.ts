@@ -193,6 +193,11 @@ export async function POST() {
   }
 
   // 10. Apply en parallele (chunks)
+  // Olivier 2026-06-03 (audit J-2 W1 C1) : accumule les erreurs au lieu de
+  // les avaler. Avant, la route renvoyait ok:true total_placed=N meme si
+  // 100% des INSERT plantaient (= bouton vert mensonger, parc incoherent).
+  const errors: Array<{ phase: string; external_id?: string; mission_id?: string; error: string }> = []
+
   async function runChunked<T>(items: T[], fn: (item: T) => Promise<any>, chunkSize = 20) {
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize)
@@ -201,11 +206,15 @@ export async function POST() {
   }
 
   await runChunked(toUpdate, async u => {
-    await sb.from('incoming_missions').update({
+    const { error: upErr } = await sb.from('incoming_missions').update({
       parc_zone_key:   u.zone,
       parc_row_number: u.row,
       parc_slot_index: u.slot,
     }).eq('id', u.mission_id)
+    if (upErr) {
+      console.error('[bulk-assign] update error:', upErr.message, u.mission_id)
+      errors.push({ phase: 'update', mission_id: u.mission_id, error: upErr.message })
+    }
   })
 
   if (toInsert.length > 0) {
@@ -227,18 +236,31 @@ export async function POST() {
     // simple; si erreur de doublons on log seulement (cas rare apres dedup en amont).
     const { error: insertErr } = await sb.from('incoming_missions').insert(rows)
     if (insertErr) {
-      console.warn('[bulk-assign] insert error:', insertErr.message)
+      console.warn('[bulk-assign] insert bulk echec (retry unitaire):', insertErr.message)
       // Retombe sur des inserts unitaires avec UPSERT-equivalent
       await runChunked(rows, async r => {
-        const { data: exists } = await sb.from('incoming_missions').select('id').eq('external_id', r.external_id).maybeSingle()
+        const { data: exists, error: selErr } = await sb.from('incoming_missions').select('id').eq('external_id', r.external_id).maybeSingle()
+        if (selErr) {
+          console.error('[bulk-assign] select exists echec:', selErr.message, r.external_id)
+          errors.push({ phase: 'select_exists', external_id: r.external_id, error: selErr.message })
+          return
+        }
         if (exists) {
-          await sb.from('incoming_missions').update({
+          const { error: upErr2 } = await sb.from('incoming_missions').update({
             parc_zone_key: r.parc_zone_key,
             parc_row_number: r.parc_row_number,
             parc_slot_index: r.parc_slot_index,
           }).eq('id', exists.id)
+          if (upErr2) {
+            console.error('[bulk-assign] update unitaire echec:', upErr2.message, r.external_id)
+            errors.push({ phase: 'update_unit', external_id: r.external_id, error: upErr2.message })
+          }
         } else {
-          await sb.from('incoming_missions').insert(r as any)
+          const { error: insErr } = await sb.from('incoming_missions').insert(r as any)
+          if (insErr) {
+            console.error('[bulk-assign] insert unitaire echec:', insErr.message, r.external_id)
+            errors.push({ phase: 'insert_unit', external_id: r.external_id, error: insErr.message })
+          }
         }
       })
     }
@@ -247,11 +269,23 @@ export async function POST() {
   const totalPlaced = summary.reduce((s, x) => s + x.placed, 0)
   const totalShortage = summary.reduce((s, x) => s + x.shortage, 0)
 
+  // Olivier 2026-06-03 : retour 207 (Multi-Status) si succes partiel, 500 si
+  // 100% des operations ont foire. Plus jamais de bouton vert mensonger.
+  const totalOps = toUpdate.length + toInsert.length
+  const allFailed = totalOps > 0 && errors.length >= totalOps
+  const partialFail = errors.length > 0 && !allFailed
+  const httpStatus = allFailed ? 500 : (partialFail ? 207 : 200)
+
   return NextResponse.json({
-    ok: true,
+    ok: errors.length === 0,
     summary,
     total_placed:   totalPlaced,
     total_shortage: totalShortage,
     unmapped_zones: Array.from(unmappedZones),
-  })
+    errors_count:   errors.length,
+    errors:         errors.slice(0, 20),
+    message:        errors.length === 0
+      ? `${totalPlaced} placements OK`
+      : `${totalPlaced - errors.length} placements OK, ${errors.length} echec(s) (voir errors)`,
+  }, { status: httpStatus })
 }
