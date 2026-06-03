@@ -311,17 +311,23 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   /** Appelle place-scan : positionne la voiture sur le plan au slot courant.
    *  Retourne null si offline / pas de rangee / erreur (loguee dans la console). */
   async function placeOnPlan(payload: { plaque?: string; ticket_id?: number; mission_num?: string }): Promise<PlaceScanResult | null> {
-    if (!parcZoneKey || parcRowNumber == null) return null
+    // Olivier 2026-06-03 : en mode bordel (strict_capacity=false) on n a pas de
+    // row/slot, mais on update quand meme parc_zone_key pour que le vehicule
+    // apparaisse dans la zone du parc.
+    if (!parcZoneKey) return null
     try {
+      const body: any = {
+        ...payload,
+        zone_key: parcZoneKey,
+      }
+      if (parcRowNumber != null) {
+        body.row_number = parcRowNumber
+        body.slot_index = nextSlot
+      }
       const res = await fetch('/api/inventaire/place-scan', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          ...payload,
-          zone_key:   parcZoneKey,
-          row_number: parcRowNumber,
-          slot_index: nextSlot,
-        }),
+        body:    JSON.stringify(body),
       })
       const j = await res.json()
       if (!res.ok) {
