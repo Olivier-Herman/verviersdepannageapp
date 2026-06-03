@@ -13,6 +13,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, ScanLine } from 'lucide-react'
 import VehicleFicheSheet from './VehicleFicheSheet'
 import DepotsTilesModal from './DepotsTilesModal'
+import { normalizePlate } from '@/lib/plate'
 
 interface SearchResult {
   id:               string
@@ -147,7 +148,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
 
               <Field label="Plaque" icon={<Hash size={14} />}>
-                <input value={plate} onChange={e => setPlate(e.target.value)}
+                <input value={plate} onChange={e => setPlate(normalizePlate(e.target.value))}
                   placeholder="ex : 1ABC123" autoFocus
                   className="w-full bg-surface-2 border rounded-md px-3 py-2 text-sm text-ink uppercase placeholder:text-ink-faint focus:outline-none focus:border-brand" />
               </Field>

@@ -90,7 +90,7 @@ export async function GET(req: Request) {
     q = q.in('status', ACTIVE_PARC_STATUSES)
   }
   if (zoneKeys) q = q.in('parc_zone_key', zoneKeys)
-  if (plate)    q = q.ilike('vehicle_plate', `%${escapeIlike(plate.toUpperCase())}%`)
+  if (plate)    q = q.ilike('vehicle_plate', `%${escapeIlike(plate.replace(/[-.\s]/g, '').toUpperCase())}%`)
   if (vin)      q = q.ilike('vehicle_vin',   `%${escapeIlike(vin.toUpperCase())}%`)
   if (pv)       q = q.ilike('police_pv_number', `%${escapeIlike(pv)}%`)
   if (vehicle) {

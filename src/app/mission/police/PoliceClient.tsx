@@ -9,6 +9,7 @@ import ScanButton from '@/components/ScanButton'
 import type { VehicleMatch } from '@/types/vehicles'
 import { useT } from '@/lib/i18n/I18nProvider'
 import { T }    from '@/lib/i18n/T'
+import { normalizePlate } from '@/lib/plate'
 
 type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'appel_prive' | 'avp'
 
@@ -866,13 +867,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
             <div className="flex gap-2">
               <input type="text" value={plate}
                 onChange={e => {
-                  setPlate(e.target.value.toUpperCase())
+                  setPlate(normalizePlate(e.target.value))
                   if (vehicleFromOdoo) setVehicleFromOdoo(false)
                 }}
                 onBlur={searchVehicleByPlate}
                 placeholder="1ABC234"
                 className="flex-1 bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
-              <ScanButton mode="plate" value={plate} onScan={text => { setPlate(text); if (vehicleFromOdoo) setVehicleFromOdoo(false) }}
+              <ScanButton mode="plate" value={plate} onScan={text => { setPlate(normalizePlate(text)); if (vehicleFromOdoo) setVehicleFromOdoo(false) }}
                 className="px-3 bg-brand/10 text-brand rounded-xl text-sm flex items-center justify-center min-w-[48px]" label="📷" />
             </div>
           </div>

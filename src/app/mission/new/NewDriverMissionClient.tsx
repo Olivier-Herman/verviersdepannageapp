@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import Script from 'next/script'
 import ScanButton from '@/components/ScanButton'
 import { T } from '@/lib/i18n/T'
+import { normalizePlate } from '@/lib/plate'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -406,12 +407,12 @@ export default function NewDriverMissionClient() {
                   <div className="flex gap-2">
                     <input
                       value={plateQuery}
-                      onChange={e => setPlateQuery(e.target.value.toUpperCase())}
+                      onChange={e => setPlateQuery(normalizePlate(e.target.value))}
                       onKeyDown={e => e.key === 'Enter' && searchVehicle()}
                       placeholder="Ex: 1-ABC-123"
                       className="flex-1 bg-surface border border rounded-xl px-4 py-3.5 text-ink font-mono text-base uppercase focus:outline-none focus:border-brand placeholder:text-ink-faint placeholder:normal-case"
                     />
-                    <ScanButton mode="plate" value={plateQuery} onScan={setPlateQuery}
+                    <ScanButton mode="plate" value={plateQuery} onScan={t => setPlateQuery(normalizePlate(t))}
                       className="px-4 py-3.5 bg-brand/10 text-brand rounded-xl font-medium text-sm" label="📷" />
                     <button onClick={searchVehicle} disabled={searching || plateQuery.length < 3}
                       className="px-4 py-3.5 bg-brand disabled:opacity-40 text-white rounded-xl font-medium text-sm transition">
