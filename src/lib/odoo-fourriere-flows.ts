@@ -6,7 +6,10 @@
 //
 // Port adapte de Verviers-QR pages/api/inventory/process.js + reprint.js.
 
-import { odooRpc } from '@/lib/odoo'
+import { odooRpc }              from '@/lib/odoo'
+import { createAdminClient }    from '@/lib/supabase'
+import { buildParcLabelZPL }    from '@/lib/print/zpl-templates/parc-label'
+import { printZPLRaw }          from '@/lib/print/zebra-raw'
 
 const HELPDESK_TEAM_ID = 5    // Equipe "fourriere" (a verifier dans Odoo si change)
 
@@ -332,16 +335,41 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
     ? String(ticket.x_studio_note_sur_etiquette) : ''
 
   // Impression UNIQUEMENT si demandee explicitement (default off : l inventaire
-  // sert a remettre a jour le parc, pas a re-imprimer toutes les etiquettes)
+  // sert a remettre a jour le parc, pas a re-imprimer toutes les etiquettes).
+  //
+  // Olivier 2026-06-03 : on utilise le NOUVEAU template VD Soft (buildParcLabelZPL
+  // + printZPLRaw) au lieu de l ancien template PC. On cherche le mission_number
+  // VD Soft correspondant pour que le QR pointe vers /qr/mission/[number] (hub
+  // unifie) au lieu de l ancien /v/[ticketId]. Fallback ticketId si pas trouve.
   let printed = false
   if (params.print) {
-    printed = await printZebraLabel({
-      ticketId: params.ticketId,
-      motif,
-      date:     formatDateForLabel(ticket.x_studio_date_dentree),
-      note,
-      plate, vin, brand, model,
-    })
+    try {
+      const sb = createAdminClient()
+      const { data: vdMission } = await sb
+        .from('incoming_missions')
+        .select('mission_number, id')
+        .eq('odoo_helpdesk_id', params.ticketId)
+        .maybeSingle()
+      const qrTarget = vdMission?.mission_number
+        ? `/qr/mission/${vdMission.mission_number}`
+        : `/v/${params.ticketId}`
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+      const zpl = buildParcLabelZPL({
+        qrUrl: `${baseUrl}${qrTarget}`,
+        motif,
+        date:  formatDateForLabel(ticket.x_studio_date_dentree),
+        note,
+        plate,
+        brand,
+        model,
+        vin,
+      })
+      const result = await printZPLRaw(zpl)
+      printed = result.ok
+      if (!result.ok) console.warn('[reprintInventoryLabel] print-raw failed:', result.error)
+    } catch (e: any) {
+      console.warn('[reprintInventoryLabel] print error:', e.message)
+    }
   }
 
   return {
