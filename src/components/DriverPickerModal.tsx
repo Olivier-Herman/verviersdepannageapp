@@ -12,6 +12,8 @@ interface DriverEta {
   has_position: boolean
   location_age_seconds: number | null
   is_fresh: boolean
+  is_on_duty?: boolean       // Olivier 2026-06-03
+  is_on_schedule?: boolean
   status: 'free' | 'on_mission'
   eta_to_incident_min: number | null
   current_mission: null | {
@@ -45,10 +47,15 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
     (async () => {
       setLoading(true)
       try {
-        const qs = incidentLat != null && incidentLng != null
-          ? `?lat=${incidentLat}&lng=${incidentLng}`
-          : ''
-        const res  = await fetch(`/api/missions/${missionId}/driver-eta${qs}`)
+        // Olivier 2026-06-03 : include_off_duty=1 → DriverPickerModal voit
+        // aussi les chauffeurs hors service (grises). Le dispatcher peut
+        // quand meme les selectionner manuellement.
+        const params = new URLSearchParams({ include_off_duty: '1' })
+        if (incidentLat != null && incidentLng != null) {
+          params.set('lat', String(incidentLat))
+          params.set('lng', String(incidentLng))
+        }
+        const res  = await fetch(`/api/missions/${missionId}/driver-eta?${params.toString()}`)
         const data = await res.json()
         if (data.error) setError(data.error)
         else setDrivers(data.drivers || [])
@@ -131,18 +138,27 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
               ? (cm.eta_to_destination_min || 0) + (cm.eta_destination_to_incident_min || 0)
               : d.eta_to_incident_min
 
+            // Olivier 2026-06-03 : chauffeurs HORS GARDE affiches grises.
+            // Le dispatcher peut quand meme les choisir avec confirmation.
+            const isOffDuty = d.is_on_duty === false
+
             // Couleur de bordure et fond selon disponibilité — variants thème.
-            // Hover : élévation par shadow + bordure renforcée (les modificateurs
-            // d'opacité Tailwind ne fonctionnent pas avec les couleurs en var()).
-            const skinCls = free
-              ? 'bg-success-soft border-success'
-              : 'bg-warning-soft border-warning'
+            const skinCls = isOffDuty
+              ? 'bg-surface border opacity-50 grayscale'
+              : free
+                ? 'bg-success-soft border-success'
+                : 'bg-warning-soft border-warning'
 
             return (
               <button
                 key={d.id}
                 type="button"
-                onClick={() => onPick(d.id)}
+                onClick={() => {
+                  if (isOffDuty) {
+                    if (!window.confirm(`${d.name} n'est pas de garde actuellement. Confirmer son attribution ?`)) return
+                  }
+                  onPick(d.id)
+                }}
                 className={`w-full text-left p-4 rounded-card border transition-all hover:shadow-md hover:-translate-y-px ${skinCls}`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -154,9 +170,12 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
                       status={free ? 'available' : 'busy'}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-ink text-sm font-semibold truncate">{d.name}</p>
+                      <p className="text-ink text-sm font-semibold truncate">
+                        {d.name}
+                        {isOffDuty && <span className="ml-2 text-[10px] uppercase font-bold text-ink-muted">⏸ Pas de garde</span>}
+                      </p>
                       {free ? (
-                        <p className="text-success text-xs">
+                        <p className={`${isOffDuty ? 'text-ink-muted' : 'text-success'} text-xs`}>
                           Libre {d.has_position && d.location_age_seconds != null && `· position ${fmtAge(d.location_age_seconds)}`}
                         </p>
                       ) : (

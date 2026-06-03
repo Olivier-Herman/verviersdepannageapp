@@ -101,6 +101,11 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const sb = createAdminClient()
   const url = new URL(req.url)
 
+  // Olivier 2026-06-03 : include_off_duty=1 → garde les chauffeurs hors
+  // service dans la reponse (grises cote DriverPickerModal). Sans le flag,
+  // comportement strict (filtre) pour l auto-dispatch.
+  const includeOffDuty = url.searchParams.get('include_off_duty') === '1'
+
   // Coords passees en query par le modal (form state, toujours frais) prioritaires.
   // Sinon fallback sur les valeurs DB (utile si on cale-back depuis un autre contexte).
   const queryLat = url.searchParams.get('lat')
@@ -165,8 +170,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const onSchedule   = inDayShift || inNightShift
 
     // Filtrage "hors service" : pas de ping recent ET pas en mission active
-    // ET pas de garde forcee
-    if (!isFresh && !activeMission && !onSchedule) return null
+    // ET pas de garde forcee.
+    // Olivier 2026-06-03 : si include_off_duty=1, on garde les off-duty
+    // pour les afficher grises cote DriverPickerModal. L auto-dispatch n appelle
+    // PAS avec ce flag pour rester strict (jamais d auto-dispatch sur un
+    // chauffeur pas de garde).
+    const isOnDuty = isFresh || !!activeMission || onSchedule
+    if (!isOnDuty && !includeOffDuty) return null
 
     const driverPos: Coord | null = hasPosition
       ? { lat: Number(d.last_location_lat), lng: Number(d.last_location_lng) }
@@ -229,6 +239,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       has_position:             hasPosition,
       location_age_seconds:     locAge,
       is_fresh:                 isFresh,
+      is_on_duty:               isOnDuty,        // Olivier 2026-06-03
+      is_on_schedule:           onSchedule,      // sur planning de garde
       status:                   activeMission ? 'on_mission' as const : 'free' as const,
       eta_to_incident_min:      etaPositionToIncident,
       eta_total_min:            etaTotalMin,    // NEW : ETA total avec decharge si en mission
