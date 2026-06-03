@@ -136,11 +136,15 @@ export async function POST(req: Request) {
       .select('id')
       .single()
     if (createErr) {
+      // Olivier 2026-06-03 (audit J-2 W1 C2) : retour 500 explicite au lieu
+      // de ok:true placed:false silencieux. Sinon le chauffeur croit que le
+      // scan est OK alors que rien n a ete persiste (= bouton vert mensonger).
+      console.error('[place-scan] INSERT stub echec:', createErr.message)
       return NextResponse.json({
-        ok: true,
+        ok: false,
         placed: false,
-        reason: `creation echouee : ${createErr.message}`,
-      })
+        error: `Creation mission VD Soft echouee : ${createErr.message}`,
+      }, { status: 500 })
     }
     return NextResponse.json({
       ok: true,
@@ -177,11 +181,20 @@ export async function POST(req: Request) {
     if (currentOccupant) {
       // L occupant prend la place qu avait la voiture qu on est en train de
       // scanner (qui peut etre null s elle n etait pas placee).
-      await sb.from('incoming_missions').update({
+      // Olivier 2026-06-03 (audit W1 C2) : check error pour eviter 2 missions
+      // sur le meme slot silencieusement.
+      const { error: swapErr } = await sb.from('incoming_missions').update({
         parc_zone_key:   wasAt?.zone_key   ?? null,
         parc_row_number: wasAt?.row_number ?? null,
         parc_slot_index: wasAt?.slot_index ?? null,
       }).eq('id', currentOccupant.id)
+      if (swapErr) {
+        console.error('[place-scan] swap occupant echec:', swapErr.message)
+        return NextResponse.json({
+          ok: false,
+          error: `Swap occupant slot ${zoneKey}${rowNumber}-${slotIndex} echoue : ${swapErr.message}`,
+        }, { status: 500 })
+      }
     }
   }
 
@@ -208,8 +221,14 @@ export async function POST(req: Request) {
       const fallback = { ...updates }
       delete fallback.unlocated_at
       delete fallback.unlocated_zone
-      await sb.from('incoming_missions').update(fallback).eq('id', mission.id)
+      // Olivier 2026-06-03 (audit W1 C2) : check error sur retry aussi
+      const { error: retryErr } = await sb.from('incoming_missions').update(fallback).eq('id', mission.id)
+      if (retryErr) {
+        console.error('[place-scan] update retry fallback echec:', retryErr.message)
+        return NextResponse.json({ error: retryErr.message }, { status: 500 })
+      }
     } else {
+      console.error('[place-scan] update mission echec:', updErr.message)
       return NextResponse.json({ error: updErr.message }, { status: 500 })
     }
   }
