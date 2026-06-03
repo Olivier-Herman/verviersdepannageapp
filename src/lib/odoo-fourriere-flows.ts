@@ -10,6 +10,7 @@ import { odooRpc }              from '@/lib/odoo'
 import { createAdminClient }    from '@/lib/supabase'
 import { buildParcLabelZPL }    from '@/lib/print/zpl-templates/parc-label'
 import { printZPLRaw }          from '@/lib/print/zebra-raw'
+import { scrapeTowsoftMission } from '@/lib/towsoft-scrape'
 
 const HELPDESK_TEAM_ID = 5    // Equipe "fourriere" (a verifier dans Odoo si change)
 
@@ -334,22 +335,70 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
   const note = (ticket.x_studio_note_sur_etiquette && ticket.x_studio_note_sur_etiquette !== false)
     ? String(ticket.x_studio_note_sur_etiquette) : ''
 
+  // Olivier 2026-06-03 : enrichissement TowSoft. Si la mission VD Soft existe
+  // (stub cree par prepare-full-inventory) et qu on a le num TowSoft sur le
+  // ticket Odoo, on scrape TowSoft pour recuperer dossier, vraie date
+  // d intervention, marque/modele/vin/plaque officiels et update la mission.
+  const sb = createAdminClient()
+  const { data: vdMission } = await sb
+    .from('incoming_missions')
+    .select('id, mission_number, status, dossier_number, intervention_date, source')
+    .eq('odoo_helpdesk_id', params.ticketId)
+    .maybeSingle()
+
+  const towsoftNum = ticket.x_studio_mission_towsoft && ticket.x_studio_mission_towsoft !== false
+    ? String(ticket.x_studio_mission_towsoft)
+    : null
+
+  if (vdMission && towsoftNum) {
+    try {
+      const ts = await scrapeTowsoftMission(towsoftNum)
+      const updates: Record<string, any> = {}
+
+      // Dossier : seulement si pas deja set
+      if (!vdMission.dossier_number && ts.refDossier) {
+        updates.dossier_number = ts.refDossier
+      }
+      // Date intervention : prefere TowSoft (DD-MM-YYYY) si dispo
+      if (ts.dateMission) {
+        try {
+          const m = ts.dateMission.match(/^(\d{2})-(\d{2})-(\d{4})/)
+          if (m) {
+            const iso = `${m[3]}-${m[2]}-${m[1]}T00:00:00`
+            const d = new Date(iso)
+            if (isFinite(d.getTime())) updates.intervention_date = d.toISOString()
+          }
+        } catch {}
+      }
+      // Plaque/marque/modele/VIN : ecrasement uniquement si vide en BDD
+      if (ts.plaque)  updates.vehicle_plate = String(ts.plaque).toUpperCase()
+      if (ts.marque)  updates.vehicle_brand = ts.marque
+      if (ts.modele)  updates.vehicle_model = ts.modele
+      if (ts.vin)     updates.vehicle_vin   = ts.vin
+
+      // Tag source = enriched pour tracer qu on a fait le scraping
+      updates.source = 'legacy_towsoft_enriched'
+
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = new Date().toISOString()
+        await sb.from('incoming_missions').update(updates).eq('id', vdMission.id)
+      }
+    } catch (e: any) {
+      // Best-effort : ne fail pas la reprint si le scraping echoue
+      console.warn(`[reprintInventoryLabel] TowSoft scrape KO pour num=${towsoftNum}:`, e.message)
+    }
+  }
+
   // Impression UNIQUEMENT si demandee explicitement (default off : l inventaire
   // sert a remettre a jour le parc, pas a re-imprimer toutes les etiquettes).
   //
   // Olivier 2026-06-03 : on utilise le NOUVEAU template VD Soft (buildParcLabelZPL
-  // + printZPLRaw) au lieu de l ancien template PC. On cherche le mission_number
-  // VD Soft correspondant pour que le QR pointe vers /qr/mission/[number] (hub
-  // unifie) au lieu de l ancien /v/[ticketId]. Fallback ticketId si pas trouve.
+  // + printZPLRaw) au lieu de l ancien template PC. Le QR pointe vers
+  // /qr/mission/[number] (hub unifie) si mission VD Soft trouvee, sinon
+  // fallback /v/[ticketId].
   let printed = false
   if (params.print) {
     try {
-      const sb = createAdminClient()
-      const { data: vdMission } = await sb
-        .from('incoming_missions')
-        .select('mission_number, id')
-        .eq('odoo_helpdesk_id', params.ticketId)
-        .maybeSingle()
       const qrTarget = vdMission?.mission_number
         ? `/qr/mission/${vdMission.mission_number}`
         : `/v/${params.ticketId}`
