@@ -235,6 +235,29 @@ export default function SncMissionFiche({
     M.intervention_date, M.received_at,
   ])
 
+  // Olivier 2026-06-03 : auto-sync amount_to_collect quand le preview est dispo
+  // mais que la BDD n a pas la valeur. Couvre les missions creees avant le fix
+  // af1aab9 (qui ne PATCHait pas amount_to_collect apres saisie destination).
+  // Une seule fois par changement de preview pour eviter le spam.
+  useEffect(() => {
+    if (!sncPreview?.ok) return
+    if (variant !== 'snc') return                   // SC = facturation assistance
+    if (M.snc_scenario === 'rem_depot') return       // pas d encaissement chauffeur
+    if (typeof sncPreview.total_tvac !== 'number')   return
+    const currentAmount = Number(M.amount_to_collect ?? 0)
+    const previewAmount = Number(sncPreview.total_tvac)
+    if (currentAmount > 0 && Math.abs(currentAmount - previewAmount) < 0.01) return
+    // Decalage ou null → sync
+    fetch(`/api/missions/${M.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ amount_to_collect: previewAmount }),
+    })
+      .then(r => r.ok ? setM(prev => ({ ...prev, amount_to_collect: previewAmount as any })) : null)
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sncPreview?.total_tvac])
+
   // ── PATCH helper ────────────────────────────────────────────────────────
   const patchMission = async (body: Record<string, any>) => {
     const r = await fetch(`/api/missions/${M.id}`, {
