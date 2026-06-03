@@ -947,6 +947,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
   // ── API statuts simples (avec reload) ───────────────────────────────────
   const api = async (action: string, extra = {}) => {
+    console.log(`[api] CALL action=${action}`, { extra, currentStatus: M.status, currentLoaded: !!M.loaded_at })
     setLoading(true); setErr('')
     try {
       const r = await fetch('/api/missions/driver-action', {
@@ -954,6 +955,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         body: JSON.stringify({ mission_id: M.id, action, ...extra }),
       })
       const j = await r.json()
+      console.log(`[api] RES action=${action} ok=${r.ok}`, { newStatus: j.mission?.status, newLoadedAt: j.mission?.loaded_at, newDeliveringAt: j.mission?.delivering_at })
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(j.mission)
       // Olivier 2026-06-03 : preserve les searchParams existants (notamment
@@ -962,9 +964,13 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {
         const __url = new URL(window.location.href)
         __url.searchParams.set('t', String(Date.now()))
+        console.log(`[api] RELOAD URL=${__url.toString()}`)
         window.location.href = __url.toString()
       }
-    } catch (e: any) { setErr(e.message || 'Erreur') }
+    } catch (e: any) {
+      console.error(`[api] ERR action=${action}:`, e?.message || e)
+      setErr(e.message || 'Erreur')
+    }
     finally { setLoading(false) }
   }
 
