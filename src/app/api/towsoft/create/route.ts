@@ -394,7 +394,25 @@ export async function POST(req: Request) {
       .single()
 
     if (vdErr) {
-      console.error('[towsoft/create] INSERT incoming_missions echec (non bloquant):', vdErr.message)
+      // Olivier 2026-06-03 : VD Soft = source de verite. Si INSERT plante,
+      // on doit :
+      //   1. Supprimer le ticket Odoo orphelin (qui vient d etre cree)
+      //   2. Retourner une erreur 500 au chauffeur pour qu il retente
+      // Ainsi pas d etat incoherent : soit la mission est partout, soit nulle part.
+      console.error('[towsoft/create] INSERT incoming_missions ECHEC BLOQUANT:', vdErr.message)
+      if (odooTicketId) {
+        try {
+          const { odooRpc } = await import('@/lib/odoo')
+          await odooRpc('helpdesk.ticket', 'unlink', [[odooTicketId]])
+          console.log(`[towsoft/create] Cleanup ticket Odoo orphelin ${odooTicketId}`)
+        } catch (e: any) {
+          console.warn(`[towsoft/create] Cleanup ticket Odoo ${odooTicketId} ECHEC:`, e?.message)
+        }
+      }
+      return NextResponse.json({
+        ok:    false,
+        error: `Echec creation mission VD Soft : ${vdErr.message}. La mission n a pas ete creee, reessaie.`,
+      }, { status: 500 })
     } else {
       console.log('[towsoft/create] VD Soft mission cree:', vdData?.id, '#' + vdData?.mission_number, 'source:', vdSource, 'zone:', vdZone)
       vdMissionId = vdData?.id || null
