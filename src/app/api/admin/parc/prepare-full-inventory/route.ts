@@ -226,14 +226,46 @@ export async function POST(req: Request) {
   }
 
   if (stubsToCreate.length > 0 && !dryRun) {
-    // Insert par batches de 100
+    // Olivier 2026-06-03 : insert par batch + fallback insert un-par-un avec
+    // log si un batch foire, pour identifier la zone problematique (FK error
+    // sur parc_zone_key par exemple).
     const BATCH = 100
+    let inserted = 0
+    let skipped = 0
+    const skipDetails: Array<{ plate: string; zone: string; error: string }> = []
     for (let i = 0; i < stubsToCreate.length; i += BATCH) {
       const slice = stubsToCreate.slice(i, i + BATCH)
       const { error } = await sb.from('incoming_missions').insert(slice)
       if (error) {
-        return NextResponse.json({ error: `INSERT stubs echec : ${error.message}` }, { status: 500 })
+        // Fallback : insert un-par-un pour identifier les stubs problematiques
+        for (const stub of slice) {
+          const { error: e1 } = await sb.from('incoming_missions').insert(stub)
+          if (e1) {
+            skipped++
+            skipDetails.push({
+              plate: stub.vehicle_plate,
+              zone:  stub.parc_zone_key,
+              error: e1.message.slice(0, 200),
+            })
+          } else {
+            inserted++
+          }
+        }
+      } else {
+        inserted += slice.length
       }
+    }
+    if (skipped > 0) {
+      console.warn(`[prepare-full-inventory] ${skipped} stubs skipped sur ${stubsToCreate.length}`)
+      // On retourne quand meme un succes partiel avec le detail
+      return NextResponse.json({
+        ok: true,
+        stats,
+        inserted,
+        skipped,
+        skipped_details: skipDetails.slice(0, 20),
+        message: `${inserted} stubs crees, ${skipped} skipped (voir skipped_details)`,
+      })
     }
   }
 
