@@ -38,6 +38,51 @@ export async function GET() {
   return NextResponse.json({ periods: data || [] })
 }
 
+export async function POST(req: Request) {
+  const auth = await authorize()
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const body = await req.json()
+  const kind = String(body.kind || '')
+  if (!['day', 'night', 'autodispatch_night'].includes(kind)) {
+    return NextResponse.json({ error: 'kind invalide (day | night | autodispatch_night)' }, { status: 400 })
+  }
+  const hour_start = Number(body.hour_start)
+  const hour_end   = Number(body.hour_end)
+  if (!Number.isFinite(hour_start) || hour_start < 0 || hour_start > 24
+   || !Number.isFinite(hour_end)   || hour_end   < 0 || hour_end   > 24) {
+    return NextResponse.json({ error: 'hour_start / hour_end doivent etre entre 0 et 24' }, { status: 400 })
+  }
+  const sb = createAdminClient()
+  const { data, error } = await sb
+    .from('schedule_periods')
+    .insert({
+      kind,
+      hour_start,
+      hour_end,
+      cross_midnight: !!body.cross_midnight,
+      label:          body.label || null,
+      active:         body.active != null ? !!body.active : true,
+    })
+    .select()
+    .single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await reloadScheduleCache()
+  return NextResponse.json({ ok: true, period: data })
+}
+
+export async function DELETE(req: Request) {
+  const auth = await authorize()
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const url = new URL(req.url)
+  const id = Number(url.searchParams.get('id'))
+  if (!id) return NextResponse.json({ error: 'id requis (query param)' }, { status: 400 })
+  const sb = createAdminClient()
+  const { error } = await sb.from('schedule_periods').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await reloadScheduleCache()
+  return NextResponse.json({ ok: true })
+}
+
 export async function PATCH(req: Request) {
   const auth = await authorize()
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

@@ -19,16 +19,18 @@ async function loadFromDb(): Promise<void> {
       .from('schedule_periods')
       .select('kind, hour_start, hour_end, cross_midnight')
       .eq('active', true)
-    const next = { ...getScheduleConfig() }
+    // Olivier 2026-06-03 : on accumule TOUTES les plages actives par kind
+    // (plusieurs plages possibles par type).
+    const next = { day: [] as PeriodConfig[], night: [] as PeriodConfig[], autodispatch_night: [] as PeriodConfig[] }
     for (const r of rows || []) {
       const cfg: PeriodConfig = {
         hour_start: Number(r.hour_start),
         hour_end:   Number(r.hour_end),
         cross_midnight: !!r.cross_midnight,
       }
-      if (r.kind === 'day')                      next.day                = cfg
-      else if (r.kind === 'night')               next.night              = cfg
-      else if (r.kind === 'autodispatch_night')  next.autodispatch_night = cfg
+      if (r.kind === 'day')                      next.day.push(cfg)
+      else if (r.kind === 'night')               next.night.push(cfg)
+      else if (r.kind === 'autodispatch_night')  next.autodispatch_night.push(cfg)
     }
     setScheduleConfig(next)
     lastLoadAt = Date.now()

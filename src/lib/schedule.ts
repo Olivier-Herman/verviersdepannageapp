@@ -17,19 +17,32 @@ export interface PeriodConfig {
   cross_midnight: boolean
 }
 
-const DEFAULTS = {
-  day:                { hour_start: 7,  hour_end: 20, cross_midnight: false } as PeriodConfig,
-  night:              { hour_start: 17, hour_end: 9,  cross_midnight: true  } as PeriodConfig,
-  autodispatch_night: { hour_start: 18, hour_end: 8,  cross_midnight: true  } as PeriodConfig,
+// Olivier 2026-06-03 : on accepte plusieurs plages par type (ex: 2 plages
+// de jour). isIn*Schedule retourne true si l heure est dans AU MOINS UNE
+// plage active de ce type.
+type ScheduleConfig = {
+  day:                PeriodConfig[]
+  night:              PeriodConfig[]
+  autodispatch_night: PeriodConfig[]
+}
+
+const DEFAULTS: ScheduleConfig = {
+  day:                [{ hour_start: 7,  hour_end: 20, cross_midnight: false }],
+  night:              [{ hour_start: 17, hour_end: 9,  cross_midnight: true  }],
+  autodispatch_night: [{ hour_start: 18, hour_end: 8,  cross_midnight: true  }],
 }
 
 // Cache module : les API routes server-only peuvent l override via setScheduleConfig.
-let current = { ...DEFAULTS }
+let current: ScheduleConfig = {
+  day:                [...DEFAULTS.day],
+  night:              [...DEFAULTS.night],
+  autodispatch_night: [...DEFAULTS.autodispatch_night],
+}
 
-export function setScheduleConfig(cfg: Partial<typeof DEFAULTS>): void {
+export function setScheduleConfig(cfg: Partial<ScheduleConfig>): void {
   current = { ...current, ...cfg }
 }
-export function getScheduleConfig(): typeof DEFAULTS {
+export function getScheduleConfig(): ScheduleConfig {
   return current
 }
 
@@ -54,13 +67,16 @@ export function getBelgiumHour(now: Date = new Date()): number {
 }
 
 export function isInDaySchedule(now: Date = new Date()): boolean {
-  return isHourInPeriod(getBelgiumHour(now), current.day)
+  const h = getBelgiumHour(now)
+  return current.day.some(p => isHourInPeriod(h, p))
 }
 
 export function isInNightSchedule(now: Date = new Date()): boolean {
-  return isHourInPeriod(getBelgiumHour(now), current.night)
+  const h = getBelgiumHour(now)
+  return current.night.some(p => isHourInPeriod(h, p))
 }
 
 export function isAutoDispatchNight(now: Date = new Date()): boolean {
-  return isHourInPeriod(getBelgiumHour(now), current.autodispatch_night)
+  const h = getBelgiumHour(now)
+  return current.autodispatch_night.some(p => isHourInPeriod(h, p))
 }
