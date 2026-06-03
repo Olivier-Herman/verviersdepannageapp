@@ -30,7 +30,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const user = session.user as any
   const role: string = user.role || ''
   const modules: string[] = Array.isArray(user.modules) ? user.modules : []
-  if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation')) {
+  // Olivier 2026-06-03 : autorise aussi le chauffeur qui finalise un
+  // deplacement_paye / DSP a creer le devis Odoo automatiquement. Le code
+  // est appele en interne via /api/missions/[id]/finalize avec son cookie.
+  // Le module 'driver_missions' (toute personne qui execute des missions)
+  // OU encaissement (qui peut deja finaliser) sont autorises a cote des
+  // facturation/admin.
+  const isDriverFlow = modules.includes('driver_missions') || modules.includes('encaissement')
+  if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation') && !isDriverFlow) {
     return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
   }
 

@@ -37,7 +37,7 @@ const TYPE_LABELS: Record<string, string> = {
   avp:         '🔲 AVP',
 }
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -203,6 +203,41 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       // dans interventions, mais on marque quand meme le paiement comme collecte
       updatePayload.payment_collected_at = nowIso
     }
+  }
+
+  // Olivier 2026-06-03 : pour les missions fullyDoneAfterPayment, on cree
+  // AUTO le devis Odoo (sale.order) afin qu il apparaisse dans /facturation
+  // avec le lien deja present. L employe facturation n a qu a valider.
+  // Best-effort : on n echoue pas le finalize si le devis Odoo plante (l employe
+  // pourra retenter manuellement via le bouton Facturer).
+  if (isFullyDoneAfterPayment && mission.billed_to_id) {
+    try {
+      const origin = new URL(req.url).origin
+      const quoteRes = await fetch(`${origin}/api/missions/${missionId}/quote`, {
+        method:  'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie':       req.headers.get('cookie') || '',
+        },
+        body: JSON.stringify({}),
+      })
+      if (quoteRes.ok) {
+        const qj = await quoteRes.json()
+        // /quote retourne { ok, quote: { id, url }, summary }
+        if (qj.quote?.id)  updatePayload.odoo_quote_id  = qj.quote.id
+        if (qj.quote?.url) updatePayload.odoo_quote_url = qj.quote.url
+        updatePayload.odoo_quoted_at = nowIso
+        console.log(`[finalize] Devis Odoo cree pour mission ${missionId} : ${qj.quote?.id}`)
+      } else {
+        const errText = await quoteRes.text().catch(() => '')
+        console.error(`[finalize] Devis Odoo echec (${quoteRes.status}) : ${errText.slice(0, 200)}`)
+        console.warn(`[finalize] L employe facturation devra creer le devis manuellement via le bouton "Facturer".`)
+      }
+    } catch (e: any) {
+      console.error('[finalize] Devis Odoo exception :', e?.message || e)
+    }
+  } else if (isFullyDoneAfterPayment && !mission.billed_to_id) {
+    console.warn(`[finalize] Mission ${missionId} fullyDone mais billed_to_id manquant → pas de devis auto. L employe devra creer manuellement.`)
   }
 
   const { error: updErr } = await supabase
