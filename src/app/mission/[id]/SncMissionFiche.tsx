@@ -880,10 +880,14 @@ export default function SncMissionFiche({
           )}
 
           {/* Olivier 2026-06-03 : SNC REM client / SC rem_direct apres encaissement
-              → basculer sur DriverClient pour le flow chargement + livraison. */}
+              → basculer sur DriverClient pour le flow chargement + livraison.
+              window.location.href (full reload) au lieu de router.push pour
+              forcer le re-render du server component avec searchParams.
+              router.push avec meme pathname ne re-fetch pas la page côté
+              Next.js 14 → boucle infinie sur SncMissionFiche. */}
           {showContinueBtn && (
             <button
-              onClick={() => router.push(`/mission/${M.id}?legacy=1`)}
+              onClick={() => { window.location.href = `${window.location.pathname}?legacy=1` }}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base"
             >
               🚛 Charger le véhicule et livrer →
@@ -917,7 +921,7 @@ export default function SncMissionFiche({
                 {M.amount_to_collect != null && <> / {Number(M.amount_to_collect).toFixed(2)} €</>}
               </p>
               <button
-                onClick={() => router.push(`/mission/${M.id}?legacy=1`)}
+                onClick={() => { window.location.href = `${window.location.pathname}?legacy=1` }}
                 className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl text-sm"
               >
                 🛠 Ouvrir en mode classique →
@@ -928,7 +932,7 @@ export default function SncMissionFiche({
           {/* Lien discret toujours present pour debloquer si besoin */}
           {(showEncaisserBtn || showParkBtn || showContinueBtn || showFinalizeBtn) && (
             <button
-              onClick={() => router.push(`/mission/${M.id}?legacy=1`)}
+              onClick={() => { window.location.href = `${window.location.pathname}?legacy=1` }}
               className="w-full text-center text-xs text-ink-faint hover:text-ink-muted py-2"
             >
               🛠 Mode classique (en cas de souci)
