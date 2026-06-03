@@ -63,12 +63,38 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // 1. Recupere les IDs des vehicules SCANNES dans cette zone pendant la session
   const { data: scanned } = await sb
     .from('inventaire_session_items')
-    .select('incoming_mission_id')
+    .select('incoming_mission_id, plaque, ticket_id')
     .eq('session_id',    params.id)
     .eq('parc_zone_key', zoneKey)
-  const scannedIds: string[] = (scanned || [])
-    .map(i => i.incoming_mission_id)
-    .filter(Boolean) as string[]
+  const scannedIds: string[] = []
+  const scannedPlates: string[] = []
+  const scannedTicketIds: number[] = []
+  for (const i of (scanned || []) as any[]) {
+    if (i.incoming_mission_id) scannedIds.push(i.incoming_mission_id)
+    if (i.plaque) scannedPlates.push(String(i.plaque).replace(/[-.\s]/g, '').toUpperCase())
+    if (i.ticket_id) scannedTicketIds.push(Number(i.ticket_id))
+  }
+
+  // Olivier 2026-06-03 : match aussi par PLAQUE et odoo_helpdesk_id pour
+  // recuperer les missions dont l incoming_mission_id n a pas ete persiste
+  // (cas du bug 03/06 ou le placement initial avait foire et tout passait
+  // en unlocated).
+  if (scannedPlates.length > 0 || scannedTicketIds.length > 0) {
+    let resolveQ = sb
+      .from('incoming_missions')
+      .select('id, vehicle_plate, odoo_helpdesk_id')
+      .eq('parc_zone_key', zoneKey)
+      .in('status', PARKED_STATUSES)
+    const { data: resolved } = await resolveQ
+    for (const m of (resolved || [])) {
+      const plate = (m.vehicle_plate || '').replace(/[-.\s]/g, '').toUpperCase()
+      const matchPlate  = plate && scannedPlates.includes(plate)
+      const matchTicket = m.odoo_helpdesk_id && scannedTicketIds.includes(m.odoo_helpdesk_id)
+      if ((matchPlate || matchTicket) && !scannedIds.includes(m.id)) {
+        scannedIds.push(m.id)
+      }
+    }
+  }
 
   // 2. Trouve les vehicules attendus dans cette zone, non scannes
   let q = sb
