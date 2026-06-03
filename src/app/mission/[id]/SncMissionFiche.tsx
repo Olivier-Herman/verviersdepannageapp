@@ -837,6 +837,41 @@ export default function SncMissionFiche({
             </button>
           )}
 
+          {/* Olivier 2026-06-03 : escape hatch TOUJOURS visible si la mission
+              est dans un etat ou aucune action principale n est dispo. Permet
+              au chauffeur de retomber sur DriverClient classique pour ne pas
+              etre bloque. */}
+          {!showEncaisserBtn && !showParkBtn && !showContinueBtn && !showFinalizeBtn
+            && M.status !== 'completed' && M.status !== 'to_invoice' && (
+            <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-2">
+              <p className="text-amber-900 text-sm font-semibold">
+                ⚠️ Aucune action standard disponible pour cette mission.
+              </p>
+              <p className="text-amber-900 text-xs">
+                Statut : <code className="font-mono">{M.status}</code>
+                {M.snc_scenario && <> · Scénario : <code className="font-mono">{M.snc_scenario}</code></>}
+                {M.payment_amount != null && <> · Payé : {Number(M.payment_amount).toFixed(2)} €</>}
+                {M.amount_to_collect != null && <> / {Number(M.amount_to_collect).toFixed(2)} €</>}
+              </p>
+              <button
+                onClick={() => router.push(`/mission/${M.id}?legacy=1`)}
+                className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl text-sm"
+              >
+                🛠 Ouvrir en mode classique →
+              </button>
+            </div>
+          )}
+
+          {/* Lien discret toujours present pour debloquer si besoin */}
+          {(showEncaisserBtn || showParkBtn || showContinueBtn || showFinalizeBtn) && (
+            <button
+              onClick={() => router.push(`/mission/${M.id}?legacy=1`)}
+              className="w-full text-center text-xs text-ink-faint hover:text-ink-muted py-2"
+            >
+              🛠 Mode classique (en cas de souci)
+            </button>
+          )}
+
           {(M.status === 'completed' || M.status === 'to_invoice') && (
             <div className="text-center text-green-700 text-sm font-bold py-2">
               ✅ Mission terminée
