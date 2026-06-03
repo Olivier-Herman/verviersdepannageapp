@@ -40,6 +40,8 @@ export async function GET(req: Request) {
   const num = (url.searchParams.get('num') || '').trim()
   if (!num) return NextResponse.json({ error: 'num requis (?num=55569)' }, { status: 400 })
 
+  const mode = url.searchParams.get('mode') || 'json'  // 'json' (debug) ou 'html' (raw)
+
   try {
     const cookie = await loginTowsoft()
     const r = await fetch(`${TOWSOFT_URL}/appel.php?num=${encodeURIComponent(num)}`, {
@@ -47,11 +49,34 @@ export async function GET(req: Request) {
       redirect: 'manual',
     })
     const html = await r.text()
-    // Retourne le HTML brut tel quel pour inspection
-    return new NextResponse(html, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+
+    if (mode === 'html') {
+      return new NextResponse(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
+    }
+
+    // Mode JSON debug : montre status, length, premier morceau, et tous les data-* uniques
+    const dataAttrs = Array.from(new Set(
+      (html.match(/data-[a-z0-9-]+="[^"]*"/gi) || []).map(m => m.replace(/="[^"]*"/, ''))
+    ))
+    const ids = Array.from(new Set(
+      (html.match(/id="[a-z0-9-_]+"/gi) || []).map(m => m.replace(/^id="|"$/g, ''))
+    ))
+
+    return NextResponse.json({
+      ok: true,
+      towsoft_url:     TOWSOFT_URL,
+      fetch_status:    r.status,
+      fetch_redirect:  r.headers.get('location'),
+      html_length:     html.length,
+      html_starts_with: html.slice(0, 500),
+      contains_login:  html.includes('auth/login') || html.includes('nomusager'),
+      data_attrs:      dataAttrs,
+      ids:             ids,
+      hint:            'Pour voir le HTML brut : ajoute &mode=html',
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ error: e.message, stack: e.stack }, { status: 500 })
   }
 }
