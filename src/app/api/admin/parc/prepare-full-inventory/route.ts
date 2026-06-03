@@ -237,14 +237,18 @@ export async function POST(req: Request) {
     stats.zones_distribution[zoneKey] = (stats.zones_distribution[zoneKey] || 0) + 1
   }
 
+  // Olivier 2026-06-03 (audit J-2 W1 C8) : variables declarees au scope
+  // parent pour propager skipped/details dans la reponse finale (avant on
+  // courcircuiitait les etapes 2-3 si 1 stub plantait).
+  let inserted = 0
+  let skipped  = 0
+  let skipDetails: Array<{ plate: string; zone: string; error: string }> = []
+
   if (stubsToCreate.length > 0 && !dryRun) {
     // Olivier 2026-06-03 : insert par batch + fallback insert un-par-un avec
     // log si un batch foire, pour identifier la zone problematique (FK error
     // sur parc_zone_key par exemple).
     const BATCH = 100
-    let inserted = 0
-    let skipped = 0
-    const skipDetails: Array<{ plate: string; zone: string; error: string }> = []
     for (let i = 0; i < stubsToCreate.length; i += BATCH) {
       const slice = stubsToCreate.slice(i, i + BATCH)
       const { error } = await sb.from('incoming_missions').insert(slice)
@@ -269,15 +273,9 @@ export async function POST(req: Request) {
     }
     if (skipped > 0) {
       console.warn(`[prepare-full-inventory] ${skipped} stubs skipped sur ${stubsToCreate.length}`)
-      // On retourne quand meme un succes partiel avec le detail
-      return NextResponse.json({
-        ok: true,
-        stats,
-        inserted,
-        skipped,
-        skipped_details: skipDetails.slice(0, 20),
-        message: `${inserted} stubs crees, ${skipped} skipped (voir skipped_details)`,
-      })
+      // Olivier 2026-06-03 (audit J-2 W1 C8) : NE PAS court-circuiter les
+      // etapes 2 (CANONICALIZE) et 3 (RESET PLACEMENT). On continue mais on
+      // garde l info skipped pour la reponse finale.
     }
   }
 
@@ -353,9 +351,16 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({
-    ok:       true,
+    ok:       skipped === 0,  // false si succes partiel (au moins 1 stub a foire)
     dry_run:  dryRun,
     stats,
+    // Olivier 2026-06-03 : compteurs INSERT
+    inserted,
+    skipped,
+    skipped_details: skipDetails.slice(0, 20),
+    message: dryRun
+      ? 'Dry-run termine'
+      : `${inserted} stubs crees${skipped > 0 ? `, ${skipped} skipped (voir skipped_details)` : ''}. Etapes 2 (canonicalize) + 3 (reset) executees.`,
     // Sample des changements pour visualisation (limite 20)
     samples: {
       stubs_to_create: stubsToCreate.slice(0, 20).map(s => ({
