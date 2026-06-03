@@ -77,7 +77,11 @@ function FicheContent({ fiche }: { fiche: Fiche }) {
   const m = fiche.mission
   const z = fiche.zone
   const t = fiche.tarif
-  const missionUrl = `/mission/${m.id}`
+  const dispatchUrl   = `/dispatch/${m.id}`
+  const driverUrl     = `/mission/${m.id}`
+  // Hub unifie /qr/mission/[number] : porte les actions Restituer (avec/sans
+  // frais), Transferer, Domaine, Scratch, Imprimer, etc. selon les permissions.
+  const hubUrl = m.mission_number ? `/qr/mission/${m.mission_number}` : `/qr/mission/${m.id}`
 
   return (
     <div className="space-y-4">
@@ -177,18 +181,30 @@ function FicheContent({ fiche }: { fiche: Fiche }) {
       </Section>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 pt-3 border-t flex-wrap">
-        <Link href={missionUrl}
-          className="flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-semibold transition">
-          <ExternalLink size={14} /> Ouvrir la mission
-        </Link>
-        {m.odoo_vehicle_id && (
-          <a href={`${process.env.NEXT_PUBLIC_ODOO_URL || ''}/web#id=${m.odoo_vehicle_id}&model=fleet.vehicle&view_type=form`}
-            target="_blank" rel="noreferrer"
-            className="flex items-center gap-1.5 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-sm font-semibold transition">
-            <ExternalLink size={14} /> Fiche véhicule Odoo
-          </a>
-        )}
+      <div className="flex flex-col gap-2 pt-3 border-t">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link href={hubUrl}
+            className="flex-1 min-w-[180px] flex items-center justify-center gap-1.5 px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-semibold transition">
+            🏷️ Restituer / Actions parc
+          </Link>
+          <Link href={dispatchUrl}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-sm font-semibold transition">
+            <ExternalLink size={14} /> Fiche dispatch
+          </Link>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link href={driverUrl}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-ink-muted hover:text-ink text-xs transition">
+            Vue chauffeur
+          </Link>
+          {m.odoo_vehicle_id && (
+            <a href={`${process.env.NEXT_PUBLIC_ODOO_URL || ''}/web#id=${m.odoo_vehicle_id}&model=fleet.vehicle&view_type=form`}
+              target="_blank" rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-ink-muted hover:text-ink text-xs transition">
+              <ExternalLink size={12} /> Fiche véhicule Odoo
+            </a>
+          )}
+        </div>
       </div>
     </div>
   )

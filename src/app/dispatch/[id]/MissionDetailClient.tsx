@@ -997,8 +997,16 @@ export default function MissionDetailClient({
     // Olivier 2026-06-02 PM : tarif special HTVA (ecrase calcul automatique)
     special_tarif_htva:   initialMission.special_tarif_htva != null ? String(initialMission.special_tarif_htva) : '',
     // Olivier 2026-06-02 PM : dates parc modifiables (correction gardiennage)
-    parked_at:            isoToLocalDt(initialMission.parked_at),
-    delivering_at:        isoToLocalDt((initialMission as any).delivering_at),
+    // Olivier 2026-06-03 : defaults explicites si non setes par le chauffeur :
+    //   - parked_at vide  -> date de creation de la mission (par defaut historique)
+    //   - delivering_at vide -> maintenant (le vehicule est toujours en parc, le tarif court)
+    // Ces defaults sont affiches dans l UI mais NON sauves auto ; ils sont
+    // ecrases au save uniquement si l user clique "Enregistrer".
+    parked_at:            isoToLocalDt(initialMission.parked_at || (initialMission as any).created_at || initialMission.received_at || null),
+    delivering_at:        isoToLocalDt(
+      (initialMission as any).delivering_at
+      || (['parked', 'delivering', 'unlocated', 'awaiting_payment'].includes(initialMission.status) ? new Date().toISOString() : null)
+    ),
   })
 
   // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,

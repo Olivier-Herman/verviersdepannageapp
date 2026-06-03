@@ -10,6 +10,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,48 +70,51 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   })
 }
 
-async function computeProvisionalTariff(sb: any, m: any): Promise<{ amount_tvac: number | null; htva: number | null; details: string[] }> {
-  // Si paiement deja encaisse, on retourne ca direct
+async function computeProvisionalTariff(_sb: any, m: any): Promise<{ amount_tvac: number | null; htva: number | null; details: string[] }> {
+  // Si paiement deja encaisse, retour direct (montant fiabilise)
   if (m.payment_amount != null) {
     return {
       amount_tvac: Number(m.payment_amount),
       htva: null,
-      details: [`Paiement encaissé : ${Number(m.payment_amount).toFixed(2)} € TVAC (${m.payment_mode || '—'})`],
+      details: [`Paiement déjà encaissé : ${Number(m.payment_amount).toFixed(2)} € TVAC (${m.payment_mode || '—'})`],
     }
   }
 
-  // Sinon : tarif gardiennage = jours * tarif/jour depuis catalog si dispo
-  const days = m.parked_at ? Math.max(0, Math.floor((Date.now() - new Date(m.parked_at).getTime()) / 86400000)) : null
-  const details: string[] = []
-  let htva = 0
-
-  if (days != null) {
-    // Cherche tarif gardiennage dans catalog (clef 'gardiennage_jour' ou similar)
-    const { data: tarifRow } = await sb
-      .from('catalog')
-      .select('key, label, htva, tvac')
-      .or('key.eq.gardiennage,key.eq.gardiennage_jour,key.eq.parc_jour')
-      .limit(1)
-      .maybeSingle()
-    if (tarifRow) {
-      const t = Number(tarifRow.htva || 0)
-      htva += t * days
-      details.push(`${days} j × ${t.toFixed(2)} € HTVA (${tarifRow.label || tarifRow.key})`)
-    } else {
-      details.push(`${days} j en parc (tarif gardiennage non configuré dans catalog)`)
+  // Olivier 2026-06-03 : on utilise estimateMissionPrice (meme moteur que la
+  // fiche dispatch + l encaissement) pour un calcul provisoire coherent.
+  try {
+    const est = await estimateMissionPrice({
+      id:                m.id,
+      source:            m.source,
+      mission_type:      m.mission_type,
+      client_name:       m.client_name,
+      vehicle_mileage:   null,
+      parked_at:         m.parked_at,
+      delivering_at:     null,
+      completed_at:      m.completed_at,
+      intervention_date: m.intervention_date,
+      received_at:       m.received_at,
+      vehicle_class:     m.vehicle_class || 'car',
+      amount_to_collect: m.payment_amount ?? null,
+    })
+    if (!est.ok) {
+      return { amount_tvac: null, htva: null, details: [est.reason || 'Estimation impossible'] }
     }
-  }
-
-  // Special tarif (mal garée déplacement payé, etc.)
-  if (m.special_tarif_htva) {
-    htva += Number(m.special_tarif_htva)
-    details.push(`Tarif spécial : ${Number(m.special_tarif_htva).toFixed(2)} € HTVA`)
-  }
-
-  const tvac = htva > 0 ? Math.round(htva * 1.21 * 100) / 100 : null
-  return {
-    amount_tvac: tvac,
-    htva: htva > 0 ? Math.round(htva * 100) / 100 : null,
-    details,
+    const tvac = est.total_tvac_exact != null
+      ? est.total_tvac_exact
+      : Math.round(est.total_eur * 1.21 * 100) / 100
+    const details = est.breakdown
+      .filter(b => b.amount != null && b.amount > 0)
+      .map(b => `${b.label} : ${(b.amount as number).toFixed(2)} €${b.note ? ` (${b.note})` : ''}`)
+    if (est.parc_jours > 0) details.push(`${est.parc_jours} j en parc`)
+    if (m.special_tarif_htva) details.push(`Tarif spécial : ${Number(m.special_tarif_htva).toFixed(2)} € HTVA`)
+    return {
+      amount_tvac: tvac,
+      htva:        Math.round(est.total_eur * 100) / 100,
+      details,
+    }
+  } catch (e: any) {
+    console.warn('[fiche tarif]', e.message)
+    return { amount_tvac: null, htva: null, details: [`Erreur estimation : ${e.message}`] }
   }
 }
