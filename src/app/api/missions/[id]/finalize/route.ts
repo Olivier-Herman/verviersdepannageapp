@@ -49,7 +49,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { data: mission, error: getErr } = await supabase
     .from('incoming_missions')
-    .select('id, awaiting_payment, amount_to_collect, payment_amount, draft_params, status, source, mission_type, mission_number')
+    .select('id, awaiting_payment, amount_to_collect, payment_amount, draft_params, status, source, mission_type, mission_number, billed_to_id, billed_to_name, odoo_quote_id, odoo_quote_url')
     .eq('id', missionId)
     .maybeSingle()
 
