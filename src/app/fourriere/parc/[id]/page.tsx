@@ -41,10 +41,18 @@ export default async function ParcPage({ params }: { params: { id: string } }) {
     .eq('active', true)
     .order('sort_order')
 
+  // Tous les parcs actifs (pour les tuiles de navigation en haut)
+  const { data: allDepots } = await sb
+    .from('depots')
+    .select('id, name, sort_order')
+    .eq('active', true)
+    .order('sort_order')
+
   return (
     <ParcInventaireClient
       depot={depot}
       depotZones={(zones || []).map(z => ({ key: z.key, label: z.label }))}
+      allDepots={(allDepots || []).map(d => ({ id: d.id, name: d.name }))}
       userRole={role}
       userName={user.name || ''}
       userEmail={user.email}

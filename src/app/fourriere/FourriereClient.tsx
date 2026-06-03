@@ -59,7 +59,7 @@ const ZONE_COLOR: Record<string, string> = {
   L:       'bg-orange-500/15 border-orange-500 text-orange-500',    // Mal garée
   LABO:    'bg-teal-500/15 border-teal-500 text-teal-500',
   S:       'bg-violet-500/15 border-violet-500 text-violet-500',
-  BOX:     'bg-ink/10 border-ink/30 text-ink-secondary',
+  Box:     'bg-ink/10 border-ink/30 text-ink-secondary',
   Transit: 'bg-yellow-500/15 border-yellow-500 text-yellow-700',
 }
 

@@ -32,7 +32,7 @@ export const FOURRIERE_ZONES: FourriereZone[] = [
   { state_id: 17, code: 'L',       label: 'Zone L',     full_name: 'L FOURRIÈRE - ZONE L MAL GARÉE',           description: 'Mal garée' },
   { state_id: 19, code: 'LABO',    label: 'Labo',       full_name: 'LABO FOURRIÈRE SAISIE LABO',               description: 'Saisie labo' },
   { state_id: 25, code: 'S',       label: 'Cyclo',      full_name: 'S FOURRIÈRE SAISIE CYCLO (RACHID)',        description: 'Saisie cyclo (Rachid)' },
-  { state_id: 26, code: 'BOX',     label: 'Box',        full_name: 'BOX' },
+  { state_id: 26, code: 'Box',     label: 'Box',        full_name: 'BOX' },
   { state_id: 15, code: 'Transit', label: 'Transit',    full_name: 'TRANSIT',                                   description: 'Zone de transit' },
 ]
 
