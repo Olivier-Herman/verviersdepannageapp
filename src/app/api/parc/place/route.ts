@@ -51,6 +51,11 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
+  // Olivier 2026-06-03 (audit J-2 W1 C3) : track le stub eventuellement cree
+  // pour pouvoir le cleanup si validations post-INSERT echouent (sinon
+  // missions fantomes en BDD).
+  let createdStubId: string | null = null
+
   // Detect drop d une entree virtuelle Odoo -> on cree la mission VD Soft
   // a la volee avant de la placer normalement.
   if (missionId.startsWith('odoo-')) {
@@ -89,10 +94,30 @@ export async function POST(req: Request) {
         .select('id')
         .single()
       if (createErr || !created) {
+        console.error('[parc/place] INSERT stub echec:', createErr?.message)
         return NextResponse.json({ error: `Création mission échouée : ${createErr?.message}` }, { status: 500 })
       }
       missionId = created.id
+      // Olivier 2026-06-03 (audit J-2 W1 C3) : track le stub fraichement cree
+      // pour pouvoir le SUPPRIMER si les validations post-INSERT echouent
+      // (sinon mission fantome = status=parked sans parc_zone_key/row/slot).
+      createdStubId = created.id
     }
+  }
+
+  // Helper : delete le stub fraichement cree si une validation post-INSERT
+  // echoue, puis retourne l erreur HTTP. Garantit qu on n a jamais de mission
+  // orpheline en BDD.
+  async function failWithCleanup(payload: any, status: number) {
+    if (createdStubId) {
+      try {
+        await sb.from('incoming_missions').delete().eq('id', createdStubId)
+        console.warn(`[parc/place] stub ${createdStubId} supprime apres validation echec`)
+      } catch (e: any) {
+        console.error('[parc/place] cleanup stub echec:', e?.message)
+      }
+    }
+    return NextResponse.json(payload, { status })
   }
 
   // Validation des coordonnees si placement (zoneKey != null)
@@ -115,15 +140,15 @@ export async function POST(req: Request) {
     } else {
       if (!Number.isInteger(rowNumber) || rowNumber == null || rowNumber <= 0 ||
           !Number.isInteger(slotIndex) || slotIndex == null || slotIndex <= 0) {
-        return NextResponse.json({ error: 'row_number et slot_index requis si zone_key' }, { status: 400 })
+        return failWithCleanup({ error: 'row_number et slot_index requis si zone_key' }, 400)
       }
     }
 
     // Permission chauffeur restreinte (vaut pour grille + pool)
     if (!isDispatcher && isDriver && !DRIVER_ALLOWED_ZONES.includes(zoneKey as string)) {
-      return NextResponse.json({
+      return failWithCleanup({
         error: `Les chauffeurs ne peuvent placer que dans ${DRIVER_ALLOWED_ZONES.join(' ou ')}`,
-      }, { status: 403 })
+      }, 403)
     }
 
     // Zone pool (Bordel) : pas de validation row/slot/swap. On laisse passer
@@ -158,7 +183,7 @@ export async function POST(req: Request) {
       .eq('row_number', finalRow)
       .maybeSingle()
     if (!row) {
-      return NextResponse.json({ error: `Ligne ${finalZone}${finalRow} inexistante` }, { status: 400 })
+      return failWithCleanup({ error: `Ligne ${finalZone}${finalRow} inexistante` }, 400)
     }
 
     // Si la zone est strict_capacity, refuse tout depassement de capacite.
@@ -175,7 +200,7 @@ export async function POST(req: Request) {
       const msg = zone?.strict_capacity
         ? `Zone ${finalZone} en mode strict : capacité ${row.capacity}, pas d overflow.`
         : `Zone ${finalZone} : 1 seul overflow autorisé (capacité ${row.capacity} + 1).`
-      return NextResponse.json({ error: msg }, { status: 409 })
+      return failWithCleanup({ error: msg }, 409)
     }
 
     // Refuse si le slot est marque bloque par un gestionnaire fourriere
@@ -188,9 +213,9 @@ export async function POST(req: Request) {
       .maybeSingle()
     if (blocked) {
       const motif = blocked.reason ? ` (${blocked.reason})` : ''
-      return NextResponse.json({
+      return failWithCleanup({
         error: `Emplacement ${finalZone}${finalRow}-${finalSlot} bloqué${motif}.`,
-      }, { status: 409 })
+      }, 409)
     }
 
     // Si un autre vehicule occupe deja exactement ce slot : swap UNIQUEMENT
@@ -215,17 +240,22 @@ export async function POST(req: Request) {
 
       const movingHasFullPos = !!(moving?.parc_zone_key && moving?.parc_row_number && moving?.parc_slot_index)
       if (!movingHasFullPos) {
-        return NextResponse.json({
+        return failWithCleanup({
           error: `Emplacement ${finalZone}${finalRow}-${finalSlot} occupé par ${currentOccupant.vehicle_plate || 'un véhicule'}. Choisis un slot libre ou retire-le d'abord.`,
-        }, { status: 409 })
+        }, 409)
       }
 
       // Swap : l'occupant prend l'ancienne position de moving
-      await sb.from('incoming_missions').update({
+      // Olivier 2026-06-03 (audit W1) : check error sur swap
+      const { error: swapErr } = await sb.from('incoming_missions').update({
         parc_zone_key:   moving!.parc_zone_key,
         parc_row_number: moving!.parc_row_number,
         parc_slot_index: moving!.parc_slot_index,
       }).eq('id', currentOccupant.id)
+      if (swapErr) {
+        console.error('[parc/place] swap echec:', swapErr.message)
+        return failWithCleanup({ error: `Swap occupant echoue : ${swapErr.message}` }, 500)
+      }
     }
     }  // fin if (!isPool)
   }
@@ -249,7 +279,10 @@ export async function POST(req: Request) {
 
   const { error } = await sb.from('incoming_missions').update(updates).eq('id', missionId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[parc/place] update mission echec:', error.message)
+    return failWithCleanup({ error: error.message }, 500)
+  }
 
   // ── Shift apres liberation : si le vehicule quittait une vraie rangee
   // (pas pool, avait row+slot) ET qu il n est plus dans la meme rangee
