@@ -8,7 +8,10 @@ import { createAdminClient } from '@/lib/supabase'
 import { setScheduleConfig, getScheduleConfig, type PeriodConfig } from '@/lib/schedule'
 
 let lastLoadAt = 0
-const CACHE_TTL_MS = 60_000
+// Olivier 2026-06-03 : TTL court (5s) car Vercel = multi-instances. Chaque
+// instance a son propre cache, le PATCH ne propage pas. Court TTL = chaque
+// instance recharge tres souvent, donc la modif admin est visible sous ~5s.
+const CACHE_TTL_MS = 5_000
 
 let loadingPromise: Promise<void> | null = null
 
