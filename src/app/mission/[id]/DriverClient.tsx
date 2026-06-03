@@ -953,7 +953,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setM(j.mission)
-      window.location.href = window.location.pathname + '?t=' + Date.now()
+      // Olivier 2026-06-03 : preserve les searchParams existants (notamment
+      // ?legacy=1 utilise par SNC/SC) pour eviter le re-bascule sur SncMissionFiche
+      // apres chaque action (boucle infinie Vehicule charge ↔ Arrivee destination).
+      {
+        const __url = new URL(window.location.href)
+        __url.searchParams.set('t', String(Date.now()))
+        window.location.href = __url.toString()
+      }
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
   }
@@ -1098,7 +1105,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setCloseType(newType === 'REM' ? 'rem' : 'dsp')
-      window.location.href = window.location.pathname + '?t=' + Date.now()
+      // Olivier 2026-06-03 : preserve les searchParams existants (notamment
+      // ?legacy=1 utilise par SNC/SC) pour eviter le re-bascule sur SncMissionFiche
+      // apres chaque action (boucle infinie Vehicule charge ↔ Arrivee destination).
+      {
+        const __url = new URL(window.location.href)
+        __url.searchParams.set('t', String(Date.now()))
+        window.location.href = __url.toString()
+      }
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
   }
@@ -1378,7 +1392,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      clearDraft(); window.location.href = window.location.pathname + '?t=' + Date.now()
+      clearDraft()
+      {
+        const __url = new URL(window.location.href)
+        __url.searchParams.set('t', String(Date.now()))
+        window.location.href = __url.toString()
+      }
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
   }
