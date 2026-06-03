@@ -124,6 +124,9 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   // Nouveau : positionnement spatial (rangee + slot)
   const [parcZones, setParcZones]       = useState<ParcZone[]>([])
   const [parcRows, setParcRows]         = useState<ParcRow[]>([])
+  // Olivier 2026-06-03 : selecteur de parc pour filtrer les zones affichees
+  const [depots, setDepots]             = useState<Array<{ id: string; name: string; is_default_parc: boolean; zone_keys: string[] }>>([])
+  const [selectedDepotId, setSelectedDepotId] = useState<string | null>(null)
   const [parcRowNumber, setParcRowNumber] = useState<number | null>(null)
   const [nextSlot, setNextSlot]         = useState<number>(1)
   // Dialog de fin d inventaire (vehicules manquants)
@@ -261,6 +264,30 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
       setTimeout(() => scanRef.current?.focus(), 100)
     }
   }, [step])
+
+  // Olivier 2026-06-03 : charge la liste des parcs (depots) pour le selecteur
+  useEffect(() => {
+    fetch('/api/fourriere/depots')
+      .then(r => r.json())
+      .then(j => {
+        const list = (j.depots || []) as Array<{ id: string; name: string; is_default_parc: boolean; zone_keys: string[] }>
+        setDepots(list)
+        // Pre-selectionne le parc par defaut si rien de choisi
+        if (!selectedDepotId) {
+          const def = list.find(d => d.is_default_parc) || list[0]
+          if (def) setSelectedDepotId(def.id)
+        }
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Zone keys autorisees pour le parc selectionne (set pour lookup rapide)
+  const allowedZoneKeys = useMemo<Set<string>>(() => {
+    if (!selectedDepotId) return new Set()
+    const d = depots.find(x => x.id === selectedDepotId)
+    return new Set((d?.zone_keys || []).map(k => k.toLowerCase()))
+  }, [depots, selectedDepotId])
 
   /** Persiste un item dans la session DB (async, ne bloque pas l UI). */
   function persistItem(item: ResultItem, extras: Record<string, any> = {}) {
@@ -539,6 +566,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
           zone_label:     selectedZone.label,
           zone_full_name: selectedZone.fullName,
           auto_print:     autoPrint,
+          depot_id:       selectedDepotId,
         }),
       })
       const j = await res.json()
@@ -969,11 +997,45 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               </p>
             </div>
 
+            {/* Olivier 2026-06-03 : selecteur de parc avant zone */}
+            {depots.length > 1 && (
+              <div>
+                <label className="text-xs font-semibold text-ink-faint uppercase tracking-wider">Parc</label>
+                <p className="text-xs text-ink-muted mb-2">Choisis le parc dans lequel tu fais l'inventaire (filtre les zones disponibles).</p>
+                <div className="flex flex-wrap gap-2">
+                  {depots.map(d => (
+                    <button key={d.id}
+                      onClick={() => {
+                        setSelectedDepotId(d.id)
+                        // Reset la zone si elle n'appartient pas au nouveau parc
+                        if (selectedZone) {
+                          const allowed = new Set((d.zone_keys || []).map(k => k.toLowerCase()))
+                          if (!allowed.has(selectedZone.code.toLowerCase())) {
+                            setSelectedZone(null)
+                            setParcRowNumber(null)
+                            setNextSlot(1)
+                          }
+                        }
+                      }}
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
+                        selectedDepotId === d.id
+                          ? 'bg-brand text-white border-brand shadow-sm'
+                          : 'bg-surface-2 text-ink-secondary border hover:bg-surface-hover'
+                      }`}
+                    >
+                      {d.name}
+                      <span className="ml-1.5 text-xs opacity-70">({d.zone_keys?.length || 0} zones)</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-semibold text-ink-faint uppercase tracking-wider">Zone à inventorier</label>
               <p className="text-xs text-ink-muted mb-2">Les véhicules scannés seront mis dans cette zone (en plus du tag mensuel).</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {FOURRIERE_ZONES.map(z => (
+                {FOURRIERE_ZONES.filter(z => allowedZoneKeys.size === 0 || allowedZoneKeys.has(z.code.toLowerCase())).map(z => (
                   <button
                     key={z.state_id}
                     onClick={() => {

@@ -43,9 +43,17 @@ export async function GET() {
 
   const zoneToDepot = new Map<string, string | null>()
   const depotZoneCount = new Map<string, number>()
+  // Olivier 2026-06-03 : on retourne aussi la liste des zone_keys par depot
+  // pour permettre au selecteur d inventaire de filtrer les pills zones.
+  const depotZoneKeys = new Map<string, string[]>()
   for (const z of (zones || [])) {
     zoneToDepot.set(z.key, z.depot_id || null)
-    if (z.depot_id) depotZoneCount.set(z.depot_id, (depotZoneCount.get(z.depot_id) || 0) + 1)
+    if (z.depot_id) {
+      depotZoneCount.set(z.depot_id, (depotZoneCount.get(z.depot_id) || 0) + 1)
+      const list = depotZoneKeys.get(z.depot_id) || []
+      list.push(z.key)
+      depotZoneKeys.set(z.depot_id, list)
+    }
   }
 
   // Compter les vehicules par depot (via parc_zone_key)
@@ -70,6 +78,7 @@ export async function GET() {
     is_default_parc: d.is_default_parc,
     zone_count:      depotZoneCount.get(d.id) || 0,
     vehicle_count:   depotVehCount.get(d.id)  || 0,
+    zone_keys:       depotZoneKeys.get(d.id)  || [],
   }))
 
   return NextResponse.json({ depots: result })

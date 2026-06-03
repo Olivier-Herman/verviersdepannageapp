@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     zone_label?:     string
     zone_full_name?: string
     auto_print?:     boolean
+    depot_id?:       string | null
   }
   if (!body.tag_name) return NextResponse.json({ error: 'tag_name requis' }, { status: 400 })
 
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
     if (body.zone_label !== undefined)     update.zone_label     = body.zone_label
     if (body.zone_full_name !== undefined) update.zone_full_name = body.zone_full_name
     if (body.auto_print !== undefined)     update.auto_print     = Boolean(body.auto_print)
+    if (body.depot_id !== undefined)       update.depot_id       = body.depot_id || null
     const { data: updated } = await sb
       .from('inventaire_sessions')
       .update(update)
@@ -79,6 +81,7 @@ export async function POST(req: Request) {
       zone_label:     body.zone_label || null,
       zone_full_name: body.zone_full_name || null,
       auto_print:     Boolean(body.auto_print),
+      depot_id:       body.depot_id || null,
     })
     .select()
     .single()
