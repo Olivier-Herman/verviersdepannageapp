@@ -424,16 +424,23 @@ export default function SncMissionFiche({
     needsLoadAndDeliver
     && M.status !== 'completed' && M.status !== 'to_invoice'
 
-  // Finaliser : pour DSP (rien a faire apres paiement) ou SC dsp (pas d encaissement)
-  // ou REM depot (mise en parc deja faite). PAS pour REM client / rem_direct qui
-  // ont showContinueBtn.
+  // Finaliser :
+  //   - DSP (SNC)   : seulement si isFullyPaid (encaissement OK, solde = 0)
+  //   - SC          : pas d encaissement chauffeur (facturation assistance) →
+  //                   peut finaliser des qu un scenario est choisi
+  //   - REM depot   : mise en parc deja faite, pas d encaissement
+  //   PAS pour REM client / rem_direct qui ont showContinueBtn.
+  // Olivier 2026-06-03 : la garde isFullyPaid pour DSP avait saute dans le
+  // refactor precedent, le bouton apparaissait meme sans encaissement.
   const showFinalizeBtn =
     M.status !== 'completed' && M.status !== 'to_invoice'
     && M.snc_scenario != null
-    && !needsLoadAndDeliver               // REM client/direct → continuer via DriverClient
-    && (M.snc_scenario === 'dsp'          // DSP : finalisation directe apres paiement
-        || M.snc_scenario === 'rem_depot' // REM depot : pas d encaissement chauffeur
-        || (variant === 'sc' && M.snc_scenario === 'dsp'))  // SC DSP
+    && !needsLoadAndDeliver
+    && (
+      variant === 'sc'                                  // SC : finaliser OK
+      || M.snc_scenario === 'rem_depot'                 // REM depot : OK
+      || (M.snc_scenario === 'dsp' && isFullyPaid)      // DSP SNC : si paye
+    )
 
   const navUrl = gUrl(navApp, M.incident_lat, M.incident_lng,
     [M.incident_address, M.incident_city].filter(Boolean).join(', '))
