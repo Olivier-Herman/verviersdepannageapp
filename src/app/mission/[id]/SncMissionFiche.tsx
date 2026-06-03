@@ -792,12 +792,18 @@ export default function SncMissionFiche({
           )}
 
           {showEncaisserBtn && (
-            <a
-              href={buildEncaissementUrl(M as any, { amount: remaining, returnTo: `/mission/${M.id}` })}
+            <button
+              type="button"
+              onClick={() => {
+                const url = buildEncaissementUrl(M as any, { amount: remaining, returnTo: `/mission/${M.id}` })
+                // Olivier 2026-06-03 : router.push fiable en Capacitor (l ancien
+                // <a href> ne naviguait pas dans la WebView native iOS).
+                router.push(url)
+              }}
               className={`w-full block text-center py-4 ${headerBg} text-white font-bold rounded-2xl text-base`}
             >
               💰 Encaisser ({formatEur(remaining, { suffix: false })} €)
-            </a>
+            </button>
           )}
 
           {showParkBtn && (
