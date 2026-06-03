@@ -92,6 +92,40 @@ export async function POST(req: NextRequest) {
         .from('incoming_missions')
         .update(updatePayload)
         .eq('id', body.mission_id)
+
+      // Olivier 2026-06-03 : auto-finalize si paiement complet sur une mission
+      // en draft (awaiting_payment=true). Avant, il fallait que le chauffeur
+      // clique "Finaliser la mission" manuellement, ce qui laissait la mission
+      // en mode draft (et SncMissionFiche s affichait) entre le paiement et
+      // le clic. Maintenant : paiement complet = mission immediatement
+      // definitive (ticket Helpdesk Odoo + email + awaiting_payment=false).
+      const { data: missionAfterPayment } = await supabase
+        .from('incoming_missions')
+        .select('id, awaiting_payment, amount_to_collect')
+        .eq('id', body.mission_id)
+        .single()
+      const required = Number(missionAfterPayment?.amount_to_collect || 0)
+      const isFullyPaid = required > 0 && sum + 0.01 >= required
+      if (missionAfterPayment?.awaiting_payment && isFullyPaid) {
+        try {
+          const origin = new URL(req.url).origin
+          const finRes = await fetch(`${origin}/api/missions/${body.mission_id}/finalize`, {
+            method:  'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cookie':       req.headers.get('cookie') || '',
+            },
+          })
+          if (finRes.ok) {
+            console.log(`[Mission payment] Auto-finalize OK mission=${body.mission_id}`)
+          } else {
+            const text = await finRes.text().catch(() => '')
+            console.warn(`[Mission payment] Auto-finalize echoue (${finRes.status}) : ${text.slice(0, 200)}`)
+          }
+        } catch (e: any) {
+          console.warn(`[Mission payment] Auto-finalize exception : ${e?.message}`)
+        }
+      }
     } catch (err: any) {
       console.error('[Mission payment] Erreur update annotation:', err.message)
     }
