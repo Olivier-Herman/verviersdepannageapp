@@ -816,6 +816,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
+  // Olivier 2026-06-03 : logging temporaire pour diagnostiquer la boucle
+  // "Vehicule charge" / "Arrivee destination" sur SNC REM client.
+  if (typeof window !== 'undefined') {
+    console.log('[DriverClient] state', {
+      mission_id: M.id, status: M.status, mission_type: M.mission_type,
+      source: M.source, snc_scenario: (M as any).snc_scenario,
+      on_site_at: M.on_site_at, loaded_at: M.loaded_at, delivering_at: M.delivering_at,
+      onSite, loaded, rem, rel, awaiting_payment: M.awaiting_payment,
+      payment_amount: M.payment_amount, amount_to_collect: M.amount_to_collect,
+    })
+  }
   const stops    = [...(M.extra_addresses || [])].sort((a, b) => a.sort_order - b.sort_order)
   // Si dest-final existe déjà dans stops, pas besoin d'ajouter __dest__
   const destFinalInStops = stops.find(s => s.id === 'dest-final')
