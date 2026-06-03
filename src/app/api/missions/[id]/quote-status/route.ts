@@ -63,38 +63,36 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
   }
 
-  // Olivier 2026-06-03 : si pas de odoo_quote_id en BDD mais un odoo_ticket_id
-  // existe (ticket Helpdesk Odoo), un workflow Odoo a peut-etre cree un devis
-  // attache automatiquement. On le cherche par origin = dossier (ex FINALIZED-XXX
-  // / MAL_GAREE-XXX) ou via la relation helpdesk_ticket_id sur sale.order.
-  // Si trouve → on l attache retroactivement a la mission.
-  if (!mission.odoo_quote_id && mission.odoo_ticket_id) {
+  // Olivier 2026-06-03 : si pas de odoo_quote_id en BDD, on cherche dans
+  // les interventions liees a la mission. L encaissement chauffeur cree un
+  // sale.order Odoo via syncInterventionToOdoo et stocke son ID dans
+  // interventions.odoo_invoice_id (au lieu de incoming_missions.odoo_quote_id).
+  // On l attache retroactivement a la mission pour que FacturerModal voit
+  // le devis existant.
+  if (!mission.odoo_quote_id) {
     try {
-      // Cherche par origin = external_id / dossier_number / FINALIZED-{ticketId}
-      const candidates: string[] = []
-      if (mission.external_id)    candidates.push(mission.external_id)
-      if (mission.dossier_number) candidates.push(mission.dossier_number)
-      // Recherche sale.order WHERE origin IN (...) (origin = champ libre Odoo)
-      const ids = await rpc<number[]>(
-        'sale.order', 'search',
-        [[['origin', 'in', candidates]]],
-        { limit: 1 },
-      )
-      if (ids && ids.length > 0) {
-        const foundId = ids[0]
+      const { data: interv } = await sb
+        .from('interventions')
+        .select('odoo_invoice_id')
+        .eq('mission_id', mission.id)
+        .not('odoo_invoice_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (interv?.odoo_invoice_id) {
+        const foundId = interv.odoo_invoice_id
         const url = buildQuoteUrl(foundId)
         await sb.from('incoming_missions').update({
           odoo_quote_id:  foundId,
           odoo_quote_url: url,
           odoo_quoted_at: new Date().toISOString(),
         }).eq('id', mission.id)
-        // Continue avec le devis trouve
         mission.odoo_quote_id  = foundId
         mission.odoo_quote_url = url
-        console.log(`[quote-status] Devis Odoo ${foundId} attache retroactivement a mission ${mission.id} via origin lookup`)
+        console.log(`[quote-status] Devis Odoo ${foundId} attache retroactivement a mission ${mission.id} via intervention.odoo_invoice_id`)
       }
     } catch (e: any) {
-      console.warn(`[quote-status] Lookup retroactif echoue : ${e?.message}`)
+      console.warn(`[quote-status] Lookup intervention echoue : ${e?.message}`)
     }
   }
 
