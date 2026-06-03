@@ -285,7 +285,11 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     : null
 
   if (amountTvac != null) {
-    const amountHt = Math.round((amountTvac / 1.21) * 100) / 100
+    // Olivier 2026-06-03 : 4 décimales pour que HTVA × 1.21 = TVAC exact.
+    // Avec 2 décimales : 125/1.21 = 103.31 → ×1.21 = 125.0051 → arrondi 125.01 (bug).
+    // Avec 4 décimales : 125/1.21 = 103.3058 → ×1.21 = 125.0000 → 125.00 OK.
+    // Requiert que Odoo "Decimal Precision > Product Price" soit configure a 4.
+    const amountHt = Math.round((amountTvac / 1.21) * 10000) / 10000
     return {
       ok:            true,
       source,

@@ -16,6 +16,7 @@ interface MissionLike {
   external_id?:        string | null
   dossier_number?:     string | null
   source?:             string | null
+  mission_type?:       string | null
   special_tarif_htva?: number | null
 }
 
@@ -55,9 +56,17 @@ export function buildLinesFromEstimate(
   } else {
     // Mode 'forfait' / 'brackets' : breakdown synthetique
     if (estimate.forfait && estimate.forfait > 0) {
+      // Olivier 2026-06-03 : pour Mal Garee deplacement_paye (source=police_mg
+      // + mission_type=trajet_vide), label specifique "Déplacement pour vehicule
+      // mal garé" au lieu du generique "Prise en charge (POLICE_MG)".
+      const isMalGareeDeplPaye = mission.source === 'police_mg'
+                              && (mission.mission_type || '').toLowerCase() === 'trajet_vide'
+      const label = isMalGareeDeplPaye
+        ? 'Déplacement pour véhicule mal garé'
+        : `Prise en charge ${mission.source ? `(${mission.source.toUpperCase()}) ` : ''}— ${missionRef}`
       lines.push({
         kind:       'SERV-PEC',
-        name:       `Prise en charge ${mission.source ? `(${mission.source.toUpperCase()}) ` : ''}— ${missionRef}`,
+        name:       label,
         qty:        1,
         price_unit: estimate.forfait,
       })
@@ -69,7 +78,9 @@ export function buildLinesFromEstimate(
         kind:       'SERV-KM',
         name:       `Km supplémentaires (${estimate.km_extra} km au-delà de ${estimate.km_inclus} inclus)`,
         qty:        estimate.km_extra,
-        price_unit: Math.round(pu * 100) / 100,
+        // Olivier 2026-06-03 : 4 decimales (Odoo Decimal Precision configure
+        // a 4 pour Product Price, utilise par tarif Saisie/Parquet et autres).
+        price_unit: Math.round(pu * 10000) / 10000,
       })
     }
 
@@ -79,7 +90,8 @@ export function buildLinesFromEstimate(
         kind:       'SERV-PARC',
         name:       `Frais de parc (${estimate.parc_jours} jour${estimate.parc_jours > 1 ? 's' : ''})`,
         qty:        estimate.parc_jours,
-        price_unit: Math.round(pu * 100) / 100,
+        // Olivier 2026-06-03 : 4 decimales (coherence Odoo Decimal Precision).
+        price_unit: Math.round(pu * 10000) / 10000,
       })
     }
   }
