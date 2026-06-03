@@ -44,20 +44,23 @@ interface Props {
 }
 
 const ZONE_COLOR: Record<string, string> = {
-  A:    'bg-critical/15 border-critical text-critical',          // Accident
-  B:    'bg-info/15 border-info text-info',
-  'B*': 'bg-purple-500/15 border-purple-500 text-purple-500',    // VIP
-  C:    'bg-success/15 border-success text-success',
-  D:    'bg-warning/15 border-warning text-warning',             // Étranger
-  E:    'bg-amber-500/15 border-amber-500 text-amber-500',
-  F:    'bg-cyan-500/15 border-cyan-500 text-cyan-500',
-  G:    'bg-pink-500/15 border-pink-500 text-pink-500',
-  H:    'bg-indigo-500/15 border-indigo-500 text-indigo-500',
-  I:    'bg-rose-500/15 border-rose-500 text-rose-500',          // Domaine
-  L:    'bg-orange-500/15 border-orange-500 text-orange-500',    // Mal garée
-  LABO: 'bg-teal-500/15 border-teal-500 text-teal-500',
-  S:    'bg-violet-500/15 border-violet-500 text-violet-500',
-  BOX:  'bg-ink/10 border-ink/30 text-ink-secondary',
+  A:       'bg-critical/15 border-critical text-critical',          // Accident
+  B:       'bg-info/15 border-info text-info',
+  'B*':    'bg-purple-500/15 border-purple-500 text-purple-500',    // VIP
+  C:       'bg-success/15 border-success text-success',
+  D:       'bg-warning/15 border-warning text-warning',             // Étranger
+  E:       'bg-amber-500/15 border-amber-500 text-amber-500',
+  F:       'bg-cyan-500/15 border-cyan-500 text-cyan-500',
+  G:       'bg-pink-500/15 border-pink-500 text-pink-500',
+  H:       'bg-indigo-500/15 border-indigo-500 text-indigo-500',
+  I:       'bg-rose-500/15 border-rose-500 text-rose-500',          // Domaine
+  J:       'bg-emerald-500/15 border-emerald-500 text-emerald-500',
+  K:       'bg-sky-500/15 border-sky-500 text-sky-500',
+  L:       'bg-orange-500/15 border-orange-500 text-orange-500',    // Mal garée
+  LABO:    'bg-teal-500/15 border-teal-500 text-teal-500',
+  S:       'bg-violet-500/15 border-violet-500 text-violet-500',
+  BOX:     'bg-ink/10 border-ink/30 text-ink-secondary',
+  Transit: 'bg-yellow-500/15 border-yellow-500 text-yellow-700',
 }
 
 function fmtDate(d: string | null): string {
