@@ -409,12 +409,31 @@ export default function SncMissionFiche({
     && M.status !== 'parked'
     && M.status !== 'completed' && M.status !== 'to_invoice'
 
+  // Olivier 2026-06-03 : pour SNC REM client / SC rem_direct, apres encaissement
+  // (ou apres choix scenario pour SC), le chauffeur doit encore CHARGER + LIVRER
+  // le vehicule. Les boutons de chargement/livraison sont dans DriverClient, pas
+  // ici. Bascule vers DriverClient via ?legacy=1 pour continuer le flow.
+  // - SNC rem_client : nécessite isFullyPaid (encaissement OK)
+  // - SC rem_direct  : pas d encaissement (facturation assistance), basculer dès
+  //                    que destination saisie
+  const needsLoadAndDeliver =
+       (M.snc_scenario === 'rem_client' && variant === 'snc' && isFullyPaid)
+    || (M.snc_scenario === 'rem_direct' && variant === 'sc'
+        && M.destination_lat != null && M.destination_lng != null)
+  const showContinueBtn =
+    needsLoadAndDeliver
+    && M.status !== 'completed' && M.status !== 'to_invoice'
+
+  // Finaliser : pour DSP (rien a faire apres paiement) ou SC dsp (pas d encaissement)
+  // ou REM depot (mise en parc deja faite). PAS pour REM client / rem_direct qui
+  // ont showContinueBtn.
   const showFinalizeBtn =
     M.status !== 'completed' && M.status !== 'to_invoice'
     && M.snc_scenario != null
-    && (variant === 'sc'                  // SC : pas d encaissement, on peut finaliser
+    && !needsLoadAndDeliver               // REM client/direct → continuer via DriverClient
+    && (M.snc_scenario === 'dsp'          // DSP : finalisation directe apres paiement
         || M.snc_scenario === 'rem_depot' // REM depot : pas d encaissement chauffeur
-        || isFullyPaid)                   // DSP/REM client : seulement si solde nul
+        || (variant === 'sc' && M.snc_scenario === 'dsp'))  // SC DSP
 
   const navUrl = gUrl(navApp, M.incident_lat, M.incident_lng,
     [M.incident_address, M.incident_city].filter(Boolean).join(', '))
@@ -788,6 +807,17 @@ export default function SncMissionFiche({
               className="w-full py-4 bg-amber-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base"
             >
               🏢 Mettre en parc Transit
+            </button>
+          )}
+
+          {/* Olivier 2026-06-03 : SNC REM client / SC rem_direct apres encaissement
+              → basculer sur DriverClient pour le flow chargement + livraison. */}
+          {showContinueBtn && (
+            <button
+              onClick={() => router.push(`/mission/${M.id}?legacy=1`)}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base"
+            >
+              🚛 Charger le véhicule et livrer →
             </button>
           )}
 
