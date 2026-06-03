@@ -187,12 +187,16 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     dossier_number:   dossierFinal,
     updated_at:       nowIso,
   }
-  // Si rien a faire apres paiement (depannage / deplacement paye), on passe
-  // directement la mission a 'completed' avec completed_at + payment_collected_at.
+  // Si rien a faire apres paiement (depannage / deplacement paye), la mission
+  // est techniquement terminee cote chauffeur — MAIS le devis doit etre
+  // genere/valide cote facturation. Olivier 2026-06-03 : on passe a 'to_invoice'
+  // (pas 'completed') pour que la mission apparaisse dans /facturation avec
+  // le lien vers le devis Odoo (s il existe deja, sinon a creer via Facturer).
+  // L employe facturation la sortira de la liste apres traitement.
   // Sinon (REM client : chauffeur doit encore charger + livrer), on laisse
   // le statut tel quel et le chauffeur poursuit le flow normal de DriverClient.
   if (isFullyDoneAfterPayment) {
-    updatePayload.status                = 'completed'
+    updatePayload.status                = 'to_invoice'
     updatePayload.completed_at          = nowIso
     if (!mission.payment_amount || mission.payment_amount === 0) {
       // edge case : montant a encaisser = 0 (genre offert) — pas d insert
