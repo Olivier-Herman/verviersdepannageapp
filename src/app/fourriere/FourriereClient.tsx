@@ -104,16 +104,18 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
     return v.zone_code != null && (v.parc_row_number == null || v.parc_slot_index == null)
   }
 
-  // Olivier 2026-06-03 : si vue parc precis (depotZoneKeys), on restreint
-  // les zones affichees et les vehicules a ce parc.
+  // Olivier 2026-06-03 : si vue parc precis (depotZoneKeys defini, meme vide),
+  // on restreint zones et vehicules a ce parc. Un tableau vide = parc sans
+  // zones, donc on doit afficher 0 zones (pas un fallback global qui leak les
+  // zones des autres parcs).
   const zones = useMemo(() => {
-    if (!depotZoneKeys || depotZoneKeys.length === 0) return allZones
+    if (!depotZoneKeys) return allZones
     const set = new Set(depotZoneKeys)
     return allZones.filter(z => set.has(z.code))
   }, [allZones, depotZoneKeys])
 
   const scopedVehicles = useMemo(() => {
-    if (!depotZoneKeys || depotZoneKeys.length === 0) return vehicles
+    if (!depotZoneKeys) return vehicles
     const set = new Set(depotZoneKeys)
     return vehicles.filter(v => v.zone_code && set.has(v.zone_code))
   }, [vehicles, depotZoneKeys])
@@ -253,6 +255,13 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
           <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted text-sm">
             <RefreshCw size={24} className="mx-auto animate-spin mb-3 text-brand" />
             Chargement depuis Odoo…
+          </div>
+        ) : depotZoneKeys && depotZoneKeys.length === 0 ? (
+          <div className="bg-surface border rounded-2xl p-10 text-center">
+            <p className="text-ink-secondary text-sm font-medium">Aucune zone configurée pour ce parc.</p>
+            <p className="text-ink-muted text-xs mt-2">
+              Crée des zones depuis <Link href="/admin/parc" className="text-brand hover:underline">/admin/parc</Link> et assigne-les à ce parc.
+            </p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="bg-surface border rounded-2xl p-10 text-center">
