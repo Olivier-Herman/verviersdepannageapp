@@ -20,7 +20,7 @@ export default async function UsersPage() {
     .select(`
       id, email, name, role, roles, active, can_verify, personal_email, auth_provider,
       last_login, created_at, tgr_push_notify, odoo_partner_id, towsoft_name,
-      has_odoo_access, odoo_api_key, odoo_uid, phone,
+      has_odoo_access, odoo_api_key, odoo_uid, phone, force_native_app,
       user_modules!user_modules_user_id_fkey (module_id, granted)
     `)
     .order('created_at', { ascending: false })
