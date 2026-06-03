@@ -548,6 +548,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       (selectedType === 'appel_prive' && (appelPriveType === 'DSP' || (appelPriveType === 'REM' && appelPriveDestination === 'client'))) ||
       (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
 
+    // Olivier 2026-06-03 (audit J-2 W3 high) : try/catch/finally global pour
+    // les 2 fetch police. Avant, si le serveur renvoyait du HTML (500 non-JSON)
+    // ou si le reseau plantait, l exception non capturee laissait setLoading=true
+    // et le bouton bloque eternellement en 'Creation...'. Maintenant on garantit
+    // setLoading(false) via finally + message d erreur clair via setErr.
+    try {
     if (needsImmediatePaymentLocal) {
       // Olivier 2026-06-03 : pre-calcul de intervention_at cote browser pour
       // que la timezone soit correctement gerée (sinon le serveur Node UTC
@@ -584,7 +590,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         }),
       })
       const draftData = await draftRes.json()
-      setLoading(false)
       if (!draftRes.ok || !draftData.ok) {
         setErr(draftData.error || 'Erreur création mission en mode encaissement')
         return
@@ -634,7 +639,6 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     })
 
     const data = await res.json()
-    setLoading(false)
 
     if (data.ok) {
       setCreatedMissionId(data.missionId || null)
@@ -691,6 +695,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       }
     } else {
       setErr(data.error || 'Erreur création')
+    }
+    } catch (e: any) {
+      // Erreur reseau / serveur non-JSON / timeout
+      console.error('[PoliceClient] handleSubmit echec:', e?.message || e)
+      setErr(`Erreur reseau : ${e?.message || 'impossible de joindre le serveur'}. Verifie ta connexion et reessaie.`)
+    } finally {
+      setLoading(false)
     }
   }
 
