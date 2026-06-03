@@ -6,6 +6,13 @@ import { createAdminClient } from '@/lib/supabase'
 import DriverClient          from './DriverClient'
 import SncMissionFiche       from './SncMissionFiche'
 
+// Olivier 2026-06-03 : force-dynamic obligatoire — sinon Next.js peut cacher
+// la fiche mission cote serveur, et apres action driver (load_vehicle, etc.)
+// le reload retourne l ancien state (loaded_at=null) → page.tsx route encore
+// vers SncMissionFiche → boucle.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 interface Props {
   params: { id: string }
   searchParams?: { legacy?: string }
