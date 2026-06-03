@@ -2770,13 +2770,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           Si la mission est en awaiting_payment, on remplace tous les boutons
           d action normaux par :
             - "Encaisser le solde (XX €)" tant qu il reste a payer
-            - "Finaliser la mission" quand solde = 0 (POST /api/missions/[id]/finalize) */}
+            - "Finaliser la mission" / "Charger et livrer" quand solde = 0
+              (POST /api/missions/[id]/finalize puis bascule sur le flow normal)
+          Olivier 2026-06-03 : label dynamique selon mission_type — pour REM
+          (remorquage), apres encaissement le chauffeur doit encore charger
+          et livrer → bouton "Charger le véhicule" et message clair pour ne
+          plus confondre avec une cloture totale. */}
       {!isReadOnly && M.awaiting_payment && (() => {
         const required = Number(M.amount_to_collect || 0)
         const paid     = Number(M.payment_amount    || 0)
         const remaining = Math.max(0, required - paid)
         const isFullyPaid = required > 0 && paid + 0.01 >= required
         const encUrl = buildEncaissementUrl(M as any, { amount: remaining, returnTo: `/mission/${M.id}` })
+        const isRemorquage = (M.mission_type || '').toLowerCase() === 'remorquage'
+        const continueLabel  = isRemorquage ? '🚛 Charger le véhicule et livrer →' : '✅ Finaliser la mission'
+        const continueExplain = isRemorquage
+          ? 'Paiement complet. Tu peux charger le véhicule et le livrer.'
+          : 'Paiement complet. Tu peux maintenant finaliser la mission.'
 
         return (
           <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
@@ -2786,15 +2796,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               </p>
               <p className="text-ink-secondary text-xs mt-1">
                 {isFullyPaid
-                  ? 'Paiement complet. Tu peux maintenant finaliser la mission.'
+                  ? continueExplain
                   : `Encaissé ${formatEur(paid, { suffix: false })} / ${formatEur(required, { suffix: false })} — reste ${formatEur(remaining, { suffix: false })} à encaisser.`}
               </p>
             </div>
             {!isFullyPaid && (
-              <a href={encUrl}
+              <button
+                type="button"
+                onClick={() => router.push(encUrl)}
                 className="w-full block text-center py-4 bg-amber-500 hover:bg-amber-600 text-ink font-bold rounded-2xl text-base">
                 💳 Encaisser le solde ({formatEur(remaining, { suffix: false })} €)
-              </a>
+              </button>
             )}
             {isFullyPaid && (
               <button
@@ -2812,7 +2824,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 }}
                 disabled={loading}
                 className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
-                {loading ? '⏳ Finalisation...' : '✅ Finaliser la mission'}
+                {loading ? '⏳ Finalisation...' : continueLabel}
               </button>
             )}
             {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2 text-center">⚠️ {err}</p>}
