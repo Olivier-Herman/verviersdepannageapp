@@ -13,6 +13,29 @@ const FOURRIERE_AUTO_RESTITUTE_SOURCES = [
   'police_saisie', 'police_snc', 'sia_couvert', 'prive',
 ]
 
+/**
+ * Parse une adresse texte au format BE/FR vers les champs Odoo res.partner.
+ * Formats supportes :
+ *   "Pl. du Sablon 65, 4820 Dison, Belgique"
+ *   "Rue de la Paix 12, 4800 Verviers"
+ *   "12 Rue Foo, 75001 Paris, France"
+ * Fallback : tout dans street si pattern non reconnu.
+ */
+export function parseAddressForOdoo(addr: string | null | undefined): {
+  street: string
+  zip:    string
+  city:   string
+} {
+  if (!addr) return { street: '', zip: '', city: '' }
+  const trimmed = addr.trim().replace(/\s+/g, ' ')
+  // Pattern : "<street>, <zip 4-5 digits> <city>[, <country>]"
+  const m = trimmed.match(/^(.+?),?\s*(\d{4,5})\s+([^,]+?)(?:,\s*[^,]+)?$/)
+  if (m) {
+    return { street: m[1].trim().replace(/,$/, ''), zip: m[2], city: m[3].trim() }
+  }
+  return { street: trimmed, zip: '', city: '' }
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -102,11 +125,14 @@ export async function POST(req: NextRequest) {
       // devis Odoo' reste grise pour Mal Garee payee par le proprio.
       if (!updatePayload.billed_to_id && !currentMission?.billed_to_id && body.client_name) {
         try {
+          const addr = parseAddressForOdoo(body.client_address)
           const partnerId = await findOrCreatePartner({
             name:    body.client_name,
             phone:   body.client_phone,
             email:   body.client_email,
-            street:  body.client_address,
+            street:  addr.street,
+            zip:     addr.zip,
+            city:    addr.city,
             countryCode: 'BE',
           })
           if (partnerId) updatePayload.billed_to_id = partnerId

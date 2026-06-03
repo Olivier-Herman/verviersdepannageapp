@@ -13,6 +13,7 @@ import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { findOrCreatePartner } from '@/lib/odoo'
 import { releaseParcAndShift } from '@/lib/parc/release'
+import { parseAddressForOdoo } from '@/app/api/interventions/route'
 
 const FOURRIERE_AUTO_RESTITUTE_SOURCES = [
   'police_mg', 'police_avp', 'police_rodeo', 'police_accident',
@@ -54,11 +55,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   let partnerId: number | null = mission.billed_to_id
   if (!partnerId && intervention?.client_name) {
     try {
+      const addr = parseAddressForOdoo(intervention.client_address)
       partnerId = await findOrCreatePartner({
         name:     intervention.client_name,
         phone:    intervention.client_phone || undefined,
         email:    intervention.client_email || undefined,
-        street:   intervention.client_address || undefined,
+        street:   addr.street || undefined,
+        zip:      addr.zip || undefined,
+        city:     addr.city || undefined,
         vat:      intervention.client_vat || undefined,
         countryCode: 'BE',
       })
