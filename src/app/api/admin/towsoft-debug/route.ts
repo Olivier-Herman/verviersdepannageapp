@@ -15,30 +15,45 @@ const TOWSOFT_PASS = process.env.TOWSOFT_PASS
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-// Olivier 2026-06-03 : tentative multi-endpoint pour trouver l URL login correcte
-const LOGIN_ENDPOINTS = ['/login.php', '/auth/login', '/index.php', '/']
-
-async function loginTowsoft(): Promise<{ cookie: string; endpoint: string; status: number }> {
+// Olivier 2026-06-03 : sequence correcte = GET / pour obtenir PHPSESSID,
+// puis POST /login.php AVEC ce PHPSESSID (sinon le serveur cree une nouvelle
+// session anonyme et l auth n est pas associee au cookie qu on garde).
+async function loginTowsoft(): Promise<{
+  cookie:           string
+  initial_status:   number
+  login_status:     number
+  login_location:   string | null
+  login_response:   string  // premiers 500 chars pour debug
+}> {
   if (!TOWSOFT_PASS) throw new Error('TOWSOFT_PASS manquant')
-  const errors: string[] = []
-  for (const endpoint of LOGIN_ENDPOINTS) {
-    try {
-      const res = await fetch(`${TOWSOFT_URL}${endpoint}`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    `nomusager=${encodeURIComponent(TOWSOFT_USER)}&passusager=${encodeURIComponent(TOWSOFT_PASS)}`,
-        redirect: 'manual',
-      })
-      const cookie = res.headers.get('set-cookie')
-      if (cookie && (res.status === 200 || res.status === 302)) {
-        return { cookie: cookie.split(';')[0], endpoint, status: res.status }
-      }
-      errors.push(`${endpoint}: ${res.status} (cookie=${!!cookie})`)
-    } catch (e: any) {
-      errors.push(`${endpoint}: ${e.message}`)
-    }
+
+  // Etape 1 : GET / pour obtenir un PHPSESSID anonyme
+  const initRes = await fetch(`${TOWSOFT_URL}/`, { redirect: 'manual' })
+  const initCookie = initRes.headers.get('set-cookie')
+  const cookie = initCookie ? initCookie.split(';')[0] : ''
+
+  // Etape 2 : POST /login.php avec ce cookie
+  const loginRes = await fetch(`${TOWSOFT_URL}/login.php`, {
+    method:  'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie':       cookie,
+    },
+    body:    `nomusager=${encodeURIComponent(TOWSOFT_USER)}&passusager=${encodeURIComponent(TOWSOFT_PASS)}`,
+    redirect: 'manual',
+  })
+  // Si TowSoft retourne un nouveau cookie suite au login, on le prend
+  const newCookie = loginRes.headers.get('set-cookie')
+  const finalCookie = newCookie ? newCookie.split(';')[0] : cookie
+
+  const body = await loginRes.text()
+  return {
+    cookie:           finalCookie,
+    initial_status:   initRes.status,
+    login_status:     loginRes.status,
+    login_location:   loginRes.headers.get('location'),
+    login_response:   body.slice(0, 500),
   }
-  throw new Error(`Tous les endpoints login ont echoue : ${errors.join(' | ')}`)
 }
 
 export async function GET(req: Request) {
@@ -56,8 +71,8 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get('mode') || 'json'  // 'json' (debug) ou 'html' (raw)
 
   try {
-    const loginRes = await loginTowsoft()
-    const cookie = loginRes.cookie
+    const loginInfo = await loginTowsoft()
+    const cookie = loginInfo.cookie
     const r = await fetch(`${TOWSOFT_URL}/appel.php?num=${encodeURIComponent(num)}`, {
       headers: { Cookie: cookie },
       redirect: 'manual',
@@ -80,15 +95,23 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      towsoft_url:     TOWSOFT_URL,
-      login_endpoint:  loginRes.endpoint,
-      login_status:    loginRes.status,
-      cookie_preview:  cookie.slice(0, 40) + '…',
-      fetch_status:    r.status,
-      fetch_redirect:  r.headers.get('location'),
-      html_length:     html.length,
-      html_starts_with: html.slice(0, 500),
-      contains_login:  html.includes('auth/login') || html.includes('nomusager') || html.includes('login.php'),
+      towsoft_url:      TOWSOFT_URL,
+      towsoft_user:     TOWSOFT_USER,
+      pass_set:         !!TOWSOFT_PASS,
+      login:            {
+        initial_status:   loginInfo.initial_status,
+        login_status:     loginInfo.login_status,
+        login_location:   loginInfo.login_location,
+        cookie_preview:   cookie.slice(0, 50) + '…',
+        login_response_preview: loginInfo.login_response,
+      },
+      fetch: {
+        status:    r.status,
+        redirect:  r.headers.get('location'),
+        html_length: html.length,
+        html_starts_with: html.slice(0, 500),
+        contains_login:  html.includes('auth/login') || html.includes('nomusager') || html.includes('login.php'),
+      },
       data_attrs:      dataAttrs,
       ids:             ids,
       hint:            'Pour voir le HTML brut : ajoute &mode=html',
