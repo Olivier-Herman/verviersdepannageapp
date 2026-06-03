@@ -183,6 +183,15 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
   // ── Sauvegarder ────────────────────────────────────────
   const saveUser = async () => {
     if (!selectedUser) return
+    // Olivier 2026-06-03 : log temporaire pour diagnostiquer le bug
+    // "Forcer l app native ne reste pas actif apres save".
+    console.log('[saveUser] state envoyé :', {
+      userId: selectedUser.id,
+      name: selectedUser.name,
+      userForceNative,
+      userActive,
+      userHasOdooAccess,
+    })
     setSaving(true)
     try {
       const res = await fetch('/api/admin/users', {
