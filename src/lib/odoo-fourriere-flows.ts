@@ -245,6 +245,86 @@ export async function printZebraLabel(params: PrintLabelParams): Promise<boolean
   }
 }
 
+// Olivier 2026-06-03 : mapping motif TowSoft -> source VD Soft (pour calcul tarif).
+// Le motif TowSoft est case-insensitive et peut varier (Accident, Mal Garée,
+// Mal Garee, Saisie, Saisie judiciaire, etc.). On match sur des contains.
+function inferSourceFromMotif(motif: string | null): string | null {
+  if (!motif) return null
+  const m = motif.toLowerCase().trim()
+  if (m.includes('mal') && m.includes('gar'))   return 'police_mg'
+  if (m.includes('accident'))                   return 'police_accident'
+  if (m.includes('saisie'))                     return 'police_saisie'
+  if (m.includes('rodeo') || m.includes('rodéo')) return 'police_rodeo'
+  if (m.includes('avp') || m.includes('abandon')) return 'police_avp'
+  if (m.includes('siabis non couvert'))         return 'police_snc'
+  if (m.includes('siabis couvert'))             return 'sia_couvert'
+  if (m.includes('privé') || m.includes('prive')) return 'prive'
+  return null
+}
+
+/**
+ * Parse une date TowSoft (formats varies) vers ISO en LOCALE Bruxelles.
+ * Formats attendus :
+ *   - 'YYYY-MM-DD HH:MM:SS'    (date appel + heure)
+ *   - 'YYYY-MM-DD'             (date seule)
+ *   - 'DD-MM-YYYY HH:MM(:SS)?' (mise en parc)
+ *   - 'DD-MM-YYYY'             (date seule format europe)
+ *
+ * On evite d ecraser l heure avec 00:00 quand on n a que la date :
+ * dans ce cas, on retourne null pour ne pas polluer.
+ */
+function parseTowsoftDate(s: string | null): string | null {
+  if (!s) return null
+  const trimmed = s.trim()
+  // YYYY-MM-DD HH:MM(:SS)?
+  const m1 = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (m1) {
+    // Construit en LOCALE (sans T...Z) puis on traduit en ISO en assumant
+    // que TowSoft donne du temps local Belgique. Pour eviter le drift UTC,
+    // on cree la Date avec Date.UTC + offset Belgique (2h ete / 1h hiver).
+    // Simple : passe par new Date('YYYY-MM-DDTHH:MM:SS') -> JS interprete UTC.
+    // On compense en soustrayant l offset local pour obtenir le bon UTC.
+    const local = new Date(`${m1[1]}-${m1[2]}-${m1[3]}T${m1[4]}:${m1[5]}:${m1[6] || '00'}`)
+    // local.getTime() est l UTC qui correspond a cette date INTERPRETEE comme UTC.
+    // On veut que les chiffres saisis (10-04-2026 18:55) representent le LOCAL Brussels.
+    // Donc on doit retirer l offset de Brussels pour obtenir le bon UTC.
+    // getTimezoneOffset() retourne minutes UTC - locale. Pour le serveur Vercel
+    // (UTC), getTimezoneOffset = 0. On force donc le calcul manuel :
+    // Brussels = UTC+1 en hiver, UTC+2 en ete. On utilise Intl pour determiner.
+    const offsetMs = brusselsOffsetMs(local)
+    return new Date(local.getTime() - offsetMs).toISOString()
+  }
+  // DD-MM-YYYY HH:MM(:SS)?
+  const m2 = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (m2) {
+    const local = new Date(`${m2[3]}-${m2[2]}-${m2[1]}T${m2[4]}:${m2[5]}:${m2[6] || '00'}`)
+    const offsetMs = brusselsOffsetMs(local)
+    return new Date(local.getTime() - offsetMs).toISOString()
+  }
+  // YYYY-MM-DD (date seule)
+  const m3 = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m3) {
+    // Date seule -> on met 12:00 Belgique pour eviter de basculer un jour
+    const local = new Date(`${m3[1]}-${m3[2]}-${m3[3]}T12:00:00`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  // DD-MM-YYYY (date seule)
+  const m4 = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+  if (m4) {
+    const local = new Date(`${m4[3]}-${m4[2]}-${m4[1]}T12:00:00`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  return null
+}
+
+/** Offset Brussels par rapport a UTC en ms a une date donnee. */
+function brusselsOffsetMs(d: Date): number {
+  // On compare l affichage locale Brussels vs UTC
+  const localeStr = d.toLocaleString('en-US', { timeZone: 'Europe/Brussels' })
+  const utcStr    = d.toLocaleString('en-US', { timeZone: 'UTC' })
+  return (new Date(localeStr).getTime() - new Date(utcStr).getTime())
+}
+
 /**
  * Enrichit une mission VD Soft (vdMissionId) avec les donnees TowSoft.
  * Reutilise par reprintInventoryLabel (scan) et /api/admin/parc/enrich-batch
@@ -259,11 +339,11 @@ export async function enrichMissionFromTowsoft(
   const sb = createAdminClient()
   const { data: vdMission } = await sb
     .from('incoming_missions')
-    .select('id, mission_number, status, dossier_number, intervention_date, source')
+    .select('id, mission_number, status, dossier_number, intervention_date, parked_at, source, towsoft_enriched_at')
     .eq('id', vdMissionId)
     .maybeSingle()
   if (!vdMission) return { ok: false, updated: false, reason: 'mission introuvable' }
-  if (vdMission.source === 'legacy_towsoft_enriched') {
+  if (vdMission.towsoft_enriched_at) {
     return { ok: true, updated: false, reason: 'deja enrichie' }
   }
 
@@ -275,19 +355,17 @@ export async function enrichMissionFromTowsoft(
   const updates: Record<string, any> = {}
 
   if (!vdMission.dossier_number && ts.refDossier) updates.dossier_number = ts.refDossier
-  if (ts.dateMission) {
-    try {
-      let iso: string | null = null
-      const m1 = ts.dateMission.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/)
-      const m2 = ts.dateMission.match(/^(\d{2})-(\d{2})-(\d{4})/)
-      if (m1)      iso = m1[4] ? `${m1[1]}-${m1[2]}-${m1[3]}T${m1[4]}:${m1[5]}:${m1[6] || '00'}` : `${m1[1]}-${m1[2]}-${m1[3]}T00:00:00`
-      else if (m2) iso = `${m2[3]}-${m2[2]}-${m2[1]}T00:00:00`
-      if (iso) {
-        const d = new Date(iso)
-        if (isFinite(d.getTime())) updates.intervention_date = d.toISOString()
-      }
-    } catch {}
+
+  // Date intervention : parsing robuste (heure preservee, offset Bruxelles)
+  const interventionIso = parseTowsoftDate(ts.dateMission)
+  if (interventionIso) {
+    updates.intervention_date = interventionIso
+    // Olivier 2026-06-03 : parked_at = intervention_date (la voiture est entree
+    // en parc a l intervention pour ces missions legacy). Permet le bon calcul
+    // de gardiennage.
+    updates.parked_at = interventionIso
   }
+
   if (ts.plaque && !vdMission.dossier_number) updates.vehicle_plate = String(ts.plaque).toUpperCase()
   if (ts.marque)  updates.vehicle_brand = ts.marque
   if (ts.modele)  updates.vehicle_model = ts.modele
@@ -304,7 +382,20 @@ export async function enrichMissionFromTowsoft(
   if (ts.billedTo && !vdMission.dossier_number) updates.billed_to_name = ts.billedTo
   if (ts.keysDigiboxSlot)  updates.keys_digibox_slot = ts.keysDigiboxSlot
 
-  updates.source = 'legacy_towsoft_enriched'
+  // Source : derivee du motif TowSoft (Accident -> police_accident, etc.).
+  // Permet a estimateMissionPrice de calculer le bon tarif.
+  const inferredSource = inferSourceFromMotif(ts.motif)
+  if (inferredSource) {
+    updates.source = inferredSource
+    // Mission type par defaut pour ces legacy police -> remorquage
+    // (le scraper ne retourne pas precisement REM vs DSP, mais en pratique
+    // c est tout des remorquages pour les vehicules en parc).
+    updates.mission_type = 'remorquage'
+  }
+
+  // Tag enriched dans une colonne dediee (pas dans source pour pouvoir
+  // calculer le tarif basee sur la VRAIE source).
+  updates.towsoft_enriched_at = new Date().toISOString()
 
   if (Object.keys(updates).length > 0) {
     updates.updated_at = new Date().toISOString()
@@ -420,14 +511,12 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
     ? String(ticket.x_studio_mission_towsoft)
     : null
 
-  // Olivier 2026-06-03 : enrichissement TowSoft via fonction reutilisable
-  // (utilisee aussi par /api/admin/parc/enrich-batch). Skip si deja enrichie.
-  if (vdMission && towsoftNum) {
-    const enrichRes = await enrichMissionFromTowsoft(vdMission.id, towsoftNum)
-    if (!enrichRes.ok) {
-      console.warn(`[reprintInventoryLabel] enrichissement KO pour num=${towsoftNum}: ${enrichRes.reason}`)
-    }
-  }
+  // Olivier 2026-06-03 : enrichissement TowSoft RETIRE du scan (etait
+  // ~15-20s/scan avec Browserless). Maintenant le scan est rapide (~3s) et
+  // l enrichissement se fait via /admin/parc -> 'Enrichir manquants' en
+  // batch (concurrence 3), apres tous les scans.
+  // -- if (vdMission && towsoftNum) { ... enrichMissionFromTowsoft(...) }
+  void towsoftNum  // garde la variable lue pour pas d unused warning
 
   // Impression UNIQUEMENT si demandee explicitement (default off : l inventaire
   // sert a remettre a jour le parc, pas a re-imprimer toutes les etiquettes).

@@ -46,11 +46,11 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
-  // 1. Liste les missions a enrichir (legacy_odoo + odoo_helpdesk_id non-null)
+  // 1. Liste les missions a enrichir (towsoft_enriched_at IS NULL + odoo_helpdesk_id non-null)
   const { data: missions, error: e1 } = await sb
     .from('incoming_missions')
     .select('id, vehicle_plate, odoo_helpdesk_id')
-    .eq('source', 'legacy_odoo')
+    .is('towsoft_enriched_at', null)
     .not('odoo_helpdesk_id', 'is', null)
     .order('created_at', { ascending: true })
     .limit(limit)
@@ -61,7 +61,8 @@ export async function POST(req: Request) {
     const { count } = await sb
       .from('incoming_missions')
       .select('id', { count: 'exact', head: true })
-      .eq('source', 'legacy_odoo')
+      .is('towsoft_enriched_at', null)
+      .not('odoo_helpdesk_id', 'is', null)
     return NextResponse.json({ ok: true, processed: 0, remaining: count || 0, results: [] })
   }
 
@@ -111,7 +112,8 @@ export async function POST(req: Request) {
   const { count } = await sb
     .from('incoming_missions')
     .select('id', { count: 'exact', head: true })
-    .eq('source', 'legacy_odoo')
+    .is('towsoft_enriched_at', null)
+    .not('odoo_helpdesk_id', 'is', null)
 
   const enriched = results.filter(r => r.ok && r.updated).length
   const failed   = results.filter(r => !r.ok).length
