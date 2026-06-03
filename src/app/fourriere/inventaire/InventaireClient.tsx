@@ -1127,11 +1127,27 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
             <button
               onClick={startScanSession}
               disabled={!selectedZone || (currentZoneStrict && availableRows.length > 0 && parcRowNumber == null)}
+              title={
+                !selectedZone ? 'Sélectionne d\'abord une zone'
+                : (currentZoneStrict && availableRows.length > 0 && parcRowNumber == null)
+                  ? `Zone ${parcZoneKey || selectedZone.code} en mode strict + a ${availableRows.length} rangée(s) — sélectionne la rangée`
+                  : ''
+              }
               className="w-full py-3 bg-brand text-white rounded-xl font-medium disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <ScanLine size={18} />
               {sessionId ? 'Reprendre la session' : 'Démarrer le scan'}
             </button>
+            {selectedZone && currentZoneStrict && availableRows.length > 0 && parcRowNumber == null && (
+              <p className="text-xs text-warning text-center -mt-2">
+                ⚠ Zone <strong>{parcZoneKey || selectedZone.code}</strong> en mode strict — choisis une rangée pour démarrer.
+              </p>
+            )}
+            {selectedZone && !parcZoneKey && (
+              <p className="text-xs text-critical text-center -mt-2">
+                ⚠ Zone <strong>{selectedZone.code}</strong> introuvable dans parc_zones BDD (mismatch). Vérifie /admin/parc.
+              </p>
+            )}
 
             {/* Vider la zone : repart from scratch sans toucher au statut des
                 missions (juste clear parc_zone_key/row/slot). Garde trace en log. */}
