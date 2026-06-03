@@ -331,7 +331,11 @@ export default function SncMissionFiche({
     }
   }
 
-  // ── Destination : selection autocomplete → PATCH coords + recalcul ──────
+  // ── Destination : selection autocomplete → PATCH coords + recalcul tarif ──
+  // Olivier 2026-06-03 : pour SNC rem_client / SC rem_direct, la destination
+  // est requise pour calculer le tarif final. Apres saisie destination, on
+  // RECALCULE le tarif (snc-preview-tarif) et on PATCH amount_to_collect pour
+  // que le bouton Encaisser puisse s afficher avec le bon montant.
   const onDestinationSelect = async (addr: string, lat: number, lng: number) => {
     setSavingDest(true); setErr('')
     try {
@@ -347,6 +351,35 @@ export default function SncMissionFiche({
         destination_lng:     lng,
       }))
       setDestinationText(addr)
+
+      // Recalcul tarif si scenario actif necessite destination (rem_client/direct)
+      const needsRecompute = M.snc_scenario === 'rem_client' || M.snc_scenario === 'rem_direct'
+      if (needsRecompute && M.incident_lat != null && M.incident_lng != null) {
+        try {
+          const pr = await fetch('/api/snc-preview-tarif', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              scenario: M.snc_scenario, variant,
+              requires_balisage: Boolean(M.snc_requires_balisage),
+              incident_lat:   M.incident_lat,
+              incident_lng:   M.incident_lng,
+              destination_lat: lat,
+              destination_lng: lng,
+              intervention_at: M.intervention_date || M.received_at || new Date().toISOString(),
+              billed_to_id:    M.billed_to_id ?? null,
+              billed_to_name:  M.billed_to_name ?? null,
+              stops:           Array.isArray(M.extra_addresses) ? [...M.extra_addresses].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) : [],
+            }),
+          })
+          const pj = await pr.json().catch(() => null)
+          if (pr.ok && pj?.ok && typeof pj.total_tvac === 'number' && variant !== 'sc') {
+            // SNC : on PATCH amount_to_collect pour activer le bouton Encaisser
+            await patchMission({ amount_to_collect: pj.total_tvac })
+            setM(prev => ({ ...prev, amount_to_collect: pj.total_tvac as any }))
+          }
+        } catch { /* preview indisponible — pas bloquant */ }
+      }
     } catch (e: any) {
       setErr(e.message || 'Impossible de sauvegarder la destination')
     } finally {
