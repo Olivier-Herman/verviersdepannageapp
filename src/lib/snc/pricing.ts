@@ -480,6 +480,9 @@ export async function computeSncMetrics(input: SncCalcInput): Promise<SncCalcOut
     km_segments:         kmSegments,
     is_majored:          isMajored,
     note: `Dépôt dépanneuse : ${depart.name}. Km dépanneuse : ${kmDepanneuse}.` +
+          (input.interventionAt
+            ? ` Intervention : ${typeof input.interventionAt === 'string' ? input.interventionAt : input.interventionAt.toISOString()}.`
+            : ' Intervention : (date manquante).') +
           (kmLivraison > 0
             ? ` Km livraison (SC rem_direct) : ${kmLivraison}` +
               (livAssistance ? ` (assistance ${livAssistance}, ${livKmInclus} km inclus, ${livKmPrice}€/km)` : ' (assistance non identifiée, fallback tarif standard)') +
