@@ -1126,7 +1126,7 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
 
             <button
               onClick={startScanSession}
-              disabled={!selectedZone || (availableRows.length > 0 && parcRowNumber == null)}
+              disabled={!selectedZone || (currentZoneStrict && availableRows.length > 0 && parcRowNumber == null)}
               className="w-full py-3 bg-brand text-white rounded-xl font-medium disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <ScanLine size={18} />
