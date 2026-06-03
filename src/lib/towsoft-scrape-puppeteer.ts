@@ -39,6 +39,8 @@ export interface TowsoftMissionInfo {
   // Assurance / facturation
   billedTo:          string | null
   remarks:           string | null
+  // N° crochet digibox ou se trouvent les cles
+  keysDigiboxSlot:   string | null
   // HTML brut pour debug eventuel
   htmlLength:        number
 }
@@ -119,50 +121,118 @@ function pickByName(html: string, name: string): string | null {
  * #modele, etc.) et patterns table HTML (<td><strong>Label</strong>...</td>).
  * Tous les champs sont optionnels — retourne null si absent.
  */
+/**
+ * Strip HTML tags + decode quelques entites + normalise whitespace.
+ * Permet de chercher dans le texte rendu plutot que d ecrire des regex
+ * sur la structure HTML qui peut varier.
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s+/g, '\n')
+}
+
+/** Cherche un label + valeur dans le texte (format "Label: valeur" ou "Label valeur"). */
+function findLabelValue(text: string, labels: string[], maxLen = 200): string | null {
+  for (const label of labels) {
+    // Pattern : "Label" suivi de ":" optionnel + whitespace + valeur jusqu a fin de ligne / next label
+    const re = new RegExp(`${label.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\s*:?\\s*([^\\n\\r]{1,${maxLen}})`, 'i')
+    const m = text.match(re)
+    if (m) {
+      const v = m[1].trim()
+      if (v && v.length > 1) return v
+    }
+  }
+  return null
+}
+
 function parseTowsoftHtml(missionNum: string, html: string): TowsoftMissionInfo {
+  // ───────── data-attributes + IDs/names (rapide) ─────────
   const refDossier  = pickData(html, 'po')
   const dateMission = pickData(html, 'date-appel')
   const timeMission = pickData(html, 'heure-appel')
-  const marque      = pickData(html, 'vehicule-marque')      || pickById(html, 'marque')
-  const plaque      = pickData(html, 'vehicule-immatricultation') || pickById(html, 'plaque')
-  const modele      = pickById(html, 'modele')               || pickData(html, 'vehicule-modele')
-  const vin         = pickById(html, 'serie')                || pickData(html, 'vehicule-vin')
+  const marqueRaw   = pickData(html, 'vehicule-marque')      || pickById(html, 'marque')
+  const plaqueRaw   = pickData(html, 'vehicule-immatricultation') || pickById(html, 'plaque')
+  const modeleRaw   = pickById(html, 'modele')               || pickData(html, 'vehicule-modele')
+  const vinRaw      = pickById(html, 'serie')                || pickData(html, 'vehicule-vin')
 
-  // Parc + motif depuis la table table
-  const motifMatch = html.match(/<td><strong>MotifParc<\/strong><\/td>\s*<td[^>]*>([^<]*)<\/td>/i)
-  const parcMatch  = html.match(/data-lafourriere[^>]*>\s*([^<]+)\s*</i) ||
-                     html.match(/Parc\s+([^<\n]{5,60})</i)
+  // ───────── Fallback texte (parse rendu) ─────────
+  const text = htmlToText(html)
 
-  // Owner — TowSoft a souvent un bloc client
-  const ownerFirstName = pickByName(html, 'prenom') || pickData(html, 'client-prenom')
-  const ownerLastName  = pickByName(html, 'nom')    || pickData(html, 'client-nom')
-  const ownerPhone     = pickByName(html, 'tel')    || pickData(html, 'client-tel')
-  const ownerEmail     = pickByName(html, 'email')  || pickData(html, 'client-email')
-  const ownerAddress   = pickByName(html, 'adresse') || pickData(html, 'client-adresse')
+  // Date de mise en parc — souvent format "Date de mise en parc\t10-04-2026 18:55:00"
+  const parkedDateMatch = text.match(/Date de mise en parc\s+(\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}(?::\d{2})?)/i)
+  const dateInterv = parkedDateMatch ? parkedDateMatch[1] : dateMission
 
-  // Lieu intervention (#lieu, data-lieu)
-  const interventionAddr = pickByName(html, 'lieu') || pickById(html, 'lieu') || pickData(html, 'lieu')
+  // Lieu d intervention
+  const interventionAddr = findLabelValue(text, [
+    "Lieu d'intervention\\s+Adresse",
+    "Lieu d'intervention",
+    'Adresse',
+  ], 200)
+
+  // Vehicule
+  const plaque = plaqueRaw || findLabelValue(text, ['# Immatriculation', 'Immatriculation'], 20)
+  const marque = marqueRaw || findLabelValue(text, ['Marque ou charge', 'Marque'], 50)
+  const modele = modeleRaw || findLabelValue(text, ['Modèle'], 80)
+  const vin    = vinRaw    || findLabelValue(text, ['NIV', 'VIN'], 30)
+
+  // Motif + parc
+  const motifMatch = text.match(/MotifParc\s+([^\n]{2,80})/i)
+  const parcMatch  = text.match(/Parc\s+([0-9A-Z][^\n]{2,80})/i)
+
+  // Source / type intervention
+  const serviceMatch = text.match(/Nom du service\s*:?\s*([^\n]{3,80})/i)
+  const natureMatch  = text.match(/Nature de l'intervention\s*:?\s*([^\n]{3,80})/i)
+
+  // Owner / Client sur la route
+  const ownerSection = text.match(/Client sur la route\s+([^\n]{2,80})/i)
+  let ownerFirstName: string | null = null
+  let ownerLastName: string | null = null
+  if (ownerSection) {
+    const parts = ownerSection[1].trim().split(/\s+/)
+    if (parts.length >= 2) {
+      ownerFirstName = parts[0]
+      ownerLastName  = parts.slice(1).join(' ')
+    } else if (parts.length === 1) {
+      ownerLastName = parts[0]
+    }
+  }
+  const ownerPhone   = findLabelValue(text, ['Tél', 'Tel', 'Téléphone'], 40)
+  const ownerEmail   = findLabelValue(text, ['Email', 'Courriel'], 80)
+  const ownerAddress = findLabelValue(text, ['Adresse client', 'Adresse propriétaire'], 200)
 
   // Police
-  const policeZone   = pickData(html, 'police-zone')   || pickByName(html, 'police_zone')
-  const officerName  = pickData(html, 'police-agent')  || pickByName(html, 'police_agent')
-  const pvNumber     = pickData(html, 'pv-num')        || pickByName(html, 'pv_num')
+  const policeZone  = findLabelValue(text, ['Zone de police', 'Zone police'], 60)
+  const officerName = findLabelValue(text, ['Policier', 'Agent', 'Nom du policier'], 60)
+  const pvNumber    = findLabelValue(text, ['N° PV', 'PV', 'Numéro PV'], 40)
 
-  // Facturé à
-  const billedTo = pickByName(html, 'facture_a') || pickData(html, 'facture-a') || pickData(html, 'client-name')
+  // Facturé à (responsable)
+  const billedTo = findLabelValue(text, ['Responsable', 'Compagnie', 'Facturé à'], 80)
 
   // Remarques
-  const remarksMatch = html.match(/<textarea[^>]*name="remarques"[^>]*>([^<]*)<\/textarea>/i)
+  const remarksMatch = text.match(/Remarques générales de mission\s*\([^)]*\)\s*([^\n]{2,400})/i)
   const remarks = remarksMatch ? remarksMatch[1].trim() : null
+
+  // Emplacement - Rangee = N° crochet digibox cles (peut etre vide "-")
+  const keysMatch = text.match(/Emplacement\s*-\s*Rangée\s+([^\n]{1,40})/i)
+  let keysDigiboxSlot: string | null = keysMatch ? keysMatch[1].trim() : null
+  if (keysDigiboxSlot === '-' || keysDigiboxSlot === '') keysDigiboxSlot = null
 
   return {
     missionNum,
     refDossier:        refDossier || null,
-    dateMission:       dateMission || null,
+    dateMission:       dateInterv || null,
     timeMission:       timeMission || null,
     marque:            marque || null,
     modele:            modele || null,
-    plaque:            plaque || null,
+    plaque:            plaque ? plaque.toUpperCase() : null,
     vin:               vin || null,
     motif:             motifMatch ? motifMatch[1].trim() : null,
     parc:              parcMatch ? parcMatch[1].trim() : null,
@@ -175,8 +245,9 @@ function parseTowsoftHtml(missionNum: string, html: string): TowsoftMissionInfo 
     policeZone:        policeZone || null,
     officerName:       officerName || null,
     pvNumber:          pvNumber || null,
-    billedTo:          billedTo || null,
-    remarks,
+    billedTo:          billedTo || (serviceMatch ? serviceMatch[1].trim() : null),
+    remarks:           remarks,
+    keysDigiboxSlot:   keysDigiboxSlot,
     htmlLength:        html.length,
   }
 }

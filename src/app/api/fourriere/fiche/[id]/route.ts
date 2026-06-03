@@ -39,6 +39,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       saisie_motif_code, saisie_motif_label,
       dpr_motif, dpr_motif_label,
       parc_zone_key, parc_row_number, parc_slot_index,
+      keys_digibox_slot,
       parked_at, loaded_at, received_at, intervention_date, completed_at,
       payment_amount, payment_mode, payment_collected_at, payment_breakdown,
       odoo_quote_id, odoo_quote_url, odoo_vehicle_id, odoo_ticket_id,

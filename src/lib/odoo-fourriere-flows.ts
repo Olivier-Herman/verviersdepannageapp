@@ -10,7 +10,7 @@ import { odooRpc }              from '@/lib/odoo'
 import { createAdminClient }    from '@/lib/supabase'
 import { buildParcLabelZPL }    from '@/lib/print/zpl-templates/parc-label'
 import { printZPLRaw }          from '@/lib/print/zebra-raw'
-import { scrapeTowsoftMission } from '@/lib/towsoft-scrape'
+import { scrapeTowsoftMissionPuppeteer } from '@/lib/towsoft-scrape-puppeteer'
 
 const HELPDESK_TEAM_ID = 5    // Equipe "fourriere" (a verifier dans Odoo si change)
 
@@ -350,42 +350,68 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
     ? String(ticket.x_studio_mission_towsoft)
     : null
 
-  if (vdMission && towsoftNum) {
-    try {
-      const ts = await scrapeTowsoftMission(towsoftNum)
+  // Olivier 2026-06-03 : on utilise le scraper Puppeteer/Browserless (le fetch
+  // direct echoue car TowSoft exige l execution JS). Coute ~10-15s par fiche
+  // mais permet d enrichir avec les vraies donnees TowSoft. Skip si la
+  // mission est deja enrichie (eviter re-scraper sur chaque scan).
+  if (vdMission && towsoftNum && vdMission.source !== 'legacy_towsoft_enriched') {
+    const scrapeRes = await scrapeTowsoftMissionPuppeteer(towsoftNum)
+    if (!scrapeRes.ok || !scrapeRes.data) {
+      console.warn(`[reprintInventoryLabel] TowSoft scrape KO pour num=${towsoftNum}:`, scrapeRes.error)
+    } else {
+      const ts = scrapeRes.data
       const updates: Record<string, any> = {}
 
-      // Dossier : seulement si pas deja set
-      if (!vdMission.dossier_number && ts.refDossier) {
-        updates.dossier_number = ts.refDossier
-      }
-      // Date intervention : prefere TowSoft (DD-MM-YYYY) si dispo
+      // Dossier
+      if (!vdMission.dossier_number && ts.refDossier) updates.dossier_number = ts.refDossier
+      // Date intervention : format 'YYYY-MM-DD HH:MM:SS' ou 'DD-MM-YYYY'
       if (ts.dateMission) {
         try {
-          const m = ts.dateMission.match(/^(\d{2})-(\d{2})-(\d{4})/)
-          if (m) {
-            const iso = `${m[3]}-${m[2]}-${m[1]}T00:00:00`
+          let iso: string | null = null
+          const m1 = ts.dateMission.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/)
+          const m2 = ts.dateMission.match(/^(\d{2})-(\d{2})-(\d{4})/)
+          if (m1) {
+            iso = m1[4] ? `${m1[1]}-${m1[2]}-${m1[3]}T${m1[4]}:${m1[5]}:${m1[6] || '00'}` : `${m1[1]}-${m1[2]}-${m1[3]}T00:00:00`
+          } else if (m2) {
+            iso = `${m2[3]}-${m2[2]}-${m2[1]}T00:00:00`
+          }
+          if (iso) {
             const d = new Date(iso)
             if (isFinite(d.getTime())) updates.intervention_date = d.toISOString()
           }
         } catch {}
       }
-      // Plaque/marque/modele/VIN : ecrasement uniquement si vide en BDD
-      if (ts.plaque)  updates.vehicle_plate = String(ts.plaque).toUpperCase()
+      // Vehicule : prefere TowSoft (vue terrain) si pas en BDD
+      if (ts.plaque && !vdMission.dossier_number) updates.vehicle_plate = String(ts.plaque).toUpperCase()
       if (ts.marque)  updates.vehicle_brand = ts.marque
       if (ts.modele)  updates.vehicle_model = ts.modele
       if (ts.vin)     updates.vehicle_vin   = ts.vin
+      // Client (proprio)
+      if (ts.ownerLastName || ts.ownerFirstName) {
+        updates.client_name = [ts.ownerFirstName, ts.ownerLastName].filter(Boolean).join(' ')
+      }
+      if (ts.ownerPhone)   updates.client_phone   = ts.ownerPhone
+      if (ts.ownerAddress) updates.client_address = ts.ownerAddress
+      // Lieu intervention
+      if (ts.interventionAddr) updates.incident_address = ts.interventionAddr
+      // Police
+      if (ts.officerName) updates.officer_name = ts.officerName
+      if (ts.policeZone)  updates.police_zone  = ts.policeZone
+      if (ts.pvNumber)    updates.police_pv_number = ts.pvNumber
+      // Facture a
+      if (ts.billedTo && !vdMission.dossier_number) updates.billed_to_name = ts.billedTo
+      // N° crochet digibox cles
+      if (ts.keysDigiboxSlot) updates.keys_digibox_slot = ts.keysDigiboxSlot
 
-      // Tag source = enriched pour tracer qu on a fait le scraping
+      // Tag source = enriched pour tracer qu on a fait le scraping et eviter
+      // de re-scraper a chaque scan suivant
       updates.source = 'legacy_towsoft_enriched'
 
       if (Object.keys(updates).length > 0) {
         updates.updated_at = new Date().toISOString()
-        await sb.from('incoming_missions').update(updates).eq('id', vdMission.id)
+        const { error: upErr } = await sb.from('incoming_missions').update(updates).eq('id', vdMission.id)
+        if (upErr) console.warn('[reprintInventoryLabel] update echec:', upErr.message)
       }
-    } catch (e: any) {
-      // Best-effort : ne fail pas la reprint si le scraping echoue
-      console.warn(`[reprintInventoryLabel] TowSoft scrape KO pour num=${towsoftNum}:`, e.message)
     }
   }
 

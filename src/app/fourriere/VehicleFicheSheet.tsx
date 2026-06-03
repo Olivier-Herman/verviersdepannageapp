@@ -153,6 +153,11 @@ function FicheContent({ fiche }: { fiche: Fiche }) {
         } />
         {m.parc_row_number != null && <Row label="Rangée" value={`R${m.parc_row_number}`} />}
         {m.parc_slot_index != null && <Row label="Emplacement" value={`E${m.parc_slot_index}`} />}
+        {m.keys_digibox_slot && <Row label="Clés digibox" value={
+          <span className="inline-flex items-center gap-1.5 font-mono font-bold text-warning">
+            🔑 N° {m.keys_digibox_slot}
+          </span>
+        } />}
         <Row label="Entrée parc" value={fmtDateTime(m.parked_at) + (m.parked_at ? ` (${daysAgo(m.parked_at)} j)` : '')} />
         <Row label="Statut mission" value={<StatusBadge status={m.status} />} />
       </Section>
