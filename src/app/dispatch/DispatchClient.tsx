@@ -303,6 +303,23 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
   userRole:  string
 }) {
   const [editing, setEditing] = useState<DriverStatus | null>(null)
+
+  // Olivier 2026-06-03 : recupere les plages de garde actives (depuis BDD)
+  // au lieu de hardcoded "07h → 20h" / "17h → 09h" dans la modal toggle.
+  type SchedulePeriod = { hour_start: number; hour_end: number; cross_midnight: boolean }
+  const [schedulePeriods, setSchedulePeriods] = useState<{ day: SchedulePeriod[]; night: SchedulePeriod[] }>({ day: [], night: [] })
+  useEffect(() => {
+    fetch('/api/schedule/active')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setSchedulePeriods({ day: d.day || [], night: d.night || [] }) })
+      .catch(() => {})
+  }, [])
+  const fmtPeriod = (p: SchedulePeriod) => {
+    const fh = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}h${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, '0')}`
+    return `${fh(p.hour_start)} → ${fh(p.hour_end)}`
+  }
+  const dayLabel   = schedulePeriods.day.length   > 0 ? schedulePeriods.day.map(fmtPeriod).join(', ')   : '07h → 20h'
+  const nightLabel = schedulePeriods.night.length > 0 ? schedulePeriods.night.map(fmtPeriod).join(', ') : '17h → 09h'
   // Etat local optimiste : on re-ordonne immediatement au drop, puis on persiste.
   // Si la prop `statuses` change (poll 20s), on re-sync (cf useEffect ci-dessous).
   const [order, setOrder] = useState<DriverStatus[]>(statuses)
@@ -384,7 +401,7 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
                   <span className="text-ink text-sm font-semibold">☀️ Jour</span>
                   <span className={`w-2 h-2 rounded-full ${editing.schedule_day ? 'bg-green-400' : 'bg-ink-faint'}`} />
                 </div>
-                <p className="text-ink-muted text-xs">07h → 20h</p>
+                <p className="text-ink-muted text-xs">{dayLabel}</p>
               </button>
               <button type="button"
                 onClick={() => { toggleSchedule(editing.id, 'schedule_night', !!editing.schedule_night); setEditing(null) }}
@@ -397,7 +414,7 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
                   <span className="text-ink text-sm font-semibold">🌙 Nuit</span>
                   <span className={`w-2 h-2 rounded-full ${editing.schedule_night ? 'bg-indigo-400' : 'bg-ink-faint'}`} />
                 </div>
-                <p className="text-ink-muted text-xs">17h → 09h</p>
+                <p className="text-ink-muted text-xs">{nightLabel}</p>
               </button>
             </div>
             <button type="button" onClick={() => setEditing(null)}
