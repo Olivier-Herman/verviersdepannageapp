@@ -857,15 +857,16 @@ export default function SncMissionFiche({
           {showEncaisserBtn && (
             <button
               type="button"
+              disabled={previewLoading || sncSaving !== null || savingDest}
               onClick={() => {
                 const url = buildEncaissementUrl(M as any, { amount: remaining, returnTo: `/mission/${M.id}` })
-                // Olivier 2026-06-03 : router.push fiable en Capacitor (l ancien
-                // <a href> ne naviguait pas dans la WebView native iOS).
                 router.push(url)
               }}
-              className={`w-full block text-center py-4 ${headerBg} text-white font-bold rounded-2xl text-base`}
+              className={`w-full block text-center py-4 ${headerBg} text-white font-bold rounded-2xl text-base disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              💰 Encaisser ({formatEur(remaining, { suffix: false })} €)
+              {previewLoading || sncSaving !== null || savingDest
+                ? '⏳ Calcul du tarif en cours...'
+                : `💰 Encaisser (${formatEur(remaining, { suffix: false })} €)`}
             </button>
           )}
 
