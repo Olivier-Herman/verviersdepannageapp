@@ -7,11 +7,12 @@
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { redirect }          from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase'
 import ParcPlanClient        from './ParcPlanClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ParcPlanPage() {
+export default async function ParcPlanPage({ searchParams }: { searchParams: { depot?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -25,6 +26,22 @@ export default async function ParcPlanPage() {
   const isDriver     = isSuperadmin || normalized.includes('chauffeur') || normalized.includes('driver')
   const canBlock     = isAdmin || modules.includes('fourriere')
 
+  // Olivier 2026-06-03 : si ?depot=ID, on charge le nom + les zones du parc
+  // pour filtrer le plan affiche et naviguer entre parcs.
+  let depotName: string | undefined
+  let depotZoneKeys: string[] | undefined
+  let allDepots: { id: string; name: string }[] = []
+  if (searchParams.depot) {
+    const sb = createAdminClient()
+    const [{ data: d }, { data: zs }, { data: all }] = await Promise.all([
+      sb.from('depots').select('id, name').eq('id', searchParams.depot).single(),
+      sb.from('parc_zones').select('key').eq('depot_id', searchParams.depot).eq('active', true),
+      sb.from('depots').select('id, name').eq('active', true).order('sort_order'),
+    ])
+    if (d) { depotName = d.name; depotZoneKeys = (zs || []).map(z => z.key) }
+    allDepots = all || []
+  }
+
   return (
     <ParcPlanClient
       isDispatcher={isDispatcher}
@@ -35,6 +52,10 @@ export default async function ParcPlanPage() {
       userName={user.name || ''}
       userEmail={user.email || undefined}
       userModules={user.modules || []}
+      depotId={searchParams.depot}
+      depotName={depotName}
+      depotZoneKeys={depotZoneKeys}
+      allDepots={allDepots}
     />
   )
 }

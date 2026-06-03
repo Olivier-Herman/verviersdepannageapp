@@ -14,7 +14,8 @@ import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable, DragOverlay, type DragEndEvent,
 } from '@dnd-kit/core'
-import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink, Unlock, Sparkles } from 'lucide-react'
+import { RefreshCw, Car, AlertTriangle, Edit3, Check, Search, X, Ban, Link2, Unlink, Unlock, Sparkles, ArrowLeft, Building2 } from 'lucide-react'
+import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@supabase/supabase-js'
 
@@ -155,7 +156,7 @@ const VehicleSelectionCtx = createContext<{
   onSelect:   (id: string) => void
 }>({ selectedId: null, onSelect: () => {} })
 
-export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, canBlock, userRole, userName, userEmail, userModules }: {
+export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, canBlock, userRole, userName, userEmail, userModules, depotId, depotName, depotZoneKeys, allDepots }: {
   isDispatcher:   boolean
   isDriver:       boolean
   canEditLayout:  boolean
@@ -164,6 +165,12 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   userName:       string
   userEmail?:     string
   userModules:    string[]
+  // Olivier 2026-06-03 : si fournis, filtre le plan sur ce parc precis et
+  // affiche un bandeau de tuiles pour naviguer entre les autres parcs.
+  depotId?:       string
+  depotName?:     string
+  depotZoneKeys?: string[]
+  allDepots?:     { id: string; name: string }[]
 }) {
   const [state, setState] = useState<State | null>(null)
   const [loading, setLoading] = useState(true)
@@ -215,13 +222,23 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
       const res = await fetch('/api/parc/state')
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      // Olivier 2026-06-03 : si vue parc precis (depotZoneKeys fourni), on
+      // filtre zones/rows/placed/blocked/merged au chargement.
+      if (depotZoneKeys) {
+        const keys = new Set(depotZoneKeys)
+        j.zones         = (j.zones         || []).filter((z: any) => keys.has(z.key))
+        j.rows          = (j.rows          || []).filter((r: any) => keys.has(r.zone_key))
+        j.placed        = (j.placed        || []).filter((p: any) => p.parc_zone_key && keys.has(p.parc_zone_key))
+        j.blocked       = (j.blocked       || []).filter((b: any) => keys.has(b.zone_key))
+        j.merged_groups = (j.merged_groups || []).filter((g: any) => keys.has(g.primary?.zone_key))
+      }
       setState(j)
     } catch (e: any) {
       setError(e.message || 'Erreur réseau')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [depotZoneKeys])
 
   useEffect(() => { load() }, [load])
 
@@ -618,17 +635,48 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
     }
   }
 
-  const shellProps = { title: 'Plan du parc', userRole, userName, userEmail, userModules }
+  const shellProps = { title: depotName ? `Plan — ${depotName}` : 'Plan du parc', userRole, userName, userEmail, userModules }
 
-  if (loading && !state) return <AppShell {...shellProps}><div className="p-8 text-ink-muted text-center"><RefreshCw className="inline animate-spin mr-2" size={16} /> Chargement…</div></AppShell>
-  if (error && !state)   return <AppShell {...shellProps}><div className="p-8 text-critical">⚠ {error}</div></AppShell>
-  if (!state)            return <AppShell {...shellProps}><div /></AppShell>
+  // Olivier 2026-06-03 : bandeau de navigation parcs en haut (uniquement si on
+  // est en vue parc precis, ie depotId fourni).
+  const parcsNavBanner = depotId && allDepots && allDepots.length > 0 ? (
+    <div className="bg-surface border-b px-4 lg:px-6 py-2 flex items-center gap-2 flex-wrap">
+      <Link href={`/fourriere/parc/${depotId}`}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink text-xs font-medium transition">
+        <ArrowLeft size={13} /> Retour au parc
+      </Link>
+      <div className="h-5 w-px bg-ink/15"></div>
+      <div className="flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0">
+        {allDepots.map(d => {
+          const active = d.id === depotId
+          return (
+            <Link key={d.id} href={`/fourriere/plan?depot=${d.id}`}
+              className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                active
+                  ? 'bg-brand text-white border-brand shadow-sm'
+                  : 'bg-surface-2 text-ink-secondary border hover:text-ink hover:bg-surface-hover'
+              }`}
+              title={active ? `Plan actuel : ${d.name}` : `Aller au plan de ${d.name}`}
+            >
+              <Building2 size={12} />
+              {d.name}
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  ) : null
+
+  if (loading && !state) return <AppShell {...shellProps}>{parcsNavBanner}<div className="p-8 text-ink-muted text-center"><RefreshCw className="inline animate-spin mr-2" size={16} /> Chargement…</div></AppShell>
+  if (error && !state)   return <AppShell {...shellProps}>{parcsNavBanner}<div className="p-8 text-critical">⚠ {error}</div></AppShell>
+  if (!state)            return <AppShell {...shellProps}>{parcsNavBanner}<div /></AppShell>
 
   const allMissions: Record<string, PlacedMission> = {}
   for (const m of [...state.placed, ...state.toPlace]) allMissions[m.id] = m
 
   return (
     <AppShell {...shellProps}>
+    {parcsNavBanner}
     <VehicleSelectionCtx.Provider value={{ selectedId: selectedMissionId, onSelect: handleVehicleClick }}>
     <DndContext
       sensors={sensors}

@@ -207,7 +207,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                 </span>
               )}
             </Link>
-            <Link href="/fourriere/plan"
+            <Link href={parcsNav?.find(p => p.active)?.id ? `/fourriere/plan?depot=${parcsNav!.find(p => p.active)!.id}` : '/fourriere/plan'}
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition">
               <MapIcon size={14} />
               Plan du parc
