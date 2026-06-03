@@ -713,18 +713,15 @@ function EnrichBatchBlock() {
       </p>
       <div className="flex items-center gap-2 flex-wrap">
         <button
-          onClick={() => run(20)}
+          onClick={() => run(10)}
           disabled={busy}
           className="px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
-          {busy ? '⏳ En cours…' : '✨ Enrichir 20 missions'}
-        </button>
-        <button
-          onClick={() => run(50)}
-          disabled={busy}
-          className="px-3 py-2 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-xs font-semibold transition disabled:opacity-50">
-          {busy ? '⏳' : 'Ou 50 missions (lent)'}
+          {busy ? '⏳ En cours… (~3 min)' : '✨ Enrichir 10 missions'}
         </button>
       </div>
+      <p className="text-xs text-ink-faint mt-2">
+        Limite a 10 par batch (~17s/mission a cause du throttle TowSoft). Clique &quot;Continuer&quot; apres chaque batch jusqu&apos;a remaining=0.
+      </p>
       {error && (
         <div className="mt-3 bg-critical/10 border border-critical/30 rounded-lg p-3 text-critical text-xs">
           ❌ {error}
@@ -749,7 +746,7 @@ function EnrichBatchBlock() {
           )}
           {result.remaining > 0 && (
             <button
-              onClick={() => run(20)}
+              onClick={() => run(10)}
               disabled={busy}
               className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
               {busy ? '⏳' : `↻ Continuer (${result.remaining} restantes)`}

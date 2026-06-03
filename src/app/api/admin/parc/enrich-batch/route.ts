@@ -46,7 +46,9 @@ export async function POST(req: Request) {
   }
 
   const url = new URL(req.url)
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50)
+  // Olivier 2026-06-03 : limit 10 max pour ne pas exploser le timeout Vercel
+  // (300s avec 17s/mission = ~17 missions max). On bornera a 15 par securite.
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 15)
 
   const sb = createAdminClient()
 
