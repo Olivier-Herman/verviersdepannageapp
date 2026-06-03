@@ -36,6 +36,11 @@ interface Props {
   userName:    string
   userEmail?:  string | null
   userModules: string[]
+  // Olivier 2026-06-03 : props optionnels pour la vue parc precis.
+  // Si depotZoneKeys est defini, on restreint l affichage aux zones de ce parc
+  // et on affiche TOUTES les zones (meme celles a 0 vehicule).
+  depotName?:     string
+  depotZoneKeys?: string[]
 }
 
 const ZONE_COLOR: Record<string, string> = {
@@ -61,9 +66,9 @@ function fmtDate(d: string | null): string {
   catch { return d }
 }
 
-export default function FourriereClient({ userRole, userName, userEmail, userModules }: Props) {
+export default function FourriereClient({ userRole, userName, userEmail, userModules, depotName, depotZoneKeys }: Props) {
   const [vehicles, setVehicles]   = useState<Vehicle[]>([])
-  const [zones, setZones]         = useState<Zone[]>([])
+  const [allZones, setAllZones]   = useState<Zone[]>([])
   const [loading, setLoading]     = useState(true)
   const [filter, setFilter]       = useState<string>('')         // recherche libre
   const [zoneFilter, setZoneFilter] = useState<string>('all')    // code zone ou 'all'
@@ -80,7 +85,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
       ])
       const j = await resList.json()
       setVehicles(j.vehicles || [])
-      setZones(j.zones || [])
+      setAllZones(j.zones || [])
       if (resUnloc.ok) {
         const ju = await resUnloc.json()
         setUnlocatedCount((ju.vehicles || []).length)
@@ -99,10 +104,24 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
     return v.zone_code != null && (v.parc_row_number == null || v.parc_slot_index == null)
   }
 
-  const toPlaceCount = useMemo(() => vehicles.filter(needsPlacement).length, [vehicles])
+  // Olivier 2026-06-03 : si vue parc precis (depotZoneKeys), on restreint
+  // les zones affichees et les vehicules a ce parc.
+  const zones = useMemo(() => {
+    if (!depotZoneKeys || depotZoneKeys.length === 0) return allZones
+    const set = new Set(depotZoneKeys)
+    return allZones.filter(z => set.has(z.code))
+  }, [allZones, depotZoneKeys])
+
+  const scopedVehicles = useMemo(() => {
+    if (!depotZoneKeys || depotZoneKeys.length === 0) return vehicles
+    const set = new Set(depotZoneKeys)
+    return vehicles.filter(v => v.zone_code && set.has(v.zone_code))
+  }, [vehicles, depotZoneKeys])
+
+  const toPlaceCount = useMemo(() => scopedVehicles.filter(needsPlacement).length, [scopedVehicles])
 
   const filtered = useMemo(() => {
-    let res = vehicles
+    let res = scopedVehicles
     if (onlyToPlace) res = res.filter(needsPlacement)
     if (zoneFilter !== 'all') res = res.filter(v => v.zone_code === zoneFilter)
     const q = filter.toLowerCase().trim()
@@ -116,16 +135,16 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
       )
     }
     return res
-  }, [vehicles, filter, zoneFilter, onlyToPlace])
+  }, [scopedVehicles, filter, zoneFilter, onlyToPlace])
 
   const countsByZone = useMemo(() => {
     const m = new Map<string, number>()
-    for (const v of vehicles) {
+    for (const v of scopedVehicles) {
       if (!v.zone_code) continue
       m.set(v.zone_code, (m.get(v.zone_code) || 0) + 1)
     }
     return m
-  }, [vehicles])
+  }, [scopedVehicles])
 
   return (
     <AppShell title="Fourrière" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
@@ -135,7 +154,10 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
         {/* Header + actions */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {vehicles.length} total</p>
+            {depotName && (
+              <h1 className="font-display text-xl font-bold text-ink mb-0.5">Parc {depotName}</h1>
+            )}
+            <p className="text-ink-muted text-sm">{filtered.length} véhicule{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''} · {scopedVehicles.length} total{depotName ? ' dans ce parc' : ''}</p>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/fourriere/non-localises"
