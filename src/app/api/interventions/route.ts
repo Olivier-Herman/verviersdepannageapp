@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { syncInterventionToOdoo, withOdooActor } from '@/lib/odoo'
+import { syncInterventionToOdoo, withOdooActor, findOrCreatePartner } from '@/lib/odoo'
 import { sendClientReceipt } from '@/lib/emails'
+import { releaseParcAndShift } from '@/lib/parc/release'
+
+// Olivier 2026-06-03 : sources fourriere qui declenchent l auto-restitution
+// quand un encaissement est fait sur une mission en parked.
+const FOURRIERE_AUTO_RESTITUTE_SOURCES = [
+  'police_mg', 'police_avp', 'police_rodeo', 'police_accident',
+  'police_saisie', 'police_snc', 'sia_couvert', 'prive',
+]
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -69,7 +77,7 @@ export async function POST(req: NextRequest) {
       // Lire l etat actuel de la mission pour ne pas ecraser un billed_to existant
       const { data: currentMission } = await supabase
         .from('incoming_missions')
-        .select('billed_to_id, billed_to_name')
+        .select('billed_to_id, billed_to_name, status, source, parc_zone_key')
         .eq('id', body.mission_id)
         .single()
 
@@ -88,10 +96,53 @@ export async function POST(req: NextRequest) {
         updatePayload.billed_to_name = String(body.client_name)
       }
 
+      // Olivier 2026-06-03 : si on a un client_name mais pas de billed_to_id
+      // (le frontend ne nous a pas propage le partnerId), on auto-cree/lie le
+      // partner Odoo via findOrCreatePartner. Evite que le bouton 'Creer le
+      // devis Odoo' reste grise pour Mal Garee payee par le proprio.
+      if (!updatePayload.billed_to_id && !currentMission?.billed_to_id && body.client_name) {
+        try {
+          const partnerId = await findOrCreatePartner({
+            name:    body.client_name,
+            phone:   body.client_phone,
+            email:   body.client_email,
+            street:  body.client_address,
+            countryCode: 'BE',
+          })
+          if (partnerId) updatePayload.billed_to_id = partnerId
+        } catch (e: any) {
+          console.warn('[interventions] findOrCreatePartner Odoo echec:', e?.message)
+        }
+      }
+
       await supabase
         .from('incoming_missions')
         .update(updatePayload)
         .eq('id', body.mission_id)
+
+      // Olivier 2026-06-03 : auto-restitution si mission en parked + source
+      // fourriere (police_*, sia_couvert, prive). L encaissement equivaut a
+      // une restitution : on passe en to_invoice + libere la position parc.
+      // Sinon la mission restait bloquee en parked apres encaissement (bug
+      // 10009032 : il fallait fixer en SQL manuellement).
+      if (currentMission?.status === 'parked'
+          && FOURRIERE_AUTO_RESTITUTE_SOURCES.includes(currentMission?.source || '')) {
+        try {
+          await supabase
+            .from('incoming_missions')
+            .update({
+              status:       'to_invoice',
+              completed_at: new Date().toISOString(),
+            })
+            .eq('id', body.mission_id)
+          if (currentMission.parc_zone_key) {
+            await releaseParcAndShift(supabase, body.mission_id)
+          }
+          console.log(`[interventions] Auto-restitution OK mission=${body.mission_id} (source=${currentMission.source})`)
+        } catch (e: any) {
+          console.warn(`[interventions] Auto-restitution KO mission=${body.mission_id}:`, e?.message)
+        }
+      }
 
       // Olivier 2026-06-03 : auto-finalize si paiement complet sur une mission
       // en draft (awaiting_payment=true). Avant, il fallait que le chauffeur
