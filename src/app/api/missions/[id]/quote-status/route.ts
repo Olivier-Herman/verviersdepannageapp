@@ -55,12 +55,47 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const sb = createAdminClient()
   const { data: mission, error: missionErr } = await sb
     .from('incoming_missions')
-    .select('id, odoo_quote_id, odoo_quote_url')
+    .select('id, odoo_quote_id, odoo_quote_url, odoo_ticket_id, external_id, dossier_number')
     .eq('id', params.id)
     .single()
 
   if (missionErr || !mission) {
     return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  }
+
+  // Olivier 2026-06-03 : si pas de odoo_quote_id en BDD mais un odoo_ticket_id
+  // existe (ticket Helpdesk Odoo), un workflow Odoo a peut-etre cree un devis
+  // attache automatiquement. On le cherche par origin = dossier (ex FINALIZED-XXX
+  // / MAL_GAREE-XXX) ou via la relation helpdesk_ticket_id sur sale.order.
+  // Si trouve → on l attache retroactivement a la mission.
+  if (!mission.odoo_quote_id && mission.odoo_ticket_id) {
+    try {
+      // Cherche par origin = external_id / dossier_number / FINALIZED-{ticketId}
+      const candidates: string[] = []
+      if (mission.external_id)    candidates.push(mission.external_id)
+      if (mission.dossier_number) candidates.push(mission.dossier_number)
+      // Recherche sale.order WHERE origin IN (...) (origin = champ libre Odoo)
+      const ids = await rpc<number[]>(
+        'sale.order', 'search',
+        [[['origin', 'in', candidates]]],
+        { limit: 1 },
+      )
+      if (ids && ids.length > 0) {
+        const foundId = ids[0]
+        const url = buildQuoteUrl(foundId)
+        await sb.from('incoming_missions').update({
+          odoo_quote_id:  foundId,
+          odoo_quote_url: url,
+          odoo_quoted_at: new Date().toISOString(),
+        }).eq('id', mission.id)
+        // Continue avec le devis trouve
+        mission.odoo_quote_id  = foundId
+        mission.odoo_quote_url = url
+        console.log(`[quote-status] Devis Odoo ${foundId} attache retroactivement a mission ${mission.id} via origin lookup`)
+      }
+    } catch (e: any) {
+      console.warn(`[quote-status] Lookup retroactif echoue : ${e?.message}`)
+    }
   }
 
   if (!mission.odoo_quote_id) {
