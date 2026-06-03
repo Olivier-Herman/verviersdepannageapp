@@ -205,40 +205,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
-  // Olivier 2026-06-03 : pour les missions fullyDoneAfterPayment, on cree
-  // AUTO le devis Odoo (sale.order) afin qu il apparaisse dans /facturation
-  // avec le lien deja present. L employe facturation n a qu a valider.
-  // Best-effort : on n echoue pas le finalize si le devis Odoo plante (l employe
-  // pourra retenter manuellement via le bouton Facturer).
-  if (isFullyDoneAfterPayment && mission.billed_to_id) {
-    try {
-      const origin = new URL(req.url).origin
-      const quoteRes = await fetch(`${origin}/api/missions/${missionId}/quote`, {
-        method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie':       req.headers.get('cookie') || '',
-        },
-        body: JSON.stringify({}),
-      })
-      if (quoteRes.ok) {
-        const qj = await quoteRes.json()
-        // /quote retourne { ok, quote: { id, url }, summary }
-        if (qj.quote?.id)  updatePayload.odoo_quote_id  = qj.quote.id
-        if (qj.quote?.url) updatePayload.odoo_quote_url = qj.quote.url
-        updatePayload.odoo_quoted_at = nowIso
-        console.log(`[finalize] Devis Odoo cree pour mission ${missionId} : ${qj.quote?.id}`)
-      } else {
-        const errText = await quoteRes.text().catch(() => '')
-        console.error(`[finalize] Devis Odoo echec (${quoteRes.status}) : ${errText.slice(0, 200)}`)
-        console.warn(`[finalize] L employe facturation devra creer le devis manuellement via le bouton "Facturer".`)
-      }
-    } catch (e: any) {
-      console.error('[finalize] Devis Odoo exception :', e?.message || e)
-    }
-  } else if (isFullyDoneAfterPayment && !mission.billed_to_id) {
-    console.warn(`[finalize] Mission ${missionId} fullyDone mais billed_to_id manquant → pas de devis auto. L employe devra creer manuellement.`)
-  }
+  // Olivier 2026-06-03 : pas de creation auto de devis Odoo ici. Le nouveau
+  // process veut que TOUTES les missions encaissees passent par /facturation
+  // et que l equipe facturation cree UN SEUL devis (via FacturerModal),
+  // en encodant manuellement les multi-paiements (cash + Sumup). Cela evite
+  // le bug split-paiement (plusieurs devis pour 1 mission). Le finalize se
+  // contente de passer la mission en to_invoice.
 
   const { error: updErr } = await supabase
     .from('incoming_missions')

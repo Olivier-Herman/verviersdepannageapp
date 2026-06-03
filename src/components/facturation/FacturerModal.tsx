@@ -549,21 +549,34 @@ function MissionBlock({
         )
       })()}
 
-      {/* Warning encaissement deja realise */}
+      {/* Warning encaissement deja realise — guide l employe facturation pour
+          encoder manuellement les paiements dans Odoo apres creation du devis.
+          Olivier 2026-06-03 : nouveau process, le chauffeur n encode plus de
+          devis Odoo automatiquement. Multi-paiements (cash + Sumup) bien
+          mis en evidence pour eviter les oublis. */}
       {payments.length > 0 && (
-        <div className="bg-warning-soft border border-warning rounded-xl p-3 space-y-1.5">
-          <p className="text-warning text-xs font-semibold">⚠ ENCAISSEMENT DÉJÀ RÉALISÉ</p>
-          {payments.map(p => (
-            <p key={p.id} className="text-warning text-xs">
-              {Number(p.amount).toFixed(2)} € {p.payment_mode} reçu par {driverName(p.driver_id)} le {fmtDateTime(p.created_at)}
-            </p>
-          ))}
+        <div className={`${payments.length > 1 ? 'bg-amber-50 border-2 border-amber-500' : 'bg-warning-soft border border-warning'} rounded-xl p-3 space-y-1.5`}>
+          <p className={`${payments.length > 1 ? 'text-amber-800' : 'text-warning'} text-xs font-semibold flex items-center gap-1`}>
+            {payments.length > 1 ? '⚠️ MULTI-PAIEMENTS' : '⚠ ENCAISSEMENT DÉJÀ RÉALISÉ'}
+            {payments.length > 1 && <span className="text-amber-700 font-normal">({payments.length} paiements distincts)</span>}
+          </p>
+          <ul className={`${payments.length > 1 ? 'text-amber-900' : 'text-warning'} text-xs space-y-0.5 list-disc list-inside`}>
+            {payments.map(p => (
+              <li key={p.id}>
+                <strong>{Number(p.amount).toFixed(2)} €</strong> · <span className="uppercase font-semibold">{p.payment_mode}</span> · reçu par {driverName(p.driver_id)} le {fmtDateTime(p.created_at)}
+              </li>
+            ))}
+          </ul>
           {payments.length > 1 && (
-            <p className="text-warning text-xs font-bold pt-1 border-t border-warning/30">
-              Total : {totalCollected.toFixed(2)} €
+            <p className="text-amber-900 text-xs font-bold pt-1 border-t border-amber-400">
+              Total reçu : {totalCollected.toFixed(2)} €
             </p>
           )}
-          <p className="text-warning text-xs italic">→ Facture à émettre comme acompte / soldée</p>
+          <p className={`${payments.length > 1 ? 'text-amber-900' : 'text-warning'} text-xs italic pt-1 border-t ${payments.length > 1 ? 'border-amber-400' : 'border-warning/30'}`}>
+            {payments.length > 1
+              ? '→ Crée le devis, puis encode MANUELLEMENT les ' + payments.length + ' paiements dans Odoo (un par mode).'
+              : '→ Crée le devis, puis encode le paiement dans Odoo.'}
+          </p>
         </div>
       )}
 

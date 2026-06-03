@@ -135,9 +135,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4. Sync Odoo (signe au nom du chauffeur si sa cle Odoo est encodee)
+  // 4. Sync Odoo : SKIP si l intervention est liee a une mission VD Soft.
+  // Olivier 2026-06-03 : nouveau process — toutes les missions encaissees
+  // passent par /facturation et l equipe facturation cree UN SEUL devis
+  // via FacturerModal "Creer le devis Odoo". Cela evite le bug du split
+  // paiement (cash + Sumup = 2 devis distincts auparavant).
+  // Les encaissements ORPHELINS (sans mission) continuent de creer le devis
+  // automatiquement, car ils n ont pas d autre voie. Cas edge depuis que
+  // l encaissement chauffeur utilise la recherche de mission.
   let odooResult: { orderName?: string; orderId?: number } = {}
-  if (intervention && body.plate) {
+  const skipOdooSync = !!body.mission_id
+  if (skipOdooSync) {
+    console.log(`[interventions] Skip sync Odoo (mission_id=${body.mission_id} - devis cree par facturation)`)
+  }
+  if (intervention && body.plate && !skipOdooSync) {
     try {
       const actorId = driver?.id || (session.user as any).id
       const result = await withOdooActor(actorId, () => syncInterventionToOdoo({
