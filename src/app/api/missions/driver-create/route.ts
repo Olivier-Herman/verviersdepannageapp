@@ -61,13 +61,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Log
-  await supabase.from('mission_logs').insert({
+  // Log — Olivier 2026-06-03 : bug audit. La table mission_logs utilise
+  // actor_id (uuid) + notes (text), pas user_id + details (jsonb). L INSERT
+  // plantait silencieusement -> aucun log pour les missions creees chauffeur.
+  const { error: logErr } = await supabase.from('mission_logs').insert({
     mission_id: data.id,
-    user_id:    session.user.id,
+    actor_id:   session.user.id,
     action:     'driver_created',
-    details:    { source, mission_type, incident_address },
-  }).maybeSingle()
+    notes:      `Source=${source}, type=${mission_type}, lieu=${incident_address}`,
+    metadata:   { source, mission_type, incident_address },
+  })
+  if (logErr) {
+    console.error('[DriverCreate] mission_logs insert echec:', logErr.message)
+    // Non bloquant : la mission est creee, juste le log manque
+  }
 
   return NextResponse.json({ ok: true, mission: data })
 }
