@@ -34,12 +34,21 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   if (!isDriverOfMission && !isStaff) redirect('/dashboard')
 
   // Olivier 2026-06-02 PM — Fiche dediee SNC/SC reclassifiees.
-  // Mirror visuel de PoliceClient pour les missions police_snc / sia_couvert
-  // recues depuis un canal externe. ?legacy=1 force le rendu DriverClient
-  // (necessaire pour le wizard photos / mise en parc / cloture complets
-  // pas encore portes).
-  const isSncFiche  = mission.source === 'police_snc' || mission.source === 'sia_couvert'
+  // Olivier 2026-06-03 : une fois que le chauffeur a commence le chargement
+  // (loaded_at set) OU que la mission est en livraison/parked/cloturee, on
+  // BASCULE DEFINITIVEMENT sur DriverClient. Plus de retour SncMissionFiche
+  // sinon le bouton "Charger et livrer" reapparait et cree une boucle apres
+  // chaque action chauffeur (Vehicule charge ↔ Arrivee destination).
+  // ?legacy=1 force aussi DriverClient (legacy escape hatch).
+  const isSncSource = mission.source === 'police_snc' || mission.source === 'sia_couvert'
+  const hasStartedDelivery =
+       !!mission.loaded_at
+    || mission.status === 'delivering'
+    || mission.status === 'parked'
+    || mission.status === 'completed'
+    || mission.status === 'to_invoice'
   const forceLegacy = searchParams?.legacy === '1'
+  const isSncFiche  = isSncSource && !hasStartedDelivery
 
   if (isSncFiche && !forceLegacy) {
     return (
