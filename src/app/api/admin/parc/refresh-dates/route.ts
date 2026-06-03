@@ -89,8 +89,9 @@ export async function POST(_req: Request) {
 
     await sb.from('incoming_missions').update({
       intervention_date: d.toISOString(),
+      received_at:       d.toISOString(),
       // Si parked_at etait NULL ou la meme heure suspecte, on l update aussi
-      parked_at: d.toISOString(),
+      parked_at:         d.toISOString(),
     }).eq('id', m.id)
     updated++
   }

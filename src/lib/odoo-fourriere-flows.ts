@@ -513,10 +513,28 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
 
   // Olivier 2026-06-03 : enrichissement TowSoft RETIRE du scan (etait
   // ~15-20s/scan avec Browserless). Maintenant le scan est rapide (~3s) et
-  // l enrichissement se fait via /admin/parc -> 'Enrichir manquants' en
-  // batch (concurrence 3), apres tous les scans.
+  // l enrichissement se fait via /admin/parc -> 'Enrichir manquants' ou via
+  // le cron de nuit (vercel.json -> /api/cron/enrich-towsoft).
   // -- if (vdMission && towsoftNum) { ... enrichMissionFromTowsoft(...) }
-  void towsoftNum  // garde la variable lue pour pas d unused warning
+  void towsoftNum
+
+  // Olivier 2026-06-03 : on derive deja la source/mission_type depuis le tag
+  // Odoo helpdesk (motif) au scan, sans attendre TowSoft. Permet a
+  // estimateMissionPrice de calculer le bon tarif des le scan.
+  if (vdMission && motif) {
+    const inferred = inferSourceFromMotif(motif)
+    if (inferred) {
+      const sourceUpdate: Record<string, any> = {}
+      if (vdMission.source === 'legacy_odoo' || !vdMission.source) {
+        sourceUpdate.source = inferred
+        sourceUpdate.mission_type = 'remorquage'
+      }
+      if (Object.keys(sourceUpdate).length > 0) {
+        sourceUpdate.updated_at = new Date().toISOString()
+        await sb.from('incoming_missions').update(sourceUpdate).eq('id', vdMission.id)
+      }
+    }
+  }
 
   // Impression UNIQUEMENT si demandee explicitement (default off : l inventaire
   // sert a remettre a jour le parc, pas a re-imprimer toutes les etiquettes).
