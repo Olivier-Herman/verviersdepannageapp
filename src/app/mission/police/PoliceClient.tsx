@@ -548,11 +548,20 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       (selectedType === 'snc' && (sncScenario === 'dsp' || sncScenario === 'rem_client'))
 
     if (needsImmediatePaymentLocal) {
+      // Olivier 2026-06-03 : pre-calcul de intervention_at cote browser pour
+      // que la timezone soit correctement gerée (sinon le serveur Node UTC
+      // interprete date/time en UTC au lieu de heure Belgique → decalage 2h
+      // qui fait perdre la majoration nuit).
+      const [dd0, mm0, yyyy0] = (date || '').split('-')
+      const [hh0, mn0] = (time || '00:00').split(':')
+      const interventionAtIso = (dd0 && mm0 && yyyy0)
+        ? new Date(`${yyyy0}-${mm0}-${dd0}T${hh0}:${mn0}:00`).toISOString()
+        : new Date().toISOString()
       const draftRes = await fetch('/api/missions/police/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: selectedType, date, time, plate: finalPlate, vin, brand, model,
+          type: selectedType, date, time, intervention_at: interventionAtIso, plate: finalPlate, vin, brand, model,
           location, policeZone, officerName,
           ownerFirstName, ownerLastName, ownerPhone,
           remarks, photoUrls,

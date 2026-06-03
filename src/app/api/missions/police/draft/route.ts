@@ -97,15 +97,39 @@ export async function POST(req: Request) {
   const vdZone   = zoneForType(type, sncScenario, appelPriveDestination, malGareeScenario)
   const nowIso   = new Date().toISOString()
 
-  // Combine date + time
+  // Olivier 2026-06-03 : si le caller fournit intervention_at deja calcule
+  // (PoliceClient le fait cote browser pour respecter le fuseau Belgique),
+  // on l utilise directement. Sinon, fallback sur reconstruction depuis
+  // date/time — MAIS attention : `new Date('...T...')` cote Node.js (Vercel
+  // UTC) interprete le string SANS timezone comme UTC, ce qui decale de
+  // 2h en ete (perdait la majoration nuit pour les missions creees a 6h54 BE
+  // alors qu en realite c etait dans la plage 0h-7h).
   let interventionISO = nowIso
-  try {
-    const [dd, mm, yyyy] = (date || '').split('-')
-    const [hh, mn]       = (time || '00:00').split(':')
-    if (dd && mm && yyyy) {
-      interventionISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`).toISOString()
-    }
-  } catch {}
+  if (typeof body.intervention_at === 'string' && body.intervention_at) {
+    interventionISO = body.intervention_at
+  } else {
+    try {
+      const [dd, mm, yyyy] = (date || '').split('-')
+      const [hh, mn]       = (time || '00:00').split(':')
+      if (dd && mm && yyyy) {
+        // Fallback : interprete en heure Europe/Brussels (UTC+1 hiver / UTC+2 ete)
+        // en construisant explicitement avec offset. Approximation simple :
+        // on devine l offset selon le mois (jan/feb/dec/oct fin = +1, autres = +2).
+        const offsetMinutes = (() => {
+          const month = parseInt(mm, 10)
+          // DST en BE : dernier dimanche de mars → dernier dimanche d octobre = UTC+2
+          // Approximation : avril-octobre inclusif = +2, sinon +1.
+          return (month >= 4 && month <= 10) ? -120 : -60
+        })()
+        const localStr = `${yyyy}-${mm}-${dd}T${hh}:${mn}:00`
+        const sign = offsetMinutes >= 0 ? '+' : '-'
+        const absMin = Math.abs(offsetMinutes)
+        const offH = String(Math.floor(absMin / 60)).padStart(2, '0')
+        const offM = String(absMin % 60).padStart(2, '0')
+        interventionISO = new Date(`${localStr}${sign}${offH}:${offM}`).toISOString()
+      }
+    } catch {}
+  }
 
   const fullName = [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || null
   const prefix   = PREFIX_BY_TYPE[type] || 'POLICE'
