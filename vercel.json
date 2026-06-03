@@ -13,6 +13,6 @@
     { "path": "/api/cron/auto-dispatch-tick",        "schedule": "* * * * *"    },
     { "path": "/api/cron/mg-to-avp",                 "schedule": "0 4 * * *"    },
     { "path": "/api/cron/cleanup-test-data",         "schedule": "0 * * * *"    },
-    { "path": "/api/cron/enrich-towsoft",            "schedule": "*/30 * * * *" }
+    { "path": "/api/cron/enrich-towsoft",            "schedule": "*/30 18-23,0-10 * * *" }
   ]
 }
