@@ -239,6 +239,9 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
       {/* Préparer inventaire complet : bulk sync Odoo + canonicalize + reset placements */}
       <PrepareFullInventoryBlock />
 
+      {/* Enrichir manquants : batch TowSoft pour les missions encore en source=legacy_odoo */}
+      <EnrichBatchBlock />
+
       {/* Settings destruction AVP : email destinataire Ville de Verviers */}
       <div className="bg-surface-2 border rounded-2xl p-4">
         <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
@@ -658,6 +661,97 @@ function PrepareFullInventoryBlock() {
             className="mt-2 px-3 py-1.5 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-xs">
             OK
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Bloc "Enrichir manquants" — relance le scraping TowSoft pour les missions
+// encore en source='legacy_odoo' (= scraping initial a foire ou skip).
+// Olivier 2026-06-03 : bouton manuel, on clique plusieurs fois jusqu a 0.
+// ─────────────────────────────────────────────────────────────────────────
+function EnrichBatchBlock() {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<null | {
+    processed: number
+    enriched:  number
+    failed:    number
+    remaining: number
+    results?:  Array<{ plate: string | null; ok: boolean; reason?: string }>
+  }>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run(limit: number) {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`/api/admin/parc/enrich-batch?limit=${limit}`, { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setResult(j)
+    } catch (e: any) {
+      setError(e.message || 'Erreur')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-surface-2 border rounded-2xl p-4 mt-4">
+      <h2 className="text-ink font-semibold text-sm mb-2 flex items-center gap-2">
+        ✨ Enrichir missions via TowSoft
+      </h2>
+      <p className="text-ink-muted text-xs mb-3">
+        Re-scrape les fiches TowSoft pour les missions <code className="bg-surface px-1 rounded">legacy_odoo</code> (= pas encore enrichies, soit jamais scannees soit scraping initial a foire).
+        Ajoute : dossier, vraie date intervention, lieu, proprietaire, police, n° digibox cles.
+        <br/>
+        <strong>Cout</strong> : ~10-15s par mission via Browserless (concurrence 3). Clique plusieurs fois jusqu&apos;a <code className="bg-surface px-1 rounded">remaining = 0</code>.
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => run(20)}
+          disabled={busy}
+          className="px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+          {busy ? '⏳ En cours…' : '✨ Enrichir 20 missions'}
+        </button>
+        <button
+          onClick={() => run(50)}
+          disabled={busy}
+          className="px-3 py-2 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-xs font-semibold transition disabled:opacity-50">
+          {busy ? '⏳' : 'Ou 50 missions (lent)'}
+        </button>
+      </div>
+      {error && (
+        <div className="mt-3 bg-critical/10 border border-critical/30 rounded-lg p-3 text-critical text-xs">
+          ❌ {error}
+        </div>
+      )}
+      {result && (
+        <div className="mt-3 bg-surface border rounded-lg p-3 text-xs space-y-2">
+          <p className="text-ink font-semibold">
+            ✓ {result.enriched} enrichies · {result.failed} echecs · {result.remaining} restantes
+          </p>
+          {result.results && result.results.filter(r => !r.ok).length > 0 && (
+            <details className="text-ink-muted">
+              <summary className="cursor-pointer">Echecs ({result.results.filter(r => !r.ok).length})</summary>
+              <ul className="mt-2 space-y-0.5">
+                {result.results.filter(r => !r.ok).slice(0, 20).map((r, i) => (
+                  <li key={i} className="font-mono">
+                    <strong>{r.plate || '—'}</strong> : {r.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {result.remaining > 0 && (
+            <button
+              onClick={() => run(20)}
+              disabled={busy}
+              className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+              {busy ? '⏳' : `↻ Continuer (${result.remaining} restantes)`}
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -245,6 +245,76 @@ export async function printZebraLabel(params: PrintLabelParams): Promise<boolean
   }
 }
 
+/**
+ * Enrichit une mission VD Soft (vdMissionId) avec les donnees TowSoft.
+ * Reutilise par reprintInventoryLabel (scan) et /api/admin/parc/enrich-batch
+ * (batch manuel pour les missions qui ont rate le scraping).
+ *
+ * Retourne { ok, updated, reason } pour stats.
+ */
+export async function enrichMissionFromTowsoft(
+  vdMissionId: string,
+  towsoftNum:  string,
+): Promise<{ ok: boolean; updated: boolean; reason?: string }> {
+  const sb = createAdminClient()
+  const { data: vdMission } = await sb
+    .from('incoming_missions')
+    .select('id, mission_number, status, dossier_number, intervention_date, source')
+    .eq('id', vdMissionId)
+    .maybeSingle()
+  if (!vdMission) return { ok: false, updated: false, reason: 'mission introuvable' }
+  if (vdMission.source === 'legacy_towsoft_enriched') {
+    return { ok: true, updated: false, reason: 'deja enrichie' }
+  }
+
+  const scrapeRes = await scrapeTowsoftMissionPuppeteer(towsoftNum)
+  if (!scrapeRes.ok || !scrapeRes.data) {
+    return { ok: false, updated: false, reason: `scrape KO : ${scrapeRes.error}` }
+  }
+  const ts = scrapeRes.data
+  const updates: Record<string, any> = {}
+
+  if (!vdMission.dossier_number && ts.refDossier) updates.dossier_number = ts.refDossier
+  if (ts.dateMission) {
+    try {
+      let iso: string | null = null
+      const m1 = ts.dateMission.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/)
+      const m2 = ts.dateMission.match(/^(\d{2})-(\d{2})-(\d{4})/)
+      if (m1)      iso = m1[4] ? `${m1[1]}-${m1[2]}-${m1[3]}T${m1[4]}:${m1[5]}:${m1[6] || '00'}` : `${m1[1]}-${m1[2]}-${m1[3]}T00:00:00`
+      else if (m2) iso = `${m2[3]}-${m2[2]}-${m2[1]}T00:00:00`
+      if (iso) {
+        const d = new Date(iso)
+        if (isFinite(d.getTime())) updates.intervention_date = d.toISOString()
+      }
+    } catch {}
+  }
+  if (ts.plaque && !vdMission.dossier_number) updates.vehicle_plate = String(ts.plaque).toUpperCase()
+  if (ts.marque)  updates.vehicle_brand = ts.marque
+  if (ts.modele)  updates.vehicle_model = ts.modele
+  if (ts.vin)     updates.vehicle_vin   = ts.vin
+  if (ts.ownerLastName || ts.ownerFirstName) {
+    updates.client_name = [ts.ownerFirstName, ts.ownerLastName].filter(Boolean).join(' ')
+  }
+  if (ts.ownerPhone)       updates.client_phone   = ts.ownerPhone
+  if (ts.ownerAddress)     updates.client_address = ts.ownerAddress
+  if (ts.interventionAddr) updates.incident_address = ts.interventionAddr
+  if (ts.officerName)      updates.officer_name   = ts.officerName
+  if (ts.policeZone)       updates.police_zone    = ts.policeZone
+  if (ts.pvNumber)         updates.police_pv_number = ts.pvNumber
+  if (ts.billedTo && !vdMission.dossier_number) updates.billed_to_name = ts.billedTo
+  if (ts.keysDigiboxSlot)  updates.keys_digibox_slot = ts.keysDigiboxSlot
+
+  updates.source = 'legacy_towsoft_enriched'
+
+  if (Object.keys(updates).length > 0) {
+    updates.updated_at = new Date().toISOString()
+    const { error: upErr } = await sb.from('incoming_missions').update(updates).eq('id', vdMission.id)
+    if (upErr) return { ok: false, updated: false, reason: `update KO : ${upErr.message}` }
+    return { ok: true, updated: true }
+  }
+  return { ok: true, updated: false, reason: 'aucun champ a updater' }
+}
+
 function formatDateForLabel(iso: string | null | undefined): string {
   if (!iso) return ''
   try {
@@ -350,68 +420,12 @@ export async function reprintInventoryLabel(params: ReprintParams): Promise<Repr
     ? String(ticket.x_studio_mission_towsoft)
     : null
 
-  // Olivier 2026-06-03 : on utilise le scraper Puppeteer/Browserless (le fetch
-  // direct echoue car TowSoft exige l execution JS). Coute ~10-15s par fiche
-  // mais permet d enrichir avec les vraies donnees TowSoft. Skip si la
-  // mission est deja enrichie (eviter re-scraper sur chaque scan).
-  if (vdMission && towsoftNum && vdMission.source !== 'legacy_towsoft_enriched') {
-    const scrapeRes = await scrapeTowsoftMissionPuppeteer(towsoftNum)
-    if (!scrapeRes.ok || !scrapeRes.data) {
-      console.warn(`[reprintInventoryLabel] TowSoft scrape KO pour num=${towsoftNum}:`, scrapeRes.error)
-    } else {
-      const ts = scrapeRes.data
-      const updates: Record<string, any> = {}
-
-      // Dossier
-      if (!vdMission.dossier_number && ts.refDossier) updates.dossier_number = ts.refDossier
-      // Date intervention : format 'YYYY-MM-DD HH:MM:SS' ou 'DD-MM-YYYY'
-      if (ts.dateMission) {
-        try {
-          let iso: string | null = null
-          const m1 = ts.dateMission.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/)
-          const m2 = ts.dateMission.match(/^(\d{2})-(\d{2})-(\d{4})/)
-          if (m1) {
-            iso = m1[4] ? `${m1[1]}-${m1[2]}-${m1[3]}T${m1[4]}:${m1[5]}:${m1[6] || '00'}` : `${m1[1]}-${m1[2]}-${m1[3]}T00:00:00`
-          } else if (m2) {
-            iso = `${m2[3]}-${m2[2]}-${m2[1]}T00:00:00`
-          }
-          if (iso) {
-            const d = new Date(iso)
-            if (isFinite(d.getTime())) updates.intervention_date = d.toISOString()
-          }
-        } catch {}
-      }
-      // Vehicule : prefere TowSoft (vue terrain) si pas en BDD
-      if (ts.plaque && !vdMission.dossier_number) updates.vehicle_plate = String(ts.plaque).toUpperCase()
-      if (ts.marque)  updates.vehicle_brand = ts.marque
-      if (ts.modele)  updates.vehicle_model = ts.modele
-      if (ts.vin)     updates.vehicle_vin   = ts.vin
-      // Client (proprio)
-      if (ts.ownerLastName || ts.ownerFirstName) {
-        updates.client_name = [ts.ownerFirstName, ts.ownerLastName].filter(Boolean).join(' ')
-      }
-      if (ts.ownerPhone)   updates.client_phone   = ts.ownerPhone
-      if (ts.ownerAddress) updates.client_address = ts.ownerAddress
-      // Lieu intervention
-      if (ts.interventionAddr) updates.incident_address = ts.interventionAddr
-      // Police
-      if (ts.officerName) updates.officer_name = ts.officerName
-      if (ts.policeZone)  updates.police_zone  = ts.policeZone
-      if (ts.pvNumber)    updates.police_pv_number = ts.pvNumber
-      // Facture a
-      if (ts.billedTo && !vdMission.dossier_number) updates.billed_to_name = ts.billedTo
-      // N° crochet digibox cles
-      if (ts.keysDigiboxSlot) updates.keys_digibox_slot = ts.keysDigiboxSlot
-
-      // Tag source = enriched pour tracer qu on a fait le scraping et eviter
-      // de re-scraper a chaque scan suivant
-      updates.source = 'legacy_towsoft_enriched'
-
-      if (Object.keys(updates).length > 0) {
-        updates.updated_at = new Date().toISOString()
-        const { error: upErr } = await sb.from('incoming_missions').update(updates).eq('id', vdMission.id)
-        if (upErr) console.warn('[reprintInventoryLabel] update echec:', upErr.message)
-      }
+  // Olivier 2026-06-03 : enrichissement TowSoft via fonction reutilisable
+  // (utilisee aussi par /api/admin/parc/enrich-batch). Skip si deja enrichie.
+  if (vdMission && towsoftNum) {
+    const enrichRes = await enrichMissionFromTowsoft(vdMission.id, towsoftNum)
+    if (!enrichRes.ok) {
+      console.warn(`[reprintInventoryLabel] enrichissement KO pour num=${towsoftNum}: ${enrichRes.reason}`)
     }
   }
 
