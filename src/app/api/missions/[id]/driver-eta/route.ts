@@ -14,6 +14,7 @@ import { getServerSession }                      from 'next-auth'
 import { authOptions }                           from '@/lib/auth'
 import { createAdminClient }                     from '@/lib/supabase'
 import { isInDaySchedule, isInNightSchedule, isAutoDispatchNight }    from '@/lib/schedule'
+import { ensureScheduleLoaded } from '@/lib/schedule-server'
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
@@ -97,6 +98,10 @@ async function getTruckEtaMinutes(origin: Coord, destination: Coord): Promise<nu
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Olivier 2026-06-03 : load les plages de garde configurables depuis BDD
+  // (cache 60s). No-op si recemment loadees.
+  await ensureScheduleLoaded()
 
   const sb = createAdminClient()
   const url = new URL(req.url)

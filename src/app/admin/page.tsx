@@ -143,6 +143,8 @@ export default async function AdminPage() {
       <Group title="Workflow & Communication">
         <Card href="/admin/dispatch" icon={Radio} label="Dispatch"
           desc="Règles auto-dispatch (jour/nuit), répartition chauffeurs." />
+        <Card href="/admin/garde-schedule" icon={Radio} label="Plages de garde"
+          desc="Heures jour/nuit + plage auto-dispatch nuit (modifiables sans déploiement)." />
         <Card href="/admin/notifications" icon={Bell} label="Notifications"
           desc="Canaux push, événements déclencheurs, destinataires." />
         <Card href="/admin/decharges" icon={ShieldCheck} label="Décharges"

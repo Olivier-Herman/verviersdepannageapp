@@ -3,11 +3,43 @@
 // Helpers timezone-safe pour les plages de garde.
 // IMPORTANT : on raisonne en heure locale Belgique (Europe/Brussels) — aussi bien
 // côté client (en général déjà OK) que côté serveur (sur Vercel = UTC sans TZ).
-// Plages métier :
-//   - Jour  : 07h00 - 20h00 (heure locale BE)
-//   - Nuit  : 17h00 - 09h00 (cross-midnight)
+//
+// Olivier 2026-06-03 : plages configurables par admin via /admin/garde-schedule.
+// Les valeurs par defaut sont fallback si la BDD est inaccessible (client) ou
+// vide. Le cache est gere par lib/schedule-cache.ts (server-only) que les
+// API routes peuvent override via setScheduleConfig().
 
 const BELGIUM_TZ = 'Europe/Brussels'
+
+export interface PeriodConfig {
+  hour_start: number
+  hour_end:   number
+  cross_midnight: boolean
+}
+
+const DEFAULTS = {
+  day:                { hour_start: 7,  hour_end: 20, cross_midnight: false } as PeriodConfig,
+  night:              { hour_start: 17, hour_end: 9,  cross_midnight: true  } as PeriodConfig,
+  autodispatch_night: { hour_start: 18, hour_end: 8,  cross_midnight: true  } as PeriodConfig,
+}
+
+// Cache module : les API routes server-only peuvent l override via setScheduleConfig.
+let current = { ...DEFAULTS }
+
+export function setScheduleConfig(cfg: Partial<typeof DEFAULTS>): void {
+  current = { ...current, ...cfg }
+}
+export function getScheduleConfig(): typeof DEFAULTS {
+  return current
+}
+
+function isHourInPeriod(h: number, p: PeriodConfig): boolean {
+  if (p.cross_midnight) {
+    // ex: 17-9 = [17, 24) ∪ [0, 9)
+    return h >= p.hour_start || h < p.hour_end
+  }
+  return h >= p.hour_start && h < p.hour_end
+}
 
 /** Retourne l'heure locale Belgique (0-23) à partir d'un Date donné. */
 export function getBelgiumHour(now: Date = new Date()): number {
@@ -22,21 +54,13 @@ export function getBelgiumHour(now: Date = new Date()): number {
 }
 
 export function isInDaySchedule(now: Date = new Date()): boolean {
-  const h = getBelgiumHour(now)
-  return h >= 7 && h < 20
+  return isHourInPeriod(getBelgiumHour(now), current.day)
 }
 
 export function isInNightSchedule(now: Date = new Date()): boolean {
-  const h = getBelgiumHour(now)
-  return h >= 17 || h < 9
+  return isHourInPeriod(getBelgiumHour(now), current.night)
 }
 
-/**
- * Plage nuit dediee a l'auto-dispatch : 18h00 - 08h00.
- * Pendant ces heures, l'algo respecte strict priority_order (l'ordre
- * dispatcher prime sur l'ETA). Cf demande Olivier 2026-05-15.
- */
 export function isAutoDispatchNight(now: Date = new Date()): boolean {
-  const h = getBelgiumHour(now)
-  return h >= 18 || h < 8
+  return isHourInPeriod(getBelgiumHour(now), current.autodispatch_night)
 }
