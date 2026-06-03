@@ -21,9 +21,13 @@ import { odooRpc }           from '@/lib/odoo'
 import { enrichMissionFromTowsoft } from '@/lib/odoo-fourriere-flows'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 300  // 5 min max (Browserless ~15s * 50 = 12.5min, on bornera concurrent)
+export const maxDuration = 300  // 5 min max
 
-const CONCURRENCY = 3
+// Olivier 2026-06-03 : TowSoft rate-limit (HTTP 429) si on tape trop fort.
+// On passe en concurrence 1 + delai 1500ms entre chaque mission. Plus lent
+// mais plus fiable. Pour batch de 20 -> ~7 min.
+const CONCURRENCY    = 1
+const DELAY_BETWEEN_MS = 1500
 
 interface EnrichResult {
   mission_id:  string
@@ -87,12 +91,18 @@ export async function POST(req: Request) {
       const m = missionsList[idx++]
       const towsoftNum = towsoftByTicket.get(m.odoo_helpdesk_id!)
       if (!towsoftNum) {
+        // Olivier 2026-06-03 : marque ces missions enriched=now pour ne plus
+        // les inclure dans les batchs futurs (sinon elles polluent les
+        // resultats a chaque clic).
+        await sb.from('incoming_missions').update({
+          towsoft_enriched_at: new Date().toISOString(),
+        }).eq('id', m.id)
         results.push({
           mission_id: m.id,
           plate: m.vehicle_plate,
           ok: false,
           updated: false,
-          reason: 'pas de x_studio_mission_towsoft sur le ticket Odoo',
+          reason: 'pas de x_studio_mission_towsoft (mission marquee skip)',
         })
         continue
       }
@@ -104,6 +114,10 @@ export async function POST(req: Request) {
         updated: r.updated,
         reason: r.reason,
       })
+      // Delai entre chaque pour eviter HTTP 429 TowSoft
+      if (idx < missionsList.length) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_MS))
+      }
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
