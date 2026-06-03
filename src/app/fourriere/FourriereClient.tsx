@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle, AlertTriangle } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle, AlertTriangle, ArrowLeft, Building2 } from 'lucide-react'
 import Link from 'next/link'
 
 interface Zone {
@@ -41,6 +41,8 @@ interface Props {
   // et on affiche TOUTES les zones (meme celles a 0 vehicule).
   depotName?:     string
   depotZoneKeys?: string[]
+  // Bandeau tuiles parcs (navigation rapide entre parcs)
+  parcsNav?: { id: string; name: string; active: boolean }[]
 }
 
 const ZONE_COLOR: Record<string, string> = {
@@ -69,7 +71,7 @@ function fmtDate(d: string | null): string {
   catch { return d }
 }
 
-export default function FourriereClient({ userRole, userName, userEmail, userModules, depotName, depotZoneKeys }: Props) {
+export default function FourriereClient({ userRole, userName, userEmail, userModules, depotName, depotZoneKeys, parcsNav }: Props) {
   const [vehicles, setVehicles]   = useState<Vehicle[]>([])
   const [allZones, setAllZones]   = useState<Zone[]>([])
   const [loading, setLoading]     = useState(true)
@@ -155,6 +157,32 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
     <AppShell title="Fourrière" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
       <AmbientBackground>
       <div className="p-4 lg:p-6 space-y-4 ambient-fade-up">
+
+        {/* Bandeau de navigation entre parcs (uniquement en mode parc precis) */}
+        {parcsNav && parcsNav.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap pb-1">
+            <Link href="/fourriere"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink text-xs font-medium transition">
+              <ArrowLeft size={13} /> Recherche
+            </Link>
+            <div className="h-5 w-px bg-ink/15"></div>
+            <div className="flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0">
+              {parcsNav.map(p => (
+                <Link key={p.id} href={`/fourriere/parc/${p.id}`}
+                  className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                    p.active
+                      ? 'bg-brand text-white border-brand shadow-sm'
+                      : 'bg-surface text-ink-secondary border hover:text-ink hover:bg-surface-hover'
+                  }`}
+                  title={p.active ? `Parc actuel : ${p.name}` : `Aller au parc ${p.name}`}
+                >
+                  <Building2 size={12} />
+                  {p.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Header + actions */}
         <div className="flex items-center justify-between flex-wrap gap-3">
