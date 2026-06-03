@@ -48,14 +48,13 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   // chaque action chauffeur (Vehicule charge ↔ Arrivee destination).
   // ?legacy=1 force aussi DriverClient (legacy escape hatch).
   const isSncSource = mission.source === 'police_snc' || mission.source === 'sia_couvert'
-  // Olivier 2026-06-03 : une fois le paiement complet ET le finalize fait
-  // (awaiting_payment=false + payment_amount>0), on passe directement sur
-  // DriverClient. Pas de bouton intermediaire "Charger et livrer" — le
-  // chauffeur clique direct sur "Vehicule charge sur le camion".
-  const hasPaidAndFinalized =
-       mission.awaiting_payment === false
-    && Number(mission.payment_amount || 0) > 0
-    && Number(mission.amount_to_collect || 0) > 0
+  // Olivier 2026-06-03 : la mission reste en BROUILLON (SncMissionFiche)
+  // tant que le solde n est pas a zero. Des que (amount_to_collect - payment_amount) == 0,
+  // la mission devient definitive et bascule sur DriverClient.
+  const amountRequired = Number(mission.amount_to_collect || 0)
+  const amountPaid     = Number(mission.payment_amount    || 0)
+  const isFullyPaid    = amountRequired > 0 && amountPaid + 0.01 >= amountRequired
+  const hasPaidAndFinalized = mission.awaiting_payment === false && isFullyPaid
   const hasStartedDelivery =
        !!mission.loaded_at
     || mission.status === 'delivering'
