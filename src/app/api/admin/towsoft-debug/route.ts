@@ -15,17 +15,30 @@ const TOWSOFT_PASS = process.env.TOWSOFT_PASS
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-async function loginTowsoft(): Promise<string> {
+// Olivier 2026-06-03 : tentative multi-endpoint pour trouver l URL login correcte
+const LOGIN_ENDPOINTS = ['/login.php', '/auth/login', '/index.php', '/']
+
+async function loginTowsoft(): Promise<{ cookie: string; endpoint: string; status: number }> {
   if (!TOWSOFT_PASS) throw new Error('TOWSOFT_PASS manquant')
-  const res = await fetch(`${TOWSOFT_URL}/auth/login`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    `nomusager=${encodeURIComponent(TOWSOFT_USER)}&passusager=${encodeURIComponent(TOWSOFT_PASS)}`,
-    redirect: 'manual',
-  })
-  const cookie = res.headers.get('set-cookie')
-  if (!cookie) throw new Error('Login Towsoft echoue')
-  return cookie.split(';')[0]
+  const errors: string[] = []
+  for (const endpoint of LOGIN_ENDPOINTS) {
+    try {
+      const res = await fetch(`${TOWSOFT_URL}${endpoint}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    `nomusager=${encodeURIComponent(TOWSOFT_USER)}&passusager=${encodeURIComponent(TOWSOFT_PASS)}`,
+        redirect: 'manual',
+      })
+      const cookie = res.headers.get('set-cookie')
+      if (cookie && (res.status === 200 || res.status === 302)) {
+        return { cookie: cookie.split(';')[0], endpoint, status: res.status }
+      }
+      errors.push(`${endpoint}: ${res.status} (cookie=${!!cookie})`)
+    } catch (e: any) {
+      errors.push(`${endpoint}: ${e.message}`)
+    }
+  }
+  throw new Error(`Tous les endpoints login ont echoue : ${errors.join(' | ')}`)
 }
 
 export async function GET(req: Request) {
@@ -43,7 +56,8 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get('mode') || 'json'  // 'json' (debug) ou 'html' (raw)
 
   try {
-    const cookie = await loginTowsoft()
+    const loginRes = await loginTowsoft()
+    const cookie = loginRes.cookie
     const r = await fetch(`${TOWSOFT_URL}/appel.php?num=${encodeURIComponent(num)}`, {
       headers: { Cookie: cookie },
       redirect: 'manual',
@@ -67,11 +81,14 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       towsoft_url:     TOWSOFT_URL,
+      login_endpoint:  loginRes.endpoint,
+      login_status:    loginRes.status,
+      cookie_preview:  cookie.slice(0, 40) + '…',
       fetch_status:    r.status,
       fetch_redirect:  r.headers.get('location'),
       html_length:     html.length,
       html_starts_with: html.slice(0, 500),
-      contains_login:  html.includes('auth/login') || html.includes('nomusager'),
+      contains_login:  html.includes('auth/login') || html.includes('nomusager') || html.includes('login.php'),
       data_attrs:      dataAttrs,
       ids:             ids,
       hint:            'Pour voir le HTML brut : ajoute &mode=html',
