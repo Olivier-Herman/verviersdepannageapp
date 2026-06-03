@@ -550,8 +550,10 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
   /** Cree (ou reprend) une session en DB et passe en mode scan. */
   async function startScanSession() {
     if (!selectedZone) return
-    // Si la zone a des rangees parc mais aucune selectionnee, force le choix
-    if (availableRows.length > 0 && parcRowNumber == null) {
+    // Olivier 2026-06-03 : on ne force la rangee QUE si la zone est strict_capacity
+    // (mode rangee+slot fige). En mode bordel (strict_capacity=false), la rangee
+    // reste optionnelle.
+    if (currentZoneStrict && availableRows.length > 0 && parcRowNumber == null) {
       alert('Sélectionne d\'abord la rangée à inventorier.')
       return
     }
@@ -1062,8 +1064,9 @@ export default function InventaireClient({ userRole, userName, userEmail, userMo
               </div>
             </div>
 
-            {/* Row picker : visible si la zone a des rangees parc */}
-            {selectedZone && availableRows.length > 0 && (
+            {/* Row picker : visible si la zone a des rangees parc ET est en mode strict.
+                En mode bordel (strict_capacity=false), le rangement libre est tolere donc on cache. */}
+            {selectedZone && availableRows.length > 0 && currentZoneStrict && (
               <div>
                 <label className="text-xs font-semibold text-ink-faint uppercase tracking-wider flex items-center gap-1.5">
                   <MapPin size={12} /> Rangée à scanner
