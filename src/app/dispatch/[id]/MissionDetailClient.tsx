@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef }    from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
+import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { createClient } from '@supabase/supabase-js'
 import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
@@ -3197,12 +3198,12 @@ export default function MissionDetailClient({
               )}
 
               {/* Bouton Restituer — visible pour toutes les sources Police au parc
-                  + sia_couvert. RestituerMalGareeModal gere les variations :
-                  - blocage police (Mal Garee, optionnel)
-                  - levee de saisie (Rodeo/Saisie, obligatoire)
-                  - minimum 3 jours gardiennage pour Rodeo
-                  - recherche/creation Partner Odoo, multi-paiements, branchement Odoo.
-                  Olivier 2026-06-04 : etendu police_accident + police_saisie + police_avp + sia_couvert. */}
+                  + sia_couvert. 2 chemins selon la source :
+                  - police_mg / police_rodeo : modal RestituerMalGareeModal
+                    (blocage police, levee saisie, minDays 3 pour rodeo, multi-paiements)
+                  - autres sources : redirige vers module encaissement standard
+                    (buildEncaissementUrl), comme sur /qr/mission/[id] et /v/[id].
+                  Olivier 2026-06-04. */}
               {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'sia_couvert'].includes(initialMission.source) && (
                 <>
                   {initialMission.police_blocked && (
@@ -3222,7 +3223,16 @@ export default function MissionDetailClient({
                     </div>
                   )}
                   <button
-                    onClick={() => setShowRestituerModal(true)}
+                    onClick={() => {
+                      if (['police_mg', 'police_rodeo'].includes(initialMission.source)) {
+                        setShowRestituerModal(true)
+                      } else {
+                        const url = buildEncaissementUrl(initialMission as any, {
+                          returnTo: `/dispatch/${initialMission.id}`,
+                        })
+                        window.location.href = url
+                      }
+                    }}
                     className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
                     🔑 Restituer le véhicule
                   </button>
@@ -3460,7 +3470,7 @@ export default function MissionDetailClient({
           }}
         />
       )}
-      {showRestituerModal && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'sia_couvert'].includes(initialMission.source) && (
+      {showRestituerModal && ['police_mg', 'police_rodeo'].includes(initialMission.source) && (
         <RestituerMalGareeModal
           mission={{
             id:                     initialMission.id,
