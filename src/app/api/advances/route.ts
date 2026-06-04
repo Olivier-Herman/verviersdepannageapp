@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { plate, amountHtva, amountTvac, paymentMethod, invoiceUrl, notes, brandName, modelName, missionId } = body
 
-    if (!plate || !amountHtva || !paymentMethod || !invoiceUrl) {
-      return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
+    if (!plate || !amountHtva || !amountTvac || !paymentMethod || !invoiceUrl) {
+      return NextResponse.json({ error: 'Champs obligatoires manquants (plaque, HTVA, TVAC, paiement, photo)' }, { status: 400 })
     }
     // missionId optionnel : si fourni, l avance est liee a la mission
     // (highlight carte facturation + ajout auto ligne dans devis).
@@ -26,12 +26,16 @@ export async function POST(req: NextRequest) {
     const supabase        = createAdminClient()
     const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase().trim()
     const htva            = parseFloat(amountHtva)
-    // Olivier 2026-06-04 : amount_tvac extrait par OCR ou saisi manuellement.
-    // Si absent, fallback htva * 1.21 (TVA standard 21%) pour ne pas casser
-    // le mouvement caisse existant.
-    const tvac            = amountTvac && parseFloat(amountTvac) > 0
-      ? parseFloat(amountTvac)
-      : htva * 1.21
+    // Olivier 2026-06-04 : amount_tvac OBLIGATOIRE (pas de fallback htva*1.21
+    // car risque de factures etrangeres avec TVA differente). Pre-rempli par
+    // OCR Claude Vision a l upload, ou saisi manuellement par le chauffeur.
+    const tvac            = parseFloat(amountTvac)
+    if (!Number.isFinite(htva) || htva <= 0) {
+      return NextResponse.json({ error: 'Montant HTVA invalide' }, { status: 400 })
+    }
+    if (!Number.isFinite(tvac) || tvac <= 0) {
+      return NextResponse.json({ error: 'Montant TVAC invalide' }, { status: 400 })
+    }
 
     // Résoudre l'utilisateur
     const { data: me } = await supabase
