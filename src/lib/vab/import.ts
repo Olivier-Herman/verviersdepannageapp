@@ -149,10 +149,13 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         source:             'vab',
         source_format:      'vab-scraper',
         status:             'new',
+        // Olivier 2026-06-04 : defaut DSP (depannage) si type non identifie
+        // depuis taskType, pour eviter les missions sans mission_type qui
+        // bloquent l affichage / le dispatch.
         mission_type:       detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
                           : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
                           : detail.taskType?.toLowerCase().includes('livraison')  ? 'depannage'
-                          : null,
+                          : 'depannage',
         incident_type:      detail.codesDePanne,
         incident_description: detail.codesDePanne,
         // Sémantique VD Soft : client_name = "personne sur place" (lu partout
