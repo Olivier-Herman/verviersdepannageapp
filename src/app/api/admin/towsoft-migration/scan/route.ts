@@ -16,6 +16,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { parseScanInput }   from '@/lib/towsoft-migration/parse-scan'
+import { odooRpc, withOdooActor } from '@/lib/odoo'
+import { FOURRIERE_ZONES }  from '@/lib/fourriere'
 
 export const dynamic = 'force-dynamic'
 
@@ -209,6 +211,14 @@ export async function POST(req: Request) {
         },
       }).then(() => {}, e => console.warn('[scan/migration] log KO:', e?.message))
 
+      // Transfert state Odoo (non bloquant)
+      transferOdooState({
+        plate:   existingMission.vehicle_plate,
+        vin:     existingMission.vehicle_vin,
+        zoneKey: zone,
+        userId:  user.id,
+      }).catch(e => console.warn('[scan] transfer Odoo state KO:', e?.message))
+
       return NextResponse.json({
         ok: true,
         reason: 'linked_to_existing_vdsoft',
@@ -296,12 +306,66 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: upErr.message }, { status: 500 })
   }
 
+  // Olivier 2026-06-04 : transfert state Odoo en parallele (non bloquant).
+  // Si le vehicule existe dans Odoo, on update son state_id vers le state_id
+  // de la zone scannee. Best-effort : si Odoo KO, le scan reste OK cote VD Soft.
+  transferOdooState({
+    plate:   match.plate || resolvedPlate,
+    vin:     match.vin   || resolvedVin,
+    zoneKey: zone,
+    userId:  user.id,
+  }).catch(e => console.warn('[scan] transfer Odoo state KO:', e?.message))
+
   return NextResponse.json({
     ok: true,
     reason: forceRescan ? 'rescanned_zone_changed' : 'scanned',
     message: `Scanne en ${zone} : ${match.plate || match.towsoft_num}`,
     match: { ...match, scanned_zone: zone, flag_scanned: true },
     parsed,
+  })
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Olivier 2026-06-04 : transfert state Odoo au scan.
+// Lookup fleet.vehicle par plaque ou VIN, puis update state_id vers le
+// state_id de la zone scannee (mapping via FOURRIERE_ZONES). Best-effort.
+// Wrap dans withOdooActor pour utiliser la cle perso de l operateur.
+// ────────────────────────────────────────────────────────────────────
+async function transferOdooState(input: {
+  plate:   string | null
+  vin:     string | null
+  zoneKey: string
+  userId:  string
+}): Promise<{ ok: boolean; vehicleId?: number; newStateId?: number; reason?: string }> {
+  const zoneConf = FOURRIERE_ZONES.find(z => z.code.toUpperCase() === input.zoneKey.toUpperCase())
+  if (!zoneConf) {
+    // Zone sans mapping Odoo (ex: J3 custom, Transit-Special, etc.) : on ne fait rien
+    return { ok: false, reason: `Zone ${input.zoneKey} pas dans FOURRIERE_ZONES (pas de state_id Odoo)` }
+  }
+  const targetStateId = zoneConf.state_id
+
+  return withOdooActor(input.userId, async () => {
+    // Lookup fleet.vehicle par VIN d abord, sinon plaque (VIN plus fiable)
+    let vehicleId: number | null = null
+    if (input.vin) {
+      const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
+        [['vin_sn', '=', String(input.vin).toUpperCase()]],
+      ], { fields: ['id', 'state_id'], limit: 1 })
+      if (r && r.length > 0) vehicleId = r[0].id
+    }
+    if (!vehicleId && input.plate) {
+      const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
+        [['license_plate', '=', String(input.plate).toUpperCase()]],
+      ], { fields: ['id', 'state_id'], limit: 1 })
+      if (r && r.length > 0) vehicleId = r[0].id
+    }
+    if (!vehicleId) {
+      return { ok: false, reason: 'fleet.vehicle introuvable dans Odoo' }
+    }
+
+    // Update state_id
+    await odooRpc('fleet.vehicle', 'write', [[vehicleId], { state_id: targetStateId }])
+    return { ok: true, vehicleId, newStateId: targetStateId }
   })
 }
 

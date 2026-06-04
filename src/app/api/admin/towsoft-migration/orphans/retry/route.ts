@@ -13,6 +13,35 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { parseScanInput }    from '@/lib/towsoft-migration/parse-scan'
+import { odooRpc, withOdooActor } from '@/lib/odoo'
+import { FOURRIERE_ZONES }   from '@/lib/fourriere'
+
+// Olivier 2026-06-04 : helper local de transfert state Odoo (meme logique
+// que dans scan/route.ts mais inline ici pour pas creer encore un fichier).
+async function transferOdooState(input: {
+  plate: string | null; vin: string | null; zoneKey: string; userId: string
+}): Promise<void> {
+  const zoneConf = FOURRIERE_ZONES.find(z => z.code.toUpperCase() === input.zoneKey.toUpperCase())
+  if (!zoneConf) return
+  await withOdooActor(input.userId, async () => {
+    let vehicleId: number | null = null
+    if (input.vin) {
+      const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
+        [['vin_sn', '=', String(input.vin).toUpperCase()]],
+      ], { fields: ['id'], limit: 1 })
+      if (r && r.length > 0) vehicleId = r[0].id
+    }
+    if (!vehicleId && input.plate) {
+      const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
+        [['license_plate', '=', String(input.plate).toUpperCase()]],
+      ], { fields: ['id'], limit: 1 })
+      if (r && r.length > 0) vehicleId = r[0].id
+    }
+    if (vehicleId) {
+      await odooRpc('fleet.vehicle', 'write', [[vehicleId], { state_id: zoneConf.state_id }])
+    }
+  })
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -132,6 +161,14 @@ export async function POST(req: Request) {
       updated_at:          new Date().toISOString(),
     }).eq('id', body.id)
 
+    // Transfert state Odoo (non bloquant)
+    transferOdooState({
+      plate:   towsoftMatch.plate,
+      vin:     towsoftMatch.vin,
+      zoneKey: orphan.zone,
+      userId:  user.id,
+    }).catch(e => console.warn('[orphan retry] transfer Odoo state KO:', e?.message))
+
     return NextResponse.json({
       ok: true,
       action: 'linked_to_towsoft',
@@ -218,6 +255,14 @@ export async function POST(req: Request) {
       resolution_notes:    `Re-tentative reussie : lie a mission VD Soft existante #${existingMission.mission_number || existingMission.id.slice(0, 8)}`,
       updated_at:          new Date().toISOString(),
     }).eq('id', body.id)
+
+    // Transfert state Odoo (non bloquant)
+    transferOdooState({
+      plate:   existingMission.vehicle_plate,
+      vin:     existingMission.vehicle_vin,
+      zoneKey: orphan.zone,
+      userId:  user.id,
+    }).catch(e => console.warn('[orphan retry] transfer Odoo state KO:', e?.message))
 
     return NextResponse.json({
       ok: true,
