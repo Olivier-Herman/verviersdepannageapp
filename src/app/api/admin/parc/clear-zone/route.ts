@@ -41,32 +41,73 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const zoneKey = String(body.zone_key || '').trim()
   const dryRun  = Boolean(body.dry_run)
+  // Olivier 2026-06-04 : preserve les missions scannees recemment via migration
+  // pour ne pas faire re-scanner inutilement. Par defaut true (mode "vider
+  // l heritage Odoo, garder mes scans actuels"). Set false pour brutal-clear.
+  const preserveScans = body.preserve_recent_scans !== false
   if (!zoneKey) return NextResponse.json({ error: 'zone_key requis' }, { status: 400 })
 
   const sb = createAdminClient()
 
+  // 0. Si preserveScans : recupere les IDs des missions a preserver
+  const preservedIds = new Set<string>()
+  if (preserveScans) {
+    // a) Missions liees a une fiche TowSoft scannee dans cette zone
+    const { data: fromTowsoft } = await sb
+      .from('towsoft_migration_source')
+      .select('vdsoft_mission_id')
+      .eq('scanned_zone', zoneKey)
+      .not('vdsoft_mission_id', 'is', null)
+    for (const r of fromTowsoft || []) if (r.vdsoft_mission_id) preservedIds.add(r.vdsoft_mission_id)
+
+    // b) Missions reassignees via scan migration (logs des dernieres 24h)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: fromLogs } = await sb
+      .from('mission_logs')
+      .select('mission_id, metadata')
+      .in('action', ['parc_scanned_migration', 'parc_scanned_migration_retry'])
+      .gte('created_at', twentyFourHoursAgo)
+    for (const r of fromLogs || []) {
+      const toZone = (r.metadata as any)?.to_zone
+      if (toZone === zoneKey && r.mission_id) preservedIds.add(r.mission_id)
+    }
+  }
+
   // 1. Liste les vehicules actuellement dans la zone (tous statuts)
   const { data: vehicles, error: vErr } = await sb
     .from('incoming_missions')
-    .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
+    .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status, external_id')
     .eq('parc_zone_key', zoneKey)
     .order('parc_row_number')
     .order('parc_slot_index')
 
   if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 })
-  const list = vehicles || []
+  const allInZone = vehicles || []
+  // Filtre : seules les missions NON preservees sont a vider
+  const list = allInZone.filter(v => !preservedIds.has(v.id))
+  const preservedCount = allInZone.length - list.length
 
   if (list.length === 0) {
-    return NextResponse.json({ ok: true, cleared: 0, count: 0, vehicles: [], message: `Aucun vehicule dans la zone ${zoneKey}` })
+    return NextResponse.json({
+      ok: true,
+      cleared: 0,
+      count: 0,
+      preserved: preservedCount,
+      vehicles: [],
+      message: preservedCount > 0
+        ? `Tous les vehicules en zone ${zoneKey} sont preserves (${preservedCount} scans recents). Rien a vider.`
+        : `Aucun vehicule dans la zone ${zoneKey}`,
+    })
   }
 
   if (dryRun) {
     return NextResponse.json({
-      ok:       true,
-      dry_run:  true,
-      cleared:  list.length,
-      count:    list.length,
-      vehicles: list,
+      ok:        true,
+      dry_run:   true,
+      cleared:   list.length,
+      count:     list.length,
+      preserved: preservedCount,
+      vehicles:  list,
     })
   }
 

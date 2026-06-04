@@ -260,11 +260,16 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       const previewJ = await preview.json()
       if (!preview.ok) { alert(`Erreur preview : ${previewJ.error || preview.status}`); return }
       const n = previewJ.count || 0
-      if (n === 0) {
+      const preserved = previewJ.preserved || 0
+      if (n === 0 && preserved === 0) {
         alert(`Aucun véhicule en BDD en zone ${zone}. Tu peux scanner directement.`)
         return
       }
-      if (!confirm(`🧹 RÉINITIALISER la zone ${zone} ?\n\n${n} véhicule${n > 1 ? 's' : ''} actuellement assigné${n > 1 ? 's' : ''} (héritage Odoo) → emplacement reset à NULL.\n\n⚠ DOCTRINE : on repart de zéro pour cette zone. VD Soft devient la vérité.\nSeuls les véhicules que tu vas scanner maintenant compteront pour la fourrière.\n\nLes véhicules non-retrouvés après ton scan restent en BDD mais SANS zone → ils n apparaissent plus dans le plan parc. Ils sont consultables via la recherche pour investigation ultérieure.`)) return
+      if (n === 0) {
+        alert(`Rien à vider — les ${preserved} véhicules en zone ${zone} sont tous issus de tes scans récents. Continue ton scan !`)
+        return
+      }
+      if (!confirm(`🧹 Vider la zone ${zone} (smart) ?\n\n${preserved > 0 ? `✓ ${preserved} véhicule${preserved > 1 ? 's' : ''} scanné${preserved > 1 ? 's' : ''} récemment (préservé${preserved > 1 ? 's' : ''})\n` : ''}🗑 ${n} véhicule${n > 1 ? 's' : ''} hérité${n > 1 ? 's' : ''} d Odoo (NON scanné${n > 1 ? 's' : ''}) → vidé${n > 1 ? 's' : ''}\n\nResultat : la zone ${zone} contiendra uniquement les ${preserved + 0} véhicules réellement scannés par toi.\n\nLes ${n} vidés restent en BDD mais sans zone → consultables via /recherche.`)) return
 
       // 2) Vide reellement
       const r = await fetch('/api/admin/parc/clear-zone', {
@@ -274,7 +279,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       })
       const j = await r.json()
       if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
-      alert(`✓ Zone ${zone} vidée — ${j.count || 0} véhicule(s) reset. Tu peux scanner.`)
+      alert(`✓ Zone ${zone} nettoyée — ${j.count || 0} véhicule(s) hérité(s) Odoo virés${j.preserved ? `, ${j.preserved} scans préservés` : ''}.`)
       loadStats()
     } catch (e: any) {
       alert(`Erreur réseau : ${e?.message || e}`)
