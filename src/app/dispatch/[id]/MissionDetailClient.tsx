@@ -1482,6 +1482,38 @@ export default function MissionDetailClient({
 
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
+  // Olivier 2026-06-04 : changement de source.
+  // Si on bascule VERS police_snc / sia_couvert depuis autre chose
+  // (typiquement une fiche assistance reçue en new), on RETIRE les
+  // infos client/apporteur car le 'billed_to' n est plus l assistance.
+  // L operateur doit re-saisir la police/le client final.
+  const handleSourceChange = (newSource: string) => {
+    setForm(prev => {
+      const isNowSnc = newSource === 'police_snc' || newSource === 'sia_couvert'
+      const wasSnc   = prev.source === 'police_snc' || prev.source === 'sia_couvert'
+      if (isNowSnc && !wasSnc) {
+        return {
+          ...prev,
+          source:         newSource,
+          client_name:    '',
+          client_phone:   '',
+          client_address: '',
+          billed_to_name: '',
+        }
+      }
+      return { ...prev, source: newSource }
+    })
+    // billed_to_id est state separe (billedPartnerId). On le reset en parallele
+    // si on bascule vers SNC/SC (pour aligner state UI + BDD).
+    if (newSource === 'police_snc' || newSource === 'sia_couvert') {
+      const wasSnc = (form.source === 'police_snc' || form.source === 'sia_couvert')
+      if (!wasSnc) {
+        setBilledPartnerId(null)
+        silentPatch({ billed_to_id: null, billed_to_name: null, client_name: null, client_phone: null, client_address: null })
+      }
+    }
+  }
+
   // Détecter lien IMA dans raw_content
   const imaLink = initialMission.raw_content?.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)?.[0] || null
 
@@ -2328,7 +2360,7 @@ export default function MissionDetailClient({
                   </h2>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Source (apporteur)">
-                      <DynamicSourceSelect value={form.source} onChange={f('source')} />
+                      <DynamicSourceSelect value={form.source} onChange={handleSourceChange} />
                     </Field>
                     {/* Olivier 2026-06-02 PM : pour SNC/SC le mission_type est
                         derive automatiquement du scenario (dsp → depannage,
