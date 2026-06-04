@@ -48,32 +48,73 @@ export async function POST(req: Request) {
   // 1. Parse l input pour determiner le format
   const parsed = parseScanInput(raw)
 
-  // 2. Match dans towsoft_migration_source
+  // 1bis. Olivier 2026-06-04 : si QR VD Soft (qr_mission) ou Verviers-QR (v_legacy),
+  // on retrouve la plaque/towsoft_num via incoming_missions pour pouvoir matcher
+  // la fiche source. Ces 2 formats correspondent a des etiquettes posees AVANT
+  // la migration ou regenerees apres - le vehicule est dans incoming_missions
+  // avec sa plaque + external_id TS-{towsoft_num} si origine TowSoft.
+  let resolvedTowsoftNum: string | null = parsed.towsoftNum
+  let resolvedPlate:      string | null = parsed.plate
+  let resolvedVin:        string | null = parsed.vin
+
+  if (!resolvedTowsoftNum && (parsed.missionNum || parsed.ticketId)) {
+    let missionQuery = sb
+      .from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, odoo_helpdesk_id')
+      .limit(1)
+
+    if (parsed.missionNum) {
+      // mission_number peut etre l ID UUID ou le numero court (8 chiffres)
+      const isUuid = /^[0-9a-f-]{36}$/i.test(parsed.missionNum)
+      const isNum  = /^\d+$/.test(parsed.missionNum)
+      if (isUuid) {
+        missionQuery = missionQuery.eq('id', parsed.missionNum)
+      } else if (isNum) {
+        missionQuery = missionQuery.eq('mission_number', parseInt(parsed.missionNum, 10))
+      } else {
+        missionQuery = missionQuery.eq('id', parsed.missionNum)  // fallback, retournera vide
+      }
+    } else if (parsed.ticketId) {
+      missionQuery = missionQuery.eq('odoo_helpdesk_id', parseInt(parsed.ticketId, 10))
+    }
+
+    const { data: vdsMission } = await missionQuery.maybeSingle()
+    if (vdsMission) {
+      // external_id format = "TS-{towsoft_num}" si origine TowSoft
+      if (vdsMission.external_id && vdsMission.external_id.startsWith('TS-')) {
+        resolvedTowsoftNum = vdsMission.external_id.replace(/^TS-/, '')
+      }
+      if (!resolvedPlate) resolvedPlate = vdsMission.vehicle_plate
+      if (!resolvedVin)   resolvedVin   = vdsMission.vehicle_vin
+    }
+  }
+
+  // 2. Match dans towsoft_migration_source (priorite : towsoft_num > VIN > plaque)
   let match: any = null
 
-  if (parsed.towsoftNum) {
+  if (resolvedTowsoftNum) {
     const { data } = await sb
       .from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin, brand, model, motif, flag_scanned, scanned_zone, scanned_at, imported_at')
-      .eq('towsoft_num', parsed.towsoftNum)
+      .eq('towsoft_num', resolvedTowsoftNum)
       .maybeSingle()
     match = data
   }
 
-  if (!match && parsed.vin) {
+  if (!match && resolvedVin) {
     const { data } = await sb
       .from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin, brand, model, motif, flag_scanned, scanned_zone, scanned_at, imported_at')
-      .eq('vin', parsed.vin)
+      .eq('vin', resolvedVin)
       .maybeSingle()
     match = data
   }
 
-  if (!match && parsed.plate) {
+  if (!match && resolvedPlate) {
     const { data } = await sb
       .from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin, brand, model, motif, flag_scanned, scanned_zone, scanned_at, imported_at')
-      .eq('plate', parsed.plate)
+      .eq('plate', resolvedPlate)
       .maybeSingle()
     match = data
   }
