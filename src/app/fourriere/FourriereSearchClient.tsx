@@ -261,6 +261,8 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
         <VehicleFicheSheet
           missionId={openMissionId}
           onClose={() => setOpenMissionId(null)}
+          userModules={userModules}
+          userRole={userRole}
         />
       )}
     </AppShell>

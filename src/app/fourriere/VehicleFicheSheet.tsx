@@ -6,7 +6,8 @@
 // Ouvert depuis FourriereSearchClient au clic sur une card resultat.
 
 import { useEffect, useState } from 'react'
-import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash, Receipt } from 'lucide-react'
 import Link from 'next/link'
 
 interface Fiche {
@@ -15,7 +16,13 @@ interface Fiche {
   tarif:   { amount_tvac: number | null; htva: number | null; details: string[] }
 }
 
-export default function VehicleFicheSheet({ missionId, onClose }: { missionId: string; onClose: () => void }) {
+export default function VehicleFicheSheet({ missionId, onClose, userModules = [], userRole = '' }: {
+  missionId:    string
+  onClose:      () => void
+  userModules?: string[]
+  userRole?:    string
+}) {
+  const router = useRouter()
   const [fiche, setFiche]     = useState<Fiche | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
@@ -66,14 +73,20 @@ export default function VehicleFicheSheet({ missionId, onClose }: { missionId: s
               {error}
             </div>
           )}
-          {fiche && <FicheContent fiche={fiche} />}
+          {fiche && <FicheContent fiche={fiche} userModules={userModules} userRole={userRole} router={router} onClose={onClose} />}
         </div>
       </div>
     </div>
   )
 }
 
-function FicheContent({ fiche }: { fiche: Fiche }) {
+function FicheContent({ fiche, userModules, userRole, router, onClose }: {
+  fiche:       Fiche
+  userModules: string[]
+  userRole:    string
+  router:      any
+  onClose:     () => void
+}) {
   const m = fiche.mission
   const z = fiche.zone
   const t = fiche.tarif
@@ -197,6 +210,35 @@ function FicheContent({ fiche }: { fiche: Fiche }) {
             <ExternalLink size={14} /> Fiche dispatch
           </Link>
         </div>
+        {/* Olivier 2026-06-04 : module fourriere uniquement.
+            Action : force la cloture en to_invoice + redirige vers facturation
+            avec filtre pre-rempli sur le numero de mission. */}
+        {(userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
+          <button
+            onClick={async () => {
+              if (!confirm(`Restituer et facturer la mission #${m.mission_number || m.id.slice(0, 8)} ?\n\nLa mission va passer en "À facturer" (clôture forcée sans pointage ni photo) puis tu seras redirigé vers le menu Facturation avec ce dossier pré-filtré.`)) return
+              try {
+                const r = await fetch(`/api/missions/${m.id}/force-status`, {
+                  method:  'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body:    JSON.stringify({ status: 'to_invoice' }),
+                })
+                if (!r.ok) {
+                  const j = await r.json().catch(() => ({}))
+                  alert(`Erreur clôture : ${j.error || r.status}`)
+                  return
+                }
+                onClose()
+                const q = m.mission_number != null ? String(m.mission_number) : (m.external_id || m.id)
+                router.push(`/facturation?q=${encodeURIComponent(q)}`)
+              } catch (e: any) {
+                alert(`Erreur réseau : ${e?.message || e}`)
+              }
+            }}
+            className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition">
+            <Receipt size={14} /> Restituer et facturer
+          </button>
+        )}
         <div className="flex items-center gap-2 flex-wrap">
           <Link href={driverUrl}
             className="flex items-center gap-1.5 px-3 py-1.5 text-ink-muted hover:text-ink text-xs transition">

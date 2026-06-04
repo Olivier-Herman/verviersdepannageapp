@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
@@ -148,10 +149,20 @@ export default function FacturationClient({
   const hasAdvances = (mid: string) => (advancesByMission.get(mid)?.length || 0) > 0
   const totalAdvanceFor = (mid: string) =>
     (advancesByMission.get(mid) || []).reduce((s, a) => s + Number(a.amount_htva || 0), 0)
-  const [search, setSearch]     = useState('')
+  // Olivier 2026-06-04 : pre-filtre via ?q= (utilise par bouton 'Restituer
+  // et facturer' de la fiche vehicule fourriere pour pointer directement
+  // sur un numero de mission specifique).
+  const searchParams = useSearchParams()
+  const initialQ = searchParams?.get('q') || ''
+  const [search, setSearch]     = useState(initialQ)
   const [sourceFilter, setSrc]  = useState<string>('all')
   const [selected, setSelected] = useState<MissionRow | null>(null)
   const [data, setData]         = useState(missions)
+  // Si le ?q change apres le mount initial (navigation interne), met a jour
+  useEffect(() => {
+    const q = searchParams?.get('q') || ''
+    if (q) setSearch(q)
+  }, [searchParams])
 
   const driverName = useMemo(() => {
     const map = new Map<string, string>()
