@@ -3197,44 +3197,55 @@ export default function MissionDetailClient({
                 </button>
               )}
 
-              {/* Bouton Restituer — visible pour toutes les sources Police au parc
-                  + sia_couvert. 2 chemins selon la source :
-                  - police_mg / police_rodeo : modal RestituerMalGareeModal
-                    (blocage police, levee saisie, minDays 3 pour rodeo, multi-paiements)
-                  - autres sources : redirige vers module encaissement standard
-                    (buildEncaissementUrl), comme sur /qr/mission/[id] et /v/[id].
+              {/* Bouton Restituer — visible pour TOUTES les sources Appel Police
+                  (+ sia_couvert) en parc. Toutes redirigent vers buildEncaissementUrl
+                  (module encaissement chauffeur, prefill montant + procedure standard).
+                  Warnings conditionnels avant redirection :
+                  - SAISIE (police_saisie, police_rodeo si !police_levee_saisie_ok) :
+                    confirme la levee de saisie / documents
+                  - VEHICULE BLOQUE (policeBlocked=true) :
+                    confirme que client est passe au commissariat
                   Olivier 2026-06-04. */}
-              {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'sia_couvert'].includes(initialMission.source) && (
+              {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
                 <>
-                  {initialMission.police_blocked && (
+                  {policeBlocked && (
                     <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">
                       <span className="text-warning">🚓</span>
                       <p className="text-warning text-sm font-medium">
-                        Bloquée par la police — vérif obligatoire à la restitution
+                        Bloquée par la police — confirmation obligatoire à la restitution (client doit être passé au commissariat)
                       </p>
                     </div>
                   )}
-                  {initialMission.source === 'police_rodeo' && !(initialMission as any).police_levee_saisie_ok && (
+                  {['police_saisie', 'police_rodeo'].includes(initialMission.source) && !(initialMission as any).police_levee_saisie_ok && (
                     <div className="bg-rose-500/10 border border-rose-500/40 rounded-2xl p-3 flex items-start gap-2">
                       <span className="text-rose-500">📋</span>
                       <p className="text-rose-500 text-sm font-medium">
-                        Rodéo — levée de saisie non confirmée. Sera demandée à la restitution.
+                        Saisie — levée de saisie non confirmée. Sera demandée à la restitution.
                       </p>
                     </div>
                   )}
                   <button
                     onClick={() => {
-                      if (['police_mg', 'police_rodeo'].includes(initialMission.source)) {
-                        setShowRestituerModal(true)
-                      } else {
-                        const url = buildEncaissementUrl(initialMission as any, {
-                          returnTo: `/dispatch/${initialMission.id}`,
-                        })
-                        window.location.href = url
+                      const src = initialMission.source
+                      const isSaisie = ['police_saisie', 'police_rodeo'].includes(src)
+                      const leveeManquante = isSaisie && !(initialMission as any).police_levee_saisie_ok
+
+                      // Warning saisie : confirmer la levee
+                      if (leveeManquante) {
+                        if (!confirm('⚠ SAISIE\n\nLa levée de saisie est-elle bien confirmée (documents reçus du Parquet/Police) ?\n\nSi non, ne PAS restituer le véhicule.')) return
                       }
+                      // Warning vehicule bloque police : confirmer passage commissariat
+                      if (policeBlocked) {
+                        if (!confirm('⚠ VÉHICULE BLOQUÉ PAR LA POLICE\n\nLe propriétaire est-il bien passé au commissariat pour faire lever le blocage ?\n\nSi non, ne PAS restituer.')) return
+                      }
+                      // Tout OK -> module encaissement chauffeur
+                      const url = buildEncaissementUrl(initialMission as any, {
+                        returnTo: `/dispatch/${initialMission.id}`,
+                      })
+                      window.location.href = url
                     }}
                     className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
-                    🔑 Restituer le véhicule
+                    🔑 Restituer le véhicule (encaissement chauffeur)
                   </button>
                 </>
               )}
