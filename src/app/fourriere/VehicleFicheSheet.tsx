@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash, Receipt } from 'lucide-react'
 import Link from 'next/link'
+import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 
 interface Fiche {
   mission: any
@@ -87,6 +88,7 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
   router:      any
   onClose:     () => void
 }) {
+  const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
   const m = fiche.mission
   const z = fiche.zone
   const t = fiche.tarif
@@ -211,33 +213,38 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
           </Link>
         </div>
         {/* Olivier 2026-06-04 : module fourriere uniquement.
-            Action : force la cloture en to_invoice + redirige vers facturation
-            avec filtre pre-rempli sur le numero de mission. */}
+            Ouvre RestituerEtFacturerModal :
+            1) Recherche client Odoo, ou creation si pas trouve (avec Google Maps)
+            2) PATCH mission avec billed_to + infos client
+            3) force-status to_invoice
+            4) redirect /facturation?q=<num> */}
         {(userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
           <button
-            onClick={async () => {
-              if (!confirm(`Restituer et facturer la mission #${m.mission_number || m.id.slice(0, 8)} ?\n\nLa mission va passer en "À facturer" (clôture forcée sans pointage ni photo) puis tu seras redirigé vers le menu Facturation avec ce dossier pré-filtré.`)) return
-              try {
-                const r = await fetch(`/api/missions/${m.id}/force-status`, {
-                  method:  'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body:    JSON.stringify({ status: 'to_invoice' }),
-                })
-                if (!r.ok) {
-                  const j = await r.json().catch(() => ({}))
-                  alert(`Erreur clôture : ${j.error || r.status}`)
-                  return
-                }
-                onClose()
-                const q = m.mission_number != null ? String(m.mission_number) : (m.external_id || m.id)
-                router.push(`/facturation?q=${encodeURIComponent(q)}`)
-              } catch (e: any) {
-                alert(`Erreur réseau : ${e?.message || e}`)
-              }
-            }}
+            onClick={() => setShowRestituerFacturer(true)}
             className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition">
             <Receipt size={14} /> Restituer et facturer
           </button>
+        )}
+        {showRestituerFacturer && (
+          <RestituerEtFacturerModal
+            mission={{
+              id:              m.id,
+              mission_number:  m.mission_number,
+              external_id:     m.external_id,
+              vehicle_plate:   m.vehicle_plate,
+              client_name:     m.client_name,
+              client_phone:    m.client_phone,
+              client_address:  m.client_address,
+              billed_to_id:    m.billed_to_id,
+              billed_to_name:  m.billed_to_name,
+            }}
+            onClose={() => setShowRestituerFacturer(false)}
+            onSuccess={(q) => {
+              setShowRestituerFacturer(false)
+              onClose()
+              router.push(`/facturation?q=${encodeURIComponent(q)}`)
+            }}
+          />
         )}
         <div className="flex items-center gap-2 flex-wrap">
           <Link href={driverUrl}
