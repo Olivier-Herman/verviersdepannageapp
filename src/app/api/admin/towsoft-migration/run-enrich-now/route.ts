@@ -13,9 +13,9 @@ import { createAdminClient } from '@/lib/supabase'
 import { fetchTowsoftDetail } from '@/lib/towsoft-detail'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120  // 30 fiches * ~1.7s / 2 workers ≈ 25s, marge x4
 
-const BATCH_LIMIT       = 15
+const BATCH_LIMIT       = 30   // Olivier 2026-06-04 : passe de 15 a 30 pour rattrapage plus rapide
 const CONCURRENCY       = 2
 const DELAY_BETWEEN_MS  = 700
 

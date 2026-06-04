@@ -77,12 +77,12 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   }, [zone, scans.length])
 
   const [enrichProgress, setEnrichProgress] = useState<string | null>(null)
-  const LOOP_INTERVAL_MS = 5 * 60 * 1000  // 5 min entre runs (= cadence cron, discret cote TowSoft)
+  const LOOP_INTERVAL_MS = 3 * 60 * 1000  // 3 min entre runs (~125 req/min TowSoft = humain actif, discret)
 
   async function runEnrichNow(loopUntilDone = false) {
     const msg = loopUntilDone
-      ? `Lancer le rattrapage en boucle (jusqu a ce que toutes les fiches soient enrichies) ?\n\n⏱ Intervalle 5 min entre runs (= cadence cron, evite de marteler TowSoft).\n15 fiches par run -> ~3h pour 688 fiches.\n\nTu peux fermer cet onglet pour stopper - re-clique pour reprendre.`
-      : 'Forcer un run d enrichissement TowSoft maintenant (15 fiches max) ?\n\nUtile si le cron ne progresse pas.'
+      ? `Lancer le rattrapage en boucle (jusqu a ce que toutes les fiches soient enrichies) ?\n\n⏱ Intervalle 3 min entre runs · 30 fiches par run\n~10 fiches/min -> ~1h pour 553 fiches\n\nTu peux fermer cet onglet pour stopper - re-clique pour reprendre.`
+      : 'Forcer un run d enrichissement TowSoft maintenant (30 fiches max) ?\n\nUtile si le cron ne progresse pas.'
     if (!confirm(msg)) return
     setEnrichLoading(true)
     setEnrichProgress(loopUntilDone ? 'Demarrage…' : null)
@@ -321,7 +321,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
                   <>
                     <button onClick={() => runEnrichNow(false)} disabled={enrichLoading}
                       className="px-2 py-1 bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200 rounded font-semibold disabled:opacity-50">
-                      {enrichLoading ? '⏳' : `⚡ +15`}
+                      {enrichLoading ? '⏳' : `⚡ +30`}
                     </button>
                     <button onClick={() => runEnrichNow(true)} disabled={enrichLoading}
                       className="px-2 py-1 bg-info-50 hover:bg-info-100 text-info-800 border border-info-200 rounded font-semibold disabled:opacity-50">
