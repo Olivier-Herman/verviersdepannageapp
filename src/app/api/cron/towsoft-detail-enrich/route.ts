@@ -111,7 +111,13 @@ export async function GET(req: Request) {
     .select('id', { count: 'exact', head: true })
     .is('detail_fetched_at', null)
 
-  console.log(`[cron/towsoft-detail-enrich] enriched=${enriched} failed=${failed} remaining=${remaining}`)
+  // Double-check : count des rows VRAIMENT enrichies pour comparer
+  const { count: enrichedTotal } = await sb
+    .from('towsoft_migration_source')
+    .select('id', { count: 'exact', head: true })
+    .not('detail_fetched_at', 'is', null)
+
+  console.log(`[cron/towsoft-detail-enrich] enriched=${enriched} failed=${failed} updateGhosts=${updateGhosts} alreadyEnriched=${alreadyEnriched} remaining=${remaining} enrichedTotal=${enrichedTotal}`)
 
   return NextResponse.json({
     ok: true,
