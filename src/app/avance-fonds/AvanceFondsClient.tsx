@@ -22,6 +22,7 @@ interface FormState {
   brandName:     string
   modelName:     string
   amountHtva:    string
+  amountTvac:    string
   paymentMethod: string
   notes:         string
   photoFile:     File | null
@@ -31,7 +32,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   plate: '', brandName: '', modelName: '',
-  amountHtva: '', paymentMethod: '', notes: '',
+  amountHtva: '', amountTvac: '', paymentMethod: '', notes: '',
   photoFile: null, photoPreview: null, vehicleMatch: null,
 }
 
@@ -98,6 +99,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const [showLookup,    setShowLookup]    = useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [form,          setForm]          = useState<FormState>(EMPTY_FORM)
+  const [ocrRunning,    setOcrRunning]    = useState(false)
+  const [ocrInfo,       setOcrInfo]       = useState<string | null>(null)
   const [brands,        setBrands]        = useState<Brand[]>([])
   const [models,        setModels]        = useState<Model[]>([])
   const [loadingBrands, setLoadingBrands] = useState(false)
@@ -120,10 +123,48 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   // ── Helpers ───────────────────────────────────────────────
   const goBack = (s: Step) => { setError(null); setStep(s) }
 
+  // Olivier 2026-06-04 : OCR Claude Vision pour extraire HTVA + TVAC depuis
+  // la facture. Lance en arriere-plan apres choix du fichier, prefille les
+  // 2 champs si succes. User peut toujours corriger manuellement.
+  const runOcr = async (file: File) => {
+    setOcrRunning(true)
+    setOcrInfo(null)
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const base64 = Buffer.from(arrayBuffer).toString('base64')
+      const r = await fetch('/api/advances/ocr', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ base64, mimeType: file.type }),
+      })
+      const j = await r.json()
+      if (j.ok) {
+        setForm(f => ({
+          ...f,
+          amountHtva: j.amount_htva != null ? String(j.amount_htva) : f.amountHtva,
+          amountTvac: j.amount_tvac != null ? String(j.amount_tvac) : f.amountTvac,
+        }))
+        const parts: string[] = []
+        if (j.fournisseur) parts.push(j.fournisseur)
+        if (j.amount_htva != null) parts.push(`HTVA ${j.amount_htva}€`)
+        if (j.amount_tvac != null) parts.push(`TVAC ${j.amount_tvac}€`)
+        setOcrInfo(parts.length > 0 ? `✓ ${parts.join(' · ')} (confiance ${j.confidence || 'medium'})` : null)
+      } else {
+        setOcrInfo(`⚠ OCR : ${j.error || 'echec, saisie manuelle requise'}`)
+      }
+    } catch (e: any) {
+      setOcrInfo(`⚠ OCR : ${e?.message || 'erreur reseau'}`)
+    } finally {
+      setOcrRunning(false)
+    }
+  }
+
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setForm(f => ({ ...f, photoFile: file, photoPreview: URL.createObjectURL(file) }))
+    // Lance l OCR en parallele (non bloquant, l user peut continuer)
+    runOcr(file)
     // Si plate + brand + model sont preremplis (depuis fiche mission),
     // on saute directement a l'etape "details" (montant + paiement).
     if (prefillPlate && prefillBrand && prefillModel) {
@@ -215,6 +256,7 @@ export default function AvanceFondsClient({ user }: { user: any }) {
         body: JSON.stringify({
           plate:         normalizePlate(form.plate),
           amountHtva:    form.amountHtva,
+          amountTvac:    form.amountTvac || undefined,
           paymentMethod: form.paymentMethod,
           invoiceUrl,
           notes:         form.notes || undefined,
@@ -235,7 +277,9 @@ export default function AvanceFondsClient({ user }: { user: any }) {
 
   const validateDetails = (): string | null => {
     if (!form.amountHtva)                 return 'Veuillez saisir le montant HTVA'
-    if (parseFloat(form.amountHtva) <= 0) return 'Le montant doit être supérieur à 0'
+    if (parseFloat(form.amountHtva) <= 0) return 'Le montant HTVA doit être supérieur à 0'
+    if (!form.amountTvac)                 return 'Veuillez saisir le montant TVAC'
+    if (parseFloat(form.amountTvac) <= 0) return 'Le montant TVAC doit être supérieur à 0'
     if (!form.paymentMethod)              return 'Veuillez sélectionner un mode de paiement'
     return null
   }
@@ -440,17 +484,44 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           </div>
         </div>
 
-        {/* Montant HTVA */}
-        <div>
-          <label className="block text-sm font-medium text-ink-secondary mb-1.5">Montant HTVA *</label>
-          <div className="relative">
-            <input type="number" inputMode="decimal" step="0.01" min="0"
-              placeholder="0.00" value={form.amountHtva}
-              onChange={e => setForm(f => ({ ...f, amountHtva: e.target.value }))}
-              className="w-full bg-surface border border rounded-xl px-4 py-3
-                         text-ink text-2xl font-semibold pr-14 placeholder-zinc-700
-                         focus:outline-none focus:border-brand" />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-muted text-lg font-medium">€</span>
+        {/* Bloc montants : HTVA (PU facturation Odoo) + TVAC (mouvement caisse).
+            Olivier 2026-06-04 : OCR Claude Vision pre-remplit automatiquement
+            les 2 depuis la facture uploadee. User peut corriger. */}
+        {(ocrRunning || ocrInfo) && (
+          <div className={`rounded-lg px-3 py-2 text-xs ${
+            ocrRunning ? 'bg-info-50 text-info-800 border border-info-200'
+            : ocrInfo?.startsWith('⚠') ? 'bg-warning-50 text-warning-800 border border-warning-200'
+            : 'bg-success-50 text-success-800 border border-success-200'
+          }`}>
+            {ocrRunning ? '🔍 Analyse OCR de la facture...' : ocrInfo}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-ink-secondary mb-1.5">Montant HTVA *</label>
+            <div className="relative">
+              <input type="number" inputMode="decimal" step="0.01" min="0"
+                placeholder="0.00" value={form.amountHtva}
+                onChange={e => setForm(f => ({ ...f, amountHtva: e.target.value }))}
+                className="w-full bg-surface border border rounded-xl px-3 py-3
+                           text-ink text-xl font-semibold pr-8 placeholder-zinc-700
+                           focus:outline-none focus:border-brand" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted text-sm font-medium">€</span>
+            </div>
+            <p className="text-[10px] text-ink-muted mt-1">→ PU ligne facturation</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-secondary mb-1.5">Montant TVAC *</label>
+            <div className="relative">
+              <input type="number" inputMode="decimal" step="0.01" min="0"
+                placeholder="0.00" value={form.amountTvac}
+                onChange={e => setForm(f => ({ ...f, amountTvac: e.target.value }))}
+                className="w-full bg-surface border border rounded-xl px-3 py-3
+                           text-ink text-xl font-semibold pr-8 placeholder-zinc-700
+                           focus:outline-none focus:border-brand" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted text-sm font-medium">€</span>
+            </div>
+            <p className="text-[10px] text-ink-muted mt-1">→ mouvement caisse</p>
           </div>
         </div>
 

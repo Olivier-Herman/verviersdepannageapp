@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { plate, amountHtva, paymentMethod, invoiceUrl, notes, brandName, modelName, missionId } = body
+    const { plate, amountHtva, amountTvac, paymentMethod, invoiceUrl, notes, brandName, modelName, missionId } = body
 
     if (!plate || !amountHtva || !paymentMethod || !invoiceUrl) {
       return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
@@ -26,6 +26,12 @@ export async function POST(req: NextRequest) {
     const supabase        = createAdminClient()
     const normalizedPlate = plate.replace(/[-.\s]/g, '').toUpperCase().trim()
     const htva            = parseFloat(amountHtva)
+    // Olivier 2026-06-04 : amount_tvac extrait par OCR ou saisi manuellement.
+    // Si absent, fallback htva * 1.21 (TVA standard 21%) pour ne pas casser
+    // le mouvement caisse existant.
+    const tvac            = amountTvac && parseFloat(amountTvac) > 0
+      ? parseFloat(amountTvac)
+      : htva * 1.21
 
     // Résoudre l'utilisateur
     const { data: me } = await supabase
@@ -97,11 +103,13 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Mouvement caisse si espèces ───────────────────────
+    // Olivier 2026-06-04 : on utilise tvac (et plus htva) car c est le
+    // montant REELLEMENT sorti de la caisse du chauffeur.
     if (paymentMethod === 'cash') {
       try {
         await supabase.from('cash_register').insert({
           driver_id: me.id,
-          amount:    htva,
+          amount:    tvac,
           type:      'remise',
           notes:     `Avance de fonds — ${normalizedPlate}${odooOrderName ? ` — ${odooOrderName}` : ''}`,
         })
@@ -117,6 +125,7 @@ export async function POST(req: NextRequest) {
         user_id:             me.id,
         plate:               normalizedPlate,
         amount_htva:         htva,
+        amount_tvac:         tvac,
         payment_method:      paymentMethod,
         invoice_url:         invoiceUrl,
         odoo_quote_id:       odooOrderId,
