@@ -33,6 +33,9 @@ interface Mission {
   mission_number?: number | null
   external_id?:    string | null
   vehicle_plate?:  string | null
+  source?:         string | null
+  police_blocked?: boolean | null
+  police_levee_saisie_ok?: boolean | null
   client_name?:    string | null
   client_phone?:   string | null
   client_address?: string | null
@@ -69,6 +72,11 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
   const [createPhone,   setCreatePhone]   = useState((mission.client_phone || ''))
   const [createEmail,   setCreateEmail]   = useState('')
   const [createVat,     setCreateVat]     = useState('')
+
+  // VIES
+  const [viesLoading,     setViesLoading]     = useState(false)
+  const [viesResult,      setViesResult]      = useState<{ valid: boolean; name?: string; address?: string; odooFound?: boolean; odooName?: string } | null>(null)
+  const [viesOdooPartner, setViesOdooPartner] = useState<OdooPartner | null>(null)
 
   // Action final
   const [error,    setError]    = useState<string | null>(null)
@@ -137,6 +145,60 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
     }
   }, [step])
 
+  // Verification VIES + lookup Odoo par TVA. Prefill name/address si valide.
+  async function checkVies() {
+    const vat = createVat.trim()
+    if (!vat || vat.length < 5) return
+    setViesLoading(true); setViesResult(null); setError(null)
+    try {
+      const r = await fetch(`/api/vies?vat=${encodeURIComponent(vat)}`)
+      const data = await r.json()
+      if (data.valid) {
+        if (data.name && !createName.trim()) setCreateName(data.name)
+        if (data.address) {
+          const lines = data.address.split('\n').map((l: string) => l.trim()).filter(Boolean)
+          if (lines.length >= 2) {
+            const street = lines[0].charAt(0) + lines[0].slice(1).toLowerCase()
+            const zipCity = lines[1].match(/^(\d{4,5})\s+(.+)$/)
+            if (zipCity) {
+              setCreateStreet(street)
+              setCreateZip(zipCity[1])
+              const city = zipCity[2].charAt(0) + zipCity[2].slice(1).toLowerCase()
+              setCreateCity(city)
+              setCreateAddress(`${street}, ${zipCity[1]} ${city}`)
+            } else {
+              setCreateAddress(lines.join(', '))
+            }
+          } else {
+            setCreateAddress(data.address)
+          }
+        }
+        // Look up Odoo par TVA -> preremplit tout si existe deja
+        const odooRes = await fetch(`/api/partners?vat=${encodeURIComponent(vat)}`)
+        const odooData = await odooRes.json()
+        if (odooData.found) {
+          const p = odooData.partner
+          setCreateName(p.name || createName)
+          if (p.phone) setCreatePhone(p.phone)
+          if (p.email) setCreateEmail(p.email)
+          if (p.street) setCreateStreet(p.street)
+          if (p.zip)    setCreateZip(p.zip)
+          if (p.city)   setCreateCity(p.city)
+          if (p.address) setCreateAddress(p.address)
+          setViesResult({ valid: true, name: data.name, address: data.address, odooFound: true, odooName: p.name })
+          setViesOdooPartner(p)
+          return
+        }
+        setViesOdooPartner(null)
+      }
+      setViesResult(data)
+    } catch (e: any) {
+      setError(`VIES KO : ${e?.message || e}`)
+    } finally {
+      setViesLoading(false)
+    }
+  }
+
   async function doSearch() {
     if (!searchName.trim()) return
     setSearching(true)
@@ -165,7 +227,21 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
     }
   }
 
+  // Confirms blocage/saisie comme sur le bouton 'Restituer' de la fiche dispatch
+  function runPrecheckConfirms(): boolean {
+    const isSaisie = ['police_saisie', 'police_rodeo'].includes(mission.source || '')
+    const leveeManquante = isSaisie && !mission.police_levee_saisie_ok
+    if (leveeManquante) {
+      if (!confirm('⚠ SAISIE\n\nLa levée de saisie est-elle bien confirmée (documents reçus du Parquet/Police) ?\n\nSi non, ne PAS restituer le véhicule.')) return false
+    }
+    if (mission.police_blocked) {
+      if (!confirm('⚠ VÉHICULE BLOQUÉ PAR LA POLICE\n\nLe propriétaire est-il bien passé au commissariat pour faire lever le blocage ?\n\nSi non, ne PAS restituer.')) return false
+    }
+    return true
+  }
+
   async function selectPartner(p: OdooPartner) {
+    if (!runPrecheckConfirms()) return
     setStep('submitting')
     setActionMsg('Mise à jour de la fiche...')
     setError(null)
@@ -214,6 +290,7 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
 
   async function createAndSelect() {
     if (!createName.trim()) { setError('Nom requis'); return }
+    if (!runPrecheckConfirms()) return
     setStep('submitting')
     setActionMsg('Création du client dans Odoo...')
     setError(null)
@@ -274,6 +351,24 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
             Mission <b className="text-ink font-mono">#{mission.mission_number || mission.id.slice(0, 8)}</b>
             {mission.vehicle_plate && <> · Plaque <b className="text-ink font-mono">{mission.vehicle_plate}</b></>}
           </div>
+
+          {/* Bannieres d avertissement (precheck identique au bouton Restituer de la fiche dispatch) */}
+          {mission.police_blocked && (
+            <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 flex items-start gap-2">
+              <span className="text-warning text-base">🚓</span>
+              <p className="text-warning text-xs font-medium">
+                <b>Véhicule bloqué par la police</b> — confirmation obligatoire au submit que le propriétaire est passé au commissariat.
+              </p>
+            </div>
+          )}
+          {['police_saisie', 'police_rodeo'].includes(mission.source || '') && !mission.police_levee_saisie_ok && (
+            <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg p-3 flex items-start gap-2">
+              <span className="text-rose-500 text-base">📋</span>
+              <p className="text-rose-500 text-xs font-medium">
+                <b>Saisie — levée non confirmée.</b> Tu devras confirmer au submit que les documents Parquet/Police sont reçus.
+              </p>
+            </div>
+          )}
 
           {step === 'search' && (
             <>
@@ -379,16 +474,32 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
-                    TVA <span className="text-ink-faint">(opt)</span>
+                    TVA <span className="text-ink-faint">(opt — VIES vérifie + remplit automatiquement)</span>
                   </label>
-                  <input value={createVat} onChange={e => setCreateVat(e.target.value)}
-                    placeholder="BE0123.456.789"
-                    className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                  <div className="flex gap-2">
+                    <input value={createVat} onChange={e => { setCreateVat(e.target.value); setViesResult(null) }}
+                      onBlur={() => { if (createVat.trim().length >= 5) checkVies() }}
+                      placeholder="BE0123.456.789"
+                      className="flex-1 bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                    <button type="button" onClick={checkVies} disabled={viesLoading || createVat.trim().length < 5}
+                      className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-semibold transition disabled:opacity-40">
+                      {viesLoading ? <Loader2 size={12} className="animate-spin" /> : 'VIES'}
+                    </button>
+                  </div>
+                  {viesResult && (
+                    <p className={`text-xs mt-1 ${viesResult.valid ? 'text-success' : 'text-critical'}`}>
+                      {viesResult.valid
+                        ? (viesResult.odooFound
+                            ? `✓ Client existant trouvé : ${viesResult.odooName} (fiche préremplie)`
+                            : `✓ TVA valide — ${viesResult.name || 'OK'}`)
+                        : '⚠ TVA invalide (VIES)'}
+                    </p>
+                  )}
                 </div>
               </div>
-              <button onClick={createAndSelect} disabled={!createName.trim()}
+              <button onClick={() => viesOdooPartner ? selectPartner(viesOdooPartner) : createAndSelect()} disabled={!createName.trim()}
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2">
-                <Check size={14} /> Créer le client et facturer
+                <Check size={14} /> {viesOdooPartner ? 'Utiliser ce client existant et facturer' : 'Créer le client et facturer'}
               </button>
             </>
           )}

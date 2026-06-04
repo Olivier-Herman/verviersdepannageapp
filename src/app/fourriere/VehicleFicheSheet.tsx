@@ -228,15 +228,18 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
         {showRestituerFacturer && (
           <RestituerEtFacturerModal
             mission={{
-              id:              m.id,
-              mission_number:  m.mission_number,
-              external_id:     m.external_id,
-              vehicle_plate:   m.vehicle_plate,
-              client_name:     m.client_name,
-              client_phone:    m.client_phone,
-              client_address:  m.client_address,
-              billed_to_id:    m.billed_to_id,
-              billed_to_name:  m.billed_to_name,
+              id:                     m.id,
+              mission_number:         m.mission_number,
+              external_id:            m.external_id,
+              vehicle_plate:          m.vehicle_plate,
+              source:                 m.source,
+              police_blocked:         m.police_blocked,
+              police_levee_saisie_ok: m.police_levee_saisie_ok,
+              client_name:            m.client_name,
+              client_phone:           m.client_phone,
+              client_address:         m.client_address,
+              billed_to_id:           m.billed_to_id,
+              billed_to_name:         m.billed_to_name,
             }}
             onClose={() => setShowRestituerFacturer(false)}
             onSuccess={(q) => {
