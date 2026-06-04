@@ -15,7 +15,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { normalizePlate }   from '@/lib/plate'
+import { parseScanInput }   from '@/lib/towsoft-migration/parse-scan'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,10 +57,10 @@ export async function POST(req: Request) {
   let resolvedPlate:      string | null = parsed.plate
   let resolvedVin:        string | null = parsed.vin
 
-  if (!resolvedTowsoftNum && (parsed.missionNum || parsed.ticketId)) {
+  if (!resolvedTowsoftNum && (parsed.missionNum || parsed.ticketId || parsed.odooVehicleId)) {
     let missionQuery = sb
       .from('incoming_missions')
-      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, odoo_helpdesk_id')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, odoo_helpdesk_id, odoo_vehicle_id')
       .limit(1)
 
     if (parsed.missionNum) {
@@ -76,6 +76,8 @@ export async function POST(req: Request) {
       }
     } else if (parsed.ticketId) {
       missionQuery = missionQuery.eq('odoo_helpdesk_id', parseInt(parsed.ticketId, 10))
+    } else if (parsed.odooVehicleId) {
+      missionQuery = missionQuery.eq('odoo_vehicle_id', parseInt(parsed.odooVehicleId, 10))
     }
 
     const { data: vdsMission } = await missionQuery.maybeSingle()
@@ -303,74 +305,4 @@ export async function POST(req: Request) {
   })
 }
 
-// ───────────────────────────────────────────────────────────────────
-// Parser scan input
-// ───────────────────────────────────────────────────────────────────
-
-interface ParsedScan {
-  format:      'towsoft_url' | 'towsoft_num' | 'qr_mission' | 'v_legacy' | 'plate' | 'vin' | 'unknown'
-  towsoftNum:  string | null
-  missionNum:  string | null
-  ticketId:    string | null
-  plate:       string | null
-  vin:         string | null
-  raw:         string
-}
-
-function parseScanInput(input: string): ParsedScan {
-  const out: ParsedScan = {
-    format: 'unknown',
-    towsoftNum: null, missionNum: null, ticketId: null, plate: null, vin: null,
-    raw: input,
-  }
-  const s = input.trim()
-
-  // URL TowSoft appel.php?num=XXX
-  const towsoftUrl = s.match(/towsoft\.ca\/appel\.php\?num=(\d+)/i)
-  if (towsoftUrl) {
-    out.format = 'towsoft_url'
-    out.towsoftNum = towsoftUrl[1]
-    return out
-  }
-
-  // URL /qr/mission/[id]
-  const qrMission = s.match(/\/qr\/mission\/([0-9a-f-]+)/i)
-  if (qrMission) {
-    out.format = 'qr_mission'
-    out.missionNum = qrMission[1]
-    return out
-  }
-
-  // URL /v/[id]
-  const vLegacy = s.match(/\/v\/(\d+)/i)
-  if (vLegacy) {
-    out.format = 'v_legacy'
-    out.ticketId = vLegacy[1]
-    return out
-  }
-
-  // N° TowSoft direct (4-7 chiffres)
-  if (/^\d{4,7}$/.test(s)) {
-    out.format = 'towsoft_num'
-    out.towsoftNum = s
-    return out
-  }
-
-  // VIN (17 chars alphanumeriques sauf I O Q)
-  const vinClean = s.replace(/[-.\s]/g, '').toUpperCase()
-  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(vinClean)) {
-    out.format = 'vin'
-    out.vin = vinClean
-    return out
-  }
-
-  // Plaque BE (normalisee)
-  const plateClean = normalizePlate(s)
-  if (plateClean.length >= 4 && plateClean.length <= 10) {
-    out.format = 'plate'
-    out.plate = plateClean
-    return out
-  }
-
-  return out
-}
+// parseScanInput est importe depuis @/lib/towsoft-migration/parse-scan

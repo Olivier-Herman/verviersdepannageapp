@@ -12,6 +12,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { parseScanInput }    from '@/lib/towsoft-migration/parse-scan'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,21 +44,67 @@ export async function POST(req: Request) {
   if (oErr || !orphan) return NextResponse.json({ error: 'Orphan introuvable' }, { status: 404 })
   if (orphan.resolved_at) return NextResponse.json({ error: 'Deja resolu' }, { status: 400 })
 
-  // 1. Cherche dans towsoft_migration_source (cas TowSoft non vu au scan initial)
+  // Olivier 2026-06-04 : re-parse raw_input pour gerer les formats qui
+  // n etaient pas reconnus au scan initial (Odoo fleet URL, qr_mission, etc.)
+  const parsed = parseScanInput(orphan.raw_input || '')
+
+  // Resolution complete : cherche d abord par URL/ID dans incoming_missions
+  // pour retrouver plate/vin, puis match dans les 2 tables
+  let resolvedPlate: string | null = orphan.plate
+  let resolvedVin:   string | null = orphan.vin
+  let resolvedTowsoftNum: string | null = parsed.towsoftNum
+
+  if (!resolvedTowsoftNum && (parsed.missionNum || parsed.ticketId || parsed.odooVehicleId)) {
+    let missionQuery = sb
+      .from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, odoo_helpdesk_id, odoo_vehicle_id')
+      .limit(1)
+
+    if (parsed.missionNum) {
+      const isUuid = /^[0-9a-f-]{36}$/i.test(parsed.missionNum)
+      const isNum  = /^\d+$/.test(parsed.missionNum)
+      if (isUuid) missionQuery = missionQuery.eq('id', parsed.missionNum)
+      else if (isNum) missionQuery = missionQuery.eq('mission_number', parseInt(parsed.missionNum, 10))
+      else missionQuery = missionQuery.eq('id', parsed.missionNum)
+    } else if (parsed.ticketId) {
+      missionQuery = missionQuery.eq('odoo_helpdesk_id', parseInt(parsed.ticketId, 10))
+    } else if (parsed.odooVehicleId) {
+      missionQuery = missionQuery.eq('odoo_vehicle_id', parseInt(parsed.odooVehicleId, 10))
+    }
+
+    const { data: vdsMission } = await missionQuery.maybeSingle()
+    if (vdsMission) {
+      if (vdsMission.external_id && vdsMission.external_id.startsWith('TS-')) {
+        resolvedTowsoftNum = vdsMission.external_id.replace(/^TS-/, '')
+      }
+      if (!resolvedPlate) resolvedPlate = vdsMission.vehicle_plate
+      if (!resolvedVin)   resolvedVin   = vdsMission.vehicle_vin
+    }
+  }
+
+  // 1. Cherche dans towsoft_migration_source
   let towsoftMatch: any = null
-  if (orphan.vin) {
+  if (resolvedTowsoftNum) {
     const { data } = await sb
       .from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin')
-      .eq('vin', orphan.vin)
+      .eq('towsoft_num', resolvedTowsoftNum)
       .maybeSingle()
     towsoftMatch = data
   }
-  if (!towsoftMatch && orphan.plate) {
+  if (!towsoftMatch && resolvedVin) {
     const { data } = await sb
       .from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin')
-      .eq('plate', orphan.plate)
+      .eq('vin', resolvedVin)
+      .maybeSingle()
+    towsoftMatch = data
+  }
+  if (!towsoftMatch && resolvedPlate) {
+    const { data } = await sb
+      .from('towsoft_migration_source')
+      .select('id, towsoft_num, plate, vin')
+      .eq('plate', resolvedPlate)
       .maybeSingle()
     towsoftMatch = data
   }
@@ -94,23 +141,44 @@ export async function POST(req: Request) {
 
   // 2. Cherche dans incoming_missions (cas mission VD Soft existante)
   let existingMission: any = null
-  if (orphan.vin) {
+  // Si parsed contient direct un mission/ticket/odoo id, on a deja cherche
+  // via vdsMission ci-dessus. Re-faire ici par plate/vin couvre les cas
+  // d orphans crees uniquement avec plate ou vin.
+  if (resolvedVin) {
     const { data } = await sb
       .from('incoming_missions')
       .select('id, mission_number, vehicle_plate, vehicle_vin, status, parc_zone_key, source')
-      .eq('vehicle_vin', orphan.vin)
+      .eq('vehicle_vin', resolvedVin)
       .in('status', ['parked', 'delivering', 'created', 'assigned', 'in_progress'])
       .limit(2)
     if (data && data.length === 1) existingMission = data[0]
   }
-  if (!existingMission && orphan.plate) {
+  if (!existingMission && resolvedPlate) {
     const { data } = await sb
       .from('incoming_missions')
       .select('id, mission_number, vehicle_plate, vehicle_vin, status, parc_zone_key, source')
-      .eq('vehicle_plate', orphan.plate)
+      .eq('vehicle_plate', resolvedPlate)
       .in('status', ['parked', 'delivering', 'created', 'assigned', 'in_progress'])
       .limit(2)
     if (data && data.length === 1) existingMission = data[0]
+  }
+  // Si parsed contient odooVehicleId, ticketId, missionNum -> direct query
+  if (!existingMission && (parsed.odooVehicleId || parsed.ticketId || parsed.missionNum)) {
+    let q = sb
+      .from('incoming_missions')
+      .select('id, mission_number, vehicle_plate, vehicle_vin, status, parc_zone_key, source')
+      .in('status', ['parked', 'delivering', 'created', 'assigned', 'in_progress'])
+      .limit(1)
+    if (parsed.odooVehicleId) q = q.eq('odoo_vehicle_id', parseInt(parsed.odooVehicleId, 10))
+    else if (parsed.ticketId) q = q.eq('odoo_helpdesk_id', parseInt(parsed.ticketId, 10))
+    else if (parsed.missionNum) {
+      const isUuid = /^[0-9a-f-]{36}$/i.test(parsed.missionNum)
+      const isNum  = /^\d+$/.test(parsed.missionNum)
+      if (isUuid) q = q.eq('id', parsed.missionNum)
+      else if (isNum) q = q.eq('mission_number', parseInt(parsed.missionNum, 10))
+    }
+    const { data } = await q.maybeSingle()
+    if (data) existingMission = data
   }
 
   if (existingMission) {
