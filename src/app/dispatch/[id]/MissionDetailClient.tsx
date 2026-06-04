@@ -3196,13 +3196,14 @@ export default function MissionDetailClient({
                 </button>
               )}
 
-              {/* Bouton Restituer — visible pour Mal Garee et Rodeo au parc.
-                  Branche vers RestituerMalGareeModal (devenu generique) qui gere :
+              {/* Bouton Restituer — visible pour toutes les sources Police au parc
+                  + sia_couvert. RestituerMalGareeModal gere les variations :
                   - blocage police (Mal Garee, optionnel)
-                  - levee de saisie (Rodeo, obligatoire)
+                  - levee de saisie (Rodeo/Saisie, obligatoire)
                   - minimum 3 jours gardiennage pour Rodeo
-                  - recherche/creation Partner Odoo, multi-paiements, branchement Odoo. */}
-              {status === 'parked' && ['police_mg', 'police_rodeo'].includes(initialMission.source) && (
+                  - recherche/creation Partner Odoo, multi-paiements, branchement Odoo.
+                  Olivier 2026-06-04 : etendu police_accident + police_saisie + police_avp + sia_couvert. */}
+              {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'sia_couvert'].includes(initialMission.source) && (
                 <>
                   {initialMission.police_blocked && (
                     <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">
@@ -3459,7 +3460,7 @@ export default function MissionDetailClient({
           }}
         />
       )}
-      {showRestituerModal && ['police_mg', 'police_rodeo'].includes(initialMission.source) && (
+      {showRestituerModal && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'sia_couvert'].includes(initialMission.source) && (
         <RestituerMalGareeModal
           mission={{
             id:                     initialMission.id,

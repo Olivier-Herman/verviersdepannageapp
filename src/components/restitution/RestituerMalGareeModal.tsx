@@ -33,6 +33,37 @@ const SOURCE_CONFIGS: Record<string, SourceConfig> = {
     minDays:            3,
     requiresLeveeSaisie: true,
   },
+  // Olivier 2026-06-04 : extensions pour permettre la restitution avec paiement
+  // sur d autres sources Police. Tarifs alignes sur SOURCE_CONFIGS backend a
+  // verifier si besoin (fallback Mal Garee si non specifies cote API).
+  police_accident: {
+    label:              'Police Accident',
+    forfaitHtva:        165.29,
+    forfaitLabel:       'Forfait remorquage Accident',
+    minDays:            0,
+    requiresLeveeSaisie: false,
+  },
+  police_saisie: {
+    label:              'Saisie',
+    forfaitHtva:        165.29,
+    forfaitLabel:       'Forfait remorquage Saisie',
+    minDays:            0,
+    requiresLeveeSaisie: true,
+  },
+  police_avp: {
+    label:              'AVP',
+    forfaitHtva:        165.29,
+    forfaitLabel:       'Forfait remorquage AVP',
+    minDays:            0,
+    requiresLeveeSaisie: false,
+  },
+  sia_couvert: {
+    label:              'SIA couvert',
+    forfaitHtva:        165.29,
+    forfaitLabel:       'Forfait remorquage SIA',
+    minDays:            0,
+    requiresLeveeSaisie: false,
+  },
 }
 
 interface Mission {
