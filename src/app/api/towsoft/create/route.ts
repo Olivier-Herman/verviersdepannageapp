@@ -6,6 +6,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 import { printVdSoftParcLabel } from '@/lib/missions/print-parc-label'
+import { plateOrVinTail }       from '@/lib/plate'
 
 export const maxDuration = 60
 
@@ -353,7 +354,9 @@ export async function POST(req: Request) {
                                   : 'remorquage',
         status:             computedStatus,
         parc_zone_key:      vdZone,
-        vehicle_plate:      ((plate || '').trim().toUpperCase()) || null,
+        // Olivier 2026-06-03 (audit J-2 W11) : fallback plaque vide -> 5
+        // derniers chars du VIN (evite "PAS DE PLAQUE" generique).
+        vehicle_plate:      plateOrVinTail(plate, vin) || null,
         vehicle_vin:        ((vin || '').trim().toUpperCase()) || null,
         vehicle_brand:      brand || null,
         vehicle_model:      model || null,

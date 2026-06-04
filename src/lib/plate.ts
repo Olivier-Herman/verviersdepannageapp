@@ -20,3 +20,19 @@ export function normalizePlate(plate: string): string {
 export function isPlateLookupReady(plate: string): boolean {
   return normalizePlate(plate).length >= 3
 }
+
+/**
+ * Olivier 2026-06-03 (audit J-2 W11) : fallback plaque vide → 5 derniers
+ * chars du VIN. Évite "PAS DE PLAQUE" générique qui casse les recherches
+ * et les jointures. Utilise pour les véhicules sans plaque visible
+ * (incendies, accidents graves, non immatriculés).
+ *
+ * Renvoie plate normalisée si valide (>= 3 chars), sinon 5 derniers du VIN.
+ */
+export function plateOrVinTail(plate: string | null | undefined, vin: string | null | undefined): string {
+  const p = (plate || '').toString()
+  if (isPlateLookupReady(p)) return normalizePlate(p)
+  const v = (vin || '').toString().replace(/[-.\s]/g, '').toUpperCase().trim()
+  if (v.length >= 5) return v.slice(-5)
+  return ''
+}
