@@ -37,18 +37,39 @@ export async function DELETE(_req: Request, { params }: { params: { attachmentId
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Olivier 2026-06-03 (audit J-2 W9) : ownership. Seul l auteur de la
+  // remarque parente peut supprimer une piece jointe (sauf superadmin).
   const sb = createAdminClient()
+  const { data: actor } = await sb.from('users').select('id, role').eq('email', session.user!.email!).maybeSingle()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { data: att } = await sb
     .from('mission_remark_attachments')
-    .select('file_path')
+    .select('file_path, remark_id')
     .eq('id', params.attachmentId)
     .maybeSingle()
   if (!att) return NextResponse.json({ error: 'Pièce jointe introuvable' }, { status: 404 })
 
+  if (actor.role !== 'superadmin') {
+    const { data: parent } = await sb
+      .from('mission_remarks')
+      .select('created_by')
+      .eq('id', att.remark_id)
+      .maybeSingle()
+    if (!parent || parent.created_by !== actor.id) {
+      return NextResponse.json({
+        error: 'Suppression piece jointe : reservee a l auteur de la remarque (ou superadmin)',
+      }, { status: 403 })
+    }
+  }
+
   await sb.storage.from('mission-remarks').remove([att.file_path])
 
   const { error } = await sb.from('mission_remark_attachments').delete().eq('id', params.attachmentId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[remarks/attachments/delete]', error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

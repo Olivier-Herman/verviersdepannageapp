@@ -15,7 +15,7 @@ async function getActor() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
   const sb = createAdminClient()
-  const { data } = await sb.from('users').select('id, name, email').eq('email', session.user.email).maybeSingle()
+  const { data } = await sb.from('users').select('id, name, email, role').eq('email', session.user.email).maybeSingle()
   return data ?? null
 }
 
@@ -35,6 +35,14 @@ export async function PATCH(req: Request, { params }: { params: { remarkId: stri
     .eq('id', params.remarkId)
     .maybeSingle()
   if (getErr || !existing) return NextResponse.json({ error: 'Remarque introuvable' }, { status: 404 })
+
+  // Olivier 2026-06-03 (audit J-2 W9) : ownership. Seul l auteur peut
+  // editer sa propre remarque (sauf superadmin qui peut tout).
+  if (existing.created_by !== actor.id && actor.role !== 'superadmin') {
+    return NextResponse.json({
+      error: 'Seul l auteur de la remarque peut la modifier (ou un superadmin)',
+    }, { status: 403 })
+  }
 
   // Push l ancien texte dans edit_history
   const history: any[] = Array.isArray(existing.edit_history) ? existing.edit_history : []
@@ -64,6 +72,15 @@ export async function DELETE(_req: Request, { params }: { params: { remarkId: st
   const actor = await getActor()
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Olivier 2026-06-03 (audit J-2 W9) : seul superadmin peut supprimer
+  // une remarque (regle metier : auteur peut editer, superadmin peut
+  // supprimer pour cas exceptionnels). Audit trail preserved.
+  if (actor.role !== 'superadmin') {
+    return NextResponse.json({
+      error: 'Suppression remarque reservee aux superadmin',
+    }, { status: 403 })
+  }
+
   const sb = createAdminClient()
 
   // Suppr fichiers Storage d abord
@@ -78,6 +95,9 @@ export async function DELETE(_req: Request, { params }: { params: { remarkId: st
   }
 
   const { error } = await sb.from('mission_remarks').delete().eq('id', params.remarkId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[remarks/delete]', error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }
