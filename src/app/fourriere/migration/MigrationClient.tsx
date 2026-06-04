@@ -246,6 +246,39 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
     setScans(prev => prev.filter(s => s.id !== id))
   }
 
+  async function clearZone() {
+    if (!zone) return
+    // 1) Dry-run : combien de vehicules concernes ?
+    try {
+      const preview = await fetch('/api/admin/parc/clear-zone', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: zone, dry_run: true }),
+      })
+      const previewJ = await preview.json()
+      if (!preview.ok) { alert(`Erreur preview : ${previewJ.error || preview.status}`); return }
+      const n = previewJ.count || 0
+      if (n === 0) {
+        alert(`Aucun véhicule en BDD en zone ${zone}. Tu peux scanner directement.`)
+        return
+      }
+      if (!confirm(`🧹 RÉINITIALISER la zone ${zone} ?\n\n${n} véhicule${n > 1 ? 's' : ''} actuellement assigné${n > 1 ? 's' : ''} (héritage Odoo) → emplacement reset à NULL.\n\n⚠ DOCTRINE : on repart de zéro pour cette zone. VD Soft devient la vérité.\nSeuls les véhicules que tu vas scanner maintenant compteront pour la fourrière.\n\nLes véhicules non-retrouvés après ton scan restent en BDD mais SANS zone → ils n apparaissent plus dans le plan parc. Ils sont consultables via la recherche pour investigation ultérieure.`)) return
+
+      // 2) Vide reellement
+      const r = await fetch('/api/admin/parc/clear-zone', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: zone }),
+      })
+      const j = await r.json()
+      if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
+      alert(`✓ Zone ${zone} vidée — ${j.count || 0} véhicule(s) reset. Tu peux scanner.`)
+      loadStats()
+    } catch (e: any) {
+      alert(`Erreur réseau : ${e?.message || e}`)
+    }
+  }
+
   function endZone() {
     if (!confirm(`Terminer la zone ${zone} ? (${scans.length} scans enregistres - le worker creera les missions VD Soft en arriere-plan)`)) return
     const doneZone = zone
@@ -367,10 +400,17 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-bold">Zone {zone}</span>
               <span className="text-ink-muted text-xs">— {scans.length} scan{scans.length > 1 ? 's' : ''} en cours</span>
-              <button onClick={() => { if (confirm(`Changer de zone ? (${scans.length} scans seront perdus si tu ne termines pas la zone d'abord)`)) { setZone(null); setScans([]) } }}
-                className="ml-auto px-2 py-1 text-ink-muted hover:text-ink text-xs">
-                Changer zone
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <button onClick={clearZone}
+                  className="px-2 py-1 bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200 rounded text-xs font-semibold transition"
+                  title="Reset les véhicules en BDD assignés à cette zone (héritage Odoo). Tu repars de zéro pour la zone.">
+                  🧹 Vider la zone
+                </button>
+                <button onClick={() => { if (confirm(`Changer de zone ? (${scans.length} scans seront perdus si tu ne termines pas la zone d'abord)`)) { setZone(null); setScans([]) } }}
+                  className="px-2 py-1 text-ink-muted hover:text-ink text-xs">
+                  Changer zone
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
