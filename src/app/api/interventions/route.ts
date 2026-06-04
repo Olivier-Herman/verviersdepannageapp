@@ -556,8 +556,7 @@ async function sendAdminOrphanReceiptEmail(d: {
       <tbody>
         ${row('Plaque', d.plate)}
         ${row('Véhicule', [d.brandText, d.modelText].filter(Boolean).join(' '))}
-        ${row('Motif', d.motifText)}
-        ${row('Précision motif', d.motifPrecision)}
+        ${row("Motif d'intervention", [d.motifText, d.motifPrecision].filter(Boolean).join(' — ') || '— (non spécifié)')}
         ${row('Lieu intervention', d.locationAddress)}
       </tbody>
     </table>
