@@ -181,6 +181,10 @@ export default async function AdminPage() {
           desc="Variables système, intégrations, secrets." />
         <Card href="/admin/adoption" icon={Users} label="Adoption"
           desc="Qui utilise quoi : App native iOS/Android, PWA, ou Web. Stats + tableau croisé device_tokens + push_subscriptions + last_login." />
+        {user.role === 'superadmin' && (
+          <Card href="/admin/logs" icon={FileText} label="Logs serveur"
+            desc="Erreurs serveur applicatives (errors, warns, infos) avec filtres par route/niveau/période. Superadmin uniquement." />
+        )}
       </Group>
     </div>
   )
