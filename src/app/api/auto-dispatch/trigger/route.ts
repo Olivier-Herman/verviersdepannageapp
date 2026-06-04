@@ -21,7 +21,12 @@ export async function POST(req: Request) {
   const role   = (session.user as any).role || ''
   const modules = (session.user as any).modules || []
 
-  const allowed = ['admin', 'superadmin', 'dispatcher'].includes(role) || modules.includes('auto_dispatch')
+  // Olivier 2026-06-03 (audit J-2 W8) : retire 'dispatcher' de la liste
+  // allowed. Le composant client (AutoDispatchButton.tsx) check deja strict
+  // 'module auto_dispatch requis'. Le serveur etait laxiste et autorisait
+  // n importe quel dispatcher, creant une faille (bug remonte par Momo qui
+  // voyait le bouton sans avoir le module).
+  const allowed = ['admin', 'superadmin'].includes(role) || modules.includes('auto_dispatch')
   if (!allowed) return NextResponse.json({ error: 'Permission auto_dispatch requise' }, { status: 403 })
 
   const body = await req.json() as { mission_id?: string }
