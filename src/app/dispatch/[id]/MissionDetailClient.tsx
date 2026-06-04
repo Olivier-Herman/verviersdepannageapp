@@ -1483,32 +1483,71 @@ export default function MissionDetailClient({
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
   // Olivier 2026-06-04 : changement de source.
-  // - police_snc (SIABIS NON couvert) : l assistance ne paye pas -> RETIRER
-  //   billed_to + client (l operateur re-saisit la police/le client final).
-  // - sia_couvert (SIABIS COUVERT) : l assistance paye -> CONSERVER billed_to
-  //   (le partner Odoo IMA/Kaze reste la contrepartie).
-  // Autres sources : ne touche pas (cas standard de switch entre 2 sources).
+  // - police_snc (SIABIS NON couvert) : l assistance ne paye pas -> on
+  //   MEMORISE les valeurs client + billed_to actuelles puis on les RETIRE.
+  // - Si on REPASSE depuis police_snc vers autre chose : RESTAURE les
+  //   valeurs memorisees (l operateur n a pas a re-saisir si erreur).
+  // - sia_couvert (SIABIS COUVERT) : l assistance paye -> conserve.
+  const [stashedClientInfo, setStashedClientInfo] = useState<{
+    client_name:    string
+    client_phone:   string
+    client_address: string
+    billed_to_name: string
+    billed_to_id:   number | null
+  } | null>(null)
+
   const handleSourceChange = (newSource: string) => {
-    setForm(prev => {
-      const isNowSnc = newSource === 'police_snc'
-      const wasSnc   = prev.source === 'police_snc'
-      if (isNowSnc && !wasSnc) {
-        return {
-          ...prev,
-          source:         newSource,
-          client_name:    '',
-          client_phone:   '',
-          client_address: '',
-          billed_to_name: '',
-        }
-      }
-      return { ...prev, source: newSource }
-    })
-    // Reset state separe billedPartnerId + push BDD si bascule vers SNC seul.
-    if (newSource === 'police_snc' && form.source !== 'police_snc') {
+    const oldSource = form.source
+    const goingToSnc   = newSource === 'police_snc'
+    const leavingSnc   = oldSource === 'police_snc' && newSource !== 'police_snc'
+
+    // Cas 1 : on entre dans police_snc -> stash + reset
+    if (goingToSnc && oldSource !== 'police_snc') {
+      // Memoriser l etat client actuel (avant reset) pour pouvoir restaurer
+      setStashedClientInfo({
+        client_name:    form.client_name || '',
+        client_phone:   form.client_phone || '',
+        client_address: form.client_address || '',
+        billed_to_name: form.billed_to_name || '',
+        billed_to_id:   billedPartnerId,
+      })
+      setForm(prev => ({
+        ...prev,
+        source:         newSource,
+        client_name:    '',
+        client_phone:   '',
+        client_address: '',
+        billed_to_name: '',
+      }))
       setBilledPartnerId(null)
       silentPatch({ billed_to_id: null, billed_to_name: null, client_name: null, client_phone: null, client_address: null })
+      return
     }
+
+    // Cas 2 : on QUITTE police_snc et on a un stash -> restaure
+    if (leavingSnc && stashedClientInfo) {
+      setForm(prev => ({
+        ...prev,
+        source:         newSource,
+        client_name:    stashedClientInfo.client_name,
+        client_phone:   stashedClientInfo.client_phone,
+        client_address: stashedClientInfo.client_address,
+        billed_to_name: stashedClientInfo.billed_to_name,
+      }))
+      setBilledPartnerId(stashedClientInfo.billed_to_id)
+      silentPatch({
+        billed_to_id:   stashedClientInfo.billed_to_id,
+        billed_to_name: stashedClientInfo.billed_to_name || null,
+        client_name:    stashedClientInfo.client_name || null,
+        client_phone:   stashedClientInfo.client_phone || null,
+        client_address: stashedClientInfo.client_address || null,
+      })
+      setStashedClientInfo(null)
+      return
+    }
+
+    // Cas 3 : changement standard, on garde tout
+    setForm(prev => ({ ...prev, source: newSource }))
   }
 
   // Détecter lien IMA dans raw_content
