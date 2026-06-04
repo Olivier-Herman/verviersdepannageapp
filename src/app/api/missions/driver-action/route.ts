@@ -5,6 +5,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { rpcFsm, getFsmStageId, FLEET_STATES, updateVehicleState, FSM_FIELDS, attachPhotosToFsmTask } from '@/lib/odoo-fsm'
 import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 
@@ -471,8 +472,10 @@ export async function POST(req: Request) {
   // Sync Odoo des modifs métier (best effort, non bloquant)
   // Les actions chauffeur qui changent des données réutilisées dans Odoo
   // (adresses, stops, véhicule) doivent se propager au helpdesk + task FSM.
+  // Olivier 2026-06-04 : wrap dans withOdooActor pour utiliser la cle API
+  // personnelle du chauffeur (tracabilite Odoo).
   if (['update_address', 'update_stops', 'change_type'].includes(action)) {
-    updateOdooDossierForMission(mission_id).catch(e => {
+    withOdooActor(actor.id, () => updateOdooDossierForMission(mission_id)).catch(e => {
       console.error('[Odoo sync] driver-action échoué:', e.message)
     })
   }

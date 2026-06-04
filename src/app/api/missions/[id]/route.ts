@@ -6,6 +6,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToUser }    from '@/lib/push'
 import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 
@@ -183,8 +184,13 @@ export async function PATCH(
 
   // Sync vers Odoo (helpdesk + task) : pousse les modifs dispatcher.
   // No-op si pas encore de dossier Odoo créé. Best effort, non bloquant.
+  // Olivier 2026-06-04 : wrap dans withOdooActor pour que le sync utilise
+  // la cle API personnelle du user (tracabilite Odoo) au lieu de tomber
+  // sur le fallback VD App. Le contexte AsyncLocalStorage est propage aux
+  // promises non-awaited par construction.
   if (body._notify_driver) {
-    updateOdooDossierForMission(params.id).catch(e => {
+    const actorId = (session.user as any)?.id as string | undefined
+    withOdooActor(actorId, () => updateOdooDossierForMission(params.id)).catch(e => {
       console.error('[Mission PATCH] Sync Odoo échoué:', e.message)
     })
   }
