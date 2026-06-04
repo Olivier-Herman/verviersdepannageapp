@@ -1,0 +1,292 @@
+// src/lib/towsoft-client.ts
+//
+// Olivier 2026-06-04 : client TowSoft pour la migration. Remplace
+// lib/towsoft-scrape.ts dont le login etait FAUX (POST /auth/login avec
+// nomusager/passusager -> NE MARCHE PAS, redirige systematiquement vers
+// login.php non authentifie).
+//
+// LE BON LOGIN (verifie en live par Olivier) :
+//   1. GET  /login.php          -> pose un cookie PHPSESSID initial
+//   2. POST /_try-login.php     -> body: usager=...&motdepasse=...&mobile=0&fromApp=false
+//                                  -> JSON {"login_status":"1"} (1 = succes)
+//                                  -> pose un 2e cookie `theuser=VDBot`
+//   3. Garder les 2 cookies (PHPSESSID + theuser) pour les requetes suivantes.
+//
+// Endpoints utilises :
+//   - allImpoundListCallServerSide : 1 appel = 733 fiches (toutes parcs / types)
+//   - appel.php?num=X : fiche detaillee HTML
+//   - origineFormView / destinationFormView / _appel-charges2.php / client-add-modif.php
+//     : details (5 endpoints) — voir lib/towsoft-detail.ts (Phase 2)
+
+const TOWSOFT_URL  = process.env.TOWSOFT_URL  || 'https://verviers.towsoft.ca'
+const TOWSOFT_USER = process.env.TOWSOFT_USER || 'VDBot'
+const TOWSOFT_PASS = process.env.TOWSOFT_PASS
+
+// Cache cookie session (1 par process, ~1h TTL cote TowSoft)
+let cachedCookie: string | null = null
+let cookieFetchedAt = 0
+const COOKIE_TTL_MS = 50 * 60 * 1000  // 50 min
+
+/**
+ * Login TowSoft via _try-login.php (le bon endpoint).
+ * Retourne le header Cookie complet a utiliser dans les requetes suivantes.
+ */
+async function loginTowsoft(): Promise<string> {
+  if (!TOWSOFT_PASS) throw new Error('TOWSOFT_PASS manquant en env vars')
+
+  const jar = new Map<string, string>()
+
+  // Etape 1 : GET / pour obtenir PHPSESSID initial
+  const init = await fetch(`${TOWSOFT_URL}/login.php`, { redirect: 'manual' })
+  for (const c of (init.headers as any).getSetCookie?.() || []) {
+    const [k, v] = c.split(';')[0].split('=')
+    if (k && v) jar.set(k, v)
+  }
+
+  // Etape 2 : POST /_try-login.php avec ce cookie
+  const auth = await fetch(`${TOWSOFT_URL}/_try-login.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':     'application/x-www-form-urlencoded',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Cookie':           [...jar].map(([k, v]) => `${k}=${v}`).join('; '),
+    },
+    body: new URLSearchParams({
+      usager:     TOWSOFT_USER,
+      motdepasse: TOWSOFT_PASS,
+      mobile:     '0',
+      fromApp:    'false',
+    }).toString(),
+    redirect: 'manual',
+  })
+
+  for (const c of (auth.headers as any).getSetCookie?.() || []) {
+    const [k, v] = c.split(';')[0].split('=')
+    if (k && v) jar.set(k, v)
+  }
+
+  // Verifier que login a reussi (JSON {"login_status":"1"})
+  try {
+    const body = await auth.json()
+    if (body?.login_status !== '1' && body?.login_status !== 1) {
+      throw new Error(`Login TowSoft echec : ${JSON.stringify(body)}`)
+    }
+  } catch (e: any) {
+    // Si la reponse n est pas JSON, on continue : certains endpoints renvoient HTML
+    if (!auth.ok) throw new Error(`Login TowSoft HTTP ${auth.status}`)
+  }
+
+  if (!jar.has('theuser')) {
+    throw new Error('Login TowSoft : cookie "theuser" absent (auth incomplete)')
+  }
+
+  const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ')
+  return cookie
+}
+
+/**
+ * Retourne le cookie de session (login si manquant ou expire).
+ * Force re-login si forceReload=true.
+ */
+export async function getTowsoftCookie(forceReload = false): Promise<string> {
+  const age = Date.now() - cookieFetchedAt
+  if (!forceReload && cachedCookie && age < COOKIE_TTL_MS) {
+    return cachedCookie
+  }
+  cachedCookie     = await loginTowsoft()
+  cookieFetchedAt  = Date.now()
+  return cachedCookie
+}
+
+/**
+ * Fetch authentifie. Retry une fois si 302 -> /login (session expiree).
+ */
+export async function towsoftFetch(path: string, opts: RequestInit = {}): Promise<Response> {
+  let cookie = await getTowsoftCookie()
+  let res = await fetch(`${TOWSOFT_URL}${path}`, {
+    ...opts,
+    headers: {
+      ...(opts.headers || {}),
+      Cookie: cookie,
+    },
+    redirect: 'manual',
+  })
+
+  // Si redirige vers /login = session expiree
+  const loc = res.headers.get('location') || ''
+  if (res.status === 302 && /login/i.test(loc)) {
+    cookie = await getTowsoftCookie(true)
+    res = await fetch(`${TOWSOFT_URL}${path}`, {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        Cookie: cookie,
+      },
+      redirect: 'manual',
+    })
+  }
+  return res
+}
+
+// ───────────────────────────────────────────────────────────────────
+// LISTE DES 733 FICHES (1 seul appel) ⭐
+// ───────────────────────────────────────────────────────────────────
+
+export interface TowsoftListRow {
+  towsoft_num:   string         // n° fiche (col0)
+  base:          string         // ex Pepinster (col1)
+  parc_towsoft:  string         // zone/depot TowSoft (col2)
+  client_name:   string         // proprietaire/donneur (col4)
+  vehicle_raw:   string         // vehicule+plaque+VIN aggreges (col5)
+  motif:         string         // Accident, Saisie, ... (col6)
+  date_entree:   string         // (col10)
+  appel_type:    string         // "Appel Police - Accident", ... (col17)
+  raw:           any[]          // ligne aaData entiere
+}
+
+/**
+ * Fetch les 733 fiches TowSoft en UN SEUL appel via DataTables serverside.
+ * Retourne la liste brute (a parser ensuite avec parseListRow).
+ */
+export async function fetchAllImpoundList(limit = 2000): Promise<{
+  total:   number
+  rows:    TowsoftListRow[]
+  raw:     any
+}> {
+  // DataTables params (pour avoir TOUT en 1 appel)
+  const body = new URLSearchParams()
+  body.set('draw', '1')
+  body.set('start', '0')
+  body.set('length', String(limit))
+  body.set('search[value]', '')
+  body.set('order[0][column]', '0')
+  body.set('order[0][dir]', 'asc')
+  // Colonnes minimales requises par DataTables (sinon erreur)
+  for (let i = 0; i < 20; i++) {
+    body.set(`columns[${i}][data]`, String(i))
+    body.set(`columns[${i}][searchable]`, 'true')
+    body.set(`columns[${i}][orderable]`, 'true')
+  }
+
+  const res = await towsoftFetch('/Src/router.php?controller=Impound/Impound/allImpoundListCallServerSide', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: body.toString(),
+  })
+
+  if (!res.ok) {
+    throw new Error(`fetchAllImpoundList HTTP ${res.status}`)
+  }
+
+  const data = await res.json()
+  const aaData = Array.isArray(data?.aaData) ? data.aaData : []
+  const total  = parseInt(data?.iTotalRecords || aaData.length, 10)
+
+  const rows: TowsoftListRow[] = []
+  for (const r of aaData) {
+    const parsed = parseListRow(r)
+    if (parsed) rows.push(parsed)
+  }
+
+  return { total, rows, raw: data }
+}
+
+/**
+ * Parse une ligne aaData de allImpoundListCallServerSide vers un objet
+ * structure. col0 contient un <a href="appel.php?num=XXXXX">XXXXX</a>,
+ * col5 le vehicule agrege, etc. Tolerant aux variations TowSoft.
+ */
+function parseListRow(r: any[]): TowsoftListRow | null {
+  if (!Array.isArray(r) || r.length === 0) return null
+  const col0 = String(r[0] || '')
+  const numMatch = col0.match(/appel\.php\?num=(\d+)/i)
+  if (!numMatch) return null
+  return {
+    towsoft_num:  numMatch[1],
+    base:         stripHtml(r[1] || ''),
+    parc_towsoft: stripHtml(r[2] || ''),
+    client_name:  stripHtml(r[4] || ''),
+    vehicle_raw:  stripHtml(r[5] || ''),
+    motif:        stripHtml(r[6] || ''),
+    date_entree:  stripHtml(r[10] || ''),
+    appel_type:   stripHtml(r[17] || ''),
+    raw:          r,
+  }
+}
+
+function stripHtml(s: any): string {
+  if (s == null) return ''
+  return String(s).replace(/<[^>]+>/g, '').trim()
+}
+
+/**
+ * Helpers d extraction plaque + VIN depuis col5 (souvent format
+ * "Marque Modele - PLAQUE - VINxxx" ou variations).
+ */
+export function extractPlateAndVin(vehicleRaw: string): { plate: string | null; vin: string | null; brand: string | null; model: string | null } {
+  if (!vehicleRaw) return { plate: null, vin: null, brand: null, model: null }
+  const s = vehicleRaw.trim()
+  // Format typique TowSoft : "Marque/Modele/PLAQUE/VIN" ou "Marque Modele PLAQUE"
+  // VIN = 17 chars alphanumeriques (sauf I O Q)
+  const vinMatch = s.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)
+  const vin = vinMatch ? vinMatch[1].toUpperCase() : null
+  // Plaque BE : commence par chiffre, puis lettres + chiffres (ex 1ABC234 ou 2-ABC-456)
+  const plateMatch = s.match(/\b([0-9][A-Z]{2,3}[-. ]?[0-9]{2,3})\b/i)
+  const plate = plateMatch ? plateMatch[1].replace(/[-. ]/g, '').toUpperCase() : null
+  // Marque / modele : tout le reste (best-effort)
+  let rest = s
+  if (vin)   rest = rest.replace(vin, '')
+  if (plate) rest = rest.replace(new RegExp(plateMatch![1], 'i'), '')
+  const parts = rest.split(/[\s/,;-]+/).filter(Boolean)
+  const brand = parts[0] || null
+  const model = parts.slice(1).join(' ') || null
+  return { plate, vin, brand, model }
+}
+
+/**
+ * Parse la date TowSoft (formats varies : DD-MM-YYYY HH:MM, YYYY-MM-DD HH:MM:SS,
+ * etc.) en ISO UTC en assumant timezone Europe/Brussels.
+ */
+export function parseTowsoftDateUTC(s: string | null | undefined): string | null {
+  if (!s) return null
+  const trimmed = s.trim()
+  // YYYY-MM-DD HH:MM(:SS)?
+  let m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (m) {
+    const local = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  // DD-MM-YYYY HH:MM(:SS)?
+  m = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (m) {
+    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  // DD/MM/YYYY HH:MM
+  m = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/)
+  if (m) {
+    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  // Date seule -> midi
+  m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) {
+    const local = new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  m = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+  if (m) {
+    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00`)
+    return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
+  }
+  return null
+}
+
+function brusselsOffsetMs(d: Date): number {
+  const localeStr = d.toLocaleString('en-US', { timeZone: 'Europe/Brussels' })
+  const utcStr    = d.toLocaleString('en-US', { timeZone: 'UTC' })
+  return (new Date(localeStr).getTime() - new Date(utcStr).getTime())
+}
