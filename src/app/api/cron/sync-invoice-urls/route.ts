@@ -15,7 +15,12 @@ import { resolveInvoiceByNumber }  from '@/lib/odoo-invoice'
 
 const BATCH_SIZE = 50
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Olivier 2026-06-03 (audit J-2 W2 KO) : auth Bearer CRON_SECRET.
+  const auth = req.headers.get('authorization')
+  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const sb = createAdminClient()
 
   const { data: rows, error } = await sb

@@ -23,7 +23,12 @@ import { sendPushToRole }    from '@/lib/push'
 const STALE_THRESHOLD_MS = 5 * 60 * 1000         // 5 min
 const ALERT_THRESHOLD    = 3                       // > 3 nettoyés en 1 passe → push admin
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Olivier 2026-06-03 (audit J-2 W2 KO) : auth Bearer CRON_SECRET.
+  const auth = req.headers.get('authorization')
+  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const supabase = createAdminClient()
   const cutoff   = new Date(Date.now() - STALE_THRESHOLD_MS).toISOString()
 
