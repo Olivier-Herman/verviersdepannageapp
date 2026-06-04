@@ -255,7 +255,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       const preview = await fetch('/api/admin/parc/clear-zone', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ zone_key: zone, dry_run: true }),
+        body:    JSON.stringify({ zone_key: zone, dry_run: true, preserve_recent_scans: false }),
       })
       const previewJ = await preview.json()
       if (!preview.ok) { alert(`Erreur preview : ${previewJ.error || preview.status}`); return }
@@ -271,11 +271,11 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       }
       if (!confirm(`🧹 Vider la zone ${zone} (smart) ?\n\n${preserved > 0 ? `✓ ${preserved} véhicule${preserved > 1 ? 's' : ''} scanné${preserved > 1 ? 's' : ''} récemment (préservé${preserved > 1 ? 's' : ''})\n` : ''}🗑 ${n} véhicule${n > 1 ? 's' : ''} hérité${n > 1 ? 's' : ''} d Odoo (NON scanné${n > 1 ? 's' : ''}) → vidé${n > 1 ? 's' : ''}\n\nResultat : la zone ${zone} contiendra uniquement les ${preserved + 0} véhicules réellement scannés par toi.\n\nLes ${n} vidés restent en BDD mais sans zone → consultables via /recherche.`)) return
 
-      // 2) Vide reellement
+      // 2) Vide reellement (mode brutal : on vire TOUT, Olivier re-scannera)
       const r = await fetch('/api/admin/parc/clear-zone', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ zone_key: zone }),
+        body:    JSON.stringify({ zone_key: zone, preserve_recent_scans: false }),
       })
       const j = await r.json()
       if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
