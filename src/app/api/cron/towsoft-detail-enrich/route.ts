@@ -40,25 +40,37 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, processed: 0, message: 'Queue enrich vide (tout pre-enrichi)' })
   }
 
-  let enriched = 0
-  let failed   = 0
-  let idx      = 0
+  let enriched      = 0
+  let failed        = 0
+  let updateGhosts  = 0  // UPDATE qui ne lève pas mais n'écrit rien (diagnostic)
+  let idx           = 0
 
   async function worker() {
     while (idx < rows!.length) {
       const row = rows![idx++]
       try {
         const detail = await fetchTowsoftDetail(row.towsoft_num)
-        await sb
+        const nowIso = new Date().toISOString()
+        const { data: upData, error: upErr } = await sb
           .from('towsoft_migration_source')
           .update({
             detail_payload:    detail,
-            detail_fetched_at: new Date().toISOString(),
+            detail_fetched_at: nowIso,
             detail_error:      null,
-            updated_at:        new Date().toISOString(),
+            updated_at:        nowIso,
           })
           .eq('id', row.id)
-        enriched++
+          .select('id, detail_fetched_at')
+        if (upErr) {
+          throw new Error(`UPDATE KO : ${upErr.message}`)
+        }
+        if (!upData || upData.length === 0) {
+          // Pas d erreur mais 0 rows touchees -> diagnostic du bug fantome
+          updateGhosts++
+          console.error(`[cron/towsoft-detail-enrich] GHOST UPDATE id=${row.id} num=${row.towsoft_num} - 0 rows affected`)
+        } else {
+          enriched++
+        }
       } catch (e: any) {
         await sb
           .from('towsoft_migration_source')

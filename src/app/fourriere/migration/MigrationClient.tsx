@@ -76,22 +76,59 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
     if (zone && inputRef.current) inputRef.current.focus()
   }, [zone, scans.length])
 
-  async function runEnrichNow() {
-    if (!confirm('Forcer un run d enrichissement TowSoft maintenant (15 fiches max) ?\n\nUtile si le cron ne progresse pas.')) return
+  const [enrichProgress, setEnrichProgress] = useState<string | null>(null)
+
+  async function runEnrichNow(loopUntilDone = false) {
+    const msg = loopUntilDone
+      ? `Lancer le rattrapage en boucle (jusqu a ce que toutes les fiches soient enrichies) ?\n\nCa peut prendre plusieurs minutes. Tu peux fermer cet onglet, le serveur continue. Re-clique le bouton pour reprendre si interrompu.`
+      : 'Forcer un run d enrichissement TowSoft maintenant (15 fiches max) ?\n\nUtile si le cron ne progresse pas.'
+    if (!confirm(msg)) return
     setEnrichLoading(true)
+    setEnrichProgress(loopUntilDone ? 'Demarrage…' : null)
+
+    let totalEnriched = 0
+    let totalFailed   = 0
+    let runs = 0
+    const allErrors: Array<{ towsoft_num: string; error: string }> = []
+
     try {
-      const r = await fetch('/api/admin/towsoft-migration/run-enrich-now', { method: 'POST' })
-      const j = await r.json()
-      if (!r.ok) { alert(`Erreur : ${j.error || 'inconnue'}`); return }
-      const samples = j.error_samples && j.error_samples.length > 0
-        ? `\n\nExemples erreurs :\n${j.error_samples.map((s: any) => `· ${s.towsoft_num} : ${s.error}`).join('\n')}`
+      do {
+        runs++
+        const r = await fetch('/api/admin/towsoft-migration/run-enrich-now', { method: 'POST' })
+        const j = await r.json()
+        if (!r.ok) {
+          alert(`Erreur run ${runs} : ${j.error || 'inconnue'}`)
+          return
+        }
+        totalEnriched += j.enriched || 0
+        totalFailed   += j.failed   || 0
+        if (j.error_samples) allErrors.push(...j.error_samples)
+
+        if (loopUntilDone) {
+          setEnrichProgress(`Run ${runs} : +${j.enriched} enrichies, ${j.remaining} restantes`)
+        }
+
+        if (!loopUntilDone) break
+        if ((j.remaining || 0) === 0) break
+        if ((j.enriched || 0) === 0 && (j.failed || 0) > 0) {
+          // Toutes en echec ce run -> arrete (probleme structurel)
+          alert(`Arret : run ${runs} a fait ${j.failed} echec(s) sur 15.\nVoir error_samples ci-dessous.`)
+          break
+        }
+        // Petite pause anti-rate-limit
+        await new Promise(r => setTimeout(r, 1500))
+      } while (loopUntilDone && runs < 60)  // hard cap 60 runs
+
+      const samples = allErrors.length > 0
+        ? `\n\nExemples erreurs :\n${allErrors.slice(0, 5).map(s => `· ${s.towsoft_num} : ${s.error}`).join('\n')}`
         : ''
-      alert(`✓ ${j.enriched} fiches enrichies, ${j.failed} en echec\n${j.remaining} restantes${samples}`)
+      alert(`✓ Termine en ${runs} run(s)\n${totalEnriched} fiches enrichies, ${totalFailed} en echec${samples}`)
       loadStats()
     } catch (e: any) {
       alert(`Erreur reseau : ${e?.message || e}`)
     } finally {
       setEnrichLoading(false)
+      setEnrichProgress(null)
     }
   }
 
@@ -271,10 +308,16 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
                   {initLoading ? '⏳' : '↻ Refresh la liste TowSoft'}
                 </button>
                 {stats.enriched < stats.total && (
-                  <button onClick={runEnrichNow} disabled={enrichLoading}
-                    className="px-2 py-1 bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200 rounded font-semibold disabled:opacity-50">
-                    {enrichLoading ? '⏳ Enrichissement...' : `⚡ Forcer enrichissement (${stats.total - stats.enriched} restantes)`}
-                  </button>
+                  <>
+                    <button onClick={() => runEnrichNow(false)} disabled={enrichLoading}
+                      className="px-2 py-1 bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200 rounded font-semibold disabled:opacity-50">
+                      {enrichLoading ? '⏳' : `⚡ +15`}
+                    </button>
+                    <button onClick={() => runEnrichNow(true)} disabled={enrichLoading}
+                      className="px-2 py-1 bg-info-50 hover:bg-info-100 text-info-800 border border-info-200 rounded font-semibold disabled:opacity-50">
+                      {enrichLoading ? (enrichProgress || '⏳ Boucle...') : `⚡⚡ Rattraper tout (${stats.total - stats.enriched})`}
+                    </button>
+                  </>
                 )}
               </div>
             )}
