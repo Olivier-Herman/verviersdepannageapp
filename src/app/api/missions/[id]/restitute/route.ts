@@ -281,7 +281,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     try {
       // Olivier 2026-06-04 : wrap dans withOdooActor pour tracabilite cle perso
       const result = await withOdooActor(user?.id, () => createSaleOrder({
-        partner_id:       body.partner_id,
+        partner_id:       body.partner_id as number,
         origin:           ref,
         client_order_ref: mission.dossier_number || mission.external_id || undefined,
         sections: [{
