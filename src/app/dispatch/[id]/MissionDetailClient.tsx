@@ -1482,6 +1482,15 @@ export default function MissionDetailClient({
 
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
+  // Olivier 2026-06-04 : helper pour les champs numeriques (HTVA, montants).
+  // Convertit la virgule en point au moment de la saisie pour que Number()
+  // fonctionne (en BE on tape '490,50' alors que JS attend '490.50').
+  // A utiliser pour special_tarif_htva, amount_to_collect, amount_guaranteed.
+  const fNum = (k: keyof typeof form) => (v: string) => {
+    const normalized = v.replace(',', '.')
+    setForm(prev => ({ ...prev, [k]: normalized }))
+  }
+
   // Olivier 2026-06-04 : auto-patch silencieux pour special_tarif_htva
   // afin que l estimation tarif se mette a jour live + que la valeur
   // soit persistee meme sans cliquer "Enregistrer" (bug rapporte :
@@ -2666,10 +2675,10 @@ export default function MissionDetailClient({
                 </h2>
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Montant garanti (EUR HTVA)">
-                    <Input value={form.amount_guaranteed} onChange={f('amount_guaranteed')} placeholder="0.00" />
+                    <Input value={form.amount_guaranteed} onChange={fNum('amount_guaranteed')} placeholder="0.00" />
                   </Field>
                   <Field label="Paiement à réclamer au client (€)">
-                    <Input value={form.amount_to_collect} onChange={f('amount_to_collect')} placeholder="0.00" />
+                    <Input value={form.amount_to_collect} onChange={fNum('amount_to_collect')} placeholder="0.00" />
                   </Field>
                 </div>
 
@@ -2691,7 +2700,7 @@ export default function MissionDetailClient({
                   }>
                     <Input
                       value={form.special_tarif_htva}
-                      onChange={f('special_tarif_htva')}
+                      onChange={fNum('special_tarif_htva')}
                       placeholder="Ex: 250.00"
                     />
                   </Field>
