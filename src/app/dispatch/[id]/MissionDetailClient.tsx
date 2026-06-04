@@ -1146,6 +1146,8 @@ export default function MissionDetailClient({
   const [parcRow,        setParcRow]          = useState<number | null>(initialMission.parc_row_number ?? null)
   const [parcSlot,       setParcSlot]         = useState<number | null>(initialMission.parc_slot_index ?? null)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [policeBlocked,  setPoliceBlocked]    = useState<boolean>(Boolean(initialMission.police_blocked))
+  const [togglingPoliceBlock, setTogglingPoliceBlock] = useState(false)
   const [odooTicketUrl,  setOdooTicketUrl]    = useState<string | null>(initialMission.odoo_ticket_url || null)
   const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(initialMission.odoo_task_url || null)
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
@@ -1982,16 +1984,68 @@ export default function MissionDetailClient({
           />
         )}
 
-        {/* Bandeau "Bloquee par la police" — visible des la creation pour AVP
-            (et toute mission avec police_blocked=true). Olivier 2026-05-26. */}
-        {initialMission.police_blocked && (
+        {/* Bandeau "Bloquee par la police" — visible si police_blocked=true
+            (ou si mal_garee et module fourriere, pour pouvoir ajouter la coche
+            apres-coup quand la demande police arrive en differé).
+            Olivier 2026-05-26, etendu 2026-06-04. */}
+        {(policeBlocked || (initialMission.source === 'police_mg' && userModules.includes('fourriere'))) && (
           <div className="px-4 lg:px-8 pt-4">
-            <div className="bg-amber-50 border-2 border-amber-500 rounded-xl p-4 flex items-start gap-3">
+            <div className={`border-2 rounded-xl p-4 flex items-start gap-3 ${
+              policeBlocked
+                ? 'bg-amber-50 border-amber-500'
+                : 'bg-surface-2 border-dashed border-ink-muted/40'
+            }`}>
               <span className="text-2xl">🚓</span>
-              <div>
-                <p className="text-amber-700 text-sm font-bold uppercase tracking-wide">Bloquée par la police</p>
-                <p className="text-amber-900 text-xs mt-1">Le propriétaire doit être passé au commissariat avant la restitution. Vérification obligatoire à la sortie.</p>
+              <div className="flex-1 min-w-0">
+                {policeBlocked ? (
+                  <>
+                    <p className="text-amber-700 text-sm font-bold uppercase tracking-wide">Bloquée par la police</p>
+                    <p className="text-amber-900 text-xs mt-1">Le propriétaire doit être passé au commissariat avant la restitution. Vérification obligatoire à la sortie.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-ink-secondary text-sm font-bold uppercase tracking-wide">Pas de blocage police</p>
+                    <p className="text-ink-muted text-xs mt-1">Si la police demande un blocage après coup (proprio doit passer commissariat), tu peux l ajouter ici.</p>
+                  </>
+                )}
               </div>
+              {(userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
+                <button
+                  disabled={togglingPoliceBlock}
+                  onClick={async () => {
+                    const willBlock = !policeBlocked
+                    const reason = willBlock
+                      ? prompt('Motif du blocage (optionnel, sera loggé) :')
+                      : prompt('Motif de levée du blocage (optionnel, sera loggé) :')
+                    if (reason === null) return  // cancel
+                    if (!willBlock && !confirm('Confirmer la levée du blocage police ? Le véhicule pourra être restitué sans vérification commissariat.')) return
+                    setTogglingPoliceBlock(true)
+                    try {
+                      const r = await fetch(`/api/missions/${initialMission.id}/toggle-police-blocked`, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify({ blocked: willBlock, reason: reason.trim() || undefined }),
+                      })
+                      const j = await r.json()
+                      if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
+                      setPoliceBlocked(willBlock)
+                    } catch (e: any) {
+                      alert(`Erreur réseau : ${e?.message || e}`)
+                    } finally {
+                      setTogglingPoliceBlock(false)
+                    }
+                  }}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition flex-shrink-0 disabled:opacity-50 ${
+                    policeBlocked
+                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300'
+                      : 'bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200'
+                  }`}
+                >
+                  {togglingPoliceBlock
+                    ? '⏳'
+                    : policeBlocked ? 'Retirer le blocage' : '🚓 Ajouter le blocage'}
+                </button>
+              )}
             </div>
           </div>
         )}
