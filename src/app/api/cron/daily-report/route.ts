@@ -249,7 +249,10 @@ export async function GET(req: NextRequest) {
     const FROM_EMAIL = 'administration@verviersdepannage.com'
     const TO_EMAIL = 'encaissement@verviers-depannage.odoo.com'
 
-    await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
+    // Olivier 2026-06-03 (audit J-2 W7) : check res.ok pour ne PAS marquer
+    // 'envoye' si Graph a refuse l email (429/401/500). Sinon perte rapport
+    // comptable silencieuse (le prochain run skip ces interventions).
+    const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -264,10 +267,18 @@ export async function GET(req: NextRequest) {
         saveToSentItems: true,
       })
     })
+    if (!sendRes.ok) {
+      const body = await sendRes.text().catch(() => '')
+      const errMsg = `Graph sendMail rapport KO ${sendRes.status} : ${body.slice(0, 300)}`
+      console.error(`[Cron] ${errMsg}`)
+      // On NE marque PAS last_daily_report_sent_at -> le prochain run reprend
+      // les memes interventions et retentera l envoi.
+      throw new Error(errMsg)
+    }
 
     console.log(`[Cron] Rapport envoyé — ${interventions.length} interventions — ${formatEur(totalAmount)}`)
 
-    // Mettre à jour la date du dernier envoi
+    // Mettre à jour la date du dernier envoi UNIQUEMENT si l email est parti
     await supabase.from('app_settings').upsert({
       key: 'last_daily_report_sent_at',
       value: new Date().toISOString(),
@@ -381,7 +392,10 @@ async function checkDocumentExpiry(graphToken: string): Promise<void> {
     if (driverEmail) recipients.push(driverEmail)
 
     try {
-      await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
+      // Olivier 2026-06-03 (audit J-2 W7) : check res.ok pour ne pas
+      // marquer alert_X_sent=true si Graph KO (sinon plus jamais d alerte
+      // pour ce doc).
+      const alertRes = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${graphToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -393,8 +407,13 @@ async function checkDocumentExpiry(graphToken: string): Promise<void> {
           saveToSentItems: true,
         }),
       })
+      if (!alertRes.ok) {
+        const body = await alertRes.text().catch(() => '')
+        console.error(`[Cron] Alerte doc ${doc.id} : Graph sendMail KO ${alertRes.status} : ${body.slice(0, 200)}`)
+        continue  // skip ce doc, prochain run retentera
+      }
 
-      // Marquer l'alerte comme envoyée
+      // Marquer l'alerte comme envoyée UNIQUEMENT si l email est parti
       await supabase
         .from('driver_documents')
         .update({ [alertField]: true })
