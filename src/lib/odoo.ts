@@ -105,7 +105,11 @@ export async function odooRpcAs<T = any>(actorUserId: string | null | undefined,
 
 async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}, credsOverride?: OdooCreds): Promise<T> {
   const creds = credsOverride || await resolveOdooCreds(currentActor())
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
+  // Olivier 2026-06-03 (audit J-2 W6) : timeout + retry. Avant un Odoo
+  // lent bloquait la Vercel function jusqu au timeout 5 min. Retry sur
+  // 429/5xx transients (Odoo restart, surcharge ponctuelle).
+  const { fetchWithRetry } = await import('@/lib/fetch-with-retry')
+  const res = await fetchWithRetry(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -117,7 +121,10 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
         method: 'execute_kw',
         args: [ODOO_DB, creds.uid, creds.apiKey, model, method, args, kwargs]
       }
-    })
+    }),
+    timeoutMs:   20000,
+    maxAttempts: 3,
+    logPrefix:   `[Odoo ${model}.${method}]`,
   })
   const data = await res.json()
   if (data.error) throw new Error(`Odoo RPC [${model}.${method}]: ${JSON.stringify(data.error)}`)
