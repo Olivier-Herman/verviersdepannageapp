@@ -25,6 +25,7 @@ import { createAdminClient }       from '@/lib/supabase'
 import { releaseParcAndShift }     from '@/lib/parc/release'
 import { createSaleOrder, type QuoteLine } from '@/lib/odoo-quote'
 import { withOdooActor }            from '@/lib/odoo'
+import { buildOverrideLines }       from '@/lib/missions/build-quote-lines'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -143,7 +144,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       parc_zone_key, parc_row_number, parc_slot_index,
       received_at, intervention_date, parked_at,
       police_blocked, police_levee_saisie_ok, odoo_quote_id,
-      special_tarif_htva
+      special_tarif_htva, amount_guaranteed, amount_to_collect
     `)
     .eq('id', missionId)
     .maybeSingle()
@@ -259,21 +260,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     // Build les lignes devis (config source : PECMG / PECRODEO / ...)
-    // Olivier 2026-06-04 : si special_tarif_htva defini sur la mission,
-    // court-circuit TOTAL = une seule ligne SERV-DIV "prix convenu" qui
-    // ecrase forfait + gardiennage. Coherent avec les autres routes (quote,
-    // quote-grouped). Permet a l operateur fourriere de forcer un prix
-    // negocie avec le client lors de la restitution.
+    // Olivier 2026-06-04 : court-circuit centralise via buildOverrideLines
+    // (tarif special OU amount_guaranteed + amount_to_collect = 2 lignes).
+    // Si applicable, ecrase forfait + gardiennage.
     const ref = mission.external_id || mission.dossier_number || mission.id.slice(0, 8)
-    const specialTarif = (mission as any).special_tarif_htva
+    const override = buildOverrideLines(mission as any)
     let lines: QuoteLine[]
-    if (specialTarif != null && Number(specialTarif) > 0) {
-      lines = [{
-        kind:       'SERV-DIV' as any,
-        name:       `Intervention suivant prix convenu — ${ref}`,
-        qty:        1,
-        price_unit: Number(specialTarif),
-      }]
+    if (override) {
+      lines = override
     } else {
       lines = [{
         kind:       sourceConfig.forfaitOdooCode as any,

@@ -18,6 +18,59 @@ interface MissionLike {
   source?:             string | null
   mission_type?:       string | null
   special_tarif_htva?: number | null
+  amount_guaranteed?:  number | null
+  amount_to_collect?:  number | null
+}
+
+/**
+ * Olivier 2026-06-04 : helper exporte pour decider si on doit court-circuiter
+ * le calcul auto par des montants forces (special_tarif OU amount_guaranteed +
+ * amount_to_collect). Retourne null si rien d applicable -> on continue le
+ * calcul standard. Utilise par buildLinesFromEstimate ET les routes qui
+ * n appellent pas le helper (ex: SNC dans /quote, restitute, etc.).
+ */
+export function buildOverrideLines(mission: MissionLike): QuoteLine[] | null {
+  const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
+
+  // 1. Tarif special HTVA -> 1 seule ligne ecrase tout
+  if (mission.special_tarif_htva != null && Number(mission.special_tarif_htva) > 0) {
+    return [{
+      kind:       'SERV-DIV',
+      name:       `Intervention suivant prix convenu — ${missionRef}`,
+      qty:        1,
+      price_unit: Number(mission.special_tarif_htva),
+    }]
+  }
+
+  // 2. Olivier 2026-06-04 : montant garanti + montant a reclamer client.
+  // Si l un OU l autre OU les 2 sont definis, on genere 1 ou 2 lignes
+  // (une par montant). Total = somme. Ecrase egalement le calcul auto.
+  const guaranteed = mission.amount_guaranteed != null && Number(mission.amount_guaranteed) > 0
+    ? Number(mission.amount_guaranteed) : 0
+  const toCollect = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
+    ? Number(mission.amount_to_collect) : 0
+  if (guaranteed > 0 || toCollect > 0) {
+    const lines: QuoteLine[] = []
+    if (guaranteed > 0) {
+      lines.push({
+        kind:       'SERV-DIV',
+        name:       `Montant garanti — ${missionRef}`,
+        qty:        1,
+        price_unit: guaranteed,
+      })
+    }
+    if (toCollect > 0) {
+      lines.push({
+        kind:       'SERV-DIV',
+        name:       `Paiement à réclamer au client — ${missionRef}`,
+        qty:        1,
+        price_unit: toCollect,
+      })
+    }
+    return lines
+  }
+
+  return null
 }
 
 export function buildLinesFromEstimate(
@@ -27,17 +80,12 @@ export function buildLinesFromEstimate(
   const lines: QuoteLine[] = []
   const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
 
-  // Olivier 2026-06-02 PM : tarif special HTVA → court-circuit complet.
-  // Une seule ligne SERV-DIV "Intervention suivant prix convenu" qui
-  // ECRASE le calcul automatique (SNC, source_tariffs, gardiennage, etc.).
-  if (mission.special_tarif_htva != null && Number(mission.special_tarif_htva) > 0) {
-    return [{
-      kind:       'SERV-DIV',
-      name:       `Intervention suivant prix convenu — ${missionRef}`,
-      qty:        1,
-      price_unit: Number(mission.special_tarif_htva),
-    }]
-  }
+  // Olivier 2026-06-02 PM + 2026-06-04 : court-circuit via montants forces
+  // (tarif special OU amount_guaranteed + amount_to_collect). Helper exporte
+  // buildOverrideLines() pour partager la logique avec les routes hors
+  // estimate-pipeline (SNC, restitute).
+  const override = buildOverrideLines(mission)
+  if (override) return override
 
   if (estimate.pricing_mode === 'lines' && Array.isArray(estimate.template_lines)) {
     // Mode 'lines' (Police Accident, Saisie, etc.) : expose chaque ligne

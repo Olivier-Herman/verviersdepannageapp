@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { syncInterventionToOdoo, withOdooActor, findOrCreatePartner } from '@/lib/odoo'
-import { sendClientReceipt } from '@/lib/emails'
+import { sendClientReceipt, sendEmail, emailLayout } from '@/lib/emails'
 import { releaseParcAndShift } from '@/lib/parc/release'
 
 // Olivier 2026-06-03 : sources fourriere qui declenchent l auto-restitution
@@ -78,6 +78,41 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Olivier 2026-06-04 : encaissement chauffeur SANS mission liee = email
+  // d alerte administration pour creer la facture manuellement (cas hors
+  // dossier classique). Non bloquant : si l email plante, on continue.
+  if (intervention && !body.mission_id && (body.service_type || 'encaissement') === 'encaissement') {
+    try {
+      await sendAdminOrphanReceiptEmail({
+        reference:      intervention.reference,
+        plate:          body.plate,
+        brandText:      body.brand_text,
+        modelText:      body.model_text,
+        clientName:     body.client_name,
+        clientPhone:    body.client_phone,
+        clientEmail:    body.client_email,
+        clientVat:      body.client_vat,
+        clientAddress:  body.client_address,
+        clientStreet:   body.client_street,
+        clientZip:      body.client_zip,
+        clientCity:     body.client_city,
+        clientCountryCode: body.client_country_code,
+        amount:         parseFloat(body.amount || '0'),
+        motifText:      body.motif_text || body.motif_id,
+        motifPrecision: body.motif_precision,
+        locationAddress: body.location_address,
+        paymentMode:    body.payment_mode,
+        paymentReference: body.payment_reference,
+        driverName:     session.user.name || session.user.email || 'Chauffeur',
+        notes:          body.notes,
+        createdAt:      new Date().toISOString(),
+      })
+      console.log(`[interventions] Email admin envoye pour encaissement orphelin ${intervention.reference}`)
+    } catch (e: any) {
+      console.error('[interventions] Email admin echec (non bloquant):', e?.message)
+    }
+  }
 
   // 1.bis. Si lie a une mission : annoter la mission (Payee / Facture a envoyer)
   // payment_amount = SOMME de tous les encaissements lies a la mission (un meme
@@ -465,4 +500,101 @@ export async function GET(req: NextRequest) {
     .sort(sortByDateThenType)
 
   return NextResponse.json(all)
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Olivier 2026-06-04 : email administration sur encaissement chauffeur
+// SANS mission liee (cas hors dossier). Sert a creer la facture
+// manuellement par l equipe administration.
+// ────────────────────────────────────────────────────────────────────
+async function sendAdminOrphanReceiptEmail(d: {
+  reference:       string
+  plate:           string
+  brandText?:      string
+  modelText?:      string
+  clientName?:     string
+  clientPhone?:    string
+  clientEmail?:    string
+  clientVat?:      string
+  clientAddress?:  string
+  clientStreet?:   string
+  clientZip?:      string
+  clientCity?:     string
+  clientCountryCode?: string
+  amount:          number
+  motifText?:      string
+  motifPrecision?: string
+  locationAddress?: string
+  paymentMode?:    string
+  paymentReference?: string
+  driverName:      string
+  notes?:          string
+  createdAt:       string
+}): Promise<void> {
+  const tvac = d.amount
+  const htva = Math.round((tvac / 1.21) * 100) / 100
+  const tva  = Math.round((tvac - htva) * 100) / 100
+  const row = (label: string, value: string | undefined | null) => value
+    ? `<tr><td style="padding:6px 12px;color:#666;font-size:13px;">${label}</td><td style="padding:6px 12px;font-size:13px;color:#111;font-weight:500;">${value}</td></tr>`
+    : ''
+  const content = `
+    <h2 style="margin:0 0 16px;color:#CC2222;font-size:20px;">💳 Encaissement chauffeur — Facture à créer</h2>
+    <p style="margin:0 0 16px;font-size:14px;color:#374151;">
+      Un encaissement vient d'être effectué <strong>sans dossier mission lié</strong>.
+      Toutes les infos ci-dessous pour créer la facture côté administration.
+    </p>
+    <table style="width:100%;border-collapse:collapse;background:#fafafa;border-radius:8px;margin:16px 0;">
+      <thead><tr><th colspan="2" style="text-align:left;padding:10px 12px;background:#CC2222;color:#fff;border-radius:8px 8px 0 0;font-size:14px;">RÉFÉRENCE</th></tr></thead>
+      <tbody>
+        ${row('Référence', d.reference)}
+        ${row('Date', new Date(d.createdAt).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }))}
+        ${row('Chauffeur', d.driverName)}
+      </tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;background:#fafafa;border-radius:8px;margin:16px 0;">
+      <thead><tr><th colspan="2" style="text-align:left;padding:10px 12px;background:#374151;color:#fff;border-radius:8px 8px 0 0;font-size:14px;">VÉHICULE & INTERVENTION</th></tr></thead>
+      <tbody>
+        ${row('Plaque', d.plate)}
+        ${row('Véhicule', [d.brandText, d.modelText].filter(Boolean).join(' '))}
+        ${row('Motif', d.motifText)}
+        ${row('Précision motif', d.motifPrecision)}
+        ${row('Lieu intervention', d.locationAddress)}
+      </tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;background:#fafafa;border-radius:8px;margin:16px 0;">
+      <thead><tr><th colspan="2" style="text-align:left;padding:10px 12px;background:#374151;color:#fff;border-radius:8px 8px 0 0;font-size:14px;">CLIENT À FACTURER</th></tr></thead>
+      <tbody>
+        ${row('Nom', d.clientName)}
+        ${row('TVA', d.clientVat)}
+        ${row('Adresse', d.clientAddress || [d.clientStreet, d.clientZip, d.clientCity, d.clientCountryCode].filter(Boolean).join(', '))}
+        ${row('Téléphone', d.clientPhone)}
+        ${row('Email', d.clientEmail)}
+      </tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;background:#fff7ed;border:2px solid #f59e0b;border-radius:8px;margin:16px 0;">
+      <thead><tr><th colspan="2" style="text-align:left;padding:10px 12px;background:#f59e0b;color:#fff;border-radius:6px 6px 0 0;font-size:14px;">PAIEMENT</th></tr></thead>
+      <tbody>
+        ${row('Mode de paiement', d.paymentMode)}
+        ${row('Référence transaction', d.paymentReference)}
+        ${row('Montant TVAC', `<strong style="color:#CC2222;font-size:16px;">${tvac.toFixed(2)} €</strong>`)}
+        ${row('Montant HTVA', `${htva.toFixed(2)} €`)}
+        ${row('TVA 21%', `${tva.toFixed(2)} €`)}
+      </tbody>
+    </table>
+    ${d.notes ? `
+    <div style="background:#f3f4f6;padding:12px;border-radius:8px;margin:16px 0;">
+      <p style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;">Notes chauffeur</p>
+      <p style="margin:0;font-size:13px;color:#111;white-space:pre-wrap;">${d.notes}</p>
+    </div>
+    ` : ''}
+    <p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;">
+      Email envoyé automatiquement à chaque encaissement chauffeur sans dossier mission lié.
+    </p>
+  `
+  await sendEmail(
+    'administration@verviersdepannage.com',
+    `[Encaissement sans dossier] ${d.reference} · ${d.plate} · ${tvac.toFixed(2)} €`,
+    emailLayout(content, 'Encaissement sans dossier mission'),
+    'Administration Verviers Dépannage',
+  )
 }

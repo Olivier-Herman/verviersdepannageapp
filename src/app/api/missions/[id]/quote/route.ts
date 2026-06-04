@@ -14,6 +14,7 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
+import { buildOverrideLines }    from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { attachFileToOrder, withOdooActor } from '@/lib/odoo'
 
@@ -81,7 +82,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       client_name, vehicle_plate, vehicle_mileage, vehicle_class,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       billed_to_id, billed_to_name,
-      amount_to_collect, special_tarif_htva,
+      amount_to_collect, special_tarif_htva, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, extra_addresses,
       odoo_quote_id, odoo_quote_url
@@ -105,24 +106,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   let lines: QuoteLine[] = []
   let totalForResponse = 0
 
+  // Olivier 2026-06-04 : helper centralise pour les overrides (tarif special
+  // OU amount_guaranteed + amount_to_collect = 2 lignes). S applique pour
+  // TOUTES les sources (y compris SNC/SC). Retourne null si rien d applicable.
+  const override = buildOverrideLines(mission as any)
   if (customLines) {
     lines = customLines
     totalForResponse = customLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
-  } else if ((mission as any).special_tarif_htva != null && Number((mission as any).special_tarif_htva) > 0) {
-    // Olivier 2026-06-04 : tarif special HTVA -> court-circuit TOTAL,
-    // peu importe la source (y compris SNC/SC). Une seule ligne SERV-DIV
-    // "Intervention suivant prix convenu" qui ecrase TOUTE autre logique
-    // (SNC pricing, source_tariffs, etc.). Avant ce fix, le court-circuit
-    // etait uniquement dans la branche 'autres sources' (via estimate) ->
-    // les SNC/SC l ignoraient et generaient toujours SIAREM + SIAKIL.
-    const amount = Number((mission as any).special_tarif_htva)
-    lines = [{
-      kind:       'SERV-DIV',
-      name:       `Intervention suivant prix convenu — ${missionRef}`,
-      qty:        1,
-      price_unit: amount,
-    }]
-    totalForResponse = amount
+  } else if (override) {
+    lines = override
+    totalForResponse = override.reduce((s, l) => s + l.qty * l.price_unit, 0)
   } else if ((mission.source === 'police_snc' || mission.source === 'sia_couvert') && (mission as any).snc_scenario) {
     // SNC / SC : tarification specifique (SIAREM/SIAKIL/SIABAL + MAJ si plage horaire).
     // SC = variant 'sc' (pas de km, forfait + balisage seulement).

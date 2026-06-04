@@ -1491,22 +1491,39 @@ export default function MissionDetailClient({
     setForm(prev => ({ ...prev, [k]: normalized }))
   }
 
-  // Olivier 2026-06-04 : auto-patch silencieux pour special_tarif_htva
-  // afin que l estimation tarif se mette a jour live + que la valeur
-  // soit persistee meme sans cliquer "Enregistrer" (bug rapporte :
-  // tarif special ne s ecrasait pas dans la card estimation).
-  // Debounce 700ms pour eviter de marteler la BDD pendant la saisie.
+  // Olivier 2026-06-04 : auto-patch silencieux pour les montants
+  // (special_tarif_htva, amount_guaranteed, amount_to_collect) afin que
+  // l estimation tarif se mette a jour live + que la valeur soit persistee
+  // meme sans cliquer "Enregistrer". Debounce 700ms.
   useEffect(() => {
     const v = form.special_tarif_htva
     const norm = v === '' || v == null ? null : Number(v)
     const orig = initialMission.special_tarif_htva != null ? Number(initialMission.special_tarif_htva) : null
     if (norm === orig) return
-    const t = setTimeout(() => {
-      silentPatch({ special_tarif_htva: norm })
-    }, 700)
+    const t = setTimeout(() => silentPatch({ special_tarif_htva: norm }), 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.special_tarif_htva])
+
+  useEffect(() => {
+    const v = form.amount_guaranteed
+    const norm = v === '' || v == null ? null : Number(v)
+    const orig = (initialMission as any).amount_guaranteed != null ? Number((initialMission as any).amount_guaranteed) : null
+    if (norm === orig) return
+    const t = setTimeout(() => silentPatch({ amount_guaranteed: norm }), 700)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.amount_guaranteed])
+
+  useEffect(() => {
+    const v = form.amount_to_collect
+    const norm = v === '' || v == null ? null : Number(v)
+    const orig = (initialMission as any).amount_to_collect != null ? Number((initialMission as any).amount_to_collect) : null
+    if (norm === orig) return
+    const t = setTimeout(() => silentPatch({ amount_to_collect: norm }), 700)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.amount_to_collect])
 
   // Olivier 2026-06-04 : changement de source.
   // - police_snc (SIABIS NON couvert) : l assistance ne paye pas -> on

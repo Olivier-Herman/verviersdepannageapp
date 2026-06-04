@@ -25,7 +25,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .select(`
       id, source, mission_type, client_name, vehicle_mileage,
       parked_at, delivering_at, completed_at, intervention_date, received_at, incident_type,
-      parent_mission_id, amount_to_collect,
+      parent_mission_id, amount_to_collect, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage,
       billed_to_id, billed_to_name, special_tarif_htva,
@@ -97,6 +97,36 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       breakdown: [
         { label: 'Intervention suivant prix convenu', amount, note: 'Tarif spécial HTVA défini par le dispatcher' },
       ],
+    })
+  }
+
+  // Olivier 2026-06-04 : amount_guaranteed + amount_to_collect -> 2 lignes,
+  // total = somme. Ecrase egalement le calcul auto (forfait/km/surcharges).
+  const guaranteed = (mission as any).amount_guaranteed != null && Number((mission as any).amount_guaranteed) > 0
+    ? Number((mission as any).amount_guaranteed) : 0
+  const toCollect = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
+    ? Number(mission.amount_to_collect) : 0
+  if (guaranteed > 0 || toCollect > 0) {
+    const total = guaranteed + toCollect
+    const breakdown: Array<{ label: string; amount: number; note?: string }> = []
+    if (guaranteed > 0) breakdown.push({ label: 'Montant garanti', amount: guaranteed })
+    if (toCollect > 0) breakdown.push({ label: 'Paiement à réclamer au client', amount: toCollect })
+    return NextResponse.json({
+      ok:            true,
+      source:        mission.source,
+      mission_type:  mission.mission_type || 'autre',
+      pricing_mode:  'forced_amounts',
+      forfait:       total,
+      km_charged:    0, km_inclus: 0, km_extra: 0, km_extra_eur: 0,
+      parc_jours:    0, parc_eur: 0,
+      subtotal_eur:  total,
+      surcharge_pct: 0, surcharge_eur: 0,
+      total_eur:     total,
+      is_autofac:    false,
+      tariff_id:     'forced_amounts',
+      tariff_doc_path: null, tariff_doc_name: null,
+      special_tarif: true,  // utilise par UI pour styler en amber
+      breakdown,
     })
   }
 
