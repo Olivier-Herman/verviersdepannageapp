@@ -131,7 +131,14 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
           {!loading && !error && drivers.length === 0 && (
             <p className="text-ink-muted text-sm text-center py-8">Aucun chauffeur en service actuellement.</p>
           )}
-          {drivers.map(d => {
+          {/* Olivier 2026-06-04 : chauffeurs hors-garde (grises) en bas de liste.
+              On garde l ordre relatif initial (ETA) au sein de chaque groupe. */}
+          {[...drivers].sort((a, b) => {
+            const aOff = a.is_on_duty === false
+            const bOff = b.is_on_duty === false
+            if (aOff !== bOff) return aOff ? 1 : -1
+            return 0
+          }).map(d => {
             const free = d.status === 'free'
             const cm = d.current_mission
             const totalEta = !free && cm
