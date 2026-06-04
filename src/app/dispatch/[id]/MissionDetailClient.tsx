@@ -1142,6 +1142,10 @@ export default function MissionDetailClient({
   const [loadingIMA,     setLoadingIMA]       = useState(false)
   const [imaSuccess,     setImaSuccess]       = useState(false)
   const [status,         setStatus]           = useState(initialMission.status)
+  const [parcZone,       setParcZone]         = useState<string | null>(initialMission.parc_zone_key || null)
+  const [parcRow,        setParcRow]          = useState<number | null>(initialMission.parc_row_number ?? null)
+  const [parcSlot,       setParcSlot]         = useState<number | null>(initialMission.parc_slot_index ?? null)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [odooTicketUrl,  setOdooTicketUrl]    = useState<string | null>(initialMission.odoo_ticket_url || null)
   const [odooTaskUrl,    setOdooTaskUrl]      = useState<string | null>(initialMission.odoo_task_url || null)
   const [loadingOdoo,    setLoadingOdoo]      = useState(false)
@@ -1926,9 +1930,9 @@ export default function MissionDetailClient({
         )}
 
         {/* ── Bandeau Position parc (visible si mission parked avec zone) ── */}
-        {status === 'parked' && initialMission.parc_zone_key && (
+        {status === 'parked' && parcZone && (
           <div className="px-4 lg:px-8 pt-4">
-            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-4 flex items-center gap-4">
+            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-4 flex items-center gap-4 flex-wrap">
               <div className="w-11 h-11 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
                 <span className="text-2xl">🅿️</span>
               </div>
@@ -1937,24 +1941,45 @@ export default function MissionDetailClient({
                   Position parc
                 </span>
                 <span className="text-lg font-bold text-ink truncate">
-                  Zone <span className="font-mono">{initialMission.parc_zone_key}</span>
-                  {initialMission.parc_row_number != null && (
-                    <> · Rang <span className="font-mono">{initialMission.parc_row_number}</span></>
+                  Zone <span className="font-mono">{parcZone}</span>
+                  {parcRow != null && (
+                    <> · Rang <span className="font-mono">{parcRow}</span></>
                   )}
-                  {initialMission.parc_slot_index != null && (
-                    <> · Slot <span className="font-mono">{initialMission.parc_slot_index}</span></>
+                  {parcSlot != null && (
+                    <> · Slot <span className="font-mono">{parcSlot}</span></>
                   )}
                   {initialMission.park_stage_name && (
                     <span className="text-ink-muted font-normal text-sm"> — {initialMission.park_stage_name}</span>
                   )}
                 </span>
               </div>
+              {/* Olivier 2026-06-04 : bouton transfert (module fourriere uniquement) */}
+              {userModules.includes('fourriere') && (
+                <button
+                  onClick={() => setTransferModalOpen(true)}
+                  className="px-3 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
+                  🔄 Transférer
+                </button>
+              )}
               <a href="/fourriere/plan"
                 className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
                 Voir le plan parc →
               </a>
             </div>
           </div>
+        )}
+        {transferModalOpen && parcZone && (
+          <TransferParcModal
+            missionId={initialMission.id}
+            currentZoneKey={parcZone}
+            onClose={() => setTransferModalOpen(false)}
+            onSuccess={(newZone) => {
+              setParcZone(newZone)
+              setParcRow(null)
+              setParcSlot(null)
+              setTransferModalOpen(false)
+            }}
+          />
         )}
 
         {/* Bandeau "Bloquee par la police" — visible des la creation pour AVP
@@ -3416,5 +3441,162 @@ export default function MissionDetailClient({
         />
       )}
     </AppShell>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────
+// TransferParcModal : choix depot + zone, update direct + log.
+// Module fourriere uniquement (verifie cote API).
+// Olivier 2026-06-04.
+// ────────────────────────────────────────────────────────────────────
+
+interface DepotWithZones {
+  id:               string
+  name:             string
+  is_default_parc:  boolean
+  zones:            Array<{ key: string; label: string }>
+}
+
+function TransferParcModal({
+  missionId,
+  currentZoneKey,
+  onClose,
+  onSuccess,
+}: {
+  missionId:      string
+  currentZoneKey: string
+  onClose:        () => void
+  onSuccess:      (newZone: string) => void
+}) {
+  const [depots,      setDepots]      = useState<DepotWithZones[]>([])
+  const [orphans,     setOrphans]     = useState<Array<{ key: string; label: string }>>([])
+  const [loading,     setLoading]     = useState(true)
+  const [selectedZone, setSelectedZone] = useState<string>('')
+  const [reason,       setReason]     = useState('')
+  const [submitting,   setSubmitting] = useState(false)
+  const [error,        setError]      = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/fourriere/zones-by-depot')
+      .then(r => r.json())
+      .then(j => {
+        setDepots(j.depots || [])
+        setOrphans(j.orphans || [])
+      })
+      .catch(e => setError(`Chargement KO : ${e?.message}`))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function submit() {
+    if (!selectedZone) { setError('Sélectionne une zone'); return }
+    if (selectedZone === currentZoneKey) { setError('Déjà dans cette zone'); return }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/transfer-parc`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: selectedZone, reason: reason.trim() || undefined }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setError(j.error || `HTTP ${r.status}`); return }
+      onSuccess(selectedZone)
+    } catch (e: any) {
+      setError(`Erreur réseau : ${e?.message || e}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-surface border rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b">
+          <h2 className="text-lg font-bold text-ink flex items-center gap-2">
+            🔄 Transférer de parc
+          </h2>
+          <p className="text-xs text-ink-muted mt-1">
+            Choisis le nouveau dépôt et la zone. Le véhicule sera marqué non-positionné (à replacer ensuite via plan).
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {loading ? (
+            <p className="text-ink-muted text-sm text-center py-6">Chargement...</p>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2 block">
+                  Nouvelle zone
+                </label>
+                <select
+                  value={selectedZone}
+                  onChange={e => setSelectedZone(e.target.value)}
+                  className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                  autoFocus
+                >
+                  <option value="">— Choisir une zone —</option>
+                  {depots.map(d => (
+                    <optgroup key={d.id} label={`${d.name}${d.is_default_parc ? ' ★' : ''}`}>
+                      {d.zones.length === 0 ? (
+                        <option disabled>(aucune zone)</option>
+                      ) : d.zones.map(z => (
+                        <option key={z.key} value={z.key} disabled={z.key === currentZoneKey}>
+                          {z.label}{z.key === currentZoneKey ? ' (zone actuelle)' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  {orphans.length > 0 && (
+                    <optgroup label="Sans dépôt">
+                      {orphans.map(z => (
+                        <option key={z.key} value={z.key} disabled={z.key === currentZoneKey}>
+                          {z.label}{z.key === currentZoneKey ? ' (zone actuelle)' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2 block">
+                  Raison (optionnel)
+                </label>
+                <input
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  placeholder="Ex : réorganisation, manque de place, scellé levé..."
+                  className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              {error && (
+                <div className="bg-critical/10 border border-critical/40 rounded-lg px-3 py-2 text-critical text-sm">
+                  {error}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t flex items-center gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-3 py-2 text-ink-muted hover:text-ink text-sm font-semibold transition disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting || loading || !selectedZone}
+            className="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold transition disabled:opacity-50"
+          >
+            {submitting ? 'Transfert...' : 'Confirmer le transfert'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

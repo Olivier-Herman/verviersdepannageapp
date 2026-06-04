@@ -62,8 +62,15 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
     const v = parseInt(String(body.pool_capacity), 10)
     if (Number.isFinite(v) && v >= 0) patch.pool_capacity = v
   }
+  // depot_id : rattachement de la zone a un parc (Pepinster/Verviers/...)
+  // Olivier 2026-06-04 : permet d attribuer une zone a un depot via UI admin
+  if (body.depot_id === null) {
+    patch.depot_id = null
+  } else if (typeof body.depot_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.depot_id)) {
+    patch.depot_id = body.depot_id
+  }
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction/is_pool/pool_capacity)' }, { status: 400 })
+    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction/is_pool/pool_capacity/depot_id)' }, { status: 400 })
   }
 
   const sb = createAdminClient()

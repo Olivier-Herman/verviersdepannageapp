@@ -21,16 +21,18 @@ export default async function ParcAdminPage() {
   if (!ok) redirect('/')
 
   const sb = createAdminClient()
-  const [{ data: zones }, { data: rows }, { data: settings }] = await Promise.all([
+  const [{ data: zones }, { data: rows }, { data: settings }, { data: depots }] = await Promise.all([
     sb.from('parc_zones').select('*').order('sort_order'),
     sb.from('parc_rows').select('*').order('zone_key').order('row_number'),
     sb.from('parc_settings').select('canvas_height_px, ville_destruction_email').eq('id', 1).maybeSingle(),
+    sb.from('depots').select('id, name, sort_order, active, is_default_parc').order('sort_order'),
   ])
 
   return (
     <ParcAdminClient
       initialZones={zones || []}
       initialRows={rows  || []}
+      initialDepots={depots || []}
       initialCanvasHeight={settings?.canvas_height_px || 2400}
       initialVilleDestructionEmail={(settings as any)?.ville_destruction_email || null}
     />

@@ -27,6 +27,15 @@ interface Zone {
   strict_capacity: boolean
   is_pool:         boolean
   pool_capacity:   number | null
+  depot_id:        string | null
+}
+
+interface Depot {
+  id:               string
+  name:             string
+  sort_order:       number | null
+  active:           boolean
+  is_default_parc:  boolean
 }
 
 interface Row {
@@ -37,14 +46,16 @@ interface Row {
   sort_order:  number
 }
 
-export default function ParcAdminClient({ initialZones, initialRows, initialCanvasHeight, initialVilleDestructionEmail }: {
+export default function ParcAdminClient({ initialZones, initialRows, initialDepots, initialCanvasHeight, initialVilleDestructionEmail }: {
   initialZones:                 Zone[]
   initialRows:                  Row[]
+  initialDepots:                Depot[]
   initialCanvasHeight:          number
   initialVilleDestructionEmail: string | null
 }) {
   const [zones, setZones] = useState<Zone[]>(initialZones)
   const [rows, setRows] = useState<Row[]>(initialRows)
+  const [depots] = useState<Depot[]>(initialDepots)
   const [busy, setBusy] = useState(false)
   const [canvasHeight, setCanvasHeight] = useState(initialCanvasHeight)
   const [canvasInput, setCanvasInput]   = useState(String(initialCanvasHeight))
@@ -56,7 +67,7 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity'>>) {
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id'>>) {
     setBusy(true)
     setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
     try {
@@ -297,7 +308,7 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
           return (
             <div key={zone.key} className="bg-surface-2 border rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b bg-surface space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <h2 className="text-ink font-bold text-base">Zone {zone.label}</h2>
                   {!zone.is_pool && (
                     <button
@@ -308,6 +319,25 @@ export default function ParcAdminClient({ initialZones, initialRows, initialCanv
                       <Plus size={14} /> Ajouter ligne
                     </button>
                   )}
+                </div>
+                {/* Olivier 2026-06-04 : selecteur depot par zone (Pepinster/Verviers/Tiege/Francorchamps/Aywaille) */}
+                <div className="flex items-center gap-2 text-[11px]">
+                  <label className="text-ink-muted">Dépôt :</label>
+                  <select
+                    value={zone.depot_id || ''}
+                    disabled={busy}
+                    onChange={e => {
+                      const newDepotId = e.target.value || null
+                      if (newDepotId === zone.depot_id) return
+                      toggleZoneOption(zone.key, { depot_id: newDepotId })
+                    }}
+                    className="bg-surface border rounded px-2 py-1 text-ink text-[11px] focus:outline-none focus:border-brand disabled:opacity-50"
+                  >
+                    <option value="">— Non rattaché —</option>
+                    {depots.filter(d => d.active).map(d => (
+                      <option key={d.id} value={d.id}>{d.name}{d.is_default_parc ? ' ★' : ''}</option>
+                    ))}
+                  </select>
                 </div>
                 {/* Options de la zone : type, orientation + sens */}
                 <div className="flex items-center gap-2 text-[11px] flex-wrap">
