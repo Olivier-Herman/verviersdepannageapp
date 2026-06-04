@@ -93,6 +93,20 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
     return () => window.removeEventListener('keydown', h)
   }, [step, onClose])
 
+  // Charge le script Google Maps si pas deja present (peut etre charge
+  // par un autre composant comme EncaissementClient). Idempotent.
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!apiKey) return
+    if (document.getElementById('google-maps-script')) return
+    if (window.google?.maps?.places) return
+    const s = document.createElement('script')
+    s.id = 'google-maps-script'
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
+    s.async = true
+    document.head.appendChild(s)
+  }, [])
+
   // Init Google Maps autocomplete sur le champ adresse (step=create)
   useEffect(() => {
     if (step !== 'create') return
