@@ -438,33 +438,82 @@ export default function EncaissementClient({
   }, [])
 
   // Init autocomplete lieu quand on arrive page 3
+  // Olivier 2026-06-04 : polling au lieu de timeout fixe
   useEffect(() => {
     if (page !== 3) return
-    autocompleteRef.current = null // forcer la réinitialisation
-    const t = setTimeout(() => {
-      if (window.google?.maps?.places) initAC(locationInputRef, autocompleteRef, setLocation)
-    }, 200)
-    return () => clearTimeout(t)
+    autocompleteRef.current = null
+    let cancelled = false
+    let interval: ReturnType<typeof setInterval> | null = null
+    const tryInit = () => {
+      if (cancelled) return false
+      if (!locationInputRef.current) return false
+      if (!window.google?.maps?.places) return false
+      if (autocompleteRef.current) return true
+      initAC(locationInputRef, autocompleteRef, setLocation)
+      return !!autocompleteRef.current
+    }
+    if (!tryInit()) {
+      let attempts = 0
+      interval = setInterval(() => {
+        attempts++
+        if (tryInit() || attempts > 50) {
+          if (interval) { clearInterval(interval); interval = null }
+        }
+      }, 200)
+    }
+    return () => {
+      cancelled = true
+      if (interval) clearInterval(interval)
+    }
   }, [page])
 
   // Init autocomplete adresse client page 8
+  // Olivier 2026-06-04 : polling au lieu de timeout fixe car le script
+  // Google Maps charge en async et peut ne pas etre pret a 150ms si l user
+  // arrive directement page 8 sans passer par page 3 (lieu intervention).
   useEffect(() => {
     if (page !== 8) return
-    autocompleteClientRef.current = null // forcer la réinitialisation
-    const t = setTimeout(() => {
-      initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress, (place) => {
-        const c = place.address_components || []
-        const get = (t: string) => c.find((x: any) => x.types.includes(t))?.long_name || ''
-        const getS = (t: string) => c.find((x: any) => x.types.includes(t))?.short_name || ''
-        const num = get('street_number'); const box = get('subpremise')
-        const route = get('route')
-        setClientStreet([route, num + (box ? `/${box}` : '')].filter(Boolean).join(' ').trim())
-        setClientZip(get('postal_code'))
-        setClientCity(get('locality') || get('postal_town'))
-        setClientCountryCode(getS('country') || 'BE')
-      })
-    }, 150)
-    return () => clearTimeout(t)
+    autocompleteClientRef.current = null // forcer la reinitialisation
+    let cancelled = false
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    const setupComponents = (place: any) => {
+      const c = place.address_components || []
+      const get = (t: string) => c.find((x: any) => x.types.includes(t))?.long_name || ''
+      const getS = (t: string) => c.find((x: any) => x.types.includes(t))?.short_name || ''
+      const num = get('street_number'); const box = get('subpremise')
+      const route = get('route')
+      setClientStreet([route, num + (box ? `/${box}` : '')].filter(Boolean).join(' ').trim())
+      setClientZip(get('postal_code'))
+      setClientCity(get('locality') || get('postal_town'))
+      setClientCountryCode(getS('country') || 'BE')
+    }
+
+    const tryInit = () => {
+      if (cancelled) return false
+      if (!clientAddressInputRef.current) return false
+      if (!window.google?.maps?.places) return false
+      if (autocompleteClientRef.current) return true  // deja init
+      initAC(clientAddressInputRef, autocompleteClientRef, setClientAddress, setupComponents)
+      return !!autocompleteClientRef.current
+    }
+
+    // Tentative immediate
+    if (!tryInit()) {
+      // Sinon retry toutes les 200ms (max 10s)
+      let attempts = 0
+      interval = setInterval(() => {
+        attempts++
+        if (tryInit() || attempts > 50) {
+          if (interval) { clearInterval(interval); interval = null }
+        }
+      }, 200)
+    }
+
+    return () => {
+      cancelled = true
+      if (interval) clearInterval(interval)
+    }
   }, [page])
 
   useEffect(() => {
