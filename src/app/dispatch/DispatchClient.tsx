@@ -333,12 +333,25 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
   if (order.length === 0) return null
 
   const toggleSchedule = async (driverId: string, field: 'schedule_day' | 'schedule_night', current: boolean) => {
-    await fetch('/api/garde', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: driverId, [field]: !current }),
-    })
-    onRefresh()
+    // Olivier 2026-06-03 (audit W3) : check res.ok + alert KO. Avant
+    // onRefresh() etait appele meme si la PATCH avait foire -> user croyait
+    // la garde togglee alors qu en BDD c etait inchange.
+    try {
+      const res = await fetch('/api/garde', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: driverId, [field]: !current }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(`Echec toggle garde : ${data?.error || `HTTP ${res.status}`}`)
+        return
+      }
+      onRefresh()
+    } catch (e: any) {
+      console.error('[DispatchClient] toggleSchedule reseau:', e?.message)
+      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+    }
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -440,12 +453,23 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
   const assign = async (driverId: string) => {
     setLoading(true)
     try {
-      await fetch('/api/missions/assign', {
+      // Olivier 2026-06-03 (audit W3) : check res.ok + try/catch + alert si KO.
+      // Avant : si l API retournait 500, onAssigned() ne se faisait pas mais
+      // l user n etait jamais averti.
+      const res = await fetch('/api/missions/assign', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mission_id: mission.id, driver_id: driverId }),
       })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(`Echec assignation : ${data?.error || `HTTP ${res.status}`}`)
+        return
+      }
       onAssigned()
+    } catch (e: any) {
+      console.error('[DispatchClient] assign reseau:', e?.message)
+      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
     } finally { setLoading(false) }
   }
 
@@ -491,14 +515,32 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   const openModal  = () => { setShowModal(true);  onModalChange?.(true) }
   const closeModal = () => { setShowModal(false); onModalChange?.(false) }
 
+  const [assignLoading, setAssignLoading] = useState(false)
   const assign = async (driverId: string) => {
-    await fetch('/api/missions/assign', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ mission_id: mission.id, driver_id: driverId }),
-    })
-    closeModal()
-    onRefresh()
+    if (assignLoading) return  // anti double-clic
+    setAssignLoading(true)
+    try {
+      // Olivier 2026-06-03 (audit W3) : check res.ok + alert KO + loading
+      // anti double-clic. Avant : double-clic possible + state UI desync si
+      // l API foirait silencieusement.
+      const res = await fetch('/api/missions/assign', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_id: mission.id, driver_id: driverId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(`Echec assignation : ${data?.error || `HTTP ${res.status}`}`)
+        return
+      }
+      closeModal()
+      onRefresh()
+    } catch (e: any) {
+      console.error('[DispatchClient] assign reseau:', e?.message)
+      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+    } finally {
+      setAssignLoading(false)
+    }
   }
 
   if (mission.status === 'completed') {
@@ -838,12 +880,23 @@ export default function DispatchClient({
     const newMode = dispatchMode === 'manual' ? 'auto' : 'manual'
     setModeLoading(true)
     try {
-      await fetch('/api/missions/dispatch-mode', {
+      // Olivier 2026-06-03 (audit W3) : check res.ok. Avant setDispatchMode
+      // s executait MEME SI le POST avait foire -> state UI desync avec BDD,
+      // user croyait avoir bascule en Auto alors qu on etait toujours Manuel.
+      const res = await fetch('/api/missions/dispatch-mode', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: newMode }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(`Echec bascule mode dispatch : ${data?.error || `HTTP ${res.status}`}`)
+        return
+      }
       setDispatchMode(newMode)
+    } catch (e: any) {
+      console.error('[DispatchClient] toggleMode reseau:', e?.message)
+      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
     } finally { setModeLoading(false) }
   }
 
