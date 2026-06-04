@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, RefreshCw, Loader2, ScanLine, Check, X, AlertTriangle, Building2, Printer, BarChart3 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2, ScanLine, Check, X, AlertTriangle, Building2, Printer, BarChart3, Ghost, Archive } from 'lucide-react'
 import { normalizePlate } from '@/lib/plate'
 
 interface Stats {
@@ -179,10 +179,30 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
 
   function endZone() {
     if (!confirm(`Terminer la zone ${zone} ? (${scans.length} scans enregistres - le worker creera les missions VD Soft en arriere-plan)`)) return
+    const doneZone = zone
     setScans([])
     setZone(null)
-    alert('✓ Zone terminee. Tu peux declarer la suivante. Les missions seront creees dans les prochaines minutes par le worker (cron).')
+    alert(`✓ Zone ${doneZone} terminee. Tu peux declarer la suivante. Les missions seront creees dans les prochaines minutes par le worker (cron).\n\nUtilise le bouton "Imprimer etiquettes zone ${doneZone}" quand le worker aura fini (refresh stats pour voir le compteur monter).`)
     loadStats()
+  }
+
+  async function printZone(targetZone: string, onlyUnprinted = true) {
+    if (!confirm(`Imprimer toutes les etiquettes de la zone ${targetZone} ?\n${onlyUnprinted ? '(Seulement les non-imprimees)' : '(REIMPRESSION DE TOUT)'}\n\nL impression est sequentielle, le PC Zebra fait la queue.`)) return
+    try {
+      const r = await fetch('/api/admin/towsoft-migration/print-zone', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone: targetZone, only_unprinted: onlyUnprinted }),
+      })
+      const j = await r.json()
+      if (!r.ok) { alert(`Erreur : ${j.error || 'inconnue'}`); return }
+      const errs = j.errors && j.errors.length > 0
+        ? `\n\nErreurs :\n${j.errors.map((e: any) => `· ${e.mission_id.slice(0, 8)} : ${e.error}`).join('\n')}`
+        : ''
+      alert(`✓ ${j.printed}/${j.total} etiquettes imprimees${errs}`)
+    } catch (e: any) {
+      alert(`Erreur reseau : ${e?.message || e}`)
+    }
   }
 
   return (
@@ -196,6 +216,14 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
             <ArrowLeft size={13} /> Fourriere
           </Link>
           <h1 className="font-display text-xl font-bold text-ink flex-1">Reconstruction Fourriere (TowSoft → VD Soft)</h1>
+          <Link href="/fourriere/migration/orphans"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-warning-50 hover:bg-warning-100 border border-warning-200 rounded-lg text-warning-800 text-xs font-semibold transition">
+            <Ghost size={13} /> Fantomes
+          </Link>
+          <Link href="/fourriere/migration/archive"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink text-xs font-semibold transition">
+            <Archive size={13} /> Archive
+          </Link>
           <button onClick={loadStats} disabled={loadingStats}
             className="p-2 bg-surface-2 hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink transition disabled:opacity-50">
             <RefreshCw size={14} className={loadingStats ? 'animate-spin' : ''} />
@@ -216,13 +244,15 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
 
             {stats.scanned > 0 && Object.keys(stats.by_zone).length > 0 && (
               <div>
-                <p className="text-xs text-ink-muted uppercase tracking-wide font-semibold mb-2">Par zone scannee :</p>
+                <p className="text-xs text-ink-muted uppercase tracking-wide font-semibold mb-2">Par zone scannee (clic = imprimer etiquettes) :</p>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(stats.by_zone).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([z, n]) => (
-                    <span key={z} className="px-2 py-1 bg-surface-2 border rounded-full text-xs">
+                    <button key={z} onClick={() => printZone(z)} title={`Imprimer etiquettes zone ${z}`}
+                      className="px-2 py-1 bg-surface-2 hover:bg-info-50 hover:border-info-300 border rounded-full text-xs transition flex items-center gap-1">
+                      <Printer size={11} className="text-info-700" />
                       <span className="font-mono font-bold">{z}</span>
-                      <span className="ml-1 text-ink-muted">· {n}</span>
-                    </span>
+                      <span className="text-ink-muted">· {n as number}</span>
+                    </button>
                   ))}
                 </div>
               </div>

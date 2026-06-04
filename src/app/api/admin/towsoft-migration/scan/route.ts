@@ -78,13 +78,28 @@ export async function POST(req: Request) {
     match = data
   }
 
-  // 3a. Pas de match -> fantome inverse
+  // 3a. Pas de match -> fantome inverse (log dans orphan_scans pour suivi)
   if (!match) {
+    const { data: orphan } = await sb
+      .from('orphan_scans')
+      .insert({
+        raw_input:     raw,
+        parsed_format: parsed.format,
+        plate:         parsed.plate,
+        vin:           parsed.vin,
+        zone,
+        scanned_by:    user.id,
+        scanned_at:    new Date().toISOString(),
+      })
+      .select('id')
+      .single()
+
     return NextResponse.json({
       ok: false,
       reason: 'not_in_towsoft',
-      message: 'Vehicule absent de TowSoft : a creer manuellement depuis PoliceClient OU verifier dans Odoo helpdesk.',
+      message: 'Vehicule absent de TowSoft : a creer manuellement depuis PoliceClient OU verifier dans Odoo helpdesk. Logge dans la liste des fantomes inverses.',
       parsed,
+      orphan_id: orphan?.id || null,
     })
   }
 
