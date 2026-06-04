@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 import { printVdSoftParcLabel } from '@/lib/missions/print-parc-label'
 import { plateOrVinTail }       from '@/lib/plate'
+import { FOURRIERE_TYPE_TO_SOURCE, PREFIX_BY_TYPE, zoneForType } from '@/lib/missions/police-mapping'
 
 export const maxDuration = 60
 
@@ -225,40 +226,8 @@ export async function POST(req: Request) {
   }
 
   // 1bis. INSERT incoming_missions pour les missions fourriere (parc VD Soft).
-  // Mapping des types police -> source VD Soft + zone parc cible.
-  // Olivier 2026-06-03 : ajout saisie + accident (audit revelait qu ils
-  // ne creaient AUCUNE mission VD Soft, seulement ticket Odoo + email).
-  const FOURRIERE_TYPE_TO_SOURCE: Record<string, string> = {
-    mal_garee:   'police_mg',
-    rodeo:       'police_rodeo',
-    avp:         'police_avp',
-    snc:         'police_snc',
-    sc:          'sia_couvert',
-    appel_prive: 'prive',
-    saisie:      'police_saisie',
-    accident:    'police_accident',
-  }
-  // Zone parc cible. Pour SNC/SC : depend du scenario (Transit si rem_depot, sinon
-  // pas de zone car le vehicule ne reste pas chez nous).
-  // Appel Prive :
-  //   - DSP / REM 'client' -> pas de zone (intervention immediate, facturation directe)
-  //   - REM 'depot'        -> Transit (mise en parc, etiquette imprimee)
-  // Mal Garee :
-  //   - chargement (defaut) -> zone L (parc standard)
-  //   - deplacement_paye    -> pas de zone (client arrive avant chargement, paye, on repart)
-  // Saisie : toujours zone J (procedure saisie judiciaire).
-  // Accident : zone Transit (TowSoft mappe K3 = TRANSIT APPEL POLICE ACCIDENT,
-  //            on utilise la zone Transit existante VD Soft pour pas creer K3).
-  function zoneForType(t: string, sncScenarioVal?: string, priveDest?: string, malGareeScen?: string): string | null {
-    if (t === 'mal_garee') return malGareeScen === 'deplacement_paye' ? null : 'L'
-    if (t === 'rodeo')     return 'J'
-    if (t === 'avp')       return 'J'
-    if (t === 'saisie')    return 'J'
-    if (t === 'accident')  return 'Transit'
-    if (t === 'snc' || t === 'sc') return sncScenarioVal === 'rem_depot' ? 'Transit' : null
-    if (t === 'appel_prive') return priveDest === 'depot' ? 'Transit' : null
-    return null
-  }
+  // Olivier 2026-06-03 (W10) : mappings extraits dans @/lib/missions/police-mapping
+  // pour eviter le drift avec /api/missions/police/draft.
 
   // Id de la mission VD Soft creee — necessaire pour renvoyer au client (formulaire
   // chauffeur) afin de construire un lien encaissement precomplete sur les sources
@@ -287,17 +256,8 @@ export async function POST(req: Request) {
     //   rodeo     -> RODEO-XXX
     //   avp       -> AVP-XXX
     //   snc       -> SNC-XXX
-    const prefixByType: Record<string, string> = {
-      mal_garee:   'MG',
-      rodeo:       'RODEO',
-      avp:         'AVP',
-      snc:         'SNC',
-      sc:          'SC',
-      appel_prive: 'PRIVE',
-      saisie:      'SAISIE',
-      accident:    'ACC',
-    }
-    const prefix = prefixByType[type] || 'POLICE'
+    // W10 : prefix vient du mapping centralise
+    const prefix = PREFIX_BY_TYPE[type] || 'POLICE'
 
     // AVP : police_blocked = true par defaut (vérif police obligatoire avant
     // restitution, car le proprio doit toujours passer par la police pour

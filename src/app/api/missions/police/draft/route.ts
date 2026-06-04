@@ -17,39 +17,15 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+// Olivier 2026-06-03 (audit J-2 W10) : mappings centralises pour eviter le
+// drift entre cette route draft et /api/towsoft/create.
+import { FOURRIERE_TYPE_TO_SOURCE, PREFIX_BY_TYPE, zoneForType } from '@/lib/missions/police-mapping'
 
 export const maxDuration = 30
 
-// Source / zone mapping (copie alleegee de towsoft/create — la version
-// finalize reutilisera la route complete pour eviter la divergence)
-const FOURRIERE_TYPE_TO_SOURCE: Record<string, string> = {
-  mal_garee:   'police_mg',
-  rodeo:       'police_rodeo',
-  avp:         'police_avp',
-  snc:         'police_snc',
-  sc:          'sia_couvert',
-  appel_prive: 'prive',
-}
-
-function zoneForType(t: string, sncScenario?: string, priveDest?: string, malGareeScen?: string): string | null {
-  if (t === 'mal_garee')   return malGareeScen === 'deplacement_paye' ? null : 'L'
-  if (t === 'rodeo')       return 'J'
-  if (t === 'avp')         return 'J'
-  if (t === 'snc' || t === 'sc') return sncScenario === 'rem_depot' ? 'Transit' : null
-  if (t === 'appel_prive') return priveDest === 'depot' ? 'Transit' : null
-  return null
-}
-
-const PREFIX_BY_TYPE: Record<string, string> = {
-  mal_garee:   'MG',
-  rodeo:       'RODEO',
-  avp:         'AVP',
-  snc:         'SNC',
-  sc:          'SC',
-  appel_prive: 'PRIVE',
-  accident:    'POLICE',
-  saisie:      'POLICE',
-}
+// W10 : Source / zone / prefix mappings = import depuis lib partagee
+// (avant : duplications avec /api/towsoft/create qui creaient des
+// incoherences subtiles type saisie/accident manquants)
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
