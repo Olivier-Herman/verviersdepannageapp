@@ -1482,6 +1482,23 @@ export default function MissionDetailClient({
 
   const f = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
+  // Olivier 2026-06-04 : auto-patch silencieux pour special_tarif_htva
+  // afin que l estimation tarif se mette a jour live + que la valeur
+  // soit persistee meme sans cliquer "Enregistrer" (bug rapporte :
+  // tarif special ne s ecrasait pas dans la card estimation).
+  // Debounce 700ms pour eviter de marteler la BDD pendant la saisie.
+  useEffect(() => {
+    const v = form.special_tarif_htva
+    const norm = v === '' || v == null ? null : Number(v)
+    const orig = initialMission.special_tarif_htva != null ? Number(initialMission.special_tarif_htva) : null
+    if (norm === orig) return
+    const t = setTimeout(() => {
+      silentPatch({ special_tarif_htva: norm })
+    }, 700)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.special_tarif_htva])
+
   // Olivier 2026-06-04 : changement de source.
   // - police_snc (SIABIS NON couvert) : l assistance ne paye pas -> on
   //   MEMORISE les valeurs client + billed_to actuelles puis on les RETIRE.
