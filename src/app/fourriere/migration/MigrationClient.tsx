@@ -295,13 +295,17 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
     loadStats()
   }
 
-  async function printZone(targetZone: string, onlyUnprinted = true) {
-    if (!confirm(`Imprimer toutes les etiquettes de la zone ${targetZone} ?\n${onlyUnprinted ? '(Seulement les non-imprimees)' : '(REIMPRESSION DE TOUT)'}\n\nL impression est sequentielle, le PC Zebra fait la queue.`)) return
+  // Olivier 2026-06-04 : reimpression totale par defaut. On veut imprimer
+  // TOUTES les etiquettes de la zone a chaque clic, pas seulement les non
+  // imprimees (l operateur peut etre amene a re-imprimer apres bourrage ou
+  // remplacement d etiquettes).
+  async function printZone(targetZone: string) {
+    if (!confirm(`Réimpression TOTALE des étiquettes de la zone ${targetZone} ?\n\nToutes les étiquettes seront imprimées (même celles déjà imprimées). L'impression est séquentielle, le PC Zebra fait la queue.`)) return
     try {
       const r = await fetch('/api/admin/towsoft-migration/print-zone', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ zone: targetZone, only_unprinted: onlyUnprinted }),
+        body:    JSON.stringify({ zone: targetZone, only_unprinted: false }),
       })
       const j = await r.json()
       if (!r.ok) { alert(`Erreur : ${j.error || 'inconnue'}`); return }
