@@ -12,10 +12,14 @@
 //   6. Clic 'Terminer la zone' -> declenche le worker (cron) + bouton batch impression
 
 import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, RefreshCw, Loader2, ScanLine, Check, X, AlertTriangle, Building2, Printer, BarChart3, Ghost, Archive } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2, ScanLine, Check, X, AlertTriangle, Building2, Printer, BarChart3, Ghost, Archive, Camera } from 'lucide-react'
 import { normalizePlate } from '@/lib/plate'
+
+// QRScanner = camera + auto-detection rafale (dedup 3.5s, bip), Capacitor compatible
+const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })
 
 interface Stats {
   total: number
@@ -61,6 +65,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   const [scans, setScans] = useState<ScanItem[]>([])
   const [scanning, setScanning] = useState(false)
   const [confirmConflict, setConfirmConflict] = useState<{ raw: string; match: any } | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Charge les zones actives depuis BDD (fallback si erreur reseau)
@@ -382,9 +387,18 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
         {/* Input scan + liste */}
         {zone && (
           <div className="bg-surface border rounded-2xl p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <ScanLine size={16} className="text-brand" />
-              <h2 className="font-semibold text-sm text-ink">Scanne ou tape ici (Enter pour valider)</h2>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <ScanLine size={16} className="text-brand" />
+                <h2 className="font-semibold text-sm text-ink">Scanne ou tape ici (Enter pour valider)</h2>
+              </div>
+              <button
+                onClick={() => setCameraOpen(true)}
+                disabled={scanning}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
+              >
+                <Camera size={14} /> Scanner caméra
+              </button>
             </div>
             <form onSubmit={e => { e.preventDefault(); handleScan() }}>
               <input
@@ -456,6 +470,16 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
           </div>
         )}
       </div>
+
+      {/* Scanner camera plein ecran. Rafale : QRScanner reste actif, paused
+          pendant traitement async (scanning=true) puis reprend. Olivier 2026-06-04. */}
+      {cameraOpen && zone && (
+        <QRScanner
+          paused={scanning || !!confirmConflict}
+          onScan={(qrText) => handleScan(qrText)}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
     </AppShell>
   )
 }

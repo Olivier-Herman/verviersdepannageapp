@@ -149,6 +149,11 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
             // Le dispatcher peut quand meme les choisir avec confirmation.
             const isOffDuty = d.is_on_duty === false
 
+            // Olivier 2026-06-04 : position datee = > 2h sans mise a jour.
+            // Le chauffeur n est peut-etre plus a l endroit indique, l ETA
+            // est donc peu fiable.
+            const isStalePosition = d.location_age_seconds != null && d.location_age_seconds > 7200
+
             // Couleur de bordure et fond selon disponibilité — variants thème.
             const skinCls = isOffDuty
               ? 'bg-surface border opacity-50 grayscale'
@@ -180,10 +185,11 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
                       <p className="text-ink text-sm font-semibold truncate">
                         {d.name}
                         {isOffDuty && <span className="ml-2 text-[10px] uppercase font-bold text-ink-muted">⏸ Pas de garde</span>}
+                        {isStalePosition && !isOffDuty && <span className="ml-2 text-[10px] uppercase font-bold text-warning-700">⚠ Position datée</span>}
                       </p>
                       {free ? (
-                        <p className={`${isOffDuty ? 'text-ink-muted' : 'text-success'} text-xs`}>
-                          Libre {d.has_position && d.location_age_seconds != null && `· position ${fmtAge(d.location_age_seconds)}`}
+                        <p className={`${isOffDuty ? 'text-ink-muted' : isStalePosition ? 'text-warning-700' : 'text-success'} text-xs`}>
+                          Libre {d.has_position && d.location_age_seconds != null && `· position ${fmtAge(d.location_age_seconds)}${isStalePosition ? ' — peut être ailleurs maintenant' : ''}`}
                         </p>
                       ) : (
                         <p className="text-warning text-xs truncate">
