@@ -142,7 +142,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       incident_address, incident_city, destination_address,
       parc_zone_key, parc_row_number, parc_slot_index,
       received_at, intervention_date, parked_at,
-      police_blocked, police_levee_saisie_ok, odoo_quote_id
+      police_blocked, police_levee_saisie_ok, odoo_quote_id,
+      special_tarif_htva
     `)
     .eq('id', missionId)
     .maybeSingle()
@@ -258,22 +259,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     // Build les lignes devis (config source : PECMG / PECRODEO / ...)
+    // Olivier 2026-06-04 : si special_tarif_htva defini sur la mission,
+    // court-circuit TOTAL = une seule ligne SERV-DIV "prix convenu" qui
+    // ecrase forfait + gardiennage. Coherent avec les autres routes (quote,
+    // quote-grouped). Permet a l operateur fourriere de forcer un prix
+    // negocie avec le client lors de la restitution.
     const ref = mission.external_id || mission.dossier_number || mission.id.slice(0, 8)
-    const lines: QuoteLine[] = [
-      {
+    const specialTarif = (mission as any).special_tarif_htva
+    let lines: QuoteLine[]
+    if (specialTarif != null && Number(specialTarif) > 0) {
+      lines = [{
+        kind:       'SERV-DIV' as any,
+        name:       `Intervention suivant prix convenu — ${ref}`,
+        qty:        1,
+        price_unit: Number(specialTarif),
+      }]
+    } else {
+      lines = [{
         kind:       sourceConfig.forfaitOdooCode as any,
         name:       sourceConfig.forfaitName(ref),
         qty:        1,
         price_unit: sourceConfig.forfaitHtva,
-      },
-    ]
-    if (days > 0) {
-      lines.push({
-        kind:       'GARDIENNAGE' as any,
-        name:       `Gardiennage parc fourrière (${days} jour${days > 1 ? 's' : ''})`,
-        qty:        days,
-        price_unit: GARDIENNAGE_PRICE_HTVA,
-      })
+      }]
+      if (days > 0) {
+        lines.push({
+          kind:       'GARDIENNAGE' as any,
+          name:       `Gardiennage parc fourrière (${days} jour${days > 1 ? 's' : ''})`,
+          qty:        days,
+          price_unit: GARDIENNAGE_PRICE_HTVA,
+        })
+      }
     }
 
     let quoteId:  number | null = null

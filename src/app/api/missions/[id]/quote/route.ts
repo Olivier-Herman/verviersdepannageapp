@@ -108,6 +108,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (customLines) {
     lines = customLines
     totalForResponse = customLines.reduce((s, l) => s + l.qty * l.price_unit, 0)
+  } else if ((mission as any).special_tarif_htva != null && Number((mission as any).special_tarif_htva) > 0) {
+    // Olivier 2026-06-04 : tarif special HTVA -> court-circuit TOTAL,
+    // peu importe la source (y compris SNC/SC). Une seule ligne SERV-DIV
+    // "Intervention suivant prix convenu" qui ecrase TOUTE autre logique
+    // (SNC pricing, source_tariffs, etc.). Avant ce fix, le court-circuit
+    // etait uniquement dans la branche 'autres sources' (via estimate) ->
+    // les SNC/SC l ignoraient et generaient toujours SIAREM + SIAKIL.
+    const amount = Number((mission as any).special_tarif_htva)
+    lines = [{
+      kind:       'SERV-DIV',
+      name:       `Intervention suivant prix convenu — ${missionRef}`,
+      qty:        1,
+      price_unit: amount,
+    }]
+    totalForResponse = amount
   } else if ((mission.source === 'police_snc' || mission.source === 'sia_couvert') && (mission as any).snc_scenario) {
     // SNC / SC : tarification specifique (SIAREM/SIAKIL/SIABAL + MAJ si plage horaire).
     // SC = variant 'sc' (pas de km, forfait + balisage seulement).
