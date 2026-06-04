@@ -110,6 +110,21 @@ export async function POST(req: Request) {
     match = data
   }
 
+  // Olivier 2026-06-04 : TowSoft stocke parfois UNIQUEMENT les 5 derniers
+  // caracteres du VIN. Si on a un VIN complet (17 chars) sans match exact,
+  // on tente une egalite sur les 5 derniers chars.
+  if (!match && resolvedVin && resolvedVin.length === 17) {
+    const last5 = resolvedVin.slice(-5).toUpperCase()
+    const { data } = await sb
+      .from('towsoft_migration_source')
+      .select('id, towsoft_num, plate, vin, brand, model, motif, flag_scanned, scanned_zone, scanned_at, imported_at')
+      .eq('vin', last5)
+      .limit(2)
+    if (data && data.length === 1) match = data[0]
+    // si data.length > 1, plusieurs vehicules ont le meme suffixe -> ambigu,
+    // on laisse match=null pour forcer l operateur a utiliser plaque ou towsoft_num
+  }
+
   if (!match && resolvedPlate) {
     const { data } = await sb
       .from('towsoft_migration_source')
@@ -117,6 +132,21 @@ export async function POST(req: Request) {
       .eq('plate', resolvedPlate)
       .maybeSingle()
     match = data
+  }
+
+  // Olivier 2026-06-04 : si l input est court (4-8 chars alphanumeriques sans
+  // I/O/Q comme un VIN tronque) et qu on n a pas matche par plaque, tenter
+  // aussi un match en tant que suffixe VIN. Couvre le cas ou l operateur tape
+  // directement les 5 derniers chars qu il lit sur la fiche TowSoft.
+  if (!match && resolvedPlate && resolvedPlate.length >= 4 && resolvedPlate.length <= 8
+      && /^[A-HJ-NPR-Z0-9]+$/i.test(resolvedPlate)) {
+    const candidate = resolvedPlate.toUpperCase()
+    const { data } = await sb
+      .from('towsoft_migration_source')
+      .select('id, towsoft_num, plate, vin, brand, model, motif, flag_scanned, scanned_zone, scanned_at, imported_at')
+      .eq('vin', candidate)
+      .limit(2)
+    if (data && data.length === 1) match = data[0]
   }
 
   // 3a. Pas de match -> fantome inverse (log dans orphan_scans pour suivi)
