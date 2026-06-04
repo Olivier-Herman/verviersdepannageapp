@@ -1264,7 +1264,7 @@ export default function EncaissementClient({
           />
         </div>
         <div>
-          <label className={labelCls}>Téléphone <span className="text-brand">*</span></label>
+          <label className={labelCls}>Téléphone <span className="text-ink-faint text-xs">(optionnel)</span></label>
           <input
             value={clientPhone}
             onChange={e => setClientPhone(e.target.value)}
@@ -1274,7 +1274,7 @@ export default function EncaissementClient({
           />
         </div>
         <div>
-          <label className={labelCls}>Email</label>
+          <label className={labelCls}>Email <span className="text-ink-faint text-xs">(optionnel)</span></label>
           <input
             value={clientEmail}
             onChange={e => setClientEmail(e.target.value)}
@@ -1283,14 +1283,15 @@ export default function EncaissementClient({
             className={inputCls}
           />
         </div>
+        {/* Olivier 2026-06-04 : telephone non obligatoire. Continuer toujours
+            possible. Si telephone fourni et pas encore d adresse, on tente
+            une derniere recherche Odoo par telephone. */}
         <BigBtn label="Continuer →" onClick={async () => {
-          if (!clientPhone.trim()) return
-          // Chercher par téléphone si pas encore trouvé par nom
-          if (!clientStreet && !clientAddress) {
+          if (clientPhone.trim() && !clientStreet && !clientAddress) {
             await searchOdooByPhone()
           }
           setPage(4)
-        }} disabled={!clientPhone.trim()} />
+        }} />
       </div>
     </Shell>
   )
