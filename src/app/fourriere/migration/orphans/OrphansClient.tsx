@@ -12,7 +12,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
-import { ArrowLeft, RefreshCw, Loader2, Ghost, Check, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2, Ghost, Check, Eye, EyeOff, RotateCw } from 'lucide-react'
 
 interface Orphan {
   id:                  string
@@ -64,6 +64,49 @@ export default function OrphansClient({ userRole, userName, userEmail, userModul
 
   useEffect(() => { load() /* eslint-disable-next-line */ }, [showResolved])
 
+  async function retry(orphan: Orphan) {
+    setResolv(orphan.id)
+    try {
+      const r = await fetch('/api/admin/towsoft-migration/orphans/retry', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id: orphan.id }),
+      })
+      const j = await r.json()
+      if (j.ok) {
+        alert(j.message || '✓ Lié avec succès')
+        load()
+      } else {
+        alert(j.message || '⚠ Pas de match VD Soft ni TowSoft. Résolution manuelle nécessaire.')
+      }
+    } catch (e: any) {
+      alert(`Erreur réseau : ${e?.message || e}`)
+    } finally {
+      setResolv(null)
+    }
+  }
+
+  async function retryAll() {
+    if (!confirm(`Re-tenter automatiquement les ${orphans.length} fantômes ?\n\nPour chacun, on cherche d abord dans TowSoft puis dans incoming_missions par plaque/VIN. Les matches sont liés automatiquement à leur zone, les autres restent fantômes.`)) return
+    setResolv('all')
+    let linked = 0
+    let stillOrphan = 0
+    for (const o of orphans) {
+      try {
+        const r = await fetch('/api/admin/towsoft-migration/orphans/retry', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id: o.id }),
+        })
+        const j = await r.json()
+        if (j.ok) linked++; else stillOrphan++
+      } catch { stillOrphan++ }
+    }
+    alert(`✓ Re-tentative terminée : ${linked} liés, ${stillOrphan} restent fantômes`)
+    setResolv(null)
+    load()
+  }
+
   async function resolve(orphan: Orphan, action: string) {
     const notes = prompt(`Notes pour cette resolution ? (optionnel)\n\nScan : ${orphan.raw_input} (zone ${orphan.zone})`)
     if (notes === null) return  // cancel
@@ -114,7 +157,7 @@ export default function OrphansClient({ userRole, userName, userEmail, userModul
           la fiche depuis PoliceClient (recherche par plaque pour autocompletion), soit marquer comme erreur de scan.</p>
         </div>
 
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-3 text-sm flex-wrap">
           <button
             onClick={() => setShow(false)}
             className={`px-3 py-1.5 rounded-lg font-semibold transition ${!showResolved ? 'bg-warning-100 text-warning-800 border border-warning-300' : 'bg-surface-2 text-ink-muted hover:text-ink border'}`}>
@@ -127,6 +170,15 @@ export default function OrphansClient({ userRole, userName, userEmail, userModul
             <EyeOff size={14} className="inline mr-1" />
             Resolus ({counts.resolved})
           </button>
+          {!showResolved && orphans.length > 0 && (
+            <button
+              onClick={retryAll}
+              disabled={resolving === 'all'}
+              className="ml-auto px-3 py-1.5 bg-info-50 hover:bg-info-100 text-info-800 border border-info-200 rounded-lg font-semibold transition disabled:opacity-50">
+              <RotateCw size={14} className="inline mr-1" />
+              {resolving === 'all' ? 'Re-tentative...' : `Re-tenter tous (${orphans.length})`}
+            </button>
+          )}
         </div>
 
         {loading ? (

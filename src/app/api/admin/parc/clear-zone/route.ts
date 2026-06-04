@@ -22,7 +22,11 @@ import { createAdminClient } from '@/lib/supabase'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-const PARKED_STATUSES = ['parked', 'delivering']
+// Olivier 2026-06-04 : on vide TOUS les vehicules ayant parc_zone_key=X
+// sauf statuts finaux (facture/clore). Avant on ne traitait que parked +
+// delivering, mais certaines missions stale en assigned/in_progress/created
+// gardent leur parc_zone_key et faussent le compte.
+const EXCLUDED_FINAL_STATUSES = ['completed', 'to_invoice', 'invoiced', 'cancelled']
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -42,12 +46,12 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
-  // 1. Liste les vehicules actuellement dans la zone
+  // 1. Liste les vehicules actuellement dans la zone (tous statuts non-finaux)
   const { data: vehicles, error: vErr } = await sb
     .from('incoming_missions')
     .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
     .eq('parc_zone_key', zoneKey)
-    .in('status', PARKED_STATUSES)
+    .not('status', 'in', `(${EXCLUDED_FINAL_STATUSES.map(s => `"${s}"`).join(',')})`)
     .order('parc_row_number')
     .order('parc_slot_index')
 
@@ -55,7 +59,7 @@ export async function POST(req: Request) {
   const list = vehicles || []
 
   if (list.length === 0) {
-    return NextResponse.json({ ok: true, cleared: 0, vehicles: [], message: `Aucun vehicule dans la zone ${zoneKey}` })
+    return NextResponse.json({ ok: true, cleared: 0, count: 0, vehicles: [], message: `Aucun vehicule dans la zone ${zoneKey}` })
   }
 
   if (dryRun) {
@@ -63,6 +67,7 @@ export async function POST(req: Request) {
       ok:       true,
       dry_run:  true,
       cleared:  list.length,
+      count:    list.length,
       vehicles: list,
     })
   }
@@ -102,6 +107,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok:       true,
     cleared:  list.length,
+    count:    list.length,
     zone_key: zoneKey,
     vehicles: list,
   })

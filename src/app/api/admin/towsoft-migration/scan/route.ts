@@ -149,6 +149,79 @@ export async function POST(req: Request) {
     if (data && data.length === 1) match = data[0]
   }
 
+  // Olivier 2026-06-04 : avant de creer un fantome, on cherche une mission
+  // VD Soft EXISTANTE par plaque/VIN. Cas typique : vehicule cree en VD Soft
+  // post-bascule (pas dans towsoft_migration_source), ou ancien helpdesk Odoo
+  // migre. Si trouve, on associe directement la mission a la zone scannee
+  // (= replacement direct sans creer fantome).
+  if (!match && (resolvedPlate || resolvedVin)) {
+    let existingMission: any = null
+
+    if (resolvedVin) {
+      const { data } = await sb
+        .from('incoming_missions')
+        .select('id, mission_number, vehicle_plate, vehicle_vin, status, parc_zone_key, source')
+        .eq('vehicle_vin', resolvedVin)
+        .in('status', ['parked', 'delivering', 'created', 'assigned', 'in_progress'])
+        .limit(2)
+      if (data && data.length === 1) existingMission = data[0]
+    }
+    if (!existingMission && resolvedPlate) {
+      const { data } = await sb
+        .from('incoming_missions')
+        .select('id, mission_number, vehicle_plate, vehicle_vin, status, parc_zone_key, source')
+        .eq('vehicle_plate', resolvedPlate)
+        .in('status', ['parked', 'delivering', 'created', 'assigned', 'in_progress'])
+        .limit(2)
+      if (data && data.length === 1) existingMission = data[0]
+    }
+
+    if (existingMission) {
+      // Met a jour la zone directement sur la mission existante
+      const { error: upErr } = await sb
+        .from('incoming_missions')
+        .update({
+          parc_zone_key:   zone,
+          parc_row_number: null,
+          parc_slot_index: null,
+          status:          existingMission.status === 'parked' ? 'parked' : 'parked',  // force parked si pas deja
+          updated_at:      new Date().toISOString(),
+        })
+        .eq('id', existingMission.id)
+
+      if (upErr) {
+        return NextResponse.json({ error: `Update mission existante KO : ${upErr.message}` }, { status: 500 })
+      }
+
+      // Log audit
+      await sb.from('mission_logs').insert({
+        mission_id: existingMission.id,
+        action:     'parc_scanned_migration',
+        notes:      `Scan migration : reassignee en zone ${zone}${existingMission.parc_zone_key && existingMission.parc_zone_key !== zone ? ` (depuis ${existingMission.parc_zone_key})` : ''}`,
+        actor_id:   user.id,
+        metadata:   {
+          from_zone:  existingMission.parc_zone_key,
+          to_zone:    zone,
+          raw_input:  raw,
+          parsed_format: parsed.format,
+        },
+      }).then(() => {}, e => console.warn('[scan/migration] log KO:', e?.message))
+
+      return NextResponse.json({
+        ok: true,
+        reason: 'linked_to_existing_vdsoft',
+        message: `✓ Mission VD Soft existante liée à zone ${zone} (${existingMission.vehicle_plate || existingMission.vehicle_vin || 'plaque inconnue'})`,
+        match: {
+          plate: existingMission.vehicle_plate,
+          vin:   existingMission.vehicle_vin,
+          mission_id: existingMission.id,
+          source: existingMission.source,
+        },
+        parsed,
+      })
+    }
+  }
+
   // 3a. Pas de match -> fantome inverse (log dans orphan_scans pour suivi)
   if (!match) {
     const { data: orphan } = await sb

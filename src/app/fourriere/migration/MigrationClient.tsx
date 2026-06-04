@@ -26,8 +26,10 @@ interface Stats {
   scanned: number
   imported: number
   enriched: number
+  orphans: number
   pending_import: number
   by_zone: Record<string, number>
+  orphans_by_zone: Record<string, number>
 }
 
 interface ScanItem {
@@ -337,25 +339,37 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
           <div className="bg-surface border rounded-2xl p-4 space-y-3">
             <h2 className="font-semibold text-sm text-ink flex items-center gap-2"><BarChart3 size={14} /> Progression</h2>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <StatCard label="Total TowSoft" value={stats.total} color="ink" />
               <StatCard label="Scannes" value={stats.scanned} color="info" suffix={`/${stats.total}`} />
               <StatCard label="Importes VD Soft" value={stats.imported} color="success" suffix={`/${stats.scanned || 1}`} />
+              <Link href="/fourriere/migration/orphans" className="block">
+                <StatCard label="Fantomes (pas TS)" value={stats.orphans} color="warning" />
+              </Link>
               <StatCard label="Detail enrichi" value={stats.enriched} color="warning" suffix={`/${stats.total}`} />
             </div>
+            {stats.orphans > 0 && (
+              <p className="text-xs text-warning-700 -mt-1">
+                ⚠ Tu as scanné {stats.scanned + stats.orphans} véhicules au total ({stats.scanned} matchs TowSoft + {stats.orphans} fantômes à investiguer dans <Link href="/fourriere/migration/orphans" className="underline font-semibold">Fantômes</Link>)
+              </p>
+            )}
 
-            {stats.scanned > 0 && Object.keys(stats.by_zone).length > 0 && (
+            {(stats.scanned > 0 || stats.orphans > 0) && (Object.keys(stats.by_zone).length > 0 || Object.keys(stats.orphans_by_zone || {}).length > 0) && (
               <div>
                 <p className="text-xs text-ink-muted uppercase tracking-wide font-semibold mb-2">Par zone scannee (clic = imprimer etiquettes) :</p>
                 <div className="flex flex-wrap gap-2">
-                  {Object.entries(stats.by_zone).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([z, n]) => (
-                    <button key={z} onClick={() => printZone(z)} title={`Imprimer etiquettes zone ${z}`}
-                      className="px-2 py-1 bg-surface-2 hover:bg-info-50 hover:border-info-300 border rounded-full text-xs transition flex items-center gap-1">
-                      <Printer size={11} className="text-info-700" />
-                      <span className="font-mono font-bold">{z}</span>
-                      <span className="text-ink-muted">· {n as number}</span>
-                    </button>
-                  ))}
+                  {Array.from(new Set([...Object.keys(stats.by_zone), ...Object.keys(stats.orphans_by_zone || {})]))
+                    .map(z => ({ z, n: stats.by_zone[z] || 0, orphans: (stats.orphans_by_zone || {})[z] || 0 }))
+                    .sort((a, b) => (b.n + b.orphans) - (a.n + a.orphans))
+                    .map(({ z, n, orphans }) => (
+                      <button key={z} onClick={() => printZone(z)} title={`Imprimer etiquettes zone ${z}`}
+                        className="px-2 py-1 bg-surface-2 hover:bg-info-50 hover:border-info-300 border rounded-full text-xs transition flex items-center gap-1">
+                        <Printer size={11} className="text-info-700" />
+                        <span className="font-mono font-bold">{z}</span>
+                        <span className="text-ink-muted">· {n}</span>
+                        {orphans > 0 && <span className="text-warning-700 font-semibold">+{orphans}👻</span>}
+                      </button>
+                    ))}
                 </div>
               </div>
             )}
