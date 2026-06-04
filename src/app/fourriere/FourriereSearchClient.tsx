@@ -135,6 +135,12 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
               <Search size={20} className="text-brand" />
               <h1 className="font-display text-xl font-bold text-ink">Recherche fourrière</h1>
             </div>
+            <Link
+              href="/fourriere/migration"
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold shadow-sm transition"
+              title="Reconstruction Fourriere TowSoft -> VD Soft (scan zone par zone)">
+              🔄 Migration
+            </Link>
             <button
               onClick={() => setShowDepots(true)}
               className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold shadow-sm transition">
