@@ -235,7 +235,35 @@ export async function POST(req: Request) {
   }
 
   // 3a. Pas de match -> fantome inverse (log dans orphan_scans pour suivi)
+  // Olivier 2026-06-04 : DERNIER RECOURS = lookup Odoo fleet.vehicle.
+  // Si trouve, on cree une mission VD Soft minimaliste avec les infos Odoo
+  // (plate, brand, model, vin) + odoo_vehicle_id + helpdesk_ticket si dispo.
+  // Et on transfere le state Odoo vers la zone scannee.
+  // Tout ca evite de tomber en fantome pour un vehicule qui existe vraiment.
   if (!match) {
+    const odooLookup = await createFromOdooIfFound({
+      plate:   resolvedPlate,
+      vin:     resolvedVin,
+      zone,
+      userId:  user.id,
+      sb,
+    })
+
+    if (odooLookup.ok) {
+      return NextResponse.json({
+        ok: true,
+        reason: 'created_from_odoo',
+        message: `✓ Mission VD Soft créée depuis Odoo (fleet #${odooLookup.odooVehicleId}) en zone ${zone}`,
+        match: {
+          plate:      odooLookup.plate,
+          vin:        odooLookup.vin,
+          mission_id: odooLookup.missionId,
+          source:     'legacy_odoo',
+        },
+        parsed,
+      })
+    }
+
     const { data: orphan } = await sb
       .from('orphan_scans')
       .insert({
@@ -253,7 +281,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: false,
       reason: 'not_in_towsoft',
-      message: 'Vehicule absent de TowSoft : a creer manuellement depuis PoliceClient OU verifier dans Odoo helpdesk. Logge dans la liste des fantomes inverses.',
+      message: 'Véhicule absent de TowSoft / VD Soft / Odoo. À créer manuellement depuis PoliceClient. Loggé dans les fantômes inverses.',
       parsed,
       orphan_id: orphan?.id || null,
     })
@@ -323,6 +351,129 @@ export async function POST(req: Request) {
     match: { ...match, scanned_zone: zone, flag_scanned: true },
     parsed,
   })
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Olivier 2026-06-04 : si on a un match Odoo mais ni TowSoft ni VD Soft,
+// on cree une mission VD Soft minimaliste avec les infos Odoo + transfere
+// le state Odoo vers la zone scannee. Idempotent via external_id ODOO-<id>.
+// ────────────────────────────────────────────────────────────────────
+async function createFromOdooIfFound(input: {
+  plate:   string | null
+  vin:     string | null
+  zone:    string
+  userId:  string
+  sb:      any
+}): Promise<{ ok: boolean; missionId?: string; odooVehicleId?: number; plate?: string | null; vin?: string | null }> {
+  // 1. Lookup fleet.vehicle Odoo (best effort)
+  let vehicle: any = null
+  try {
+    vehicle = await withOdooActor(input.userId, async () => {
+      if (input.vin) {
+        const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
+          [['vin_sn', '=', String(input.vin).toUpperCase()]],
+        ], { fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id'], limit: 1 })
+        if (r && r.length > 0) return r[0]
+      }
+      if (input.plate) {
+        const r = await odooRpc<any[]>('fleet.vehicle', 'search_read', [
+          [['license_plate', '=', String(input.plate).toUpperCase()]],
+        ], { fields: ['id', 'license_plate', 'vin_sn', 'brand_id', 'model_id', 'state_id'], limit: 1 })
+        if (r && r.length > 0) return r[0]
+      }
+      return null
+    })
+  } catch (e: any) {
+    console.warn('[scan] Odoo lookup KO:', e?.message)
+    return { ok: false }
+  }
+  if (!vehicle) return { ok: false }
+
+  const odooVehicleId = vehicle.id as number
+  const externalId    = `ODOO-${odooVehicleId}`
+  const brand         = Array.isArray(vehicle.brand_id) ? vehicle.brand_id[1] : null
+  const model         = Array.isArray(vehicle.model_id) ? vehicle.model_id[1] : null
+
+  // 2. Idempotence : mission VD Soft existante avec ce external_id ?
+  const { data: existing } = await input.sb
+    .from('incoming_missions')
+    .select('id, parc_zone_key')
+    .eq('external_id', externalId)
+    .maybeSingle()
+
+  if (existing) {
+    // Update zone (idempotent re-scan)
+    await input.sb.from('incoming_missions').update({
+      parc_zone_key:   input.zone,
+      parc_row_number: null,
+      parc_slot_index: null,
+      status:          'parked',
+      updated_at:      new Date().toISOString(),
+    }).eq('id', existing.id)
+    await transferOdooState({ plate: vehicle.license_plate, vin: vehicle.vin_sn, zoneKey: input.zone, userId: input.userId })
+      .catch(e => console.warn('[scan] transfer Odoo state KO:', e?.message))
+    return { ok: true, missionId: existing.id, odooVehicleId, plate: vehicle.license_plate, vin: vehicle.vin_sn }
+  }
+
+  // 3. Cherche helpdesk.ticket Odoo associe au vehicule (pour helpdesk_id)
+  let odooHelpdeskId: number | null = null
+  try {
+    odooHelpdeskId = await withOdooActor(input.userId, async () => {
+      const tickets = await odooRpc<any[]>('helpdesk.ticket', 'search_read', [
+        [['x_studio_fiche_vehicule', '=', odooVehicleId]],
+      ], { fields: ['id'], limit: 1 })
+      return tickets?.[0]?.id || null
+    })
+  } catch (e: any) {
+    console.warn('[scan] Odoo helpdesk lookup KO:', e?.message)
+  }
+
+  // 4. INSERT mission VD Soft minimaliste
+  const nowIso = new Date().toISOString()
+  const { data: created, error: insErr } = await input.sb
+    .from('incoming_missions')
+    .insert({
+      external_id:       externalId,
+      source:            'legacy_odoo',
+      mission_type:      'remorquage',
+      status:            'parked',
+      parc_zone_key:     input.zone,
+      parc_row_number:   null,
+      parc_slot_index:   null,
+      vehicle_plate:     vehicle.license_plate || input.plate,
+      vehicle_brand:     brand,
+      vehicle_model:     model,
+      vehicle_vin:       vehicle.vin_sn || input.vin,
+      odoo_vehicle_id:   odooVehicleId,
+      odoo_helpdesk_id:  odooHelpdeskId,
+      received_at:       nowIso,
+      intervention_date: nowIso,
+      parked_at:         nowIso,
+      created_at:        nowIso,
+      updated_at:        nowIso,
+    })
+    .select('id')
+    .single()
+
+  if (insErr) {
+    console.error('[scan] INSERT mission Odoo KO:', insErr.message)
+    return { ok: false }
+  }
+
+  // 5. Log
+  await input.sb.from('mission_logs').insert({
+    mission_id: created.id,
+    action:     'created_from_odoo_scan',
+    notes:      `Mission VD Soft créée depuis Odoo (fleet.vehicle #${odooVehicleId}) au scan migration zone ${input.zone}`,
+    actor_id:   input.userId,
+    metadata:   { odoo_vehicle_id: odooVehicleId, odoo_helpdesk_id: odooHelpdeskId, to_zone: input.zone },
+  }).then(() => {}, (e: any) => console.warn('[scan] log created_from_odoo KO:', e?.message))
+
+  // 6. Transfert state Odoo (non bloquant)
+  transferOdooState({ plate: vehicle.license_plate, vin: vehicle.vin_sn, zoneKey: input.zone, userId: input.userId })
+    .catch(e => console.warn('[scan] transfer Odoo state KO:', e?.message))
+
+  return { ok: true, missionId: created.id, odooVehicleId, plate: vehicle.license_plate, vin: vehicle.vin_sn }
 }
 
 // ────────────────────────────────────────────────────────────────────
