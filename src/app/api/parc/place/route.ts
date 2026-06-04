@@ -17,7 +17,9 @@ import { shiftAfterRelease } from '@/lib/parc/release'
 
 export const dynamic = 'force-dynamic'
 
-const DRIVER_ALLOWED_ZONES = ['A', 'Transit']
+// Olivier 2026-06-04 : remplace l ancienne const ['A', 'Transit'] par une
+// requete dynamique sur parc_zones.driver_allowed (un admin peut maintenant
+// changer les zones autorisees aux chauffeurs depuis /admin/parc).
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -145,10 +147,27 @@ export async function POST(req: Request) {
     }
 
     // Permission chauffeur restreinte (vaut pour grille + pool)
-    if (!isDispatcher && isDriver && !DRIVER_ALLOWED_ZONES.includes(zoneKey as string)) {
-      return failWithCleanup({
-        error: `Les chauffeurs ne peuvent placer que dans ${DRIVER_ALLOWED_ZONES.join(' ou ')}`,
-      }, 403)
+    // Olivier 2026-06-04 : check dynamique via parc_zones.driver_allowed
+    if (!isDispatcher && isDriver) {
+      const { data: zoneConf } = await sb
+        .from('parc_zones')
+        .select('driver_allowed')
+        .eq('key', zoneKey)
+        .maybeSingle()
+      if (!zoneConf?.driver_allowed) {
+        const { data: allowedZones } = await sb
+          .from('parc_zones')
+          .select('key')
+          .eq('active', true)
+          .eq('driver_allowed', true)
+          .order('sort_order')
+        const allowedKeys = (allowedZones || []).map(z => z.key)
+        return failWithCleanup({
+          error: allowedKeys.length > 0
+            ? `Les chauffeurs ne peuvent placer que dans ${allowedKeys.join(' ou ')}`
+            : 'Aucune zone autorisée aux chauffeurs (contacte admin)',
+        }, 403)
+      }
     }
 
     // Zone pool (Bordel) : pas de validation row/slot/swap. On laisse passer

@@ -69,8 +69,24 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
   } else if (typeof body.depot_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.depot_id)) {
     patch.depot_id = body.depot_id
   }
+  // driver_allowed : si true, chauffeurs peuvent deposer dans cette zone
+  if (typeof body.driver_allowed === 'boolean') {
+    patch.driver_allowed = body.driver_allowed
+  }
+  // active : soft-delete (false) ou reactivation (true)
+  if (typeof body.active === 'boolean') {
+    patch.active = body.active
+  }
+  // label : libelle affiche (modifiable)
+  if (typeof body.label === 'string' && body.label.trim()) {
+    patch.label = body.label.trim()
+  }
+  // sort_order : reordonner via UI
+  if (Number.isFinite(body.sort_order)) {
+    patch.sort_order = Number(body.sort_order)
+  }
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Au moins un champ requis (pos_x/pos_y/width/height/slot_direction/is_pool/pool_capacity/depot_id)' }, { status: 400 })
+    return NextResponse.json({ error: 'Au moins un champ requis' }, { status: 400 })
   }
 
   const sb = createAdminClient()
@@ -83,4 +99,39 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ zone: data })
+}
+
+// DELETE = soft-delete (set active=false). La zone reste en BDD pour
+// l historique des missions deja passees, mais disparait des selecteurs
+// (filtres active=true par defaut cote API).
+// Olivier 2026-06-04.
+export async function DELETE(_req: Request, { params }: { params: { key: string } }) {
+  const user = await ensureAdmin()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const sb = createAdminClient()
+  const zoneKey = decodeURIComponent(params.key)
+
+  // Verifie qu aucune mission active n est encore dans cette zone (parked)
+  const { count: usedBy } = await sb
+    .from('incoming_missions')
+    .select('id', { count: 'exact', head: true })
+    .eq('parc_zone_key', zoneKey)
+    .eq('status', 'parked')
+
+  if (usedBy && usedBy > 0) {
+    return NextResponse.json({
+      error: `Impossible : ${usedBy} vehicule(s) encore en zone ${zoneKey}. Transferez-les d abord.`,
+    }, { status: 409 })
+  }
+
+  const { data, error } = await sb
+    .from('parc_zones')
+    .update({ active: false })
+    .eq('key', zoneKey)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ zone: data, soft_deleted: true })
 }

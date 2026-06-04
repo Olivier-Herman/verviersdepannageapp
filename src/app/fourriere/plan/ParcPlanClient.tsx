@@ -37,6 +37,7 @@ interface Zone {
   strict_capacity: boolean
   is_pool?:        boolean
   pool_capacity?:  number | null
+  driver_allowed?: boolean
 }
 
 // Dimensions en pixels (zones auto-sized selon contenu).
@@ -912,7 +913,8 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
           >
             {state.zones.map(zone => {
               const zRows = rowsByZone[zone.key] || []
-              const canDriverDrop = !isDriver || isDispatcher || ['A', 'Transit'].includes(zone.key)
+              // Olivier 2026-06-04 : dynamique via zone.driver_allowed (au lieu de hardcode ['A', 'Transit'])
+              const canDriverDrop = !isDriver || isDispatcher || zone.driver_allowed === true
               return (
                 <ZoneOnCanvas
                   key={zone.key}

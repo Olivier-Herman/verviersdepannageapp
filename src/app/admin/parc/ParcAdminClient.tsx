@@ -15,7 +15,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw, Lock, Unlock, Grid3x3, Shuffle } from 'lucide-react'
+import { Plus, Trash2, Check, X, GripVertical, ArrowLeftRight, RotateCw, Lock, Unlock, Grid3x3, Shuffle, Truck, EyeOff, Eye, PowerOff, Power } from 'lucide-react'
 
 interface Zone {
   key:             string
@@ -28,6 +28,7 @@ interface Zone {
   is_pool:         boolean
   pool_capacity:   number | null
   depot_id:        string | null
+  driver_allowed:  boolean
 }
 
 interface Depot {
@@ -57,6 +58,8 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [depots] = useState<Depot[]>(initialDepots)
   const [busy, setBusy] = useState(false)
+  const [showInactive, setShowInactive] = useState(false)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
   const [canvasHeight, setCanvasHeight] = useState(initialCanvasHeight)
   const [canvasInput, setCanvasInput]   = useState(String(initialCanvasHeight))
   const [villeEmail, setVilleEmail]     = useState(initialVilleDestructionEmail || '')
@@ -67,7 +70,45 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id'>>) {
+  async function toggleZoneActive(zone: Zone) {
+    if (zone.active) {
+      // Soft-delete via DELETE
+      if (!confirm(`Désactiver la zone ${zone.label} ?\n\nLes véhicules actuellement parkés doivent d'abord être transférés.\nLa zone reste en BDD pour l'historique mais disparait des sélecteurs.`)) return
+      setBusy(true)
+      try {
+        const r = await fetch(`/api/admin/parc/zones/${encodeURIComponent(zone.key)}`, { method: 'DELETE' })
+        const j = await r.json()
+        if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
+        setZones(zs => zs.map(z => z.key === zone.key ? { ...z, active: false } : z))
+      } catch (e: any) { alert(`Erreur : ${e?.message || e}`) }
+      finally { setBusy(false) }
+    } else {
+      // Reactivation via PATCH
+      await toggleZoneOption(zone.key, { active: true })
+    }
+  }
+
+  async function createZone(payload: Partial<Zone> & { key: string }) {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/admin/parc/zones', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      })
+      const j = await r.json()
+      if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return false }
+      setZones(zs => [...zs, j.zone].sort((a, b) => a.sort_order - b.sort_order))
+      return true
+    } catch (e: any) {
+      alert(`Erreur : ${e?.message || e}`)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id' | 'driver_allowed' | 'active' | 'label'>>) {
     setBusy(true)
     setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
     try {
@@ -302,23 +343,66 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
         </div>
       </div>
 
+      {/* Barre d actions zones — Olivier 2026-06-04 */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          onClick={() => setCreateModalOpen(true)}
+          disabled={busy}
+          className="flex items-center gap-1.5 px-3 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold transition disabled:opacity-50"
+        >
+          <Plus size={14} /> Nouvelle zone
+        </button>
+        <button
+          onClick={() => setShowInactive(s => !s)}
+          className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition ${
+            showInactive ? 'bg-warning/15 border-warning/40 text-warning' : 'bg-surface-2 text-ink-muted hover:text-ink'
+          }`}
+        >
+          {showInactive ? <Eye size={12} /> : <EyeOff size={12} />}
+          {showInactive ? 'Masquer désactivées' : 'Afficher désactivées'}
+        </button>
+        <span className="text-xs text-ink-muted">
+          {zones.filter(z => z.active).length} active{zones.filter(z => z.active).length > 1 ? 's' : ''}
+          {showInactive && ` · ${zones.filter(z => !z.active).length} désactivée${zones.filter(z => !z.active).length > 1 ? 's' : ''}`}
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {zones.map(zone => {
+        {zones.filter(z => showInactive || z.active).map(zone => {
           const zRows = rowsOf(zone.key)
           return (
-            <div key={zone.key} className="bg-surface-2 border rounded-2xl overflow-hidden">
+            <div key={zone.key} className={`bg-surface-2 border rounded-2xl overflow-hidden transition ${!zone.active ? 'opacity-50' : ''}`}>
               <div className="px-4 py-3 border-b bg-surface space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-ink font-bold text-base">Zone {zone.label}</h2>
-                  {!zone.is_pool && (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h2 className="text-ink font-bold text-base flex items-center gap-2">
+                    Zone {zone.label}
+                    {!zone.active && (
+                      <span className="px-2 py-0.5 bg-critical/15 text-critical rounded text-[10px] font-bold uppercase">Désactivée</span>
+                    )}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    {!zone.is_pool && zone.active && (
+                      <button
+                        onClick={() => addRow(zone.key)}
+                        disabled={busy}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
+                      >
+                        <Plus size={14} /> Ajouter ligne
+                      </button>
+                    )}
                     <button
-                      onClick={() => addRow(zone.key)}
+                      onClick={() => toggleZoneActive(zone)}
                       disabled={busy}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
+                      title={zone.active ? 'Désactiver cette zone' : 'Réactiver cette zone'}
+                      className={`p-1.5 border rounded-lg transition disabled:opacity-50 ${
+                        zone.active
+                          ? 'bg-surface text-ink-muted hover:bg-critical/10 hover:text-critical hover:border-critical/40'
+                          : 'bg-success/10 text-success border-success/40 hover:bg-success/20'
+                      }`}
                     >
-                      <Plus size={14} /> Ajouter ligne
+                      {zone.active ? <PowerOff size={13} /> : <Power size={13} />}
                     </button>
-                  )}
+                  </div>
                 </div>
                 {/* Olivier 2026-06-04 : selecteur depot par zone (Pepinster/Verviers/Tiege/Francorchamps/Aywaille) */}
                 <div className="flex items-center gap-2 text-[11px]">
@@ -405,6 +489,20 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
                       </button>
                     </>
                   )}
+                  {/* Olivier 2026-06-04 : chauffeurs autorises a deposer ici ? */}
+                  <button
+                    onClick={() => toggleZoneOption(zone.key, { driver_allowed: !zone.driver_allowed })}
+                    disabled={busy}
+                    className={`flex items-center gap-1 px-2 py-1 rounded border transition disabled:opacity-50 ${
+                      zone.driver_allowed
+                        ? 'bg-info/15 border-info/40 text-info'
+                        : 'bg-surface text-ink-secondary hover:text-ink'
+                    }`}
+                    title={zone.driver_allowed ? 'Chauffeurs peuvent y deposer' : 'Reserve dispatcher/fourriere'}
+                  >
+                    <Truck size={11} />
+                    {zone.driver_allowed ? 'Chauffeur OK' : 'Pas chauffeur'}
+                  </button>
                 </div>
               </div>
               <div className="divide-y divide-[#222]">
@@ -435,6 +533,186 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
             </div>
           )
         })}
+      </div>
+
+      {createModalOpen && (
+        <CreateZoneModal
+          depots={depots}
+          existingKeys={new Set(zones.map(z => z.key))}
+          onClose={() => setCreateModalOpen(false)}
+          onCreate={async (payload) => {
+            const ok = await createZone(payload)
+            if (ok) setCreateModalOpen(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function CreateZoneModal({ depots, existingKeys, onClose, onCreate }: {
+  depots:       Depot[]
+  existingKeys: Set<string>
+  onClose:      () => void
+  onCreate:     (payload: Partial<Zone> & { key: string }) => Promise<void>
+}) {
+  const [key,            setKey]            = useState('')
+  const [label,          setLabel]          = useState('')
+  const [depotId,        setDepotId]        = useState<string>(depots.find(d => d.is_default_parc)?.id || depots[0]?.id || '')
+  const [isPool,         setIsPool]         = useState(false)
+  const [poolCapacity,   setPoolCapacity]   = useState<string>('')
+  const [driverAllowed,  setDriverAllowed]  = useState(false)
+  const [submitting,     setSubmitting]     = useState(false)
+  const [error,          setError]          = useState<string | null>(null)
+
+  const keyClean = key.trim()
+  const keyValid = keyClean.length > 0 && keyClean.length <= 20
+  const keyUnique = !existingKeys.has(keyClean)
+
+  async function submit() {
+    if (!keyValid) { setError('Clé invalide (1-20 caractères)'); return }
+    if (!keyUnique) { setError(`La zone "${keyClean}" existe déjà`); return }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const payload: Partial<Zone> & { key: string } = {
+        key:    keyClean,
+        label:  label.trim() || keyClean,
+        depot_id: depotId || null,
+        is_pool: isPool,
+        pool_capacity: isPool && poolCapacity.trim() ? parseInt(poolCapacity, 10) : null,
+        driver_allowed: driverAllowed,
+      }
+      await onCreate(payload)
+    } catch (e: any) {
+      setError(e?.message || 'Erreur inattendue')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-surface border rounded-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b">
+          <h2 className="text-lg font-bold text-ink flex items-center gap-2">
+            <Plus size={16} /> Nouvelle zone de parc
+          </h2>
+          <p className="text-xs text-ink-muted mt-1">
+            Crée une nouvelle zone. La position sur le plan visuel est par défaut en haut-gauche
+            (tu pourras la repositionner via /fourriere/plan).
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
+              Clé (identifiant unique) *
+            </label>
+            <input
+              value={key}
+              onChange={e => setKey(e.target.value)}
+              placeholder="Ex : M, BIS-A, Zone-Special"
+              autoFocus
+              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand"
+            />
+            {keyClean && !keyUnique && (
+              <p className="text-critical text-xs mt-1">⚠ Cette clé existe déjà</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
+              Libellé affiché
+            </label>
+            <input
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              placeholder={keyClean || 'Idem que la clé'}
+              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
+              Dépôt
+            </label>
+            <select
+              value={depotId}
+              onChange={e => setDepotId(e.target.value)}
+              className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+            >
+              <option value="">— Non rattaché —</option>
+              {depots.filter(d => d.active).map(d => (
+                <option key={d.id} value={d.id}>{d.name}{d.is_default_parc ? ' ★' : ''}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPool}
+                onChange={e => setIsPool(e.target.checked)}
+                className="w-4 h-4 accent-brand"
+              />
+              <span className="text-sm text-ink">Zone "Bordel" (capacité globale, pas de rangées)</span>
+            </label>
+          </div>
+
+          {isPool && (
+            <div>
+              <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
+                Capacité (vide = illimité)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={poolCapacity}
+                onChange={e => setPoolCapacity(e.target.value)}
+                placeholder="∞"
+                className="w-32 bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+              />
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={driverAllowed}
+                onChange={e => setDriverAllowed(e.target.checked)}
+                className="w-4 h-4 accent-brand"
+              />
+              <Truck size={14} className="text-info" />
+              <span className="text-sm text-ink">Chauffeurs autorisés à déposer ici</span>
+            </label>
+          </div>
+
+          {error && (
+            <div className="bg-critical/10 border border-critical/40 rounded-lg px-3 py-2 text-critical text-sm">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t flex items-center gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-3 py-2 text-ink-muted hover:text-ink text-sm font-semibold transition disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting || !keyValid || !keyUnique}
+            className="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold transition disabled:opacity-50"
+          >
+            {submitting ? 'Création...' : 'Créer la zone'}
+          </button>
+        </div>
       </div>
     </div>
   )

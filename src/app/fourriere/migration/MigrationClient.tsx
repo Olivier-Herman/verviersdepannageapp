@@ -38,7 +38,10 @@ interface ScanItem {
   at: string
 }
 
-const ZONES = ['A', 'B*', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'LABO', 'S', 'Box', 'Transit']
+// Olivier 2026-06-04 : zones fetchées dynamiquement depuis parc_zones BDD
+// (au lieu de const figée) pour que les nouvelles zones créées via /admin/parc
+// apparaissent ici sans modif de code.
+const FALLBACK_ZONES = ['A', 'B*', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'LABO', 'S', 'Box', 'Transit']
 
 interface Props {
   userRole:    string
@@ -53,11 +56,25 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   const [initLoading, setInitLoading] = useState(false)
   const [enrichLoading, setEnrichLoading] = useState(false)
   const [zone, setZone] = useState<string | null>(null)
+  const [zones, setAvailableZones] = useState<string[]>(FALLBACK_ZONES)
   const [input, setInput] = useState('')
   const [scans, setScans] = useState<ScanItem[]>([])
   const [scanning, setScanning] = useState(false)
   const [confirmConflict, setConfirmConflict] = useState<{ raw: string; match: any } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Charge les zones actives depuis BDD (fallback si erreur reseau)
+  useEffect(() => {
+    fetch('/api/fourriere/zones-by-depot')
+      .then(r => r.json())
+      .then(j => {
+        const allZones: string[] = []
+        for (const d of (j.depots || [])) for (const z of (d.zones || [])) allZones.push(z.key)
+        for (const z of (j.orphans || [])) allZones.push(z.key)
+        if (allZones.length > 0) setAvailableZones(allZones)
+      })
+      .catch(() => {/* fallback en place */})
+  }, [])
 
   async function loadStats() {
     setLoadingStats(true)
@@ -352,7 +369,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-              {ZONES.map(z => (
+              {zones.map(z => (
                 <button key={z} onClick={() => setZone(z)}
                   className="px-3 py-2 bg-surface-2 hover:bg-brand hover:text-white border rounded-lg text-sm font-bold text-ink transition">
                   {z}
