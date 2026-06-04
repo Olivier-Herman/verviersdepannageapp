@@ -142,6 +142,34 @@ export async function POST(req: Request) {
         ? 125
         : null
 
+  // Olivier 2026-06-04 : anti-doublon (double-tap, retry reseau).
+  // Si meme chauffeur a deja cree une mission pour la meme plaque < 2 min,
+  // on retourne la mission existante au lieu d en creer une nouvelle.
+  const cleanPlate = ((plate || '').trim().toUpperCase()) || null
+  if (cleanPlate) {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const { data: existing } = await supabase
+      .from('incoming_missions')
+      .select('id, external_id, status, vehicle_plate, mission_type, source, created_at')
+      .eq('vehicle_plate', cleanPlate)
+      .eq('assigned_to', user.id)
+      .gte('created_at', twoMinutesAgo)
+      .not('status', 'eq', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      console.warn(`[PoliceDraft] DOUBLON evite : mission ${existing.id} existe deja pour plaque ${cleanPlate} (chauffeur ${user.id}, ${existing.created_at})`)
+      return NextResponse.json({
+        ok: true,
+        mission: existing,
+        duplicate_prevented: true,
+        message: 'Mission deja creee il y a quelques secondes (anti-doublon).',
+      })
+    }
+  }
+
   // External id temporaire (sera reutilise tel quel au finalize)
   const externalId = `${prefix}-DRAFT-${Date.now().toString(36)}`
 

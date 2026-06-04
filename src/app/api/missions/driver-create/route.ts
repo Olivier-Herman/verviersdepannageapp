@@ -25,6 +25,34 @@ export async function POST(req: Request) {
   const now      = new Date().toISOString()
   const supabase = createAdminClient()
 
+  // Olivier 2026-06-04 : anti-doublon. Cas reel : un chauffeur clique 2x
+  // sur "Creer" (double-tap, retry reseau lent...) -> 2 missions identiques.
+  // On considere doublon = meme chauffeur + meme plaque + < 2 minutes.
+  // Retourne la mission existante au lieu d en creer une nouvelle.
+  if (vehicle_plate) {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const { data: existing } = await supabase
+      .from('incoming_missions')
+      .select('id, external_id, status, vehicle_plate, mission_type, created_at')
+      .eq('vehicle_plate', vehicle_plate)
+      .eq('assigned_to', session.user.id)
+      .gte('created_at', twoMinutesAgo)
+      .not('status', 'eq', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      console.warn(`[DriverCreate] DOUBLON evite : mission ${existing.id} existe deja pour plaque ${vehicle_plate} (chauffeur ${session.user.id}, ${existing.created_at})`)
+      return NextResponse.json({
+        ok: true,
+        mission: existing,
+        duplicate_prevented: true,
+        message: 'Mission deja creee il y a quelques secondes (anti-doublon).',
+      })
+    }
+  }
+
   const { data, error } = await supabase
     .from('incoming_missions')
     .insert({

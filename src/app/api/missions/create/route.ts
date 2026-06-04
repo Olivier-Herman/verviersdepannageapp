@@ -52,6 +52,34 @@ export async function POST(req: Request) {
   }
   const normalizedMissionType = normalizeMissionType(body.mission_type)
 
+  // Olivier 2026-06-04 : anti-doublon (double-tap dispatcher / retry reseau).
+  // Si une mission identique (meme acteur + meme plaque) a ete creee < 2 min,
+  // on retourne celle-la au lieu d en creer une deuxieme.
+  const cleanPlate = ((body.vehicle_plate || '').trim().toUpperCase()) || null
+  if (cleanPlate && actor?.id) {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const { data: existing } = await supabase
+      .from('incoming_missions')
+      .select('id, external_id, status, vehicle_plate, source, created_at')
+      .eq('vehicle_plate', cleanPlate)
+      .eq('source_format', 'manual')
+      .gte('created_at', twoMinutesAgo)
+      .not('status', 'eq', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      console.warn(`[MissionCreate] DOUBLON evite : mission ${existing.id} existe deja pour plaque ${cleanPlate} (${existing.created_at})`)
+      return NextResponse.json({
+        success: true,
+        mission: existing,
+        duplicate_prevented: true,
+        message: 'Mission deja creee il y a quelques secondes (anti-doublon).',
+      })
+    }
+  }
+
   const { data: mission, error } = await supabase
     .from('incoming_missions')
     .insert({
