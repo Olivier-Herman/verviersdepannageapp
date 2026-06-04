@@ -51,6 +51,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   const [stats, setStats] = useState<Stats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
   const [initLoading, setInitLoading] = useState(false)
+  const [enrichLoading, setEnrichLoading] = useState(false)
   const [zone, setZone] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [scans, setScans] = useState<ScanItem[]>([])
@@ -74,6 +75,25 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   useEffect(() => {
     if (zone && inputRef.current) inputRef.current.focus()
   }, [zone, scans.length])
+
+  async function runEnrichNow() {
+    if (!confirm('Forcer un run d enrichissement TowSoft maintenant (15 fiches max) ?\n\nUtile si le cron ne progresse pas.')) return
+    setEnrichLoading(true)
+    try {
+      const r = await fetch('/api/admin/towsoft-migration/run-enrich-now', { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok) { alert(`Erreur : ${j.error || 'inconnue'}`); return }
+      const samples = j.error_samples && j.error_samples.length > 0
+        ? `\n\nExemples erreurs :\n${j.error_samples.map((s: any) => `· ${s.towsoft_num} : ${s.error}`).join('\n')}`
+        : ''
+      alert(`✓ ${j.enriched} fiches enrichies, ${j.failed} en echec\n${j.remaining} restantes${samples}`)
+      loadStats()
+    } catch (e: any) {
+      alert(`Erreur reseau : ${e?.message || e}`)
+    } finally {
+      setEnrichLoading(false)
+    }
+  }
 
   async function initImport() {
     if (!confirm('Initialiser/refresh la liste des 733 fiches TowSoft ? (Idempotent : ne casse rien si deja fait)')) return
@@ -215,10 +235,18 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
               </button>
             )}
             {stats.total > 0 && (
-              <button onClick={initImport} disabled={initLoading}
-                className="text-xs text-ink-muted hover:text-ink underline">
-                {initLoading ? '⏳' : '↻ Refresh la liste TowSoft'}
-              </button>
+              <div className="flex items-center gap-3 flex-wrap text-xs pt-1">
+                <button onClick={initImport} disabled={initLoading}
+                  className="text-ink-muted hover:text-ink underline">
+                  {initLoading ? '⏳' : '↻ Refresh la liste TowSoft'}
+                </button>
+                {stats.enriched < stats.total && (
+                  <button onClick={runEnrichNow} disabled={enrichLoading}
+                    className="px-2 py-1 bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200 rounded font-semibold disabled:opacity-50">
+                    {enrichLoading ? '⏳ Enrichissement...' : `⚡ Forcer enrichissement (${stats.total - stats.enriched} restantes)`}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         ) : (
