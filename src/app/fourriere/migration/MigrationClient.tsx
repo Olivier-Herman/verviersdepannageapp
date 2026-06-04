@@ -77,10 +77,11 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   }, [zone, scans.length])
 
   const [enrichProgress, setEnrichProgress] = useState<string | null>(null)
+  const LOOP_INTERVAL_MS = 5 * 60 * 1000  // 5 min entre runs (= cadence cron, discret cote TowSoft)
 
   async function runEnrichNow(loopUntilDone = false) {
     const msg = loopUntilDone
-      ? `Lancer le rattrapage en boucle (jusqu a ce que toutes les fiches soient enrichies) ?\n\nCa peut prendre plusieurs minutes. Tu peux fermer cet onglet, le serveur continue. Re-clique le bouton pour reprendre si interrompu.`
+      ? `Lancer le rattrapage en boucle (jusqu a ce que toutes les fiches soient enrichies) ?\n\n⏱ Intervalle 5 min entre runs (= cadence cron, evite de marteler TowSoft).\n15 fiches par run -> ~3h pour 688 fiches.\n\nTu peux fermer cet onglet pour stopper - re-clique pour reprendre.`
       : 'Forcer un run d enrichissement TowSoft maintenant (15 fiches max) ?\n\nUtile si le cron ne progresse pas.'
     if (!confirm(msg)) return
     setEnrichLoading(true)
@@ -106,18 +107,27 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
 
         if (loopUntilDone) {
           setEnrichProgress(`Run ${runs} : +${j.enriched} enrichies, ${j.remaining} restantes`)
+          loadStats()
         }
 
         if (!loopUntilDone) break
         if ((j.remaining || 0) === 0) break
         if ((j.enriched || 0) === 0 && (j.failed || 0) > 0) {
-          // Toutes en echec ce run -> arrete (probleme structurel)
           alert(`Arret : run ${runs} a fait ${j.failed} echec(s) sur 15.\nVoir error_samples ci-dessous.`)
           break
         }
-        // Petite pause anti-rate-limit
-        await new Promise(r => setTimeout(r, 1500))
-      } while (loopUntilDone && runs < 60)  // hard cap 60 runs
+
+        // Pause 5 min entre runs (= cadence cron, discret cote TowSoft)
+        // Affiche un countdown pour Olivier
+        const tickStart = Date.now()
+        while (Date.now() - tickStart < LOOP_INTERVAL_MS) {
+          const remainingSec = Math.ceil((LOOP_INTERVAL_MS - (Date.now() - tickStart)) / 1000)
+          const mm = Math.floor(remainingSec / 60)
+          const ss = remainingSec % 60
+          setEnrichProgress(`Run ${runs} OK · prochain run dans ${mm}:${String(ss).padStart(2, '0')} (${j.remaining} restantes)`)
+          await new Promise(r => setTimeout(r, 1000))
+        }
+      } while (loopUntilDone && runs < 60)  // hard cap 60 runs (~5h)
 
       const samples = allErrors.length > 0
         ? `\n\nExemples erreurs :\n${allErrors.slice(0, 5).map(s => `· ${s.towsoft_num} : ${s.error}`).join('\n')}`

@@ -29,12 +29,26 @@ export async function GET(req: Request) {
 
   const sb = createAdminClient()
 
-  const { data: rows } = await sb
+  // Olivier 2026-06-04 : order by id ASC (deterministe avec UUID) au lieu
+  // de created_at qui est IDENTIQUE pour les 733 lignes (UPSERT batch a l init).
+  // Le filtre .is('detail_fetched_at', null) reste la veritable protection.
+  const { data: rows, error: selErr } = await sb
     .from('towsoft_migration_source')
-    .select('id, towsoft_num')
+    .select('id, towsoft_num, detail_fetched_at')
     .is('detail_fetched_at', null)
-    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
     .limit(BATCH_LIMIT)
+
+  if (selErr) {
+    console.error('[cron/towsoft-detail-enrich] SELECT KO:', selErr.message)
+    return NextResponse.json({ error: selErr.message }, { status: 500 })
+  }
+
+  // Diagnostic : log si on a re-tape des fiches deja enrichies (bug filter)
+  const alreadyEnriched = rows?.filter(r => r.detail_fetched_at != null).length || 0
+  if (alreadyEnriched > 0) {
+    console.error(`[cron/towsoft-detail-enrich] ANOMALIE: SELECT .is('detail_fetched_at', null) a renvoye ${alreadyEnriched} fiches DEJA enrichies !`)
+  }
 
   if (!rows || rows.length === 0) {
     return NextResponse.json({ ok: true, processed: 0, message: 'Queue enrich vide (tout pre-enrichi)' })
