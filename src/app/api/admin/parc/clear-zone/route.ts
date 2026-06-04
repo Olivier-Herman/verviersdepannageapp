@@ -22,11 +22,10 @@ import { createAdminClient } from '@/lib/supabase'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-// Olivier 2026-06-04 : on vide TOUS les vehicules ayant parc_zone_key=X
-// sauf statuts finaux (facture/clore). Avant on ne traitait que parked +
-// delivering, mais certaines missions stale en assigned/in_progress/created
-// gardent leur parc_zone_key et faussent le compte.
-const EXCLUDED_FINAL_STATUSES = ['completed', 'to_invoice', 'invoiced', 'cancelled']
+// Olivier 2026-06-04 : doctrine "si elles sont en zone, elles doivent etre
+// en parked". On vide donc TOUTES les missions ayant parc_zone_key=X, peu
+// importe leur status. Les missions stale (in_progress/assigned avec une
+// zone parc) sont une incoherence a nettoyer.
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -46,12 +45,11 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
-  // 1. Liste les vehicules actuellement dans la zone (tous statuts non-finaux)
+  // 1. Liste les vehicules actuellement dans la zone (tous statuts)
   const { data: vehicles, error: vErr } = await sb
     .from('incoming_missions')
     .select('id, vehicle_plate, parc_zone_key, parc_row_number, parc_slot_index, status')
     .eq('parc_zone_key', zoneKey)
-    .not('status', 'in', `(${EXCLUDED_FINAL_STATUSES.map(s => `"${s}"`).join(',')})`)
     .order('parc_row_number')
     .order('parc_slot_index')
 
