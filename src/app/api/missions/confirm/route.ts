@@ -7,6 +7,7 @@ import { getServerSession }             from 'next-auth'
 import { authOptions }                  from '@/lib/auth'
 import { createAdminClient }            from '@/lib/supabase'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }                from '@/lib/odoo'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -53,9 +54,10 @@ export async function POST(req: Request) {
     // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.
     // Si ça plante, le dispatcher peut toujours utiliser le bouton "Créer dossier Odoo"
     // sur la fiche mission (route /api/fsm/create-mission, idempotent).
+    // Olivier 2026-06-04 : wrap dans withOdooActor pour utiliser la cle perso.
     let odooResult: any = null
     try {
-      odooResult = await createOdooDossierForMission(mission_id)
+      odooResult = await withOdooActor(actor?.id, () => createOdooDossierForMission(mission_id))
       if (odooResult.created) {
         await supabase.from('mission_logs').insert({
           mission_id,

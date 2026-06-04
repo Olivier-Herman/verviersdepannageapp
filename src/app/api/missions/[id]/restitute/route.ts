@@ -24,6 +24,7 @@ import { authOptions }             from '@/lib/auth'
 import { createAdminClient }       from '@/lib/supabase'
 import { releaseParcAndShift }     from '@/lib/parc/release'
 import { createSaleOrder, type QuoteLine } from '@/lib/odoo-quote'
+import { withOdooActor }            from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -278,7 +279,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     let quoteId:  number | null = null
     let quoteUrl: string | null = null
     try {
-      const result = await createSaleOrder({
+      // Olivier 2026-06-04 : wrap dans withOdooActor pour tracabilite cle perso
+      const result = await withOdooActor(user?.id, () => createSaleOrder({
         partner_id:       body.partner_id,
         origin:           ref,
         client_order_ref: mission.dossier_number || mission.external_id || undefined,
@@ -286,7 +288,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           section_label: paymentNote || undefined,
           lines,
         }],
-      })
+      }))
       quoteId  = result.id
       quoteUrl = result.url
     } catch (e: any) {

@@ -15,7 +15,7 @@ import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
-import { attachFileToOrder } from '@/lib/odoo'
+import { attachFileToOrder, withOdooActor } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -205,39 +205,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Note : on accepte de pousser un devis VIDE (lines=[]) si pas de tarif et
   // pas de customLines. L employe completera dans Odoo (cf Olivier 2026-05-20).
 
-  // 3) Lookup fleet.vehicle Odoo par plaque (optionnel, best-effort)
-  let fleetVehicleId: number | null = null
-  if (mission.vehicle_plate) {
-    fleetVehicleId = await findFleetVehicleByPlate(mission.vehicle_plate)
-  }
-
-  // 4) Push Odoo (create ou update selon idempotence)
-  const sections: QuoteSection[] = [{ lines }]
-  const commonInput = {
-    partner_id:       mission.billed_to_id as number,
-    origin:           missionRef,
-    client_order_ref: mission.dossier_number || undefined,
-    fleet_vehicle_id: fleetVehicleId,
-    sections,
-  }
-
+  // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
+  // wrap dans withOdooActor pour tracer au user connecte (cle perso).
   let result: { id: number; url: string }
   try {
-    if (mission.odoo_quote_id) {
-      try {
-        result = await updateSaleOrder(mission.odoo_quote_id, commonInput)
-      } catch (e: any) {
-        if (e instanceof QuoteNotFoundError) {
-          // Devis stocke en BDD mais supprime cote Odoo -> on recree from scratch
-          console.warn(`[quote] Devis ${mission.odoo_quote_id} introuvable, recreate from scratch`)
-          result = await createSaleOrder(commonInput)
-        } else {
+    result = await withOdooActor(user?.id, async () => {
+      let fleetVehicleId: number | null = null
+      if (mission.vehicle_plate) {
+        fleetVehicleId = await findFleetVehicleByPlate(mission.vehicle_plate)
+      }
+      const sections: QuoteSection[] = [{ lines }]
+      const commonInput = {
+        partner_id:       mission.billed_to_id as number,
+        origin:           missionRef,
+        client_order_ref: mission.dossier_number || undefined,
+        fleet_vehicle_id: fleetVehicleId,
+        sections,
+      }
+      if (mission.odoo_quote_id) {
+        try {
+          return await updateSaleOrder(mission.odoo_quote_id, commonInput)
+        } catch (e: any) {
+          if (e instanceof QuoteNotFoundError) {
+            console.warn(`[quote] Devis ${mission.odoo_quote_id} introuvable, recreate from scratch`)
+            return await createSaleOrder(commonInput)
+          }
           throw e
         }
       }
-    } else {
-      result = await createSaleOrder(commonInput)
-    }
+      return await createSaleOrder(commonInput)
+    })
   } catch (e: any) {
     console.error('[quote] Odoo push failed:', e.message)
     return NextResponse.json({ error: `Erreur Odoo : ${e.message}` }, { status: 500 })
@@ -285,7 +282,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
         const ext         = contentType.includes('pdf') ? 'pdf' : 'jpg'
         const filename    = `avance-${adv.plate}-${Number(adv.amount_htva).toFixed(2)}.${ext}`
-        await attachFileToOrder(result.id, base64, filename, contentType)
+        await withOdooActor(user?.id, () => attachFileToOrder(result.id, base64, filename, contentType))
         advancesAttached++
         advanceAttachIds.push(adv.id)
       } catch (attachErr: any) {

@@ -19,6 +19,7 @@ import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { buildLinesFromEstimate } from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteSection } from '@/lib/odoo-quote'
+import { withOdooActor }          from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -208,39 +209,40 @@ export async function POST(req: Request) {
     }
   }
 
-  // 5. Lookup fleet.vehicle Odoo pour le premier véhicule (les chaînes REM+REL
-  //    ont le même véhicule).
+  // 5+6. Lookup fleet.vehicle + Push Odoo (create/update devis groupe).
+  // Olivier 2026-06-04 : wrap dans withOdooActor pour tracer au user connecte
+  // (au lieu de tomber sur fallback service account VD App).
   const firstWithPlate = sortedMissions.find(m => m.vehicle_plate)
-  let fleetVehicleId: number | null = null
-  if (firstWithPlate?.vehicle_plate) {
-    fleetVehicleId = await findFleetVehicleByPlate(firstWithPlate.vehicle_plate)
-  }
-
-  // 6. Push Odoo (create ou update)
   const parent = sortedMissions[0]
   const originRef = parent.external_id || parent.dossier_number || `M-${parent.id.slice(0, 8)}`
-  const input = {
-    partner_id:       partnerId,
-    origin:           originRef,
-    client_order_ref: parent.dossier_number || undefined,
-    fleet_vehicle_id: fleetVehicleId,
-    sections,
-  }
 
   let result: { id: number; url: string }
   try {
-    if (existingQuoteId) {
-      try {
-        result = await updateSaleOrder(existingQuoteId, input)
-      } catch (e) {
-        if (e instanceof QuoteNotFoundError) {
-          console.warn(`[quote-grouped] Devis ${existingQuoteId} introuvable, recreate`)
-          result = await createSaleOrder(input)
-        } else throw e
+    result = await withOdooActor(user?.id, async () => {
+      let fleetVehicleId: number | null = null
+      if (firstWithPlate?.vehicle_plate) {
+        fleetVehicleId = await findFleetVehicleByPlate(firstWithPlate.vehicle_plate)
       }
-    } else {
-      result = await createSaleOrder(input)
-    }
+      const input = {
+        partner_id:       partnerId,
+        origin:           originRef,
+        client_order_ref: parent.dossier_number || undefined,
+        fleet_vehicle_id: fleetVehicleId,
+        sections,
+      }
+      if (existingQuoteId) {
+        try {
+          return await updateSaleOrder(existingQuoteId, input)
+        } catch (e) {
+          if (e instanceof QuoteNotFoundError) {
+            console.warn(`[quote-grouped] Devis ${existingQuoteId} introuvable, recreate`)
+            return await createSaleOrder(input)
+          }
+          throw e
+        }
+      }
+      return await createSaleOrder(input)
+    })
   } catch (e: any) {
     console.error('[quote-grouped] Odoo push failed:', e.message)
     return NextResponse.json({ error: `Erreur Odoo : ${e.message}` }, { status: 500 })
