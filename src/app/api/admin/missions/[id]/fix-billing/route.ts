@@ -11,7 +11,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { findOrCreatePartner } from '@/lib/odoo'
+import { findOrCreatePartner, withOdooActor } from '@/lib/odoo'
 import { releaseParcAndShift } from '@/lib/parc/release'
 import { parseAddressForOdoo } from '@/app/api/interventions/route'
 
@@ -31,6 +31,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
 
   const sb = createAdminClient()
+
+  // Olivier 2026-06-05 : recupere l user.id pour withOdooActor
+  const { data: actorUser } = await sb.from('users').select('id').eq('email', user.email).maybeSingle()
+  const actorId = actorUser?.id || null
 
   // Charge mission + dernier encaissement
   const { data: mission, error: e1 } = await sb
@@ -56,7 +60,8 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!partnerId && intervention?.client_name) {
     try {
       const addr = parseAddressForOdoo(intervention.client_address)
-      partnerId = await findOrCreatePartner({
+      // Olivier 2026-06-05 : wrap dans withOdooActor (cle perso admin)
+      partnerId = await withOdooActor(actorId, () => findOrCreatePartner({
         name:     intervention.client_name,
         phone:    intervention.client_phone || undefined,
         email:    intervention.client_email || undefined,
@@ -65,7 +70,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         city:     addr.city || undefined,
         vat:      intervention.client_vat || undefined,
         countryCode: 'BE',
-      })
+      }))
       if (partnerId) {
         await sb.from('incoming_missions').update({
           billed_to_id:   partnerId,

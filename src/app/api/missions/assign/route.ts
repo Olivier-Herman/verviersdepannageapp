@@ -10,6 +10,7 @@ import { createAdminClient }         from '@/lib/supabase'
 import { sendNotification }          from '@/lib/notifications/send'
 import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }               from '@/lib/odoo'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -94,7 +95,9 @@ export async function POST(req: Request) {
     // sur la fiche.
     if (wasNew) {
       try {
-        const odooResult = await createOdooDossierForMission(mission_id)
+        // Olivier 2026-06-05 : wrap dans withOdooActor pour utiliser la cle
+        // API perso du dispatcher (Jona/Olivier) au lieu du fallback VD App.
+        const odooResult = await withOdooActor(actor?.id, () => createOdooDossierForMission(mission_id))
         if (odooResult.created) {
           await supabase.from('mission_logs').insert({
             mission_id,

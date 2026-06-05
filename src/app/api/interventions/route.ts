@@ -161,7 +161,10 @@ export async function POST(req: NextRequest) {
       if (!updatePayload.billed_to_id && !currentMission?.billed_to_id && body.client_name) {
         try {
           const addr = parseAddressForOdoo(body.client_address)
-          const partnerId = await findOrCreatePartner({
+          // Olivier 2026-06-05 : wrap dans withOdooActor (cle perso chauffeur)
+          // pour que le partner Odoo soit cree au nom de l'utilisateur connecte.
+          const actorIdForPartner = driver?.id || (session.user as any).id
+          const partnerId = await withOdooActor(actorIdForPartner, () => findOrCreatePartner({
             name:    body.client_name,
             phone:   body.client_phone,
             email:   body.client_email,
@@ -169,7 +172,7 @@ export async function POST(req: NextRequest) {
             zip:     addr.zip,
             city:    addr.city,
             countryCode: 'BE',
-          })
+          }))
           if (partnerId) updatePayload.billed_to_id = partnerId
         } catch (e: any) {
           console.warn('[interventions] findOrCreatePartner Odoo echec:', e?.message)

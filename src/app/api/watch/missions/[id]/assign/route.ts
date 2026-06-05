@@ -16,6 +16,7 @@ import { verifyWatchAuth }           from '@/lib/auth-watch'
 import { sendNotification }          from '@/lib/notifications/send'
 import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }               from '@/lib/odoo'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,7 +92,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Creation dossier Odoo si la mission etait 'new' (assignation = confirmation implicite)
   if (wasNew) {
     try {
-      const odooResult = await createOdooDossierForMission(missionId)
+      // Olivier 2026-06-05 : wrap dans withOdooActor pour utiliser la cle
+      // perso du dispatcher Watch (au lieu du fallback VD App).
+      const odooResult = await withOdooActor(actorId, () => createOdooDossierForMission(missionId))
       if (odooResult.created) {
         await sb.from('mission_logs').insert({
           mission_id: missionId,

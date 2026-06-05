@@ -13,17 +13,28 @@
 // Idempotence garantie par le helper (retourne les IDs existants si déjà créé).
 
 import { NextResponse }                 from 'next/server'
+import { getServerSession }             from 'next-auth'
+import { authOptions }                  from '@/lib/auth'
+import { createAdminClient }            from '@/lib/supabase'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }               from '@/lib/odoo'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   try {
+    // Olivier 2026-06-05 : recupere le user connecte pour tracer le dossier
+    // Odoo avec sa cle perso (au lieu du fallback VD App).
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const sb = createAdminClient()
+    const { data: actor } = await sb.from('users').select('id').eq('email', session.user.email).maybeSingle()
+
     const body = await req.json()
     const { mission_id } = body
     if (!mission_id) return NextResponse.json({ error: 'mission_id requis' }, { status: 400 })
 
-    const result = await createOdooDossierForMission(mission_id)
+    const result = await withOdooActor(actor?.id, () => createOdooDossierForMission(mission_id))
     return NextResponse.json({ ok: true, ...result })
 
   } catch (err: any) {
