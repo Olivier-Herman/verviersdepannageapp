@@ -74,12 +74,15 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   }
 
   // Detecte si la mission scannee est eligible pour creer/prendre une REL
-  // Olivier 2026-05-28 : ajout Appel Prive REM depot (zone Transit).
+  // Olivier 2026-05-28 : ajout Appel Prive REM depot.
+  // Olivier 2026-06-05 : depuis bascule Transit -> K pour rem_depot, on
+  // accepte les 2 zones (rétrocompat missions migrees).
   const isParked = mission.status === 'parked'
   const isSiabisRemDepot = ['police_snc', 'sia_couvert'].includes(mission.source || '')
                         && mission.snc_scenario === 'rem_depot'
   const isRemRelMission = mission.mission_type === 'REM+REL'
-  const isPriveDepot = mission.source === 'prive' && mission.parc_zone_key === 'Transit'
+  const isPriveDepot = mission.source === 'prive'
+                    && (mission.parc_zone_key === 'K' || mission.parc_zone_key === 'Transit')
   const isElligibleForRel = isParked && (isRemRelMission || isSiabisRemDepot || isPriveDepot)
 
   // Determine roles + modules + odoo_api_key du scanneur pour les permissions par fonction.

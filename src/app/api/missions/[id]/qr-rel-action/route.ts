@@ -60,12 +60,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // 2. Verification eligibilite
-  // Olivier 2026-05-28 : ajout Appel Prive REM depot (zone Transit).
+  // Olivier 2026-05-28 : ajout Appel Prive REM depot.
+  // Olivier 2026-06-05 : bascule Transit -> K pour rem_depot, on accepte
+  // les 2 zones (rétrocompat missions migrees).
   const isParked = parent.status === 'parked'
   const isRemRel = parent.mission_type === 'REM+REL'
   const isSiabisRemDepot = ['police_snc', 'sia_couvert'].includes(parent.source || '')
                         && parent.snc_scenario === 'rem_depot'
-  const isPriveDepot = parent.source === 'prive' && parent.parc_zone_key === 'Transit'
+  const isPriveDepot = parent.source === 'prive'
+                    && (parent.parc_zone_key === 'K' || parent.parc_zone_key === 'Transit')
   if (!isParked || !(isRemRel || isSiabisRemDepot || isPriveDepot)) {
     return NextResponse.json({
       ok: false,

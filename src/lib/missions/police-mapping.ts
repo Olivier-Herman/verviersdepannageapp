@@ -50,11 +50,15 @@ export const PREFIX_BY_TYPE: Record<string, string> = {
  * - rodeo : toujours zone J (procedure saisie judiciaire).
  * - avp : toujours zone J (abandon vehicule).
  * - saisie : toujours zone J (saisie judiciaire).
- * - accident : zone Transit (TowSoft mappe vers K3 = TRANSIT APPEL POLICE
- *   ACCIDENT, on reutilise la zone Transit existante VD Soft).
- * - snc / sc : Transit si rem_depot, sinon null (intervention immediate).
- * - appel_prive : Transit si destination='depot' (REM avec mise en parc),
- *   sinon null (DSP / REM client = facturation directe).
+ * - accident : zone Transit (procedure police, le client/garage vient
+ *   chercher, pas un flux relivraison commercial).
+ * - snc / sc : zone K si rem_depot (Olivier 2026-06-05 : mise en parc =
+ *   en attente d adresse de relivraison ; K = onglet "A Relivrer" du
+ *   dispatch, le dispatcher voit la mission des qu une destination est
+ *   saisie). Sinon null (intervention immediate, pas de mise en parc).
+ * - appel_prive : zone K si destination='depot' (Olivier 2026-06-05 :
+ *   meme logique que snc/sc rem_depot, REM avec mise en parc commerciale).
+ *   Sinon null (DSP / REM client = facturation directe).
  */
 export function zoneForType(
   t: string,
@@ -67,8 +71,8 @@ export function zoneForType(
   if (t === 'avp')       return 'J'
   if (t === 'saisie')    return 'J'
   if (t === 'accident')  return 'Transit'
-  if (t === 'snc' || t === 'sc') return sncScenario === 'rem_depot' ? 'Transit' : null
-  if (t === 'appel_prive') return appelPriveDestination === 'depot' ? 'Transit' : null
+  if (t === 'snc' || t === 'sc') return sncScenario === 'rem_depot' ? 'K' : null
+  if (t === 'appel_prive') return appelPriveDestination === 'depot' ? 'K' : null
   return null
 }
 
