@@ -70,7 +70,15 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
         replayerRef.current = new rrweb.Replayer(usable, {
           root:       containerRef.current,
           liveMode:   true,
-          insertStyleRules: [],
+          // Olivier 2026-06-05 : neutralise les animations dans le replay.
+          // Le dashboard utilise ambient-fade-up (opacity:0 -> 1, animation-fill-mode:both).
+          // En mode replay rrweb, l animation est rejouee a chaque event, ce qui peut
+          // bloquer l affichage en opacity 0 selon le timing -> contenu invisible.
+          // On force opacity 1 + pas d animation pour rendu stable.
+          insertStyleRules: [
+            '*, *::before, *::after { animation: none !important; transition: none !important; }',
+            '.ambient-fade-up, .ambient-pulse, .ambient-sparkle, .md-card-enter, .nm-card-enter { opacity: 1 !important; transform: none !important; }',
+          ],
           showWarning: false,
           mouseTail:  false,
         })
