@@ -126,7 +126,23 @@ export default function CobrowseUserBridge() {
           checkoutEveryNms: 4_000,
           recordCanvas:     true,
           inlineStylesheet: true,
+          inlineImages:     true,   // Olivier 2026-06-05 : capture les SVG/images en base64
           collectFonts:     true,
+          // Desactive le filtrage slimDOM aggressif (par defaut rrweb supprime
+          // les <script>, certains <link>, comments) qui peut casser des
+          // tournures de DOM specifiques (cards Next.js Link, etc.).
+          slimDOMOptions: {
+            script:         false,
+            comment:        false,
+            headFavicon:    false,
+            headWhitespace: false,
+            headMetaDescKeywords: false,
+            headMetaSocial:       false,
+            headMetaRobots:       false,
+            headMetaHttpEquiv:    false,
+            headMetaAuthorship:   false,
+            headMetaVerification: false,
+          },
           maskInputOptions: { password: true },
           sampling: { mousemove: 50, scroll: 100, input: 'last' },
         })
