@@ -161,13 +161,11 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   parse_error: { label: 'Erreur',       color: 'text-critical'  },
 }
 
-// Olivier 2026-05-25 : 'relivraison' retire des choix manuels. Une REL
-// (incident_type='relivraison') est generee UNIQUEMENT par le bouton
-// "Creer une relivraison" sur une mission REM existante via
-// createRelivraisonMission, jamais via edition manuelle. Si une mission
-// existe deja avec mission_type='relivraison' (legacy), l option est
-// reinjectee dynamiquement plus bas pour ne pas la perdre a l affichage.
-const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'autre']
+// Olivier 2026-06-05 : 'relivraison' RE-ajoutee aux choix manuels. Quand
+// le dispatcher ouvre une mission REL, le Select doit afficher la valeur,
+// sinon le champ est vide et un re-save efface le type (= tarif faux).
+// Bug rapporte : "ca ne sélectionne rien dans la liste type de mission".
+const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'relivraison', 'autre']
 const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
 const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
 

@@ -1417,12 +1417,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       if (closeType === 'dpr' && !dprMotif) {
         setErr('Motif DPR requis'); setLoading(false); return
       }
+      // Olivier 2026-06-05 : envoyer le format BDD canonical (depannage /
+       // remorquage / trajet_vide / relivraison) au lieu de DSP/REM/DPR/REL
+       // brut. Sinon mission_type='DPR' en BDD -> ne matche aucun helper
+       // (isDSP, missionKind), label cote facturation/missions-terminees
+       // tombe sur "AUTRE" et l estimation tarif foire.
+       const FINAL_TYPE_MAP: Record<string, string> = {
+         dsp: 'depannage',
+         rem: 'remorquage',
+         dpr: 'trajet_vide',
+         rel: 'relivraison',
+       }
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mission_id: M.id, action: 'completed',
           closing_data: {
-            final_mission_type:    closeType.toUpperCase(),
+            final_mission_type:    FINAL_TYPE_MAP[closeType] || closeType,
             photo_urls:            allUrls.length ? allUrls : undefined,
             closing_notes:         closeNote || undefined,
             signature:             sig || undefined,
