@@ -92,6 +92,22 @@ export async function POST(req: Request) {
           if (!isNaN(d.getTime())) dateAppelTz = d.toISOString()
         }
 
+        // Olivier 2026-06-05 : filtre les valeurs binaires (Oui/Non/OK/...)
+        // qui parasitent l extraction marque sur les anciennes missions.
+        // Le parser HTML lit parfois un champ radio comme valeur de 'marque'.
+        const cleanMarque = (() => {
+          const v = (detail.marque || '').trim()
+          if (!v) return null
+          if (/^(oui|non|ok|true|false|yes|no|n\/a|na)$/i.test(v)) return null
+          return v
+        })()
+        const cleanModele = (() => {
+          const v = (detail.modele || '').trim()
+          if (!v) return null
+          if (/^(oui|non|ok|true|false|yes|no|n\/a|na)$/i.test(v)) return null
+          return v
+        })()
+
         await sb
           .from('towsoft_archive')
           .update({
@@ -100,8 +116,8 @@ export async function POST(req: Request) {
             detail_error:      null,
             plate:             detail.immatriculation || null,
             vin:               detail.vin || null,
-            brand:             detail.marque || null,
-            model:             detail.modele || null,
+            brand:             cleanMarque,
+            model:             cleanModele,
             motif:             detail.motif_parc || detail.nature || null,
             client_name:       detail.client_name || null,
             date_appel:        dateAppelTz,
