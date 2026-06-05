@@ -77,11 +77,21 @@ const isREM = (t: string | null | undefined = '') => {
   const n = (t ?? '').toLowerCase().trim()
   return ['rem', 'remorquage', 'transport'].includes(n)
 }
-// REL = mission de relivraison (vehicule en parc -> client). Detect via incident_type ou
-// parent_mission_id (auto-cree par createRelivraisonMission). C est techniquement une REM
-// mais avec un workflow legerement adapte (skip "Sur place", on demarre du parc charge).
-const isRELMission = (m: Mission) =>
-  m.incident_type === 'relivraison' || !!m.parent_mission_id
+// REL = mission de relivraison (vehicule en parc -> client). Detect via :
+//  1. mission_type = 'relivraison' / 'REL' : REL creee manuellement par le
+//     dispatcher dans NewMissionClient (normalisee par normalizeMissionType
+//     -> 'relivraison' en BDD).
+//  2. incident_type = 'relivraison'         : conventions Kaze (Olivier 2026-05-20).
+//  3. parent_mission_id non null            : REL auto-creee par
+//     createRelivraisonMission depuis une mission parc.
+// C est techniquement proche d une REM mais avec un workflow legerement
+// adapte (skip "Sur place", on demarre du parc charge).
+const isRELMission = (m: Mission) => {
+  const mt = (m.mission_type || '').toLowerCase().trim()
+  return mt === 'relivraison' || mt === 'rel'
+      || m.incident_type === 'relivraison'
+      || !!m.parent_mission_id
+}
 const gUrl  = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
   const q = lat && lng ? `${lat},${lng}` : encodeURIComponent(addr || ''); if (!q) return null
   if (app === 'waze')  return `https://waze.com/ul?ll=${q}&navigate=yes`
