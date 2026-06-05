@@ -86,30 +86,58 @@ export default function CobrowseUserBridge() {
         const channel = sb.channel(`cobrowse:${status.id}`, {
           config: { broadcast: { self: false, ack: false } },
         })
+
+        // Buffer + flush toutes les 80ms (batche les events => moins de
+        // messages Realtime, payload toujours sous la limite 256KB)
+        let buffer: any[] = []
+        const flush = () => {
+          if (buffer.length === 0) return
+          const events = buffer
+          buffer = []
+          channel.send({
+            type:    'broadcast',
+            event:   'rrweb_batch',
+            payload: { events, sent_at: Date.now() },
+          }).catch(() => {})
+        }
+        const flushIv = setInterval(flush, 80)
+
+        // Heartbeat : force un FullSnapshot toutes les 3 sec MEME si le
+        // user est immobile. Sans ca, checkoutEveryNms attend une activite
+        // user pour declencher (= admin voit page blanche tant que le user
+        // ne bouge pas).
+        const snapshotIv = setInterval(() => {
+          try { rrweb.record.takeFullSnapshot?.() } catch {}
+        }, 3_000)
+
+        // Admin demande un snapshot immediat quand il rejoint
+        channel.on('broadcast', { event: 'request_snapshot' }, () => {
+          try { rrweb.record.takeFullSnapshot?.() } catch {}
+        })
+
         await channel.subscribe()
 
         const stop = rrweb.record({
           emit(event: any) {
-            // Broadcast direct, no buffering (latence < 200ms)
-            channel.send({
-              type:    'broadcast',
-              event:   'rrweb',
-              payload: { event, sent_at: Date.now() },
-            }).catch(() => {})
+            buffer.push(event)
+            // Si on accumule trop (gros snapshot), flush immediat
+            if (buffer.length > 50) flush()
           },
-          // Snapshot complet toutes les 8 sec : permet a l admin de
-          // rejoindre en cours et de reconstituer le DOM correctement.
-          checkoutEveryNms: 8_000,
-          // Capture aussi : canvas (pour signature pad), inputs masques
-          // automatiquement pour password/type-mot-de-passe.
-          recordCanvas: true,
+          checkoutEveryNms: 4_000,
+          recordCanvas:     true,
           inlineStylesheet: true,
+          collectFonts:     true,
           maskInputOptions: { password: true },
-          // Reduit le bruit : on n a pas besoin de chaque mousemove
-          sampling: { mousemove: 150, scroll: 200, input: 'last' },
+          sampling: { mousemove: 50, scroll: 100, input: 'last' },
         })
 
+        // Premier full snapshot tout de suite (pour que l admin voie qq
+        // chose des qu il rejoint, sans attendre 3 sec)
+        try { rrweb.record.takeFullSnapshot?.() } catch {}
+
         stopperRef.current = () => {
+          clearInterval(flushIv)
+          clearInterval(snapshotIv)
           try { stop?.() } catch {}
           try { sb.removeChannel(channel) } catch {}
         }

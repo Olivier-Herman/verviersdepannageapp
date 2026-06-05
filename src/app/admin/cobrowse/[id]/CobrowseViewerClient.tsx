@@ -35,6 +35,7 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
   const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const replayerRef  = useRef<any>(null)
+  const roRef        = useRef<ResizeObserver | null>(null)
   const [status, setStatus] = useState<Status>('connecting')
   const [eventCount, setEventCount] = useState(0)
   const [stopping, setStopping] = useState(false)
@@ -62,8 +63,7 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
         const fullIdx = buffer.findIndex(e => e?.type === 2)
         if (fullIdx === -1) return
 
-        // Coupe les events anterieurs au FullSnapshot (ils referencent un
-        // DOM qu on n a jamais vu)
+        // Coupe les events anterieurs au FullSnapshot
         const usable = buffer.slice(fullIdx)
         if (!containerRef.current) return
 
@@ -73,15 +73,37 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
           insertStyleRules: [],
           showWarning: false,
           mouseTail:  false,
-          // skipInactive: false,  // ne saute pas les periodes inactives
         })
         replayerRef.current.startLive(usable[0]?.timestamp || Date.now())
         started = true
         setStatus('playing')
+
+        // Auto-scale : adapte la taille du replayer a la largeur dispo
+        const applyScale = () => {
+          const root = containerRef.current
+          if (!root) return
+          const wrapper = root.querySelector('.replayer-wrapper') as HTMLElement | null
+          if (!wrapper) return
+          const ww = wrapper.offsetWidth || parseInt(wrapper.style.width) || 0
+          const wh = wrapper.offsetHeight || parseInt(wrapper.style.height) || 0
+          const cw = root.clientWidth
+          if (!ww || !cw) return
+          const scale = Math.min(1, cw / ww)
+          wrapper.style.transform = `scale(${scale})`
+          // Reserve la hauteur reelle apres scale pour eviter l overflow
+          if (wh) root.style.minHeight = `${Math.ceil(wh * scale) + 8}px`
+        }
+        // Apply now + on resize + recheck apres le snapshot (DOM rendu)
+        applyScale()
+        setTimeout(applyScale, 200)
+        setTimeout(applyScale, 800)
+        roRef.current?.disconnect()
+        const ro = new ResizeObserver(applyScale)
+        ro.observe(containerRef.current)
+        roRef.current = ro
       }
 
       const onEvent = (rrwebEvent: any) => {
-        setEventCount(c => c + 1)
         if (!started) {
           buffer.push(rrwebEvent)
           ensureStarted()
@@ -90,16 +112,42 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
         }
       }
 
+      // Legacy : event unique (au cas ou un user runs old code)
       ch.on('broadcast', { event: 'rrweb' }, (payload: any) => {
         const evt = payload?.payload?.event
-        if (evt) onEvent(evt)
+        if (evt) {
+          setEventCount(c => c + 1)
+          onEvent(evt)
+        }
       })
 
-      await ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') setStatus(s => s === 'connecting' ? 'waiting_snapshot' : s)
+      // Nouveau : batch d events
+      ch.on('broadcast', { event: 'rrweb_batch' }, (payload: any) => {
+        const events: any[] = payload?.payload?.events || []
+        if (events.length === 0) return
+        setEventCount(c => c + events.length)
+        for (const e of events) onEvent(e)
+      })
+
+      await ch.subscribe(s => {
+        if (s === 'SUBSCRIBED') {
+          setStatus(prev => prev === 'connecting' ? 'waiting_snapshot' : prev)
+          // Demande au user un FullSnapshot immediat
+          ch.send({
+            type:    'broadcast',
+            event:   'request_snapshot',
+            payload: {},
+          }).catch(() => {})
+          // Re-demande au cas ou (race avec le user)
+          setTimeout(() => {
+            ch.send({ type: 'broadcast', event: 'request_snapshot', payload: {} }).catch(() => {})
+          }, 1500)
+        }
       })
 
       unsub = () => {
+        try { roRef.current?.disconnect() } catch {}
+        roRef.current = null
         try { ch.unsubscribe() } catch {}
         try { sb.removeChannel(ch) } catch {}
         try { replayerRef.current?.destroy?.() } catch {}
@@ -181,18 +229,45 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
 
       {status === 'waiting_snapshot' && (
         <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800 mb-3">
-          Le 1er snapshot DOM arrive toutes les 8 secondes. Si rien ne s affiche
-          au-delà de 15 sec, demande au user de bouger sur l app (clic, scroll).
+          1er snapshot demandé au user. Devrait apparaître sous 3 sec.
         </div>
       )}
 
-      <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
+      {/* Wrapper : on scale automatiquement le rendu rrweb pour qu il rentre
+          dans la largeur dispo cote admin. Le user a souvent un iPhone
+          (375px) qu on veut voir grand, ou un desktop (1920px) qu on veut
+          shrinker. CSS rrweb expose .replayer-wrapper avec width/height
+          inline -> on les detecte via mutation observer + scale. */}
+      <div
+        className="bg-white border rounded-xl shadow-sm overflow-auto"
+        style={{ minHeight: 600, maxHeight: '80vh' }}
+      >
         <div
           ref={containerRef}
-          className="w-full"
-          style={{ minHeight: 600, position: 'relative' }}
+          style={{
+            position: 'relative',
+            // Le replayer pose un wrapper en absolute -> on lui donne un
+            // referentiel et un padding pour eviter les clip
+            width:    '100%',
+            minHeight: 600,
+          }}
         />
       </div>
+
+      <style jsx global>{`
+        /* Replayer rrweb : le wrapper est en absolute avec width/height
+           du viewport user. On le rend visible et on cap la largeur. */
+        .replayer-wrapper {
+          position: relative !important;
+          margin: 0 auto;
+          transform-origin: 0 0;
+          max-width: 100%;
+        }
+        .replayer-wrapper iframe {
+          border: 0;
+          background: white;
+        }
+      `}</style>
 
       <p className="mt-3 text-xs text-ink-secondary">
         Tu vois en direct ce que voit le user. Pour guider : appelle-le ou utilise
