@@ -1979,7 +1979,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 <span className="text-amber-400 flex-shrink-0">⏺</span>
                 <span>{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</span>
               </p>
-              {rem && allPoints.map((p, idx) => {
+              {(rem || rel) && allPoints.map((p, idx) => {
                 const isLast = idx === allPoints.length - 1
                 return (
                   <p key={p.id} className="text-ink text-sm flex items-start gap-1.5">
@@ -2735,8 +2735,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {M.vehicle_plate && <p className="text-ink-secondary text-xs font-mono uppercase tracking-widest mt-1">{plate(M.vehicle_plate)}</p>}
         </button>
 
-        {/* DSP : adresse unique */}
-        {!rem && (
+        {/* DSP : adresse unique (ni REM ni REL) */}
+        {!rem && !rel && (
           <button onClick={() => setAddrModal({ title: "Lieu d'intervention", address: `${M.incident_address || '—'}${M.incident_city ? `, ${M.incident_city}` : ''}`, lat: M.incident_lat, lng: M.incident_lng, field: 'incident' })}
             className="w-full bg-surface border border rounded-2xl p-4 text-left hover:border-zinc-600 transition">
             <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Lieu d'intervention</p>
@@ -2746,8 +2746,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </button>
         )}
 
-        {/* REM : itinéraire complet */}
-        {rem && (
+        {/* REM ou REL : itinéraire complet (prise en charge → stops → destination) */}
+        {(rem || rel) && (
           <div className="bg-surface border border rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border">
               <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Itinéraire</p>
@@ -2959,7 +2959,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           )}
 
           {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
-          {rem && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
+          {(rem || rel) && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
             <>
               <button onClick={() => { setCloseType(rel ? 'rel' : 'rem'); setScreen('close') }} disabled={loading}
                 className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
