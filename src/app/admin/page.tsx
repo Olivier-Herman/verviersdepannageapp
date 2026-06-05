@@ -15,7 +15,7 @@ import { redirect }          from 'next/navigation'
 import {
   DollarSign, Truck, FileText, Wallet, Settings,
   Tag, MapPin, Users, Car, Receipt, AlertTriangle, Radio, ShieldCheck,
-  Bell, ClipboardCheck, Map, Archive, FileSignature, Printer,
+  Bell, ClipboardCheck, Map, Archive, FileSignature, Printer, LifeBuoy,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -174,6 +174,11 @@ export default async function AdminPage() {
           desc="Liste des PV reçus, stats par chauffeur, attribution manuelle." />
         <Card href="/admin/tgr" icon={Truck} label="Service TGR"
           desc="Configuration du service Touring Gros Recouvrement." />
+      </Group>
+
+      <Group title="Support">
+        <Card href="/admin/cobrowse" icon={LifeBuoy} label="Demandes d aide"
+          desc="Sessions de co-browsing en attente ou en cours. Permet de voir l'écran d'un user en direct pour le dépanner." />
       </Group>
 
       <Group title="Réglages">

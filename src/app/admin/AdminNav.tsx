@@ -13,7 +13,7 @@ import {
   Radio, Bell, ShieldCheck, FileSignature,
   Map, ClipboardCheck,
   FileText, Archive, Wallet, Truck,
-  Settings, Home, Printer,
+  Settings, Home, Printer, LifeBuoy,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -68,6 +68,12 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/archives',  label: 'Archives',  icon: Archive },
       { href: '/admin/cash',      label: 'Caisses',   icon: Wallet },
       { href: '/admin/tgr',       label: 'TGR',       icon: Truck },
+    ],
+  },
+  {
+    title: 'Support',
+    items: [
+      { href: '/admin/cobrowse', label: 'Demandes d aide', icon: LifeBuoy },
     ],
   },
   {
