@@ -838,7 +838,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     ...(!destFinalInStops && M.destination_address ? [{
       id: '__dest__', type: 'dest',
       label: `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
-      address: M.destination_address, lat: null as null, lng: null as null,
+      // Olivier 2026-06-05 : avant lat/lng etaient hardcodes null -> bug
+      // navigation app (l adresse n etait pas transferee dans Maps/Waze).
+      address: M.destination_address,
+      lat:     M.destination_lat ?? null,
+      lng:     M.destination_lng ?? null,
       arrived_at: destArrived ? new Date().toISOString() : null as null,
       on_way_at: destOnWay ? new Date().toISOString() : null as null,
       sort_order: stops.length,
@@ -2760,7 +2764,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     style={{ backgroundColor: point.id === '__dest__' ? '#2563eb' : (STOP_COLORS[point.type] || STOP_COLORS.custom) }} />
                   <button className="flex-1 min-w-0 text-left py-1" onClick={() => {
                     if (point.id === '__dest__') {
-                      setAddrModal({ title: point.label, address: point.address, field: 'destination' })
+                      // Olivier 2026-06-05 : ajoute lat/lng (comme pour les stops)
+                      // sinon Maps/Waze ouvre sans coords ni adresse.
+                      setAddrModal({ title: point.label, address: point.address, lat: point.lat ?? undefined, lng: point.lng ?? undefined, field: 'destination' })
                     } else {
                       // field='stop:<id>' → la modal sait deroute vers l'edition stop
                       setAddrModal({ title: point.label, address: point.address, lat: point.lat ?? undefined, lng: point.lng ?? undefined, field: `stop:${point.id}` })
