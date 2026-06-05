@@ -32,6 +32,10 @@ interface Mission {
   billed_to_name?: string; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
   incident_address?: string; incident_city?: string; incident_lat?: number; incident_lng?: number
+  // Autoroute : BK + sens de circulation saisis par le dispatcher quand
+  // l adresse contient une autoroute. Olivier 2026-06-05.
+  incident_borne_km?: string | null
+  incident_sens?:     string | null
   incident_description?: string; remarks_general?: string
   // Particularites/warnings choisies par le dispatcher a la creation
   // (ex: Complexe, Vehicule electrique, Cle absente, etc.). INFO CRITIQUE
@@ -47,6 +51,8 @@ interface Mission {
   police_blocked?: boolean | null
   remarks_billing?: string | null
   destination_address?: string; destination_name?: string; destination_lat?: number; destination_lng?: number; redelivery_address?: string
+  destination_borne_km?: string | null
+  destination_sens?:     string | null
   intervention_date?: string; received_at?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
   loaded_at?: string
@@ -113,6 +119,23 @@ const DPR_MOTIFS = [
   { id: 'autre',             icon: '✍️', label: 'Autre' },
 ] as const
 type DprMotifId = typeof DPR_MOTIFS[number]['id']
+
+// ─── Autoroute : BK + sens (saisis par le dispatcher, doivent etre TRES
+//     visibles cote chauffeur — sinon il arrive a la mauvaise borne ou dans
+//     le mauvais sens). Bandeau jaune. Olivier 2026-06-05.
+function HighwayInfo({ bk, sens }: { bk?: string | null; sens?: string | null }) {
+  const hasBk   = !!bk   && String(bk).trim().length   > 0
+  const hasSens = !!sens && String(sens).trim().length > 0
+  if (!hasBk && !hasSens) return null
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold">
+      <span>🛣️</span>
+      {hasBk && <span>BK {bk}</span>}
+      {hasBk && hasSens && <span className="opacity-50">·</span>}
+      {hasSens && <span>{sens}</span>}
+    </div>
+  )
+}
 
 // ─── Stepper visuel : étapes du workflow chauffeur ────────────────────────────
 // 3 variantes :
@@ -2718,6 +2741,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             className="w-full bg-surface border border rounded-2xl p-4 text-left hover:border-zinc-600 transition">
             <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-1">Lieu d'intervention</p>
             <p className="text-ink text-sm">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
+            <HighwayInfo bk={M.incident_borne_km} sens={M.incident_sens} />
             <p className="text-blue-400 text-xs mt-1">🗺️ Tap → Naviguer ou Modifier</p>
           </button>
         )}
@@ -2739,6 +2763,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <div className="flex-1 min-w-0">
                 <p className="text-ink-muted text-xs">Prise en charge</p>
                 <p className="text-ink text-sm truncate">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
+                <HighwayInfo bk={M.incident_borne_km} sens={M.incident_sens} />
               </div>
               <span className="text-blue-400 text-xs flex-shrink-0">→</span>
             </button>
@@ -2774,6 +2799,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   }}>
                     <p className="text-ink-muted text-xs">{point.label}</p>
                     <p className="text-ink text-sm truncate">{point.address}</p>
+                    {point.id === '__dest__' && (
+                      <HighwayInfo bk={M.destination_borne_km} sens={M.destination_sens} />
+                    )}
                     <p className="text-blue-400 text-xs mt-0.5">Tap → Naviguer ou Modifier</p>
                   </button>
                   {canReorder && !point.arrived_at && point.id !== '__dest__' && (
@@ -3168,6 +3196,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl px-3 py-2.5">
                 <p className="text-blue-300 text-xs font-medium">📍 Adresse de relivraison à enregistrer</p>
                 <p className="text-ink text-sm">{M.destination_address}</p>
+                <HighwayInfo bk={M.destination_borne_km} sens={M.destination_sens} />
               </div>
             )}
 

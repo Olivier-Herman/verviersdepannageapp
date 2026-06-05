@@ -44,6 +44,8 @@ interface Mission {
   billed_to_name?: string; billed_to_id?: number | null; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
   incident_address?: string; incident_city?: string; incident_lat?: number; incident_lng?: number
+  incident_borne_km?: string | null
+  incident_sens?:     string | null
   incident_description?: string; remarks_general?: string
   warnings?: string[] | null
   vehicle_class?: 'car' | 'moto' | string | null
@@ -55,6 +57,8 @@ interface Mission {
   remarks_billing?: string | null
   destination_address?: string; destination_name?: string
   destination_lat?: number; destination_lng?: number; redelivery_address?: string
+  destination_borne_km?: string | null
+  destination_sens?:     string | null
   extra_addresses?: Array<{ id?: string; label?: string; address?: string; lat?: number | null; lng?: number | null; sort_order?: number }> | null
   intervention_date?: string; received_at?: string
   accepted_at?: string; on_way_at?: string; on_site_at?: string
@@ -581,6 +585,15 @@ export default function SncMissionFiche({
               {M.incident_address || '—'}
               {M.incident_city ? `, ${M.incident_city}` : ''}
             </p>
+            {((M.incident_borne_km && String(M.incident_borne_km).trim()) ||
+              (M.incident_sens     && String(M.incident_sens).trim())) && (
+              <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold">
+                <span>🛣️</span>
+                {M.incident_borne_km && <span>BK {M.incident_borne_km}</span>}
+                {M.incident_borne_km && M.incident_sens && <span className="opacity-50">·</span>}
+                {M.incident_sens && <span>{M.incident_sens}</span>}
+              </div>
+            )}
             {navUrl && (
               <a
                 href={navUrl}
