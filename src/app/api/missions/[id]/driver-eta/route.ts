@@ -150,7 +150,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const { data: activeMissions } = await sb
     .from('incoming_missions')
     .select('id, assigned_to, dossier_number, mission_type, destination_address, destination_lat, destination_lng, incident_address, incident_lat, incident_lng, status')
-    .in('status', ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress'])
+    .in('status', ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering'])
     .neq('id', params.id)
   const missionsByDriver = new Map<string, any>()
   for (const m of (activeMissions || [])) {

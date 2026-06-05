@@ -41,13 +41,15 @@ export async function GET() {
   if (!drivers || drivers.length === 0) return NextResponse.json({ drivers: [] })
 
   // Missions actives par chauffeur
+  // 'delivering' = veh chargé sur le camion -> chauffeur en route vers destination,
+  // donc TOUJOURS occupe (bug fix 2026-06-05 : sans ca le panel le marquait vert).
   const { data: activeMissions } = await supabase
     .from('incoming_missions')
     .select('id, assigned_to, client_name, mission_type, status')
-    .in('status', ['assigned', 'accepted', 'in_progress'])
+    .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
     .in('assigned_to', drivers.map(d => d.id))
 
-  const STATUS_WEIGHT: Record<string, number> = { in_progress: 3, accepted: 2, assigned: 1 }
+  const STATUS_WEIGHT: Record<string, number> = { delivering: 4, in_progress: 3, accepted: 2, assigned: 1 }
   const missionByDriver = new Map<string, NonNullable<typeof activeMissions>[number]>()
   for (const m of activeMissions ?? []) {
     if (!m.assigned_to) continue

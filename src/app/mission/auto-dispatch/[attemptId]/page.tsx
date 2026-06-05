@@ -45,7 +45,7 @@ export default async function AutoDispatchPage({ params }: { params: { attemptId
     .from('incoming_missions')
     .select('id')
     .eq('assigned_to', userId)
-    .in('status', ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress'])
+    .in('status', ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering'])
     .neq('id', attempt.mission_id)
     .limit(1)
   const isInMission = (activeMissions?.length || 0) > 0
