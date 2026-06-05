@@ -7,7 +7,6 @@ import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import NewInterventionButton from '@/components/mission/NewInterventionButton'
-import { TruckSwitcher } from '@/components/trucks/TruckSwitcher'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,10 +54,6 @@ export default async function MissionListPage() {
       {/* Wrapper relatif pour positionner le FAB */}
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-6 max-w-2xl mx-auto space-y-6 pb-24 ambient-fade-up">
-
-          {/* Olivier 2026-06-05 : selecteur depanneuse en haut, accessible
-              partout depuis cette page (pas seulement via modal seuil 7h/17h). */}
-          <TruckSwitcher />
 
           {active.length === 0 && completed.length === 0 && (
             <div className="text-center py-16 text-ink-faint">

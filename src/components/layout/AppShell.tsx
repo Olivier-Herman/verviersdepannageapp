@@ -13,6 +13,7 @@ import WatchPairingBridge from '@/components/watch/WatchPairingBridge'
 import { filterNavItems } from './nav-items'
 import MobileNavDrawer from './MobileNavDrawer'
 import GlobalSearch from '@/components/GlobalSearch'
+import { TruckSwitcherIcon } from '@/components/trucks/TruckSwitcherIcon'
 import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
@@ -154,6 +155,7 @@ export default function AppShell({
               <img src="/logo.jpg" alt="VD Soft" className="h-8 w-auto object-contain" />
             </Link>
             <DispatchAlertBadge userRole={userRole} />
+            <TruckSwitcherIcon />
             <GlobalSearch />
           </div>
           <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
@@ -177,6 +179,7 @@ export default function AppShell({
             <h1 className="font-display text-ink font-bold text-2xl">{title}</h1>
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
             <DispatchAlertBadge userRole={userRole} />
+            <TruckSwitcherIcon />
             <GlobalSearch />
           </div>
         </div>
