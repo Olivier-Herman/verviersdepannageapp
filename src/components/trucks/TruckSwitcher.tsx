@@ -111,10 +111,10 @@ export function TruckSwitcher() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/70 backdrop-blur-sm p-4"
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
              onClick={() => !busy && setOpen(false)}>
           <div onClick={e => e.stopPropagation()}
-               className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl border p-5 space-y-4">
+               className="bg-white w-full max-w-md rounded-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto my-auto">
             <div className="text-center">
               <div className="text-4xl mb-2">🚚</div>
               <h3 className="text-gray-900 font-bold text-lg"><T k="truck_modal.select_title" /></h3>
