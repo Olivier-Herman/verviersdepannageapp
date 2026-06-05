@@ -8,7 +8,10 @@
 // un mini-modal de selection. POST /api/users/me/current-truck a la
 // validation.
 //
-// Reserve aux users avec role 'driver' (cf [[trucks-modal-driver-only]]).
+// Olivier 2026-06-05 : etendu aux admin/superadmin/dispatcher (qui peuvent
+// aussi prendre un camion en pratique : tests, depannage exceptionnel...).
+// Avant : reserve aux 'driver' uniquement.
+const TRUCK_SWITCH_ALLOWED_ROLES = ['driver', 'admin', 'superadmin', 'dispatcher']
 
 import { useEffect, useState } from 'react'
 import { useSession }          from 'next-auth/react'
@@ -37,12 +40,12 @@ export function TruckSwitcher() {
   const [open,   setOpen]   = useState(false)
   const [busy,   setBusy]   = useState(false)
 
-  // Charge l etat initial — seulement si l user est driver
+  // Charge l etat initial — pour les roles autorises (driver + admins/dispatch)
   useEffect(() => {
     if (sessionStatus !== 'authenticated' || !session?.user) return
     const user = session.user as any
     const roles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
-    if (!roles.includes('driver')) return
+    if (!TRUCK_SWITCH_ALLOWED_ROLES.some(r => roles.includes(r))) return
 
     fetch('/api/users/me/current-truck')
       .then(r => r.json())
@@ -81,7 +84,7 @@ export function TruckSwitcher() {
   if (!session) return null
   const user = session.user as any
   const roles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
-  if (!roles.includes('driver')) return null
+  if (!TRUCK_SWITCH_ALLOWED_ROLES.some(r => roles.includes(r))) return null
   if (!state) return null
 
   const current = state.current_truck || state.default_truck
