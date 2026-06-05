@@ -196,13 +196,14 @@ export default function TowsoftArchiveClient({ userRole, userName, userEmail, us
               {stats.total > 0 && (
                 <>
                   <button onClick={() => runEnrichNow(true)} disabled={enrichLoading || stats.pending === 0}
-                    className="px-4 py-2 bg-info-600 hover:bg-info-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-50 flex items-center gap-1.5">
+                    className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-semibold transition disabled:opacity-50 flex items-center gap-1.5">
                     <Zap size={14} />
                     {enrichLoading ? (enrichProgress || '⏳ Boucle...') : `⚡⚡ Rattraper tout (${stats.pending} restantes)`}
                   </button>
                   <button onClick={() => runEnrichNow(false)} disabled={enrichLoading || stats.pending === 0}
-                    className="px-3 py-2 bg-warning-50 hover:bg-warning-100 text-warning-800 border border-warning-200 rounded-lg text-xs font-semibold transition disabled:opacity-50">
-                    {enrichLoading ? '⏳' : `⚡ +${BATCH_SIZE}`}
+                    className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-semibold transition disabled:opacity-50 flex items-center gap-1">
+                    <Zap size={11} />
+                    {enrichLoading ? '⏳' : `Tester +${BATCH_SIZE}`}
                   </button>
                   <button onClick={doInit} disabled={initLoading}
                     className="text-xs text-ink-muted hover:text-ink underline ml-auto self-center">
