@@ -2187,6 +2187,7 @@ export default function MissionDetailClient({
                     <span>Scénario : <strong>{
                       initialMission.snc_scenario === 'dsp'        ? 'DSP — dépannage sur place'
                     : initialMission.snc_scenario === 'rem_client' ? 'REM avec paiement immédiat'
+                    : initialMission.snc_scenario === 'rem_direct' ? 'REM directe'
                     : initialMission.snc_scenario === 'rem_depot'  ? 'REM vers dépôt Pepinster'
                     : initialMission.snc_scenario
                     }</strong></span>

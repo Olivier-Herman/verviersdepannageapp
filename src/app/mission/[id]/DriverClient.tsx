@@ -46,7 +46,7 @@ interface Mission {
   vehicle_class?: 'car' | 'moto' | string | null
   distance_km?: number | null
   duration_min?: number | null
-  snc_scenario?: 'dsp' | 'rem_client' | 'rem_depot' | string | null
+  snc_scenario?: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct' | string | null
   snc_requires_balisage?: boolean | null
   police_blocked?: boolean | null
   remarks_billing?: string | null
@@ -1029,10 +1029,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [sncSaving, setSncSaving]   = useState<string | null>(null)
   const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
 
-  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot') => {
+  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
     setSncInfoMsg(null)
-    // REM client a besoin de la destination (lat/lng) pour estimer le tarif
-    if (scenario === 'rem_client' && (M.destination_lat == null || M.destination_lng == null)) {
+    // REM client + REM directe ont besoin de la destination (lat/lng)
+    // pour estimer le tarif. REM depot n en a pas besoin (mise en parc).
+    if ((scenario === 'rem_client' || scenario === 'rem_direct')
+        && (M.destination_lat == null || M.destination_lng == null)) {
       setSncInfoMsg('Saisis d\'abord l\'adresse de destination (clique sur l\'itinéraire pour l\'ajouter).')
       return
     }
@@ -2617,7 +2619,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <div className="grid grid-cols-1 gap-2">
               {([
                 { key: 'dsp' as const,        label: '🔧 DSP — Dépannage sur place',     desc: M.source === 'sia_couvert' ? 'Réparation sur place, facturée à l\'assistance (pas d\'encaissement).' : 'Réparation sur place, client paie en direct au chauffeur.' },
+                // SNC : REM avec paiement immediat par le client (pas couvert)
                 ...(M.source === 'police_snc' ? [{ key: 'rem_client' as const, label: '🚛 REM avec paiement immédiat', desc: 'Remorquage vers destination du client, paiement immédiat.' }] : []),
+                // SC : REM directe (forfait SC + km livraison assistance, pas
+                // de passage depot). Coherent avec le choix dispatcher.
+                ...(M.source === 'sia_couvert' ? [{ key: 'rem_direct' as const, label: '🚛 REM directe', desc: 'Remorquage direct sans passage dépôt (forfait SC + km livraison assistance).' }] : []),
                 { key: 'rem_depot' as const,  label: '🏢 REM vers dépôt Pepinster',       desc: M.source === 'sia_couvert' ? 'Mise en zone Transit, relivraison ultérieure au tarif assistance.' : 'Mise en zone Transit, le client passera au bureau ensuite.' },
               ]).map(opt => {
                 const isActive = M.snc_scenario === opt.key
