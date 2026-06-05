@@ -78,12 +78,34 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
         started = true
         setStatus('playing')
 
-        // Auto-scale : adapte la taille du replayer a la largeur dispo
+        // Auto-scale + force la hauteur de l iframe a scrollHeight du DOM
+        // (sinon l admin ne voit que la viewport iPhone du user, pas le
+        // contenu scrollable en-dessous). Olivier 2026-06-05.
         const applyScale = () => {
           const root = containerRef.current
           if (!root) return
           const wrapper = root.querySelector('.replayer-wrapper') as HTMLElement | null
           if (!wrapper) return
+          const iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null
+
+          // Si l iframe est dispo et same-origin, force sa hauteur au
+          // scrollHeight du body (= hauteur reelle du document du user)
+          if (iframe) {
+            try {
+              const doc = iframe.contentDocument
+              if (doc?.documentElement) {
+                const realH = Math.max(
+                  doc.documentElement.scrollHeight,
+                  doc.body?.scrollHeight || 0,
+                )
+                if (realH > 0) {
+                  iframe.style.height = `${realH}px`
+                  wrapper.style.height = `${realH}px`
+                }
+              }
+            } catch { /* cross-origin : on garde la hauteur viewport */ }
+          }
+
           const ww = wrapper.offsetWidth || parseInt(wrapper.style.width) || 0
           const wh = wrapper.offsetHeight || parseInt(wrapper.style.height) || 0
           const cw = root.clientWidth
@@ -93,14 +115,24 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
           // Reserve la hauteur reelle apres scale pour eviter l overflow
           if (wh) root.style.minHeight = `${Math.ceil(wh * scale) + 8}px`
         }
-        // Apply now + on resize + recheck apres le snapshot (DOM rendu)
+        // Apply now + on resize + recheck plusieurs fois apres le snapshot
+        // (le DOM se construit progressivement, plusieurs ticks de retry
+        // pour capter les images/styles qui changent la hauteur reelle)
         applyScale()
         setTimeout(applyScale, 200)
         setTimeout(applyScale, 800)
+        setTimeout(applyScale, 2000)
+        setTimeout(applyScale, 4000)
         roRef.current?.disconnect()
         const ro = new ResizeObserver(applyScale)
         ro.observe(containerRef.current)
         roRef.current = ro
+
+        // Re-apply apres chaque nouveau full snapshot (la DOM change)
+        const reApplyOnSnapshot = setInterval(applyScale, 1500)
+        // Cleanup
+        const prevDisconnect = () => clearInterval(reApplyOnSnapshot)
+        ;(roRef.current as any).__intervalCleanup = prevDisconnect
       }
 
       const onEvent = (rrwebEvent: any) => {
@@ -146,6 +178,7 @@ export default function CobrowseViewerClient({ sessionId }: { sessionId: string 
       })
 
       unsub = () => {
+        try { (roRef.current as any)?.__intervalCleanup?.() } catch {}
         try { roRef.current?.disconnect() } catch {}
         roRef.current = null
         try { ch.unsubscribe() } catch {}
