@@ -24,9 +24,10 @@ const CONCURRENCY      = 2
 const DELAY_BETWEEN_MS = 700
 const MAX_ATTEMPTS     = 5
 
-// Statuts TowSoft consideres comme "annule" (a affiner via Olivier).
-// Pour l instant on stocke avec flag is_cancelled=true, on filtre cote UI.
-const CANCELLED_APPEL_STATUSES = new Set<string>(['0', '7', '8'])  // hypothese a verifier
+// Statuts TowSoft consideres comme "annule" (confirme par Olivier).
+// appel_status=20 = Annulee (verifie sur mission 10139). Si d autres
+// statuts annules apparaissent ulterieurement, on les ajoute ici.
+const CANCELLED_APPEL_STATUSES = new Set<string>(['20'])
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
