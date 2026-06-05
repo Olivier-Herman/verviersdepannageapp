@@ -46,6 +46,7 @@ const PER_CATEGORY_LIMIT_FULL    = 30
 
 interface SearchResult {
   category:     'mission' | 'encaissement' | 'avance' | 'invoice' | 'driver' | 'user' | 'vehicle'
+              | 'archive'
               | 'email_info' | 'email_fourriere' | 'email_administration'
   id:           string
   title:        string
@@ -512,6 +513,53 @@ export async function GET(req: Request) {
       }
     } catch (e: any) {
       console.error('[search] Odoo vehicles render fail (non bloquant):', e.message)
+    }
+  }
+
+  // ── Archive TowSoft (~47000 missions historiques enrichies)
+  // Olivier 2026-06-05 : recherche par plaque / VIN / num TowSoft / client.
+  // href = direct vers TowSoft (panel VD Soft viendra dans un 2eme push).
+  // Filtre par defaut : exclut les missions annulees (is_cancelled=true)
+  if (wants('archive')) {
+    try {
+      let archiveQuery = sb
+        .from('towsoft_archive')
+        .select('towsoft_num, plate, vin, brand, model, motif, client_name, date_appel, appel_status, is_cancelled')
+        .eq('is_cancelled', false)
+        .not('detail_fetched_at', 'is', null)
+        .order('date_appel', { ascending: false })
+        .limit(PER_CATEGORY_LIMIT)
+
+      // Match prioritaire : towsoft_num exact (si q est numerique)
+      if (/^\d{4,7}$/.test(q)) {
+        archiveQuery = archiveQuery.eq('towsoft_num', q)
+      } else {
+        archiveQuery = archiveQuery.or(`plate.ilike.${qLike},vin.ilike.${qLike},client_name.ilike.${qLike}`)
+        // Note : si on a plaque format BE, on cherche aussi en plaque normalisee
+        if (qPlate && qPlate.length >= 4 && qPlate !== q) {
+          archiveQuery = archiveQuery.or(`plate.ilike.%${qPlate}%`)
+        }
+      }
+
+      const { data: archive } = await archiveQuery
+      const TOWSOFT_BASE = 'https://verviers.towsoft.ca/appel.php?num='
+      for (const m of (archive || [])) {
+        const vehicleParts = [m.brand, m.model].filter(Boolean).join(' ')
+        const dateStr = m.date_appel
+          ? new Date(m.date_appel).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          : ''
+        out.push({
+          category: 'archive',
+          id:       m.towsoft_num,
+          title:    `#${m.towsoft_num} · ${m.plate || '—'}${vehicleParts ? ` · ${vehicleParts}` : ''}`,
+          subtitle: m.client_name || '',
+          meta:     [m.motif, dateStr].filter(Boolean).join(' · ') || 'Archive TowSoft',
+          href:     `${TOWSOFT_BASE}${m.towsoft_num}`,
+          external: true,
+        })
+      }
+    } catch (e: any) {
+      console.error('[search] towsoft_archive fail (non bloquant):', e.message)
     }
   }
 
