@@ -15,8 +15,9 @@ interface Zone {
 }
 
 interface Vehicle {
-  id:               number
+  id:               number | null
   mission_id:       string | null
+  mission_number?:  number | null
   plate:            string | null
   vin:              string | null
   brand:            string
@@ -28,7 +29,9 @@ interface Vehicle {
   parc_row_number:  number | null
   parc_slot_index:  number | null
   last_update:      string | null
-  odoo_url:         string
+  odoo_url:         string | null
+  source?:          string | null
+  external_id?:     string | null
 }
 
 interface Props {
@@ -318,7 +321,7 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                   const zoneColorClass = v.zone_code ? (ZONE_COLOR[v.zone_code] || 'bg-surface-2 text-ink-secondary border') : ''
                   const toPlace = needsPlacement(v)
                   return (
-                    <tr key={v.id} className={`hover:bg-surface-hover ${toPlace ? 'bg-warning/5' : ''}`}>
+                    <tr key={v.mission_id || `odoo-${v.id}`} className={`hover:bg-surface-hover ${toPlace ? 'bg-warning/5' : ''}`}>
                       <td className="px-3 py-2">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold border ${zoneColorClass}`}>
                           {v.zone_code || '—'}
@@ -356,11 +359,13 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                               <Eye size={14} />
                             </Link>
                           )}
-                          <a href={v.odoo_url} target="_blank" rel="noreferrer"
-                            className="p-1.5 text-ink-faint hover:text-brand transition rounded"
-                            title="Voir fiche Odoo">
-                            <ExternalLink size={14} />
-                          </a>
+                          {v.odoo_url && (
+                            <a href={v.odoo_url} target="_blank" rel="noreferrer"
+                              className="p-1.5 text-ink-faint hover:text-brand transition rounded"
+                              title="Voir fiche Odoo (référence)">
+                              <ExternalLink size={14} />
+                            </a>
+                          )}
                           <button onClick={() => setMoving(v)}
                             className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-hover text-white rounded-md text-xs font-semibold transition">
                             <ArrowRightLeft size={12} />
