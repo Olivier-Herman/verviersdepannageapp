@@ -64,7 +64,6 @@ export async function POST(req: Request) {
     await sb.from('parc_zones').update({
       migration_completed_at: null,
       migration_completed_by: null,
-      updated_at:             new Date().toISOString(),
     }).eq('key', zoneKey)
     return NextResponse.json({ ok: true, action: 'undone', reversed_pending: pendingReversed?.length || 0 })
   }
@@ -138,7 +137,6 @@ export async function POST(req: Request) {
     .update({
       migration_completed_at: new Date().toISOString(),
       migration_completed_by: actor?.id || null,
-      updated_at:             new Date().toISOString(),
     })
     .eq('key', zoneKey)
     .select('key, migration_completed_at')
