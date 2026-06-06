@@ -488,13 +488,18 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
               {zones.map(z => {
                 const isDone = doneZones.has(z)
                 return (
-                <button key={z} onClick={() => setZone(z)}
+                <button key={z} onClick={() => {
+                  if (isDone) {
+                    if (!confirm(`⚠️ ATTENTION : zone ${z} déjà marquée comme migrée.\n\nRe-scanner cette zone est inutile et risque de mélanger les véhicules. Les véhicules sont déjà liés à VD Soft.\n\nContinuer quand même ?`)) return
+                  }
+                  setZone(z)
+                }}
                   className={`px-3 py-2 rounded-lg text-sm font-bold transition border relative ${
                     isDone
                       ? 'bg-success-soft border-success/40 text-success hover:bg-success hover:text-white'
                       : 'bg-surface-2 hover:bg-brand hover:text-white border-default text-ink'
                   }`}
-                  title={isDone ? 'Zone déjà migrée — clique pour re-scanner' : 'Zone pas encore migrée'}
+                  title={isDone ? 'Zone déjà migrée ✓ — confirmation requise' : 'Zone pas encore migrée'}
                 >
                   {isDone && <span className="absolute top-0.5 right-1 text-xs">✓</span>}
                   {z}

@@ -173,6 +173,87 @@ export async function processMigrationFiche(sourceRowId: string): Promise<Migrat
   const plate = src.plate || detail.immatriculation || null
   const vin   = src.vin   || detail.vin || null
 
+  // 4bis. Olivier 2026-06-06 : DEDUPE PAR PLAQUE/VIN avant l INSERT.
+  // L idempotence par external_id=TS-XXX ne couvre PAS le cas ou une
+  // mission VD Soft existe deja pour le meme vehicule via un autre flow
+  // (Touring, dispatch manuel, Mondial, ...) avec un external_id different.
+  // Sans cette verif, on creerait 2 missions VD Soft pour le meme vehicule.
+  //
+  // Strategie : si une mission ACTIVE (parked/in_progress/delivering/...) existe
+  // pour cette plaque ou VIN, on l ENRICHIT avec les donnees TowSoft (sans
+  // ecraser ce qui est deja rempli) + on lie la source -> mission. On ne touche
+  // PAS son external_id ni son source d origine.
+  // Les statuts terminaux (completed/cancelled/to_invoice) sont ignores
+  // car ce sont des passages anciens du meme vehicule, pas l intervention actuelle.
+  if (plate || vin) {
+    const ACTIVE_STATUSES = ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering', 'parked']
+    let existingByPlateVin: any = null
+
+    if (vin) {
+      const { data } = await sb
+        .from('incoming_missions')
+        .select('id, external_id, parc_zone_key, status, source, vehicle_plate, vehicle_vin, client_name, incident_address, vehicle_brand, vehicle_model')
+        .eq('vehicle_vin', vin)
+        .in('status', ACTIVE_STATUSES)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (data) existingByPlateVin = data
+    }
+    if (!existingByPlateVin && plate) {
+      const { data } = await sb
+        .from('incoming_missions')
+        .select('id, external_id, parc_zone_key, status, source, vehicle_plate, vehicle_vin, client_name, incident_address, vehicle_brand, vehicle_model')
+        .eq('vehicle_plate', plate)
+        .in('status', ACTIVE_STATUSES)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (data) existingByPlateVin = data
+    }
+
+    if (existingByPlateVin) {
+      // Enrichissement defensif : on ne remplit QUE les champs vides
+      // (coalesce). Garde l external_id et la source d origine.
+      const enrichPayload: Record<string, any> = {
+        parc_zone_key:    src.scanned_zone,
+        parc_row_number:  null,
+        parc_slot_index:  null,
+        status:           'parked',
+        updated_at:       new Date().toISOString(),
+        towsoft_enriched_at: new Date().toISOString(),
+      }
+      if (!existingByPlateVin.vehicle_plate && plate)               enrichPayload.vehicle_plate    = plate
+      if (!existingByPlateVin.vehicle_vin   && vin)                 enrichPayload.vehicle_vin      = vin
+      if (!existingByPlateVin.vehicle_brand && (src.brand || detail.marque)) enrichPayload.vehicle_brand = src.brand || detail.marque
+      if (!existingByPlateVin.vehicle_model && (src.model || detail.modele)) enrichPayload.vehicle_model = src.model || detail.modele
+      if (!existingByPlateVin.client_name   && (detail.client_name || src.client_name)) enrichPayload.client_name = detail.client_name || src.client_name
+      if (!existingByPlateVin.incident_address && detail.origine_addr) enrichPayload.incident_address = detail.origine_addr
+
+      const { error: upErr } = await sb
+        .from('incoming_missions')
+        .update(enrichPayload)
+        .eq('id', existingByPlateVin.id)
+      if (upErr) {
+        return { ok: false, action: 'error', reason: `Enrichissement mission existante KO : ${upErr.message}` }
+      }
+
+      // Lie la source -> mission existante (PAS la nouvelle qu on n a pas creee)
+      await sb
+        .from('towsoft_migration_source')
+        .update({
+          vdsoft_mission_id: existingByPlateVin.id,
+          imported_at:       new Date().toISOString(),
+          import_error:      null,
+          updated_at:        new Date().toISOString(),
+        })
+        .eq('id', src.id)
+
+      console.log(`[migration-worker] DEDUPE plaque/VIN : enrichi mission ${existingByPlateVin.id} (external_id=${existingByPlateVin.external_id}) au lieu de creer ${externalId}`)
+      return { ok: true, action: 'updated', mission_id: existingByPlateVin.id, reason: 'enriched_existing_by_plate_vin' }
+    }
+  }
+
   const odooTicket = await findExistingOdooTicket(src.towsoft_num)
   let odooVehicleId: number | null = odooTicket?.vehicleId || null
   if (!odooVehicleId) {
@@ -237,20 +318,37 @@ export async function processMigrationFiche(sourceRowId: string): Promise<Migrat
     return { ok: false, action: 'error', reason: `INSERT KO : ${insErr.message}` }
   }
 
-  // 6. Lie la source -> mission
-  const { error: linkErr } = await sb
-    .from('towsoft_migration_source')
-    .update({
-      vdsoft_mission_id: created.id,
-      imported_at:       new Date().toISOString(),
-      import_error:      null,
-      updated_at:        new Date().toISOString(),
-    })
-    .eq('id', src.id)
+  // 6. Lie la source -> mission. Olivier 2026-06-06 : retry avec backoff
+  // pour minimiser le risque de mission orpheline (INSERT OK + UPDATE KO).
+  // Si toutes les tentatives echouent, on log + on retourne une erreur
+  // CLAIRE (mission_id retournee + reason) pour que l opérateur sache que
+  // le lien est manquant et que la dedupe plaque/VIN du prochain scan
+  // rattrapera la situation.
+  let linkErr: any = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 200 * attempt))
+    const { error } = await sb
+      .from('towsoft_migration_source')
+      .update({
+        vdsoft_mission_id: created.id,
+        imported_at:       new Date().toISOString(),
+        import_error:      null,
+        updated_at:        new Date().toISOString(),
+      })
+      .eq('id', src.id)
+    if (!error) { linkErr = null; break }
+    linkErr = error
+    console.warn(`[migration-worker] Lien source-mission tentative ${attempt + 1}/3 KO ${src.towsoft_num}:`, error.message)
+  }
 
   if (linkErr) {
-    // Mission cree mais lien echec -> non bloquant, on log
-    console.warn(`[migration-worker] Lien source-mission KO ${src.towsoft_num}:`, linkErr.message)
+    console.error(`[migration-worker] ALERTE : mission ${created.id} (towsoft_num=${src.towsoft_num}) creee MAIS source non liee apres 3 tentatives. La dedupe plaque/VIN du prochain scan rattrapera, ne pas re-scanner manuellement.`)
+    return {
+      ok: true,
+      action: 'created',
+      mission_id: created.id,
+      reason: `Mission creee, lien source KO apres 3 tentatives : ${linkErr.message}. Dedupe plaque/VIN au prochain scan.`,
+    }
   }
 
   return { ok: true, action: 'created', mission_id: created.id }
