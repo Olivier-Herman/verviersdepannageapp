@@ -17,6 +17,7 @@ import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { ArrowLeft, RefreshCw, Loader2, ScanLine, Check, X, AlertTriangle, Building2, Printer, BarChart3, Ghost, Archive, Camera } from 'lucide-react'
 import { normalizePlate } from '@/lib/plate'
+import TransitCleanupPanel from './TransitCleanupPanel'
 
 // QRScanner = camera + auto-detection rafale (dedup 3.5s, bip), Capacitor compatible
 const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })
@@ -556,8 +557,13 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
           )}
         </div>
 
-        {/* Input scan + liste */}
-        {zone && (
+        {/* Olivier 2026-06-06 PM : UI dediee pour zone Transit (nettoyage migration tampon) */}
+        {zone === 'Transit' && (
+          <TransitCleanupPanel />
+        )}
+
+        {/* Input scan + liste (toutes zones sauf Transit) */}
+        {zone && zone !== 'Transit' && (
           <div className="bg-surface border rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
