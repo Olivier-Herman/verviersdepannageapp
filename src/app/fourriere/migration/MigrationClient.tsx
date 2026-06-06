@@ -299,8 +299,26 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
 
   async function endZone() {
     if (!zone) return
-    if (!confirm(`Terminer la zone ${zone} ? (${scans.length} scans enregistrés)\n\nLa zone sera marquée comme migrée. Tu pourras passer à la suivante.`)) return
     const doneZone = zone
+
+    // Olivier 2026-06-06 : preview dry-run pour montrer combien de vehicules
+    // BDD non-scannes seront transferes vers Transit
+    let preview: any = null
+    try {
+      const r = await fetch('/api/admin/towsoft-migration/mark-zone-done', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: doneZone, dry_run: true }),
+      })
+      preview = await r.json()
+    } catch {}
+
+    const toTransfer = preview?.missions_to_transfer || 0
+    const msg = toTransfer > 0
+      ? `Terminer la zone ${doneZone} ?\n\n${scans.length} véhicule(s) scanné(s).\n${toTransfer} véhicule(s) BDD encore en zone ${doneZone} mais NON scannés → seront transférés vers Transit pour traitement humain.\n\nContinuer ?`
+      : `Terminer la zone ${doneZone} ? (${scans.length} scans, aucun véhicule BDD à transférer)`
+    if (!confirm(msg)) return
+
     try {
       const r = await fetch('/api/admin/towsoft-migration/mark-zone-done', {
         method:  'POST',
@@ -311,7 +329,10 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
       setScans([])
       setZone(null)
-      alert(`✓ Zone ${doneZone} marquée comme migrée. Tu peux passer à la suivante.`)
+      const detail = j.transferred_to_transit > 0
+        ? `\n${j.transferred_to_transit} véhicule(s) transféré(s) vers Transit (à traiter à la fin via la zone Transit).`
+        : ''
+      alert(`✓ Zone ${doneZone} marquée comme migrée.${detail}\n\nTu peux passer à la suivante.`)
       loadStats()
       loadDoneZones()
     } catch (e: any) {

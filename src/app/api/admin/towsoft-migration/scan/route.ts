@@ -20,6 +20,7 @@ import { odooRpc, withOdooActor } from '@/lib/odoo'
 import { FOURRIERE_ZONES }  from '@/lib/fourriere'
 import { processMigrationFiche } from '@/lib/towsoft-migration-worker'
 import { reprintLabelForMission } from '@/lib/missions/reprint-label-helper'
+import { enrichMissionFromTowsoftSource, markMigrationScanned } from '@/lib/towsoft-migration/enrich-from-source'
 
 export const dynamic = 'force-dynamic'
 
@@ -194,7 +195,9 @@ export async function POST(req: Request) {
           parc_zone_key:   zone,
           parc_row_number: null,
           parc_slot_index: null,
-          status:          existingMission.status === 'parked' ? 'parked' : 'parked',  // force parked si pas deja
+          status:          'parked',
+          migration_scanned_at:   new Date().toISOString(),
+          migration_scanned_zone: zone,
           updated_at:      new Date().toISOString(),
         })
         .eq('id', existingMission.id)
@@ -203,39 +206,80 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Update mission existante KO : ${upErr.message}` }, { status: 500 })
       }
 
+      // Olivier 2026-06-06 : enrichissement universel depuis towsoft_migration_source
+      // Si une fiche TowSoft enrichie existe pour ce vehicule (par plaque/VIN), on la
+      // copie dans la mission VD Soft existante en COALESCE (ne touche pas les champs
+      // deja remplis). Resultat : mission VD Soft devient riche meme si elle a ete creee
+      // via Touring/Mondial/dispatch (et non TowSoft).
+      let enrichResult: any = null
+      try {
+        enrichResult = await enrichMissionFromTowsoftSource(sb, existingMission.id, zone, {
+          plate: resolvedPlate || existingMission.vehicle_plate,
+          vin:   resolvedVin   || existingMission.vehicle_vin,
+        })
+      } catch (e: any) {
+        console.warn('[scan] enrichFromTowsoft KO:', e?.message)
+      }
+
       // Log audit
       await sb.from('mission_logs').insert({
         mission_id: existingMission.id,
         action:     'parc_scanned_migration',
-        notes:      `Scan migration : reassignee en zone ${zone}${existingMission.parc_zone_key && existingMission.parc_zone_key !== zone ? ` (depuis ${existingMission.parc_zone_key})` : ''}`,
+        notes:      `Scan migration : reassignee en zone ${zone}${existingMission.parc_zone_key && existingMission.parc_zone_key !== zone ? ` (depuis ${existingMission.parc_zone_key})` : ''}${enrichResult?.matched ? ` + enrichi depuis TowSoft #${enrichResult.towsoft_num} (${enrichResult.enriched_fields.length} champs)` : ''}`,
         actor_id:   user.id,
         metadata:   {
           from_zone:  existingMission.parc_zone_key,
           to_zone:    zone,
           raw_input:  raw,
           parsed_format: parsed.format,
+          enriched_from_towsoft: enrichResult?.matched || false,
+          towsoft_num: enrichResult?.towsoft_num || null,
+          enriched_fields: enrichResult?.enriched_fields || [],
         },
       }).then(() => {}, e => console.warn('[scan/migration] log KO:', e?.message))
 
-      // Transfert state Odoo (non bloquant)
-      transferOdooState({
-        plate:   existingMission.vehicle_plate,
-        vin:     existingMission.vehicle_vin,
-        zoneKey: zone,
-        userId:  user.id,
-      }).catch(e => console.warn('[scan] transfer Odoo state KO:', e?.message))
+      // Transfert state Odoo (sync)
+      let odooStateResult: any = null
+      try {
+        odooStateResult = await transferOdooState({
+          plate:   existingMission.vehicle_plate,
+          vin:     existingMission.vehicle_vin,
+          zoneKey: zone,
+          userId:  user.id,
+        })
+      } catch (e: any) {
+        odooStateResult = { ok: false, reason: String(e?.message || e).slice(0, 200) }
+      }
+
+      // Print etiquette si demande
+      let printResult: any = null
+      if (Boolean(body.print_label)) {
+        try {
+          printResult = await reprintLabelForMission({ kind: 'uuid', value: existingMission.id })
+        } catch (e: any) {
+          printResult = { ok: false, error: String(e?.message || e).slice(0, 200) }
+        }
+      }
 
       return NextResponse.json({
         ok: true,
         reason: 'linked_to_existing_vdsoft',
-        message: `✓ Mission VD Soft existante liée à zone ${zone} (${existingMission.vehicle_plate || existingMission.vehicle_vin || 'plaque inconnue'})`,
+        message: `✓ Mission VD Soft existante liée à zone ${zone} (${existingMission.vehicle_plate || existingMission.vehicle_vin || 'plaque inconnue'})${enrichResult?.matched ? ` + enrichi TowSoft (${enrichResult.enriched_fields.length} champs)` : ''}`,
         match: {
           plate: existingMission.vehicle_plate,
           vin:   existingMission.vehicle_vin,
           mission_id: existingMission.id,
           source: existingMission.source,
+          towsoft_num: enrichResult?.towsoft_num || null,
         },
         parsed,
+        vdsoft_mission_id: existingMission.id,
+        odoo_state_transferred: !!odooStateResult?.ok,
+        odoo_state_reason: odooStateResult?.reason || null,
+        label_printed: !!printResult?.ok,
+        label_error:   printResult?.error || null,
+        towsoft_enriched: enrichResult?.matched || false,
+        towsoft_enriched_fields: enrichResult?.enriched_fields || [],
       })
     }
   }
@@ -256,17 +300,38 @@ export async function POST(req: Request) {
     })
 
     if (odooLookup.ok) {
+      // Olivier 2026-06-06 : enrichissement universel + tracking
+      let enrichResult: any = null
+      if (odooLookup.missionId) {
+        try {
+          enrichResult = await enrichMissionFromTowsoftSource(sb, odooLookup.missionId, zone, {
+            plate: odooLookup.plate,
+            vin:   odooLookup.vin,
+          })
+        } catch (e: any) {
+          console.warn('[scan] enrichFromTowsoft KO:', e?.message)
+        }
+        // markMigrationScanned est appele dans enrichMissionFromTowsoftSource si match,
+        // sinon on doit le faire ici
+        if (!enrichResult?.matched) {
+          await markMigrationScanned(sb, odooLookup.missionId, zone).catch(() => {})
+        }
+      }
       return NextResponse.json({
         ok: true,
         reason: 'created_from_odoo',
-        message: `✓ Mission VD Soft créée depuis Odoo (fleet #${odooLookup.odooVehicleId}) en zone ${zone}`,
+        message: `✓ Mission VD Soft créée depuis Odoo (fleet #${odooLookup.odooVehicleId}) en zone ${zone}${enrichResult?.matched ? ` + enrichi TowSoft (${enrichResult.enriched_fields.length} champs)` : ''}`,
         match: {
           plate:      odooLookup.plate,
           vin:        odooLookup.vin,
           mission_id: odooLookup.missionId,
           source:     'legacy_odoo',
+          towsoft_num: enrichResult?.towsoft_num || null,
         },
         parsed,
+        vdsoft_mission_id:  odooLookup.missionId || null,
+        towsoft_enriched:        enrichResult?.matched || false,
+        towsoft_enriched_fields: enrichResult?.enriched_fields || [],
       })
     }
 
@@ -350,6 +415,12 @@ export async function POST(req: Request) {
     const result = await processMigrationFiche(match.id)
     if (result.ok) {
       createdMissionId = result.mission_id || null
+      // Olivier 2026-06-06 : set migration_scanned_at / scanned_zone pour le
+      // tracking auto-transfert Transit lors du Terminer zone.
+      if (createdMissionId) {
+        await markMigrationScanned(sb, createdMissionId, zone).catch(e =>
+          console.warn('[scan] markMigrationScanned KO:', e?.message))
+      }
     } else {
       workerError = result.reason || 'unknown'
       console.warn('[scan] processMigrationFiche KO:', result.reason)
