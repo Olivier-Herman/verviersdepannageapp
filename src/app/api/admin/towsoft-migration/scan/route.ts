@@ -18,13 +18,18 @@ import { createAdminClient } from '@/lib/supabase'
 import { parseScanInput }   from '@/lib/towsoft-migration/parse-scan'
 import { odooRpc, withOdooActor } from '@/lib/odoo'
 import { FOURRIERE_ZONES }  from '@/lib/fourriere'
+import { processMigrationFiche } from '@/lib/towsoft-migration-worker'
+import { reprintLabelForMission } from '@/lib/missions/reprint-label-helper'
 
 export const dynamic = 'force-dynamic'
 
 interface ScanBody {
-  raw_input:    string
-  zone:         string
-  force_rescan?: boolean
+  raw_input:      string
+  zone:           string
+  force_rescan?:  boolean
+  /** Olivier 2026-06-06 : si true, imprime l etiquette parc juste apres la
+   *  creation de la mission VD Soft (workflow migration zone-par-zone). */
+  print_label?:   boolean
 }
 
 export async function POST(req: Request) {
@@ -41,6 +46,7 @@ export async function POST(req: Request) {
   const raw  = String(body.raw_input || '').trim()
   const zone = String(body.zone || '').trim()
   const forceRescan = Boolean(body.force_rescan)
+  const printLabel  = Boolean(body.print_label)
 
   if (!raw)  return NextResponse.json({ error: 'raw_input requis' }, { status: 400 })
   if (!zone) return NextResponse.json({ error: 'zone requise' }, { status: 400 })
@@ -334,22 +340,66 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: upErr.message }, { status: 500 })
   }
 
-  // Olivier 2026-06-04 : transfert state Odoo en parallele (non bloquant).
-  // Si le vehicule existe dans Odoo, on update son state_id vers le state_id
-  // de la zone scannee. Best-effort : si Odoo KO, le scan reste OK cote VD Soft.
-  transferOdooState({
-    plate:   match.plate || resolvedPlate,
-    vin:     match.vin   || resolvedVin,
-    zoneKey: zone,
-    userId:  user.id,
-  }).catch(e => console.warn('[scan] transfer Odoo state KO:', e?.message))
+  // Olivier 2026-06-06 : creation INLINE de la mission VD Soft (le cron
+  // towsoft-migration-import est desactive depuis l accord TowSoft CA, donc
+  // il faut creer la mission VD Soft au moment du scan, pas plus tard).
+  // VD Soft devient ainsi source de verite immediatement.
+  let createdMissionId: string | null = null
+  let workerError: string | null = null
+  try {
+    const result = await processMigrationFiche(match.id)
+    if (result.ok) {
+      createdMissionId = result.mission_id || null
+    } else {
+      workerError = result.reason || 'unknown'
+      console.warn('[scan] processMigrationFiche KO:', result.reason)
+    }
+  } catch (e: any) {
+    workerError = String(e?.message || e).slice(0, 200)
+    console.warn('[scan] processMigrationFiche exception:', e?.message)
+  }
+
+  // Olivier 2026-06-04 : transfert state Odoo (synchrone, attendu pour
+  // confirmer le mapping dans la UI). Si Odoo KO, le scan + creation
+  // VD Soft restent valides, on signale juste le statut.
+  let odooStateResult: any = null
+  try {
+    odooStateResult = await transferOdooState({
+      plate:   match.plate || resolvedPlate,
+      vin:     match.vin   || resolvedVin,
+      zoneKey: zone,
+      userId:  user.id,
+    })
+  } catch (e: any) {
+    odooStateResult = { ok: false, reason: String(e?.message || e).slice(0, 200) }
+  }
+
+  // Olivier 2026-06-06 : impression etiquette parc inline (option print_label)
+  // pour le workflow migration zone-par-zone. Non bloquant.
+  let printResult: any = null
+  if (printLabel && createdMissionId) {
+    try {
+      printResult = await reprintLabelForMission({ kind: 'uuid', value: createdMissionId })
+    } catch (e: any) {
+      printResult = { ok: false, error: String(e?.message || e).slice(0, 200) }
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     reason: forceRescan ? 'rescanned_zone_changed' : 'scanned',
-    message: `Scanne en ${zone} : ${match.plate || match.towsoft_num}`,
+    message: `Scanné en ${zone} : ${match.plate || match.towsoft_num}`,
     match: { ...match, scanned_zone: zone, flag_scanned: true },
     parsed,
+    // VD Soft = source de verite
+    vdsoft_mission_id: createdMissionId,
+    vdsoft_worker_error: workerError,
+    // Odoo state mis a jour ?
+    odoo_state_transferred: !!odooStateResult?.ok,
+    odoo_state_reason: odooStateResult?.reason || null,
+    // Impression etiquette
+    label_printed: !!printResult?.ok,
+    label_error:   printResult?.error || null,
   })
 }
 

@@ -42,6 +42,11 @@ interface ScanItem {
   motif?: string | null
   message: string
   at: string
+  // Olivier 2026-06-06 : retours du scan inline (mission VD Soft + Odoo + label)
+  vdsoft_mission_id?:    string | null
+  odoo_state_transferred?: boolean
+  label_printed?:        boolean
+  label_error?:          string | null
 }
 
 // Olivier 2026-06-04 : zones fetchées dynamiquement depuis parc_zones BDD
@@ -68,6 +73,8 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   const [scanning, setScanning] = useState(false)
   const [confirmConflict, setConfirmConflict] = useState<{ raw: string; match: any } | null>(null)
   const [cameraOpen, setCameraOpen] = useState(false)
+  // Olivier 2026-06-06 : impression auto etiquette parc apres chaque scan reussi
+  const [printOnScan, setPrintOnScan] = useState(true)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Charge les zones actives depuis BDD (fallback si erreur reseau)
@@ -193,7 +200,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       const r = await fetch('/api/admin/towsoft-migration/scan', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ raw_input: raw, zone, force_rescan: forceRescan }),
+        body:    JSON.stringify({ raw_input: raw, zone, force_rescan: forceRescan, print_label: printOnScan }),
       })
       const j = await r.json()
 
@@ -217,6 +224,10 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
         motif:       j.match?.motif,
         message:     j.message || (r.ok ? 'OK' : 'Erreur'),
         at:          new Date().toISOString(),
+        vdsoft_mission_id:      j.vdsoft_mission_id || null,
+        odoo_state_transferred: !!j.odoo_state_transferred,
+        label_printed:          !!j.label_printed,
+        label_error:            j.label_error || null,
       }
       setScans(prev => [item, ...prev])
       if (r.ok) loadStats()
@@ -463,6 +474,16 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
                 <Camera size={14} /> Scanner caméra
               </button>
             </div>
+            {/* Toggle impression auto etiquette */}
+            <label className="flex items-center gap-2 text-xs text-ink-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={printOnScan}
+                onChange={e => setPrintOnScan(e.target.checked)}
+                className="w-4 h-4 accent-brand"
+              />
+              <span>🏷️ Imprimer l'étiquette parc juste après chaque scan</span>
+            </label>
             <form onSubmit={e => { e.preventDefault(); handleScan() }}>
               <input
                 ref={inputRef}
