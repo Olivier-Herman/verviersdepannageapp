@@ -199,7 +199,10 @@ export async function POST(req: Request) {
     }
 
     if (existingMission) {
-      // Met a jour la zone directement sur la mission existante
+      // Met a jour la zone directement sur la mission existante.
+      // Olivier 2026-06-06 PM : si la mission etait migration_pending=true
+      // (auto-transferee vers Transit), le re-scan = trouvee physiquement,
+      // on retire le pending pour qu elle sorte de la UI Nettoyage Transit.
       const { error: upErr } = await sb
         .from('incoming_missions')
         .update({
@@ -209,6 +212,8 @@ export async function POST(req: Request) {
           status:          'parked',
           migration_scanned_at:   new Date().toISOString(),
           migration_scanned_zone: zone,
+          migration_pending:        false,
+          migration_pending_reason: null,
           updated_at:      new Date().toISOString(),
         })
         .eq('id', existingMission.id)
@@ -670,34 +675,77 @@ async function previewScan(input: {
 }): Promise<NextResponse> {
   const { sb, raw, zone, parsed, printLabel } = input
 
+  // Olivier 2026-06-06 PM : meme resolution que dans le scan route principal.
+  // Si QR /qr/mission/{id} ou /v/{ticketId} : on n a pas plate/VIN directement
+  // dans parsed, faut les recuperer depuis incoming_missions.
+  let resolvedTowsoftNum: string | null = parsed.towsoftNum
+  let resolvedPlate:      string | null = parsed.plate
+  let resolvedVin:        string | null = parsed.vin
+  let resolvedMissionId:  string | null = null
+
+  if (parsed.missionNum || parsed.ticketId || parsed.odooVehicleId) {
+    let q = sb
+      .from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source, odoo_helpdesk_id, odoo_vehicle_id, migration_pending')
+      .limit(1)
+    if (parsed.missionNum) {
+      const isUuid = /^[0-9a-f-]{36}$/i.test(parsed.missionNum)
+      const isNum  = /^\d+$/.test(parsed.missionNum)
+      if (isUuid) q = q.eq('id', parsed.missionNum)
+      else if (isNum) q = q.eq('mission_number', parseInt(parsed.missionNum, 10))
+      else q = q.eq('id', parsed.missionNum)
+    } else if (parsed.ticketId) {
+      q = q.eq('odoo_helpdesk_id', parseInt(parsed.ticketId, 10))
+    } else if (parsed.odooVehicleId) {
+      q = q.eq('odoo_vehicle_id', parseInt(parsed.odooVehicleId, 10))
+    }
+    const { data: vdsMission } = await q.maybeSingle()
+    if (vdsMission) {
+      resolvedMissionId = vdsMission.id
+      if (vdsMission.external_id && vdsMission.external_id.startsWith('TS-')) {
+        resolvedTowsoftNum = vdsMission.external_id.replace(/^TS-/, '')
+      }
+      if (!resolvedPlate) resolvedPlate = vdsMission.vehicle_plate
+      if (!resolvedVin)   resolvedVin   = vdsMission.vehicle_vin
+    }
+  }
+
   // Lookup TowSoft source (3 strategies : towsoft_num > VIN > plaque)
   let towsoftMatch: any = null
-  if (parsed.towsoftNum) {
+  if (resolvedTowsoftNum) {
     const { data } = await sb.from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin, brand, model, motif, client_name, date_entree, detail_payload, flag_scanned, scanned_zone, vdsoft_mission_id')
-      .eq('towsoft_num', parsed.towsoftNum).maybeSingle()
+      .eq('towsoft_num', resolvedTowsoftNum).maybeSingle()
     towsoftMatch = data
   }
-  if (!towsoftMatch && parsed.vin) {
+  if (!towsoftMatch && resolvedVin) {
     const { data } = await sb.from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin, brand, model, motif, client_name, date_entree, detail_payload, flag_scanned, scanned_zone, vdsoft_mission_id')
-      .eq('vin', parsed.vin).limit(2)
+      .eq('vin', resolvedVin).limit(2)
     if (data && data.length === 1) towsoftMatch = data[0]
   }
-  if (!towsoftMatch && parsed.plate) {
+  if (!towsoftMatch && resolvedPlate) {
     const { data } = await sb.from('towsoft_migration_source')
       .select('id, towsoft_num, plate, vin, brand, model, motif, client_name, date_entree, detail_payload, flag_scanned, scanned_zone, vdsoft_mission_id')
-      .eq('plate', parsed.plate).limit(2)
+      .eq('plate', resolvedPlate).limit(2)
     if (data && data.length === 1) towsoftMatch = data[0]
   }
 
-  // Lookup VD Soft existante par plaque/VIN (priorite VIN)
+  // Lookup VD Soft existante : priorite a la mission resolue depuis le QR
+  // (cas QR /qr/mission/...), sinon par plaque/VIN.
   let existingMission: any = null
-  const searchVin   = parsed.vin   || towsoftMatch?.vin
-  const searchPlate = parsed.plate || towsoftMatch?.plate
-  if (searchVin) {
+  if (resolvedMissionId) {
     const { data } = await sb.from('incoming_missions')
-      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source, migration_pending, migration_pending_reason')
+      .eq('id', resolvedMissionId)
+      .maybeSingle()
+    if (data) existingMission = data
+  }
+  const searchVin   = resolvedVin   || towsoftMatch?.vin
+  const searchPlate = resolvedPlate || towsoftMatch?.plate
+  if (!existingMission && searchVin) {
+    const { data } = await sb.from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source, migration_pending, migration_pending_reason')
       .eq('vehicle_vin', searchVin)
       .in('status', ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering', 'parked'])
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -705,7 +753,7 @@ async function previewScan(input: {
   }
   if (!existingMission && searchPlate) {
     const { data } = await sb.from('incoming_missions')
-      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source, migration_pending, migration_pending_reason')
       .eq('vehicle_plate', searchPlate)
       .in('status', ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering', 'parked'])
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
