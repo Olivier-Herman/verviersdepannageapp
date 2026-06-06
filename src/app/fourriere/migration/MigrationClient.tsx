@@ -193,6 +193,42 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
     }
   }
 
+  // Olivier 2026-06-06 PM : feedback sonore apres chaque scan.
+  // Web Audio API -> pas de fichiers a uploader, fonctionne offline iOS PWA.
+  function playScanSound(type: 'success' | 'error' | 'warning') {
+    if (typeof window === 'undefined') return
+    try {
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext
+      if (!AC) return
+      const ctx = new AC()
+
+      const tones = type === 'success'
+        ? [{ f: 880, t: 0, dur: 0.08 }, { f: 1320, t: 0.09, dur: 0.10 }]  // 2 beeps montants
+        : type === 'warning'
+        ? [{ f: 660, t: 0, dur: 0.12 }, { f: 660, t: 0.18, dur: 0.12 }]   // 2 beeps mediums
+        : [{ f: 220, t: 0, dur: 0.15 }, { f: 150, t: 0.18, dur: 0.25 }]   // 2 beeps descendants graves
+
+      tones.forEach(({ f, t, dur }) => {
+        const osc  = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = f
+        osc.type = type === 'error' ? 'square' : 'sine'
+        const start = ctx.currentTime + t
+        gain.gain.setValueAtTime(0, start)
+        gain.gain.linearRampToValueAtTime(type === 'error' ? 0.18 : 0.25, start + 0.01)
+        gain.gain.linearRampToValueAtTime(0, start + dur)
+        osc.start(start)
+        osc.stop(start + dur + 0.02)
+      })
+      // Ferme le ctx apres la lecture pour ne pas garder de ressources
+      setTimeout(() => { try { ctx.close() } catch {} }, 600)
+    } catch (e) {
+      console.warn('[playScanSound] KO:', e)
+    }
+  }
+
   async function handleScan(rawValue?: string, forceRescan = false, skipManualMode = false) {
     const raw = (rawValue ?? input).trim()
     if (!raw || !zone || scanning) return
@@ -230,8 +266,9 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
       })
       const j = await r.json()
 
-      // Cas conflit zone : popup confirmation
+      // Cas conflit zone : popup confirmation (son warning pour attirer attention)
       if (r.status === 409 && j.reason === 'already_scanned') {
+        playScanSound('warning')
         setConfirmConflict({ raw, match: j.match })
         setScanning(false)
         return
@@ -256,6 +293,9 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
         label_error:            j.label_error || null,
       }
       setScans(prev => [item, ...prev])
+      // Olivier 2026-06-06 PM : feedback sonore
+      const isSuccess = r.ok && ['ok', 'already_in_zone', 'rescanned'].includes(item.status)
+      playScanSound(isSuccess ? 'success' : 'error')
       if (r.ok) loadStats()
     } catch (e: any) {
       setScans(prev => [{
@@ -265,6 +305,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
         message: `Erreur reseau : ${e?.message || e}`,
         at: new Date().toISOString(),
       }, ...prev])
+      playScanSound('error')
     } finally {
       setScanning(false)
     }
