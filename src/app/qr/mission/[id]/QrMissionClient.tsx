@@ -545,6 +545,16 @@ export default function QrMissionClient({
                     <ExternalLink size={16} /> Ouvrir dans Odoo
                   </a>
                 )}
+                {/* Olivier 2026-06-06 : acces direct fiche TowSoft pour photos */}
+                {mission.external_id?.startsWith('TS-') && (
+                  <a
+                    href={`https://verviers.towsoft.ca/appel.php?num=${mission.external_id.replace(/^TS-/, '')}`}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex items-center gap-2 justify-center py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-sm font-medium transition">
+                    <ExternalLink size={16} /> Voir fiche TowSoft (photos)
+                  </a>
+                )}
               </div>
             )}
 

@@ -3363,6 +3363,25 @@ export default function MissionDetailClient({
               {/* Encarts linkedChild + linkedParent : DEPLACES EN HAUT du bloc droit
                   (Olivier 2026-05-27 Fix I). Ne PAS dupliquer ici. */}
 
+              {/* Bouton fiche TowSoft (origine externe) — Olivier 2026-06-06 */}
+              {/* Migration fourriere : permet l acces aux photos sans scrape. */}
+              {initialMission.external_id?.startsWith('TS-') && (
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
+                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Fiche d origine</h3>
+                  <a
+                    href={`https://verviers.towsoft.ca/appel.php?num=${initialMission.external_id.replace(/^TS-/, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-medium text-center transition"
+                  >
+                    🔗 Voir la fiche TowSoft (photos) ↗
+                  </a>
+                  <p className="text-ink-muted text-xs mt-2">
+                    Accès direct aux photos d origine. Nécessite d être connecté à TowSoft.
+                  </p>
+                </div>
+              )}
+
               {/* Bouton dossier Odoo FSM */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
                 <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Dossier Odoo</h3>
