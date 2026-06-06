@@ -297,14 +297,39 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
     }
   }
 
-  function endZone() {
-    if (!confirm(`Terminer la zone ${zone} ? (${scans.length} scans enregistres - le worker creera les missions VD Soft en arriere-plan)`)) return
+  async function endZone() {
+    if (!zone) return
+    if (!confirm(`Terminer la zone ${zone} ? (${scans.length} scans enregistrés)\n\nLa zone sera marquée comme migrée. Tu pourras passer à la suivante.`)) return
     const doneZone = zone
-    setScans([])
-    setZone(null)
-    alert(`✓ Zone ${doneZone} terminee. Tu peux declarer la suivante. Les missions seront creees dans les prochaines minutes par le worker (cron).\n\nUtilise le bouton "Imprimer etiquettes zone ${doneZone}" quand le worker aura fini (refresh stats pour voir le compteur monter).`)
-    loadStats()
+    try {
+      const r = await fetch('/api/admin/towsoft-migration/mark-zone-done', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ zone_key: doneZone }),
+      })
+      const j = await r.json()
+      if (!r.ok) { alert(`Erreur : ${j.error || r.status}`); return }
+      setScans([])
+      setZone(null)
+      alert(`✓ Zone ${doneZone} marquée comme migrée. Tu peux passer à la suivante.`)
+      loadStats()
+      loadDoneZones()
+    } catch (e: any) {
+      alert(`Erreur réseau : ${e?.message || e}`)
+    }
   }
+
+  // Olivier 2026-06-06 : recharge la liste des zones marquees done pour
+  // afficher la progression visuelle (badges verts).
+  const [doneZones, setDoneZones] = useState<Set<string>>(new Set())
+  async function loadDoneZones() {
+    try {
+      const r = await fetch('/api/admin/towsoft-migration/done-zones', { cache: 'no-store' })
+      const j = await r.json()
+      if (Array.isArray(j.zones)) setDoneZones(new Set(j.zones))
+    } catch {}
+  }
+  useEffect(() => { loadDoneZones() }, [])
 
   // Olivier 2026-06-04 : reimpression totale par defaut. On veut imprimer
   // TOUTES les etiquettes de la zone a chaque clic, pas seulement les non
@@ -447,14 +472,36 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
               </div>
             </div>
           ) : (
+            <>
+              {/* Progression visuelle migration */}
+              {zones.length > 0 && (
+                <div className="text-xs text-ink-muted mb-1">
+                  Progression : <strong className="text-success">{doneZones.size}</strong> / {zones.length} zones migrées
+                  {doneZones.size === zones.length && zones.length > 0 && (
+                    <span className="ml-2 px-2 py-0.5 bg-success-soft text-success rounded-full text-xs font-bold">
+                      🎉 Inventaire VD Soft officiel
+                    </span>
+                  )}
+                </div>
+              )}
             <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-              {zones.map(z => (
+              {zones.map(z => {
+                const isDone = doneZones.has(z)
+                return (
                 <button key={z} onClick={() => setZone(z)}
-                  className="px-3 py-2 bg-surface-2 hover:bg-brand hover:text-white border rounded-lg text-sm font-bold text-ink transition">
+                  className={`px-3 py-2 rounded-lg text-sm font-bold transition border relative ${
+                    isDone
+                      ? 'bg-success-soft border-success/40 text-success hover:bg-success hover:text-white'
+                      : 'bg-surface-2 hover:bg-brand hover:text-white border-default text-ink'
+                  }`}
+                  title={isDone ? 'Zone déjà migrée — clique pour re-scanner' : 'Zone pas encore migrée'}
+                >
+                  {isDone && <span className="absolute top-0.5 right-1 text-xs">✓</span>}
                   {z}
                 </button>
-              ))}
+              )})}
             </div>
+            </>
           )}
         </div>
 
