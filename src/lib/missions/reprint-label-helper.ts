@@ -26,7 +26,14 @@ const MOTIF_LABELS: Record<string, string> = {
   'prive':           'APPEL PRIVE',
 }
 
-export async function reprintLabelForMission(sel: Selector): Promise<{ ok: boolean; error?: string; mission_id?: string }> {
+export async function reprintLabelForMission(
+  sel: Selector,
+  opts?: {
+    /** Olivier 2026-06-06 PM : mention ajoutee a la note de l etiquette
+     *  (ex: 'Migration VD Soft OK' pendant la migration zone-par-zone). */
+    noteAppend?: string
+  },
+): Promise<{ ok: boolean; error?: string; mission_id?: string }> {
   const sb = createAdminClient()
   const baseQuery = sb
     .from('incoming_missions')
@@ -103,6 +110,7 @@ export async function reprintLabelForMission(sel: Selector): Promise<{ ok: boole
     redeliveryAddr,
     isAvp,
     noteOverride,
+    noteAppend: opts?.noteAppend,
   })
 
   if (!result.ok) return { ok: false, error: result.error || 'Impression echec', mission_id: mission.id }

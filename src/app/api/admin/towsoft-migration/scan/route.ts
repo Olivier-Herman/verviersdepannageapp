@@ -271,7 +271,7 @@ export async function POST(req: Request) {
       let printResult: any = null
       if (Boolean(body.print_label)) {
         try {
-          printResult = await reprintLabelForMission({ kind: 'uuid', value: existingMission.id })
+          printResult = await reprintLabelForMission({ kind: 'uuid', value: existingMission.id }, { noteAppend: 'Migration VD Soft OK' })
         } catch (e: any) {
           printResult = { ok: false, error: String(e?.message || e).slice(0, 200) }
         }
@@ -466,7 +466,7 @@ export async function POST(req: Request) {
   let printResult: any = null
   if (printLabel && createdMissionId) {
     try {
-      printResult = await reprintLabelForMission({ kind: 'uuid', value: createdMissionId })
+      printResult = await reprintLabelForMission({ kind: 'uuid', value: createdMissionId }, { noteAppend: 'Migration VD Soft OK' })
     } catch (e: any) {
       printResult = { ok: false, error: String(e?.message || e).slice(0, 200) }
     }

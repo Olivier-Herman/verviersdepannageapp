@@ -36,6 +36,10 @@ export interface PrintParcLabelInput {
   redeliveryAddr?:  string | null                   // adresse de relivraison (REM depot)
   isAvp?:           boolean                         // si true, note = AVP date+60j
   noteOverride?:    string                          // Olivier 2026-06-02 : si fourni, supplante la logique auto (utile pour Mal Garee : "Blocage par police" / "Pas de blocage")
+  /** Olivier 2026-06-06 PM : mention ajoutee a la note finale (apres la logique
+   *  normale). Ex: 'Migration VD Soft OK' pour les etiquettes imprimees pendant
+   *  la migration zone-par-zone. Si une note existe deja, on ajoute la mention. */
+  noteAppend?:      string
 }
 
 /**
@@ -75,6 +79,14 @@ export async function printVdSoftParcLabel(input: PrintParcLabelInput): Promise<
         : 'En attente d info adresse de relivraison'
     }
     // Autres sources : note vide (Mal Garee chargement sans noteOverride, etc.)
+
+    // Olivier 2026-06-06 PM : ajoute la mention noteAppend (ex: 'Migration VD
+    // Soft OK') a la note calculee. Si la note est deja remplie, on concatene.
+    if (input.noteAppend && input.noteAppend.trim()) {
+      note = note.trim()
+        ? `${note.trim()} - ${input.noteAppend.trim()}`
+        : input.noteAppend.trim()
+    }
 
     // URL QR : /qr/mission/[mission_number] = hub unifie VD Soft (Olivier
     // 2026-05-27 : VD Soft = source de verite). Le hub porte toutes les
