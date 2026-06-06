@@ -196,7 +196,7 @@ export async function POST(req: Request) {
     url:   `/dispatch/${mission.id}`,
     tag:   `mission-${mission.id}`,
     icon:  '/icons/apple-touch-icon.png'
-  })
+  }, 'dispatch_new_mission')
 
   return NextResponse.json({ ok: true, mission_id: mission.id, external_id: mission.external_id })
 }

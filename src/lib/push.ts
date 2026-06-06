@@ -256,5 +256,8 @@ export async function sendPushToRole(
   }
 
   if (ids.size === 0) return
-  await sendPushToUsers(Array.from(ids), payload)
+  // Olivier 2026-06-06 PM : propage notifType pour respecter les preferences
+  // du user (sinon filterByNotifPref n est jamais appele -> le toggle profil
+  // ne fonctionne pas).
+  await sendPushToUsers(Array.from(ids), payload, notifType)
 }

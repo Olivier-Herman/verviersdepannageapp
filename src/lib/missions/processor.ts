@@ -869,7 +869,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       url:   '/dispatch',
       tag:   `mission-${targetId}`,
       icon:  '/icons/apple-touch-icon.png'
-    })
+    }, 'dispatch_new_mission')
 
     const durationMs = Date.now() - t0
     console.log(`[Processor] step=done messageId=${msgIdShort} durationMs=${durationMs} ${source}/${parsed.external_id} (conf: ${parsed.confidence}) ${existingMissionId ? '→ mise à jour dossier existant' : '→ nouveau'}`)
