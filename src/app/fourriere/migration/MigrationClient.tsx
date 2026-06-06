@@ -75,6 +75,9 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
   const [cameraOpen, setCameraOpen] = useState(false)
   // Olivier 2026-06-06 : impression auto etiquette parc apres chaque scan reussi
   const [printOnScan, setPrintOnScan] = useState(true)
+  // Olivier 2026-06-06 PM : mode manuel = preview avant ecriture en BDD
+  const [manualMode, setManualMode] = useState(false)
+  const [pendingPreview, setPendingPreview] = useState<{ raw: string; preview: any } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Charge les zones actives depuis BDD (fallback si erreur reseau)
@@ -189,12 +192,34 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
     }
   }
 
-  async function handleScan(rawValue?: string, forceRescan = false) {
+  async function handleScan(rawValue?: string, forceRescan = false, skipManualMode = false) {
     const raw = (rawValue ?? input).trim()
     if (!raw || !zone || scanning) return
 
     setScanning(true)
     setInput('')
+
+    // Olivier 2026-06-06 PM : mode manuel - on demande d abord un dry_run
+    // pour montrer ce qui va etre fait, et on attend la validation user.
+    if (manualMode && !skipManualMode) {
+      try {
+        const r = await fetch('/api/admin/towsoft-migration/scan', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ raw_input: raw, zone, force_rescan: forceRescan, print_label: printOnScan, dry_run: true }),
+        })
+        const j = await r.json()
+        if (r.ok && j.preview) {
+          setPendingPreview({ raw, preview: j })
+          setScanning(false)
+          return
+        }
+        // Si dry_run echoue, on log et on continue en mode normal
+        console.warn('[scan] dry_run KO, fallback mode auto:', j)
+      } catch (e: any) {
+        console.warn('[scan] dry_run exception:', e?.message)
+      }
+    }
 
     try {
       const r = await fetch('/api/admin/towsoft-migration/scan', {
@@ -547,16 +572,27 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
                 <Camera size={14} /> Scanner caméra
               </button>
             </div>
-            {/* Toggle impression auto etiquette */}
-            <label className="flex items-center gap-2 text-xs text-ink-secondary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={printOnScan}
-                onChange={e => setPrintOnScan(e.target.checked)}
-                className="w-4 h-4 accent-brand"
-              />
-              <span>🏷️ Imprimer l'étiquette parc juste après chaque scan</span>
-            </label>
+            {/* Toggles */}
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 text-xs text-ink-secondary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={printOnScan}
+                  onChange={e => setPrintOnScan(e.target.checked)}
+                  className="w-4 h-4 accent-brand"
+                />
+                <span>🏷️ Imprimer l'étiquette parc juste après chaque scan</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-ink-secondary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={manualMode}
+                  onChange={e => setManualMode(e.target.checked)}
+                  className="w-4 h-4 accent-warning"
+                />
+                <span>👁 <strong>Mode manuel</strong> : afficher l'aperçu et valider chaque scan (utile pour démarrer)</span>
+              </label>
+            </div>
             <form onSubmit={e => { e.preventDefault(); handleScan() }}>
               <input
                 ref={inputRef}
@@ -590,6 +626,92 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Popup MODE MANUEL : preview avant ecriture (Olivier 2026-06-06 PM) */}
+        {pendingPreview && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setPendingPreview(null)}>
+            <div className="bg-surface border rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-2xl">👁</span>
+                <h3 className="font-bold text-ink">Aperçu du scan</h3>
+              </div>
+
+              {/* Summary principal */}
+              <div className="bg-info-soft border border-info/30 rounded-lg p-3 mb-3 text-sm text-ink whitespace-pre-line">
+                {pendingPreview.preview.preview?.summary}
+              </div>
+
+              {/* Match TowSoft (si trouve) */}
+              {pendingPreview.preview.preview?.towsoft_match && (
+                <div className="mb-3">
+                  <p className="text-xs font-semibold text-ink-secondary uppercase mb-1">📋 Match TowSoft</p>
+                  <div className="bg-surface-2 border rounded-lg p-3 text-xs space-y-1">
+                    <p><strong>TS-{pendingPreview.preview.preview.towsoft_match.towsoft_num}</strong></p>
+                    <p>Plaque : <strong>{pendingPreview.preview.preview.towsoft_match.plate || '—'}</strong> · VIN : <strong>{pendingPreview.preview.preview.towsoft_match.vin || '—'}</strong></p>
+                    <p>{pendingPreview.preview.preview.towsoft_match.brand} {pendingPreview.preview.preview.towsoft_match.model}</p>
+                    <p>Client : {pendingPreview.preview.preview.towsoft_match.client_name || '—'}</p>
+                    <p>Motif : <strong>{pendingPreview.preview.preview.towsoft_match.motif || '—'}</strong></p>
+                    {pendingPreview.preview.preview.towsoft_match.already_scanned_zone && (
+                      <p className="text-warning">⚠ Déjà scanné en zone <strong>{pendingPreview.preview.preview.towsoft_match.already_scanned_zone}</strong></p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Mission VD Soft existante (si trouvee) */}
+              {pendingPreview.preview.preview?.existing_mission && (
+                <div className="mb-3">
+                  <p className="text-xs font-semibold text-ink-secondary uppercase mb-1">🟢 Mission VD Soft existante</p>
+                  <div className="bg-success-soft border border-success/30 rounded-lg p-3 text-xs space-y-1">
+                    <p><strong>#{pendingPreview.preview.preview.existing_mission.mission_number}</strong> · {pendingPreview.preview.preview.existing_mission.external_id || '—'}</p>
+                    <p>Plaque : <strong>{pendingPreview.preview.preview.existing_mission.plate || '—'}</strong> · VIN : {pendingPreview.preview.preview.existing_mission.vin || '—'}</p>
+                    <p>{pendingPreview.preview.preview.existing_mission.brand} {pendingPreview.preview.preview.existing_mission.model}</p>
+                    <p>Client : {pendingPreview.preview.preview.existing_mission.client_name || '—'}</p>
+                    <p>Source : <strong>{pendingPreview.preview.preview.existing_mission.source}</strong> · Status : {pendingPreview.preview.preview.existing_mission.status} · Zone actuelle : <strong>{pendingPreview.preview.preview.existing_mission.current_zone || '—'}</strong></p>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions prevues */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-ink-secondary uppercase mb-1">⚡ Actions prévues</p>
+                <ul className="text-xs space-y-1 text-ink">
+                  <li>📍 Zone cible : <strong>{pendingPreview.preview.preview?.target_zone}</strong></li>
+                  {pendingPreview.preview.preview?.would_enrich_fields?.length > 0 && (
+                    <li>📝 Enrichissement : {pendingPreview.preview.preview.would_enrich_fields.length} champ(s) ({pendingPreview.preview.preview.would_enrich_fields.join(', ')})</li>
+                  )}
+                  {pendingPreview.preview.preview?.would_transfer_odoo_state && (
+                    <li>🔄 Transfert state Odoo fleet.vehicle vers la zone</li>
+                  )}
+                  {pendingPreview.preview.preview?.would_print_label && (
+                    <li>🏷️ Impression étiquette parc (Zebra)</li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setPendingPreview(null); setInput('') }}
+                  className="flex-1 py-2 bg-surface-2 border text-ink-secondary rounded-lg text-sm font-medium"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const raw = pendingPreview.raw
+                    setPendingPreview(null)
+                    await handleScan(raw, false, true)  // skip manual mode = commit direct
+                  }}
+                  className="flex-1 py-2 bg-success hover:bg-success/90 text-white rounded-lg text-sm font-bold"
+                >
+                  ✓ Valider et écrire
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

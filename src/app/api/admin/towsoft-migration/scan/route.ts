@@ -31,6 +31,11 @@ interface ScanBody {
   /** Olivier 2026-06-06 : si true, imprime l etiquette parc juste apres la
    *  creation de la mission VD Soft (workflow migration zone-par-zone). */
   print_label?:   boolean
+  /** Olivier 2026-06-06 PM : mode manuel = preview-only. Aucune ecriture en
+   *  BDD ni dans Odoo, on retourne juste un descriptif de ce qui SERAIT fait.
+   *  L UI affiche le preview, l operateur valide, et l UI re-call sans dry_run.
+   */
+  dry_run?:       boolean
 }
 
 export async function POST(req: Request) {
@@ -48,6 +53,7 @@ export async function POST(req: Request) {
   const zone = String(body.zone || '').trim()
   const forceRescan = Boolean(body.force_rescan)
   const printLabel  = Boolean(body.print_label)
+  const dryRun      = Boolean(body.dry_run)
 
   if (!raw)  return NextResponse.json({ error: 'raw_input requis' }, { status: 400 })
   if (!zone) return NextResponse.json({ error: 'zone requise' }, { status: 400 })
@@ -56,6 +62,11 @@ export async function POST(req: Request) {
 
   // 1. Parse l input pour determiner le format
   const parsed = parseScanInput(raw)
+
+  // Olivier 2026-06-06 PM : mode manuel = preview-only sans ecriture
+  if (dryRun) {
+    return await previewScan({ sb, raw, zone, parsed, forceRescan, printLabel })
+  }
 
   // 1bis. Olivier 2026-06-04 : si QR VD Soft (qr_mission) ou Verviers-QR (v_legacy),
   // on retrouve la plaque/towsoft_num via incoming_missions pour pouvoir matcher
@@ -642,3 +653,137 @@ async function transferOdooState(input: {
 }
 
 // parseScanInput est importe depuis @/lib/towsoft-migration/parse-scan
+
+// ────────────────────────────────────────────────────────────────────
+// Olivier 2026-06-06 PM : MODE MANUEL — preview-only.
+// Reproduit la decision tree du scan sans aucune ecriture en BDD/Odoo,
+// afin que l operateur puisse valider visuellement avant que ca commit.
+// L UI re-appelle l endpoint sans dry_run quand l operateur clique "Valider".
+// ────────────────────────────────────────────────────────────────────
+async function previewScan(input: {
+  sb:           any
+  raw:          string
+  zone:         string
+  parsed:       any
+  forceRescan:  boolean
+  printLabel:   boolean
+}): Promise<NextResponse> {
+  const { sb, raw, zone, parsed, printLabel } = input
+
+  // Lookup TowSoft source (3 strategies : towsoft_num > VIN > plaque)
+  let towsoftMatch: any = null
+  if (parsed.towsoftNum) {
+    const { data } = await sb.from('towsoft_migration_source')
+      .select('id, towsoft_num, plate, vin, brand, model, motif, client_name, date_entree, detail_payload, flag_scanned, scanned_zone, vdsoft_mission_id')
+      .eq('towsoft_num', parsed.towsoftNum).maybeSingle()
+    towsoftMatch = data
+  }
+  if (!towsoftMatch && parsed.vin) {
+    const { data } = await sb.from('towsoft_migration_source')
+      .select('id, towsoft_num, plate, vin, brand, model, motif, client_name, date_entree, detail_payload, flag_scanned, scanned_zone, vdsoft_mission_id')
+      .eq('vin', parsed.vin).limit(2)
+    if (data && data.length === 1) towsoftMatch = data[0]
+  }
+  if (!towsoftMatch && parsed.plate) {
+    const { data } = await sb.from('towsoft_migration_source')
+      .select('id, towsoft_num, plate, vin, brand, model, motif, client_name, date_entree, detail_payload, flag_scanned, scanned_zone, vdsoft_mission_id')
+      .eq('plate', parsed.plate).limit(2)
+    if (data && data.length === 1) towsoftMatch = data[0]
+  }
+
+  // Lookup VD Soft existante par plaque/VIN (priorite VIN)
+  let existingMission: any = null
+  const searchVin   = parsed.vin   || towsoftMatch?.vin
+  const searchPlate = parsed.plate || towsoftMatch?.plate
+  if (searchVin) {
+    const { data } = await sb.from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source')
+      .eq('vehicle_vin', searchVin)
+      .in('status', ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering', 'parked'])
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (data) existingMission = data
+  }
+  if (!existingMission && searchPlate) {
+    const { data } = await sb.from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, status, parc_zone_key, source')
+      .eq('vehicle_plate', searchPlate)
+      .in('status', ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering', 'parked'])
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (data) existingMission = data
+  }
+
+  // Determine action prevue + summary
+  let action: string
+  let summary: string
+  let wouldEnrich: string[] = []
+
+  if (towsoftMatch && towsoftMatch.flag_scanned && towsoftMatch.scanned_zone === zone && !input.forceRescan) {
+    action = 'already_in_zone'
+    summary = `Déjà scanné en ${zone} (re-scan idempotent)`
+  } else if (towsoftMatch && towsoftMatch.flag_scanned && towsoftMatch.scanned_zone !== zone && !input.forceRescan) {
+    action = 'already_scanned_elsewhere'
+    summary = `⚠️ Déjà scanné en zone ${towsoftMatch.scanned_zone} — confirmer le changement vers ${zone} ?`
+  } else if (existingMission) {
+    action = 'enrich_existing_vdsoft'
+    summary = `Mission VD Soft existante #${existingMission.mission_number} (${existingMission.source}, zone actuelle: ${existingMission.parc_zone_key || '—'}) → assignée à zone ${zone}`
+    if (towsoftMatch) {
+      summary += `\n+ Enrichissement TowSoft #${towsoftMatch.towsoft_num} (motif: ${towsoftMatch.motif || '—'})`
+      // Estime quels champs SERAIENT enrichis (COALESCE)
+      const detail = towsoftMatch.detail_payload || {}
+      if (!existingMission.vehicle_brand && (towsoftMatch.brand || detail.marque)) wouldEnrich.push('vehicle_brand')
+      if (!existingMission.vehicle_model && (towsoftMatch.model || detail.modele)) wouldEnrich.push('vehicle_model')
+      if (!existingMission.client_name   && (detail.client_name || towsoftMatch.client_name)) wouldEnrich.push('client_name')
+      if (detail.origine_addr)    wouldEnrich.push('incident_address')
+      if (detail.dest_addr)       wouldEnrich.push('destination_address')
+      if (detail.nom_responsable) wouldEnrich.push('officer_name')
+      if (detail.numero_pv)       wouldEnrich.push('police_pv_number')
+      if (detail.remarque)        wouldEnrich.push('remarks_general')
+    }
+  } else if (towsoftMatch) {
+    action = 'create_new_from_towsoft'
+    const detail = towsoftMatch.detail_payload || {}
+    summary = `Nouvelle mission VD Soft (TS-${towsoftMatch.towsoft_num}, motif: ${towsoftMatch.motif || '—'}) → zone ${zone}`
+    summary += `\nClient: ${detail.client_name || towsoftMatch.client_name || '—'}`
+  } else {
+    action = 'try_odoo_or_fantom'
+    summary = `Aucun match TowSoft / VD Soft. Tentera lookup Odoo fleet.vehicle, sinon fantôme.`
+  }
+
+  return NextResponse.json({
+    ok: true,
+    dry_run: true,
+    action,
+    preview: {
+      summary,
+      parsed: { format: parsed.format, plate: parsed.plate, vin: parsed.vin, towsoftNum: parsed.towsoftNum },
+      towsoft_match: towsoftMatch ? {
+        towsoft_num: towsoftMatch.towsoft_num,
+        plate:       towsoftMatch.plate,
+        vin:         towsoftMatch.vin,
+        brand:       towsoftMatch.brand,
+        model:       towsoftMatch.model,
+        motif:       towsoftMatch.motif,
+        client_name: towsoftMatch.client_name,
+        date_entree: towsoftMatch.date_entree,
+        already_scanned_zone: towsoftMatch.flag_scanned ? towsoftMatch.scanned_zone : null,
+      } : null,
+      existing_mission: existingMission ? {
+        id:             existingMission.id,
+        mission_number: existingMission.mission_number,
+        external_id:    existingMission.external_id,
+        plate:          existingMission.vehicle_plate,
+        vin:            existingMission.vehicle_vin,
+        brand:          existingMission.vehicle_brand,
+        model:          existingMission.vehicle_model,
+        client_name:    existingMission.client_name,
+        source:         existingMission.source,
+        status:         existingMission.status,
+        current_zone:   existingMission.parc_zone_key,
+      } : null,
+      would_enrich_fields: wouldEnrich,
+      would_transfer_odoo_state: true,
+      would_print_label: printLabel,
+      target_zone: zone,
+    },
+  })
+}
