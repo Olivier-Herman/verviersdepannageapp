@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle, AlertTriangle, ArrowLeft, Building2 } from 'lucide-react'
+import { ArrowRightLeft, RefreshCw, X, ExternalLink, ScanLine, Map as MapIcon, MapPin, AlertCircle, AlertTriangle, ArrowLeft, Building2, Eye } from 'lucide-react'
 import Link from 'next/link'
 
 interface Zone {
@@ -330,7 +330,17 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                       <td className="px-2 py-2 text-center font-mono text-ink-secondary">
                         {v.parc_slot_index ?? <span className="text-warning font-bold" title="Emplacement à définir">—</span>}
                       </td>
-                      <td className="px-3 py-2 font-mono text-ink font-semibold">{v.plate || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-ink font-semibold">
+                        {v.mission_id ? (
+                          <Link href={`/qr/mission/${v.mission_id}`}
+                            className="hover:text-brand hover:underline transition"
+                            title="Voir la mission VD Soft">
+                            {v.plate || '—'}
+                          </Link>
+                        ) : (
+                          v.plate || '—'
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <p className="text-ink">{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</p>
                         {v.driver && <p className="text-ink-muted text-xs">{v.driver}</p>}
@@ -339,6 +349,13 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
                       <td className="px-3 py-2 text-xs text-ink-muted">{fmtDate(v.last_update)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
+                          {v.mission_id && (
+                            <Link href={`/qr/mission/${v.mission_id}`}
+                              className="p-1.5 text-info hover:text-brand transition rounded"
+                              title="Voir mission VD Soft">
+                              <Eye size={14} />
+                            </Link>
+                          )}
                           <a href={v.odoo_url} target="_blank" rel="noreferrer"
                             className="p-1.5 text-ink-faint hover:text-brand transition rounded"
                             title="Voir fiche Odoo">
