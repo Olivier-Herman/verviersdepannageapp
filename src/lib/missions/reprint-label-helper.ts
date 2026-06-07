@@ -10,6 +10,8 @@
 
 import { createAdminClient }      from '@/lib/supabase'
 import { printVdSoftParcLabel }   from '@/lib/missions/print-parc-label'
+import { buildRelLabelZPL }       from '@/lib/print/zpl-templates/rel'
+import { printZPLRaw }            from '@/lib/print/zebra-raw'
 
 type Selector = { kind: 'uuid'; value: string }
               | { kind: 'mission_number'; value: number }
@@ -48,7 +50,8 @@ export async function reprintLabelForMission(
       destination_address, redelivery_address, snc_scenario,
       saisie_motif_code, saisie_motif_label,
       police_blocked, police_zone, officer_name,
-      odoo_ticket_id
+      odoo_ticket_id,
+      billed_to_name, client_name
     `)
   const { data: mission, error } =
       sel.kind === 'uuid'           ? await baseQuery.eq('id',              sel.value).maybeSingle()
@@ -101,6 +104,42 @@ export async function reprintLabelForMission(
     }
   }
 
+  // Olivier 2026-06-07 : pour les missions destinees a relivraison
+  // (REL/REM+REL, prive en parc, SNC/SC rem_depot), on imprime l etiquette
+  // REL AU LIEU DE la parc-entree. Le QR pointe vers la meme mission, donc
+  // le chauffeur peut la scanner pour s attribuer la mission de relivraison.
+  if (isRedelivery) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+      const qrTarget = `/qr/mission/${mission.mission_number ?? mission.id}`
+      const cleanAddr = (redeliveryAddr || '').trim()
+      const addressText = cleanAddr
+        ? cleanAddr
+        : 'En attente d info adresse de relivraison'
+      const assistance = String(
+        (mission as any).billed_to_name
+        || (mission as any).client_name
+        || '—'
+      ).toUpperCase()
+      const brandModel = [mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')
+      const relZpl = buildRelLabelZPL({
+        qrUrl:       `${baseUrl}${qrTarget}`,
+        plate:       (mission.vehicle_plate || '').trim().toUpperCase() || '—',
+        brand_model: brandModel,
+        assistance,
+        address:     addressText,
+      })
+      const relResult = await printZPLRaw(relZpl)
+      if (!relResult.ok) {
+        return { ok: false, error: `Impression REL echec : ${relResult.error}`, mission_id: mission.id }
+      }
+      return { ok: true, mission_id: mission.id }
+    } catch (e: any) {
+      return { ok: false, error: `Exception impression REL : ${e?.message || e}`, mission_id: mission.id }
+    }
+  }
+
+  // Veh normal en parc : etiquette parc-entree classique
   const result = await printVdSoftParcLabel({
     missionId:        mission.id,
     missionNumber:    mission.mission_number ?? null,
