@@ -51,7 +51,8 @@ export async function reprintLabelForMission(
       saisie_motif_code, saisie_motif_label,
       police_blocked, police_zone, officer_name,
       odoo_ticket_id,
-      billed_to_name, client_name
+      billed_to_name, client_name,
+      parc_zone_key
     `)
   const { data: mission, error } =
       sel.kind === 'uuid'           ? await baseQuery.eq('id',              sel.value).maybeSingle()
@@ -68,14 +69,10 @@ export async function reprintLabelForMission(
     motif = String((mission as any).saisie_motif_label).toUpperCase()
   }
 
-  // Detection elargie de la relivraison
-  const mtNorm = String(mission.mission_type || '').toUpperCase()
-  const isRemRelType = mtNorm.includes('REL')
-  const isRedelivery =
-    isRemRelType ||
-    (mission.source === 'prive') ||
-    (mission.source === 'police_snc' && mission.snc_scenario === 'rem_depot') ||
-    (mission.source === 'sia_couvert')
+  // Olivier 2026-06-07 : regle simple - zone K = file d attente relivraison
+  // (cf decision Phase 1 migration : K apparait dans onglet "A Relivrer" du
+  // dispatch). Donc tout vehicule en zone K = etiquette REL automatique.
+  const isRedelivery = (mission as any).parc_zone_key === 'K'
   const redeliveryAddr = isRedelivery
     ? (mission.redelivery_address || mission.destination_address || null)
     : null

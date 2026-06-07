@@ -12,6 +12,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { reprintLabelForMission } from '@/lib/missions/reprint-label-helper'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,10 +118,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     },
   }).then(() => {}, e => console.warn(`[transfer-parc] log KO mission=${params.id}:`, e?.message))
 
+  // Olivier 2026-06-07 : si la nouvelle zone est K (file d attente
+  // relivraison), imprime automatiquement une etiquette REL (avec adresse
+  // de relivraison ou mention "En attente d info"). Non bloquant : si
+  // l impression echoue, le transfert reste valide.
+  let labelPrinted = false
+  let labelError: string | null = null
+  if (newZoneKey === 'K') {
+    try {
+      const r = await reprintLabelForMission({ kind: 'uuid', value: params.id })
+      labelPrinted = !!r.ok
+      labelError = r.error || null
+    } catch (e: any) {
+      labelError = String(e?.message || e).slice(0, 200)
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     from: oldLabel,
     to:   newLabel,
-    message: `Transfert OK : ${oldLabel} → ${newLabel}`,
+    message: `Transfert OK : ${oldLabel} → ${newLabel}${newZoneKey === 'K' ? (labelPrinted ? ' · Étiquette REL imprimée' : ' · Étiquette REL KO') : ''}`,
+    label_printed: labelPrinted,
+    label_error:   labelError,
   })
 }

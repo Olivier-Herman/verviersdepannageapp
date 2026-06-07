@@ -505,5 +505,16 @@ export async function POST(req: Request) {
     }
   } catch (e) { /* silent */ }
 
+  // Olivier 2026-06-07 : si le chauffeur met en parc zone K (file d attente
+  // relivraison), imprime auto une etiquette REL. Non bloquant.
+  if (action === 'park' && (updated as any)?.parc_zone_key === 'K') {
+    try {
+      const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
+      await reprintLabelForMission({ kind: 'uuid', value: mission_id })
+    } catch (e: any) {
+      console.warn(`[driver-action] REL print KO mission=${mission_id}:`, e?.message)
+    }
+  }
+
   return NextResponse.json({ ok: true, mission: updated })
 }
