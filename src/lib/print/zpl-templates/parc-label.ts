@@ -120,11 +120,11 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 ^FD${date}^FS
 
 ^FO560,75
-^A0N,40,40
-^FB240,2,0,L,0
+^A0N,30,30
+^FB240,3,0,L,0
 ^FD${motif}^FS
 
-^FO560,200
+^FO560,210
 ^A0N,26,26
 ^FB240,1,0,L,0
 ^FD${brandModel}^FS

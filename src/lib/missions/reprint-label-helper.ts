@@ -24,6 +24,11 @@ const MOTIF_LABELS: Record<string, string> = {
   'police_snc':      'SIABIS NON COUVERT',
   'sia_couvert':     'SIABIS COUVERT',
   'prive':           'APPEL PRIVE',
+  // Olivier 2026-06-07 : labels courts pour les sources legacy (sinon
+  // wrap sur 3+ lignes et debordent sur la zone plaque).
+  'legacy_odoo':              'MIGRATION ODOO',
+  'legacy_odoo_migration':    'MIGRATION ODOO',
+  'legacy_towsoft_migration': 'MIGRATION TOWSOFT',
 }
 
 export async function reprintLabelForMission(
