@@ -190,3 +190,54 @@ body {
 .pac-item {
   cursor: pointer;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Olivier 2026-06-07 : verrou d orientation par taille d ecran.
+     - Smartphone (< 768px)  : portrait only - layout mobile optimise
+     - Tablette  (≥ 768px)   : paysage only  - bascule sur layout desktop (lg:)
+     - Desktop   (≥ 1024px)  : pas d overlay (toujours paysage par nature)
+   Si l user tourne l ecran dans le mauvais sens, un overlay plein ecran
+   l invite a tourner.
+   Note : pour un vrai verrouillage native, ajouter Info.plist
+   UISupportedInterfaceOrientations~ipad + AndroidManifest screenOrientation
+   (necessite nouveau build Capacitor iOS/Android). Le CSS suffit comme
+   filet pour PWA + webview Capacitor.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Smartphone en paysage -> demande portrait */
+@media (orientation: landscape) and (max-width: 767px) {
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background: #0f172a; z-index: 999998;
+  }
+  body::after {
+    content: "📱 Tourne ton écran en mode portrait pour utiliser VD Soft sur smartphone";
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 2rem;
+    color: white; font-size: 1.2rem; font-weight: 600;
+    text-align: center; line-height: 1.4;
+    z-index: 999999;
+    pointer-events: none;
+  }
+}
+
+/* Tablette en portrait -> demande paysage */
+@media (orientation: portrait) and (min-width: 768px) {
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background: #0f172a; z-index: 999998;
+  }
+  body::after {
+    content: "📱 → 🖥️ Tourne ton écran en mode paysage pour utiliser VD Soft sur tablette";
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 2rem;
+    color: white; font-size: 1.5rem; font-weight: 600;
+    text-align: center; line-height: 1.4;
+    z-index: 999999;
+    pointer-events: none;
+  }
+}
