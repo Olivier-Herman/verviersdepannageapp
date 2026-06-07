@@ -61,10 +61,28 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
   const qrUrl = escapeZPL(data.qrUrl)
   const brand = escapeZPL(data.brand || '')
   const model = escapeZPL(data.model || '')
-  const plate = escapeZPL(data.plate || '')
   const vin   = escapeZPL(data.vin || '')
   // Combine marque + modele sur une seule ligne ("Mazda 5", "BMW Serie 3").
   const brandModel = [brand, model].filter(Boolean).join(' ')
+
+  // Olivier 2026-06-07 : plate longue ("SANS PLAQUE", "PAS DE PLAQUE", VIN
+  // tronque...) deborde du Field Block 240 dots a 50pt. Adaptation :
+  //  - Normalise les placeholders "Sans plaque" -> "— SANS PLAQUE —" affichable
+  //  - Reduit dynamiquement le font selon la longueur :
+  //    <= 8 chars : 50pt (plaque belge standard 1XXX999)
+  //    9-12 chars : 36pt (SANS PLAQUE = 11)
+  //    > 12 chars : 28pt (cas extreme)
+  let rawPlate = escapeZPL(data.plate || '')
+  // Detecte les placeholders "SANS PLAQUE" / "PAS DE PLAQUE" (case insensitive)
+  // et les normalise pour avoir un affichage propre.
+  if (/^(sans|pas\s*de)\s+plaque$/i.test(rawPlate.trim())) {
+    rawPlate = 'SANS PLAQUE'
+  }
+  const plate = rawPlate
+  const plateLen = plate.length
+  const plateFont = plateLen <= 8 ? 50
+                  : plateLen <= 12 ? 36
+                  : 28
 
   // Coords (812x609 dots, paysage). QR XXL a gauche, colonne texte a droite.
   //
@@ -130,7 +148,7 @@ export function buildParcLabelZPL(data: ParcLabelData): string {
 ^FD${brandModel}^FS
 
 ^FO560,250
-^A0N,50,50
+^A0N,${plateFont},${plateFont}
 ^FB240,1,0,L,0
 ^FD${plate}^FS
 
