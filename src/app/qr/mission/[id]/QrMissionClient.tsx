@@ -158,25 +158,52 @@ export default function QrMissionClient({
     }
   }
 
-  // Actions fourriere : utilise les endpoints /api/helpdesk/[ticketId]/...
-  // (move / print). Requiert odoo_ticket_id. Si pas dispo (Appel Prive sans
-  // ticket), les boutons fourriere sont desactives avec message clair.
+  // Olivier 2026-06-08 : transfert de zone via VD Soft (transfer-parc) au
+  // lieu d Odoo helpdesk. Plus de blocage 'ticket Odoo absent'. Le mapping
+  // state_id Odoo -> zone_key VD Soft est fait via FOURRIERE_ZONES local.
+  // L action 'Scratch / Mettre en epave' reste sur l ancien endpoint helpdesk
+  // car c est un changement d etat metier different (a migrer ulterieurement).
   async function doMoveZone(toStateId: number) {
-    if (!mission.odoo_ticket_id) {
-      showToast('err', 'Action impossible : ticket Odoo absent pour cette mission')
+    // Cas Scratch : route helpdesk legacy (necessite ticket Odoo)
+    if (toStateId === SCRATCH_STATE_ID) {
+      if (!mission.odoo_ticket_id) {
+        showToast('err', 'Scratch impossible : ticket Odoo absent pour cette mission. Action à faire manuellement dans Odoo.')
+        setActionMenu(null); setSelectedState(null)
+        return
+      }
+      setWorking(true)
+      try {
+        const r = await fetch(`/api/helpdesk/${mission.odoo_ticket_id}/move`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ to_state_id: toStateId }),
+        })
+        const j = await r.json()
+        if (!r.ok) { showToast('err', j.error || 'Erreur transfert'); return }
+        showToast('ok', `Véhicule passé en épave`)
+        setActionMenu(null); setSelectedState(null)
+        setTimeout(() => window.location.reload(), 1500)
+      } finally { setWorking(false) }
+      return
+    }
+
+    // Cas Transferer vers zone / Envoyer au Domaine : VD Soft transfer-parc
+    const zoneConf = FOURRIERE_ZONES.find(z => z.state_id === toStateId)
+    if (!zoneConf) {
+      showToast('err', `Zone introuvable (state_id=${toStateId})`)
       setActionMenu(null); setSelectedState(null)
       return
     }
     setWorking(true)
     try {
-      const r = await fetch(`/api/helpdesk/${mission.odoo_ticket_id}/move`, {
+      const r = await fetch(`/api/missions/${mission.id}/transfer-parc`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ to_state_id: toStateId }),
+        body:    JSON.stringify({ zone_key: zoneConf.code }),
       })
       const j = await r.json()
       if (!r.ok) { showToast('err', j.error || 'Erreur transfert'); return }
-      showToast('ok', `Véhicule transféré : ${j.to_state_name || 'OK'}`)
+      showToast('ok', `Véhicule transféré vers zone ${zoneConf.label}`)
       setActionMenu(null); setSelectedState(null)
       // Recharge la page pour voir les nouvelles infos
       setTimeout(() => window.location.reload(), 1500)
