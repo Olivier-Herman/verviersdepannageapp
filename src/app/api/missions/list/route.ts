@@ -71,13 +71,16 @@ export async function GET(req: Request) {
   } else if (status === 'in_progress') {
     query = query.in('status', ['in_progress', 'delivering'])
   } else if (status === 'parked') {
-    // Olivier 2026-05-28 : onglet "En parc" du Dispatch = uniquement les
-    // vehicules en zone K (zone dediee aux vehicules en attente de
-    // relivraison ou de gestion dispatch). Les autres zones (A-L, Box,
-    // Transit hors K) sont gerees depuis Fourriere.
+    // Olivier 2026-05-28 : onglet "À Relivrer" du Dispatch = uniquement les
+    // vehicules en zone K avec une adresse de relivraison definie.
+    // Sans adresse, le vehicule reste en zone K mais n apparait PAS dans
+    // l onglet (Olivier 2026-06-08 fix : avant le filtre laissait passer les
+    // K sans adresse, ce qui polluait l onglet). Quand le bureau saisit
+    // l adresse, la mission apparait alors dans cet onglet.
     query = query
       .eq('status', 'parked')
       .eq('parc_zone_key', 'K')
+      .or('redelivery_address.not.is.null,destination_address.not.is.null')
   } else if (status === 'completed') {
     // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
     // chauffeur, en attente de validation employe facturation. Le tampon
@@ -150,7 +153,7 @@ export async function GET(req: Request) {
   // en zone K dans l onglet "En parc" (cf filter ligne 73-82).
   const { data: counts } = await supabase
     .from('incoming_missions')
-    .select('status, parc_zone_key')
+    .select('status, parc_zone_key, redelivery_address, destination_address')
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gt.0.3')
@@ -161,7 +164,14 @@ export async function GET(req: Request) {
     dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => ['in_progress','delivering'].includes(m.status)).length || 0,
-    parked:      counts?.filter(m => m.status === 'parked' && (m as any).parc_zone_key === 'K').length || 0,
+    // Olivier 2026-06-08 : compteur 'À Relivrer' aligne sur le filtre du tab :
+    // zone K + adresse de relivraison renseignee (sinon le badge mentait).
+    parked:      counts?.filter(m =>
+      m.status === 'parked'
+      && (m as any).parc_zone_key === 'K'
+      && (((m as any).redelivery_address && String((m as any).redelivery_address).trim())
+        || ((m as any).destination_address && String((m as any).destination_address).trim()))
+    ).length || 0,
     completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
   }
