@@ -58,6 +58,7 @@ const MAIN_ACTIONS: ActionItem[] = [
 const MODULES: ModuleItem[] = [
   { id: 'check_vehicle', label: 'Check Véhicule',  href: '/check-vehicule', icon: '🔍', color: 'info',    i18nKey: 'dashboard.tile_check_label'   },
   { id: 'tgr',           label: 'TGR Touring',     href: '/services/tgr',   icon: '🛡️', color: 'purple',  i18nKey: 'dashboard.tile_tgr_label'     },
+  { id: 'circuit',       label: 'Circuit Spa',     href: '/circuit',        icon: '🏁', color: 'info'   },
   { id: 'finance',       label: 'Finance',         href: '/finance',        icon: '💵', color: 'success', i18nKey: 'dashboard.tile_finance_label' },
   { id: 'admin',         label: 'Administration',  href: '/admin',          icon: '⚙️', color: 'alert',   i18nKey: 'dashboard.tile_admin_label'   },
   { id: 'depose',        label: 'Dépose Véhicule', href: '/depose',         icon: '🗺️', color: 'warning', i18nKey: 'dashboard.tile_depose_label'  },
@@ -110,6 +111,10 @@ export default function DashboardClient({
     if (id === 'police_mission') return hasTowsoft
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
     if (id === 'finance')        return userModules.includes('encaissements') || userModules.includes('caisse')
+    // Olivier 2026-06-08 : module Circuit Spa accessible aux dispatchers + admins
+    // sans avoir besoin d un toggle explicite dans /admin/users.
+    if (id === 'circuit')        return ['dispatcher', 'admin', 'superadmin'].includes(userRole)
+                                     || (Array.isArray((sessionUser as any).roles) && (sessionUser as any).roles.some((r: string) => ['dispatcher', 'admin', 'superadmin'].includes(r)))
     return userModules.includes(id)
   }
 
