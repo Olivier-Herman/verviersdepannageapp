@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, RefreshCw, Trash2, ExternalLink, Check, X, Loader2, CalendarDays, Users, MapPin } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, ExternalLink, Check, X, Loader2, CalendarDays, Users, MapPin, Pencil } from 'lucide-react'
 
 interface Prestation {
   id:                   string
@@ -37,6 +37,7 @@ export default function CircuitClient() {
   const [list, setList]         = useState<Prestation[]>([])
   const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [busy, setBusy]         = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -214,14 +215,24 @@ export default function CircuitClient() {
                     </button>
                   )}
                   {!isInvoiced && (
-                    <button
-                      onClick={() => removeOne(p.id)}
-                      disabled={busy === p.id}
-                      className="p-1.5 rounded text-red-700 hover:bg-red-50 disabled:opacity-50"
-                      title="Supprimer cette prestation"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => { setEditingId(p.id); setShowModal(true) }}
+                        disabled={busy === p.id}
+                        className="p-1.5 rounded text-info hover:bg-info-soft disabled:opacity-50"
+                        title="Modifier ce dossier"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => removeOne(p.id)}
+                        disabled={busy === p.id}
+                        className="p-1.5 rounded text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        title="Supprimer cette prestation"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -232,8 +243,9 @@ export default function CircuitClient() {
 
       {showModal && (
         <AddPrestationModal
-          onClose={() => setShowModal(false)}
-          onCreated={() => { setShowModal(false); load() }}
+          editingId={editingId}
+          onClose={() => { setShowModal(false); setEditingId(null) }}
+          onCreated={() => { setShowModal(false); setEditingId(null); load() }}
         />
       )}
     </div>
@@ -243,18 +255,38 @@ export default function CircuitClient() {
 // ─────────────────────────────────────────────────────────────────
 // Modal ajout prestation
 // ─────────────────────────────────────────────────────────────────
-function AddPrestationModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function AddPrestationModal({ editingId, onClose, onCreated }: { editingId: string | null; onClose: () => void; onCreated: () => void }) {
   const [type, setType]                 = useState<'incentive' | 'after_six'>('incentive')
   const [nbDep, setNbDep]               = useState<number>(1)
   const [dates, setDates]               = useState<string[]>([''])
   const [notes, setNotes]               = useState('')
   const [busy, setBusy]                 = useState(false)
+  const [loadingEdit, setLoadingEdit]   = useState(false)
 
   // Client search
   const [clientQuery, setClientQuery]   = useState('')
   const [results, setResults]           = useState<any[]>([])
   const [searching, setSearching]       = useState(false)
   const [selected, setSelected]         = useState<{ id: number; name: string } | null>(null)
+
+  // Mode edition : charge le groupe (toutes les lignes du meme devis Odoo)
+  useEffect(() => {
+    if (!editingId) return
+    setLoadingEdit(true)
+    fetch(`/api/circuit-prestations/${editingId}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(j => {
+        if (!Array.isArray(j.group) || j.group.length === 0) return
+        const first = j.group[0]
+        setSelected({ id: first.client_odoo_id, name: first.client_name })
+        setType(first.type)
+        setNbDep(first.nb_depanneuses || 1)
+        setDates(j.group.map((g: any) => g.prestation_date))
+        setNotes(first.notes || '')
+      })
+      .catch(e => console.warn('[edit prestation] charge KO:', e))
+      .finally(() => setLoadingEdit(false))
+  }, [editingId])
 
   // debounce client search
   useEffect(() => {
@@ -284,10 +316,14 @@ function AddPrestationModal({ onClose, onCreated }: { onClose: () => void; onCre
     const validDates = dates.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
     if (validDates.length === 0) { alert('Au moins 1 date requise'); return }
 
+    const isEdit = !!editingId
+    const url    = isEdit ? `/api/circuit-prestations/${editingId}` : '/api/circuit-prestations'
+    const method = isEdit ? 'PUT' : 'POST'
+
     setBusy(true)
     try {
-      const r = await fetch('/api/circuit-prestations', {
-        method:  'POST',
+      const r = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client_name:    selected.name,
@@ -300,7 +336,7 @@ function AddPrestationModal({ onClose, onCreated }: { onClose: () => void; onCre
       })
       const j = await r.json()
       if (!r.ok) { alert(`Erreur : ${j.error || 'inconnue'}`); return }
-      alert(j.message || 'Prestation créée')
+      alert(j.message || (isEdit ? 'Dossier modifié' : 'Prestation créée'))
       onCreated()
     } catch (e: any) {
       alert(`Erreur réseau : ${e?.message}`)
@@ -314,8 +350,16 @@ function AddPrestationModal({ onClose, onCreated }: { onClose: () => void; onCre
       <div className="bg-surface rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-4">
           <span className="text-2xl">🏁</span>
-          <h2 className="text-lg font-bold text-ink">Nouvelle prestation Circuit</h2>
+          <h2 className="text-lg font-bold text-ink">
+            {editingId ? 'Modifier le dossier Circuit' : 'Nouvelle prestation Circuit'}
+          </h2>
+          {loadingEdit && <Loader2 size={14} className="animate-spin text-ink-muted" />}
         </div>
+        {editingId && (
+          <div className="bg-warning-soft border border-warning/30 rounded-lg p-2 mb-4 text-xs text-warning">
+            ⚠️ La modification annule l'ancien devis Odoo et en crée un nouveau.
+          </div>
+        )}
 
         {/* Client */}
         <div className="mb-4">
@@ -467,10 +511,12 @@ function AddPrestationModal({ onClose, onCreated }: { onClose: () => void; onCre
           <button
             type="button"
             onClick={submit}
-            disabled={busy || !selected}
+            disabled={busy || !selected || loadingEdit}
             className="flex-1 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-bold disabled:opacity-50"
           >
-            {busy ? '⏳ Création…' : '✓ Créer + devis Odoo'}
+            {busy
+              ? (editingId ? '⏳ Mise à jour…' : '⏳ Création…')
+              : (editingId ? '✓ Modifier le dossier' : '✓ Créer + devis Odoo')}
           </button>
         </div>
       </div>
