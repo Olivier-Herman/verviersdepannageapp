@@ -164,23 +164,23 @@ export default function QrMissionClient({
   // L action 'Scratch / Mettre en epave' reste sur l ancien endpoint helpdesk
   // car c est un changement d etat metier different (a migrer ulterieurement).
   async function doMoveZone(toStateId: number) {
-    // Cas Scratch : route helpdesk legacy (necessite ticket Odoo)
+    // Cas Scratch / Épave : endpoint VD Soft dédié (status='completed' +
+    // libère parc + log + sync Odoo best-effort si fleet.vehicle dispo).
     if (toStateId === SCRATCH_STATE_ID) {
-      if (!mission.odoo_ticket_id) {
-        showToast('err', 'Scratch impossible : ticket Odoo absent pour cette mission. Action à faire manuellement dans Odoo.')
+      if (!confirm('Mettre ce véhicule en épave ? Il sortira du parc et passera en statut clôturé.')) {
         setActionMenu(null); setSelectedState(null)
         return
       }
       setWorking(true)
       try {
-        const r = await fetch(`/api/helpdesk/${mission.odoo_ticket_id}/move`, {
+        const r = await fetch(`/api/missions/${mission.id}/scratch`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ to_state_id: toStateId }),
+          body:    JSON.stringify({}),
         })
         const j = await r.json()
-        if (!r.ok) { showToast('err', j.error || 'Erreur transfert'); return }
-        showToast('ok', `Véhicule passé en épave`)
+        if (!r.ok) { showToast('err', j.error || 'Erreur scratch'); return }
+        showToast('ok', j.message || 'Véhicule mis en épave')
         setActionMenu(null); setSelectedState(null)
         setTimeout(() => window.location.reload(), 1500)
       } finally { setWorking(false) }
