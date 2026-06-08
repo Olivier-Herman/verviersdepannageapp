@@ -55,6 +55,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .update({
       status:          'completed',
       completed_at:    nowIso,
+      scratched_at:    nowIso,
+      scratched_by:    actor?.id || null,
       parc_zone_key:   null,
       parc_row_number: null,
       parc_slot_index: null,

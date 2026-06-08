@@ -34,6 +34,8 @@ interface Mission {
   parked_at:          string | null
   incident_type:      string | null
   odoo_ticket_id:     number | null
+  scratched_at:       string | null
+  closing_notes:      string | null
 }
 
 interface ExistingRel {
@@ -240,6 +242,24 @@ export default function QrMissionClient({
             toast.kind === 'ok' ? 'bg-success-soft border border-success/30 text-success' : 'bg-critical-soft border border-critical text-critical'
           }`}>
             {toast.kind === 'ok' ? '✅ ' : '⚠ '}{toast.msg}
+          </div>
+        )}
+
+        {/* Olivier 2026-06-08 : tampon ÉPAVE si la mission a ete mise en epave */}
+        {mission.scratched_at && (
+          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-5 text-center">
+            <div className="inline-block transform -rotate-3 border-4 border-red-600 text-red-700 px-6 py-2 rounded-lg bg-red-100/60">
+              <p className="text-4xl font-extrabold tracking-widest font-display">ÉPAVE</p>
+              <p className="text-xs mt-1 text-red-800">
+                Mis en épave le {new Date(mission.scratched_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </p>
+            </div>
+            {mission.closing_notes && (
+              <p className="text-xs text-red-800 mt-3 italic">{mission.closing_notes}</p>
+            )}
+            <p className="text-xs text-ink-muted mt-3">
+              ⛔ Aucune action fourrière possible. Véhicule sorti du parc, statut clôturé.
+            </p>
           </div>
         )}
 
@@ -535,8 +555,9 @@ export default function QrMissionClient({
               </>
             )}
 
-            {/* Actions fourrière (admin / superadmin / module fourriere) */}
-            {permissions.canFourriereActions && (
+            {/* Actions fourrière (admin / superadmin / module fourriere)
+                Olivier 2026-06-08 : masquees si la mission est en epave. */}
+            {permissions.canFourriereActions && !mission.scratched_at && (
               <>
                 <button onClick={() => setActionMenu('transfer')} disabled={working}
                   className="w-full py-3 bg-surface border-2 border-brand/40 text-brand hover:bg-brand/5 rounded-2xl text-sm font-bold transition flex items-center justify-center gap-2">

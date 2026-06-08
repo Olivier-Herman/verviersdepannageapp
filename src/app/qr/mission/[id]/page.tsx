@@ -156,6 +156,9 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         incident_type:      mission.incident_type,
         // Pour bouton "Ouvrir dans Odoo" + appels endpoints /api/helpdesk/[ticketId]/...
         odoo_ticket_id:     mission.odoo_ticket_id || null,
+        // Olivier 2026-06-08 : tampon ÉPAVE si scratched
+        scratched_at:       mission.scratched_at || null,
+        closing_notes:      mission.closing_notes || null,
       }}
       existingRel={existingRel ? {
         id:             existingRel.id,
