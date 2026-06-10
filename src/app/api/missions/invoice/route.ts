@@ -122,21 +122,22 @@ export async function POST(req: Request) {
   }))
   await sb.from('mission_logs').insert(logRows)
 
-  // Attache le PDF resume mission a la facture Odoo (et regenere helpdesk+vehicle
-  // si pas encore fait). Si plusieurs missions sont facturees ensemble (chaine
-  // REM+REL), on attache UN seul PDF combine a la facture.
+  // Regenere les attachements helpdesk+vehicle si pas encore faits.
+  // Olivier 2026-06-10 : on n'attache PLUS le rapport a la facture Odoo
+  // (account.move) — il devenait l'attachement principal et l'export vers
+  // le comptable prenait le rapport au lieu du PDF de facture.
   // waitUntil pour survivre au return de la fonction Vercel.
-  if (invoice_odoo_id || method === 'auto') {
-    const chainIds = ids.length > 1 ? ids : undefined
-    const primaryId = ids[0]
+  {
     const { waitUntil } = await import('@vercel/functions')
-    waitUntil(
-      import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
-        attachMissionPdf(primaryId, { chainMissionIds: chainIds })
-      ).catch(e => {
-        console.error('[mission-pdf] invoice attach échoué (non bloquant):', e.message)
-      })
-    )
+    for (const missionId of ids) {
+      waitUntil(
+        import('@/lib/missions/attach-mission-pdf').then(({ attachMissionPdf }) =>
+          attachMissionPdf(missionId, { targets: ['helpdesk', 'vehicle'] })
+        ).catch(e => {
+          console.error('[mission-pdf] attach échoué (non bloquant):', e.message)
+        })
+      )
+    }
   }
 
   return NextResponse.json({ ok: true, updated })

@@ -1,8 +1,13 @@
 // src/lib/missions/attach-mission-pdf.ts
 //
 // Orchestre la generation du PDF d'une mission (ou d'une chaine REM+REL) et
-// son attachement vers les 3 cibles Odoo : helpdesk.ticket, fleet.vehicle,
-// account.move (facture).
+// son attachement vers les cibles Odoo : helpdesk.ticket, fleet.vehicle.
+//
+// Olivier 2026-06-10 : la cible account.move (facture) est SUPPRIMEE.
+// Attacher le rapport d'intervention sur la facture en faisait l'attachement
+// principal Odoo -> l'export vers le comptable prenait le rapport au lieu du
+// PDF de facture. Ne JAMAIS attacher de document sur sale.order/account.move
+// hors pieces comptables voulues (ex: factures d'achat des avances de fonds).
 //
 // Idempotent : si pdf_attached_*_at est deja set sur la mission, on skip ce
 // target. Le cron retry et les hooks invoice/driver-action appellent cette
@@ -188,8 +193,8 @@ async function buildMissionPdfData(m: MissionRow): Promise<MissionPdfData> {
 
 /**
  * Genere le buffer PDF d'une mission ou d'une chaine.
- * Si chainMissionIds = [m] : PDF mission unique.
- * Si chainMissionIds = [m, sibling] : PDF combine.
+ * Si missionIds = [m] : PDF mission unique.
+ * Si missionIds = [m, sibling] : PDF combine (telechargement manuel chaine REM+REL).
  */
 export async function generateMissionPdfBuffer(missionIds: string[]): Promise<{ buffer: Buffer; filename: string; stamp?: string }> {
   const sb = createAdminClient()
@@ -253,14 +258,12 @@ export async function generateMissionPdfBuffer(missionIds: string[]): Promise<{ 
 }
 
 interface AttachOptions {
-  /** Si fourni, force l'envoi du chain dans l'attachement invoice (sinon mission seule). */
-  chainMissionIds?:  string[]
   /** Quels targets retenter ; default = tous ceux non encore set. */
-  targets?: ('helpdesk' | 'vehicle' | 'invoice')[]
+  targets?: ('helpdesk' | 'vehicle')[]
 }
 
 /**
- * Genere et attache le PDF aux 3 cibles Odoo selon les liens disponibles.
+ * Genere et attache le PDF aux cibles Odoo selon les liens disponibles.
  * Idempotent : ne re-attache pas un target deja set.
  *
  * @returns {attached: string[], skipped: string[], errors: string[]}
@@ -278,7 +281,7 @@ export async function attachMissionPdf(missionId: string, opts: AttachOptions = 
     return { attached: [], skipped: [], errors: [`Max attempts atteint (${MAX_ATTEMPTS})`] }
   }
 
-  const wantedTargets = opts.targets ?? ['helpdesk', 'vehicle', 'invoice']
+  const wantedTargets = opts.targets ?? ['helpdesk', 'vehicle']
 
   // Determine quels targets sont eligibles + pas deja attaches
   const todo: Array<{ kind: string; resModel: string; resId: number }> = []
@@ -288,42 +291,15 @@ export async function attachMissionPdf(missionId: string, opts: AttachOptions = 
   if (wantedTargets.includes('vehicle') && mission.odoo_vehicle_id && !mission.pdf_attached_vehicle_at) {
     todo.push({ kind: 'vehicle', resModel: 'fleet.vehicle', resId: mission.odoo_vehicle_id })
   }
-  if (wantedTargets.includes('invoice') && mission.invoice_odoo_id && !mission.pdf_attached_invoice_at) {
-    todo.push({ kind: 'invoice', resModel: 'account.move', resId: mission.invoice_odoo_id })
-  }
 
   if (todo.length === 0) {
     return { attached: [], skipped: ['rien à attacher'], errors: [] }
   }
 
-  // Genere le PDF (eventuel chain pour invoice)
-  // Note : pour helpdesk + vehicle, on attache le PDF de la mission seule.
-  //        pour invoice, si chain demande, on attache le PDF combine.
-  const baseIds = [missionId]
-  const chainIds = opts.chainMissionIds && opts.chainMissionIds.length > 1
-    ? opts.chainMissionIds
-    : baseIds
-
-  // Si chain demande mais que helpdesk/vehicle aussi → on genere 2 PDF.
-  // Sinon on en genere un seul (chain ou mission unique).
-  const needsBoth = chainIds.length > 1 && (todo.some(t => t.kind === 'helpdesk' || t.kind === 'vehicle'))
-                                       && (todo.some(t => t.kind === 'invoice'))
-  let baseBuffer: Buffer | null = null
-  let baseFilename = ''
-  let chainBuffer: Buffer | null = null
-  let chainFilename = ''
-  let stamp: string | undefined
-
-  if (needsBoth) {
-    const base = await generateMissionPdfBuffer(baseIds)
-    baseBuffer = base.buffer; baseFilename = base.filename; stamp = base.stamp
-    const chain = await generateMissionPdfBuffer(chainIds)
-    chainBuffer = chain.buffer; chainFilename = chain.filename
-  } else {
-    const idsToUse = chainIds.length > 1 && todo.some(t => t.kind === 'invoice') ? chainIds : baseIds
-    const gen = await generateMissionPdfBuffer(idsToUse)
-    baseBuffer = gen.buffer; baseFilename = gen.filename; stamp = gen.stamp
-  }
+  const gen = await generateMissionPdfBuffer([missionId])
+  const baseBuffer   = gen.buffer
+  const baseFilename = gen.filename
+  const stamp        = gen.stamp
 
   const attached: string[] = []
   const errors:   string[] = []
@@ -333,16 +309,12 @@ export async function attachMissionPdf(missionId: string, opts: AttachOptions = 
   }
 
   for (const t of todo) {
-    const useChain = t.kind === 'invoice' && chainBuffer !== null
-    const buffer   = useChain ? chainBuffer : baseBuffer
-    const filename = useChain ? chainFilename : baseFilename
-    if (!buffer) continue
     try {
-      const base64 = buffer.toString('base64')
+      const base64 = baseBuffer.toString('base64')
       await attachToOdoo({
         resModel: t.resModel,
         resId:    t.resId,
-        filename,
+        filename: baseFilename,
         base64Data: base64,
         mimetype: 'application/pdf',
         description: stamp ? `Rapport mission Verviers Depannage (${stamp})` : 'Rapport mission Verviers Depannage',
@@ -350,7 +322,6 @@ export async function attachMissionPdf(missionId: string, opts: AttachOptions = 
       attached.push(t.kind)
       if (t.kind === 'helpdesk') updates.pdf_attached_helpdesk_at = nowIso
       if (t.kind === 'vehicle')  updates.pdf_attached_vehicle_at  = nowIso
-      if (t.kind === 'invoice')  updates.pdf_attached_invoice_at  = nowIso
     } catch (e: any) {
       console.error(`[attach-mission-pdf] ${t.kind} fail:`, e.message)
       errors.push(`${t.kind}: ${e.message}`)
@@ -365,17 +336,6 @@ export async function attachMissionPdf(missionId: string, opts: AttachOptions = 
   }
 
   await sb.from('incoming_missions').update(updates).eq('id', missionId)
-
-  // Si chain : mettre a jour aussi le slot invoice sur les autres maillons
-  // de la chaine (pour eviter qu'ils soient re-traites par le cron retry)
-  if (attached.includes('invoice') && chainIds.length > 1) {
-    const others = chainIds.filter(id => id !== missionId)
-    if (others.length > 0) {
-      await sb.from('incoming_missions').update({
-        pdf_attached_invoice_at: nowIso,
-      }).in('id', others)
-    }
-  }
 
   return { attached, skipped: [], errors }
 }

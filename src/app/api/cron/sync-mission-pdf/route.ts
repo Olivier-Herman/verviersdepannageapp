@@ -1,8 +1,11 @@
 // src/app/api/cron/sync-mission-pdf/route.ts
 //
 // Cron quotidien : re-essaie les attachements PDF mission qui n'ont pas
-// abouti (helpdesk/vehicle/invoice manquant) pour les missions completed
+// abouti (helpdesk/vehicle manquant) pour les missions completed
 // recentes (< 30j) avec pdf_attach_attempts < 5.
+//
+// Olivier 2026-06-10 : la cible invoice (account.move) est supprimee —
+// le rapport attache a la facture polluait l'export comptable.
 //
 // L'orchestrateur attachMissionPdf est deja idempotent : il skip les
 // targets deja set. Le cron se contente d'iterer sur les candidats.
@@ -30,7 +33,7 @@ export async function GET(req: Request) {
   // Candidats : completed depuis < 30j, attempts < 5, au moins 1 target manquant
   const { data: candidates, error } = await sb
     .from('incoming_missions')
-    .select('id, external_id, odoo_helpdesk_id, odoo_vehicle_id, invoice_odoo_id, pdf_attached_helpdesk_at, pdf_attached_vehicle_at, pdf_attached_invoice_at, pdf_attach_attempts')
+    .select('id, external_id, odoo_helpdesk_id, odoo_vehicle_id, pdf_attached_helpdesk_at, pdf_attached_vehicle_at, pdf_attach_attempts')
     .eq('status', 'completed')
     .gte('completed_at', cutoff)
     .lt('pdf_attach_attempts', MAX_ATTEMPTS)
@@ -44,8 +47,7 @@ export async function GET(req: Request) {
   const pending = (candidates || []).filter(m => {
     const hMiss = m.odoo_helpdesk_id && !m.pdf_attached_helpdesk_at
     const vMiss = m.odoo_vehicle_id  && !m.pdf_attached_vehicle_at
-    const iMiss = m.invoice_odoo_id  && !m.pdf_attached_invoice_at
-    return hMiss || vMiss || iMiss
+    return hMiss || vMiss
   })
 
   if (pending.length === 0) {
