@@ -11,6 +11,14 @@ import {
 
 const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })
 
+interface Fees {
+  days:        number
+  forfaitHtva: number
+  gardienHtva: number
+  totalHtva:   number
+  totalTvac:   number
+}
+
 interface Eligible {
   id:                string
   external_id:       string | null
@@ -23,12 +31,14 @@ interface Eligible {
   parc_zone_key:     string | null
   parc_row_number:   number | null
   parc_slot_index:   number | null
+  entry_date:        string | null
   intervention_date: string | null
   received_at:       string | null
   driver_photos:     string[] | null
   odoo_helpdesk_id:  number | null
   days_in_parc:      number
   photo_count:       number
+  fees:              Fees
 }
 
 interface Props {
@@ -45,6 +55,11 @@ function fmtDate(iso: string | null): string {
   } catch { return iso }
 }
 
+function fmtEur(n: number | null | undefined): string {
+  if (n == null) return '—'
+  return n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+}
+
 export default function DestructionClient({ userRole, userName, userEmail, userModules }: Props) {
   const [eligibles, setEligibles] = useState<Eligible[]>([])
   const [checked, setChecked]     = useState<Set<string>>(new Set())
@@ -54,6 +69,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
   const [cameraOpen, setCameraOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [format, setFormat] = useState<'xlsx' | 'pdf'>('xlsx')
   const [done, setDone] = useState<{ count: number; emailSent: boolean; emailTo: string | null } | null>(null)
 
   async function load() {
@@ -126,13 +142,32 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
       const res = await fetch('/api/fourriere/destruction', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ mission_ids: Array.from(checked) }),
+        body:    JSON.stringify({ mission_ids: Array.from(checked), format }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Erreur')
+
+      // Telecharge une copie locale du rapport (xlsx ou pdf)
+      if (j.file_base64 && j.file_name) {
+        try {
+          const bin = atob(j.file_base64)
+          const bytes = new Uint8Array(bin.length)
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+          const blob = new Blob([bytes], { type: j.file_mime || 'application/octet-stream' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = j.file_name
+          document.body.appendChild(a)
+          a.click()
+          a.remove()
+          URL.revokeObjectURL(url)
+        } catch { /* download best-effort */ }
+      }
+
       setDone({ count: j.count, emailSent: Boolean(j.email_sent), emailTo: j.email_to })
       setChecked(new Set())
-      // Refresh la liste (les véhicules détruits ont disparu)
+      // Refresh la liste (les véhicules sortis ont disparu)
       await load()
     } catch (e: any) {
       setErr(e.message || 'Erreur')
@@ -145,7 +180,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
   const allChecked = useMemo(() => eligibles.length > 0 && eligibles.every(e => checked.has(e.id)), [eligibles, checked])
 
   return (
-    <AppShell title="Destruction AVP" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
+    <AppShell title="Sortie AVP" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
       <AmbientBackground>
         <div className="p-4 lg:p-6 space-y-4 ambient-fade-up max-w-4xl mx-auto">
 
@@ -160,10 +195,10 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
               <div>
                 <h1 className="text-lg font-semibold text-ink flex items-center gap-2">
                   <Trash2 size={18} className="text-critical" />
-                  Destruction AVP fin de mois
+                  Sortie AVP
                 </h1>
                 <p className="text-ink-muted text-sm">
-                  Véhicules AVP non récupérés depuis ≥ 60 jours, éligibles à l&apos;envoi en destruction.
+                  Véhicules AVP en parc depuis ≥ 60 jours. Mise en épave + rapport (frais arrêtés) envoyé à la Ville.
                 </p>
               </div>
             </div>
@@ -177,16 +212,16 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
           {/* Alerte si pas d email Ville configure */}
           {!villeEmail && !loading && (
             <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 text-sm text-warning">
-              ⚠ Email de la Ville de Verviers non configuré. Va dans <Link href="/admin/parc" className="underline font-medium">/admin/parc</Link> pour le définir avant de valider la destruction.
+              ⚠ Email de la Ville de Verviers non configuré. Va dans <Link href="/admin/parc" className="underline font-medium">/admin/parc</Link> pour le définir avant de valider la sortie AVP.
             </div>
           )}
 
           {/* Succès dernier envoi */}
           {done && (
             <div className="bg-success/10 border border-success/40 rounded-2xl p-3 text-sm text-success space-y-1">
-              ✅ <strong>{done.count}</strong> véhicule{done.count > 1 ? 's' : ''} envoyé{done.count > 1 ? 's' : ''} en destruction.
+              ✅ <strong>{done.count}</strong> véhicule{done.count > 1 ? 's' : ''} sorti{done.count > 1 ? 's' : ''} en épave (rapport téléchargé).
               {done.emailSent
-                ? <> Rapport envoyé à <code>{done.emailTo}</code>.</>
+                ? <> Rapport aussi envoyé à <code>{done.emailTo}</code>.</>
                 : <> ⚠️ Rapport NON envoyé par mail (config manquante ou erreur).</>}
               <button onClick={() => setDone(null)} className="ml-2 text-xs underline">Fermer</button>
             </div>
@@ -246,6 +281,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
                       <th className="px-3 py-2.5 font-medium">Emplacement</th>
                       <th className="px-3 py-2.5 font-medium">Date entrée</th>
                       <th className="px-3 py-2.5 font-medium text-right">Jours</th>
+                      <th className="px-3 py-2.5 font-medium text-right">Frais TVAC</th>
                       <th className="px-3 py-2.5 font-medium">📷</th>
                     </tr>
                   </thead>
@@ -277,11 +313,19 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
                               {e.parc_zone_key}{e.parc_row_number || ''}-{e.parc_slot_index || ''}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-ink-secondary text-xs">{fmtDate(e.intervention_date || e.received_at)}</td>
+                          <td className="px-3 py-2.5 text-ink-secondary text-xs">{fmtDate(e.entry_date || e.intervention_date || e.received_at)}</td>
                           <td className="px-3 py-2.5 text-right">
                             <span className={`font-bold ${e.days_in_parc >= 90 ? 'text-critical' : 'text-warning'}`}>
                               {e.days_in_parc} j
                             </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-semibold text-ink">{fmtEur(e.fees?.totalTvac)}</span>
+                            {e.fees && (
+                              <div className="text-[10px] text-ink-muted">
+                                forfait + {e.fees.days}j gard.
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 text-center">
                             {e.photo_count > 0 ? (
@@ -302,9 +346,28 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
             </div>
           )}
 
-          {/* Footer : valider + envoi rapport */}
+          {/* Footer : choix format + valider + envoi rapport */}
           {eligibles.length > 0 && (
             <div className="sticky bottom-0 bg-surface border rounded-2xl p-3 shadow-lg space-y-2">
+              {/* Choix du format de rapport */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-ink-muted">Format du rapport envoyé à la Ville :</span>
+                <div className="inline-flex rounded-lg border overflow-hidden">
+                  <button
+                    onClick={() => setFormat('xlsx')}
+                    className={`px-3 py-1.5 text-xs font-medium transition ${format === 'xlsx' ? 'bg-brand text-white' : 'bg-surface-2 text-ink-secondary hover:text-ink'}`}
+                  >
+                    Excel (.xlsx)
+                  </button>
+                  <button
+                    onClick={() => setFormat('pdf')}
+                    className={`px-3 py-1.5 text-xs font-medium transition ${format === 'pdf' ? 'bg-brand text-white' : 'bg-surface-2 text-ink-secondary hover:text-ink'}`}
+                  >
+                    PDF
+                  </button>
+                </div>
+              </div>
+
               {!confirming ? (
                 <button
                   onClick={validateDestruction}
@@ -312,15 +375,17 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
                   className="w-full py-3 bg-critical hover:bg-critical/90 text-white rounded-xl text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <Trash2 size={16} />
-                  Valider la destruction de {checked.size} véhicule{checked.size > 1 ? 's' : ''}
+                  Sortir {checked.size} véhicule{checked.size > 1 ? 's' : ''} (épave)
                 </button>
               ) : (
                 <>
                   <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 text-warning text-sm flex items-start gap-2">
                     <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
                     <div>
-                      <strong>Action irréversible.</strong> Les {checked.size} véhicule{checked.size > 1 ? 's' : ''} sortiront du parc, passeront en &quot;completed&quot; avec motif &quot;destroyed_avp&quot;.
-                      {villeEmail && <> Un rapport sera envoyé à <code>{villeEmail}</code>.</>}
+                      <strong>Action irréversible.</strong> Les {checked.size} véhicule{checked.size > 1 ? 's' : ''} sortiront du parc et recevront le tampon <strong>ÉPAVE</strong> (date du jour). Aucune facture n&apos;est émise.
+                      {villeEmail
+                        ? <> Le rapport <strong>{format.toUpperCase()}</strong> sera envoyé à <code>{villeEmail}</code>.</>
+                        : <> ⚠️ Email Ville non configuré : le rapport sera seulement téléchargé.</>}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -337,7 +402,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
                       className="py-2.5 bg-critical hover:bg-critical/90 text-white rounded-xl text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {submitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                      Oui, détruire + email Ville
+                      Confirmer + envoyer Ville
                     </button>
                   </div>
                 </>

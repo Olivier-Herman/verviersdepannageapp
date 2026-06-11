@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, ScanLine } from 'lucide-react'
+import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, ScanLine, Trash2 } from 'lucide-react'
 import VehicleFicheSheet from './VehicleFicheSheet'
 import DepotsTilesModal from './DepotsTilesModal'
 import { normalizePlate } from '@/lib/plate'
@@ -140,6 +140,13 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold shadow-sm transition"
               title="Reconstruction Fourriere TowSoft -> VD Soft (scan zone par zone)">
               🔄 Migration
+            </Link>
+            <Link
+              href="/fourriere/destruction"
+              className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition"
+              title="Véhicules AVP en parc depuis ≥ 60 jours : mise en épave + rapport à la Ville">
+              <Trash2 size={16} />
+              Sortie AVP
             </Link>
             <button
               onClick={() => setShowDepots(true)}

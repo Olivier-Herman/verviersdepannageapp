@@ -28,12 +28,20 @@ export async function getAppToken(): Promise<string> {
   return data.access_token
 }
 
+export interface EmailAttachment {
+  name:         string
+  contentType:  string
+  contentBytes: string   // base64
+}
+
 export async function sendEmail(
   to: string,
   subject: string,
   html: string,
   toName?: string,
   cc?: string | string[],
+  attachments?: EmailAttachment[],
+  from?: string,            // boite expeditrice (defaut FROM_EMAIL) — doit etre une boite M365 du tenant
 ) {
   const token = await getAppToken()
   const ccList = Array.isArray(cc) ? cc : cc ? [cc] : []
@@ -45,7 +53,16 @@ export async function sendEmail(
   if (ccList.length > 0) {
     message.ccRecipients = ccList.map(addr => ({ emailAddress: { address: addr } }))
   }
-  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
+  if (attachments && attachments.length > 0) {
+    message.attachments = attachments.map(a => ({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name:          a.name,
+      contentType:   a.contentType,
+      contentBytes:  a.contentBytes,
+    }))
+  }
+  const fromBox = from || FROM_EMAIL
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${fromBox}/sendMail`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, saveToSentItems: true })

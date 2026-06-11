@@ -67,7 +67,7 @@
  <tr><td>100</td><td>Voir liste véhicules en fourrière (par zone)</td><td>p. 6</td></tr>
  <tr><td>101</td><td>Plan visuel du parc (glisser-déposer emplacements)</td><td>p. 6</td></tr>
  <tr><td>102</td><td>Inventaire détaillé (recherche, statut, motif)</td><td>p. 7</td></tr>
- <tr><td>103</td><td>Voir véhicules destinés à destruction (AVP date+60j)</td><td>p. 7</td></tr>
+ <tr><td>103</td><td>Sortie AVP : mise en épave + rapport à la Ville (AVP date+60j)</td><td>p. 7</td></tr>
  <tr><td>104</td><td>Voir véhicules non-localisés (en parc sans zone/rangée)</td><td>p. 7</td></tr>
  <tr><td>105</td><td>Bloquer manuellement un emplacement</td><td>p. 8</td></tr>
  <tr><td>106</td><td>Réorganiser l'ordre d'affichage des zones</td><td>p. 8</td></tr>
@@ -241,15 +241,23 @@
 </div>
 
 <div class="function">
- <h3><span class="num">103</span>Véhicules destinés à destruction</h3>
- <p class="desc">Liste des AVP éligibles à destruction (date d'enlèvement + 60 jours, accord avec la Ville).</p>
+ <h3><span class="num">103</span>Sortie AVP (mise en épave)</h3>
+ <p class="desc">Liste des véhicules AVP en parc depuis 60 jours ou plus (accord avec la Ville). On les sort du parc en épave et on prévient la Ville. Aucune facture n'est faite : les dossiers sont simplement clôturés.</p>
  <p class="label">Comment faire</p>
  <ol>
- <li><code>/fourriere/destruction</code></li>
- <li>Liste les véhicules dont la date d'entrée parc + 60 jours est passée</li>
- <li>Procédure de destruction : marquer comme « Détruit » + log</li>
+ <li>Sur la page Fourrière, bouton « Sortie AVP » (ou plan d'un parc précis)</li>
+ <li>La liste montre, pour chaque véhicule : plaque, marque/modèle, emplacement, date d'entrée, nombre de jours en parc et les <strong>frais arrêtés à ce jour</strong> (forfait enlèvement + gardiennage)</li>
+ <li>Coche les véhicules à sortir (clic sur la ligne, ou scan du QR de l'étiquette, ou « Tout cocher »)</li>
+ <li>Choisis le format du rapport : <strong>Excel</strong> ou <strong>PDF</strong></li>
+ <li>Clique « Sortir … véhicules (épave) » puis confirme</li>
  </ol>
- <div class="warn">⚠️ Action irréversible. Toujours vérifier les conditions légales avant.</div>
+ <p class="label">Ce qui se passe automatiquement</p>
+ <ul>
+ <li>Chaque véhicule reçoit un gros tampon <strong>ÉPAVE</strong> avec la date de sortie (visible si on rescanne le QR), et sort du parc (la place est libérée)</li>
+ <li>Un rapport (Excel ou PDF) reprenant infos véhicule, dates d'entrée/sortie et frais arrêtés est <strong>téléchargé sur ton appareil</strong></li>
+ <li>Le même rapport est <strong>envoyé par mail à la Ville</strong> (avp@verviers.be) depuis la boîte fourriere@verviersdepannage.be</li>
+ </ul>
+ <div class="warn">⚠️ Action irréversible. L'email part automatiquement à la Ville : ne valide que des dossiers réellement à clôturer.</div>
 </div>
 
 <div class="function">
