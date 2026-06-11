@@ -297,7 +297,10 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
                           }`}
                         >
                           <td className="px-3 py-2.5">
-                            <input type="checkbox" checked={isChecked} onChange={() => toggleChecked(e.id)} className="w-4 h-4" />
+                            {/* La ligne entiere gere le toggle (onClick tr). La case
+                                ne fait que refleter l etat : onChange no-op pour ne
+                                pas basculer 2x (double-toggle = aucun effet). */}
+                            <input type="checkbox" checked={isChecked} readOnly className="w-4 h-4 pointer-events-none" />
                           </td>
                           <td className="px-3 py-2.5">
                             <span className="font-mono font-bold text-ink">{e.vehicle_plate || '—'}</span>
