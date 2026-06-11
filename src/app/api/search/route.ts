@@ -175,6 +175,8 @@ export async function GET(req: Request) {
       `vehicle_vin.ilike.${qLike}`,
       `vehicle_brand.ilike.${qLike}`,
       `vehicle_model.ilike.${qLike}`,
+      `remarks_general.ilike.${qLike}`,
+      `remarks_billing.ilike.${qLike}`,
     ].join(','))
     .order('received_at', { ascending: false })
     .limit(PER_CATEGORY_LIMIT * 3)
@@ -205,10 +207,29 @@ export async function GET(req: Request) {
     missionsByDate = data || []
   }
 
+  // Remarques du fil de la fiche d'intervention (table dediee mission_remarks).
+  // On recupere les mission_id qui matchent puis on charge ces missions.
+  let missionsByRemark: any[] = []
+  {
+    const { data: remarkHits } = await sb
+      .from('mission_remarks')
+      .select('mission_id')
+      .ilike('text', qLike)
+      .limit(PER_CATEGORY_LIMIT * 3)
+    const remarkMissionIds = Array.from(new Set((remarkHits || []).map(r => r.mission_id).filter(Boolean)))
+    if (remarkMissionIds.length > 0) {
+      const { data } = await sb
+        .from('incoming_missions')
+        .select('id, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
+        .in('id', remarkMissionIds)
+      missionsByRemark = data || []
+    }
+  }
+
   const { data: missionsBase } = await missionsQuery
   // Dedup par id
   const missionsMap = new Map<string, any>()
-  for (const m of [...(missionsBase || []), ...missionsByPlate, ...missionsByDate]) {
+  for (const m of [...(missionsBase || []), ...missionsByPlate, ...missionsByDate, ...missionsByRemark]) {
     if (!missionsMap.has(m.id)) missionsMap.set(m.id, m)
   }
   const missions = [...missionsMap.values()].slice(0, PER_CATEGORY_LIMIT)
