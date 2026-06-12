@@ -23,11 +23,11 @@ function defaultService(row: { vdsoft: Vd | null; towsoft?: Tw | null }): 'T' | 
   if (mt === 'remorquage') return 'T'
   if (mt === 'depannage' || mt === 'reparation_place') return 'R'
   if (mt === 'trajet_vide') return 'D'
-  // 2) Sinon déduit du type/nature TowSoft (texte libre)
+  // 2) Sinon déduit du type/nature TowSoft (texte libre, ex "MONDDSP - Mondial - Dsp")
   const tw = (row.towsoft?.type || '').toLowerCase()
-  if (/d[eé]pann|dsp|sur place|r[eé]par/.test(tw)) return 'R'
-  if (/trajet|vide|dpr/.test(tw))                  return 'D'
-  if (/remorq|\brem\b|\btow\b/.test(tw))           return 'T'
+  if (/dsp|d[eé]pann|sur place|r[eé]par/.test(tw))        return 'R'   // Réparé sur place
+  if (/trajet|\bvide\b|dpr/.test(tw))                     return 'D'   // Trajet à vide
+  if (/remorq|\brem\b|reliv|\brel\b|\btow\b/.test(tw))    return 'T'   // Remorquage
   return 'T'
 }
 interface Tw {
