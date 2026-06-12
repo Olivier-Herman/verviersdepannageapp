@@ -885,6 +885,28 @@ export default function FacturerModal({
   // Track des devis créés pendant la session (override les valeurs initiales)
   const [createdQuotes, setCreatedQuotes] = useState<Record<string, { id: number; url: string }>>({})
 
+  // ── Edition inline de la fiche principale (Olivier 2026-06-12) ─────────
+  // Permet de rendre une fiche facturable sans quitter la modale : source
+  // (grille tarifaire), client facturé (Odoo), véhicule.
+  const [m0, setM0]             = useState<BaseMission>(mission)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [editOpen, setEditOpen] = useState(false)
+  const [sourcesList, setSourcesList] = useState<Array<{ key: string; label: string }>>([])
+  const [edit, setEdit] = useState({
+    source:        mission.source || '',
+    vehicle_plate: mission.vehicle_plate || '',
+    vehicle_brand: mission.vehicle_brand || '',
+    vehicle_model: mission.vehicle_model || '',
+    vehicle_vin:   mission.vehicle_vin || '',
+  })
+  const [billedId, setBilledId]     = useState<number | null>(mission.billed_to_id ?? null)
+  const [billedName, setBilledName] = useState<string>(mission.billed_to_name || '')
+  const [clientQ, setClientQ]       = useState('')
+  const [clientResults, setClientResults] = useState<Array<{ id: number; name: string; city?: string; zip?: string }>>([])
+  const [clientBusy, setClientBusy] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editMsg, setEditMsg]       = useState<string | null>(null)
+
   // Bloque le scroll de fond + ferme sur Escape
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -896,8 +918,54 @@ export default function FacturerModal({
     }
   }, [onClose])
 
-  // Toutes les fiches a afficher (mission principale + siblings, dédupliquées)
-  const all = [mission, ...siblings.filter(s => s.id !== mission.id)]
+  // Charge la liste des sources (pour le selecteur grille tarifaire)
+  useEffect(() => {
+    fetch('/api/missions/sources')
+      .then(r => r.json())
+      .then(d => setSourcesList((d.sources || []).map((s: any) => ({ key: s.key, label: s.label }))))
+      .catch(() => {})
+  }, [])
+
+  // Recherche client Odoo (debounce) pour le champ "client facturé"
+  useEffect(() => {
+    if (clientQ.trim().length < 3) { setClientResults([]); return }
+    const t = setTimeout(async () => {
+      setClientBusy(true)
+      try {
+        const r = await fetch(`/api/odoo/search-client?q=${encodeURIComponent(clientQ.trim())}`)
+        const j = await r.json()
+        setClientResults(j.clients || [])
+      } catch { /* ignore */ } finally { setClientBusy(false) }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [clientQ])
+
+  async function saveEdit() {
+    setSavingEdit(true); setEditMsg(null)
+    try {
+      const payload: Record<string, any> = {
+        source:         edit.source || null,
+        vehicle_plate:  edit.vehicle_plate || null,
+        vehicle_brand:  edit.vehicle_brand || null,
+        vehicle_model:  edit.vehicle_model || null,
+        vehicle_vin:    edit.vehicle_vin || null,
+        billed_to_id:   billedId,
+        billed_to_name: billedName || null,
+      }
+      const r = await fetch(`/api/missions/${mission.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur enregistrement')
+      setM0(prev => ({ ...prev, ...payload }))
+      setRefreshKey(k => k + 1)   // force le re-fetch du bloc (tarif/devis)
+      setEditMsg('✅ Fiche mise à jour — tarif et client rechargés.')
+    } catch (e: any) { setEditMsg('⚠ ' + e.message) } finally { setSavingEdit(false) }
+  }
+
+  // Toutes les fiches a afficher (mission principale editee m0 + siblings)
+  const all = [m0, ...siblings.filter(s => s.id !== mission.id)]
   // Tri logique : REM avant REL (parent avant enfants)
   all.sort((a, b) => {
     const aIsParent = !a.parent_mission_id
@@ -995,21 +1063,10 @@ export default function FacturerModal({
         {/* Header */}
         <div className="px-5 py-4 border-b flex items-center justify-between flex-shrink-0 bg-surface">
           <div>
-            <p className="text-ink-muted text-xs uppercase tracking-wide">{fmtSource(mission.source)}</p>
+            <p className="text-ink-muted text-xs uppercase tracking-wide">{fmtSource(m0.source)}</p>
             <h2 className="text-ink font-semibold text-base">Facturer — {mission.external_id || mission.dossier_number || mission.id.slice(0,8)}</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <a
-              href={`/dispatch/${mission.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Modifier la fiche complète (source, client facturé, montants, adresses…) puis rouvrir la facturation"
-              className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink text-xs font-semibold transition whitespace-nowrap"
-            >
-              ✏️ Modifier la fiche
-            </a>
-            <button onClick={onClose} className="text-ink-muted hover:text-ink text-2xl leading-none px-2">✕</button>
-          </div>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink text-2xl leading-none px-2">✕</button>
         </div>
 
         {/* Body scroll */}
@@ -1018,27 +1075,129 @@ export default function FacturerModal({
           {/* Infos communes */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
             <div>
-              <p className="text-ink-muted text-xs">Client</p>
-              <p className="text-ink"><Copyable value={mission.client_name || '—'} /></p>
+              <p className="text-ink-muted text-xs">Client facturé</p>
+              <p className="text-ink"><Copyable value={m0.billed_to_name || m0.client_name || '—'} /></p>
             </div>
-            {mission.client_phone && (
+            {m0.client_phone && (
               <div>
                 <p className="text-ink-muted text-xs">Téléphone</p>
-                <p className="text-ink"><Copyable value={mission.client_phone} mono /></p>
+                <p className="text-ink"><Copyable value={m0.client_phone} mono /></p>
               </div>
             )}
             <div>
               <p className="text-ink-muted text-xs">Plaque</p>
-              <p className="text-ink"><Copyable value={mission.vehicle_plate || '—'} mono /></p>
+              <p className="text-ink"><Copyable value={m0.vehicle_plate || '—'} mono /></p>
             </div>
             <div>
               <p className="text-ink-muted text-xs">Véhicule</p>
-              <p className="text-ink"><Copyable value={[mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ') || '—'} /></p>
+              <p className="text-ink"><Copyable value={[m0.vehicle_brand, m0.vehicle_model].filter(Boolean).join(' ') || '—'} /></p>
             </div>
-            {mission.vehicle_vin && (
+            {m0.vehicle_vin && (
               <div className="sm:col-span-2">
                 <p className="text-ink-muted text-xs">VIN</p>
-                <p className="text-ink"><Copyable value={mission.vehicle_vin} mono /></p>
+                <p className="text-ink"><Copyable value={m0.vehicle_vin} mono /></p>
+              </div>
+            )}
+          </div>
+
+          {/* Edition inline : rendre la fiche facturable sans quitter la modale */}
+          <div className="border rounded-2xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setEditOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-surface-2 hover:bg-surface-hover text-sm font-semibold text-ink transition"
+            >
+              <span>✏️ Modifier la fiche (source, client facturé, véhicule)</span>
+              <span className="text-ink-muted">{editOpen ? '▲' : '▼'}</span>
+            </button>
+            {editOpen && (
+              <div className="p-4 space-y-3 bg-surface">
+                {/* Source (grille tarifaire) */}
+                <div>
+                  <label className="block text-ink-muted text-xs mb-1">Source (détermine la grille tarifaire)</label>
+                  <select
+                    value={edit.source}
+                    onChange={e => setEdit(s => ({ ...s, source: e.target.value }))}
+                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                  >
+                    <option value="">— Choisir une source —</option>
+                    {sourcesList.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                </div>
+
+                {/* Client facturé (Odoo) */}
+                <div>
+                  <label className="block text-ink-muted text-xs mb-1">
+                    Client facturé {billedId ? <span className="text-success">· lié (#{billedId})</span> : <span className="text-warning">· non lié</span>}
+                  </label>
+                  {billedName && (
+                    <div className="flex items-center gap-2 mb-1.5 text-sm text-ink">
+                      <span className="font-medium">{billedName}</span>
+                      <button type="button" onClick={() => { setBilledId(null); setBilledName(''); }}
+                        className="text-xs text-critical underline">retirer</button>
+                    </div>
+                  )}
+                  <input
+                    value={clientQ}
+                    onChange={e => setClientQ(e.target.value)}
+                    placeholder="Rechercher un client Odoo (nom, tél, réf)…"
+                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
+                  />
+                  {clientBusy && <p className="text-ink-muted text-xs mt-1">Recherche…</p>}
+                  {clientResults.length > 0 && (
+                    <div className="mt-1 border rounded-xl divide-y max-h-44 overflow-y-auto">
+                      {clientResults.map(c => (
+                        <button key={c.id} type="button"
+                          onClick={() => { setBilledId(c.id); setBilledName(c.name); setClientQ(''); setClientResults([]) }}
+                          className="w-full text-left px-3 py-2 hover:bg-surface-hover text-sm">
+                          <span className="text-ink font-medium">{c.name}</span>
+                          {(c.zip || c.city) && <span className="text-ink-muted text-xs"> · {[c.zip, c.city].filter(Boolean).join(' ')}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Véhicule */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1">Plaque</label>
+                    <input value={edit.vehicle_plate} onChange={e => setEdit(s => ({ ...s, vehicle_plate: e.target.value.toUpperCase() }))}
+                      className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                  </div>
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1">VIN</label>
+                    <input value={edit.vehicle_vin} onChange={e => setEdit(s => ({ ...s, vehicle_vin: e.target.value.toUpperCase() }))}
+                      className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                  </div>
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1">Marque</label>
+                    <input value={edit.vehicle_brand} onChange={e => setEdit(s => ({ ...s, vehicle_brand: e.target.value }))}
+                      className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                  </div>
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1">Modèle</label>
+                    <input value={edit.vehicle_model} onChange={e => setEdit(s => ({ ...s, vehicle_model: e.target.value }))}
+                      className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                  </div>
+                </div>
+
+                {editMsg && <p className={`text-xs ${editMsg.startsWith('✅') ? 'text-success' : 'text-critical'}`}>{editMsg}</p>}
+
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={saveEdit} disabled={savingEdit}
+                    className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
+                    {savingEdit ? '⏳ Enregistrement…' : '💾 Enregistrer'}
+                  </button>
+                  <a href={`/dispatch/${mission.id}`} target="_blank" rel="noopener noreferrer"
+                    className="px-3 py-2.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-xs font-semibold transition whitespace-nowrap"
+                    title="Éditeur complet (adresses, montants, dérogations…)">
+                    Éditeur complet ↗
+                  </a>
+                </div>
+                <p className="text-ink-faint text-[11px]">
+                  Après enregistrement, le tarif et le statut du devis sont rechargés automatiquement.
+                </p>
               </div>
             )}
           </div>
@@ -1052,7 +1211,7 @@ export default function FacturerModal({
                 : m
               return (
                 <MissionBlock
-                  key={m.id}
+                  key={`${m.id}-${m.id === mission.id ? refreshKey : 0}`}
                   m={mWithQuote}
                   payments={m.id === mission.id ? payments : []}
                   driverName={driverName}
