@@ -251,7 +251,8 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       // Distance déclarée : arrondi à l unité supérieure + 2 (règle Olivier 2026-06-12)
       distance:                 String(Math.ceil(distanceKm) + 2),
       contractualDistance:      Number(distanceKm),
-      customerMileageRecord:    { mileage: input.mileage || '0' },
+      // Kilométrage TOUJOURS 0 (Olivier 2026-06-12) — sinon Allianz reste à 0.
+      customerMileageRecord:    { mileage: '0' },
       costCurrency:             'EUR',
       bills,
       expertReportStep:         'C',
@@ -269,6 +270,11 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
     if (dryRun) {
       return { ok: true, dryRun: true, steps, payload, tariffs }
     }
+
+    // Délai de calcul Allianz : ~2 s entre "Calculer" (tarifs) et "Soumettre",
+    // sinon Allianz soumet avant d avoir calculé → montants à 0 (Olivier 2026-06-12).
+    await new Promise(r => setTimeout(r, 2200))
+    steps.push({ step: 'attente_calcul', ok: true, detail: '2,2 s' })
 
     // Étape 3 : soumission
     const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${input.caseId}/assignments/${input.assignmentId}/expertreports?cache_buster=${Date.now()}`
