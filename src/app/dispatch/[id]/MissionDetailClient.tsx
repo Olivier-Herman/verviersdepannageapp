@@ -347,25 +347,53 @@ function RelivrerButton({
   const hasAddress = (initialRedeliveryAddress || '').trim().length > 0
   const [savingAddr, setSavingAddr] = useState(false)
   const [savedMsg,   setSavedMsg]   = useState<string | null>(null)
+  // Etat de l auto-save inline : idle | saving | saved | error
+  const [autoSave,   setAutoSave]   = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const lastSavedRef = useRef((initialRedeliveryAddress || '').trim())
 
-  // Olivier 2026-06-12 : enregistre l adresse de relivraison SANS creer la REL.
-  // Avant ce fix, l adresse tapee ici restait en memoire locale (disparaissait
-  // au refresh) et l etiquette parc K affichait "En attente d info adresse de
-  // relivraison". On persiste + on reimprime l etiquette (best-effort).
-  const saveAddressOnly = async () => {
-    const finalAddr = address.trim()
-    if (!finalAddr) { setError('Saisis une adresse de relivraison'); return }
-    setSavingAddr(true); setError(null); setSavedMsg(null)
+  // Olivier 2026-06-12 : persiste l adresse de relivraison SANS creer la REL.
+  // Avant : l adresse restait en memoire locale (disparaissait au refresh) et
+  // l etiquette parc K affichait "En attente d info adresse de relivraison".
+  // persistAddress = ecriture BDD seule (pas d impression : utilise par l auto-save).
+  const persistAddress = async (v: string): Promise<boolean> => {
+    setAutoSave('saving')
     try {
       const res = await fetch(`/api/missions/${missionId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ redelivery_address: finalAddr }),
+        body:    JSON.stringify({ redelivery_address: v }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erreur enregistrement')
-      // Reimprime l etiquette pour qu elle porte l adresse. Best-effort : un
-      // dispatcher sans module fourriere recevra 403 -> on ignore.
+      if (!res.ok) throw new Error()
+      lastSavedRef.current = v
+      setAutoSave('saved')
+      return true
+    } catch {
+      setAutoSave('error')
+      return false
+    }
+  }
+
+  // Auto-save debounce : des que le champ est complete/modifie, on enregistre
+  // (800ms apres la derniere frappe). Pas d impression ici pour ne pas spammer
+  // la Zebra a chaque frappe — la reimpression se fait via le bouton dedie.
+  useEffect(() => {
+    const v = address.trim()
+    if (!v || v === lastSavedRef.current) return
+    const t = setTimeout(() => { persistAddress(v) }, 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address])
+
+  // Bouton explicite : enregistre (si pas deja fait) PUIS reimprime l etiquette.
+  const saveAndReprint = async () => {
+    const finalAddr = address.trim()
+    if (!finalAddr) { setError('Saisis une adresse de relivraison'); return }
+    setSavingAddr(true); setError(null); setSavedMsg(null)
+    try {
+      if (finalAddr !== lastSavedRef.current) {
+        const ok = await persistAddress(finalAddr)
+        if (!ok) throw new Error('Échec de l\'enregistrement')
+      }
       let reprinted = false
       try {
         const pr = await fetch(`/api/missions/${missionId}/reprint-label`, { method: 'POST' })
@@ -373,7 +401,7 @@ function RelivrerButton({
       } catch { /* reseau imprimante : non bloquant */ }
       setSavedMsg(reprinted
         ? 'Adresse enregistrée — étiquette réimprimée.'
-        : 'Adresse enregistrée. Réimprime l\'étiquette pour la mettre à jour.')
+        : 'Adresse enregistrée. (Réimpression indisponible : module fourrière requis.)')
       router.refresh()
     } catch (e: any) {
       setError(e.message)
@@ -419,20 +447,24 @@ function RelivrerButton({
 
       <div>
         <label className="block text-ink-muted text-xs mb-1.5">
-          Adresse de relivraison {hasAddress && <span className="text-success">· enregistrée</span>}
+          Adresse de relivraison
+          {autoSave === 'saving' && <span className="text-ink-muted"> · enregistrement…</span>}
+          {autoSave === 'saved'  && <span className="text-success"> · enregistrée ✓</span>}
+          {autoSave === 'error'  && <span className="text-critical"> · échec — réessaie</span>}
+          {autoSave === 'idle' && hasAddress && <span className="text-success"> · enregistrée</span>}
         </label>
         <AddressField
           value={address}
           onChange={setAddress}
-          onSelect={(addr) => setAddress(addr)}
+          onSelect={(addr) => { setAddress(addr); persistAddress(addr.trim()) }}
           gmKey={gmKey}
           placeholder="Rue, n°, code postal, ville…"
         />
-        {!hasAddress && originalDestination && (
-          <p className="text-ink-muted text-xs mt-1">
-            💡 Pré-remplie depuis l'adresse client originale. Vérifie / corrige si besoin.
-          </p>
-        )}
+        <p className="text-ink-muted text-xs mt-1">
+          {!hasAddress && originalDestination
+            ? '💡 Pré-remplie depuis l\'adresse client originale. Enregistrement automatique dès modification.'
+            : '💾 Enregistrement automatique dès que tu complètes ou modifies l\'adresse.'}
+        </p>
       </div>
 
       {/* Cas Appel Privé / SNC / Police Accident : choix de la source
@@ -458,9 +490,9 @@ function RelivrerButton({
         </div>
       )}
 
-      <button onClick={saveAddressOnly} disabled={savingAddr || !address.trim()}
+      <button onClick={saveAndReprint} disabled={savingAddr || !address.trim()}
         className="w-full py-2.5 bg-surface-2 hover:bg-surface-hover border disabled:opacity-50 text-ink rounded-xl text-sm font-semibold transition">
-        {savingAddr ? '⏳ Enregistrement…' : '💾 Enregistrer l\'adresse (étiquette)'}
+        {savingAddr ? '⏳ …' : '🖨 Enregistrer + réimprimer l\'étiquette'}
       </button>
       <button onClick={handle} disabled={loading || !address.trim()}
         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
