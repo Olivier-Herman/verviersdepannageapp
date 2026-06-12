@@ -17,11 +17,17 @@ const SERVICE_OPTS: Array<{ code: 'T' | 'R' | 'D'; label: string }> = [
   { code: 'R', label: 'Réparé sur place' },
   { code: 'D', label: 'Trajet à vide' },
 ]
-function defaultService(row: { vdsoft: Vd | null }): 'T' | 'R' | 'D' {
+function defaultService(row: { vdsoft: Vd | null; towsoft?: Tw | null }): 'T' | 'R' | 'D' {
+  // 1) Priorité au type VD Soft (enum propre)
   const mt = (row.vdsoft?.mission_type || '').toLowerCase()
   if (mt === 'remorquage') return 'T'
   if (mt === 'depannage' || mt === 'reparation_place') return 'R'
   if (mt === 'trajet_vide') return 'D'
+  // 2) Sinon déduit du type/nature TowSoft (texte libre)
+  const tw = (row.towsoft?.type || '').toLowerCase()
+  if (/d[eé]pann|dsp|sur place|r[eé]par/.test(tw)) return 'R'
+  if (/trajet|vide|dpr/.test(tw))                  return 'D'
+  if (/remorq|\brem\b|\btow\b/.test(tw))           return 'T'
   return 'T'
 }
 interface Tw {
