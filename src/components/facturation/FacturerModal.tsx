@@ -93,6 +93,17 @@ const SOURCE_LABEL: Record<string, string> = {
   touring: 'Touring', allianz: 'Allianz', vab: 'VAB',
   axa: 'AXA', ethias: 'Ethias', police: 'Police',
 }
+
+// Types d'intervention (= mission_type) — aligne MISSION_TYPES du dispatch.
+const MISSION_TYPE_LABELS: Record<string, string> = {
+  remorquage:       'Remorquage (REM)',
+  depannage:        'Dépannage (DSP)',
+  reparation_place: 'Réparation sur place',
+  trajet_vide:      'Trajet à vide (DPR)',
+  relivraison:      'Relivraison (REL)',
+  transport:        'Transport',
+  autre:            'Autre',
+}
 function fmtSource(s: string | null): string {
   if (!s) return '—'
   return SOURCE_LABEL[s.toLowerCase()] || s
@@ -894,6 +905,7 @@ export default function FacturerModal({
   const [sourcesList, setSourcesList] = useState<Array<{ key: string; label: string }>>([])
   const [edit, setEdit] = useState({
     source:        mission.source || '',
+    mission_type:  mission.mission_type || '',
     vehicle_plate: mission.vehicle_plate || '',
     vehicle_brand: mission.vehicle_brand || '',
     vehicle_model: mission.vehicle_model || '',
@@ -945,6 +957,7 @@ export default function FacturerModal({
     try {
       const payload: Record<string, any> = {
         source:         edit.source || null,
+        mission_type:   edit.mission_type || null,
         vehicle_plate:  edit.vehicle_plate || null,
         vehicle_brand:  edit.vehicle_brand || null,
         vehicle_model:  edit.vehicle_model || null,
@@ -1112,18 +1125,34 @@ export default function FacturerModal({
             </button>
             {editOpen && (
               <div className="p-4 space-y-3 bg-surface">
-                {/* Source (grille tarifaire) */}
-                <div>
-                  <label className="block text-ink-muted text-xs mb-1">Source (détermine la grille tarifaire)</label>
-                  <select
-                    value={edit.source}
-                    onChange={e => setEdit(s => ({ ...s, source: e.target.value }))}
-                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
-                  >
-                    <option value="">— Choisir une source —</option>
-                    {sourcesList.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-                  </select>
+                {/* Source + type d'intervention (déterminent la grille tarifaire) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1">Source</label>
+                    <select
+                      value={edit.source}
+                      onChange={e => setEdit(s => ({ ...s, source: e.target.value }))}
+                      className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                    >
+                      <option value="">— Choisir une source —</option>
+                      {sourcesList.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-ink-muted text-xs mb-1">Type d&apos;intervention</label>
+                    <select
+                      value={edit.mission_type}
+                      onChange={e => setEdit(s => ({ ...s, mission_type: e.target.value }))}
+                      className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                    >
+                      <option value="">— Choisir un type —</option>
+                      {Object.entries(MISSION_TYPE_LABELS).map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+                <p className="text-ink-faint text-[11px]">Source + type déterminent la grille tarifaire appliquée.</p>
 
                 {/* Client facturé (Odoo) */}
                 <div>
