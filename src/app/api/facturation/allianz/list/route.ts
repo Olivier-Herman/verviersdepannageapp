@@ -53,14 +53,14 @@ export async function GET() {
   const byPlate  = new Map<string, any>()
   if (numbers.length) {
     const { data } = await sb.from('incoming_missions')
-      .select('id, mission_number, external_id, dossier_number, source, status, vehicle_plate, destination_address, received_at')
+      .select(`id, mission_number, external_id, dossier_number, source, status, mission_type, vehicle_plate, destination_address, received_at`)
       .in('external_id', numbers)
       .neq('status', 'cancelled')
     for (const m of (data || [])) if (m.external_id) byNumber.set(String(m.external_id), m)
   }
   if (plates.length) {
     const { data } = await sb.from('incoming_missions')
-      .select('id, mission_number, external_id, dossier_number, source, status, vehicle_plate, destination_address, received_at')
+      .select(`id, mission_number, external_id, dossier_number, source, status, mission_type, vehicle_plate, destination_address, received_at`)
       .not('vehicle_plate', 'is', null)
       .neq('status', 'cancelled')
       .order('received_at', { ascending: false })
@@ -121,6 +121,7 @@ export async function GET() {
         external_id:        vd.external_id,
         source:             vd.source,
         status:             vd.status,
+        mission_type:       vd.mission_type,
         destination_address: vd.destination_address,
         received_at:        vd.received_at,
       } : null,

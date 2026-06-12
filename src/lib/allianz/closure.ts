@@ -221,6 +221,11 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
   if (distanceKm == null || !Number.isFinite(distanceKm)) {
     return { ok: false, dryRun, steps, error: 'Distance introuvable (ni VD Soft ni TowSoft)' }
   }
+  // Garde-fou : destination obligatoire UNIQUEMENT pour le remorquage (T).
+  // Réparé sur place (R) / Trajet à vide (D) n ont pas de destination.
+  if (!dryRun && input.providedService === 'T' && !destination?.name) {
+    return { ok: false, dryRun, steps, error: 'Destination du remorquage manquante — soumission bloquée (sinon montants à 0).' }
+  }
 
   try {
     // Étape 1 : affectation manuelle (sautée en dry-run)

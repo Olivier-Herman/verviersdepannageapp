@@ -7,8 +7,22 @@ import AmbientBackground from '@/components/AmbientBackground'
 
 interface Vd {
   id: string; mission_number: number | null; external_id: string | null
-  source: string | null; status: string | null
+  source: string | null; status: string | null; mission_type: string | null
   destination_address: string | null; received_at: string | null
+}
+
+// Type de service Allianz (providedService) + libellé
+const SERVICE_OPTS: Array<{ code: 'T' | 'R' | 'D'; label: string }> = [
+  { code: 'T', label: 'Remorquage' },
+  { code: 'R', label: 'Réparé sur place' },
+  { code: 'D', label: 'Trajet à vide' },
+]
+function defaultService(row: { vdsoft: Vd | null }): 'T' | 'R' | 'D' {
+  const mt = (row.vdsoft?.mission_type || '').toLowerCase()
+  if (mt === 'remorquage') return 'T'
+  if (mt === 'depannage' || mt === 'reparation_place') return 'R'
+  if (mt === 'trajet_vide') return 'D'
+  return 'T'
 }
 interface Tw {
   towsoft_num: string; dossier: string | null; statut: string | null
@@ -35,6 +49,9 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
   const [needsAuth, setNeedsAuth] = useState(false)
   const [busyId, setBusyId]   = useState<string | null>(null)
   const [result, setResult]   = useState<Record<string, any>>({})
+  const [svc, setSvc]         = useState<Record<string, 'T' | 'R' | 'D'>>({})
+
+  const serviceOf = (row: Row): 'T' | 'R' | 'D' => svc[row.assignmentId] ?? defaultService(row)
 
   async function load() {
     setLoading(true); setErr(null); setNeedsAuth(false)
@@ -65,19 +82,22 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
       // VD Soft : distance via /km + destination. Sinon TowSoft : résolu côté serveur (towsoftNum).
       const km   = row.vdsoft ? await fetchKm(row.vdsoft.id) : null
       const dest = row.vdsoft?.destination_address || null
+      const providedService = serviceOf(row)
       const body: any = {
-        assignmentId:  row.assignmentId,
-        caseId:        row.caseId,
+        assignmentId:    row.assignmentId,
+        caseId:          row.caseId,
+        providedService,                              // T=Remorquage, R=Réparé sur place, D=Trajet à vide
         // Heure de base = heure de mission Hexalite (1ère colonne), pas le received_at VD Soft (cas RDV).
-        receivedIso:   row.dispatchTime || row.vdsoft?.received_at,
-        tariffZip:     row.breakdown?.zipCode || null,
-        tariffLat:     row.breakdown?.latitude || null,
-        tariffLng:     row.breakdown?.longitude || null,
+        receivedIso:     row.dispatchTime || row.vdsoft?.received_at,
+        tariffZip:       row.breakdown?.zipCode || null,
+        tariffLat:       row.breakdown?.latitude || null,
+        tariffLng:       row.breakdown?.longitude || null,
         dryRun,
       }
       if (row.vdsoft) {
         body.distanceKm  = km ?? undefined
-        if (dest) body.destination = { name: dest, countryCode: 'BE', countryName: 'Belgique' }
+        // Destination seulement pour le remorquage (T).
+        if (providedService === 'T' && dest) body.destination = { name: dest, countryCode: 'BE', countryName: 'Belgique' }
       } else if (row.towsoft) {
         body.towsoftNum = row.towsoft.towsoft_num   // serveur récupère distance + destination
       }
@@ -140,6 +160,14 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <select
+                        value={serviceOf(row)}
+                        onChange={e => setSvc(p => ({ ...p, [row.assignmentId]: e.target.value as 'T' | 'R' | 'D' }))}
+                        disabled={!!busyId}
+                        title="Type de service Allianz"
+                        className="bg-surface-2 border rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand">
+                        {SERVICE_OPTS.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+                      </select>
                       <button onClick={() => runClose(row, true)} disabled={!!busyId || (!row.vdsoft && !row.towsoft)}
                         className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-xs font-semibold disabled:opacity-50">
                         {busyId === row.assignmentId + ':dry' ? '⏳…' : '🧪 Tester'}
