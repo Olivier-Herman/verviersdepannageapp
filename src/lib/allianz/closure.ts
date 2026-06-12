@@ -243,7 +243,8 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       arrivalDateTime:          times.arrival,
       serviceDeliveryStartTime: times.start,
       serviceDeliveryDateTime:  times.end,
-      distance:                 String(Math.round(distanceKm)),
+      // Distance déclarée : arrondi à l unité supérieure + 2 (règle Olivier 2026-06-12)
+      distance:                 String(Math.ceil(distanceKm) + 2),
       contractualDistance:      Number(distanceKm),
       customerMileageRecord:    { mileage: input.mileage || '0' },
       costCurrency:             'EUR',
