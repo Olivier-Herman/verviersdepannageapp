@@ -314,10 +314,14 @@ export default function FacturationClient({
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-success/20 via-brand/15 to-purple-500/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
             <span>🧾</span>
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Facturation</h1>
             <p className="text-ink-muted text-sm mt-1">{filtered.length} mission{filtered.length > 1 ? 's' : ''} à facturer.</p>
           </div>
+          <Link href="/facturation/allianz"
+            className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition self-start">
+            🟦 Clôture Allianz
+          </Link>
         </div>
 
         {/* Filtres */}
