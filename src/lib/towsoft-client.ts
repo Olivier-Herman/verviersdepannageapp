@@ -394,6 +394,91 @@ function parseSearchRow(r: any[]): TowsoftSearchResult | null {
   }
 }
 
+// ───────────────────────────────────────────────────────────────────
+// ANNULATION D UNE FICHE TOWSOFT ⭐ Olivier 2026-06-12
+// ───────────────────────────────────────────────────────────────────
+//
+// Reproduit le bouton "Annuler" de TowSoft (decouvert via la def JS
+// cancellerappel -> modale appel-canceller.php -> submit) :
+//   POST /Src/router.php?controller=Appel/AppelCancellation/appelCanceller
+//   body: idappel=<num>&idby=<user>&raison=<motif>&dispatchId=&dpr=0
+//
+// Usage chantier facturation : apres avoir facture via VD Soft, on annule
+// la fiche TowSoft avec motif "Facturation via OK VDS" pour la sortir des
+// listes a facturer cote TowSoft (double-ecriture coherente).
+
+export interface CancelTowsoftResult {
+  ok:           boolean
+  towsoft_num:  string
+  idby:         string | null
+  http_status:  number
+  response:     string        // reponse brute (tronquee) pour debug/log
+  error?:       string
+}
+
+/**
+ * Annule une fiche TowSoft avec un motif.
+ * idby est auto-decouvert depuis le formulaire d annulation (var idadmin),
+ * fallback env TOWSOFT_USER_ID puis '50' (VDBot).
+ */
+export async function cancelTowsoftAppel(
+  towsoftNum: string | number,
+  raison: string,
+): Promise<CancelTowsoftResult> {
+  const num = String(towsoftNum).trim()
+  const motif = (raison || '').trim()
+  if (!num)   return { ok: false, towsoft_num: num, idby: null, http_status: 0, response: '', error: 'Numero requis' }
+  if (!motif) return { ok: false, towsoft_num: num, idby: null, http_status: 0, response: '', error: 'Motif requis' }
+
+  // 1. Recupere idby depuis le formulaire d annulation (var idadmin = "50")
+  let idby: string = process.env.TOWSOFT_USER_ID || '50'
+  try {
+    const formRes = await towsoftFetch(`/appel-canceller.php?thenum=${encodeURIComponent(num)}`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+    const formHtml = await formRes.text()
+    const m = formHtml.match(/idadmin\s*=\s*["'](\d+)["']/i)
+    if (m) idby = m[1]
+  } catch { /* fallback idby conserve */ }
+
+  // 2. POST l annulation
+  const body = new URLSearchParams({
+    idappel:    num,
+    idby:       idby,
+    raison:     motif,
+    dispatchId: '',
+    dpr:        '0',
+  })
+  const res = await towsoftFetch('/Src/router.php?controller=Appel/AppelCancellation/appelCanceller', {
+    method:  'POST',
+    headers: {
+      'Content-Type':     'application/x-www-form-urlencoded',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: body.toString(),
+  })
+  const txt = (await res.text().catch(() => '')).slice(0, 500)
+
+  return {
+    ok:          res.ok,
+    towsoft_num: num,
+    idby,
+    http_status: res.status,
+    response:    txt,
+    error:       res.ok ? undefined : `HTTP ${res.status}`,
+  }
+}
+
+/**
+ * Verifie le statut d une fiche TowSoft via la recherche par # de mission.
+ * Retourne le statut texte (ex "Annulé", "Exporté") ou null si introuvable.
+ */
+export async function getTowsoftAppelStatus(towsoftNum: string | number): Promise<string | null> {
+  const rows = await searchTowsoftGlobal('id_appel', String(towsoftNum))
+  const hit = rows.find(r => r.towsoft_num === String(towsoftNum)) || rows[0]
+  return hit?.statut || null
+}
+
 /**
  * Recherche globale dans TowSoft (toutes compagnies) par critere.
  * Login partage (cookie cache). Retourne 0..N resultats structures.
