@@ -34,6 +34,31 @@ export const ALLIANZ_PROVIDED_SERVICE: Record<string, string> = {
 // Cause par défaut (= "Autre" / AUTRE SERVICE dans le dropdown "Dégâts ou panne réelle")
 const DEFAULT_FINAL_SUB_CASE_CAUSE = 'KA704'
 
+/** Géocode une adresse via Google → coords + composants (pour finalDestination). */
+async function geocodeAddress(address: string): Promise<
+  { lat: number; lng: number; street?: string; streetNumber?: string; zipCode?: string; city?: string; formatted?: string } | null
+> {
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY
+  const addr = (address || '').trim()
+  if (!key || !addr) return null
+  try {
+    const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&region=be&language=fr&key=${key}`, { signal: AbortSignal.timeout(10000) })
+    const j = await r.json()
+    const res = j.results?.[0]
+    if (!res?.geometry?.location) return null
+    const comp = (type: string) => res.address_components?.find((c: any) => c.types?.includes(type))?.long_name
+    return {
+      lat: res.geometry.location.lat,
+      lng: res.geometry.location.lng,
+      streetNumber: comp('street_number'),
+      street:       comp('route'),
+      zipCode:      comp('postal_code'),
+      city:         comp('locality') || comp('postal_town'),
+      formatted:    res.formatted_address,
+    }
+  } catch { return null }
+}
+
 function headers(token: string): Record<string, string> {
   return {
     'guac-authorization':  `Bearer ${token}`,
@@ -247,10 +272,21 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
   if (distanceKm == null || !Number.isFinite(distanceKm)) {
     return { ok: false, dryRun, steps, error: 'Distance introuvable (ni VD Soft ni TowSoft)' }
   }
-  // Garde-fou : destination obligatoire UNIQUEMENT pour le remorquage (T).
-  // Réparé sur place (R) / Trajet à vide (D) n ont pas de destination.
-  if (!dryRun && input.providedService === 'T' && !destination?.name) {
-    return { ok: false, dryRun, steps, error: 'Destination du remorquage manquante — soumission bloquée (sinon montants à 0).' }
+
+  // Géocodage de la destination (remorquage T uniquement) — Allianz exige des
+  // coordonnées pour placer la "Destination du remorquage", sinon montants à 0.
+  let destGeo: Awaited<ReturnType<typeof geocodeAddress>> = null
+  if (input.providedService === 'T' && destination?.name) {
+    if (destination.latitude != null && destination.longitude != null) {
+      destGeo = { lat: destination.latitude, lng: destination.longitude }
+    } else {
+      destGeo = await geocodeAddress(destination.name)
+      steps.push({ step: 'geocode_destination', ok: !!destGeo, detail: destGeo ? `${destGeo.lat},${destGeo.lng}` : 'échec géocodage' })
+    }
+  }
+  // Garde-fou STRICT : remorquage (T) sans destination géocodée => on bloque.
+  if (!dryRun && input.providedService === 'T' && !destGeo) {
+    return { ok: false, dryRun, steps, error: 'Destination du remorquage non géocodée — soumission bloquée (évite les montants à 0).' }
   }
 
   try {
@@ -285,11 +321,15 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
     }
     if (destination?.name) {
       payload.finalDestination = {
-        name:        destination.name,
-        countryCode: destination.countryCode || 'BE',
-        countryName: destination.countryName || 'Belgique',
-        ...(destination.latitude  != null ? { latitude:  destination.latitude }  : {}),
-        ...(destination.longitude != null ? { longitude: destination.longitude } : {}),
+        name:         destGeo?.formatted || destination.name,
+        countryCode:  destination.countryCode || 'BE',
+        countryName:  destination.countryName || 'Belgique',
+        ...(destGeo?.lat != null ? { latitude:  destGeo.lat } : (destination.latitude  != null ? { latitude:  destination.latitude }  : {})),
+        ...(destGeo?.lng != null ? { longitude: destGeo.lng } : (destination.longitude != null ? { longitude: destination.longitude } : {})),
+        ...(destGeo?.street       ? { street:       destGeo.street }       : {}),
+        ...(destGeo?.streetNumber ? { streetNumber: destGeo.streetNumber } : {}),
+        ...(destGeo?.zipCode      ? { zipCode:      destGeo.zipCode }      : {}),
+        ...(destGeo?.city         ? { city:         destGeo.city }         : {}),
       }
     }
 
