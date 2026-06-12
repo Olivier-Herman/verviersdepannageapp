@@ -339,24 +339,34 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       }
     }
 
-    // Montant total des bills : si 0, on ne soumet PAS (sinon clôture à 0 €).
-    const billsTotal = bills.reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
-
     if (dryRun) {
       return { ok: true, dryRun: true, steps, payload, tariffs }
     }
 
-    // Garde-fou montants : Allianz ne recalcule pas — si les bills sont à 0
-    // (tarifs non calculés), on bloque pour ne pas clôturer à 0 €.
-    if (billsTotal <= 0) {
+    // Garde-fou montants (recalculé sur les bills à jour) : si toujours 0, on bloque.
+    const finalTotal = (payload.bills as any[]).reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
+    if (finalTotal <= 0) {
       steps.push({ step: 'montants', ok: false, detail: 'bills à 0 — tarifs non calculés' })
-      return { ok: false, dryRun: false, steps, payload, tariffs, error: 'Montants à 0 (tarifs non calculés par Allianz) — soumission bloquée. Le calcul des tarifs doit être récupéré.' }
+      return { ok: false, dryRun: false, steps, payload, tariffs, error: 'Montants à 0 (tarifs non calculés par Allianz) — soumission bloquée. Il faut récupérer le calcul (requête « Calculer »).' }
     }
 
-    // Délai de calcul Allianz : ~2 s entre "Calculer" (tarifs) et "Soumettre",
-    // sinon Allianz soumet avant d avoir calculé → montants à 0 (Olivier 2026-06-12).
+    // Délai de calcul Allianz (~2 s) puis RE-RÉCUPÉRATION des tarifs : le calcul
+    // est asynchrone côté Allianz. Si les montants sont remplis au 2e appel, on
+    // reconstruit les bills avec ces valeurs.
     await new Promise(r => setTimeout(r, 2200))
-    steps.push({ step: 'attente_calcul', ok: true, detail: '2,2 s' })
+    try {
+      const tariffs2 = await getTariffs(token, input.assignmentId, input.providedService, input.tariffLat ?? null, input.tariffLng ?? null, input.tariffZip ?? null)
+      const bills2 = tariffs2.filter(t => t.self).map(tariffToBill)
+      const total2 = bills2.reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
+      if (total2 > 0) {
+        payload.bills = bills2
+        steps.push({ step: 'attente_calcul', ok: true, detail: `2,2 s — montants recalculés (${total2.toFixed(2)} €)` })
+      } else {
+        steps.push({ step: 'attente_calcul', ok: true, detail: '2,2 s — montants toujours à 0' })
+      }
+    } catch {
+      steps.push({ step: 'attente_calcul', ok: true, detail: '2,2 s (re-fetch tarifs KO)' })
+    }
 
     // Étape 3 : soumission
     const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${input.caseId}/assignments/${input.assignmentId}/expertreports?cache_buster=${Date.now()}`
