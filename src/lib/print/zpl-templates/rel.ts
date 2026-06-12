@@ -35,7 +35,7 @@ export interface RelLabelData {
  *  │ ─ RELIVRAISON ─────────────────────              │
  *  │ Rue de la Station 45                             │
  *  │ 4800 Verviers                                    │
- *  │                                          TDC     │
+ *  │                                                  │
  *  └──────────────────────────────────────────────────┘
  */
 export function buildRelLabelZPL(data: RelLabelData): string {
@@ -83,10 +83,6 @@ export function buildRelLabelZPL(data: RelLabelData): string {
 ^A0N,32,32
 ^FB752,4,0,L,0
 ^FD${address}^FS
-
-^FO700,580
-^A0N,22,22
-^FDTDC^FS
 
 ^XZ`
 }
