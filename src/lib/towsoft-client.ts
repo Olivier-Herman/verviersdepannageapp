@@ -290,3 +290,134 @@ function brusselsOffsetMs(d: Date): number {
   const utcStr    = d.toLocaleString('en-US', { timeZone: 'UTC' })
   return (new Date(localeStr).getTime() - new Date(utcStr).getTime())
 }
+
+// ───────────────────────────────────────────────────────────────────
+// RECHERCHE GLOBALE TOWSOFT (live) ⭐ Olivier 2026-06-12
+// ───────────────────────────────────────────────────────────────────
+//
+// Reproduit la "Recherche rapide" de TowSoft via l endpoint data JSON
+// (decouvert en capturant la requete reseau) :
+//   GET /_appels-recherche.php?key=<terme>&searchType=<type>&companies=1,2,3,4,5,6
+//   -> { aaData: [[col0..col13], ...] }  (format DataTables)
+//
+// Un seul login partage (cookie cache 50 min via towsoftFetch) couvre
+// autant de recherches que voulu — pas de connexion par ligne.
+
+/** Types de recherche supportes (value des radios TowSoft). */
+export const TOWSOFT_SEARCH_TYPES = {
+  id_appel:            '# de mission',
+  num_facture:         '# de facture',
+  num_dossier:         '# de dossier',
+  immatriculation:     'Immatriculation',
+  niv:                 'NIV',
+  modele_marque:       'Marque - Modèle',
+  client_nom:          'Nom du client',
+  origine_destination: "Lieu d'intervention / Destination",
+  montant:             'Montant TTC',
+  remarques:           'Remarques & notes paiement',
+} as const
+
+export type TowsoftSearchType = keyof typeof TOWSOFT_SEARCH_TYPES
+
+// Les 6 compagnies du groupe (company_select). Toutes = recherche large.
+const TOWSOFT_ALL_COMPANIES = '1,2,3,4,5,6'
+
+export interface TowsoftSearchResult {
+  towsoft_num:        string
+  statut:             string | null   // ex "Exporté"
+  ticket:             string | null   // ex "Relivraison - Zone K"
+  num_facture:        string | null
+  dossier:            string | null
+  type:               string | null   // ex "Appel Police - Accident"
+  date_raw:           string | null
+  date_iso:           string | null
+  lieu_intervention:  string | null
+  destination:        string | null
+  client:             string | null
+  brand:              string | null
+  model:              string | null
+  plate:              string | null
+  vin:                string | null
+  remarks:            string | null
+  montant_ttc:        number | null
+  action_label:       string | null   // col12 : ex "Restitution", "N/D", "-"
+  fiche_url:          string
+}
+
+function parseMontantTtc(raw: string): number | null {
+  const cleaned = stripHtml(raw).replace(/[^\d.,]/g, '').trim()
+  if (!cleaned) return null
+  // ',' present => format FR (',' decimal, '.' milliers). Sinon '.' decimal.
+  const norm = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned
+  const n = Number(norm)
+  return Number.isFinite(n) ? n : null
+}
+
+function parseSearchRow(r: any[]): TowsoftSearchResult | null {
+  if (!Array.isArray(r) || r.length === 0) return null
+  const col0 = String(r[0] || '')
+  const numMatch = col0.match(/appel\.php\?num=(\d+)/i)
+  const towsoft_num = numMatch ? numMatch[1] : stripHtml(col0)
+  if (!towsoft_num) return null
+
+  // col1 : statut (+ eventuel <span class="ticket">…</span>)
+  const col1 = String(r[1] || '')
+  const ticketMatch = col1.match(/class="ticket"[^>]*>([^<]+)</i)
+  const ticket = ticketMatch ? ticketMatch[1].trim() : null
+  const statut = stripHtml(col1.replace(/<span class="ticket"[\s\S]*?<\/span>/i, '')).trim() || null
+
+  // col9 : vehicule "Marque Modele <hr/> PLAQUE_ou_VIN"
+  const vehParts = String(r[9] || '').split(/<hr[^>]*>/i).map(s => stripHtml(s).trim()).filter(Boolean)
+  const { plate, vin, brand, model } = extractPlateAndVin(vehParts.join(' '))
+
+  const dateRaw = stripHtml(r[5] || '') || null
+
+  return {
+    towsoft_num,
+    statut,
+    ticket,
+    num_facture:       stripHtml(r[2] || '') || null,
+    dossier:           stripHtml(r[3] || '') || null,
+    type:              stripHtml(r[4] || '') || null,
+    date_raw:          dateRaw,
+    date_iso:          parseTowsoftDateUTC(dateRaw),
+    lieu_intervention: stripHtml(r[6] || '') || null,
+    destination:       stripHtml(r[7] || '') || null,
+    client:            stripHtml(r[8] || '').replace(/[-–—]{3,}/g, ' ').replace(/\s+/g, ' ').trim() || null,
+    brand, model, plate, vin,
+    remarks:           stripHtml(r[10] || '') || null,
+    montant_ttc:       parseMontantTtc(String(r[11] || '')),
+    action_label:      stripHtml(r[12] || '') || null,
+    fiche_url:         `${TOWSOFT_URL}/appel.php?num=${towsoft_num}`,
+  }
+}
+
+/**
+ * Recherche globale dans TowSoft (toutes compagnies) par critere.
+ * Login partage (cookie cache). Retourne 0..N resultats structures.
+ */
+export async function searchTowsoftGlobal(
+  searchType: TowsoftSearchType,
+  key: string,
+): Promise<TowsoftSearchResult[]> {
+  const term = (key || '').trim()
+  if (!term) return []
+  if (!(searchType in TOWSOFT_SEARCH_TYPES)) {
+    throw new Error(`searchType invalide : ${searchType}`)
+  }
+  const qs = new URLSearchParams({
+    key:        term,
+    searchType,
+    companies:  TOWSOFT_ALL_COMPANIES,
+    _:          String(Date.now()),
+  })
+  const res = await towsoftFetch(`/_appels-recherche.php?${qs.toString()}`, {
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  })
+  if (!res.ok) throw new Error(`searchTowsoftGlobal HTTP ${res.status}`)
+  const data = await res.json().catch(() => ({}))
+  const aaData = Array.isArray(data?.aaData) ? data.aaData : []
+  return aaData.map(parseSearchRow).filter((x: TowsoftSearchResult | null): x is TowsoftSearchResult => x !== null)
+}
