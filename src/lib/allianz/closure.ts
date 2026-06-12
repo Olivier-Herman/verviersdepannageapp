@@ -166,8 +166,9 @@ export interface CloseInput {
   caseId:           string
   assignmentId:     string
   providedService:  string                       // 'T' | 'R' | 'D'
-  receivedIso:      string                        // pour générer les heures
-  distanceKm:       number                         // km total VD Soft
+  receivedIso:      string                        // heure de mission Hexalite (1ère colonne) — base des heures générées
+  distanceKm?:      number                         // km total (VD Soft). Si absent + towsoftNum fourni, résolu via TowSoft.
+  towsoftNum?:      string | null                  // fallback : récupère distance + destination depuis TowSoft
   mileage?:         string                         // kilométrage véhicule (def "0")
   finalSubCaseCause?: string                       // def KA704
   destination?:     { name: string; countryCode?: string; countryName?: string; latitude?: number; longitude?: number }
@@ -199,6 +200,28 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
 
   const times = generateClosureTimes(input.receivedIso)
 
+  // Résolution distance + destination depuis TowSoft si pas fournies (fallback hors VD Soft)
+  let distanceKm = input.distanceKm
+  let destination = input.destination
+  if ((distanceKm == null || destination == null) && input.towsoftNum) {
+    try {
+      const { fetchTowsoftDetail } = await import('@/lib/towsoft-detail')
+      const d = await fetchTowsoftDetail(input.towsoftNum)
+      if (distanceKm == null && d.distance_km) {
+        const n = Number(String(d.distance_km).replace(',', '.').replace(/[^\d.]/g, ''))
+        if (Number.isFinite(n)) distanceKm = n
+      }
+      if (destination == null && d.dest_addr) {
+        destination = { name: [d.dest_addr, d.dest_cp, d.dest_ville].filter(Boolean).join(' '), countryCode: 'BE', countryName: 'Belgique' }
+      }
+    } catch (e: any) {
+      steps.push({ step: 'towsoft_fallback', ok: false, detail: e.message })
+    }
+  }
+  if (distanceKm == null || !Number.isFinite(distanceKm)) {
+    return { ok: false, dryRun, steps, error: 'Distance introuvable (ni VD Soft ni TowSoft)' }
+  }
+
   try {
     // Étape 1 : affectation manuelle (sautée en dry-run)
     if (!dryRun) {
@@ -220,20 +243,20 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       arrivalDateTime:          times.arrival,
       serviceDeliveryStartTime: times.start,
       serviceDeliveryDateTime:  times.end,
-      distance:                 String(Math.round(input.distanceKm)),
-      contractualDistance:      Number(input.distanceKm),
+      distance:                 String(Math.round(distanceKm)),
+      contractualDistance:      Number(distanceKm),
       customerMileageRecord:    { mileage: input.mileage || '0' },
       costCurrency:             'EUR',
       bills,
       expertReportStep:         'C',
     }
-    if (input.destination?.name) {
+    if (destination?.name) {
       payload.finalDestination = {
-        name:        input.destination.name,
-        countryCode: input.destination.countryCode || 'BE',
-        countryName: input.destination.countryName || 'Belgique',
-        ...(input.destination.latitude  != null ? { latitude:  input.destination.latitude }  : {}),
-        ...(input.destination.longitude != null ? { longitude: input.destination.longitude } : {}),
+        name:        destination.name,
+        countryCode: destination.countryCode || 'BE',
+        countryName: destination.countryName || 'Belgique',
+        ...(destination.latitude  != null ? { latitude:  destination.latitude }  : {}),
+        ...(destination.longitude != null ? { longitude: destination.longitude } : {}),
       }
     }
 

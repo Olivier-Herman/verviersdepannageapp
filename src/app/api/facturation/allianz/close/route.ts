@@ -46,9 +46,10 @@ export async function POST(req: Request) {
   if (!providedService) providedService = 'T'
 
   const receivedIso = String(body.receivedIso || '').trim() || new Date().toISOString()
-  const distanceKm  = Number(body.distanceKm)
-  if (!Number.isFinite(distanceKm) || distanceKm < 0) {
-    return NextResponse.json({ error: 'distanceKm invalide' }, { status: 400 })
+  const distanceKm  = body.distanceKm != null && Number.isFinite(Number(body.distanceKm)) ? Number(body.distanceKm) : undefined
+  const towsoftNum  = body.towsoftNum ? String(body.towsoftNum) : null
+  if (distanceKm == null && !towsoftNum) {
+    return NextResponse.json({ error: 'distanceKm ou towsoftNum requis' }, { status: 400 })
   }
 
   const result = await closeAllianzAssignment({
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
     providedService,
     receivedIso,
     distanceKm,
+    towsoftNum,
     mileage:           body.mileage ? String(body.mileage) : undefined,
     finalSubCaseCause: body.finalSubCaseCause ? String(body.finalSubCaseCause) : undefined,
     destination:       body.destination || undefined,

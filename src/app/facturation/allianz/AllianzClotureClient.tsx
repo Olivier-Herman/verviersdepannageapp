@@ -10,11 +10,15 @@ interface Vd {
   source: string | null; status: string | null
   destination_address: string | null; received_at: string | null
 }
+interface Tw {
+  towsoft_num: string; dossier: string | null; statut: string | null
+  type: string | null; destination: string | null; date_iso: string | null; fiche_url: string | null
+}
 interface Row {
   assignmentId: string; caseId: string; assignmentNumber: string
   plate: string | null; brand: string | null; model: string | null
   product: string | null; serviceType: string | null; dispatchTime: string | null
-  breakdown: any; vdsoft: Vd | null
+  breakdown: any; vdsoft: Vd | null; towsoft: Tw | null
 }
 
 interface Props { userRole: string; userName: string; userEmail?: string | null; userModules: string[] }
@@ -54,22 +58,28 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
   }
 
   async function runClose(row: Row, dryRun: boolean) {
-    if (!row.vdsoft) { setResult(p => ({ ...p, [row.assignmentId]: { error: 'Mission non rapprochée VD Soft — impossible de récupérer la distance.' } })); return }
+    if (!row.vdsoft && !row.towsoft) { setResult(p => ({ ...p, [row.assignmentId]: { error: 'Mission non rapprochée (ni VD Soft ni TowSoft).' } })); return }
     setBusyId(row.assignmentId + (dryRun ? ':dry' : ':real'))
     setResult(p => ({ ...p, [row.assignmentId]: null }))
     try {
-      const km = await fetchKm(row.vdsoft.id)
-      const dest = row.vdsoft.destination_address
-      const body = {
+      // VD Soft : distance via /km + destination. Sinon TowSoft : résolu côté serveur (towsoftNum).
+      const km   = row.vdsoft ? await fetchKm(row.vdsoft.id) : null
+      const dest = row.vdsoft?.destination_address || null
+      const body: any = {
         assignmentId:  row.assignmentId,
         caseId:        row.caseId,
-        receivedIso:   row.vdsoft.received_at || row.dispatchTime,
-        distanceKm:    km ?? 0,
-        destination:   dest ? { name: dest, countryCode: 'BE', countryName: 'Belgique' } : undefined,
+        // Heure de base = heure de mission Hexalite (1ère colonne), pas le received_at VD Soft (cas RDV).
+        receivedIso:   row.dispatchTime || row.vdsoft?.received_at,
         tariffZip:     row.breakdown?.zipCode || null,
         tariffLat:     row.breakdown?.latitude || null,
         tariffLng:     row.breakdown?.longitude || null,
         dryRun,
+      }
+      if (row.vdsoft) {
+        body.distanceKm  = km ?? undefined
+        if (dest) body.destination = { name: dest, countryCode: 'BE', countryName: 'Belgique' }
+      } else if (row.towsoft) {
+        body.towsoftNum = row.towsoft.towsoft_num   // serveur récupère distance + destination
       }
       const r = await fetch('/api/facturation/allianz/close', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -120,7 +130,9 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
                         <span className="text-ink-muted text-xs">#{row.assignmentNumber}</span>
                         {row.vdsoft
                           ? <span className="px-1.5 py-0.5 rounded text-[10px] bg-success/15 text-success">VD Soft ✓ {row.vdsoft.mission_number ? '#' + row.vdsoft.mission_number : ''}</span>
-                          : <span className="px-1.5 py-0.5 rounded text-[10px] bg-warning/15 text-warning">non rapprochée</span>}
+                          : row.towsoft
+                            ? <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-700">TowSoft ✓ #{row.towsoft.towsoft_num}</span>
+                            : <span className="px-1.5 py-0.5 rounded text-[10px] bg-warning/15 text-warning">non rapprochée</span>}
                       </div>
                       <div className="text-ink-muted text-[11px] mt-0.5">
                         {row.product || '—'} · {row.serviceType || '—'} · {fmt(row.dispatchTime)}
@@ -128,13 +140,13 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => runClose(row, true)} disabled={!!busyId || !row.vdsoft}
+                      <button onClick={() => runClose(row, true)} disabled={!!busyId || (!row.vdsoft && !row.towsoft)}
                         className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-xs font-semibold disabled:opacity-50">
                         {busyId === row.assignmentId + ':dry' ? '⏳…' : '🧪 Tester'}
                       </button>
                       <button
                         onClick={() => { if (confirm(`Clôturer la mission Allianz #${row.assignmentNumber} (${row.plate || '?'}) ?\nAffectation manuelle + soumission du résultat sur la plateforme Allianz.`)) runClose(row, false) }}
-                        disabled={!!busyId || !row.vdsoft}
+                        disabled={!!busyId || (!row.vdsoft && !row.towsoft)}
                         className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold disabled:opacity-50">
                         {busyId === row.assignmentId + ':real' ? '⏳…' : 'Clôturer'}
                       </button>

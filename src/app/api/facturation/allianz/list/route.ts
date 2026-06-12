@@ -48,18 +48,21 @@ export async function GET() {
   const numbers = content.map((a: any) => String(a.assignmentNumber)).filter(Boolean)
   const plates  = Array.from(new Set(content.map((a: any) => normPlate(a.customerLicensePlate)).filter(Boolean)))
 
+  // Olivier 2026-06-12 : on ne tient pas compte des missions annulées.
   const byNumber = new Map<string, any>()
   const byPlate  = new Map<string, any>()
   if (numbers.length) {
     const { data } = await sb.from('incoming_missions')
       .select('id, mission_number, external_id, dossier_number, source, status, vehicle_plate, destination_address, received_at')
       .in('external_id', numbers)
+      .neq('status', 'cancelled')
     for (const m of (data || [])) if (m.external_id) byNumber.set(String(m.external_id), m)
   }
   if (plates.length) {
     const { data } = await sb.from('incoming_missions')
       .select('id, mission_number, external_id, dossier_number, source, status, vehicle_plate, destination_address, received_at')
       .not('vehicle_plate', 'is', null)
+      .neq('status', 'cancelled')
       .order('received_at', { ascending: false })
       .limit(500)
     for (const m of (data || [])) {
@@ -68,9 +71,37 @@ export async function GET() {
     }
   }
 
+  // Fallback TowSoft (par plaque) pour les missions absentes de VD Soft.
+  // Best-effort : si TowSoft KO, on continue sans (la ligne reste "non rapprochée").
+  const towByPlate = new Map<string, any>()
+  const unmatchedPlates = Array.from(new Set(
+    content
+      .filter((a: any) => {
+        const num = String(a.assignmentNumber)
+        return !byNumber.get(num) && !byPlate.get(normPlate(a.customerLicensePlate))
+      })
+      .map((a: any) => (a.customerLicensePlate || '').trim())
+      .filter(Boolean)
+  ))
+  if (unmatchedPlates.length) {
+    try {
+      const { searchTowsoftGlobal } = await import('@/lib/towsoft-client')
+      for (const plate of unmatchedPlates) {
+        const hits = await searchTowsoftGlobal('immatriculation', plate)
+        // exclut les annulées (statut contient "annul")
+        const hit = hits.find(h => !/annul/i.test(h.statut || '')) || null
+        if (hit) towByPlate.set(normPlate(plate), hit)
+      }
+    } catch (e: any) {
+      console.warn('[allianz/list] TowSoft fallback KO:', e.message)
+    }
+  }
+
   const rows = content.map((a: any) => {
     const num = String(a.assignmentNumber)
-    const vd = byNumber.get(num) || byPlate.get(normPlate(a.customerLicensePlate)) || null
+    const np = normPlate(a.customerLicensePlate)
+    const vd = byNumber.get(num) || byPlate.get(np) || null
+    const tw = !vd ? (towByPlate.get(np) || null) : null
     const addr = a.breakdownAddress || {}
     return {
       assignmentId:     a.assignmentId,
@@ -92,6 +123,15 @@ export async function GET() {
         status:             vd.status,
         destination_address: vd.destination_address,
         received_at:        vd.received_at,
+      } : null,
+      towsoft: tw ? {
+        towsoft_num:  tw.towsoft_num,
+        dossier:      tw.dossier,
+        statut:       tw.statut,
+        type:         tw.type,
+        destination:  tw.destination,
+        date_iso:     tw.date_iso,
+        fiche_url:    tw.fiche_url,
       } : null,
     }
   })
