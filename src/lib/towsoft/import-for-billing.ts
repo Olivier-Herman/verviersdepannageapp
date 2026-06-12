@@ -11,7 +11,7 @@
 
 import { createAdminClient }   from '@/lib/supabase'
 import { fetchTowsoftDetail }  from '@/lib/towsoft-detail'
-import { parseTowsoftDateUTC } from '@/lib/towsoft-client'
+import { parseTowsoftDateUTC, searchTowsoftGlobal } from '@/lib/towsoft-client'
 
 export interface ImportForBillingResult {
   ok:          boolean
@@ -63,7 +63,7 @@ export async function importTowsoftForBilling(towsoftNum: string | number): Prom
     return { ok: true, mission_id: existing.id, action: 'existing', towsoft_num: num }
   }
 
-  // 2. Detail complet TowSoft (5 endpoints, best-effort)
+  // 2. Detail complet TowSoft (adresses, proprio, police) — best-effort
   let detail
   try {
     detail = await fetchTowsoftDetail(num)
@@ -71,9 +71,26 @@ export async function importTowsoftForBilling(towsoftNum: string | number): Prom
     return { ok: false, towsoft_num: num, error: `Détail TowSoft KO : ${e.message}` }
   }
 
-  const { source, mission_type } = inferSourceAndType(detail.nature || detail.motif_parc || detail.appel_status)
-  const dateIso = parseTowsoftDateUTC(detail.date_appel) || new Date().toISOString()
-  const montantTtc = parseMontant(detail.total_ttc)
+  // 2bis. Recherche live : le parsing vehicule/montant/type/dossier y est plus
+  // fiable que le detail (ex: marque mal lue "Oui" cote detail). On la prend
+  // en priorite pour ces champs.
+  let row: any = null
+  try {
+    const rows = await searchTowsoftGlobal('id_appel', num)
+    row = rows.find(r => r.towsoft_num === num) || rows[0] || null
+  } catch { /* non bloquant : on retombe sur detail */ }
+
+  const plate  = row?.plate  || detail.immatriculation || null
+  const vin    = row?.vin    || detail.vin || null
+  const brand  = row?.brand  || detail.marque || null
+  const model  = row?.model  || detail.modele || null
+  // billed_to_name = qui paye (assistance/compagnie), depuis la colonne client
+  // de la recherche (ex "ETHIAS ASSISTANCE (299429K)") ou le client du detail.
+  const payer  = row?.client || detail.client_name || null
+
+  const { source, mission_type } = inferSourceAndType(row?.type || detail.nature || detail.motif_parc || detail.appel_status)
+  const dateIso = row?.date_iso || parseTowsoftDateUTC(detail.date_appel) || new Date().toISOString()
+  const montantTtc = row?.montant_ttc != null ? row.montant_ttc : parseMontant(detail.total_ttc)
 
   const insertPayload: Record<string, any> = {
     external_id:        externalId,
@@ -81,28 +98,29 @@ export async function importTowsoftForBilling(towsoftNum: string | number): Prom
     mission_type,
     status:             'to_invoice',
 
-    vehicle_plate:      detail.immatriculation || null,
-    vehicle_brand:      detail.marque || null,
-    vehicle_model:      detail.modele || null,
-    vehicle_vin:        detail.vin || null,
+    vehicle_plate:      plate,
+    vehicle_brand:      brand,
+    vehicle_model:      model,
+    vehicle_vin:        vin,
 
-    client_name:        detail.client_name || null,
-    incident_address:   detail.origine_addr || null,
+    client_name:        detail.client_name || payer || null,
+    billed_to_name:     payer || null,
+    incident_address:   detail.origine_addr || row?.lieu_intervention || null,
     incident_city:      detail.origine_ville || null,
     incident_lat:       detail.origine_lat ? parseFloat(detail.origine_lat) : null,
     incident_lng:       detail.origine_lng ? parseFloat(detail.origine_lng) : null,
 
-    destination_address: detail.dest_addr || null,
+    destination_address: detail.dest_addr || row?.destination || null,
     destination_lat:    detail.dest_lat ? parseFloat(detail.dest_lat) : null,
     destination_lng:    detail.dest_lng ? parseFloat(detail.dest_lng) : null,
 
-    dossier_number:     detail.dossier_police || detail.po || null,
+    dossier_number:     detail.dossier_police || detail.po || row?.dossier || null,
     officer_name:       detail.nom_responsable || null,
     police_pv_number:   detail.numero_pv || null,
     keys_digibox_slot:  detail.cle_box || null,
 
-    remarks_general:    detail.remarque || null,
-    invoice_number:     detail.facture_no || null,
+    remarks_general:    detail.remarque || row?.remarks || null,
+    invoice_number:     detail.facture_no || row?.num_facture || null,
 
     // Montant TVAC connu cote TowSoft (indicatif : la modale recalcule/edite)
     amount_to_collect:  montantTtc,

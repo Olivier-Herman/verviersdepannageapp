@@ -998,7 +998,18 @@ export default function FacturerModal({
             <p className="text-ink-muted text-xs uppercase tracking-wide">{fmtSource(mission.source)}</p>
             <h2 className="text-ink font-semibold text-base">Facturer — {mission.external_id || mission.dossier_number || mission.id.slice(0,8)}</h2>
           </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink text-2xl leading-none px-2">✕</button>
+          <div className="flex items-center gap-2">
+            <a
+              href={`/dispatch/${mission.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Modifier la fiche complète (source, client facturé, montants, adresses…) puis rouvrir la facturation"
+              className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border rounded-lg text-ink-secondary hover:text-ink text-xs font-semibold transition whitespace-nowrap"
+            >
+              ✏️ Modifier la fiche
+            </a>
+            <button onClick={onClose} className="text-ink-muted hover:text-ink text-2xl leading-none px-2">✕</button>
+          </div>
         </div>
 
         {/* Body scroll */}
