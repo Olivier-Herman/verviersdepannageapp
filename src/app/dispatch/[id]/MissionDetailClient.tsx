@@ -345,6 +345,40 @@ function RelivrerButton({
   }, [allowsSourceOverride, parentSourceLower])
 
   const hasAddress = (initialRedeliveryAddress || '').trim().length > 0
+  const [savingAddr, setSavingAddr] = useState(false)
+  const [savedMsg,   setSavedMsg]   = useState<string | null>(null)
+
+  // Olivier 2026-06-12 : enregistre l adresse de relivraison SANS creer la REL.
+  // Avant ce fix, l adresse tapee ici restait en memoire locale (disparaissait
+  // au refresh) et l etiquette parc K affichait "En attente d info adresse de
+  // relivraison". On persiste + on reimprime l etiquette (best-effort).
+  const saveAddressOnly = async () => {
+    const finalAddr = address.trim()
+    if (!finalAddr) { setError('Saisis une adresse de relivraison'); return }
+    setSavingAddr(true); setError(null); setSavedMsg(null)
+    try {
+      const res = await fetch(`/api/missions/${missionId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ redelivery_address: finalAddr }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur enregistrement')
+      // Reimprime l etiquette pour qu elle porte l adresse. Best-effort : un
+      // dispatcher sans module fourriere recevra 403 -> on ignore.
+      let reprinted = false
+      try {
+        const pr = await fetch(`/api/missions/${missionId}/reprint-label`, { method: 'POST' })
+        reprinted = pr.ok
+      } catch { /* reseau imprimante : non bloquant */ }
+      setSavedMsg(reprinted
+        ? 'Adresse enregistrée — étiquette réimprimée.'
+        : 'Adresse enregistrée. Réimprime l\'étiquette pour la mettre à jour.')
+      router.refresh()
+    } catch (e: any) {
+      setError(e.message)
+    } finally { setSavingAddr(false) }
+  }
 
   const handle = async () => {
     const finalAddr = address.trim()
@@ -424,10 +458,15 @@ function RelivrerButton({
         </div>
       )}
 
+      <button onClick={saveAddressOnly} disabled={savingAddr || !address.trim()}
+        className="w-full py-2.5 bg-surface-2 hover:bg-surface-hover border disabled:opacity-50 text-ink rounded-xl text-sm font-semibold transition">
+        {savingAddr ? '⏳ Enregistrement…' : '💾 Enregistrer l\'adresse (étiquette)'}
+      </button>
       <button onClick={handle} disabled={loading || !address.trim()}
         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
         {loading ? '⏳ Création…' : '🚛 Créer la mission de relivraison'}
       </button>
+      {savedMsg && <p className="text-success text-xs">✓ {savedMsg}</p>}
       {error && <p className="text-critical text-xs">⚠ {error}</p>}
     </div>
   )

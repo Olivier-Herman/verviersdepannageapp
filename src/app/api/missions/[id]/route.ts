@@ -61,6 +61,10 @@ export async function PATCH(
     'destination_name', 'destination_address',
     'destination_lat', 'destination_lng',
     'destination_borne_km', 'destination_sens',
+    // Olivier 2026-06-12 : adresse de relivraison editable seule (sans creer la
+    // REL). Permet d enregistrer l adresse pour qu elle apparaisse sur l etiquette
+    // parc K (sinon "En attente d info adresse de relivraison").
+    'redelivery_address',
     'depot_depart_id',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',
