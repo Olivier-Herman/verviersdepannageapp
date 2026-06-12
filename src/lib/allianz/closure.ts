@@ -34,6 +34,69 @@ export const ALLIANZ_PROVIDED_SERVICE: Record<string, string> = {
 // Cause par défaut (= "Autre" / AUTRE SERVICE dans le dropdown "Dégâts ou panne réelle")
 const DEFAULT_FINAL_SUB_CASE_CAUSE = 'KA704'
 
+// ─── Grille tarifaire Allianz/AWP — LUE depuis source_tariffs (zéro hardcode) ──
+// Tarifs IDENTIQUES pour tous les produits Allianz, AUCUNE majoration (soir/WE/JF).
+// source_tariffs(source='mondial', mission_type) : unit_price=forfait, km_inclus,
+// km_price. La ligne "Fuel compensation" = source_tariffs(mondial, 'fuel').unit_price.
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+export interface AllianzRates {
+  fuel:        number   // forfait Fuel compensation
+  remorquage:  number   // forfait Remorquage sans réparation (T)
+  repare:      number   // forfait Réparé sur place (R)
+  trajetVide:  number | null
+  kmInclus:    number   // km inclus (50)
+  kmPrice:     number   // €/km au-delà (1.40)
+}
+
+/** Charge la grille Allianz depuis source_tariffs (source='mondial', en vigueur). */
+export async function loadAllianzRates(): Promise<AllianzRates | null> {
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('source_tariffs')
+    .select('mission_type, unit_price, km_inclus, km_price')
+    .eq('source', 'mondial')
+    .is('effective_to', null)
+  if (!data || data.length === 0) return null
+  const by = (t: string) => data.find(r => r.mission_type === t)
+  const rem = by('remorquage')
+  const dsp = by('depannage')
+  const fuel = by('fuel')
+  const tv = by('trajet_vide')
+  // km_inclus / km_price pris sur la ligne remorquage (identiques partout chez Allianz)
+  const ref = rem || dsp
+  if (!ref) return null
+  return {
+    fuel:       Number(fuel?.unit_price ?? 0),
+    remorquage: Number(rem?.unit_price ?? 0),
+    repare:     Number(dsp?.unit_price ?? 0),
+    trajetVide: tv?.unit_price != null ? Number(tv.unit_price) : null,
+    kmInclus:   Number(ref.km_inclus ?? 50),
+    kmPrice:    Number(ref.km_price ?? 0),
+  }
+}
+
+/** Km supplémentaires facturables (km_inclus inclus). Le quirk +0.01 reproduit Allianz. */
+function supplementKm(distance: number, kmInclus: number): number {
+  const extra = distance - (kmInclus - 0.01)
+  return extra > 0 ? round2(extra) : 0
+}
+
+/** Montant d une ligne de devis selon son libellé + la distance, depuis la grille.
+ *  Retourne null si le libellé n est pas calculable (ex "Siabis") → blocage. */
+function allianzLineAmount(tariffName: string, distance: number, rates: AllianzRates): { amount: number; qty: number } | null {
+  const n = (tariffName || '').toLowerCase()
+  if (/fuel/.test(n))                   return { amount: rates.fuel, qty: 1 }
+  if (/remorquage sans/.test(n))        return { amount: rates.remorquage, qty: 1 }
+  if (/r[ée]par[ée] sur place/.test(n)) return { amount: rates.repare, qty: 1 }
+  if (/suppl[ée]ment distance/.test(n)) {
+    const qty = supplementKm(distance, rates.kmInclus)
+    return { amount: round2(qty * rates.kmPrice), qty }
+  }
+  if (/autre|note de cr[ée]dit/.test(n)) return { amount: 0, qty: 1 }
+  return null   // Siabis / Siabis Majoré / inconnu → non calculable
+}
+
 /** Géocode une adresse via Google → coords + composants (pour finalDestination). */
 async function geocodeAddress(address: string): Promise<
   { lat: number; lng: number; street?: string; streetNumber?: string; zipCode?: string; city?: string; formatted?: string } | null
@@ -169,22 +232,17 @@ async function getTariffs(token: string, assignmentId: string, providedService: 
   return Array.isArray(j) ? j : []
 }
 
-function numFromEur(s: any): number {
-  const m = String(s || '').match(/-?\d+(?:[.,]\d+)?/)
-  return m ? Number(m[0].replace(',', '.')) : 0
-}
-
-/** Mappe une ligne de tarif (assignmenttariffs) → une ligne bill (expertreports),
- *  structure EXACTE captrée d une soumission réussie (Olivier 2026-06-12). */
-function tariffToBill(t: any): any {
+/** Mappe une ligne de tarif (assignmenttariffs) + montant calculé → bill (expertreports),
+ *  structure EXACTE captée d une soumission réussie (Olivier 2026-06-12). */
+function tariffToBill(t: any, amount: number, qty: number): any {
   return {
     assignmentTariffId: t.self ?? null,
     grossCost:          'EUR',
-    grossCostAmount:    numFromEur(t.lineAmount),
+    grossCostAmount:    amount,
     partyInCharge:      null,
     serviceDes:         null,
     typeOfBill:         t.tariffType || 'S',
-    unitCalculation:    typeof t.unitAmount === 'number' ? t.unitAmount : 1,
+    unitCalculation:    qty,
     unitType:           t.unitType ?? null,
   }
 }
@@ -300,22 +358,35 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       steps.push({ step: 'affectation_manuelle', ok: true, detail: 'sautée (dry-run)' })
     }
 
-    // Étape 2 : tarifs
+    // Étape 2 : tarifs (lignes + assignmentTariffId ; les montants viennent de la grille)
     const tariffs = await getTariffs(token, input.assignmentId, input.providedService, input.tariffLat ?? null, input.tariffLng ?? null, input.tariffZip ?? null)
     steps.push({ step: 'tarifs', ok: true, detail: `${tariffs.length} lignes` })
 
-    // Construit le payload expertreports.
-    // Bills = uniquement les lignes de tarif réelles (celles qui ont un `self`
-    // = assignmentTariffId) ; on exclut "Autre"/"Note de crédit" (sans self).
-    const bills = tariffs.filter(t => t.self).map(tariffToBill)
+    // Grille tarifaire Allianz (source_tariffs) → montants calculés.
+    const rates = await loadAllianzRates()
+    if (!rates) {
+      return { ok: false, dryRun, steps, error: 'Tarif Allianz non configuré (source_tariffs source=mondial). À ajouter dans /admin/tarifs.' }
+    }
+
+    // Distance déclarée = arrondi sup + 2 (règle Olivier). Sert au supplément distance.
+    const declaredDistance = Math.ceil(distanceKm) + 2
+
+    // Bills = lignes ayant un `self` (assignmentTariffId), montants depuis la grille.
+    // Une ligne non calculable (ex "Siabis") => on la signale (clôture manuelle).
+    const nonComputable: string[] = []
+    const bills = tariffs.filter(t => t.self).map(t => {
+      const calc = allianzLineAmount(t.tariffName, declaredDistance, rates)
+      if (!calc) { nonComputable.push(t.tariffName || '?'); return null }
+      return tariffToBill(t, calc.amount, calc.qty)
+    }).filter(Boolean) as any[]
+
     const payload: any = {
       providedService:          input.providedService,
       finalSubCaseCause:        input.finalSubCaseCause || DEFAULT_FINAL_SUB_CASE_CAUSE,
       arrivalDateTime:          times.arrival,
       serviceDeliveryStartTime: times.start,
       serviceDeliveryDateTime:  times.end,
-      // Distance déclarée : arrondi à l unité supérieure + 2 (règle Olivier 2026-06-12)
-      distance:                 String(Math.ceil(distanceKm) + 2),
+      distance:                 String(declaredDistance),
       contractualDistance:      Number(distanceKm),
       // Kilométrage TOUJOURS 0 (Olivier 2026-06-12) — sinon Allianz reste à 0.
       customerMileageRecord:    { mileage: '0' },
@@ -339,34 +410,26 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       }
     }
 
+    const finalTotal = bills.reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
+    ;(payload as any)._totalHt = round2(finalTotal)   // info UI (retiré avant POST)
+
     if (dryRun) {
       return { ok: true, dryRun: true, steps, payload, tariffs }
     }
 
-    // Garde-fou montants (recalculé sur les bills à jour) : si toujours 0, on bloque.
-    const finalTotal = (payload.bills as any[]).reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
+    // Garde-fou : ligne non calculable (Siabis…) => clôture manuelle.
+    if (nonComputable.length) {
+      steps.push({ step: 'montants', ok: false, detail: `non calculable : ${nonComputable.join(', ')}` })
+      return { ok: false, dryRun: false, steps, payload, tariffs, error: `Ligne tarifaire spéciale non automatisable (${nonComputable.join(', ')}) — à clôturer manuellement dans Allianz.` }
+    }
     if (finalTotal <= 0) {
-      steps.push({ step: 'montants', ok: false, detail: 'bills à 0 — tarifs non calculés' })
-      return { ok: false, dryRun: false, steps, payload, tariffs, error: 'Montants à 0 (tarifs non calculés par Allianz) — soumission bloquée. Il faut récupérer le calcul (requête « Calculer »).' }
+      steps.push({ step: 'montants', ok: false, detail: 'total à 0' })
+      return { ok: false, dryRun: false, steps, payload, tariffs, error: 'Montant total à 0 — soumission bloquée (vérifier la grille source_tariffs mondial).' }
     }
-
-    // Délai de calcul Allianz (~2 s) puis RE-RÉCUPÉRATION des tarifs : le calcul
-    // est asynchrone côté Allianz. Si les montants sont remplis au 2e appel, on
-    // reconstruit les bills avec ces valeurs.
-    await new Promise(r => setTimeout(r, 2200))
-    try {
-      const tariffs2 = await getTariffs(token, input.assignmentId, input.providedService, input.tariffLat ?? null, input.tariffLng ?? null, input.tariffZip ?? null)
-      const bills2 = tariffs2.filter(t => t.self).map(tariffToBill)
-      const total2 = bills2.reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
-      if (total2 > 0) {
-        payload.bills = bills2
-        steps.push({ step: 'attente_calcul', ok: true, detail: `2,2 s — montants recalculés (${total2.toFixed(2)} €)` })
-      } else {
-        steps.push({ step: 'attente_calcul', ok: true, detail: '2,2 s — montants toujours à 0' })
-      }
-    } catch {
-      steps.push({ step: 'attente_calcul', ok: true, detail: '2,2 s (re-fetch tarifs KO)' })
-    }
+    steps.push({ step: 'montants', ok: true, detail: `${round2(finalTotal)} € HT` })
+    delete (payload as any)._totalHt
+    // Petit délai avant soumission (stabilité après affectation manuelle).
+    await new Promise(r => setTimeout(r, 1200))
 
     // Étape 3 : soumission
     const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${input.caseId}/assignments/${input.assignmentId}/expertreports?cache_buster=${Date.now()}`
