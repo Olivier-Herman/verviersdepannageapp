@@ -160,6 +160,75 @@ export default function FacturationClient({
   const [sourceFilter, setSrc]  = useState<string>('all')
   const [selected, setSelected] = useState<MissionRow | null>(null)
   const [data, setData]         = useState(missions)
+
+  // ── Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) ──────────
+  const [advType, setAdvType]       = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
+  const [advKey, setAdvKey]         = useState('')
+  const [advBusy, setAdvBusy]       = useState(false)
+  const [advResults, setAdvResults] = useState<any[]>([])
+  const [advErr, setAdvErr]         = useState<string | null>(null)
+  const [advDone, setAdvDone]       = useState(false)
+  const [rowBusy, setRowBusy]       = useState<string | null>(null)
+  const [advMsg, setAdvMsg]         = useState<string | null>(null)
+  // Si on facture une fiche issue de TowSoft, on garde son num pour proposer
+  // l'annulation de la fiche TowSoft une fois la facturation validée.
+  const [pendingTowsoftNum, setPendingTowsoftNum] = useState<string | null>(null)
+
+  async function runAdvSearch() {
+    if (advKey.trim().length < 2) { setAdvErr('Saisis au moins 2 caractères'); return }
+    setAdvBusy(true); setAdvErr(null); setAdvDone(false); setAdvMsg(null)
+    try {
+      const r = await fetch('/api/facturation/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchType: advType, key: advKey.trim() }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur de recherche')
+      setAdvResults(j.results || [])
+      if (j.errors?.length) setAdvErr(j.errors.join(' · '))
+      setAdvDone(true)
+    } catch (e: any) { setAdvErr(e.message) } finally { setAdvBusy(false) }
+  }
+
+  async function openFacture(missionId: string, towsoftNum: string | null) {
+    setRowBusy(missionId); setAdvMsg(null)
+    try {
+      const r = await fetch(`/api/facturation/mission?id=${encodeURIComponent(missionId)}`)
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Chargement mission KO')
+      setPendingTowsoftNum(towsoftNum)
+      setSelected(j.mission as MissionRow)
+    } catch (e: any) { setAdvMsg('⚠ ' + e.message) } finally { setRowBusy(null) }
+  }
+
+  async function importAndFacture(towsoftNum: string) {
+    setRowBusy('tw-' + towsoftNum); setAdvMsg(null)
+    try {
+      const r = await fetch('/api/facturation/import-towsoft', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ towsoft_num: towsoftNum }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Import KO')
+      if (j.action === 'existing') setAdvMsg(`ℹ️ Fiche déjà présente dans VD Soft — ouverture de la facturation.`)
+      await openFacture(j.mission_id, towsoftNum)
+    } catch (e: any) { setAdvMsg('⚠ Import : ' + e.message) } finally { setRowBusy(null) }
+  }
+
+  async function cancelTowsoftFiche(towsoftNum: string) {
+    if (!confirm(`Annuler la fiche TowSoft #${towsoftNum} avec le motif « Facturation via OK VDS » ?`)) return
+    setRowBusy('cancel-' + towsoftNum); setAdvMsg(null)
+    try {
+      const r = await fetch('/api/facturation/cancel-towsoft', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ towsoft_num: towsoftNum }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Annulation KO')
+      setAdvMsg(`✅ Fiche TowSoft #${towsoftNum} annulée${j.verified ? ` (statut : ${j.status_towsoft || 'Annulée'})` : ''}.`)
+      setAdvResults(rs => rs.filter(x => x.towsoft_num !== towsoftNum))
+    } catch (e: any) { setAdvMsg('⚠ Annulation : ' + e.message) } finally { setRowBusy(null) }
+  }
   // Si le ?q change apres le mount initial (navigation interne), met a jour
   useEffect(() => {
     const q = searchParams?.get('q') || ''
@@ -221,6 +290,16 @@ export default function FacturationClient({
     // Retirer les fiches passees a 'completed' (= facturees)
     const completedIds = new Set(updated.filter(u => u.status === 'completed').map(u => u.id))
     setData(d => d.filter(m => !completedIds.has(m.id)))
+    // Si on facturait une fiche issue de TowSoft -> proposer d'annuler la fiche
+    // TowSoft (motif "Facturation via OK VDS") une fois la facturation validee.
+    if (pendingTowsoftNum && selected && completedIds.has(selected.id)) {
+      const tn = pendingTowsoftNum
+      setPendingTowsoftNum(null)
+      setSelected(null)
+      // Laisse le modal se fermer puis propose l'annulation TowSoft
+      setTimeout(() => cancelTowsoftFiche(tn), 200)
+      return
+    }
     // Si le modal etait ouvert sur une fiche maintenant completed, le fermer
     if (selected && completedIds.has(selected.id)) setSelected(null)
   }
@@ -261,6 +340,108 @@ export default function FacturationClient({
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) */}
+        <div className="bg-surface border rounded-2xl p-4 space-y-3 ambient-fade-up ambient-stagger-1">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🔎</span>
+            <h2 className="text-ink font-semibold text-sm">Facturer une autre mission (recherche VD Soft + TowSoft)</h2>
+          </div>
+          <p className="text-ink-muted text-xs">
+            Cherche par plaque, VIN, dossier, n° de mission ou n° de facture — dans VD Soft <strong>et</strong> dans TowSoft.
+          </p>
+
+          {/* Type de recherche */}
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['immatriculation', 'Plaque'],
+              ['niv',             'VIN'],
+              ['num_dossier',     'Dossier'],
+              ['id_appel',        'N° mission'],
+              ['num_facture',     'N° facture'],
+            ] as const).map(([val, label]) => (
+              <button key={val} type="button" onClick={() => setAdvType(val)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                  advType === val ? 'bg-brand text-white border-brand' : 'bg-surface-2 text-ink-secondary border hover:text-ink'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Champ + bouton */}
+          <div className="flex gap-2">
+            <input
+              value={advKey}
+              onChange={e => setAdvKey(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') runAdvSearch() }}
+              placeholder="Saisis la valeur à rechercher…"
+              className="flex-1 bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint"
+            />
+            <button onClick={runAdvSearch} disabled={advBusy || advKey.trim().length < 2}
+              className="px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
+              {advBusy ? '⏳…' : 'Rechercher'}
+            </button>
+          </div>
+
+          {advErr && <div className="text-critical text-xs">⚠ {advErr}</div>}
+          {advMsg && <div className="text-ink-secondary text-xs bg-surface-2 border rounded-lg px-3 py-2">{advMsg}</div>}
+
+          {/* Résultats */}
+          {advDone && advResults.length === 0 && !advErr && (
+            <div className="text-ink-muted text-xs">Aucun résultat dans VD Soft ni TowSoft.</div>
+          )}
+          {advResults.length > 0 && (
+            <div className="space-y-2">
+              {advResults.map((r, i) => {
+                const isVd = r.source === 'vdsoft'
+                const veh  = [r.brand, r.model].filter(Boolean).join(' ')
+                return (
+                  <div key={`${r.source}-${r.id}-${i}`} className="border rounded-xl p-3 bg-surface-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isVd ? 'bg-success/15 text-success' : 'bg-amber-500/15 text-amber-700'}`}>
+                          {isVd ? 'VD SOFT' : 'TOWSOFT'}
+                        </span>
+                        <span className="font-mono font-bold text-ink text-sm">{r.plate || '—'}</span>
+                        <span className="text-ink-secondary text-xs">{veh || '—'}</span>
+                        {r.ticket && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-700">{r.ticket}</span>}
+                      </div>
+                      <div className="text-ink-muted text-[11px] mt-0.5 truncate">
+                        {r.ref} · {r.client || '—'} · {r.dossier || '—'}
+                        {r.status ? ` · ${r.status}` : ''}
+                        {r.montant_ttc != null ? ` · ${Number(r.montant_ttc).toFixed(2)} € TTC` : ''}
+                        {r.date_iso ? ` · ${fmtDate(r.date_iso)}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {isVd ? (
+                        <button onClick={() => openFacture(r.vdsoft_id, null)} disabled={rowBusy === r.vdsoft_id}
+                          className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-xs font-semibold">
+                          {rowBusy === r.vdsoft_id ? '⏳…' : 'Facturer'}
+                        </button>
+                      ) : (
+                        <>
+                          <button onClick={() => importAndFacture(r.towsoft_num)} disabled={rowBusy === 'tw-' + r.towsoft_num}
+                            className="px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-lg text-xs font-semibold">
+                            {rowBusy === 'tw-' + r.towsoft_num ? '⏳…' : 'Importer + facturer'}
+                          </button>
+                          <button onClick={() => cancelTowsoftFiche(r.towsoft_num)} disabled={rowBusy === 'cancel-' + r.towsoft_num}
+                            className="px-3 py-1.5 bg-surface hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-semibold">
+                            {rowBusy === 'cancel-' + r.towsoft_num ? '⏳…' : 'Annuler fiche'}
+                          </button>
+                          {r.fiche_url && (
+                            <a href={r.fiche_url} target="_blank" rel="noopener" className="text-brand text-xs underline px-1">TowSoft ↗</a>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Liste */}
