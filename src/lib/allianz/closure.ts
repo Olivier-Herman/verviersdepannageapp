@@ -169,21 +169,23 @@ async function getTariffs(token: string, assignmentId: string, providedService: 
   return Array.isArray(j) ? j : []
 }
 
-/** Mappe une ligne de tarif (assignmenttariffs) → une ligne bill (expertreports). */
+function numFromEur(s: any): number {
+  const m = String(s || '').match(/-?\d+(?:[.,]\d+)?/)
+  return m ? Number(m[0].replace(',', '.')) : 0
+}
+
+/** Mappe une ligne de tarif (assignmenttariffs) → une ligne bill (expertreports),
+ *  structure EXACTE captrée d une soumission réussie (Olivier 2026-06-12). */
 function tariffToBill(t: any): any {
-  // unitCost / lineAmount sont des strings "EUR x.xx" ; on extrait le nombre.
-  const num = (s: any) => {
-    const m = String(s || '').match(/-?\d+(?:[.,]\d+)?/)
-    return m ? Number(m[0].replace(',', '.')) : 0
-  }
   return {
-    grossCostAmount: num(t.lineAmount),
-    typeOfBill:      t.tariffType || 'S',
-    partyInCharge:   null,
-    unitCalculation: t.unitAmount ?? 1,
-    unitType:        t.unitType ?? null,
-    tariffName:      t.tariffName ?? null,
-    self:            t.self ?? null,
+    assignmentTariffId: t.self ?? null,
+    grossCost:          'EUR',
+    grossCostAmount:    numFromEur(t.lineAmount),
+    partyInCharge:      null,
+    serviceDes:         null,
+    typeOfBill:         t.tariffType || 'S',
+    unitCalculation:    typeof t.unitAmount === 'number' ? t.unitAmount : 1,
+    unitType:           t.unitType ?? null,
   }
 }
 
@@ -302,8 +304,10 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
     const tariffs = await getTariffs(token, input.assignmentId, input.providedService, input.tariffLat ?? null, input.tariffLng ?? null, input.tariffZip ?? null)
     steps.push({ step: 'tarifs', ok: true, detail: `${tariffs.length} lignes` })
 
-    // Construit le payload expertreports
-    const bills = tariffs.filter(t => !t.isExtraCost || (t.unitAmount && t.unitAmount > 0)).map(tariffToBill)
+    // Construit le payload expertreports.
+    // Bills = uniquement les lignes de tarif réelles (celles qui ont un `self`
+    // = assignmentTariffId) ; on exclut "Autre"/"Note de crédit" (sans self).
+    const bills = tariffs.filter(t => t.self).map(tariffToBill)
     const payload: any = {
       providedService:          input.providedService,
       finalSubCaseCause:        input.finalSubCaseCause || DEFAULT_FINAL_SUB_CASE_CAUSE,
@@ -319,22 +323,34 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       bills,
       expertReportStep:         'C',
     }
+    // finalDestination : structure EXACTE captée (geoLocation imbriqué, coords en string).
     if (destination?.name) {
+      const lat = destGeo?.lat ?? destination.latitude
+      const lng = destGeo?.lng ?? destination.longitude
       payload.finalDestination = {
         name:         destGeo?.formatted || destination.name,
+        street:       destGeo?.street ?? null,
+        streetNumber: destGeo?.streetNumber ?? null,
+        zipCode:      destGeo?.zipCode ?? null,
+        city:         destGeo?.city ?? null,
         countryCode:  destination.countryCode || 'BE',
         countryName:  destination.countryName || 'Belgique',
-        ...(destGeo?.lat != null ? { latitude:  destGeo.lat } : (destination.latitude  != null ? { latitude:  destination.latitude }  : {})),
-        ...(destGeo?.lng != null ? { longitude: destGeo.lng } : (destination.longitude != null ? { longitude: destination.longitude } : {})),
-        ...(destGeo?.street       ? { street:       destGeo.street }       : {}),
-        ...(destGeo?.streetNumber ? { streetNumber: destGeo.streetNumber } : {}),
-        ...(destGeo?.zipCode      ? { zipCode:      destGeo.zipCode }      : {}),
-        ...(destGeo?.city         ? { city:         destGeo.city }         : {}),
+        ...(lat != null && lng != null ? { geoLocation: { latitude: Number(lat).toFixed(5), longitude: Number(lng).toFixed(5) } } : {}),
       }
     }
 
+    // Montant total des bills : si 0, on ne soumet PAS (sinon clôture à 0 €).
+    const billsTotal = bills.reduce((s: number, b: any) => s + (Number(b.grossCostAmount) || 0), 0)
+
     if (dryRun) {
       return { ok: true, dryRun: true, steps, payload, tariffs }
+    }
+
+    // Garde-fou montants : Allianz ne recalcule pas — si les bills sont à 0
+    // (tarifs non calculés), on bloque pour ne pas clôturer à 0 €.
+    if (billsTotal <= 0) {
+      steps.push({ step: 'montants', ok: false, detail: 'bills à 0 — tarifs non calculés' })
+      return { ok: false, dryRun: false, steps, payload, tariffs, error: 'Montants à 0 (tarifs non calculés par Allianz) — soumission bloquée. Le calcul des tarifs doit être récupéré.' }
     }
 
     // Délai de calcul Allianz : ~2 s entre "Calculer" (tarifs) et "Soumettre",
