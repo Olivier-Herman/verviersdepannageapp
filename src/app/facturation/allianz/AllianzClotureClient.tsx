@@ -105,7 +105,9 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
         // Destination seulement pour le remorquage (T).
         if (providedService === 'T' && dest) body.destination = { name: dest, countryCode: 'BE', countryName: 'Belgique' }
       } else if (row.towsoft) {
-        body.towsoftNum = row.towsoft.towsoft_num   // serveur récupère distance + destination
+        body.towsoftNum     = row.towsoft.towsoft_num   // serveur récupère distance + destination
+        body.plate          = row.plate                 // pour regrouper les fiches du même dossier
+        body.towsoftDossier = row.towsoft.dossier       // REM via dépôt : somme des km des 2 fiches
       }
       const r = await fetch('/api/facturation/allianz/close', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

@@ -59,6 +59,8 @@ export async function POST(req: Request) {
     receivedIso,
     distanceKm,
     towsoftNum,
+    plate:             body.plate ? String(body.plate) : null,
+    towsoftDossier:    body.towsoftDossier ? String(body.towsoftDossier) : null,
     mileage:           body.mileage ? String(body.mileage) : undefined,
     finalSubCaseCause: body.finalSubCaseCause ? String(body.finalSubCaseCause) : undefined,
     destination:       body.destination || undefined,

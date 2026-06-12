@@ -169,6 +169,8 @@ export interface CloseInput {
   receivedIso:      string                        // heure de mission Hexalite (1ère colonne) — base des heures générées
   distanceKm?:      number                         // km total (VD Soft). Si absent + towsoftNum fourni, résolu via TowSoft.
   towsoftNum?:      string | null                  // fallback : récupère distance + destination depuis TowSoft
+  plate?:           string | null                  // pour regrouper les fiches TowSoft d un même dossier (REM via dépôt)
+  towsoftDossier?:  string | null                  // dossier TowSoft : somme les km des fiches liées, destination = fiche finale
   mileage?:         string                         // kilométrage véhicule (def "0")
   finalSubCaseCause?: string                       // def KA704
   destination?:     { name: string; countryCode?: string; countryName?: string; latitude?: number; longitude?: number }
@@ -200,19 +202,43 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
 
   const times = generateClosureTimes(input.receivedIso)
 
-  // Résolution distance + destination depuis TowSoft si pas fournies (fallback hors VD Soft)
+  // Résolution distance + destination depuis TowSoft si pas fournies (fallback hors VD Soft).
+  // Cas REM via dépôt : 2 fiches TowSoft pour le même dossier → on SOMME les km
+  // et on prend la destination de la fiche FINALE (la 2ᵉ, qui porte l adresse de dest).
   let distanceKm = input.distanceKm
   let destination = input.destination
   if ((distanceKm == null || destination == null) && input.towsoftNum) {
     try {
-      const { fetchTowsoftDetail } = await import('@/lib/towsoft-detail')
-      const d = await fetchTowsoftDetail(input.towsoftNum)
-      if (distanceKm == null && d.distance_km) {
-        const n = Number(String(d.distance_km).replace(',', '.').replace(/[^\d.]/g, ''))
-        if (Number.isFinite(n)) distanceKm = n
+      const { fetchTowsoftDetail }   = await import('@/lib/towsoft-detail')
+      const { searchTowsoftGlobal }  = await import('@/lib/towsoft-client')
+
+      // Détermine les fiches (legs) : la fiche + ses sœurs du même dossier/plaque (non annulées).
+      let legNums: string[] = [input.towsoftNum]
+      if (input.plate && input.towsoftDossier) {
+        const hits = await searchTowsoftGlobal('immatriculation', input.plate)
+        const sibs = hits.filter(h => h.dossier && h.dossier === input.towsoftDossier && !/annul/i.test(h.statut || ''))
+        legNums = Array.from(new Set([input.towsoftNum, ...sibs.map(h => h.towsoft_num)]))
       }
-      if (destination == null && d.dest_addr) {
-        destination = { name: [d.dest_addr, d.dest_cp, d.dest_ville].filter(Boolean).join(' '), countryCode: 'BE', countryName: 'Belgique' }
+
+      const parseKm = (s: any) => {
+        const n = Number(String(s || '').replace(',', '.').replace(/[^\d.]/g, ''))
+        return Number.isFinite(n) ? n : 0
+      }
+      // Trie par n° croissant : la dernière fiche = leg final (destination réelle).
+      legNums.sort((a, b) => Number(a) - Number(b))
+      let sumKm = 0
+      let destFromLeg: typeof destination = null
+      for (const n of legNums) {
+        const d = await fetchTowsoftDetail(n)
+        sumKm += parseKm(d.distance_km)
+        if (d.dest_addr) {
+          destFromLeg = { name: [d.dest_addr, d.dest_cp, d.dest_ville].filter(Boolean).join(' '), countryCode: 'BE', countryName: 'Belgique' }
+        }
+      }
+      if (distanceKm == null && sumKm > 0) distanceKm = sumKm
+      if (destination == null && destFromLeg) destination = destFromLeg
+      if (legNums.length > 1) {
+        steps.push({ step: 'towsoft_legs', ok: true, detail: `${legNums.length} fiches sommées = ${sumKm} km (dossier ${input.towsoftDossier})` })
       }
     } catch (e: any) {
       steps.push({ step: 'towsoft_fallback', ok: false, detail: e.message })
