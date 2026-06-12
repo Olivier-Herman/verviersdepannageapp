@@ -227,7 +227,7 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
       // Trie par n° croissant : la dernière fiche = leg final (destination réelle).
       legNums.sort((a, b) => Number(a) - Number(b))
       let sumKm = 0
-      let destFromLeg: typeof destination = null
+      let destFromLeg: CloseInput['destination'] | null = null
       for (const n of legNums) {
         const d = await fetchTowsoftDetail(n)
         sumKm += parseKm(d.distance_km)
