@@ -226,10 +226,9 @@ export async function POST(req: Request) {
     if (park_data?.stage_id)   updatePayload.park_stage_id   = park_data.stage_id
     if (park_data?.stage_name) updatePayload.park_stage_name = park_data.stage_name
     if (park_data?.zone_key)   updatePayload.parc_zone_key   = park_data.zone_key
-    // Adresse du parc devient la destination
-    if (body.park_address)     updatePayload.destination_address = body.park_address
-    // Ancienne destination devient l'adresse de relivraison
-    if (body.redelivery_address) updatePayload.redelivery_address = body.redelivery_address
+    // Note : la bascule destination<->relivraison + adresse du parc est faite
+    // de maniere centralisee plus bas (cf bloc "mise en parc" avant la
+    // conversion REM+REL), pour couvrir aussi le depot via complete_delivery.
     if (closing_data) {
       if (closing_data.final_mission_type) updatePayload.mission_type    = closing_data.final_mission_type
       if (closing_data.mileage != null)    updatePayload.vehicle_mileage = closing_data.mileage
@@ -308,6 +307,36 @@ export async function POST(req: Request) {
     if (closing_data.discharge_sig)           updatePayload.discharge_sig         = closing_data.discharge_sig
   }
 
+  // Olivier 2026-06-12 : regle metier mise en parc.
+  //   - L adresse du parc devient la destination de la mission.
+  //   - Si une destination etait prevue, elle bascule en adresse de relivraison
+  //     (sauf si une relivraison est deja definie).
+  // Robuste cote serveur : si le client n envoie pas park_address, on resout
+  // l adresse du parc via le depot choisi puis le depot par defaut.
+  if (updatePayload.status === 'parked') {
+    let parcAddress = (body.park_address || '').trim() || null
+    if (!parcAddress) {
+      const depotId = (park_data as any)?.depot_id
+                   || (closing_data as any)?.depot?.id
+                   || (mission as any).depot_depart_id
+      if (depotId) {
+        const { data: d } = await supabase.from('depots').select('address').eq('id', depotId).maybeSingle()
+        parcAddress = (d?.address || '').trim() || null
+      }
+      if (!parcAddress) {
+        const { data: d } = await supabase.from('depots').select('address').eq('is_default', true).eq('active', true).maybeSingle()
+        parcAddress = (d?.address || '').trim() || null
+      }
+    }
+    // Destination prevue (avant ecrasement) : explicite du client, sinon celle de la mission
+    const plannedDest  = (body.redelivery_address || '').trim() || ((mission as any).destination_address || '').trim()
+    const alreadyReliv = ((mission as any).redelivery_address || '').trim()
+    if (!alreadyReliv && plannedDest && (!parcAddress || plannedDest !== parcAddress)) {
+      updatePayload.redelivery_address = plannedDest
+    }
+    if (parcAddress) updatePayload.destination_address = parcAddress
+  }
+
   // Olivier 2026-05-28 : auto-conversion REM -> REM+REL au moment du parked
   // si :
   //   - source eligible a la relivraison
@@ -315,7 +344,7 @@ export async function POST(req: Request) {
   //     redelivery_address). Sans adresse, on attend qu elle soit saisie
   //     (au prochain PATCH /api/missions/[id], la conversion sera faite la).
   if (updatePayload.status === 'parked' && isRemorquage(mission.mission_type)) {
-    const hasAddr = !!((mission as any).redelivery_address || (mission as any).destination_address)
+    const hasAddr = !!((mission as any).redelivery_address || (mission as any).destination_address || updatePayload.redelivery_address)
     if (hasAddr && isRelEligibleSource(mission.source, (mission as any).snc_scenario)) {
       updatePayload.mission_type = 'REM+REL'
     }
