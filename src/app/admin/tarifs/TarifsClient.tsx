@@ -60,6 +60,7 @@ interface TariffLine {
   name:             string
   default_qty:      number | null
   default_price:    number | null
+  default_price_majore: number | null
   apply_surcharges: boolean
   free_days:        number
   parc_count_from:  ParcCountFrom
@@ -309,6 +310,7 @@ export default function TarifsClient(props: Props) {
         name:             newLine.name,
         default_qty:      newLine.default_qty,
         default_price:    newLine.default_price,
+        default_price_majore: newLine.default_price_majore ?? null,
         apply_surcharges: newLine.apply_surcharges,
         free_days:        newLine.free_days ?? 0,
         parc_count_from:  newLine.parc_count_from ?? 'parked_at',
@@ -1147,6 +1149,7 @@ export default function TarifsClient(props: Props) {
                         <th className="text-left p-2">Description</th>
                         <th className="text-right p-2 w-20">Qté défaut</th>
                         <th className="text-right p-2 w-24">PU défaut</th>
+                        <th className="text-right p-2 w-24" title="Prix unitaire majoré (nuit/WE/JF). Vide = pas de majoration spécifique sur cette ligne.">PU majoré</th>
                         <th className="text-center p-2 w-20" title="Jours gratuits (gardiennage uniquement)">Jours offerts</th>
                         <th className="text-center p-2 w-32" title="Compte depuis (gardiennage uniquement)">Compte depuis</th>
                         <th className="text-center p-2 w-20">Majorable ?</th>
@@ -1199,6 +1202,20 @@ export default function TarifsClient(props: Props) {
                                 if (v !== line.default_price) updateLine(line, { default_price: v })
                               }}
                               placeholder="—"
+                              className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              step="0.0001"
+                              defaultValue={line.default_price_majore ?? ''}
+                              onBlur={e => {
+                                const v = e.target.value === '' ? null : parseFloat(e.target.value)
+                                if (v !== line.default_price_majore) updateLine(line, { default_price_majore: v })
+                              }}
+                              placeholder="—"
+                              title="Tarif majoré nuit/WE/JF (appliqué quand une période /admin/surcharges matche)"
                               className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right"
                             />
                           </td>
@@ -1271,6 +1288,9 @@ export default function TarifsClient(props: Props) {
                           </td>
                           <td className="p-2 text-right">
                             <input type="number" step="0.01" placeholder="PU" value={newLine.default_price ?? ''} onChange={e => setNewLine({ ...newLine, default_price: e.target.value === '' ? null : parseFloat(e.target.value) })} className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right" />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input type="number" step="0.0001" placeholder="—" value={newLine.default_price_majore ?? ''} onChange={e => setNewLine({ ...newLine, default_price_majore: e.target.value === '' ? null : parseFloat(e.target.value) })} title="Tarif majoré nuit/WE/JF" className="bg-surface border rounded px-1 py-0.5 text-xs w-full text-right" />
                           </td>
                           <td className="p-2 text-center">
                             {newLine.kind === 'SERV-PARC' ? (

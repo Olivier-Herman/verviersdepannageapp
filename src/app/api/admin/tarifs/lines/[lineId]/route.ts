@@ -45,6 +45,9 @@ export async function PATCH(req: Request, { params }: { params: { lineId: string
   if (body.default_price !== undefined) {
     patch.default_price = body.default_price === null ? null : Number(body.default_price)
   }
+  if (body.default_price_majore !== undefined) {
+    patch.default_price_majore = body.default_price_majore === null || body.default_price_majore === '' ? null : Number(body.default_price_majore)
+  }
   if (body.apply_surcharges !== undefined) {
     patch.apply_surcharges = Boolean(body.apply_surcharges)
   }
@@ -53,7 +56,10 @@ export async function PATCH(req: Request, { params }: { params: { lineId: string
     patch.free_days = body.free_days === null || body.free_days === '' ? 0 : Math.max(0, Math.floor(Number(body.free_days)))
   }
   if (body.parc_count_from !== undefined) {
-    patch.parc_count_from = body.parc_count_from === 'intervention_date' ? 'intervention_date' : 'parked_at'
+    // Olivier 2026-06-14 : autorise aussi 'levee_saisie_date' (ligne gardiennage
+    // hors période saisie) — ne plus l'écraser en 'parked_at'.
+    patch.parc_count_from = ['intervention_date', 'levee_saisie_date'].includes(body.parc_count_from)
+      ? body.parc_count_from : 'parked_at'
   }
 
   if (Object.keys(patch).length <= 1) {

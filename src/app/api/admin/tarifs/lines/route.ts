@@ -42,9 +42,10 @@ export async function POST(req: Request) {
   const position    = body.position != null ? Number(body.position) : 0
   const defaultQty  = body.default_qty === null || body.default_qty === undefined ? null : Number(body.default_qty)
   const defaultPrice = body.default_price === null || body.default_price === undefined ? null : Number(body.default_price)
+  const defaultPriceMajore = body.default_price_majore === null || body.default_price_majore === undefined || body.default_price_majore === '' ? null : Number(body.default_price_majore)
   const applySurch  = body.apply_surcharges !== undefined ? Boolean(body.apply_surcharges) : true
   const freeDays    = body.free_days != null ? Math.max(0, Math.floor(Number(body.free_days))) : 0
-  const parcCountFrom = body.parc_count_from === 'intervention_date' ? 'intervention_date' : 'parked_at'
+  const parcCountFrom = ['intervention_date', 'levee_saisie_date'].includes(body.parc_count_from) ? body.parc_count_from : 'parked_at'
 
   const sb = createAdminClient()
   const { data, error } = await sb
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
       name,
       default_qty:     defaultQty,
       default_price:   defaultPrice,
+      default_price_majore: defaultPriceMajore,
       apply_surcharges: applySurch,
       free_days:       freeDays,
       parc_count_from: parcCountFrom,
