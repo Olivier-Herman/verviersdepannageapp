@@ -64,6 +64,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     if (z) zone = z
   }
 
+  // Libellé + couleur de la source (badge UI) depuis le catalog
+  if (m.source) {
+    const { data: src } = await sb
+      .from('mission_source_catalog')
+      .select('label, display_color')
+      .eq('key', m.source)
+      .maybeSingle()
+    ;(m as any).source_label = src?.label || null
+    ;(m as any).source_color = src?.display_color || null
+  }
+
   // Calcul tarif provisoire — best-effort
   const tarif = await computeProvisionalTariff(sb, m)
 

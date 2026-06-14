@@ -123,7 +123,13 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
 
       {/* Bloc Intervention */}
       <Section icon={<Wrench size={14} />} title="Intervention">
-        <Row label="Source" value={m.source} />
+        <Row label="Source" value={
+          m.source
+            ? <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold text-white ${m.source_color || 'bg-zinc-600'}`}>
+                {m.source_label || m.source.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              </span>
+            : '—'
+        } />
         <Row label="Type" value={m.mission_type || '—'} />
         {m.snc_scenario && <Row label="Scénario SNC" value={m.snc_scenario} />}
         <Row label="Reçue" value={fmtDateTime(m.received_at)} />
