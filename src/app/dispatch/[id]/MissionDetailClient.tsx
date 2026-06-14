@@ -1996,16 +1996,18 @@ export default function MissionDetailClient({
       {/* Top-bar : badges contextuels + ← retour. backdrop-blur pour fondre avec le bg ambient */}
       <div className="bg-surface/85 backdrop-blur-md border-b px-3 lg:px-8 py-3 lg:py-4 sticky top-0 z-20">
         <div className="flex items-center gap-2 lg:gap-4 flex-wrap min-w-0">
-          <Link href="/dispatch" className="text-ink-secondary hover:text-ink transition text-lg flex items-center gap-1.5 flex-shrink-0" title="Retour à la liste dispatch">
-            ← <span className="hidden sm:inline text-sm">Dispatch</span>
-          </Link>
+          <button
+            type="button"
+            onClick={() => { if (typeof window !== 'undefined' && window.history.length > 1) router.back(); else router.push('/dispatch') }}
+            className="text-ink-secondary hover:text-ink transition text-lg flex items-center gap-1.5 flex-shrink-0"
+            title="Retour à l'écran précédent"
+          >
+            ← <span className="hidden sm:inline text-sm">Retour</span>
+          </button>
           <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
             <span className={`px-2 py-0.5 rounded-lg text-[10px] lg:text-xs font-bold text-white ${srcInfo.color}`}>
               {srcInfo.label}
             </span>
-            {initialMission.dossier_number && (
-              <span className="text-ink-muted text-xs lg:text-sm font-mono truncate max-w-[140px]">{initialMission.dossier_number}</span>
-            )}
             <span className={`text-xs lg:text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
           </div>
           <div className="flex items-center gap-1.5 lg:gap-2 flex-wrap">
@@ -2155,52 +2157,30 @@ export default function MissionDetailClient({
           </div>
         )}
 
-        {/* ── Bloc Référence (remonté en haut, avant la date d'intervention) —
-            Olivier 2026-06-14. N° dossier modifiable / ajoutable. ── */}
+        {/* ── Bloc Référence (slim) — Olivier 2026-06-14 : on ne garde que l'info
+            unique/actionnable (réf. externe + N° dossier éditable). N° mission,
+            source, reçu sont déjà dans l'en-tête ; l'incident dans la barre date. ── */}
         <div className="px-4 lg:px-8 pt-6">
-          <div className="bg-surface border rounded-xl p-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div>
-                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">N° Mission</p>
-                  <p className="text-ink font-mono text-sm font-semibold">
-                    {initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}
-                  </p>
-                  {initialMission.mission_number != null && initialMission.external_id && (
-                    <p className="text-ink-faint font-mono text-[11px]">{initialMission.external_id}</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">Source</p>
-                  <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>
-                    {srcInfo.label}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">Reçu</p>
-                  <p className="text-ink-secondary text-xs mt-0.5">{new Date(initialMission.received_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-                {initialMission.incident_at && (
-                  <div>
-                    <p className="text-ink-muted text-[11px] uppercase tracking-wide">Incident</p>
-                    <p className="text-ink-secondary text-xs mt-0.5">{new Date(initialMission.incident_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                  </div>
-                )}
+          <div className="bg-surface border rounded-xl p-4 flex items-end justify-between gap-4 flex-wrap">
+            {initialMission.external_id && (
+              <div>
+                <p className="text-ink-muted text-[11px] uppercase tracking-wide">Référence externe</p>
+                <p className="text-ink font-mono text-sm mt-0.5">{initialMission.external_id}</p>
               </div>
-              <div className="min-w-[180px]">
-                <label className="text-ink-muted text-[11px] uppercase tracking-wide flex items-center gap-1.5">
-                  N° Dossier {isSavingDossier && <span className="text-brand normal-case">⏳ enregistrement…</span>}
-                </label>
-                <input
-                  type="text"
-                  value={dossierNumber}
-                  onChange={e => setDossierNumber(e.target.value)}
-                  onBlur={saveDossierNumber}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                  placeholder="Ajouter un n° de dossier…"
-                  className="mt-0.5 w-full bg-surface-2 border border-strong rounded-lg px-2.5 py-1.5 text-ink font-mono text-sm outline-none focus:border-brand"
-                />
-              </div>
+            )}
+            <div className="min-w-[200px] flex-1 max-w-xs">
+              <label className="text-ink-muted text-[11px] uppercase tracking-wide flex items-center gap-1.5">
+                N° Dossier {isSavingDossier && <span className="text-brand normal-case">⏳ enregistrement…</span>}
+              </label>
+              <input
+                type="text"
+                value={dossierNumber}
+                onChange={e => setDossierNumber(e.target.value)}
+                onBlur={saveDossierNumber}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                placeholder="Ajouter un n° de dossier…"
+                className="mt-0.5 w-full bg-surface-2 border border-strong rounded-lg px-2.5 py-1.5 text-ink font-mono text-sm outline-none focus:border-brand"
+              />
             </div>
           </div>
         </div>
