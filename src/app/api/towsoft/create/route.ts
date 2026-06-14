@@ -114,7 +114,6 @@ export async function POST(req: Request) {
       location,
       police_zone:   policeZone,
       officer_name:  officerName,
-      officer_partner_id: officerPartnerId ?? null,
       owner_first:   ownerFirstName,
       owner_last:    ownerLastName,
       owner_phone:   ownerPhone,
