@@ -136,7 +136,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id, intervention_date, received_at')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -348,6 +348,14 @@ export async function POST(req: Request) {
     if (hasAddr && isRelEligibleSource(mission.source, (mission as any).snc_scenario)) {
       updatePayload.mission_type = 'REM+REL'
     }
+  }
+
+  // Olivier 2026-06-14 : pour une SAISIE, l'entrée parc = date d'intervention
+  // (le gardiennage saisie est compté depuis l'intervention, pas la mise en
+  // dépôt). On cale donc parked_at sur intervention_date dès qu'on passe en parc.
+  if (updatePayload.status === 'parked' && mission.source === 'police_saisie') {
+    const interv = (mission as any).intervention_date || (mission as any).received_at
+    if (interv) updatePayload.parked_at = interv
   }
 
   const { data: updated, error: updateError } = await supabase

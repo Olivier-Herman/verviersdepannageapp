@@ -15,6 +15,7 @@ import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
 import RestituerMalGareeModal from '@/components/restitution/RestituerMalGareeModal'
+import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
@@ -1295,6 +1296,7 @@ export default function MissionDetailClient({
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
   const [showRestituerModal, setShowRestituerModal] = useState(false)
+  const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
   const [showSncDepotModal, setShowSncDepotModal] = useState(false)
   const [clientQuery,     setClientQuery]     = useState('')
   const [clientResults,   setClientResults]   = useState<Array<{id:number;name:string;phone?:string;mobile?:string;city?:string}>>([])
@@ -2999,17 +3001,65 @@ export default function MissionDetailClient({
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
             <div className="space-y-5">
 
-              {/* Bouton "Imprimer etiquette" : visible UNIQUEMENT pour les users
-                  avec module fourriere (ou admin/superadmin). Olivier 2026-05-28 :
-                  le dispatcher seul ne doit pas avoir ce bouton. */}
-              {(status === 'parked' || (initialMission as any).parc_zone_key) &&
-                (userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
-                <PrintLabelButton missionId={initialMission.id} />
+              {/* Bouton Restituer — Olivier 2026-06-14 : remonté en haut du bloc
+                  droit (permuté avec l'impression d'étiquette). Visible pour
+                  TOUTES les sources Appel Police (+ sia_couvert) en parc.
+                  Warnings conditionnels avant redirection (saisie / bloqué police). */}
+              {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
+                <>
+                  {policeBlocked && (
+                    <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">
+                      <span className="text-warning">🚓</span>
+                      <p className="text-warning text-sm font-medium">
+                        Bloquée par la police — confirmation obligatoire à la restitution (client doit être passé au commissariat)
+                      </p>
+                    </div>
+                  )}
+                  {['police_saisie', 'police_rodeo'].includes(initialMission.source) && !(initialMission as any).police_levee_saisie_ok && (
+                    <div className="bg-rose-500/10 border border-rose-500/40 rounded-2xl p-3 flex items-start gap-2">
+                      <span className="text-rose-500">📋</span>
+                      <p className="text-rose-500 text-sm font-medium">
+                        Saisie — levée de saisie non confirmée. Sera demandée à la restitution.
+                      </p>
+                    </div>
+                  )}
+                  {/* Restituer et facturer — réservé à l'équipe facturation.
+                      Recherche/création client Odoo, passe la mission à facturer
+                      puis bascule sur le module Facturation. Olivier 2026-06-14. */}
+                  {(userModules.includes('facturation') || ['admin', 'superadmin'].includes(userRole)) && (
+                    <button
+                      onClick={() => setShowRestituerFacturer(true)}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                      🧾 Restituer et facturer
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const src = initialMission.source
+                      const isSaisie = ['police_saisie', 'police_rodeo'].includes(src)
+                      const leveeManquante = isSaisie && !(initialMission as any).police_levee_saisie_ok
+                      // Warning saisie : confirmer la levee
+                      if (leveeManquante) {
+                        if (!confirm('⚠ SAISIE\n\nLa levée de saisie est-elle bien confirmée (documents reçus du Parquet/Police) ?\n\nSi non, ne PAS restituer le véhicule.')) return
+                      }
+                      // Warning vehicule bloque police : confirmer passage commissariat
+                      if (policeBlocked) {
+                        if (!confirm('⚠ VÉHICULE BLOQUÉ PAR LA POLICE\n\nLe propriétaire est-il bien passé au commissariat pour faire lever le blocage ?\n\nSi non, ne PAS restituer.')) return
+                      }
+                      // Tout OK -> module encaissement chauffeur
+                      const url = buildEncaissementUrl(initialMission as any, {
+                        returnTo: `/dispatch/${initialMission.id}`,
+                      })
+                      window.location.href = url
+                    }}
+                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                    🔑 Restituer le véhicule (encaissement chauffeur)
+                  </button>
+                </>
               )}
 
               {/* Panneau Saisie (réquisitoire / levée de saisie / Domaine) —
-                  Olivier 2026-06-14 : remonté en haut du bloc droit, juste sous
-                  l'impression d'étiquette. */}
+                  Olivier 2026-06-14 : remonté en haut du bloc droit. */}
               {initialMission.source === 'police_saisie' && (
                 <SaisiePanel mission={initialMission as any} />
               )}
@@ -3407,57 +3457,11 @@ export default function MissionDetailClient({
                 </button>
               )}
 
-              {/* Bouton Restituer — visible pour TOUTES les sources Appel Police
-                  (+ sia_couvert) en parc. Toutes redirigent vers buildEncaissementUrl
-                  (module encaissement chauffeur, prefill montant + procedure standard).
-                  Warnings conditionnels avant redirection :
-                  - SAISIE (police_saisie, police_rodeo si !police_levee_saisie_ok) :
-                    confirme la levee de saisie / documents
-                  - VEHICULE BLOQUE (policeBlocked=true) :
-                    confirme que client est passe au commissariat
-                  Olivier 2026-06-04. */}
-              {status === 'parked' && ['police_mg', 'police_rodeo', 'police_accident', 'police_saisie', 'police_avp', 'police_snc', 'sia_couvert'].includes(initialMission.source) && (
-                <>
-                  {policeBlocked && (
-                    <div className="bg-warning/10 border border-warning/40 rounded-2xl p-3 flex items-start gap-2">
-                      <span className="text-warning">🚓</span>
-                      <p className="text-warning text-sm font-medium">
-                        Bloquée par la police — confirmation obligatoire à la restitution (client doit être passé au commissariat)
-                      </p>
-                    </div>
-                  )}
-                  {['police_saisie', 'police_rodeo'].includes(initialMission.source) && !(initialMission as any).police_levee_saisie_ok && (
-                    <div className="bg-rose-500/10 border border-rose-500/40 rounded-2xl p-3 flex items-start gap-2">
-                      <span className="text-rose-500">📋</span>
-                      <p className="text-rose-500 text-sm font-medium">
-                        Saisie — levée de saisie non confirmée. Sera demandée à la restitution.
-                      </p>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => {
-                      const src = initialMission.source
-                      const isSaisie = ['police_saisie', 'police_rodeo'].includes(src)
-                      const leveeManquante = isSaisie && !(initialMission as any).police_levee_saisie_ok
-
-                      // Warning saisie : confirmer la levee
-                      if (leveeManquante) {
-                        if (!confirm('⚠ SAISIE\n\nLa levée de saisie est-elle bien confirmée (documents reçus du Parquet/Police) ?\n\nSi non, ne PAS restituer le véhicule.')) return
-                      }
-                      // Warning vehicule bloque police : confirmer passage commissariat
-                      if (policeBlocked) {
-                        if (!confirm('⚠ VÉHICULE BLOQUÉ PAR LA POLICE\n\nLe propriétaire est-il bien passé au commissariat pour faire lever le blocage ?\n\nSi non, ne PAS restituer.')) return
-                      }
-                      // Tout OK -> module encaissement chauffeur
-                      const url = buildEncaissementUrl(initialMission as any, {
-                        returnTo: `/dispatch/${initialMission.id}`,
-                      })
-                      window.location.href = url
-                    }}
-                    className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-semibold transition flex items-center justify-center gap-2">
-                    🔑 Restituer le véhicule (encaissement chauffeur)
-                  </button>
-                </>
+              {/* Imprimer étiquette parc — Olivier 2026-06-14 : permuté vers le bas
+                  (était en haut du bloc droit, échangé avec le bouton Restituer). */}
+              {(status === 'parked' || (initialMission as any).parc_zone_key) &&
+                (userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
+                <PrintLabelButton missionId={initialMission.id} />
               )}
 
               {/* Encarts linkedChild + linkedParent : DEPLACES EN HAUT du bloc droit
@@ -3690,6 +3694,31 @@ export default function MissionDetailClient({
           }}
         />
       )}
+      {/* Restituer et facturer (équipe facturation) — Olivier 2026-06-14 */}
+      {showRestituerFacturer && (
+        <RestituerEtFacturerModal
+          mission={{
+            id:                     initialMission.id,
+            mission_number:         initialMission.mission_number,
+            external_id:            initialMission.external_id,
+            vehicle_plate:          initialMission.vehicle_plate,
+            source:                 initialMission.source,
+            police_blocked:         Boolean(initialMission.police_blocked),
+            police_levee_saisie_ok: Boolean((initialMission as any).police_levee_saisie_ok),
+            client_name:            initialMission.client_name,
+            client_phone:           (initialMission as any).client_phone || null,
+            client_address:         (initialMission as any).client_address || null,
+            billed_to_id:           initialMission.billed_to_id || null,
+            billed_to_name:         initialMission.billed_to_name || null,
+          }}
+          onClose={() => setShowRestituerFacturer(false)}
+          onSuccess={(q) => {
+            setShowRestituerFacturer(false)
+            router.push(`/facturation?q=${encodeURIComponent(q)}`)
+          }}
+        />
+      )}
+
       {showRestituerModal && ['police_mg', 'police_rodeo'].includes(initialMission.source) && (
         <RestituerMalGareeModal
           mission={{
