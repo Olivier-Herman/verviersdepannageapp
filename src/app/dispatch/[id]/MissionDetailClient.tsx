@@ -1197,6 +1197,22 @@ export default function MissionDetailClient({
     }
   }
 
+  // ── Autosave : toute modification du formulaire est persistée automatiquement
+  //    (silencieux, débouncé). On EXCLUT parked_at / delivering_at : ce sont des
+  //    valeurs par défaut affichées qui ne doivent être sauvées que sur clic
+  //    explicite (sinon on figerait le gardiennage). Le bouton « Sauvegarder &
+  //    notifier » reste utile pour pousser les changements au chauffeur. ──
+  const autosaveHydrated = useRef(false)
+  useEffect(() => {
+    if (!autosaveHydrated.current) { autosaveHydrated.current = true; return }
+    const t = setTimeout(() => {
+      const { parked_at: _pa, delivering_at: _da, ...rest } = form as any
+      silentPatch(rest)
+    }, 900)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form])
+
   // Au chargement : vérifier les 2 adresses et appliquer silencieusement la version
   // canonique Google (confirmed OU different — on fait confiance à Places, comme si
   // le dispatcher avait tapé l'adresse et choisi la 1re suggestion). La bannière
