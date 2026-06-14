@@ -17,3 +17,4 @@ COMMENT ON COLUMN public.incoming_missions.scratched_at IS
   'Timestamp de la mise en epave (cf POST /api/missions/[id]/scratch). NULL = pas scratched.';
 
 NOTIFY pgrst, 'reload schema';
+

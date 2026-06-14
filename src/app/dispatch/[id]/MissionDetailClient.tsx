@@ -2650,7 +2650,7 @@ export default function MissionDetailClient({
                   Olivier 2026-06-14 : agent en autocomplete des contacts de la
                   société Odoo de la zone. */}
               {(form.source || initialMission.source || '').startsWith('police_') && (
-                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
+                <div className="relative z-30 bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
                   <h2 className="text-ink font-semibold text-sm flex items-center gap-2"><span>🚓</span> Police</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
