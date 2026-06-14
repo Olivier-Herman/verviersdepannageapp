@@ -1256,6 +1256,31 @@ export default function MissionDetailClient({
     }
   }
 
+  // ── N° de dossier (modifiable / ajoutable) ──
+  const [dossierNumber, setDossierNumber] = useState<string>(initialMission.dossier_number || '')
+  const [savedDossier,  setSavedDossier]  = useState<string>(initialMission.dossier_number || '')
+  const [isSavingDossier, setIsSavingDossier] = useState(false)
+  const saveDossierNumber = async () => {
+    const val = dossierNumber.trim()
+    if (val === savedDossier) return
+    setIsSavingDossier(true)
+    try {
+      const res = await fetch(`/api/missions/${initialMission.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dossier_number: val || null }),
+      })
+      if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
+      setSavedDossier(val)
+    } catch (err) {
+      console.error('Erreur save dossier_number:', err)
+      setDossierNumber(savedDossier)
+      alert("Erreur lors de l'enregistrement du n° de dossier. Réessayez.")
+    } finally {
+      setIsSavingDossier(false)
+    }
+  }
+
   // ── Auto-save silent des stops (debounced) — pour que le KM live se base sur la DB à jour ──
   const stopsHydrated = useRef(false)
   useEffect(() => {
@@ -2055,6 +2080,56 @@ export default function MissionDetailClient({
             </div>
           </div>
         )}
+
+        {/* ── Bloc Référence (remonté en haut, avant la date d'intervention) —
+            Olivier 2026-06-14. N° dossier modifiable / ajoutable. ── */}
+        <div className="px-4 lg:px-8 pt-6">
+          <div className="bg-surface border rounded-xl p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div>
+                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">N° Mission</p>
+                  <p className="text-ink font-mono text-sm font-semibold">
+                    {initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}
+                  </p>
+                  {initialMission.mission_number != null && initialMission.external_id && (
+                    <p className="text-ink-faint font-mono text-[11px]">{initialMission.external_id}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">Source</p>
+                  <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>
+                    {srcInfo.label}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">Reçu</p>
+                  <p className="text-ink-secondary text-xs mt-0.5">{new Date(initialMission.received_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+                {initialMission.incident_at && (
+                  <div>
+                    <p className="text-ink-muted text-[11px] uppercase tracking-wide">Incident</p>
+                    <p className="text-ink-secondary text-xs mt-0.5">{new Date(initialMission.incident_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                )}
+              </div>
+              <div className="min-w-[180px]">
+                <label className="text-ink-muted text-[11px] uppercase tracking-wide flex items-center gap-1.5">
+                  N° Dossier {isSavingDossier && <span className="text-brand normal-case">⏳ enregistrement…</span>}
+                </label>
+                <input
+                  type="text"
+                  value={dossierNumber}
+                  onChange={e => setDossierNumber(e.target.value)}
+                  onBlur={saveDossierNumber}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                  placeholder="Ajouter un n° de dossier…"
+                  className="mt-0.5 w-full bg-surface-2 border border-strong rounded-lg px-2.5 py-1.5 text-ink font-mono text-sm outline-none focus:border-brand"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* ── Barre Date d'intervention ─────────────────────────── */}
         <div className="px-4 lg:px-8 pt-6">
@@ -3103,9 +3178,11 @@ export default function MissionDetailClient({
                 />
               )}
 
-              {/* Bloc REL/Mission liée — visible EN HAUT du bloc droit (Olivier 2026-05-27 Fix I).
-                  Affiche en priorité le contexte REL avant les actions et l assignation chauffeur. */}
-              {status === 'parked' && !linkedChild && !['police_mg', 'police_rodeo'].includes(initialMission.source) && (
+              {/* Bloc Relivraison — Olivier 2026-06-14 : disponible UNIQUEMENT pour
+                  les véhicules en zone K (file d'attente relivraison). Masque donc
+                  le bloc pour les saisies et tout véhicule pas encore prêt à relivrer. */}
+              {status === 'parked' && !linkedChild && !['police_mg', 'police_rodeo'].includes(initialMission.source)
+                && (initialMission as any).parc_zone_key === 'K' && (
                 <RelivrerButton
                   missionId={initialMission.id}
                   initialRedeliveryAddress={(initialMission as any).redelivery_address}
@@ -3413,43 +3490,7 @@ export default function MissionDetailClient({
                 <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />
               </div>
 
-              {/* Récap numéros */}
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
-                <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Référence</h3>
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-ink-muted text-xs">N° Mission</p>
-                    <p className="text-ink font-mono text-sm">
-                      {initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}
-                    </p>
-                    {initialMission.mission_number != null && initialMission.external_id && (
-                      <p className="text-ink-faint font-mono text-xs">{initialMission.external_id}</p>
-                    )}
-                  </div>
-                  {initialMission.dossier_number && (
-                    <div>
-                      <p className="text-ink-muted text-xs">N° Dossier</p>
-                      <p className="text-ink font-mono text-sm">{initialMission.dossier_number}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-ink-muted text-xs">Source</p>
-                    <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>
-                      {srcInfo.label}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-ink-muted text-xs">Reçu</p>
-                    <p className="text-ink-secondary text-xs">{new Date(initialMission.received_at).toLocaleString('fr-BE')}</p>
-                  </div>
-                  {initialMission.incident_at && (
-                    <div>
-                      <p className="text-ink-muted text-xs">Incident</p>
-                      <p className="text-ink-secondary text-xs">{new Date(initialMission.incident_at).toLocaleString('fr-BE')}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* Bloc Référence déplacé en haut de fiche (Olivier 2026-06-14). */}
 
               {/* Bouton Relivrer + encarts linkedChild/linkedParent : DEPLACES EN HAUT
                   du bloc droit (Olivier 2026-05-27 Fix I). Ne PAS dupliquer ici. */}

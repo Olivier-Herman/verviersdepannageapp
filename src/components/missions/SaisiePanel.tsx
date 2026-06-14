@@ -65,7 +65,7 @@ export default function SaisiePanel({ mission }: { mission: SaisieMission }) {
     <div className="bg-surface border rounded-2xl p-4 space-y-4">
       <div className="flex items-center gap-2">
         <span className="text-lg">🚔</span>
-        <h3 className="font-semibold text-ink text-sm">Saisie — gestion judiciaire</h3>
+        <h3 className="font-semibold text-ink text-sm">Saisie</h3>
       </div>
 
       <RequisitoireSection mission={mission} />
