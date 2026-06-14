@@ -773,6 +773,80 @@ function ManageParkButton({ missionId, source, currentAddress, gmKey, onConverte
   )
 }
 
+// Olivier 2026-06-14 : sur une fiche HORS zone K, indiquer que le véhicule
+// nécessite une relivraison. Encode l'adresse + bascule en zone K (file
+// d'attente, impression étiquette REL). NE crée PAS encore la fiche REL.
+function NeedsRelivraisonButton({ missionId, currentAddress, gmKey, onDone }: {
+  missionId:      string
+  currentAddress: string
+  gmKey:          string
+  onDone:         () => void
+}) {
+  const [open,    setOpen]    = useState(false)
+  const [addr,    setAddr]    = useState(currentAddress || '')
+  const [lat,     setLat]     = useState<number | null>(null)
+  const [lng,     setLng]     = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+
+  async function submit() {
+    if (!addr.trim()) { setError('Adresse de relivraison requise'); return }
+    setLoading(true); setError(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/request-relivraison`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ redelivery_address: addr.trim(), redelivery_lat: lat, redelivery_lng: lng }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      onDone()
+    } catch (e: any) { setError(e.message); setLoading(false) }
+  }
+
+  return (
+    <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 md-card-enter">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)}
+          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-2">
+          🚚 Ce véhicule nécessite une relivraison ?
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <p className="text-blue-900 text-sm font-bold uppercase tracking-wide">Préparer la relivraison</p>
+            <p className="text-blue-800 text-xs mt-0.5">
+              Le véhicule passe en zone K (file d'attente relivraison) avec l'adresse ci-dessous. La fiche de relivraison sera créée plus tard, depuis la zone K.
+            </p>
+          </div>
+          <div>
+            <label className="block text-blue-900 text-xs font-semibold mb-1.5">Adresse de relivraison *</label>
+            <AddressField
+              value={addr}
+              onChange={setAddr}
+              onSelect={(a, la, ln) => { setAddr(a); setLat(la); setLng(ln) }}
+              gmKey={gmKey}
+              placeholder="Adresse où livrer le véhicule"
+              className="bg-white border border-blue-200 text-blue-900"
+            />
+          </div>
+          {error && <p className="text-critical text-xs">⚠ {error}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => { setOpen(false); setError(null) }} disabled={loading}
+              className="flex-1 py-2 bg-white border border-blue-300 text-blue-900 rounded-xl text-sm font-medium">
+              Annuler
+            </button>
+            <button onClick={submit} disabled={loading || !addr.trim()}
+              className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
+              {loading ? '⏳ Transfert…' : 'Placer en zone K →'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PrintLabelButton({ missionId }: { missionId: string }) {
   const [loading, setLoading] = useState(false)
   const [status,  setStatus]  = useState<'idle' | 'ok' | 'error'>('idle')
@@ -3158,23 +3232,24 @@ export default function MissionDetailClient({
                 💰 Avance de fonds pour cette mission
               </a>
 
-              {/* Bouton "Gérer la mise en parc" — saisie adresse + conversion REM+REL.
-                  Visible pour toute mission REM (pas encore REM+REL) en parc dont la
-                  source autorise une relivraison (helper isRelEligibleSource cote serveur). */}
+              {/* "Ce véhicule nécessite une relivraison ?" — Olivier 2026-06-14 :
+                  sur une fiche HORS zone K, encode l'adresse + bascule en zone K
+                  (file d'attente relivraison). Ne crée PAS encore la fiche REL.
+                  Visible pour les REM en parc dont la source autorise une relivraison. */}
               {status === 'parked' && !linkedChild
                 && (initialMission.mission_type === 'REM' || /^rem$/i.test(initialMission.mission_type || ''))
                 && !['police_mg', 'police_rodeo', 'police_saisie', 'police_avp'].includes(initialMission.source)
-                && !(initialMission.source === 'police_snc' && initialMission.snc_scenario !== 'rem_depot') && (
-                <ManageParkButton
+                && !(initialMission.source === 'police_snc' && initialMission.snc_scenario !== 'rem_depot')
+                && (initialMission as any).parc_zone_key !== 'K' && (
+                <NeedsRelivraisonButton
                   missionId={initialMission.id}
-                  source={initialMission.source}
                   currentAddress={
                     (initialMission as any).redelivery_address
                     || initialMission.destination_address
                     || ''
                   }
                   gmKey={googleMapsKey}
-                  onConverted={() => router.refresh()}
+                  onDone={() => router.refresh()}
                 />
               )}
 
