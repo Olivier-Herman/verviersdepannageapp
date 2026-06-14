@@ -2173,31 +2173,103 @@ export default function MissionDetailClient({
           </div>
         )}
 
-        {/* ── Bloc Référence (slim) — Olivier 2026-06-14 : on ne garde que l'info
-            unique/actionnable (réf. externe + N° dossier éditable). N° mission,
-            source, reçu sont déjà dans l'en-tête ; l'incident dans la barre date. ── */}
+        {/* ── En-tête 50/50 : Référence (gauche) + Opérationnel (droite) —
+            Olivier 2026-06-14. Identité à gauche, contrôles du quotidien
+            (chauffeur, dépôt, sauvegarde) à droite. ── */}
         <div className="px-4 lg:px-8 pt-6">
-          <div className="bg-surface border rounded-xl p-4 flex items-end justify-between gap-4 flex-wrap">
-            {initialMission.external_id && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+
+            {/* Gauche : Référence */}
+            <div className="bg-surface border rounded-xl p-4 flex flex-col gap-3">
+              {initialMission.external_id && (
+                <div>
+                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">Référence externe</p>
+                  <p className="text-ink font-mono text-sm mt-0.5">{initialMission.external_id}</p>
+                </div>
+              )}
               <div>
-                <p className="text-ink-muted text-[11px] uppercase tracking-wide">Référence externe</p>
-                <p className="text-ink font-mono text-sm mt-0.5">{initialMission.external_id}</p>
+                <label className="text-ink-muted text-[11px] uppercase tracking-wide flex items-center gap-1.5">
+                  N° Dossier {isSavingDossier && <span className="text-brand normal-case">⏳ enregistrement…</span>}
+                </label>
+                <input
+                  type="text"
+                  value={dossierNumber}
+                  onChange={e => setDossierNumber(e.target.value)}
+                  onBlur={saveDossierNumber}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                  placeholder="Ajouter un n° de dossier…"
+                  className="mt-0.5 w-full bg-surface-2 border border-strong rounded-lg px-2.5 py-1.5 text-ink font-mono text-sm outline-none focus:border-brand"
+                />
               </div>
-            )}
-            <div className="min-w-[200px] flex-1 max-w-xs">
-              <label className="text-ink-muted text-[11px] uppercase tracking-wide flex items-center gap-1.5">
-                N° Dossier {isSavingDossier && <span className="text-brand normal-case">⏳ enregistrement…</span>}
-              </label>
-              <input
-                type="text"
-                value={dossierNumber}
-                onChange={e => setDossierNumber(e.target.value)}
-                onBlur={saveDossierNumber}
-                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                placeholder="Ajouter un n° de dossier…"
-                className="mt-0.5 w-full bg-surface-2 border border-strong rounded-lg px-2.5 py-1.5 text-ink font-mono text-sm outline-none focus:border-brand"
-              />
             </div>
+
+            {/* Droite : Opérationnel (chauffeur + dépôt + sauvegarde) */}
+            <div className="bg-surface border rounded-xl p-4 space-y-3">
+              {/* Assignation chauffeur */}
+              <div>
+                <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Assigner à un chauffeur</p>
+                {['completed', 'ignored', 'cancelled'].includes(status) ? (
+                  <div className="bg-surface-2 border rounded-lg px-3 py-2 text-ink-secondary text-sm">
+                    {initialMission.assigned_user?.name || '— Non assigné —'}
+                  </div>
+                ) : selectedDriver ? (
+                  <div className="flex items-center justify-between gap-2 bg-surface-2 border rounded-lg px-3 py-2">
+                    <span className="text-ink text-sm">{drivers.find(d => d.id === selectedDriver)?.name || '— inconnu —'}</span>
+                    <button type="button" onClick={async () => {
+                      if (!confirm('Délier le chauffeur de cette mission ?')) return
+                      try {
+                        await fetch('/api/missions/assign', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ mission_id: initialMission.id, driver_id: null }),
+                        })
+                        setSelectedDriver('')
+                        setStatus('dispatching')
+                        setM(prev => ({ ...prev, assigned_to: null, assigned_user: null, status: 'dispatching' } as any))
+                      } catch (e: any) { alert('Erreur : ' + (e.message || 'reseau')) }
+                    }}
+                      className="text-ink-muted hover:text-critical text-xs">Délier ✕</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setShowDriverModal(true)}
+                    className="w-full px-4 py-2 bg-brand hover:bg-brand/80 text-white text-sm font-semibold rounded-lg transition">
+                    🚛 Choisir un chauffeur (ETA temps réel)
+                  </button>
+                )}
+              </div>
+
+              {/* Dépôt de départ */}
+              <div>
+                <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Dépôt de départ</p>
+                <select value={depotId} onChange={e => {
+                  const newId = e.target.value
+                  setDepotId(newId)
+                  silentPatch({ depot_depart_id: newId || null })
+                  setKmRefresh(k => k + 1)
+                }}
+                  className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand">
+                  <option value="">— Choisir —</option>
+                  {depots.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} {d.is_default ? '(défaut)' : ''} — {d.address}</option>
+                  ))}
+                </select>
+                {depots.length === 0 && (
+                  <p className="text-ink-faint text-xs mt-1">Aucun dépôt — <Link href="/admin/depots" className="text-brand underline">configurer</Link></p>
+                )}
+              </div>
+
+              {/* Sauvegarder & notifier (les champs s'enregistrent déjà en auto ;
+                  ce bouton pousse les changements au chauffeur + sauve les dates parc). */}
+              {status !== 'ignored' && (
+                <button
+                  onClick={handleSave}
+                  disabled={loadingSave || vehicleDecisionPending}
+                  className="w-full py-2.5 bg-brand hover:bg-brand/80 text-white rounded-lg font-semibold text-sm transition disabled:opacity-50"
+                >
+                  {loadingSave ? 'Sauvegarde…' : saveOk ? '✅ Enregistré — chauffeur notifié' : '💾 Sauvegarder & notifier le chauffeur'}
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
 
@@ -3321,15 +3393,6 @@ export default function MissionDetailClient({
                     >
                       {loadingRefuse ? 'Refus...' : '❌ Refuser'}
                     </button>
-                    <div className="border-t border pt-3">
-                      <button
-                        onClick={handleSave}
-                        disabled={loadingSave || vehicleDecisionPending}
-                        className="w-full py-2.5 bg-surface hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm transition disabled:opacity-50"
-                      >
-                        {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder'}
-                      </button>
-                    </div>
                   </>
                 )}
 
@@ -3340,13 +3403,6 @@ export default function MissionDetailClient({
                       <span className="text-info font-semibold text-sm">📡 En attente d'assignation</span>
                       <p className="text-ink-muted text-xs mt-1">Clique « Choisir un chauffeur » plus haut pour assigner</p>
                     </div>
-                    <button
-                      onClick={handleSave}
-                      disabled={loadingSave || vehicleDecisionPending}
-                      className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
-                    >
-                      {loadingSave ? 'Sauvegarde...' : saveOk ? '✅ Sauvegardé !' : '💾 Sauvegarder les modifications'}
-                    </button>
                     <button
                       onClick={handleRefuse}
                       disabled={loadingRefuse}
@@ -3363,91 +3419,11 @@ export default function MissionDetailClient({
                     <div className={`text-center py-2 font-semibold text-sm ${statusInfo.color}`}>
                       {statusInfo.label}
                     </div>
-                    {status !== 'ignored' && (
-                      <button
-                        onClick={handleSave}
-                        disabled={loadingSave || vehicleDecisionPending}
-                        className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-xl font-semibold text-sm transition disabled:opacity-50"
-                      >
-                        {loadingSave ? 'Sauvegarde...' : saveOk
-                          ? (status === 'completed' ? '✅ Sauvegardé' : '✅ Sauvegardé — chauffeur notifié')
-                          : '💾 Sauvegarder les modifications'}
-                      </button>
-                    )}
                   </>
                 )}
 
-                {/* Dépôt de départ — sert au calcul KM aller/retour */}
-                <div className="border-t border pt-4">
-                  <label className="block text-ink-muted text-xs mb-2">Dépôt de départ</label>
-                  <select value={depotId} onChange={e => {
-                    const newId = e.target.value
-                    setDepotId(newId)
-                    silentPatch({ depot_depart_id: newId || null })
-                    setKmRefresh(k => k + 1)
-                  }}
-                    className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand">
-                    <option value="">— Choisir —</option>
-                    {depots.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} {d.is_default ? '(défaut)' : ''} — {d.address}
-                      </option>
-                    ))}
-                  </select>
-                  {depots.length === 0 && (
-                    <p className="text-ink-faint text-xs mt-1.5">Aucun dépôt configuré — <Link href="/admin/depots" className="text-brand underline">configurer dans /admin/depots</Link></p>
-                  )}
-                </div>
-
-                {/* Assignation chauffeur */}
-                <div className="border-t border pt-4">
-                  <p className="text-ink-muted text-xs mb-2">Assigner à un chauffeur</p>
-                  {['completed', 'ignored', 'cancelled'].includes(status) ? (
-                    <div className="bg-surface border rounded-xl px-3 py-2.5 text-ink-secondary text-sm">
-                      {initialMission.assigned_user?.name || '— Non assigné —'}
-                    </div>
-                  ) : (
-                    <>
-                      {/* Chauffeur déjà sélectionné */}
-                      {selectedDriver ? (
-                        <div className="flex items-center justify-between gap-2 bg-surface border rounded-xl px-3 py-2.5 mb-2">
-                          <span className="text-ink text-sm">
-                            {drivers.find(d => d.id === selectedDriver)?.name || '— inconnu —'}
-                          </span>
-                          <button type="button" onClick={async () => {
-                            // Délier = unassign immediat en DB (driver_id: null)
-                            // Sans ca, le state local change mais la DB garde l'ancien
-                            // chauffeur et le bouton 'Confirmer' n'envoie pas la disassign.
-                            if (!confirm('Délier le chauffeur de cette mission ?')) return
-                            try {
-                              await fetch('/api/missions/assign', {
-                                method:  'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body:    JSON.stringify({ mission_id: initialMission.id, driver_id: null }),
-                              })
-                              setSelectedDriver('')
-                              setStatus('dispatching')
-                              setM(prev => ({ ...prev, assigned_to: null, assigned_user: null, status: 'dispatching' } as any))
-                            } catch (e: any) {
-                              alert('Erreur : ' + (e.message || 'reseau'))
-                            }
-                          }}
-                            className="text-ink-muted hover:text-critical text-xs">Délier ✕</button>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={() => setShowDriverModal(true)}
-                          className="w-full px-4 py-2.5 bg-brand hover:bg-brand/80 text-white text-sm font-semibold rounded-xl transition mb-2">
-                          🚛 Choisir un chauffeur (avec ETA temps réel)
-                        </button>
-                      )}
-                    </>
-                  )}
-                  {initialMission.assigned_user && (
-                    <p className="text-xs text-ink-muted mt-1">
-                      Assigné à <span className="text-success font-medium">{initialMission.assigned_user.name}</span>
-                    </p>
-                  )}
-                </div>
+                {/* Dépôt + Chauffeur + Sauvegarder déplacés dans l'en-tête
+                    opérationnel en haut de fiche (Olivier 2026-06-14). */}
               </div>
 
               {/* ── Actions admin (dispatcher peut forcer le statut sans pointage chauffeur) ── */}
