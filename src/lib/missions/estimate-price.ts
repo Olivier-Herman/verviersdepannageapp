@@ -782,7 +782,9 @@ async function estimateLinesTemplate(
       if (applicable.length > 0) {
         surchargeApplies = true
         surchargePct = applicable.reduce((s, x) => s + Number(x.rate_pct || 0), 0)
-        surchargeNote = applicable.map(x => `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`).join(', ')
+        surchargeNote = applicable.map(x => Number(x.rate_pct) > 0
+          ? `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`
+          : `${x.weekday_label} ${x.range_label} (tarif majoré)`).join(', ')
       }
     } catch {}
   }
