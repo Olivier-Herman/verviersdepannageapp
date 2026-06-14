@@ -768,6 +768,7 @@ async function estimateLinesTemplate(
   //    source-specifiques via /admin/surcharges)
   let surchargePct = 0
   let surchargeNote = ''
+  let surchargeApplies = false
   const interventionDateStr = mission.intervention_date || mission.received_at
   if (interventionDateStr) {
     try {
@@ -779,12 +780,20 @@ async function estimateLinesTemplate(
         parent_mission_id: mission.parent_mission_id || null,
       }, new Date(interventionDateStr))
       if (applicable.length > 0) {
+        surchargeApplies = true
         surchargePct = applicable.reduce((s, x) => s + Number(x.rate_pct || 0), 0)
-        surchargeNote = applicable.map(x => `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`).join(', ')
+        surchargeNote = applicable.map(x => Number(x.rate_pct) > 0
+          ? `${x.weekday_label} ${x.range_label} +${x.rate_pct}%`
+          : `${x.weekday_label} ${x.range_label} (tarif majoré)`).join(', ')
       }
     } catch {}
   }
-  const isMajored = surchargePct > 0
+  // Olivier 2026-06-14 : une période de majoration qui matche ACTIVE les prix
+  // majorés (default_price_majore), même si son taux % vaut 0. Pour la Saisie /
+  // l'Accident, la majoration est encodée dans un prix distinct (ex: PEC 94,06 →
+  // 141,11), pas dans un pourcentage. Les lignes sans prix majoré distinct
+  // restent soumises au % via subtotalMajorable (0 si pct=0, donc sans effet).
+  const isMajored = surchargeApplies
 
   // 2. Deduplication par position : garde la ligne specifique au vehicle_class
   //    si dispo, sinon la generique. (L ORDER BY vehicle_class DESC nullsFirst=false
