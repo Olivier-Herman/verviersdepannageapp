@@ -2846,6 +2846,10 @@ export default function MissionDetailClient({
                   </div>
                   )}
                 </div>
+                {/* Kilométrage estimé — intégré au bloc Lieu/Destination (Olivier 2026-06-14) */}
+                <div className="mt-4 pt-4 border-t">
+                  <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />
+                </div>
               </div>
                 )
               })()}
@@ -3540,10 +3544,7 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Kilométrage estimé (Google Directions, recalculé sur chaque modif d'adresse/stop/dépôt) */}
-              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
-                <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />
-              </div>
+              {/* Kilométrage intégré au bloc Lieu/Destination (Olivier 2026-06-14). */}
 
               {/* Bloc Référence déplacé en haut de fiche (Olivier 2026-06-14). */}
 
