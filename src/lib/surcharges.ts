@@ -134,6 +134,9 @@ const WEEKDAY_LABELS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', '
 
 /** Detecte si une mission est de type REM (remorquage) ou DSP (depannage). */
 function isRemMission(m: MinimalMission): boolean {
+  // Olivier 2026-06-14 : une saisie est TOUJOURS un remorquage → taux REM,
+  // quel que soit le mission_type enregistré.
+  if ((m.source || '').toLowerCase().trim() === 'police_saisie') return true
   const mt = (m.mission_type || '').toLowerCase()
   return mt === 'remorquage'
 }
