@@ -171,6 +171,9 @@ export interface TemplateLine {
   default_qty:      number | null
   default_price:    number | null
   apply_surcharges: boolean
+  // SERV-PARC : période (ISO) qui compose le décompte de jours (affichage estimation).
+  parc_from?:       string | null
+  parc_to?:         string | null
 }
 
 export interface PriceEstimate {
@@ -793,9 +796,13 @@ async function estimateLinesTemplate(
     return true
   })
 
+  const nowIso = new Date().toISOString()
   const templateLines: TemplateLine[] = dedupedLines.map(l => {
     const qtyConfigured = l.default_qty != null ? Number(l.default_qty) : null
     let autoQty: number | null = qtyConfigured
+    // SERV-PARC : période (début → fin) qui compose le décompte de jours.
+    let parcFrom: string | null = null
+    let parcTo:   string | null = null
     if (qtyConfigured == null) {
       if (l.kind === 'SERV-PARC') {
         // Olivier 2026-05-28 :
@@ -823,16 +830,24 @@ async function estimateLinesTemplate(
           // levée (propriétaire récupère). Pas applicable si remise au Domaine.
           const startRef = mission.temp_returned_at || leveeDate
           autoQty = (startRef && !domaineDate) ? Math.max(0, joursPleinsEcoules(startRef) - freeDays) : 0
+          parcFrom = startRef || null
+          parcTo   = (startRef && !domaineDate) ? nowIso : null
         } else if (cutoff) {
           const startRef = l.parc_count_from === 'intervention_date'
             ? (mission.intervention_date || mission.received_at)
             : (mission.parked_at || mission.received_at)
           autoQty = Math.max(0, joursPleinsBetween(startRef, cutoff) - freeDays)
+          parcFrom = startRef || null
+          parcTo   = cutoff
         } else {
           const ref = l.parc_count_from === 'intervention_date'
             ? autoParcJoursIntervention
             : autoParcJoursParked
           autoQty = Math.max(0, ref - freeDays)
+          parcFrom = l.parc_count_from === 'intervention_date'
+            ? (mission.intervention_date || mission.received_at || null)
+            : (mission.parked_at || mission.received_at || null)
+          parcTo   = nowIso
         }
       }
       if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)
@@ -848,6 +863,8 @@ async function estimateLinesTemplate(
       default_qty:      autoQty,
       default_price:    priceToUse,
       apply_surcharges: !!l.apply_surcharges && priceMajore == null,
+      parc_from:        parcFrom,
+      parc_to:          parcTo,
       // ^ Si la ligne a son propre prix majore, elle n'est PLUS soumise a la
       //   majoration calculee +X% (sinon double comptage). Pour les autres
       //   lignes (Accident PCD/TD/MOE) sans prix majore distinct : ancien
@@ -894,6 +911,17 @@ async function estimateLinesTemplate(
         note = `${Number(l.default_price).toFixed(2)} €/${unit}`
       } else if (!hasQty || !hasPrice) {
         note = 'qty/PU à saisir'
+      }
+      // SERV-PARC : ajoute la période (début → fin) qui compose le décompte de jours.
+      if (l.kind === 'SERV-PARC' && l.parc_from) {
+        const fmtJ = (iso: string) => {
+          try { return new Date(iso).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
+          catch { return iso.slice(0, 10) }
+        }
+        const periode = l.parc_to
+          ? `du ${fmtJ(l.parc_from)} au ${fmtJ(l.parc_to)}`
+          : `à partir du ${fmtJ(l.parc_from)}`
+        note = note ? `${note} · ${periode}` : periode
       }
       return {
         label: `${l.kind} — ${l.name}`,

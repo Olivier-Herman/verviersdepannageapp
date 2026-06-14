@@ -2234,6 +2234,23 @@ export default function MissionDetailClient({
           </div>
         )}
 
+        {/* Bandeau "Levée de saisie non confirmée" — Olivier 2026-06-14 : remonté
+            en alerte en haut de fiche (était enfoui dans le bloc Restituer). */}
+        {status === 'parked' && ['police_saisie', 'police_rodeo'].includes(initialMission.source)
+          && !(initialMission as any).police_levee_saisie_ok && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="border-2 rounded-xl p-4 flex items-start gap-3 bg-rose-50 border-rose-500">
+              <span className="text-2xl">📋</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-rose-700 text-sm font-bold uppercase tracking-wide">Levée de saisie non confirmée</p>
+                <p className="text-rose-900 text-xs mt-1">
+                  Le véhicule reste bloqué tant que la levée n'est pas enregistrée. Utilise « 🔓 Levée de saisie » dans l'encadré Saisie avant toute restitution.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Bandeau infos additionnelles (Olivier 2026-05-26) : agrege les
             infos utiles non editables ailleurs sur la fiche. */}
         {(initialMission.vehicle_class === 'moto' || initialMission.distance_km
@@ -3012,14 +3029,6 @@ export default function MissionDetailClient({
                       <span className="text-warning">🚓</span>
                       <p className="text-warning text-sm font-medium">
                         Bloquée par la police — confirmation obligatoire à la restitution (client doit être passé au commissariat)
-                      </p>
-                    </div>
-                  )}
-                  {['police_saisie', 'police_rodeo'].includes(initialMission.source) && !(initialMission as any).police_levee_saisie_ok && (
-                    <div className="bg-rose-500/10 border border-rose-500/40 rounded-2xl p-3 flex items-start gap-2">
-                      <span className="text-rose-500">📋</span>
-                      <p className="text-rose-500 text-sm font-medium">
-                        Saisie — levée de saisie non confirmée. Sera demandée à la restitution.
                       </p>
                     </div>
                   )}
