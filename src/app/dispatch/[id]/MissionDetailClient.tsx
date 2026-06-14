@@ -2973,6 +2973,27 @@ export default function MissionDetailClient({
 
               {/* Remarques dispatcher (notes + pièces jointes) */}
               <MissionRemarks missionId={initialMission.id} />
+
+              {/* Historique — Olivier 2026-06-14 : placé sous les Remarques */}
+              {logs.length > 0 && (
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
+                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Historique</h3>
+                  <div className="space-y-3">
+                    {logs.slice(0, 8).map(log => (
+                      <div key={log.id} className="flex gap-2">
+                        <span className="text-base leading-none mt-0.5">{LOG_ICONS[log.action] || '•'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-ink-secondary text-xs">{log.notes || log.action}</p>
+                          <p className="text-ink-faint text-xs">
+                            {log.actor?.name && `${log.actor.name} · `}
+                            {new Date(log.created_at).toLocaleString('fr-BE', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
@@ -2984,6 +3005,13 @@ export default function MissionDetailClient({
               {(status === 'parked' || (initialMission as any).parc_zone_key) &&
                 (userModules.includes('fourriere') || ['admin', 'superadmin'].includes(userRole)) && (
                 <PrintLabelButton missionId={initialMission.id} />
+              )}
+
+              {/* Panneau Saisie (réquisitoire / levée de saisie / Domaine) —
+                  Olivier 2026-06-14 : remonté en haut du bloc droit, juste sous
+                  l'impression d'étiquette. */}
+              {initialMission.source === 'police_saisie' && (
+                <SaisiePanel mission={initialMission as any} />
               )}
 
               {/* Avance de fonds — Olivier 2026-06-01 : permet a un dispatcher
@@ -3432,11 +3460,6 @@ export default function MissionDetailClient({
                 </>
               )}
 
-              {/* Panneau Saisie (réquisitoire / levée de saisie) — Olivier 2026-06-13 */}
-              {initialMission.source === 'police_saisie' && (
-                <SaisiePanel mission={initialMission as any} />
-              )}
-
               {/* Encarts linkedChild + linkedParent : DEPLACES EN HAUT du bloc droit
                   (Olivier 2026-05-27 Fix I). Ne PAS dupliquer ici. */}
 
@@ -3509,26 +3532,6 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Historique */}
-              {logs.length > 0 && (
-                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
-                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Historique</h3>
-                  <div className="space-y-3">
-                    {logs.slice(0, 8).map(log => (
-                      <div key={log.id} className="flex gap-2">
-                        <span className="text-base leading-none mt-0.5">{LOG_ICONS[log.action] || '•'}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-ink-secondary text-xs">{log.notes || log.action}</p>
-                          <p className="text-ink-faint text-xs">
-                            {log.actor?.name && `${log.actor.name} · `}
-                            {new Date(log.created_at).toLocaleString('fr-BE', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

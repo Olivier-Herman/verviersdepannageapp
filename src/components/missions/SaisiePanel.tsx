@@ -423,7 +423,7 @@ function DomaineSection({ mission }: { mission: SaisieMission }) {
       ) : (
         <div className="flex items-center justify-between gap-2">
           <p className="text-ink-secondary text-sm flex items-center gap-1.5">
-            <Landmark size={15} /> Propriétaire non en ordre → remise à l'État
+            <Landmark size={15} /> Remise Domaine
           </p>
           {!open && (
             <button onClick={() => setOpen(true)}
