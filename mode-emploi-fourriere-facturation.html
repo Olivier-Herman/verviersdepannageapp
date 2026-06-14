@@ -41,10 +41,10 @@
  <h2>Application VD Soft — Profils Fourrière & Facturation</h2>
  <div class="intro">
  <p><strong>Ce guide est destiné aux utilisateurs disposant du module « fourriere » et / ou « facturation ».</strong></p>
- <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), 12 fonctions Fourrière (inventaire, actions par véhicule, restitution) et 12 fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
+ <p>Il couvre 7 fonctions communes à tous (Dashboard, recherche, profil...), les fonctions Fourrière (inventaire, actions par véhicule, restitution, gestion judiciaire des saisies) et les fonctions Facturation (validation factures, devis, missions terminées) + l'encaissement bureau.</p>
  <p>📱 Cette interface est utilisable autant sur ordinateur (bureau) que mobile (terrain).</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou le dispatcher de garde.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 14/06/2026</p>
  </div>
 </div>
 
@@ -90,6 +90,14 @@
  <tr><td>122</td><td>Cash chauffeur (mode non)</td><td>p. 12</td></tr>
  <tr><td>123</td><td>Restituer un Rodéo (avec vérif levée saisie)</td><td>p. 13</td></tr>
  <tr><td>124</td><td>Restituer un véhicule bloqué police</td><td>p. 13</td></tr>
+ </table>
+
+ <h2>D4. Police Saisie — gestion judiciaire</h2>
+ <table>
+ <tr><td>125</td><td>Annexer un réquisitoire</td><td>p. 13</td></tr>
+ <tr><td>126</td><td>Enregistrer une levée de saisie (définitive / temporaire)</td><td>p. 14</td></tr>
+ <tr><td>127</td><td>Levée temporaire : sortie garagiste puis retour parc</td><td>p. 14</td></tr>
+ <tr><td>128</td><td>Remise au Domaine (État)</td><td>p. 14</td></tr>
  </table>
 
  <h2>E. Facturation</h2>
@@ -478,6 +486,68 @@
 </div>
 
 <!-- ─────────────────────────────────────────────────────── -->
+<!-- D4. POLICE SAISIE — GESTION JUDICIAIRE -->
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 class="subsection">D4. Police Saisie — gestion judiciaire</h2>
+
+<p class="desc">Pour les véhicules saisis par la police, la fiche du véhicule (depuis le menu, bouton « Consulter le dossier ») affiche en haut à droite, juste sous l'impression d'étiquette, un encadré <strong>« 🚔 Saisie — gestion judiciaire »</strong> avec trois actions : le réquisitoire, la levée de saisie et la remise au Domaine.</p>
+
+<div class="function">
+ <h3><span class="num">125</span>Annexer un réquisitoire</h3>
+ <p class="desc">Joindre au dossier le réquisitoire reçu (du Parquet / de la police), en général par mail.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Ouvre la fiche du véhicule saisi → encadré « 🚔 Saisie »</li>
+ <li>Clique sur « 📋 Réquisitoire »</li>
+ <li>Choisis le document (PDF ou photo) et/ou écris une note (ex : « reçu par mail du Parquet »)</li>
+ <li>Clique sur « Annexer »</li>
+ </ol>
+ <div class="tip">💡 Une pastille verte « Réquisitoire reçu le … » s'affiche ensuite, et le document apparaît dans les Remarques de la fiche.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">126</span>Enregistrer une levée de saisie</h3>
+ <p class="desc">Quand la saisie est levée, on l'enregistre. Cela débloque le véhicule côté police et fixe la date qui sert au calcul du gardiennage.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fiche du véhicule → encadré « 🚔 Saisie » → bouton « 🔓 Levée de saisie »</li>
+ <li>Choisis le type : <strong>Définitive</strong> (le client paie, le véhicule repart) ou <strong>Temporaire</strong> (le véhicule part chez un garagiste puis revient en parc en attendant la levée définitive)</li>
+ <li>Renseigne la <strong>date de levée</strong> (par défaut aujourd'hui, modifiable)</li>
+ <li>Joins un document <strong>OU</strong> écris un commentaire (ex : « Levée par téléphone »)</li>
+ <li>Clique sur « Enregistrer la levée »</li>
+ </ol>
+ <div class="tip">💡 Effet sur le gardiennage : jusqu'à la date de levée = tarif Parquet/saisie ; les jours <strong>au-delà</strong> de la date de levée = 20 €/jour (« hors période saisie »). Le détail est visible dans l'estimation tarif en bas de la fiche.</div>
+ <div class="warn">⚠️ Il faut un document <strong>ou</strong> un commentaire <strong>et</strong> une date pour que le blocage police soit retiré.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">127</span>Levée temporaire : sortie garagiste puis retour parc</h3>
+ <p class="desc">Pour une levée <strong>temporaire</strong>, le véhicule part en remise en ordre chez un garagiste, puis revient en parc jusqu'à la levée définitive.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Une fois la levée temporaire enregistrée, un encadré « Cycle levée temporaire » apparaît</li>
+ <li>Quand le véhicule part : clique sur « 🔧 Sortie vers garagiste » (il sort du parc, sa place est libérée)</li>
+ <li>Quand il revient : clique sur « ↩ Retour en parc », choisis la zone → le véhicule réintègre le parc sur le même dossier</li>
+ <li>Pour la sortie définitive ensuite : utilise la restitution habituelle (le blocage est déjà levé)</li>
+ </ol>
+ <div class="tip">💡 Le gardiennage « hors période » (20 €/jour) recommence à compter à partir du jour de retour en parc.</div>
+</div>
+
+<div class="function">
+ <h3><span class="num">128</span>Remise au Domaine (État)</h3>
+ <p class="desc">Quand le propriétaire ne se met pas en ordre, la police décide de remettre le véhicule au Domaine (l'État). Il sera vendu aux enchères puis enlevé par un épaviste.</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Fiche du véhicule → encadré « 🚔 Saisie » → bouton « 🏛 Domaine »</li>
+ <li>Renseigne la <strong>date de remise</strong> (obligatoire)</li>
+ <li>Renseigne la <strong>date de vente</strong> si elle est connue (souvent plus tard — on peut revenir la compléter)</li>
+ <li>Joins un document <strong>OU</strong> écris un commentaire</li>
+ <li>Clique sur « Enregistrer la remise »</li>
+ </ol>
+ <div class="tip">💡 Facturation : le gardiennage facturé au client/parquet <strong>s'arrête à la date de remise</strong>. Les jours entre la remise et la vente sont comptés pour l'État (au tarif parc saisie) et iront dans le tableau trimestriel envoyé au Domaine.</div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
 <!-- E. FACTURATION -->
 <!-- ─────────────────────────────────────────────────────── -->
 <h1 class="section">E. Facturation</h1>
@@ -736,7 +806,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 28/05/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profils Fourrière & Facturation · Version du 14/06/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 
