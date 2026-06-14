@@ -100,6 +100,7 @@ export async function POST(req: Request) {
       id, external_id, dossier_number, source, mission_type, status,
       client_name, vehicle_plate, vehicle_mileage,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
+      levee_saisie_date, temp_returned_at, domaine_remise_date,
       billed_to_id, billed_to_name,
       amount_to_collect, special_tarif_htva, amount_guaranteed,
       incident_address, incident_city, destination_address, destination_name,

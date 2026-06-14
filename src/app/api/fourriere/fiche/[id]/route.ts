@@ -42,6 +42,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       parc_zone_key, parc_row_number, parc_slot_index,
       keys_digibox_slot,
       parked_at, loaded_at, received_at, intervention_date, completed_at,
+      levee_saisie_date, levee_saisie_type, levee_saisie_at, temp_returned_at,
+      domaine_remise_date, domaine_vente_date, domaine_at,
       payment_amount, payment_mode, payment_collected_at, payment_breakdown,
       odoo_quote_id, odoo_quote_url, odoo_vehicle_id, odoo_ticket_id,
       special_tarif_htva,
@@ -96,6 +98,9 @@ async function computeProvisionalTariff(_sb: any, m: any): Promise<{ amount_tvac
       completed_at:      m.completed_at,
       intervention_date: m.intervention_date,
       received_at:       m.received_at,
+      levee_saisie_date: m.levee_saisie_date,
+      temp_returned_at:  m.temp_returned_at,
+      domaine_remise_date: m.domaine_remise_date,
       vehicle_class:     m.vehicle_class || 'car',
       amount_to_collect: m.payment_amount ?? null,
     })

@@ -214,6 +214,16 @@ interface MissionLike {
   completed_at?:      string | null
   intervention_date?: string | null
   received_at?:       string | null
+  // Police Saisie (Olivier 2026-06-13) : la date de levée sépare le gardiennage
+  // Parquet (avant) du gardiennage hors période saisie (après, 20 €/j).
+  // temp_returned_at = retour en parc après levée temporaire (départ du
+  // décompte hors période dans ce cas).
+  levee_saisie_date?: string | null
+  temp_returned_at?:  string | null
+  // Remise au Domaine (État) : la date de remise borne la période facturable au
+  // client/parquet (le gardiennage parquet s'arrête là). Les jours remise->vente
+  // sont facturés à l'État séparément (Excel trimestriel), pas dans cette estimation.
+  domaine_remise_date?: string | null
   incident_type?:     string | null
   parent_mission_id?: string | null
   // Toggle Voiture/Moto : 'car' (default) ou 'moto'. Permet de selectionner
@@ -723,6 +733,15 @@ async function estimateLinesTemplate(
     const diffMs = Math.max(0, Date.now() - start)
     return Math.floor(diffMs / (1000 * 60 * 60 * 24))
   }
+  // Jours pleins entre deux dates (end = now si non fourni). Sert au split
+  // gardiennage Saisie (parked_at -> date de levée).
+  function joursPleinsBetween(startRef: string | null | undefined, endRef: string | null | undefined): number {
+    if (!startRef) return 0
+    const start = new Date(startRef).getTime()
+    const end   = endRef ? new Date(endRef).getTime() : Date.now()
+    const diffMs = Math.max(0, end - start)
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  }
   const autoParcJoursParked       = joursPleinsEcoules(mission.parked_at || mission.received_at)
   const autoParcJoursIntervention = joursPleinsEcoules(mission.intervention_date || mission.received_at)
   let autoKm = 0
@@ -785,11 +804,36 @@ async function estimateLinesTemplate(
         // - free_days = jours offerts (ex: SC = 3).
         // - Jour d arrivee jamais compte (Math.floor : seuls jours pleins).
         // -> qty facturable = max(0, jours_pleins_ecoules - free_days).
-        const ref = l.parc_count_from === 'intervention_date'
-          ? autoParcJoursIntervention
-          : autoParcJoursParked
-        const freeDays = Number(l.free_days || 0)
-        autoQty = Math.max(0, ref - freeDays)
+        //
+        // Olivier 2026-06-13 (Saisie, gardiennage 2 tarifs) :
+        // - Ligne 'levee_saisie_date' = gardiennage HORS période saisie : jours
+        //   APRES la levée. Depart = retour en parc (levée temporaire) sinon la
+        //   date de levée. 0 tant qu il n y a pas de levée.
+        // - Ligne standard : si une date de levée existe, on BORNE le decompte
+        //   au jour de levée (les jours au-dela sont sur la ligne hors période).
+        const freeDays  = Number(l.free_days || 0)
+        const leveeDate   = mission.levee_saisie_date
+        const domaineDate = mission.domaine_remise_date
+        // Coupure de la période facturable au client/parquet :
+        //   - remise au Domaine prime (l'État reprend après) ;
+        //   - sinon la date de levée (au-delà = ligne "hors période" 20 €/j).
+        const cutoff = domaineDate || leveeDate
+        if (l.parc_count_from === 'levee_saisie_date') {
+          // Gardiennage hors période saisie (20 €/j) : uniquement en cas de
+          // levée (propriétaire récupère). Pas applicable si remise au Domaine.
+          const startRef = mission.temp_returned_at || leveeDate
+          autoQty = (startRef && !domaineDate) ? Math.max(0, joursPleinsEcoules(startRef) - freeDays) : 0
+        } else if (cutoff) {
+          const startRef = l.parc_count_from === 'intervention_date'
+            ? (mission.intervention_date || mission.received_at)
+            : (mission.parked_at || mission.received_at)
+          autoQty = Math.max(0, joursPleinsBetween(startRef, cutoff) - freeDays)
+        } else {
+          const ref = l.parc_count_from === 'intervention_date'
+            ? autoParcJoursIntervention
+            : autoParcJoursParked
+          autoQty = Math.max(0, ref - freeDays)
+        }
       }
       if (l.kind === 'SERV-KM'   && kmHorsForfait > 0) autoQty = Math.ceil(kmHorsForfait)
     }

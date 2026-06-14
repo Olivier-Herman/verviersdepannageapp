@@ -81,6 +81,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       id, external_id, dossier_number, source, mission_type, status,
       client_name, vehicle_plate, vehicle_mileage, vehicle_class,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
+      levee_saisie_date, temp_returned_at, domaine_remise_date,
       billed_to_id, billed_to_name,
       amount_to_collect, special_tarif_htva, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,

@@ -9,6 +9,7 @@ import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
+import SaisiePanel from '@/components/missions/SaisiePanel'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
@@ -3429,6 +3430,11 @@ export default function MissionDetailClient({
                     🔑 Restituer le véhicule (encaissement chauffeur)
                   </button>
                 </>
+              )}
+
+              {/* Panneau Saisie (réquisitoire / levée de saisie) — Olivier 2026-06-13 */}
+              {initialMission.source === 'police_saisie' && (
+                <SaisiePanel mission={initialMission as any} />
               )}
 
               {/* Encarts linkedChild + linkedParent : DEPLACES EN HAUT du bloc droit
