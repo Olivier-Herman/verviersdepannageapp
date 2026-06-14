@@ -2211,6 +2211,26 @@ export default function MissionDetailClient({
 
             {/* Droite : Opérationnel (chauffeur + dépôt + sauvegarde) */}
             <div className="bg-surface border rounded-xl p-4 space-y-3">
+              {/* Dépôt de départ */}
+              <div>
+                <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Dépôt de départ</p>
+                <select value={depotId} onChange={e => {
+                  const newId = e.target.value
+                  setDepotId(newId)
+                  silentPatch({ depot_depart_id: newId || null })
+                  setKmRefresh(k => k + 1)
+                }}
+                  className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand">
+                  <option value="">— Choisir —</option>
+                  {depots.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} {d.is_default ? '(défaut)' : ''} — {d.address}</option>
+                  ))}
+                </select>
+                {depots.length === 0 && (
+                  <p className="text-ink-faint text-xs mt-1">Aucun dépôt — <Link href="/admin/depots" className="text-brand underline">configurer</Link></p>
+                )}
+              </div>
+
               {/* Assignation chauffeur */}
               <div>
                 <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Assigner à un chauffeur</p>
@@ -2240,26 +2260,6 @@ export default function MissionDetailClient({
                     className="w-full px-4 py-2 bg-brand hover:bg-brand/80 text-white text-sm font-semibold rounded-lg transition">
                     🚛 Choisir un chauffeur (ETA temps réel)
                   </button>
-                )}
-              </div>
-
-              {/* Dépôt de départ */}
-              <div>
-                <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Dépôt de départ</p>
-                <select value={depotId} onChange={e => {
-                  const newId = e.target.value
-                  setDepotId(newId)
-                  silentPatch({ depot_depart_id: newId || null })
-                  setKmRefresh(k => k + 1)
-                }}
-                  className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand">
-                  <option value="">— Choisir —</option>
-                  {depots.map(d => (
-                    <option key={d.id} value={d.id}>{d.name} {d.is_default ? '(défaut)' : ''} — {d.address}</option>
-                  ))}
-                </select>
-                {depots.length === 0 && (
-                  <p className="text-ink-faint text-xs mt-1">Aucun dépôt — <Link href="/admin/depots" className="text-brand underline">configurer</Link></p>
                 )}
               </div>
 
