@@ -10,6 +10,7 @@ import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import SaisiePanel from '@/components/missions/SaisiePanel'
+import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
@@ -1140,6 +1141,10 @@ export default function MissionDetailClient({
     incident_sens:        initialMission.incident_sens        || '',
     destination_borne_km: initialMission.destination_borne_km || '',
     destination_sens:     initialMission.destination_sens     || '',
+    // Bloc police (zone + agent) — Olivier 2026-06-14
+    police_zone:          (initialMission as any).police_zone        || '',
+    officer_name:         (initialMission as any).officer_name       || '',
+    officer_partner_id:   (initialMission as any).officer_partner_id ?? null,
     amount_guaranteed:    initialMission.amount_guaranteed != null ? String(initialMission.amount_guaranteed) : '',
     amount_to_collect:    initialMission.amount_to_collect != null  ? String(initialMission.amount_to_collect)  : '',
     // Olivier 2026-06-02 : modifiable quand source = police_snc/sia_couvert
@@ -1299,6 +1304,20 @@ export default function MissionDetailClient({
       }
     }).catch(() => {})
   }, [])
+
+  // Zones de police + map nom -> société Odoo (autocomplete agent). Olivier 2026-06-14.
+  const [policeZoneNames, setPoliceZoneNames] = useState<string[]>([])
+  const [zoneCompanyMap,  setZoneCompanyMap]  = useState<Record<string, number | null>>({})
+  useEffect(() => {
+    fetch('/api/police-zones').then(r => r.json()).then(d => {
+      const list = Array.isArray(d?.zones) ? d.zones : []
+      setPoliceZoneNames(list.map((z: any) => z.name))
+      const m: Record<string, number | null> = {}
+      list.forEach((z: any) => { m[z.name] = z.odoo_company_id ?? null })
+      setZoneCompanyMap(m)
+    }).catch(() => {})
+  }, [])
+
   const [showRawContent, setShowRawContent]   = useState(false)
   const [loadingConfirm, setLoadingConfirm]   = useState(false)
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
@@ -2626,6 +2645,37 @@ export default function MissionDetailClient({
                 </div>
 
               </div>
+
+              {/* Bloc Police (zone + agent) — au-dessus de Véhicule/Intervention.
+                  Olivier 2026-06-14 : agent en autocomplete des contacts de la
+                  société Odoo de la zone. */}
+              {(form.source || initialMission.source || '').startsWith('police_') && (
+                <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
+                  <h2 className="text-ink font-semibold text-sm flex items-center gap-2"><span>🚓</span> Police</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-ink-secondary text-xs font-medium mb-1">Zone de police</label>
+                      <select
+                        value={form.police_zone || ''}
+                        onChange={e => { f('police_zone')(e.target.value); setForm(prev => ({ ...prev, officer_partner_id: null })) }}
+                        className="w-full bg-surface border border-strong rounded-xl px-3 py-2.5 text-ink text-sm outline-none focus:border-brand">
+                        <option value="">— Choisir —</option>
+                        {policeZoneNames.map(z => <option key={z} value={z}>{z}</option>)}
+                        {form.police_zone && !policeZoneNames.includes(form.police_zone) && (
+                          <option value={form.police_zone}>{form.police_zone}</option>
+                        )}
+                      </select>
+                    </div>
+                    <OfficerAutocomplete
+                      label="Nom du policier"
+                      value={form.officer_name || ''}
+                      onChange={v => f('officer_name')(v)}
+                      onPickPartner={id => setForm(prev => ({ ...prev, officer_partner_id: id }))}
+                      companyId={zoneCompanyMap[form.police_zone || ''] ?? null}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Ligne 2 : Véhicule + Intervention */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">

@@ -77,6 +77,8 @@ export async function PATCH(
     // comportement SNC car snc_scenario restait NULL → quote, REL eligibility
     // etc. retombaient sur les defauts de l ancienne source.
     'snc_scenario', 'snc_requires_balisage',
+    // Olivier 2026-06-14 : bloc police éditable depuis la fiche dispatch.
+    'police_zone', 'officer_name', 'officer_partner_id',
   ]
 
   // On charge l etat actuel pour comparer (notamment la source avant change).
