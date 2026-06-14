@@ -1995,6 +1995,12 @@ export default function MissionDetailClient({
   return (
     <AppShell
       title={`Mission ${initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}`}
+      headerExtra={
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`px-2 py-0.5 rounded-lg text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+          <span className={`text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
+        </div>
+      }
       userName={userName}
       userEmail={userEmail}
       userId={userId}
@@ -2020,12 +2026,7 @@ export default function MissionDetailClient({
           >
             ← <span className="hidden sm:inline text-sm">Retour</span>
           </button>
-          <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
-            <span className={`px-2 py-0.5 rounded-lg text-[10px] lg:text-xs font-bold text-white ${srcInfo.color}`}>
-              {srcInfo.label}
-            </span>
-            <span className={`text-xs lg:text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
-          </div>
+          <div className="flex-1 min-w-0" />
           <div className="flex items-center gap-1.5 lg:gap-2 flex-wrap">
             <span className="text-ink-muted text-[10px] lg:text-xs">
               <span className="hidden sm:inline">Reçu le </span>
@@ -2257,17 +2258,8 @@ export default function MissionDetailClient({
                 )}
               </div>
 
-              {/* Sauvegarder & notifier (les champs s'enregistrent déjà en auto ;
-                  ce bouton pousse les changements au chauffeur + sauve les dates parc). */}
-              {status !== 'ignored' && (
-                <button
-                  onClick={handleSave}
-                  disabled={loadingSave || vehicleDecisionPending}
-                  className="w-full py-2.5 bg-brand hover:bg-brand/80 text-white rounded-lg font-semibold text-sm transition disabled:opacity-50"
-                >
-                  {loadingSave ? 'Sauvegarde…' : saveOk ? '✅ Enregistré — chauffeur notifié' : '💾 Sauvegarder & notifier le chauffeur'}
-                </button>
-              )}
+              {/* Bouton « Sauvegarder & notifier » rendu STICKY (flottant) en bas
+                  de page — voir plus bas. Les champs s'enregistrent déjà en auto. */}
             </div>
 
           </div>
@@ -3239,6 +3231,23 @@ export default function MissionDetailClient({
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
             <div className="space-y-5">
 
+              {/* Bouton « Sauvegarder & notifier » — sticky en tête de colonne, au
+                  niveau des boutons de restitution. Reste visible au scroll.
+                  Les champs s'enregistrent déjà en auto ; ce bouton notifie le
+                  chauffeur + fige les dates parc. Olivier 2026-06-14. */}
+              {status !== 'ignored' && (
+                <div className="sticky top-[76px] z-10">
+                  <button
+                    onClick={handleSave}
+                    disabled={loadingSave || vehicleDecisionPending}
+                    title="Sauvegarder et notifier le chauffeur"
+                    className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-2xl font-semibold text-sm shadow-lg shadow-brand/20 transition disabled:opacity-50"
+                  >
+                    {loadingSave ? '⏳ Sauvegarde…' : saveOk ? '✅ Enregistré — chauffeur notifié' : '💾 Sauvegarder & notifier le chauffeur'}
+                  </button>
+                </div>
+              )}
+
               {/* Bouton Restituer — Olivier 2026-06-14 : remonté en haut du bloc
                   droit (permuté avec l'impression d'étiquette). Visible pour
                   TOUTES les sources Appel Police (+ sia_couvert) en parc.
@@ -3363,7 +3372,9 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Actions */}
+              {/* Actions — affichées seulement si la mission est à confirmer/assigner
+                  (sinon le statut est déjà dans l'en-tête). Olivier 2026-06-14. */}
+              {(['new', 'dispatching'].includes(status) || vehicleDecisionPending) && (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter space-y-3">
 
                 {/* Avertissement véhicule en attente de décision — bloque save/confirm */}
@@ -3413,18 +3424,11 @@ export default function MissionDetailClient({
                   </>
                 )}
 
-                {/* Autres statuts — statut + sauvegarder (sauf 'ignored' qui est figé) */}
-                {!['new', 'dispatching'].includes(status) && (
-                  <>
-                    <div className={`text-center py-2 font-semibold text-sm ${statusInfo.color}`}>
-                      {statusInfo.label}
-                    </div>
-                  </>
-                )}
-
                 {/* Dépôt + Chauffeur + Sauvegarder déplacés dans l'en-tête
-                    opérationnel en haut de fiche (Olivier 2026-06-14). */}
+                    opérationnel en haut de fiche (Olivier 2026-06-14).
+                    Le libellé de statut (ex: « parked ») est déjà dans l'en-tête. */}
               </div>
+              )}
 
               {/* ── Actions admin (dispatcher peut forcer le statut sans pointage chauffeur) ── */}
               {['admin', 'superadmin', 'dispatcher'].includes(userRole) && (
