@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     sort_order: body.sort_order != null ? Number(body.sort_order) : 100,
     is_default: !!body.is_default,
     active:     body.active !== false,
+    odoo_company_id: body.odoo_company_id === '' || body.odoo_company_id == null ? null : Number(body.odoo_company_id),
   }).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ zone: data })
@@ -68,6 +69,7 @@ export async function PATCH(req: NextRequest) {
   if (body.sort_order !== undefined) patch.sort_order = Number(body.sort_order) || 100
   if (body.is_default !== undefined) patch.is_default = !!body.is_default
   if (body.active     !== undefined) patch.active     = !!body.active
+  if (body.odoo_company_id !== undefined) patch.odoo_company_id = body.odoo_company_id === '' || body.odoo_company_id == null ? null : Number(body.odoo_company_id)
   if (Object.keys(patch).length <= 1) return NextResponse.json({ error: 'Aucun champ' }, { status: 400 })
 
   const sb = createAdminClient()

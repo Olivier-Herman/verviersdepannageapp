@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     type, company, interventionType,
     date, time, plate, vin, brand, model,
     location, destination, dossierNumber,
-    policeZone, officerName,
+    policeZone, officerName, officerPartnerId,
     ownerFirstName, ownerLastName, ownerPhone,
     remarks, photoUrls,
     policeBlocked,
@@ -114,6 +114,7 @@ export async function POST(req: Request) {
       location,
       police_zone:   policeZone,
       officer_name:  officerName,
+      officer_partner_id: officerPartnerId ?? null,
       owner_first:   ownerFirstName,
       owner_last:    ownerLastName,
       owner_phone:   ownerPhone,
@@ -357,6 +358,7 @@ export async function POST(req: Request) {
         // pour traçabilité.
         police_zone:           policeZone   || null,
         officer_name:          officerName  || null,
+        officer_partner_id:    officerPartnerId ?? null,
         // Persiste odoo_ticket_id pour reconstruire URL QR /v/[ticketId] plus tard.
         // Olivier 2026-05-27 : evite double-source (towsoft_queue + reverse lookup).
         odoo_ticket_id:     odooTicketId || null,

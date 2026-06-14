@@ -15,7 +15,7 @@ export async function GET() {
   const sb = createAdminClient()
   const { data, error } = await sb
     .from('police_zones')
-    .select('id, name, is_default, sort_order')
+    .select('id, name, is_default, sort_order, odoo_company_id')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })

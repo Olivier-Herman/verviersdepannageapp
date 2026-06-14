@@ -13,9 +13,10 @@ interface Zone {
   sort_order: number
   is_default: boolean
   active:     boolean
+  odoo_company_id: number | null
 }
 
-const EMPTY: Partial<Zone> = { name: '', sort_order: 100, is_default: false, active: true }
+const EMPTY: Partial<Zone> = { name: '', sort_order: 100, is_default: false, active: true, odoo_company_id: null }
 
 export default function AdminPoliceZonesClient({ initialZones }: { initialZones: Zone[] }) {
   const router = useRouter()
@@ -113,7 +114,10 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
                     {z.is_default && <span className="ml-2 text-xs text-success font-normal">⭐ par défaut</span>}
                     {!z.active && <span className="ml-2 text-xs font-normal text-ink-faint">(désactivée)</span>}
                   </p>
-                  <p className="text-ink-muted text-xs">Ordre : {z.sort_order}</p>
+                  <p className="text-ink-muted text-xs">
+                    Ordre : {z.sort_order}
+                    {z.odoo_company_id ? ` · Société Odoo #${z.odoo_company_id}` : ' · pas de société Odoo'}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => { setError(null); setEditing({ ...z }) }}
@@ -148,6 +152,15 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
                 onChange={e => setEditing({ ...editing, sort_order: parseInt(e.target.value, 10) || 100 })}
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
               <p className="text-ink-faint text-[10px] mt-1">Plus petit = plus haut dans la liste affichée au chauffeur.</p>
+            </div>
+
+            <div>
+              <label className="block text-ink-muted text-xs font-semibold mb-1.5">ID société Odoo</label>
+              <input type="number" value={editing.odoo_company_id ?? ''}
+                onChange={e => setEditing({ ...editing, odoo_company_id: e.target.value === '' ? null : (parseInt(e.target.value, 10) || null) })}
+                placeholder="Ex: 1234"
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
+              <p className="text-ink-faint text-[10px] mt-1">ID de la fiche Société Odoo de la zone. Ses contacts seront proposés comme agents au chauffeur (autocomplete).</p>
             </div>
 
             <label className="flex items-center gap-2 text-ink-secondary text-sm">
