@@ -58,25 +58,35 @@ const fmtDate = (iso: string | null | undefined) => {
   catch { return '—' }
 }
 
+// Périmètre par source (Olivier 2026-06-14) :
+//   - police_saisie : Réquisitoire + Levée + cycle temporaire + Domaine
+//   - police_rodeo  : Réquisitoire + Levée (+ cycle temporaire)
+//   - police_mg     : Réquisitoire seulement
+const SAISIE_SOURCES = ['police_saisie', 'police_mg', 'police_rodeo']
 export default function SaisiePanel({ mission, onChanged }: { mission: SaisieMission; onChanged?: () => void }) {
-  if (mission.source !== 'police_saisie') return null
+  const src = mission.source || ''
+  if (!SAISIE_SOURCES.includes(src)) return null
   // Rafraîchit la vue après une action : callback fourni (rafraîchit sur place,
   // ex. fiche véhicule en modale) sinon reload complet (fiche dispatch).
   const done = onChanged ?? (() => { if (typeof window !== 'undefined') window.location.reload() })
+
+  const showLevee   = src === 'police_saisie' || src === 'police_rodeo'
+  const showDomaine = src === 'police_saisie'
+  const title = src === 'police_saisie' ? 'Saisie' : src === 'police_rodeo' ? 'Rodéo' : 'Police'
 
   return (
     <div className="bg-surface border rounded-2xl p-4 space-y-4">
       <div className="flex items-center gap-2">
         <span className="text-lg">🚔</span>
-        <h3 className="font-semibold text-ink text-sm">Saisie</h3>
+        <h3 className="font-semibold text-ink text-sm">{title}</h3>
       </div>
 
       <RequisitoireSection mission={mission} onDone={done} />
-      <div className="border-t pt-3"><LeveeSaisieSection mission={mission} onDone={done} /></div>
-      {mission.levee_saisie_type === 'temporaire' && (
+      {showLevee && <div className="border-t pt-3"><LeveeSaisieSection mission={mission} onDone={done} /></div>}
+      {showLevee && mission.levee_saisie_type === 'temporaire' && (
         <div className="border-t pt-3"><TemporaireCycleSection mission={mission} onDone={done} /></div>
       )}
-      <div className="border-t pt-3"><DomaineSection mission={mission} onDone={done} /></div>
+      {showDomaine && <div className="border-t pt-3"><DomaineSection mission={mission} onDone={done} /></div>}
     </div>
   )
 }
@@ -214,7 +224,7 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
             <p className="text-emerald-900/80 text-xs mt-1 italic">« {mission.levee_saisie_note} »</p>
           )}
           <p className="text-ink-muted text-[11px] mt-1">
-            🔓 Blocage police levé. Gardiennage « hors période saisie » (20 €/j) compté à partir de la date de levée.
+            🔓 Blocage police levé.{mission.source === 'police_saisie' ? ' Gardiennage « hors période saisie » (20 €/j) compté à partir de la date de levée.' : ''}
           </p>
           {mission.levee_saisie_type === 'temporaire' && !mission.temp_returned_at && (
             <p className="text-amber-700 text-[11px] mt-1">
@@ -261,7 +271,9 @@ function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDon
             <span className="text-ink-secondary text-xs font-medium">Date de levée</span>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               className="block w-full mt-1 bg-surface border border-strong rounded-lg px-2.5 py-2 text-ink text-sm outline-none focus:border-rose-500" />
-            <span className="text-ink-muted text-[10px]">Influence le calcul du gardiennage (Parquet jusqu'à cette date, puis 20 €/j).</span>
+            {mission.source === 'police_saisie' && (
+              <span className="text-ink-muted text-[10px]">Influence le calcul du gardiennage (Parquet jusqu'à cette date, puis 20 €/j).</span>
+            )}
           </label>
 
           <label className="block">

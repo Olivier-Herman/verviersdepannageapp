@@ -828,8 +828,11 @@ async function estimateLinesTemplate(
         // - Ligne standard : si une date de levée existe, on BORNE le decompte
         //   au jour de levée (les jours au-dela sont sur la ligne hors période).
         const freeDays  = Number(l.free_days || 0)
-        const leveeDate   = mission.levee_saisie_date
-        const domaineDate = mission.domaine_remise_date
+        // Le split gardiennage (levée → hors période / remise Domaine) est
+        // SPÉCIFIQUE à la Saisie. Pour Rodéo/Mal Garée, la levée sert seulement
+        // à débloquer la restitution et ne doit pas borner le gardiennage.
+        const leveeDate   = source === 'police_saisie' ? mission.levee_saisie_date   : null
+        const domaineDate = source === 'police_saisie' ? mission.domaine_remise_date : null
         // Coupure de la période facturable au client/parquet :
         //   - remise au Domaine prime (l'État reprend après) ;
         //   - sinon la date de levée (au-delà = ligne "hors période" 20 €/j).
