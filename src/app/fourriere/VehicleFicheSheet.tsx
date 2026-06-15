@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash, Receipt } from 'lucide-react'
 import Link from 'next/link'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
+import SaisiePanel from '@/components/missions/SaisiePanel'
 
 interface Fiche {
   mission: any
@@ -156,6 +157,11 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
           {m.dpr_motif_label && <Row label="Motif DPR" value={m.dpr_motif_label} />}
         </Section>
       )}
+
+      {/* Bloc Saisie (réquisitoire / levée / temporaire / domaine) — consultation
+          + annexion de documents directement depuis la fiche véhicule.
+          Olivier 2026-06-14. Self-gated : ne s'affiche que pour police_saisie. */}
+      <SaisiePanel mission={m as any} />
 
       {/* Bloc Parc */}
       <Section icon={<MapPin size={14} />} title="Position parc">
