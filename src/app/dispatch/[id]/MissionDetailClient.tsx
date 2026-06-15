@@ -3355,7 +3355,7 @@ export default function MissionDetailClient({
               {/* Panneau Saisie (réquisitoire / levée de saisie / Domaine) —
                   Olivier 2026-06-14 : remonté en haut du bloc droit. */}
               {initialMission.source === 'police_saisie' && (
-                <SaisiePanel mission={initialMission as any} />
+                <SaisiePanel mission={initialMission as any} onChanged={() => router.refresh()} />
               )}
 
               {/* Avance de fonds — Olivier 2026-06-01 : permet a un dispatcher

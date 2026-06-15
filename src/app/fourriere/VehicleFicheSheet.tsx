@@ -5,12 +5,13 @@
 // 5 blocs : Vehicule, Intervention, Police, Parc, Tarif provisoire.
 // Ouvert depuis FourriereSearchClient au clic sur une card resultat.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash, Receipt } from 'lucide-react'
 import Link from 'next/link'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
+import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 
 interface Fiche {
   mission: any
@@ -29,9 +30,10 @@ export default function VehicleFicheSheet({ missionId, onClose, userModules = []
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
 
-  useEffect(() => {
-    setLoading(true); setError(null)
-    fetch(`/api/fourriere/fiche/${missionId}`)
+  const loadFiche = useCallback((silent = false) => {
+    if (!silent) setLoading(true)
+    setError(null)
+    return fetch(`/api/fourriere/fiche/${missionId}`)
       .then(async r => {
         const j = await r.json()
         if (!r.ok) throw new Error(j.error || 'Erreur')
@@ -40,6 +42,8 @@ export default function VehicleFicheSheet({ missionId, onClose, userModules = []
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [missionId])
+
+  useEffect(() => { loadFiche() }, [loadFiche])
 
   // Échap pour fermer
   useEffect(() => {
@@ -75,24 +79,62 @@ export default function VehicleFicheSheet({ missionId, onClose, userModules = []
               {error}
             </div>
           )}
-          {fiche && <FicheContent fiche={fiche} userModules={userModules} userRole={userRole} router={router} onClose={onClose} />}
+          {fiche && <FicheContent fiche={fiche} userModules={userModules} userRole={userRole} router={router} onClose={onClose} onChanged={() => loadFiche(true)} />}
         </div>
       </div>
     </div>
   )
 }
 
-function FicheContent({ fiche, userModules, userRole, router, onClose }: {
+function FicheContent({ fiche, userModules, userRole, router, onClose, onChanged }: {
   fiche:       Fiche
   userModules: string[]
   userRole:    string
   router:      any
   onClose:     () => void
+  onChanged:   () => void
 }) {
   const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
   const m = fiche.mission
   const z = fiche.zone
   const t = fiche.tarif
+
+  // Champs éditables sur la fiche (dossier / zone police / agent). Olivier 2026-06-14.
+  const isPolice = (m.source || '').startsWith('police_')
+  const [dossier,    setDossier]    = useState(m.dossier_number || '')
+  const [zoneVal,    setZoneVal]    = useState(m.police_zone || '')
+  const [officerVal, setOfficerVal] = useState(m.officer_name || '')
+  const [officerPartnerId, setOfficerPartnerId] = useState<number | null>(m.officer_partner_id ?? null)
+  const [policeZoneNames, setPoliceZoneNames]   = useState<string[]>([])
+  const [zoneCompanyMap,  setZoneCompanyMap]    = useState<Record<string, number | null>>({})
+
+  const patchField = async (fields: Record<string, any>) => {
+    try {
+      await fetch(`/api/missions/${m.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+      })
+    } catch { /* silencieux */ }
+  }
+
+  useEffect(() => {
+    if (!isPolice) return
+    fetch('/api/police-zones').then(r => r.json()).then(d => {
+      const list = Array.isArray(d?.zones) ? d.zones : []
+      setPoliceZoneNames(list.map((z: any) => z.name))
+      const map: Record<string, number | null> = {}
+      list.forEach((z: any) => { map[z.name] = z.odoo_company_id ?? null })
+      setZoneCompanyMap(map)
+    }).catch(() => {})
+  }, [isPolice])
+
+  // Persistance débouncée de l'agent (nom + contact Odoo)
+  const officerHydrated = useRef(false)
+  useEffect(() => {
+    if (!officerHydrated.current) { officerHydrated.current = true; return }
+    const tm = setTimeout(() => { patchField({ officer_name: officerVal || null, officer_partner_id: officerPartnerId }) }, 700)
+    return () => clearTimeout(tm)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officerVal, officerPartnerId])
   const dispatchUrl   = `/dispatch/${m.id}`
   const driverUrl     = `/mission/${m.id}`
   // Hub unifie /qr/mission/[number] : porte les actions Restituer (avec/sans
@@ -112,7 +154,16 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
           <div className="text-right">
             <p className="text-ink-muted text-xs uppercase tracking-wide">Mission</p>
             <p className="font-mono text-base text-ink">#{m.mission_number || m.external_id || '—'}</p>
-            {m.dossier_number && <p className="text-xs text-ink-muted">Dossier : {m.dossier_number}</p>}
+            <div className="mt-1">
+              <label className="block text-ink-muted text-[10px] uppercase tracking-wide">N° Dossier</label>
+              <input
+                value={dossier}
+                onChange={e => setDossier(e.target.value)}
+                onBlur={() => { if (dossier !== (m.dossier_number || '')) patchField({ dossier_number: dossier || null }) }}
+                placeholder="—"
+                className="mt-0.5 w-44 bg-surface border border-strong rounded-lg px-2 py-1 text-ink font-mono text-sm text-right outline-none focus:border-brand"
+              />
+            </div>
           </div>
         </div>
         <div className="mt-3 pt-3 border-t flex items-center gap-3 flex-wrap">
@@ -148,11 +199,36 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
       </Section>
 
       {/* Bloc Police */}
-      {(m.police_pv_number || m.officer_name || m.police_zone || m.saisie_motif_label || m.dpr_motif_label) && (
+      {(isPolice || m.police_pv_number || m.saisie_motif_label || m.dpr_motif_label) && (
         <Section icon={<ShieldAlert size={14} />} title="Info police">
           {m.police_pv_number && <Row label="N° PV" value={<span className="font-mono">{m.police_pv_number}</span>} />}
-          {m.officer_name && <Row label="Agent" value={m.officer_name} />}
-          {m.police_zone && <Row label="Zone police" value={m.police_zone} />}
+          {isPolice ? (
+            <div className="space-y-3 py-1">
+              <div>
+                <label className="block text-ink-secondary text-xs font-medium mb-1">Zone de police</label>
+                <select
+                  value={zoneVal}
+                  onChange={e => { const v = e.target.value; setZoneVal(v); setOfficerPartnerId(null); patchField({ police_zone: v || null, officer_partner_id: null }) }}
+                  className="w-full bg-surface border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand">
+                  <option value="">— Choisir —</option>
+                  {policeZoneNames.map(zn => <option key={zn} value={zn}>{zn}</option>)}
+                  {zoneVal && !policeZoneNames.includes(zoneVal) && <option value={zoneVal}>{zoneVal}</option>}
+                </select>
+              </div>
+              <OfficerAutocomplete
+                label="Agent"
+                value={officerVal}
+                onChange={setOfficerVal}
+                onPickPartner={setOfficerPartnerId}
+                companyId={zoneCompanyMap[zoneVal] ?? null}
+              />
+            </div>
+          ) : (
+            <>
+              {m.officer_name && <Row label="Agent" value={m.officer_name} />}
+              {m.police_zone && <Row label="Zone police" value={m.police_zone} />}
+            </>
+          )}
           {m.saisie_motif_label && <Row label="Motif saisie" value={m.saisie_motif_label} />}
           {m.dpr_motif_label && <Row label="Motif DPR" value={m.dpr_motif_label} />}
         </Section>
@@ -161,7 +237,7 @@ function FicheContent({ fiche, userModules, userRole, router, onClose }: {
       {/* Bloc Saisie (réquisitoire / levée / temporaire / domaine) — consultation
           + annexion de documents directement depuis la fiche véhicule.
           Olivier 2026-06-14. Self-gated : ne s'affiche que pour police_saisie. */}
-      <SaisiePanel mission={m as any} />
+      <SaisiePanel mission={m as any} onChanged={onChanged} />
 
       {/* Bloc Parc */}
       <Section icon={<MapPin size={14} />} title="Position parc">

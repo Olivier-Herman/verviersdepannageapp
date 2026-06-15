@@ -58,8 +58,11 @@ const fmtDate = (iso: string | null | undefined) => {
   catch { return '—' }
 }
 
-export default function SaisiePanel({ mission }: { mission: SaisieMission }) {
+export default function SaisiePanel({ mission, onChanged }: { mission: SaisieMission; onChanged?: () => void }) {
   if (mission.source !== 'police_saisie') return null
+  // Rafraîchit la vue après une action : callback fourni (rafraîchit sur place,
+  // ex. fiche véhicule en modale) sinon reload complet (fiche dispatch).
+  const done = onChanged ?? (() => { if (typeof window !== 'undefined') window.location.reload() })
 
   return (
     <div className="bg-surface border rounded-2xl p-4 space-y-4">
@@ -68,18 +71,18 @@ export default function SaisiePanel({ mission }: { mission: SaisieMission }) {
         <h3 className="font-semibold text-ink text-sm">Saisie</h3>
       </div>
 
-      <RequisitoireSection mission={mission} />
-      <div className="border-t pt-3"><LeveeSaisieSection mission={mission} /></div>
+      <RequisitoireSection mission={mission} onDone={done} />
+      <div className="border-t pt-3"><LeveeSaisieSection mission={mission} onDone={done} /></div>
       {mission.levee_saisie_type === 'temporaire' && (
-        <div className="border-t pt-3"><TemporaireCycleSection mission={mission} /></div>
+        <div className="border-t pt-3"><TemporaireCycleSection mission={mission} onDone={done} /></div>
       )}
-      <div className="border-t pt-3"><DomaineSection mission={mission} /></div>
+      <div className="border-t pt-3"><DomaineSection mission={mission} onDone={done} /></div>
     </div>
   )
 }
 
 // ── Réquisitoire ────────────────────────────────────────────────────────────
-function RequisitoireSection({ mission }: { mission: SaisieMission }) {
+function RequisitoireSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
   const [open,    setOpen]    = useState(false)
   const [note,    setNote]    = useState('')
   const [busy,    setBusy]    = useState(false)
@@ -101,7 +104,7 @@ function RequisitoireSection({ mission }: { mission: SaisieMission }) {
       const r = await fetch(`/api/missions/${mission.id}/requisitoire`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      window.location.reload()
+      onDone()
     } catch (e: any) {
       setError(e.message); setBusy(false)
     }
@@ -164,7 +167,7 @@ function RequisitoireSection({ mission }: { mission: SaisieMission }) {
 }
 
 // ── Levée de saisie ──────────────────────────────────────────────────────────
-function LeveeSaisieSection({ mission }: { mission: SaisieMission }) {
+function LeveeSaisieSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
   const [open,  setOpen]  = useState(false)
   const [type,  setType]  = useState<'definitive' | 'temporaire'>('definitive')
   const [date,  setDate]  = useState(todayYmd())
@@ -194,7 +197,7 @@ function LeveeSaisieSection({ mission }: { mission: SaisieMission }) {
       const r = await fetch(`/api/missions/${mission.id}/levee-saisie`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      window.location.reload()
+      onDone()
     } catch (e: any) {
       setError(e.message); setBusy(false)
     }
@@ -289,7 +292,7 @@ function LeveeSaisieSection({ mission }: { mission: SaisieMission }) {
 }
 
 // ── Cycle levée temporaire (garagiste -> retour parc) ────────────────────────
-function TemporaireCycleSection({ mission }: { mission: SaisieMission }) {
+function TemporaireCycleSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
   const [busy,  setBusy]  = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pickZone, setPickZone] = useState(false)
@@ -307,7 +310,7 @@ function TemporaireCycleSection({ mission }: { mission: SaisieMission }) {
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      window.location.reload()
+      onDone()
     } catch (e: any) { setError(e.message); setBusy(false) }
   }
 
@@ -369,7 +372,7 @@ function TemporaireCycleSection({ mission }: { mission: SaisieMission }) {
 }
 
 // ── Remise au Domaine (État) ─────────────────────────────────────────────────
-function DomaineSection({ mission }: { mission: SaisieMission }) {
+function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
   const [open,   setOpen]   = useState(false)
   const [remise, setRemise] = useState(mission.domaine_remise_date || todayYmd())
   const [vente,  setVente]  = useState(mission.domaine_vente_date || '')
@@ -399,7 +402,7 @@ function DomaineSection({ mission }: { mission: SaisieMission }) {
       const r = await fetch(`/api/missions/${mission.id}/domaine`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      window.location.reload()
+      onDone()
     } catch (e: any) { setError(e.message); setBusy(false) }
   }
 
