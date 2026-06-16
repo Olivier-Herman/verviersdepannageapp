@@ -62,6 +62,23 @@ export default function AdminMissionsPage() {
     }
   }
 
+  const [reparsing, setReparsing] = useState(false)
+  async function handleReparse() {
+    if (!confirm('Re-parser toutes les missions en erreur (parse_error) ?\nElles seront re-analysées avec le modèle réparé et repasseront en « À confirmer » si ça réussit.')) return
+    setReparsing(true)
+    try {
+      const res = await fetch('/api/admin/missions/errors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      await load()
+      alert(`✓ Re-parsing terminé : ${j.reparsed} récupérée(s), ${j.failed} échec(s) sur ${j.total}.`)
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    } finally {
+      setReparsing(false)
+    }
+  }
+
   useEffect(() => {
     load()
   }, [])
@@ -241,6 +258,15 @@ export default function AdminMissionsPage() {
       ) : (
         /* Tab erreurs */
         <div className="bg-surface-2 border border rounded-2xl overflow-hidden">
+          {errorMissions.length > 0 && (
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border bg-surface">
+              <p className="text-ink-secondary text-sm">{errorMissions.length} mission(s) en erreur de parsing</p>
+              <button onClick={handleReparse} disabled={reparsing}
+                className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                {reparsing ? '⏳ Re-parsing…' : '🔄 Re-parser les erreurs'}
+              </button>
+            </div>
+          )}
           {errorMissions.length === 0 ? (
             <div className="text-center py-12 text-ink-muted">
               <p className="text-3xl mb-3">✅</p>
