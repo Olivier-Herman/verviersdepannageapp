@@ -3259,6 +3259,10 @@ export default function MissionDetailClient({
                 )}
               </div>
 
+              {/* Trajet du chauffeur — carte Google repliable (tracé GPS + lieux
+                  de pointage). Olivier 2026-06-16 : placé au-dessus des Remarques. */}
+              <DriverRouteCard missionId={initialMission.id} gmKey={googleMapsKey} />
+
               {/* Remarques dispatcher (notes + pièces jointes) */}
               <MissionRemarks missionId={initialMission.id} />
 
@@ -3282,10 +3286,6 @@ export default function MissionDetailClient({
                   </div>
                 </div>
               )}
-
-              {/* Trajet du chauffeur — carte Google repliable (tracé GPS + lieux
-                  de pointage). Olivier 2026-06-16. */}
-              <DriverRouteCard missionId={initialMission.id} gmKey={googleMapsKey} />
             </div>
 
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}
