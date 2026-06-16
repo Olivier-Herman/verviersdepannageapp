@@ -811,7 +811,10 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       destination_name:     parsed.destination_name,
       destination_address:  parsed.destination_address,
       amount_guaranteed:    parsed.amount_guaranteed,
-      incident_at:          parsed.incident_at,
+      // incident_at peut être une date mal formée renvoyée par le LLM →
+      // rejet Postgres (timestamptz) qui ferait échouer TOUT l'UPDATE. On la
+      // valide : si non parseable → null. (Olivier 2026-06-16)
+      incident_at:          (parsed.incident_at && !isNaN(Date.parse(String(parsed.incident_at)))) ? parsed.incident_at : null,
       received_at:          receivedAt,
       // status/dispatch_mode : set UNIQUEMENT pour nouvelles missions (cf. block
       // conditionnel ci-dessous). Sinon les emails redondants Touring/IMA/etc.
@@ -842,32 +845,67 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     // Olivier 2026-06-16 : supabase.update() ne LÈVE PAS d'exception en cas
     // d'erreur — il renvoie { error }. Sans ce check, un UPDATE qui échoue
-    // (contrainte, valeur invalide…) laissait le placeholder VIDE tout en
-    // envoyant quand même la notif push → mission fantôme `unknown` invisible
-    // au dispatch alors que la montre recevait les infos. On bascule donc en
-    // parse_error (récupérable, raw_content + parsed_data conservés) sans notif.
+    // (contrainte / valeur invalide sur ce mail précis) laissait le placeholder
+    // VIDE tout en envoyant quand même la notif → mission fantôme `unknown`
+    // invisible au dispatch (alors que la montre recevait les infos).
+    //
+    // GO-LIVE : une mission ne DOIT JAMAIS disparaître. On réessaie donc avec un
+    // payload MINIMAL nettoyé (champs cœur + valeurs tronquées) pour que la
+    // mission apparaisse quand même au dispatch en `new`. Dernier recours :
+    // parse_error (au moins visible dans l'onglet Erreurs).
     if (finalUpdErr) {
-      console.error(`[Processor] step=update_final FAILED messageId=${msgIdShort} targetId=${targetId}: ${finalUpdErr.message}`)
-      if (placeholderId && !existingMissionId) {
-        await supabase.from('incoming_missions').update({
-          external_id:       `ERR_${Date.now()}_${messageId.slice(-8)}`,
-          source,
-          source_format:     content.sourceFormat,
-          status:            'parse_error',
-          raw_content:       content.rawContent.slice(0, 10000),
-          parsed_data:       parsed,
-          sender_email:      fromEmail,
-          received_at:       receivedAt,
-          intervention_date: receivedAt,
-        }).eq('id', placeholderId).then(() => {}, () => {})
+      console.error(`[Processor] step=update_final FAILED messageId=${msgIdShort} targetId=${targetId}: ${finalUpdErr.message} — retry payload minimal`)
+      const s = (v: any, n: number) => (v == null ? null : String(v).slice(0, n) || null)
+      const minimal: Record<string, unknown> = {
+        external_id:    parsed.external_id || `MISSION_${Date.now()}_${messageId.slice(-8)}`,
+        source,
+        source_format:  content.sourceFormat,
+        mission_type:   parsed.mission_type || null,
+        client_name:    s(parsed.client_name, 200),
+        client_phone:   s(parsed.client_phone, 60),
+        vehicle_plate:  s(parsed.vehicle_plate, 32),
+        vehicle_brand:  s(parsed.vehicle_brand, 80),
+        vehicle_model:  s(parsed.vehicle_model, 120),
+        incident_address: s(parsed.incident_address, 300),
+        incident_city:  s(parsed.incident_city, 120),
+        raw_content:    content.rawContent.slice(0, 10000),
+        parsed_data:    parsed,
+        parse_confidence: parsed.confidence,
+        sender_email:   fromEmail,
+        received_at:    receivedAt,
+      }
+      if (!existingMissionId) {
+        minimal.status            = 'new'
+        minimal.intervention_date = receivedAt
+        minimal.dispatch_mode     = 'manual'
+      }
+      const { error: retryErr } = await supabase.from('incoming_missions').update(minimal).eq('id', targetId)
+      if (retryErr) {
+        // Vraiment irrécupérable → parse_error (visible onglet Erreurs).
+        console.error(`[Processor] retry minimal AUSSI échoué: ${retryErr.message}`)
+        if (placeholderId && !existingMissionId) {
+          await supabase.from('incoming_missions').update({
+            external_id: `ERR_${Date.now()}_${messageId.slice(-8)}`, source,
+            source_format: content.sourceFormat, status: 'parse_error',
+            raw_content: content.rawContent.slice(0, 10000), parsed_data: parsed,
+            sender_email: fromEmail, received_at: receivedAt, intervention_date: receivedAt,
+          }).eq('id', placeholderId).then(() => {}, () => {})
+        }
         await supabase.from('mission_logs').insert({
-          mission_id: placeholderId, action: 'error',
-          notes: `UPDATE final échoué : ${finalUpdErr.message}`,
+          mission_id: targetId, action: 'error',
+          notes: `UPDATE final + retry minimal échoués : ${finalUpdErr.message} / ${retryErr.message}`,
           metadata: { from: fromEmail, subject, source_email_id: messageId },
         }).then(() => {}, () => {})
+        await markAsRead(token, messageId)
+        return { status: 'error', error: `UPDATE final: ${finalUpdErr.message}`, missionId: placeholderId }
       }
-      await markAsRead(token, messageId)
-      return { status: 'error', error: `UPDATE final: ${finalUpdErr.message}`, missionId: placeholderId }
+      // Sauvée en mode minimal : on loggue pour diagnostiquer le champ fautif,
+      // mais la mission est bien visible au dispatch → on continue (notif OK).
+      await supabase.from('mission_logs').insert({
+        mission_id: targetId, action: 'received_degraded',
+        notes: `Mission sauvée en mode minimal (UPDATE complet échoué : ${finalUpdErr.message})`,
+        metadata: { from: fromEmail, subject, source_email_id: messageId },
+      }).then(() => {}, () => {})
     }
 
     // Supprimer le placeholder si on a mis à jour une mission existante
