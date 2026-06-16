@@ -36,13 +36,17 @@ export async function POST(req: Request) {
   const onlyId = body.id ? String(body.id) : null
 
   const supabase = createAdminClient()
+  // Lot limité : le re-fetch email + parse Claude prend ~10s/mission → on
+  // traite peu par appel pour rester sous la limite Vercel (60s). L'UI reboucle.
+  const BATCH = onlyId ? 1 : 4
   // Même périmètre que le GET : parse_error + source unknown + placeholders.
   let q = supabase
     .from('incoming_missions')
     .select('id, source, source_format, raw_content, external_id, source_email_id')
     .or('status.eq.parse_error,source.eq.unknown,external_id.like.PROCESSING_%,external_id.like.UNKNOWN_SENDER_%')
+    .order('received_at', { ascending: false })
   if (onlyId) q = q.eq('id', onlyId)
-  const { data: rows, error } = await q.limit(100)
+  const { data: rows, error } = await q.limit(BATCH)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const { parseMissionContent } = await import('@/lib/missions/parser')
@@ -96,5 +100,7 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, reparsed, refetched, failed, total: (rows || []).length, errors: errors.slice(0, 10) })
+  // more = il restait peut-être d'autres missions à traiter (lot plein).
+  const processed = (rows || []).length
+  return NextResponse.json({ ok: true, reparsed, refetched, failed, processed, more: !onlyId && processed >= BATCH, errors: errors.slice(0, 10) })
 }

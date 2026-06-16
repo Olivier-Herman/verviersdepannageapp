@@ -63,15 +63,47 @@ export default function AdminMissionsPage() {
   }
 
   const [reparsing, setReparsing] = useState(false)
+
+  // Appel robuste : l'API peut renvoyer une page d'erreur (non-JSON) en cas de
+  // timeout → on lit le texte au lieu de planter sur res.json().
+  async function callReparse(body: any) {
+    const res = await fetch('/api/admin/missions/errors', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const txt = await res.text()
+    let j: any = {}
+    try { j = JSON.parse(txt) } catch { throw new Error(res.ok ? 'Réponse inattendue du serveur' : `Erreur ${res.status} (timeout ?)`) }
+    if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+    return j
+  }
+
   async function handleReparse() {
-    if (!confirm('Re-parser toutes les missions en erreur (parse_error) ?\nElles seront re-analysées avec le modèle réparé et repasseront en « À confirmer » si ça réussit.')) return
+    if (!confirm('Re-traiter les missions en erreur ?\nElles sont traitées par petits lots (re-parse ou re-téléchargement de l\'email) et reviennent en « À confirmer » si OK.')) return
+    setReparsing(true)
+    let totReparsed = 0, totRefetched = 0, totFailed = 0
+    try {
+      // Boucle sur les lots tant qu'il en reste (max 15 lots de sécurité).
+      for (let i = 0; i < 15; i++) {
+        const j = await callReparse({})
+        totReparsed += j.reparsed || 0; totRefetched += j.refetched || 0; totFailed += j.failed || 0
+        if (!j.more) break
+      }
+      await load()
+      alert(`✓ Terminé : ${totReparsed} re-parsée(s) + ${totRefetched} email(s) re-téléchargé(s), ${totFailed} échec(s).`)
+    } catch (e: any) {
+      await load()
+      alert(`Arrêt : ${e.message}\n(Déjà traité : ${totReparsed} re-parsée(s), ${totRefetched} re-téléchargée(s)). Tu peux relancer.`)
+    } finally {
+      setReparsing(false)
+    }
+  }
+
+  async function handleReparseOne(id: string) {
     setReparsing(true)
     try {
-      const res = await fetch('/api/admin/missions/errors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
+      const j = await callReparse({ id })
       await load()
-      alert(`✓ Terminé : ${j.reparsed} re-parsée(s) + ${j.refetched || 0} email(s) re-téléchargé(s), ${j.failed} échec(s) sur ${j.total}.`)
+      alert(j.reparsed || j.refetched ? '✓ Mission récupérée.' : `Échec : ${(j.errors && j.errors[0]) || 'non récupérée'}`)
     } catch (e: any) {
       alert(`Erreur : ${e.message}`)
     } finally {
@@ -311,14 +343,24 @@ export default function AdminMissionsPage() {
                       {m.raw_content?.slice(0, 80) || '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {m.sender_email && m.source === 'unknown' ? (
+                      <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => { setLinkTarget(m); setLinkSource('touring') }}
-                          className="px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition whitespace-nowrap"
+                          onClick={() => handleReparseOne(m.id)}
+                          disabled={reparsing}
+                          title="Re-parser / re-télécharger cette mission"
+                          className="px-2.5 py-1 bg-surface-2 hover:bg-surface-hover border rounded-lg text-xs font-medium transition whitespace-nowrap disabled:opacity-50"
                         >
-                          🔗 Lier à une source
+                          🔄 Retraiter
                         </button>
-                      ) : <span className="text-ink-faint text-xs">—</span>}
+                        {m.sender_email && m.source === 'unknown' && (
+                          <button
+                            onClick={() => { setLinkTarget(m); setLinkSource('touring') }}
+                            className="px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-medium transition whitespace-nowrap"
+                          >
+                            🔗 Lier
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
