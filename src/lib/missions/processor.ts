@@ -838,7 +838,37 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       updatePayload.status            = 'new'
       updatePayload.dispatch_mode     = 'manual'
     }
-    await supabase.from('incoming_missions').update(updatePayload).eq('id', targetId)
+    const { error: finalUpdErr } = await supabase.from('incoming_missions').update(updatePayload).eq('id', targetId)
+
+    // Olivier 2026-06-16 : supabase.update() ne LÈVE PAS d'exception en cas
+    // d'erreur — il renvoie { error }. Sans ce check, un UPDATE qui échoue
+    // (contrainte, valeur invalide…) laissait le placeholder VIDE tout en
+    // envoyant quand même la notif push → mission fantôme `unknown` invisible
+    // au dispatch alors que la montre recevait les infos. On bascule donc en
+    // parse_error (récupérable, raw_content + parsed_data conservés) sans notif.
+    if (finalUpdErr) {
+      console.error(`[Processor] step=update_final FAILED messageId=${msgIdShort} targetId=${targetId}: ${finalUpdErr.message}`)
+      if (placeholderId && !existingMissionId) {
+        await supabase.from('incoming_missions').update({
+          external_id:       `ERR_${Date.now()}_${messageId.slice(-8)}`,
+          source,
+          source_format:     content.sourceFormat,
+          status:            'parse_error',
+          raw_content:       content.rawContent.slice(0, 10000),
+          parsed_data:       parsed,
+          sender_email:      fromEmail,
+          received_at:       receivedAt,
+          intervention_date: receivedAt,
+        }).eq('id', placeholderId).then(() => {}, () => {})
+        await supabase.from('mission_logs').insert({
+          mission_id: placeholderId, action: 'error',
+          notes: `UPDATE final échoué : ${finalUpdErr.message}`,
+          metadata: { from: fromEmail, subject, source_email_id: messageId },
+        }).then(() => {}, () => {})
+      }
+      await markAsRead(token, messageId)
+      return { status: 'error', error: `UPDATE final: ${finalUpdErr.message}`, missionId: placeholderId }
+    }
 
     // Supprimer le placeholder si on a mis à jour une mission existante
     if (existingMissionId && placeholderId && existingMissionId !== placeholderId) {

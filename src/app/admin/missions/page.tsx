@@ -71,7 +71,7 @@ export default function AdminMissionsPage() {
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `Erreur ${res.status}`)
       await load()
-      alert(`✓ Re-parsing terminé : ${j.reparsed} récupérée(s), ${j.failed} échec(s) sur ${j.total}.`)
+      alert(`✓ Terminé : ${j.reparsed} re-parsée(s) + ${j.refetched || 0} email(s) re-téléchargé(s), ${j.failed} échec(s) sur ${j.total}.`)
     } catch (e: any) {
       alert(`Erreur : ${e.message}`)
     } finally {
