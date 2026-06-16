@@ -767,6 +767,31 @@ export default function DispatchClient({
   const [liveSyncing,    setLiveSyncing]    = useState(false)
   const [search,         setSearch]         = useState('')
   const [dispatchMode,   setDispatchMode]   = useState<'manual'|'auto'>('manual')
+
+  // Missions en erreur de parsing (auto-réparées par cron, mais on offre une
+  // relance manuelle + visibilité au dispatch). Olivier 2026-06-16.
+  const [errorCount, setErrorCount] = useState(0)
+  const [reparsing,  setReparsing]  = useState(false)
+  const loadErrorCount = useCallback(() => {
+    fetch('/api/missions/reprocess').then(r => r.json()).then(d => setErrorCount(d.count || 0)).catch(() => {})
+  }, [])
+  useEffect(() => {
+    loadErrorCount()
+    const t = setInterval(loadErrorCount, 60000)
+    return () => clearInterval(t)
+  }, [loadErrorCount])
+  async function relaunchParsing() {
+    setReparsing(true)
+    try {
+      for (let i = 0; i < 15; i++) {
+        const res = await fetch('/api/missions/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        const txt = await res.text()
+        let j: any = {}; try { j = JSON.parse(txt) } catch { break }
+        if (!res.ok || !j.more) break
+      }
+    } catch { /* ignore */ }
+    finally { setReparsing(false); loadErrorCount(); load() }
+  }
   const [modeLoading,    setModeLoading]    = useState(false)
   const [viewMode,       setViewMode]       = useState<ViewMode>('list')
   const [driverStatuses, setDriverStatuses] = useState<DriverStatus[]>([])
@@ -1127,6 +1152,24 @@ export default function DispatchClient({
             })}
           </div>
         </div>
+
+        {/* ── Bandeau missions en erreur de parsing (à revérifier) ──────── */}
+        {errorCount > 0 && (
+          <div className="px-3 lg:px-8 pt-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3">
+              <p className="text-amber-900 text-sm font-medium">
+                ⚠️ {errorCount} mission(s) reçue(s) mais non parsée(s) — à revérifier
+                <span className="text-amber-800 font-normal"> (réparation auto en cours ; tu peux relancer maintenant)</span>
+              </p>
+              <button
+                onClick={relaunchParsing}
+                disabled={reparsing}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 whitespace-nowrap">
+                {reparsing ? '⏳ Relance…' : '🔄 Relancer le parsing'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Panel statut chauffeurs ──────────────────────────────────── */}
         <DriverStatusPanel statuses={driverStatuses} onRefresh={load} userRole={userRole} />
