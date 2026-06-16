@@ -80,7 +80,7 @@ export async function POST(req: Request) {
 
   const { data: dbUser } = await supabase
     .from('users')
-    .select('towsoft_name, name')
+    .select('id, towsoft_name, name')
     .eq('email', user.email)
     .maybeSingle()
 
@@ -313,6 +313,12 @@ export async function POST(req: Request) {
                                   ? 'trajet_vide'
                                   : 'remorquage',
         status:             computedStatus,
+        // Olivier 2026-06-16 : le chauffeur qui crée la fiche police EST celui
+        // qui fait l'intervention → on l'assigne d'office (sinon la mission
+        // restait sans chauffeur assigné). Seul PoliceClient (app chauffeur)
+        // appelle cet endpoint, donc pas de risque d'auto-assigner un dispatcher.
+        assigned_to:        dbUser.id || null,
+        assigned_at:        nowIso,
         parc_zone_key:      vdZone,
         // Olivier 2026-06-03 (audit J-2 W11) : fallback plaque vide -> 5
         // derniers chars du VIN (evite "PAS DE PLAQUE" generique).
