@@ -7,6 +7,7 @@
 // Env var requise : ANTHROPIC_API_KEY
 
 import Anthropic from '@anthropic-ai/sdk'
+import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 
 export interface ExtractedTariff {
   source:                string
@@ -133,7 +134,7 @@ export async function extractTariffsFromText(
     : `${EXTRACTION_PROMPT}\n\n--- TEXTE DE L UTILISATEUR ---\n\n${text}`
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: ANTHROPIC_MODEL,
     max_tokens: 8192,
     messages: [{ role: 'user', content: userPrompt }],
   })
@@ -190,7 +191,7 @@ export async function extractTariffsFromText(
 export async function extractTariffRulesFromText(text: string): Promise<ExtractedRule[]> {
   const client = getClient()
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: ANTHROPIC_MODEL,
     max_tokens: 4096,
     messages: [
       { role: 'user', content: `${RULES_EXTRACTION_PROMPT}\n\n--- TEXTE DE L UTILISATEUR ---\n\n${text}` },
@@ -240,7 +241,7 @@ export async function extractTariffsFromPdf(
     : EXTRACTION_PROMPT
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: ANTHROPIC_MODEL,
     max_tokens: 8192,  // PDFs tarifaires peuvent contenir 20-50+ lignes
     messages: [
       {

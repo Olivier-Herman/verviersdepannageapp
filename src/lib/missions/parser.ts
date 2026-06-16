@@ -3,6 +3,7 @@
 
 import type { MissionSource, MissionType } from '@/types'
 import type { ExtractedContent }           from './extractor'
+import { ANTHROPIC_MODELS }                from '@/lib/anthropic-model'
 
 export interface ParsedMission {
   external_id:          string
@@ -230,24 +231,34 @@ export async function parseMissionContent(
     }]
   }
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
-    headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         process.env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model:      'claude-sonnet-4-6',
-      max_tokens: 1024,
-      system:     SYSTEM_PROMPT,
-      messages
+  // Repli automatique : si un modèle a été retiré (404 not_found), on réessaie
+  // avec le suivant de ANTHROPIC_MODELS. Évite que l'intake des missions casse
+  // d'un coup quand Anthropic retire un modèle (incident 2026-06-16).
+  let res: Response | null = null
+  let lastErr = ''
+  for (const model of ANTHROPIC_MODELS) {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:  'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         process.env.ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({ model, max_tokens: 1024, system: SYSTEM_PROMPT, messages })
     })
-  })
+    if (res.ok) break
+    lastErr = await res.text()
+    // 404 = modèle indisponible/retiré → on tente le repli suivant.
+    if (res.status === 404) {
+      console.error(`[parser] modèle Anthropic "${model}" indisponible (404) — repli sur le suivant. Mets à jour ANTHROPIC_MODEL.`)
+      continue
+    }
+    // Autre erreur (401, 429, 500…) : inutile de changer de modèle.
+    break
+  }
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Claude API ${res.status}: ${err.slice(0, 200)}`)
+  if (!res || !res.ok) {
+    throw new Error(`Claude API ${res?.status}: ${lastErr.slice(0, 200)}`)
   }
 
   const data    = await res.json()

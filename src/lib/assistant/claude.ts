@@ -11,8 +11,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase'
 import { ALL_TOOLS, TOOLS_BY_NAME, toolsForClaude, ToolContext } from './tools'
+import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 
-const MODEL = 'claude-sonnet-4-6'
+const MODEL = ANTHROPIC_MODEL
 const MAX_TOOL_ITERATIONS = 10  // safety : eviter boucle infinie
 
 let cachedClient: Anthropic | null = null

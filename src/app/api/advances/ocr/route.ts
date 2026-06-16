@@ -15,6 +15,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import Anthropic            from '@anthropic-ai/sdk'
+import { ANTHROPIC_MODEL }  from '@/lib/anthropic-model'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
       : { type: 'image',    source: { type: 'base64', media_type: body.mimeType,    data: body.base64 } }
 
     const resp = await client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      ANTHROPIC_MODEL,
       max_tokens: 512,
       system:     SYSTEM_PROMPT,
       messages: [{
