@@ -98,6 +98,41 @@ const gUrl  = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
   if (app === 'apple') return `https://maps.apple.com/?daddr=${q}&dirflg=d`
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`
 }
+
+// Olivier 2026-06-16 : capture GPS au moment d'un pointage (lieu de pointage
+// sur la carte trajet dispatch). STRICTEMENT non bloquant : cap ~2s, renvoie
+// null sur le moindre échec/refus/timeout → le pointage part quand même.
+async function captureGeo(): Promise<{ lat: number; lng: number } | null> {
+  try {
+    return await Promise.race([
+      (async (): Promise<{ lat: number; lng: number } | null> => {
+        try {
+          const { Capacitor } = await import('@capacitor/core')
+          if (Capacitor.isNativePlatform()) {
+            const { Geolocation } = await import('@capacitor/geolocation')
+            const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 1800 })
+            return { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          }
+        } catch { /* fallback web */ }
+        if (typeof navigator === 'undefined' || !navigator.geolocation) return null
+        return await new Promise(resolve => {
+          navigator.geolocation.getCurrentPosition(
+            p  => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: false, maximumAge: 30_000, timeout: 1800 }
+          )
+        })
+      })(),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 2000)),
+    ])
+  } catch { return null }
+}
+
+// Actions de pointage pour lesquelles on enregistre le lieu GPS.
+const GEO_POINTAGE_ACTIONS = new Set([
+  'accept', 'on_way', 'on_site', 'load_vehicle', 'park', 'completed',
+  'start_delivery', 'complete_delivery',
+])
 const TYPE_BADGE: Record<string, [string, string]> = {
   DSP: ['DSP', 'bg-brand'], REM: ['REM', 'bg-blue-600'], DPR: ['DPR', 'bg-ink-faint'],
   REL: ['REL', 'bg-purple-600'],
@@ -983,13 +1018,19 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   }, [M.id])
 
   // ── API statuts simples (avec reload) ───────────────────────────────────
-  const api = async (action: string, extra = {}) => {
+  const api = async (action: string, extra: Record<string, any> = {}) => {
     console.log(`[api] CALL action=${action}`, { extra, currentStatus: M.status, currentLoaded: !!M.loaded_at })
     setLoading(true); setErr('')
     try {
+      // Lieu de pointage : on tente d'attacher la position GPS (non bloquant,
+      // cap 2s) sauf si l'appelant a déjà fourni lat/lng.
+      let geo: { lat: number; lng: number } | null = null
+      if (GEO_POINTAGE_ACTIONS.has(action) && (extra as any).lat == null) {
+        geo = await captureGeo()
+      }
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mission_id: M.id, action, ...extra }),
+        body: JSON.stringify({ mission_id: M.id, action, ...(geo || {}), ...extra }),
       })
       const j = await r.json()
       console.log(`[api] RES action=${action} ok=${r.ok}`, { newStatus: j.mission?.status, newLoadedAt: j.mission?.loaded_at, newDeliveringAt: j.mission?.delivering_at })

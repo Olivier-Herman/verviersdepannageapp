@@ -383,6 +383,20 @@ export async function POST(req: Request) {
     metadata: { action, status: mapping.status || mission.status },
   })
 
+  // ── Lieu de pointage GPS ──────────────────────────────────────────────────
+  // Olivier 2026-06-16 : si le chauffeur a transmis sa position au moment du
+  // pointage, on l'enregistre comme marqueur sur la carte trajet (kind=action).
+  // Le point d'acceptation (kind='accept') en fait partie. Best-effort.
+  if (typeof body.lat === 'number' && typeof body.lng === 'number'
+      && ['accept', 'on_way', 'on_site', 'load_vehicle', 'park', 'completed',
+          'start_delivery', 'complete_delivery'].includes(action)) {
+    try {
+      await supabase.from('mission_position_pings').insert({
+        mission_id, driver_id: actor.id, lat: body.lat, lng: body.lng, kind: action,
+      })
+    } catch { /* télémétrie non critique */ }
+  }
+
   // ── Propagation Kaze : note + avancement workflow ─────────────────────────
   // BACKGROUND via waitUntil : on ne bloque PAS la reponse HTTP de driver-action
   // pour que l UI chauffeur reagisse instantanement (les operations Kaze

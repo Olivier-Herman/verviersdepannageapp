@@ -9,6 +9,7 @@ import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
+import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
@@ -3281,6 +3282,10 @@ export default function MissionDetailClient({
                   </div>
                 </div>
               )}
+
+              {/* Trajet du chauffeur — carte Google repliable (tracé GPS + lieux
+                  de pointage). Olivier 2026-06-16. */}
+              <DriverRouteCard missionId={initialMission.id} gmKey={googleMapsKey} />
             </div>
 
             {/* ── Colonne droite : actions + chauffeur + logs ───────── */}

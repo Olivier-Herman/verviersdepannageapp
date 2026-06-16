@@ -29,5 +29,21 @@ export async function POST(req: Request) {
     location_updated_at: new Date().toISOString(),
   }).eq('id', user.id)
 
+  // Olivier 2026-06-16 : si le chauffeur a une (ou des) mission(s) en cours,
+  // on historise la position pour tracer le trajet sur la carte dispatch.
+  // Best-effort — n'impacte jamais la réponse du ping.
+  try {
+    const { data: actives } = await sb
+      .from('incoming_missions')
+      .select('id')
+      .eq('assigned_to', user.id)
+      .in('status', ['accepted', 'in_progress', 'delivering'])
+    if (actives?.length) {
+      await sb.from('mission_position_pings').insert(
+        actives.map(m => ({ mission_id: m.id, driver_id: user.id, lat, lng, kind: 'ping' }))
+      )
+    }
+  } catch { /* table télémétrie non critique */ }
+
   return NextResponse.json({ ok: true })
 }
