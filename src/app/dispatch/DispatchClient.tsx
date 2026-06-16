@@ -1153,19 +1153,21 @@ export default function DispatchClient({
           </div>
         </div>
 
-        {/* ── Bandeau missions en erreur de parsing (à revérifier) ──────── */}
+        {/* ── Bandeau discret : mission(s) récente(s) à vérifier ────────── */}
         {errorCount > 0 && (
           <div className="px-3 lg:px-8 pt-3">
-            <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3">
-              <p className="text-amber-900 text-sm font-medium">
-                ⚠️ {errorCount} mission(s) reçue(s) mais non parsée(s) — à revérifier
-                <span className="text-amber-800 font-normal"> (réparation auto en cours ; tu peux relancer maintenant)</span>
+            <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+              <p className="text-amber-900 text-sm">
+                {errorCount === 1
+                  ? 'Une mission n’a pas pu être traitée automatiquement.'
+                  : `${errorCount} missions n’ont pas pu être traitées automatiquement.`}
+                <span className="text-amber-700"> Vérification automatique en cours.</span>
               </p>
               <button
                 onClick={relaunchParsing}
                 disabled={reparsing}
                 className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 whitespace-nowrap">
-                {reparsing ? '⏳ Relance…' : '🔄 Relancer le parsing'}
+                {reparsing ? '⏳ Vérification…' : 'Vérifier maintenant'}
               </button>
             </div>
           </div>

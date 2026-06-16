@@ -24,14 +24,36 @@ export interface ReprocessResult {
 
 const REPROCESS_FILTER = 'status.eq.parse_error,source.eq.unknown,external_id.like.PROCESSING_%,external_id.like.UNKNOWN_SENDER_%'
 
-/** Nombre de missions actuellement en erreur (pour badge dispatch). */
+// Le cron ne ré-essaye que les blocages récents : au-delà, c'est du contenu
+// non parsable (spam, mails hors-sujet) qu'on ne veut pas re-parser en boucle
+// (coût Claude inutile). Olivier 2026-06-16.
+const REPROCESS_WINDOW_HOURS = 72
+
+/**
+ * Nombre de missions RÉCENTES réellement bloquées (badge dispatch).
+ * Volontairement étroit : uniquement les échecs de traitement récents
+ *   (a) status = parse_error
+ *   (b) placeholder PROCESSING_ resté bloqué > 4 min
+ * On exclut le bruit historique (source unknown ancien, UNKNOWN_SENDER_) qui
+ * gonflait le compteur et faisait peur pour rien.
+ */
 export async function countErrorMissions(): Promise<number> {
   const sb = createAdminClient()
-  const { count } = await sb
-    .from('incoming_missions')
-    .select('id', { count: 'exact', head: true })
-    .or(REPROCESS_FILTER)
-  return count || 0
+  const since    = new Date(Date.now() - 48 * 3600_000).toISOString()
+  const inFlight = new Date(Date.now() - 4 * 60_000).toISOString()
+
+  const [a, b] = await Promise.all([
+    sb.from('incoming_missions')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'parse_error')
+      .gte('received_at', since),
+    sb.from('incoming_missions')
+      .select('id', { count: 'exact', head: true })
+      .like('external_id', 'PROCESSING_%')
+      .gte('received_at', since)
+      .lt('received_at', inFlight),
+  ])
+  return (a.count || 0) + (b.count || 0)
 }
 
 export async function reprocessErrorMissions(opts: { onlyId?: string | null; batch?: number } = {}): Promise<ReprocessResult> {
@@ -44,7 +66,13 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
     .select('id, source, source_format, raw_content, external_id, source_email_id, received_at')
     .or(REPROCESS_FILTER)
     .order('received_at', { ascending: false })
-  if (onlyId) q = q.eq('id', onlyId)
+  if (onlyId) {
+    q = q.eq('id', onlyId)
+  } else {
+    // Lot auto : seulement les blocages récents (pas de re-parsing en boucle
+    // de vieux contenus non parsables).
+    q = q.gte('received_at', new Date(Date.now() - REPROCESS_WINDOW_HOURS * 3600_000).toISOString())
+  }
   const { data: rows, error } = await q.limit(BATCH + 4)  // marge pour filtrer les in-flight
   if (error) throw new Error(error.message)
 
