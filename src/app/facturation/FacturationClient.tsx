@@ -460,6 +460,12 @@ export default function FacturationClient({
               const childRels    = siblingsByMission.byParentId.get(m.id) || []
               const parentRow    = m.parent_mission_id ? siblingsByMission.byId.get(m.parent_mission_id) : null
               const hasChain     = childRels.length > 0 || !!parentRow
+              // Relivraison liée encore EN COURS (pas prête à facturer) → on
+              // alerte pour ne pas facturer la chaîne tant que la REL n'est pas
+              // terminée (on facture tout ensemble). Olivier 2026-06-17.
+              const REL_NOT_READY = ['new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering', 'parked']
+              const relEnCours   = childRels.filter(c => REL_NOT_READY.includes(c.status) && !c.no_charge_at)
+              const hasRelEnCours = relEnCours.length > 0
               const pays         = paymentsByMission.get(m.id) || []
               const advs         = advancesByMission.get(m.id) || []
               const hasAdv       = advs.length > 0
@@ -503,6 +509,12 @@ export default function FacturationClient({
                         {hasChain && (
                           <span className="ml-2 px-2 py-0.5 bg-purple-600/15 text-purple-400 text-xs rounded font-medium">
                             chaîne REM+REL
+                          </span>
+                        )}
+                        {hasRelEnCours && (
+                          <span className="px-2 py-0.5 bg-amber-500 text-white text-xs rounded font-bold uppercase tracking-wide"
+                            title="Une relivraison liée est encore en cours — attends qu'elle soit terminée pour tout facturer ensemble">
+                            ⚠ Relivraison en cours
                           </span>
                         )}
                       </div>
