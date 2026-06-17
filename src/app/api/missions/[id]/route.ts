@@ -9,6 +9,7 @@ import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
+import { KEY_LOCATION_LABELS }  from '@/lib/key-location'
 
 export async function GET(
   req: Request,
@@ -133,6 +134,23 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Olivier 2026-06-18 : historiser les modifications de clés.
+  const keyActorId = (session.user as any)?.id as string | undefined
+  if ('key_location' in updates) {
+    await supabase.from('mission_logs').insert({
+      mission_id: params.id, actor_id: keyActorId || null, action: 'key_location',
+      notes: `Emplacement clé : ${KEY_LOCATION_LABELS[String(updates.key_location)] || updates.key_location || '—'}`,
+      metadata: { key_location: updates.key_location, actor: (session.user as any)?.email || null },
+    })
+  }
+  if ('saisie_key_hook' in updates) {
+    await supabase.from('mission_logs').insert({
+      mission_id: params.id, actor_id: keyActorId || null, action: 'key_hook',
+      notes: updates.saisie_key_hook ? `Crochet boîte à clés : n° ${updates.saisie_key_hook}` : 'Crochet boîte à clés retiré',
+      metadata: { saisie_key_hook: updates.saisie_key_hook ?? null, actor: (session.user as any)?.email || null },
+    })
+  }
 
   // Olivier 2026-06-02 : trace explicite quand la source change. Permet de
   // remonter au dispatcher qui a recategorise une mission (ex: Touring →

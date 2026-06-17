@@ -192,6 +192,12 @@ const LOG_ICONS: Record<string, string> = {
   completed:  '🏁',
   cancelled:  '🚫',
   error:      '⚠️',
+  key_location: '🔑',
+  key_hook:     '🔑',
+  update_vehicle: '🚗',
+  merge_in:     '🔗',
+  merged:       '🔗',
+  partial_invoice: '🧾',
 }
 
 // ── Date helpers (intervention_date) ──────────────────────────────────────────

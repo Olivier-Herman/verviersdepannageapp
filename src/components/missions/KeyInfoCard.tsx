@@ -38,8 +38,8 @@ export function KeyControls({ source, keyLocation, hookInput, savedHook, busy, o
   onHookChange: (v: string) => void
   onHookSave:   () => void
 }) {
-  const isSaisie = isSaisieSource(source)
-  const showHook = isSaisie && keyLocation !== 'no_key'
+  // Le n° de crochet n'a de sens que pour la boîte à clés du Bureau Rent A Car.
+  const showHook = keyLocation === 'bureau_rac'
 
   return (
     <div className="bg-surface border rounded-2xl p-5 md-card-enter">
