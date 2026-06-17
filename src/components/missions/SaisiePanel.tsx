@@ -62,7 +62,8 @@ const fmtDate = (iso: string | null | undefined) => {
 //   - police_saisie : Réquisitoire + Levée + cycle temporaire + Domaine
 //   - police_rodeo  : Réquisitoire + Levée (+ cycle temporaire)
 //   - police_mg     : Réquisitoire seulement
-const SAISIE_SOURCES = ['police_saisie', 'police_mg', 'police_rodeo']
+//   - police_avp    : Réquisitoire seulement (Olivier 2026-06-17)
+const SAISIE_SOURCES = ['police_saisie', 'police_mg', 'police_rodeo', 'police_avp']
 export default function SaisiePanel({ mission, onChanged }: { mission: SaisieMission; onChanged?: () => void }) {
   const src = mission.source || ''
   if (!SAISIE_SOURCES.includes(src)) return null
@@ -72,7 +73,7 @@ export default function SaisiePanel({ mission, onChanged }: { mission: SaisieMis
 
   const showLevee   = src === 'police_saisie' || src === 'police_rodeo'
   const showDomaine = src === 'police_saisie'
-  const title = src === 'police_saisie' ? 'Saisie' : src === 'police_rodeo' ? 'Rodéo' : 'Police'
+  const title = src === 'police_saisie' ? 'Saisie' : src === 'police_rodeo' ? 'Rodéo' : src === 'police_avp' ? 'AVP' : 'Police'
 
   return (
     <div className="bg-surface border rounded-2xl p-4 space-y-4">
