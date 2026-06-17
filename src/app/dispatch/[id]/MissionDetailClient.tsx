@@ -9,6 +9,7 @@ import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
+import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import SaisiePanel from '@/components/missions/SaisiePanel'
@@ -2127,6 +2128,9 @@ export default function MissionDetailClient({
           <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
         </div>
         <div className="relative z-10">
+
+        {/* Factures liées (n° + PDF) — bandeau en tête de fiche. */}
+        <MissionInvoicesBanner missionId={initialMission.id} />
 
         {/* Fiche fusionnée : bandeau + lien vers la fiche conservée. */}
         {mergedInto && (
