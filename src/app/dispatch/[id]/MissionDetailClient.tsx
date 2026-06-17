@@ -2015,7 +2015,12 @@ export default function MissionDetailClient({
 
 
   const srcInfo    = { label: getSourceLabel(initialMission.source, sources), color: getSourceColor(initialMission.source, sources) }
-  const statusInfo = STATUS_LABELS[status] || { label: status, color: 'text-ink-muted' }
+  // Fiche fusionnée : on garde status='cancelled' côté BDD (plomberie inchangée)
+  // mais on affiche « Fusionnée » et un lien vers la fiche conservée.
+  const mergedInto = (initialMission as any).merged_into_mission_id as string | null | undefined
+  const statusInfo = mergedInto
+    ? { label: 'Fusionnée', color: 'text-ink-muted' }
+    : (STATUS_LABELS[status] || { label: status, color: 'text-ink-muted' })
   const canEdit    = ['new', 'dispatching'].includes(status)
 
   return (
@@ -2077,6 +2082,21 @@ export default function MissionDetailClient({
           <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
         </div>
         <div className="relative z-10">
+
+        {/* Fiche fusionnée : bandeau + lien vers la fiche conservée. */}
+        {mergedInto && (
+          <div className="px-4 lg:px-8 pt-6">
+            <div className="bg-surface-2 border rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-ink-secondary text-sm">
+                🔗 Cette fiche a été <strong>fusionnée</strong> dans une autre fiche (doublon).
+              </p>
+              <Link href={`/dispatch/${mergedInto}`}
+                className="px-3 py-1.5 bg-brand hover:bg-brand/80 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
+                Ouvrir la fiche conservée →
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Dérogation paiement en attente — encart prioritaire pour le dispatcher */}
         {pendingDerog && (
