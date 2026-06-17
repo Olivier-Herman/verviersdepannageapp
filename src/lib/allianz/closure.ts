@@ -212,10 +212,18 @@ export async function listAllianzToAssign(token: string): Promise<{ content: any
 }
 
 /** Étape 1 : affectation manuelle (PUT status SVPSD). */
-async function putManualAssign(token: string, caseId: string, assignmentId: string): Promise<void> {
+async function putManualAssign(token: string, caseId: string, assignmentId: string): Promise<{ alreadyAssigned: boolean }> {
   const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${caseId}/assignments/${assignmentId}/status?cache_buster=${Date.now()}`
   const res = await fetch(url, { method: 'PUT', headers: headers(token), body: JSON.stringify({ subStatus: 'SVPSD' }), signal: AbortSignal.timeout(20000) })
-  if (!res.ok) throw new Error(`Affectation manuelle KO HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  if (res.ok) return { alreadyAssigned: false }
+  const txt = await res.text()
+  // Déjà en SVPSD = affectation manuelle déjà faite (transition SVPSD→SVPSD
+  // refusée). Ce n'est pas une erreur : on continue la clôture (tarifs + soumission).
+  // Olivier 2026-06-17.
+  if (res.status === 400 && /DUPLICATE_STATUS_UPDATE|SVPSD\s+to\s+SVPSD/i.test(txt)) {
+    return { alreadyAssigned: true }
+  }
+  throw new Error(`Affectation manuelle KO HTTP ${res.status}: ${txt.slice(0, 200)}`)
 }
 
 /** Étape 2 : récupère les tarifs (Allianz calcule). */
@@ -352,8 +360,8 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
   try {
     // Étape 1 : affectation manuelle (sautée en dry-run)
     if (!dryRun) {
-      await putManualAssign(token, input.caseId, input.assignmentId)
-      steps.push({ step: 'affectation_manuelle', ok: true })
+      const ma = await putManualAssign(token, input.caseId, input.assignmentId)
+      steps.push({ step: 'affectation_manuelle', ok: true, detail: ma.alreadyAssigned ? 'déjà affectée (SVPSD)' : undefined })
     } else {
       steps.push({ step: 'affectation_manuelle', ok: true, detail: 'sautée (dry-run)' })
     }

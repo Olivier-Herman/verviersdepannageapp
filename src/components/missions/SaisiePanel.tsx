@@ -62,7 +62,7 @@ const fmtDate = (iso: string | null | undefined) => {
 //   - police_saisie : Réquisitoire + Levée + cycle temporaire + Domaine
 //   - police_rodeo  : Réquisitoire + Levée (+ cycle temporaire)
 //   - police_mg     : Réquisitoire seulement
-//   - police_avp    : Réquisitoire seulement (Olivier 2026-06-17)
+//   - police_avp    : Réquisitoire + Levée (Olivier 2026-06-17)
 const SAISIE_SOURCES = ['police_saisie', 'police_mg', 'police_rodeo', 'police_avp']
 export default function SaisiePanel({ mission, onChanged }: { mission: SaisieMission; onChanged?: () => void }) {
   const src = mission.source || ''
@@ -71,7 +71,7 @@ export default function SaisiePanel({ mission, onChanged }: { mission: SaisieMis
   // ex. fiche véhicule en modale) sinon reload complet (fiche dispatch).
   const done = onChanged ?? (() => { if (typeof window !== 'undefined') window.location.reload() })
 
-  const showLevee   = src === 'police_saisie' || src === 'police_rodeo'
+  const showLevee   = src === 'police_saisie' || src === 'police_rodeo' || src === 'police_avp'
   const showDomaine = src === 'police_saisie'
   const title = src === 'police_saisie' ? 'Saisie' : src === 'police_rodeo' ? 'Rodéo' : src === 'police_avp' ? 'AVP' : 'Police'
 
