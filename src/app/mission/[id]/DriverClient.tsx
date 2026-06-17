@@ -3394,9 +3394,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* Vehicle sheet */}
       {showVeh && <VehSheet m={M} isNative={isCapacitor} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v) => {
-        setM(m => ({ ...m, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }))
         setShowVeh(false)
-        await fetch('/api/missions/update-vehicle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }) }).catch(() => {})
+        try {
+          const r = await fetch('/api/missions/update-vehicle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }) })
+          const j = await r.json()
+          if (!r.ok) throw new Error(j.error || 'Erreur')
+          // État depuis la réponse serveur (source de vérité) → persiste au refresh.
+          setM(m => ({ ...m, vehicle_plate: j.mission?.vehicle_plate ?? p, vehicle_brand: j.mission?.vehicle_brand ?? b, vehicle_model: j.mission?.vehicle_model ?? mo, vehicle_vin: j.mission?.vehicle_vin ?? v }))
+        } catch (e: any) {
+          setErr(e.message || 'Échec de la mise à jour du véhicule')
+        }
       }} />}
       </AmbientBackground>
     </div>
