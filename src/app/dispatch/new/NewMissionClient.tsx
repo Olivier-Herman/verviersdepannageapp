@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter }   from 'next/navigation'
 import Link            from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import AddressField from '@/components/AddressField'
 import CreateClientModal from '@/components/CreateClientModal'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
@@ -127,79 +128,10 @@ function useVehicleSearch() {
   return { query, setQuery, results, setResults, loading }
 }
 
-// ── Autocomplete Google Maps ──────────────────────────────────────────────────
-
-function AddressField({ label, value, onChange, onSelect, gmKey, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void
-  onSelect: (addr: string, lat: number, lng: number) => void
-  gmKey: string; placeholder?: string
-}) {
-  const ref       = useRef<HTMLInputElement>(null)
-  const acRef     = useRef<any>(null)
-  // Refs pour onChange + onSelect : toujours a jour sans re-init l autocomplete.
-  // BUG fixe Olivier 2026-05-25 : sans onChangeRef, la closure du listener
-  // place_changed capturait la version initiale de onChange (qui pointe vers
-  // updateDest(OLD_destinations, ...)). Le clic sur une suggestion Google
-  // appelait alors un setState base sur l ancienne snapshot du state ->
-  // l input controle se re-rendait avec l ancienne valeur, donnant l impression
-  // que la selection ne fonctionnait pas.
-  const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
-  const onSelectRef = useRef(onSelect)
-  onSelectRef.current = onSelect
-
-  useEffect(() => {
-    if (!ref.current || !gmKey) return
-
-    const init = () => {
-      if (!(window as any).google?.maps?.places || acRef.current) return
-      acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current!, {
-        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
-        fields: ['formatted_address','geometry'],
-      })
-      acRef.current.addListener('place_changed', () => {
-        const p = acRef.current.getPlace()
-        if (p?.geometry) {
-          const addr = p.formatted_address || ''
-          const lat  = p.geometry.location.lat()
-          const lng  = p.geometry.location.lng()
-          // Mettre à jour le champ immédiatement avant que onBlur ne le vide
-          onChangeRef.current(addr)
-          onSelectRef.current(addr, lat, lng)
-        }
-      })
-    }
-
-    if ((window as any).google?.maps?.places) { init(); return }
-    if (!document.getElementById('gm-script')) {
-      const s = document.createElement('script')
-      s.id    = 'gm-script'
-      s.src   = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
-      s.onload = init
-      document.head.appendChild(s)
-    } else {
-      const t = setInterval(() => {
-        if ((window as any).google?.maps?.places) { init(); clearInterval(t) }
-      }, 200)
-      return () => clearInterval(t)
-    }
-  }, [gmKey])
-
-  return (
-    <div>
-      <label className="block text-ink-muted text-xs mb-1.5">{label}</label>
-      <div className="relative">
-        <input ref={ref} value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint pr-8" />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint text-xs">📍</span>
-      </div>
-    </div>
-  )
-}
-
 // ── Composant destinations multiples ──────────────────────────────────────────
+// AddressField : composant partagé @/components/AddressField (autocomplete Google
+// Places identique au reste de l'app). Olivier 2026-06-17 : on a retiré la copie
+// locale dupliquée qui ne déclenchait pas l'autocomplete sur ce formulaire.
 
 function DestinationsBlock({ destinations, onChange, gmKey }: {
   destinations: Destination[]; onChange: (d: Destination[]) => void; gmKey: string
@@ -248,12 +180,13 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
             label="Adresse"
             value={dest.address}
             onChange={v => updateDest(dest.id, 'address', v)}
-            onSelect={(addr, lat, lng) => {
+            onSelect={(addr, lat, lng, city) => {
               // Update atomique : un seul onChange pour les 4 champs sinon
               // les setState batched s ecrasent (closure stale sur destinations).
+              // city vient du composant partagé (address_components) ; fallback split.
               const parts = addr.split(',')
-              const city = parts.length > 1 ? (parts[parts.length - 2]?.trim() || '') : ''
-              updateDestFields(dest.id, { address: addr, lat, lng, city })
+              const fallbackCity = parts.length > 1 ? (parts[parts.length - 2]?.trim() || '') : ''
+              updateDestFields(dest.id, { address: addr, lat, lng, city: city || fallbackCity })
             }}
             gmKey={gmKey}
             placeholder="Rue, numéro, ville..."
