@@ -12,6 +12,7 @@ import MissionRemarks from '@/components/missions/MissionRemarks'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
+import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
@@ -1437,6 +1438,7 @@ export default function MissionDetailClient({
   // ── Recherche/lien client Odoo (facturé) ────────────────────────────────────
   const [billedPartnerId, setBilledPartnerId] = useState<number | null>(initialMission.billed_to_id || null)
   const [showCreateClientModal, setShowCreateClientModal] = useState(false)
+  const [showPartialInvoice, setShowPartialInvoice] = useState(false)
   const [showRestituerModal, setShowRestituerModal] = useState(false)
   const [showRestituerFacturer, setShowRestituerFacturer] = useState(false)
   const [showSncDepotModal, setShowSncDepotModal] = useState(false)
@@ -3384,6 +3386,16 @@ export default function MissionDetailClient({
                 <MergeMissionButton missionId={initialMission.id} />
               )}
 
+              {/* Facture partielle — véhicule en parc : facturer le dépannage /
+                  une tranche de gardiennage sans sortir le véhicule du parc. */}
+              {status === 'parked' && (
+                <button
+                  onClick={() => setShowPartialInvoice(true)}
+                  className="w-full py-2.5 bg-surface-2 hover:bg-surface border rounded-2xl text-ink-secondary text-sm font-medium transition">
+                  🧾 Facture partielle
+                </button>
+              )}
+
               {/* Bouton Restituer — Olivier 2026-06-14 : remonté en haut du bloc
                   droit (permuté avec l'impression d'étiquette). Visible pour
                   TOUTES les sources Appel Police (+ sia_couvert) en parc.
@@ -3899,6 +3911,14 @@ export default function MissionDetailClient({
         />
       )}
 
+      {showPartialInvoice && (
+        <PartialInvoiceModal
+          missionId={initialMission.id}
+          parkedSince={(initialMission as any).parked_at || initialMission.intervention_date || null}
+          onClose={() => setShowPartialInvoice(false)}
+          onDone={() => { setShowPartialInvoice(false); router.refresh() }}
+        />
+      )}
       {showCreateClientModal && (
         <CreateClientModal
           initialName={clientQuery || form.billed_to_name || ''}
