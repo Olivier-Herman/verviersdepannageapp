@@ -53,10 +53,18 @@ export async function GET(req: Request) {
     .order('prestation_date', { ascending: true })
 
   const today = new Date().toISOString().slice(0, 10)
-  if (period === 'past')      query = query.lt('prestation_date', today)
-  else if (period === 'current')  query = query.eq('prestation_date', today)
-  else if (period === 'upcoming') query = query.gt('prestation_date', today)
-  // else 'all' -> tout
+  // Olivier 2026-06-17 : une fois facturée, la prestation quitte les onglets
+  // temporels et vit dans l'onglet « Facturée ».
+  if (period === 'invoiced') {
+    query = query.not('invoiced_at', 'is', null)
+  } else if (period === 'past') {
+    query = query.lt('prestation_date', today).is('invoiced_at', null)
+  } else if (period === 'current') {
+    query = query.eq('prestation_date', today).is('invoiced_at', null)
+  } else if (period === 'upcoming') {
+    query = query.gt('prestation_date', today).is('invoiced_at', null)
+  }
+  // else 'all' -> tout (facturées comprises)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -28,7 +28,7 @@ const TYPE_COLORS: Record<string, string> = {
   after_six: 'bg-purple-100 text-purple-800 border-purple-200',
 }
 
-type Period = 'upcoming' | 'current' | 'past' | 'all'
+type Period = 'upcoming' | 'current' | 'past' | 'invoiced' | 'all'
 
 const ODOO_BASE = 'https://verviers-depannage.odoo.com/web#id={ID}&model=sale.order&view_type=form'
 const odooUrl = (id: number) => ODOO_BASE.replace('{ID}', String(id))
@@ -130,7 +130,7 @@ export default function CircuitClient() {
 
       {/* Onglets de filtre */}
       <div className="flex items-center gap-2 flex-wrap border-b border-default pb-2">
-        {(['upcoming', 'current', 'past', 'all'] as Period[]).map(p => (
+        {(['upcoming', 'current', 'past', 'invoiced', 'all'] as Period[]).map(p => (
           <button
             key={p}
             onClick={() => setPeriod(p)}
@@ -143,6 +143,7 @@ export default function CircuitClient() {
             {p === 'upcoming' ? 'À venir'
               : p === 'current' ? 'Aujourd\'hui'
               : p === 'past' ? 'Passées'
+              : p === 'invoiced' ? 'Facturées'
               : 'Toutes'}
           </button>
         ))}

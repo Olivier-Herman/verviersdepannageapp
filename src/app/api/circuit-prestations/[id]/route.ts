@@ -169,17 +169,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (action === 'set_invoice_number') {
     const num = String(body.invoice_number || '').trim() || null
     // Saisir un n° de facture marque aussi la prestation comme facturée.
-    // Olivier 2026-06-17.
+    // Olivier 2026-06-17 : une épreuve sur plusieurs jours = même devis Odoo
+    // → le n° se répercute sur TOUTES les dates du dossier (même odoo_sale_order_id).
     const patch: Record<string, any> = { invoice_number: num, updated_at: new Date().toISOString() }
     if (num) { patch.invoiced_at = new Date().toISOString(); patch.invoiced_by = actor?.id || null }
-    const { data, error } = await sb
-      .from('circuit_prestations')
-      .update(patch)
-      .eq('id', params.id)
-      .select()
-      .maybeSingle()
+
+    const { data: clicked } = await sb
+      .from('circuit_prestations').select('id, odoo_sale_order_id').eq('id', params.id).maybeSingle()
+    if (!clicked) return NextResponse.json({ error: 'Prestation introuvable' }, { status: 404 })
+
+    const q = clicked.odoo_sale_order_id
+      ? sb.from('circuit_prestations').update(patch).eq('odoo_sale_order_id', clicked.odoo_sale_order_id)
+      : sb.from('circuit_prestations').update(patch).eq('id', params.id)
+    const { data, error } = await q.select()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true, prestation: data, action: 'set_invoice_number' })
+    return NextResponse.json({ ok: true, prestations: data || [], count: (data || []).length, action: 'set_invoice_number' })
   }
 
   return NextResponse.json({ error: 'action invalide (mark_invoiced | unmark_invoiced | set_invoice_number)' }, { status: 400 })
