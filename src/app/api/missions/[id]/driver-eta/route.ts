@@ -149,12 +149,18 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // Missions actives (assignees mais pas terminees) pour determiner le statut
   const { data: activeMissions } = await sb
     .from('incoming_missions')
-    .select('id, assigned_to, dossier_number, mission_type, destination_address, destination_lat, destination_lng, incident_address, incident_lat, incident_lng, status')
+    .select('id, assigned_to, dossier_number, mission_type, destination_address, destination_lat, destination_lng, incident_address, incident_lat, incident_lng, status, assigned_at')
     .in('status', ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering'])
     .neq('id', params.id)
-  const missionsByDriver = new Map<string, any>()
+    .order('assigned_at', { ascending: true, nullsFirst: true })
+  // Olivier 2026-06-17 : un chauffeur peut avoir PLUSIEURS missions actives →
+  // on les garde toutes (avant : Map écrasée = 1 seule mission notée).
+  const missionsByDriver = new Map<string, any[]>()
   for (const m of (activeMissions || [])) {
-    if (m.assigned_to) missionsByDriver.set(m.assigned_to, m)
+    if (!m.assigned_to) continue
+    const arr = missionsByDriver.get(m.assigned_to) || []
+    arr.push(m)
+    missionsByDriver.set(m.assigned_to, arr)
   }
 
   const now    = Date.now()
@@ -166,7 +172,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const hasPosition = d.last_location_lat != null && d.last_location_lng != null
     const isFresh     = locAge != null && locAge < ACTIVE_WINDOW_MIN * 60
 
-    const activeMission = missionsByDriver.get(d.id)
+    const driverMissions = missionsByDriver.get(d.id) || []
+    // Représentant pour l'ETA détaillée = la dernière mission assignée (celle que
+    // le chauffeur terminera en dernier avant d'être libre).
+    const activeMission = driverMissions.length ? driverMissions[driverMissions.length - 1] : null
 
     // En service si planning de garde actif (schedule_day en journee OU
     // schedule_night la nuit). Cohabite avec ping recent + mission active.
@@ -251,6 +260,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       eta_total_min:            etaTotalMin,    // NEW : ETA total avec decharge si en mission
       priority_order:           (d as any).priority_order ?? null,
       current_mission:          currentMission,
+      // Toutes les missions actives du chauffeur (pour les noter dans le modal).
+      current_missions:         driverMissions.map(mm => ({
+        id:                  mm.id,
+        dossier_number:      mm.dossier_number,
+        mission_type:        mm.mission_type,
+        destination_address: mm.destination_address || mm.incident_address || '',
+        status:              mm.status,
+      })),
     }
   }))
 

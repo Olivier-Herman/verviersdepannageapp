@@ -25,6 +25,14 @@ interface DriverEta {
     eta_destination_to_incident_min: number | null
     status: string
   }
+  // Toutes les missions actives du chauffeur (peut en avoir plusieurs).
+  current_missions?: Array<{
+    id: string
+    dossier_number: string | null
+    mission_type: string | null
+    destination_address: string
+    status: string
+  }>
 }
 
 /**
@@ -191,11 +199,22 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
                         <p className={`${isOffDuty ? 'text-ink-muted' : isStalePosition ? 'text-warning-700' : 'text-success'} text-xs`}>
                           Libre {d.has_position && d.location_age_seconds != null && `· position ${fmtAge(d.location_age_seconds)}${isStalePosition ? ' — peut être ailleurs maintenant' : ''}`}
                         </p>
-                      ) : (
-                        <p className="text-warning text-xs truncate">
-                          En mission → {cm?.destination_address || '(destination inconnue)'}
-                        </p>
-                      )}
+                      ) : (() => {
+                        // Toutes les missions en cours du chauffeur (pas juste une).
+                        const cms = (d.current_missions && d.current_missions.length)
+                          ? d.current_missions
+                          : (cm ? [{ id: cm.id, dossier_number: cm.dossier_number, mission_type: cm.mission_type, destination_address: cm.destination_address, status: cm.status }] : [])
+                        return (
+                          <div className="text-warning text-xs space-y-0.5">
+                            <p className="font-medium">{cms.length > 1 ? `${cms.length} missions en cours :` : 'En mission :'}</p>
+                            {cms.map(mm => (
+                              <p key={mm.id} className="truncate">
+                                → {mm.destination_address || '(destination inconnue)'}{mm.dossier_number ? ` · ${mm.dossier_number}` : ''}
+                              </p>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
