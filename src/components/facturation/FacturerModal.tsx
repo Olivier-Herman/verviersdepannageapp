@@ -252,6 +252,8 @@ function MissionBlock({
   const [surcharges, setSurcharges] = useState<SurchargeData | null>(null)
   const [estimate, setEstimate] = useState<PriceEstimateData | null>(null)
   const [estimateLoading, setEstimateLoading] = useState(true)
+  // Postes déjà facturés (facture partielle) → exclus du solde final. Olivier 2026-06-17.
+  const [billedItems, setBilledItems] = useState<Array<{ kind: string; label: string; qty: number; amount_htva: number; period_from: string | null; period_to: string | null }>>([])
   // Olivier 2026-06-01 : avances de fonds liees a cette mission. Affichees
   // dans le UI + ajoutees automatiquement comme lignes SERV-DIV au devis.
   const [linkedAdvances, setLinkedAdvances] = useState<Array<{
@@ -293,9 +295,16 @@ function MissionBlock({
       fetch(`/api/missions/${m.id}/price-estimate`).then(r => r.json()),
       fetch(`/api/missions/${m.id}/invoice-draft`).then(r => r.json()),
       fetch(`/api/advances?mission_id=${m.id}&limit=50`).then(r => r.json()),
-    ]).then(([d, draftRes, advRes]: [PriceEstimateData, any, any]) => {
+      fetch(`/api/missions/${m.id}/billed-items`).then(r => r.json()).catch(() => ({ items: [] })),
+    ]).then(([d, draftRes, advRes, biRes]: [PriceEstimateData, any, any, any]) => {
       if (cancelled) return
       setEstimate(d)
+      const billed = Array.isArray(biRes?.items) ? biRes.items : []
+      setBilledItems(billed)
+      // Postes déjà facturés (facture partielle) : kinds one-off déjà émis, et
+      // jours de gardiennage déjà facturés → on les déduit du solde proposé.
+      const billedOneOffKinds = new Set<string>(billed.filter((b: any) => b.kind !== 'SERV-PARC').map((b: any) => b.kind))
+      const billedParcDays = billed.filter((b: any) => b.kind === 'SERV-PARC').reduce((s: number, b: any) => s + (Number(b.qty) || 0), 0)
       const advances = Array.isArray(advRes?.advances) ? advRes.advances : []
       setLinkedAdvances(advances)
       // Lignes generees pour les avances de fonds liees (1 ligne par avance,
@@ -315,13 +324,19 @@ function MissionBlock({
       }
       // 2) Sinon mode 'lines' : init auto depuis le template + avances
       else if (d?.ok && d.pricing_mode === 'lines' && d.template_lines && d.template_lines.length > 0) {
-        const initialLines: CustomLine[] = d.template_lines.map(tl => ({
-          kind:       tl.kind,
-          name:       tl.name,
-          qty:        tl.default_qty ?? 0,
-          price_unit: tl.default_price ?? 0,
-        }))
-        if (d.surcharge_pct > 0) {
+        const initialLines: CustomLine[] = d.template_lines
+          // On retire les postes one-off déjà facturés (PEC/KM/DIV…) et on déduit
+          // les jours de gardiennage déjà facturés (ne reste que le solde).
+          .map(tl => {
+            if (tl.kind === 'SERV-PARC' && billedParcDays > 0) {
+              const remaining = Math.max(0, (tl.default_qty ?? 0) - billedParcDays)
+              return { kind: tl.kind, name: tl.name, qty: remaining, price_unit: tl.default_price ?? 0 }
+            }
+            return { kind: tl.kind, name: tl.name, qty: tl.default_qty ?? 0, price_unit: tl.default_price ?? 0 }
+          })
+          .filter(l => !(billedOneOffKinds.has(l.kind) && l.kind !== 'SERV-PARC'))   // poste one-off déjà facturé → exclu
+          .filter(l => l.qty > 0)                                                     // gardiennage soldé → exclu
+        if (d.surcharge_pct > 0 && !billedOneOffKinds.has('SERV-MAJ')) {
           initialLines.push({
             kind:       'SERV-MAJ',
             name:       `Majoration ${d.surcharge_pct}%`,
@@ -592,6 +607,20 @@ function MissionBlock({
       )}
 
       {/* Section devis Odoo : preview ou edition selon mode */}
+      {billedItems.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3">
+          <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold uppercase tracking-wide mb-1">
+            ✓ Déjà facturé (facture partielle) — exclu du solde
+          </p>
+          {billedItems.map((b, i) => (
+            <p key={i} className="text-ink-secondary text-xs">
+              {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
+              {b.period_from && b.period_to ? ` (du ${new Date(b.period_from).toLocaleDateString('fr-BE')} au ${new Date(b.period_to).toLocaleDateString('fr-BE')})` : ''}
+            </p>
+          ))}
+        </div>
+      )}
+
       {isReady && (
         <div className="bg-info/5 border border-info/30 rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
