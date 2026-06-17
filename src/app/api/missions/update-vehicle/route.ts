@@ -48,10 +48,15 @@ export async function POST(req: Request) {
   if (body.vehicle_brand !== undefined) updates.vehicle_brand = (body.vehicle_brand || '').trim() || null
   if (body.vehicle_model !== undefined) updates.vehicle_model = (body.vehicle_model || '').trim() || null
   if (body.vehicle_vin   !== undefined) updates.vehicle_vin   = (body.vehicle_vin   || '').toUpperCase().trim() || null
+  // Lien véhicule Odoo (sélectionné dans la liste proposée, ou nouvellement créé
+  // côté client via /api/odoo/create-vehicle). Olivier 2026-06-17.
+  if (body.odoo_vehicle_id !== undefined) {
+    updates.odoo_vehicle_id = body.odoo_vehicle_id ? Number(body.odoo_vehicle_id) : null
+  }
 
   const { data: updated, error } = await sb
     .from('incoming_missions').update(updates).eq('id', missionId)
-    .select('id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin').single()
+    .select('id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, odoo_vehicle_id').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await sb.from('mission_logs').insert({

@@ -10,6 +10,8 @@ import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
 import OcrScanModal from '@/components/OcrScanModal'
+import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import type { VehicleMatch } from '@/types/vehicles'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
@@ -380,7 +382,9 @@ function AddrInput({ value, onChange, onPick, placeholder }: {
 // ─── VehSheet ─────────────────────────────────────────────────────────────────
 function VehSheet({ m, onSave, onClose, isNative }: {
   m:        Mission
-  onSave:   (p: string, b: string, mo: string, v: string) => void
+  // odooId : véhicule Odoo sélectionné dans la liste proposée (lien direct).
+  // createNew : aucun ne correspond → créer un nouveau véhicule dans Odoo.
+  onSave:   (p: string, b: string, mo: string, v: string, odooId: number | null, createNew: boolean) => void
   onClose:  () => void
   isNative: boolean
 }) {
@@ -389,6 +393,23 @@ function VehSheet({ m, onSave, onClose, isNative }: {
   const [mo, setMo] = useState(m.vehicle_model || '')
   const [v, setV]   = useState(m.vehicle_vin || '')
   const [scan, setScan] = useState<'plate' | 'vin' | null>(null)
+  const [lookupOpen, setLookupOpen] = useState(false)
+
+  // Modif détectée vs valeurs initiales → on ne touche à Odoo QUE si modif.
+  const isModified =
+    plate(p) !== plate(m.vehicle_plate || '') ||
+    b  !== (m.vehicle_brand || '') ||
+    mo !== (m.vehicle_model || '') ||
+    v  !== (m.vehicle_vin   || '')
+
+  const handleSave = () => {
+    // Pas de modif → comportement actuel (on ne fait rien côté Odoo).
+    if (!isModified) { onClose(); return }
+    // Modif → on lance la recherche Odoo (proposition des véhicules trouvés).
+    // VehiclePlateLookup résout seul : 1 match exact → onSelect, 0 → onCreateNew,
+    // plusieurs → affiche la liste au chauffeur.
+    setLookupOpen(true)
+  }
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
@@ -435,9 +456,20 @@ function VehSheet({ m, onSave, onClose, isNative }: {
 
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
-          <button onClick={() => onSave(plate(p), b, mo, v)} className="flex-1 py-3 bg-brand text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
+          <button onClick={handleSave} className="flex-1 py-3 bg-brand text-white font-semibold rounded-2xl text-sm">Enregistrer</button>
         </div>
       </div>
+
+      {/* Recherche Odoo par plaque (déclenchée à l'enregistrement si modif) :
+          propose les véhicules trouvés, lie l'existant ou crée le nouveau.
+          On conserve les valeurs saisies par le chauffeur (sa correction). */}
+      <VehiclePlateLookup
+        plate={plate(p)}
+        open={lookupOpen}
+        onSelect={(veh: VehicleMatch) => { setLookupOpen(false); onSave(plate(p), b, mo, v, veh.id, false) }}
+        onCreateNew={() => { setLookupOpen(false); onSave(plate(p), b, mo, v, null, true) }}
+        onCancel={() => setLookupOpen(false)}
+      />
 
       {scan && (
         <OcrScanModal
@@ -3396,14 +3428,28 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       }} />}
 
       {/* Vehicle sheet */}
-      {showVeh && <VehSheet m={M} isNative={isCapacitor} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v) => {
+      {showVeh && <VehSheet m={M} isNative={isCapacitor} onClose={() => setShowVeh(false)} onSave={async (p, b, mo, v, odooId, createNew) => {
         setShowVeh(false)
         try {
-          const r = await fetch('/api/missions/update-vehicle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v }) })
+          let vehicleId: number | null = odooId
+          // Aucun véhicule Odoo correspondant → on en crée un (marque/modèle requis).
+          if (createNew && vehicleId == null) {
+            if (!b.trim() || !mo.trim()) throw new Error('Marque et modèle requis pour créer le véhicule')
+            const cr = await fetch('/api/odoo/create-vehicle', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ plate: p, brand: b, model: mo, vin: v || undefined }),
+            })
+            const cj = await cr.json()
+            if (!cr.ok || !cj.ok) throw new Error(cj.error || 'Création du véhicule échouée')
+            vehicleId = cj.vehicle_id
+          }
+          const r = await fetch('/api/missions/update-vehicle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mission_id: M.id, vehicle_plate: p, vehicle_brand: b, vehicle_model: mo, vehicle_vin: v, ...(vehicleId != null ? { odoo_vehicle_id: vehicleId } : {}) }),
+          })
           const j = await r.json()
           if (!r.ok) throw new Error(j.error || 'Erreur')
-          // État depuis la réponse serveur (source de vérité) → persiste au refresh.
-          setM(m => ({ ...m, vehicle_plate: j.mission?.vehicle_plate ?? p, vehicle_brand: j.mission?.vehicle_brand ?? b, vehicle_model: j.mission?.vehicle_model ?? mo, vehicle_vin: j.mission?.vehicle_vin ?? v }))
+          setM(m => ({ ...m, vehicle_plate: j.mission?.vehicle_plate ?? p, vehicle_brand: j.mission?.vehicle_brand ?? b, vehicle_model: j.mission?.vehicle_model ?? mo, vehicle_vin: j.mission?.vehicle_vin ?? v } as any))
         } catch (e: any) {
           setErr(e.message || 'Échec de la mise à jour du véhicule')
         }
