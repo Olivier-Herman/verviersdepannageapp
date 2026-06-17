@@ -181,13 +181,20 @@ export async function POST(req: Request) {
   }
 
   // ── Modifier adresse ─────────────────────────────────────────────────────
+  // Olivier 2026-06-17 : on écrit TOUJOURS lat/lng (même à null) quand l'adresse
+  // change. Avant, lat/lng n'étaient mis à jour que si fournis → si le chauffeur
+  // tapait une nouvelle adresse sans choisir de suggestion Google, les ANCIENNES
+  // coordonnées restaient et la navigation y renvoyait (gUrl privilégie lat/lng).
+  // En mettant null, gUrl retombe sur l'adresse texte (géocodée par Waze/Maps).
   if (action === 'update_address' && body.field && body.value) {
     if (body.field === 'incident') {
       updatePayload.incident_address = body.value
-      if (body.lat != null) updatePayload.incident_lat = body.lat
-      if (body.lng != null) updatePayload.incident_lng = body.lng
+      updatePayload.incident_lat = body.lat ?? null
+      updatePayload.incident_lng = body.lng ?? null
     } else if (body.field === 'destination') {
       updatePayload.destination_address = body.value
+      updatePayload.destination_lat = body.lat ?? null
+      updatePayload.destination_lng = body.lng ?? null
     }
   }
 

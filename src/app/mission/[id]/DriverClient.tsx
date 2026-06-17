@@ -1967,7 +1967,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   if (screen === 'modify-addr') return (
     <ScreenWrap title="Modifier l'adresse" back={() => setScreen('main')}>
       <div className="flex-1 px-4 py-4 space-y-4">
-        <AddrInput value={modVal} onChange={setModVal} onPick={(a, lat, lng) => { setModVal(a); setModLat(lat); setModLng(lng) }} />
+        <AddrInput
+          value={modVal}
+          onChange={v => { setModVal(v); setModLat(null); setModLng(null) }}
+          onPick={(a, lat, lng) => { setModVal(a); setModLat(lat); setModLng(lng) }} />
         {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
       </div>
       <div className="px-4 py-4 border-t border flex gap-3">
