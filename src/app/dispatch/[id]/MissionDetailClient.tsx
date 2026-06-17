@@ -10,7 +10,7 @@ import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
-import KeyInfoCard from '@/components/missions/KeyInfoCard'
+import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
@@ -1337,6 +1337,17 @@ export default function MissionDetailClient({
   const [parcRow,        setParcRow]          = useState<number | null>(initialMission.parc_row_number ?? null)
   const [parcSlot,       setParcSlot]         = useState<number | null>(initialMission.parc_slot_index ?? null)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
+  // Clés (Olivier 2026-06-18) : état partagé entre le fob (bandeau parc) et les
+  // contrôles (bloc au-dessus des Remarques).
+  const [keyLoc,         setKeyLoc]           = useState<string>((initialMission as any).key_location || '')
+  const [keyHookInput,   setKeyHookInput]     = useState<string>((initialMission as any).saisie_key_hook || '')
+  const [keyHookSaved,   setKeyHookSaved]     = useState<string>((initialMission as any).saisie_key_hook || '')
+  const pickKeyLocation = (v: string) => { setKeyLoc(v); silentPatch({ key_location: v }) }
+  const saveKeyHook = () => {
+    const val = keyHookInput.trim()
+    if (val === keyHookSaved) return
+    setKeyHookSaved(val); silentPatch({ saisie_key_hook: val || null })
+  }
   const [policeBlocked,  setPoliceBlocked]    = useState<boolean>(Boolean(initialMission.police_blocked))
   const [togglingPoliceBlock, setTogglingPoliceBlock] = useState(false)
   const [odooTicketUrl,  setOdooTicketUrl]    = useState<string | null>(initialMission.odoo_ticket_url || null)
@@ -2447,6 +2458,8 @@ export default function MissionDetailClient({
                     )}
                   </span>
                 </div>
+                {/* Étiquette porte-clé (dessin) — n° crochet / IN / NO. */}
+                <KeyTag keyLocation={keyLoc} hook={keyHookSaved} />
                 {/* Olivier 2026-06-04 : bouton transfert (module fourriere uniquement) */}
                 {userModules.includes('fourriere') && (
                   <button
@@ -2460,16 +2473,6 @@ export default function MissionDetailClient({
                   Voir le plan parc →
                 </a>
               </div>
-
-              {/* Clés intégrées au bandeau Position parc. Olivier 2026-06-18. */}
-              <KeyInfoCard
-                embedded
-                missionId={initialMission.id}
-                source={initialMission.source}
-                status={status}
-                keyLocation={(initialMission as any).key_location}
-                saisieKeyHook={(initialMission as any).saisie_key_hook}
-              />
             </div>
           </div>
         )}
@@ -3347,6 +3350,20 @@ export default function MissionDetailClient({
               {/* Trajet du chauffeur — carte Google repliable (tracé GPS + lieux
                   de pointage). Olivier 2026-06-16 : placé au-dessus des Remarques. */}
               <DriverRouteCard missionId={initialMission.id} gmKey={googleMapsKey} />
+
+              {/* Clés : emplacement + n° crochet (le dessin reste dans le bandeau
+                  Position parc). Affiché pour parked / police / privé. */}
+              {(status === 'parked' || isSaisieSource(initialMission.source) || keyLoc) && (
+                <KeyControls
+                  source={initialMission.source}
+                  keyLocation={keyLoc}
+                  hookInput={keyHookInput}
+                  savedHook={keyHookSaved}
+                  onPick={pickKeyLocation}
+                  onHookChange={setKeyHookInput}
+                  onHookSave={saveKeyHook}
+                />
+              )}
 
               {/* Remarques dispatcher (notes + pièces jointes) */}
               <MissionRemarks missionId={initialMission.id} />
