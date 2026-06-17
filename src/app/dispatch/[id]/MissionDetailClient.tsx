@@ -1555,6 +1555,51 @@ export default function MissionDetailClient({
     }).catch(() => {})
   }
 
+  // Olivier 2026-06-17 : « Aucun ne correspond — créer » crée RÉELLEMENT le
+  // véhicule dans Odoo dès maintenant (à la fiche, pas seulement à la
+  // facturation) puis le lie. Avant, le bouton ne faisait que masquer les
+  // suggestions et le véhicule n'était jamais créé.
+  const [vehicleCreating, setVehicleCreating] = useState(false)
+  const createOdooVehicle = async () => {
+    const plate = (form.vehicle_plate || '').trim()
+    if (!plate) return
+    if (!(form.vehicle_brand || '').trim() || !(form.vehicle_model || '').trim()) {
+      alert('Renseigne la marque et le modèle avant de créer le véhicule.')
+      return
+    }
+    setVehicleCreating(true)
+    try {
+      const res = await fetch('/api/odoo/create-vehicle', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plate,
+          vin:       form.vehicle_vin     || undefined,
+          brand:     form.vehicle_brand,
+          model:     form.vehicle_model,
+          fuel:      form.vehicle_fuel    || undefined,
+          gearbox:   form.vehicle_gearbox || undefined,
+          partner_id: billedPartnerId || undefined,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok || !j.ok) throw new Error(j.error || 'Création échouée')
+      setOdooVehicleId(j.vehicle_id)
+      setVehicleResults([])
+      setShowVehicleDrop(false)
+      // Persiste le lien immédiatement
+      fetch(`/api/missions/${initialMission.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ odoo_vehicle_id: j.vehicle_id }),
+      }).catch(() => {})
+    } catch (e: any) {
+      alert(e.message || 'Création du véhicule échouée')
+    } finally {
+      setVehicleCreating(false)
+    }
+  }
+
   // Le dispatcher doit choisir explicitement entre un véhicule existant ou créer
   // un nouveau dès lors qu'il y a des matches potentiels en attente.
   // Évite de créer des doublons par inadvertance dans Odoo.
@@ -2745,11 +2790,11 @@ export default function MissionDetailClient({
                           )
                         })}
                       </div>
-                      {/* Forcer la création d'un nouveau si l'utilisateur juge qu'aucun résultat ne correspond */}
+                      {/* Crée réellement le véhicule dans Odoo (à la fiche) + le lie */}
                       {form.vehicle_plate.trim().length >= 3 && (
-                        <button type="button" onClick={() => { setVehicleResults([]); setVehicleSearched(true) }}
-                          className="mt-2 w-full text-center px-3 py-2 bg-surface hover:bg-surface-2 border border-dashed rounded-lg text-ink-secondary hover:text-ink text-xs transition">
-                          ➕ Aucun ne correspond — créer un nouveau véhicule
+                        <button type="button" onClick={createOdooVehicle} disabled={vehicleCreating}
+                          className="mt-2 w-full text-center px-3 py-2 bg-surface hover:bg-surface-2 border border-dashed rounded-lg text-ink-secondary hover:text-ink text-xs transition disabled:opacity-50">
+                          {vehicleCreating ? '⏳ Création…' : '➕ Aucun ne correspond — créer un nouveau véhicule'}
                         </button>
                       )}
                     </div>
