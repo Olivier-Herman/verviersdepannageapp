@@ -64,9 +64,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const secondaryId = body.secondary_mission_id ? String(body.secondary_mission_id) : null
-  if (!secondaryId) return NextResponse.json({ error: 'secondary_mission_id requis' }, { status: 400 })
-  if (secondaryId === params.id) return NextResponse.json({ error: 'Une fiche ne peut pas être fusionnée avec elle-même' }, { status: 400 })
+  const otherId = (body.other_mission_id || body.secondary_mission_id)
+    ? String(body.other_mission_id || body.secondary_mission_id) : null
+  if (!otherId) return NextResponse.json({ error: 'other_mission_id requis' }, { status: 400 })
+  if (otherId === params.id) return NextResponse.json({ error: 'Une fiche ne peut pas être fusionnée avec elle-même' }, { status: 400 })
 
   const sb = createAdminClient()
   const actorEmail = (session!.user as any)?.email || null
@@ -74,15 +75,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ? await sb.from('users').select('id').eq('email', actorEmail).single()
     : { data: null as any }
 
-  const cols = 'id, mission_number, source, status, billed_to_id, billed_to_name, dossier_number, amount_guaranteed, client_name, client_phone, driver_photos, remarks_general, merged_into_mission_id, vehicle_plate'
-  const [{ data: master }, { data: secondary }] = await Promise.all([
+  const cols = 'id, mission_number, source, status, billed_to_id, billed_to_name, dossier_number, amount_guaranteed, client_name, client_phone, driver_photos, remarks_general, merged_into_mission_id, vehicle_plate, received_at, assigned_to, parc_zone_key'
+  const [{ data: a }, { data: b }] = await Promise.all([
     sb.from('incoming_missions').select(cols).eq('id', params.id).single(),
-    sb.from('incoming_missions').select(cols).eq('id', secondaryId).single(),
+    sb.from('incoming_missions').select(cols).eq('id', otherId).single(),
   ])
-  if (!master)    return NextResponse.json({ error: 'Fiche principale introuvable' }, { status: 404 })
-  if (!secondary) return NextResponse.json({ error: 'Fiche à fusionner introuvable' }, { status: 404 })
-  if (secondary.status === 'cancelled' || secondary.merged_into_mission_id)
-    return NextResponse.json({ error: 'Cette fiche est déjà annulée ou fusionnée' }, { status: 409 })
+  if (!a || !b) return NextResponse.json({ error: 'Fiche introuvable' }, { status: 404 })
+  for (const m of [a, b]) {
+    if (m.status === 'cancelled' || m.merged_into_mission_id)
+      return NextResponse.json({ error: 'Une des fiches est déjà annulée ou fusionnée' }, { status: 409 })
+  }
+
+  // ── Déterminer automatiquement la fiche à CONSERVER (principale) ──────────
+  //   1) la fiche à source police (= fiche chauffeur) si une seule l'est
+  //   2) sinon celle qui porte le travail (chauffeur assigné / photos / parc)
+  //   3) sinon la plus ancienne (received_at)
+  const isPolice = (m: any) => String(m.source || '').startsWith('police')
+  const hasWork  = (m: any) => !!(m.assigned_to || (Array.isArray(m.driver_photos) && m.driver_photos.length) || m.parc_zone_key)
+  let master: any, secondary: any
+  if (isPolice(a) !== isPolice(b))      master = isPolice(a) ? a : b
+  else if (hasWork(a) !== hasWork(b))   master = hasWork(a)  ? a : b
+  else                                  master = (new Date(a.received_at || 0) <= new Date(b.received_at || 0)) ? a : b
+  secondary = master.id === a.id ? b : a
 
   // ── Construire les màj de la principale (source CONSERVÉE) ────────────────
   const upd: Record<string, any> = { updated_at: new Date().toISOString() }
@@ -107,28 +121,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const mergedPhotos = Array.from(new Set([...masterPhotos, ...secPhotos]))
   if (mergedPhotos.length > masterPhotos.length) upd.driver_photos = mergedPhotos
   // Remarques : on annexe une note de fusion.
-  const secRef = secondary.mission_number != null ? `#${secondary.mission_number}` : secondaryId.slice(0, 8)
+  const secRef = secondary.mission_number != null ? `#${secondary.mission_number}` : secondary.id.slice(0, 8)
   const note   = `— Fusion de la fiche ${secRef} (${secondary.source}) le ${new Date().toISOString().slice(0, 10)}`
   upd.remarks_general = [master.remarks_general, note].filter(Boolean).join('\n')
 
-  const { error: updErr } = await sb.from('incoming_missions').update(upd).eq('id', params.id)
+  const { error: updErr } = await sb.from('incoming_missions').update(upd).eq('id', master.id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
   // ── Soft-cancel de la secondaire + lien vers la principale ────────────────
-  const masterRef = master.mission_number != null ? `#${master.mission_number}` : params.id.slice(0, 8)
+  const masterRef = master.mission_number != null ? `#${master.mission_number}` : master.id.slice(0, 8)
   const { error: secErr } = await sb.from('incoming_missions').update({
     status:                  'cancelled',
-    merged_into_mission_id:  params.id,
+    merged_into_mission_id:  master.id,
     closing_notes:           `Fusionnée dans ${masterRef}`,
     updated_at:              new Date().toISOString(),
-  }).eq('id', secondaryId).eq('status', secondary.status)  // garde anti-course
+  }).eq('id', secondary.id).eq('status', secondary.status)  // garde anti-course
   if (secErr) return NextResponse.json({ error: secErr.message }, { status: 500 })
 
   // ── Traces ────────────────────────────────────────────────────────────────
   await sb.from('mission_logs').insert([
-    { mission_id: params.id,   actor_id: actor?.id ?? null, action: 'merge_in', notes: `Fiche ${secRef} fusionnée dans celle-ci`, metadata: { secondary_id: secondaryId, fields: Object.keys(upd) } },
-    { mission_id: secondaryId, actor_id: actor?.id ?? null, action: 'merged',   notes: `Fusionnée dans ${masterRef}`,            metadata: { master_id: params.id } },
+    { mission_id: master.id,    actor_id: actor?.id ?? null, action: 'merge_in', notes: `Fiche ${secRef} fusionnée dans celle-ci`, metadata: { secondary_id: secondary.id, fields: Object.keys(upd) } },
+    { mission_id: secondary.id, actor_id: actor?.id ?? null, action: 'merged',   notes: `Fusionnée dans ${masterRef}`,            metadata: { master_id: master.id } },
   ])
 
-  return NextResponse.json({ ok: true, master_id: params.id, secondary_id: secondaryId })
+  return NextResponse.json({ ok: true, master_id: master.id, master_ref: masterRef, secondary_id: secondary.id })
 }

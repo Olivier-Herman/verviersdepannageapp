@@ -42,17 +42,20 @@ export default function MergeMissionButton({ missionId, onMerged }: { missionId:
 
   const doMerge = async (c: Candidate) => {
     const ref = c.mission_number != null ? `#${c.mission_number}` : c.id.slice(0, 8)
-    if (!confirm(`Fusionner la fiche ${ref} dans cette fiche ?\n\nCette fiche est conservée (photos, parc, encaissement). La fiche ${ref} sera annulée et son payeur/dossier rapatriés ici.`)) return
+    if (!confirm(`Fusionner avec la fiche ${ref} ?\n\nLa fiche conservée est choisie automatiquement (fiche police/chauffeur, sinon la plus ancienne). L'autre est annulée et son payeur/dossier rapatriés sur la fiche conservée.`)) return
     setMerging(c.id); setError(null)
     try {
       const r = await fetch(`/api/missions/${missionId}/merge`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secondary_mission_id: c.id }),
+        body: JSON.stringify({ other_mission_id: c.id }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
       setOpen(false)
-      if (onMerged) onMerged(); else window.location.reload()
+      // On redirige vers la fiche CONSERVÉE (peut être l'autre fiche).
+      if (j.master_id && j.master_id !== missionId) {
+        window.location.href = `/dispatch/${j.master_id}`
+      } else if (onMerged) { onMerged() } else { window.location.reload() }
     } catch (e: any) { setError(e.message || 'Échec de la fusion') }
     finally { setMerging(null) }
   }
@@ -73,7 +76,7 @@ export default function MergeMissionButton({ missionId, onMerged }: { missionId:
               <button onClick={() => setOpen(false)} className="text-ink-muted text-2xl leading-none">×</button>
             </div>
             <p className="text-ink-muted text-xs mb-4">
-              Cette fiche est <strong>conservée</strong> (photos, parc, encaissement). La fiche choisie sera annulée ; son <strong>payeur / dossier</strong> et infos manquantes sont rapatriés ici.
+              La fiche <strong>conservée</strong> est choisie automatiquement : la fiche <strong>police / chauffeur</strong> (photos, parc, encaissement), sinon la plus ancienne. L'autre est annulée ; son <strong>payeur / dossier</strong> et infos manquantes y sont rapatriés. Tu seras redirigé vers la fiche conservée.
             </p>
 
             {error && <p className="text-error text-sm mb-3">{error}</p>}
