@@ -61,6 +61,21 @@ export default withAuth(
       return NextResponse.next()
     }
 
+    // Momo Market : chauffeurs (module driver_missions) ET dispatch (module
+    // missions). Olivier 2026-06-17 : DOIT etre teste AVANT le ROUTE_MODULE_MAP
+    // ci-dessous, car '/missions-dispo'.startsWith('/missions') === true → il
+    // retombait sur le module 'missions' (dispatch) et rejetait les chauffeurs
+    // qui voient pourtant le menu (gated sur driver_missions). Cause du bug
+    // "Franck voit Momo Market mais est renvoye au tableau de bord".
+    if (path.startsWith('/missions-dispo')) {
+      if (token?.role === 'superadmin' || token?.role === 'admin') return NextResponse.next()
+      const userModules = (token?.modules as string[]) || []
+      if (!userModules.includes('driver_missions') && !userModules.includes('missions')) {
+        return NextResponse.redirect(new URL('/dashboard?error=access_denied', req.url))
+      }
+      return NextResponse.next()
+    }
+
     const requiredModule = Object.entries(ROUTE_MODULE_MAP).find(([route]) =>
       path.startsWith(route)
     )?.[1]
