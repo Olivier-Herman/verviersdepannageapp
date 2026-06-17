@@ -381,6 +381,7 @@ export async function GET(req: NextRequest) {
     synced_to_odoo: i.synced_to_odoo,
     driver:        i.driver,
     notes:         i.notes,
+    mission_id:    i.mission_id || null,   // lien vers la fiche mission (bouton détail)
   }))
 
   // ── Paiements Odoo espèces (cash_register avec odoo_payment_id) ─────────

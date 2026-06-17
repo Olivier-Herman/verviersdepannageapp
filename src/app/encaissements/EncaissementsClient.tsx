@@ -42,6 +42,8 @@ interface Entry {
   // Paiements Odoo (encaissements directs encodés au bureau, sync via cron)
   odoo_payment_id?: number
   odoo_status?:    'pending' | 'confirmed' | null
+  // Lien vers la mission qui a déclenché l'encaissement (bouton détail)
+  mission_id?:    string | null
 }
 
 export default function EncaissementsClient({
@@ -373,6 +375,17 @@ export default function EncaissementsClient({
                 <span className="text-ink text-sm text-right max-w-[60%]">{value}</span>
               </div>
             ))}
+
+            {/* Lien vers la fiche mission liée à l'encaissement. Office (admin/
+                dispatcher) → fiche dispatch ; chauffeur → sa vue mission.
+                Olivier 2026-06-17. */}
+            {selected.mission_id && (
+              <a
+                href={`${isAdmin ? '/dispatch' : '/mission'}/${selected.mission_id}`}
+                className="mt-4 block w-full text-center py-3 bg-brand hover:bg-brand/80 text-white rounded-2xl font-semibold text-sm transition">
+                🚛 Voir la fiche mission
+              </a>
+            )}
           </div>
         </div>
       )}
