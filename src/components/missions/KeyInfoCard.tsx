@@ -15,7 +15,9 @@ export default function KeyInfoCard({ missionId, source, keyLocation, saisieKeyH
   keyLocation?:  string | null
   saisieKeyHook?: string | null
 }) {
-  const isSaisie = source === 'police_saisie'
+  // « Saisie » au sens large = tout appel police + appel privé (boîte à clés
+  // bureau avec crochets numérotés). Olivier 2026-06-18.
+  const isSaisie = source.startsWith('police') || source === 'prive' || source === 'sia_couvert'
   const [hook, setHook]       = useState(saisieKeyHook || '')
   const [saved, setSaved]     = useState(saisieKeyHook || '')
   const [saving, setSaving]   = useState(false)

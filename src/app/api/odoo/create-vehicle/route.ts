@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const actorId = (session.user as any).id as string | undefined
 
-  const { plate, vin, brand, model, fuel, gearbox, partner_id } = await req.json()
+  const { plate, vin, brand, model, fuel, gearbox } = await req.json()
 
   if (!plate?.trim()) {
     return NextResponse.json({ error: 'Plaque requise' }, { status: 400 })
@@ -44,7 +44,8 @@ export async function POST(req: Request) {
       if (vin)        vals.vin_sn       = vin.trim()
       if (fuel)       vals.fuel_type    = fuel
       if (gearbox)    vals.transmission = gearbox
-      if (partner_id) vals.partner_id   = partner_id
+      // Olivier 2026-06-18 : fleet.vehicle n'a PAS de champ partner_id en Odoo 19
+      // (le set provoquait "Invalid field 'partner_id'"). On ne le pousse plus.
 
       if (brand?.trim()) {
         const brandId = await findOrCreateBrand(brand)
