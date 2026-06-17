@@ -7,6 +7,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendPushToRole }    from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,5 +126,22 @@ export async function POST(req: Request) {
   }).select('id, mission_number, external_id').single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notif dispatch : une commande garage doit alerter comme les autres sources
+  // (mail/Kaze/manuel notifient déjà). Best-effort, ne bloque pas la création.
+  // Olivier 2026-06-17.
+  try {
+    const vehicleLabel = [body.vehicle_brand, body.vehicle_model, plate].filter(Boolean).join(' ')
+    await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+      title: `${type === 'DSP' ? '🔧 Dépannage' : '🚛 Remorquage'} — GARAGE`,
+      body:  `${vehicleLabel || 'Nouvelle demande'} · ${partner.name}`,
+      url:   `/dispatch/${m.id}`,
+      tag:   `mission-${m.id}`,
+      icon:  '/icons/apple-touch-icon.png',
+    }, 'dispatch_new_mission')
+  } catch (e: any) {
+    console.error('[garage/missions] push KO (non bloquant):', e?.message)
+  }
+
   return NextResponse.json({ mission: m })
 }

@@ -66,6 +66,7 @@ interface Mission {
   auto_dispatch_driver_name?: string | null
   has_pending_derogation?: boolean
   invoice_number?: string | null
+  requested_by_garage_id?: string | null   // commande passée via l'espace client garage
 }
 
 interface Driver {
@@ -612,11 +613,15 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
   const delai   = getDelai(mission.intervention_date, mission.status)
   const srcInfo = { label: getSourceLabel(mission.source, sources), color: getSourceColor(mission.source, sources) }
   const showDelai = delai.urgency !== 'muted'
+  // Commande passée par un garage via son espace client → fond ambré + ring
+  // pour attirer l'attention du dispatch. Olivier 2026-06-17.
+  const isGarage = !!mission.requested_by_garage_id
+  const cardBg   = isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20' : 'bg-surface hover:bg-surface-2'
 
   return (
     <div
       onClick={() => router.push(`/dispatch/${mission.id}`)}
-      className={`relative bg-surface border-2 rounded-2xl p-4 cursor-pointer hover:bg-surface-2 transition-all overflow-hidden min-w-0 ${URGENCY_BORDER[delai.urgency]}`}
+      className={`relative border-2 rounded-2xl p-4 cursor-pointer transition-all overflow-hidden min-w-0 ${cardBg} ${URGENCY_BORDER[delai.urgency]} ${isGarage ? 'ring-2 ring-amber-400' : ''}`}
     >
       <MissionStamp mission={mission} />
       {/* Header */}
@@ -1284,10 +1289,13 @@ export default function DispatchClient({
                     const delai   = getDelai(m.intervention_date, m.status)
                     const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
                     const showDelai = delai.urgency !== 'muted'
+                    const isGarage  = !!m.requested_by_garage_id
                     return (
                       <tr key={m.id}
-                        className={`transition hover:bg-surface-2 cursor-pointer ${
-                          delai.urgency === 'critical' ? 'bg-red-500/5' : ''
+                        className={`transition cursor-pointer ${
+                          isGarage ? 'bg-amber-500/10 hover:bg-amber-500/20'
+                          : delai.urgency === 'critical' ? 'bg-red-500/5 hover:bg-surface-2'
+                          : 'hover:bg-surface-2'
                         }`}
                         onClick={() => router.push(`/dispatch/${m.id}`)}>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
