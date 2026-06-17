@@ -10,6 +10,7 @@ import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
+import KeyInfoCard from '@/components/missions/KeyInfoCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
@@ -3330,6 +3331,14 @@ export default function MissionDetailClient({
                   </pre>
                 )}
               </div>
+
+              {/* Clés : emplacement (chauffeur) + crochet boîte saisie (bureau). */}
+              <KeyInfoCard
+                missionId={initialMission.id}
+                source={initialMission.source}
+                keyLocation={(initialMission as any).key_location}
+                saisieKeyHook={(initialMission as any).saisie_key_hook}
+              />
 
               {/* Trajet du chauffeur — carte Google repliable (tracé GPS + lieux
                   de pointage). Olivier 2026-06-16 : placé au-dessus des Remarques. */}

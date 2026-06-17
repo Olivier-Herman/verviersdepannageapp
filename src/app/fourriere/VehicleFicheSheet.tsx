@@ -11,6 +11,7 @@ import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader
 import Link from 'next/link'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
+import { KEY_LOCATION_LABELS } from '@/lib/key-location'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 
 interface Fiche {
@@ -259,6 +260,16 @@ function FicheContent({ fiche, userModules, userRole, router, onClose, onChanged
         {m.keys_digibox_slot && <Row label="Clés digibox" value={
           <span className="inline-flex items-center gap-1.5 font-mono font-bold text-warning">
             🔑 N° {m.keys_digibox_slot}
+          </span>
+        } />}
+        {(m as any).key_location && <Row label="Emplacement clé" value={
+          <span className="inline-flex items-center gap-1.5 font-semibold text-warning">
+            {KEY_LOCATION_LABELS[(m as any).key_location] || (m as any).key_location}
+          </span>
+        } />}
+        {(m as any).saisie_key_hook && <Row label="Crochet boîte clés" value={
+          <span className="inline-flex items-center gap-1.5 font-mono font-bold text-warning">
+            🔑 Crochet n° {(m as any).saisie_key_hook}
           </span>
         } />}
         <Row label="Entrée parc" value={fmtDateTime(m.parked_at) + (m.parked_at ? ` (${daysAgo(m.parked_at)} j)` : '')} />

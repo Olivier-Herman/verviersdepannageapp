@@ -12,6 +12,7 @@ import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/D
 import OcrScanModal from '@/components/OcrScanModal'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import type { VehicleMatch } from '@/types/vehicles'
+import { KEY_LOCATIONS } from '@/lib/key-location'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
@@ -135,6 +136,7 @@ const GEO_POINTAGE_ACTIONS = new Set([
   'accept', 'on_way', 'on_site', 'load_vehicle', 'park', 'completed',
   'start_delivery', 'complete_delivery',
 ])
+
 const TYPE_BADGE: Record<string, [string, string]> = {
   DSP: ['DSP', 'bg-brand'], REM: ['REM', 'bg-blue-600'], DPR: ['DPR', 'bg-ink-faint'],
   REL: ['REL', 'bg-purple-600'],
@@ -837,6 +839,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // Override manuel de la zone (Saisie : J par defaut, mais le chauffeur peut
   // basculer en Transit s il n y a plus de place en J).
   const [parkZoneOverride,  setParkZoneOverride]  = useState<string | null>(null)
+  // Emplacement de la clé à la mise en parc (Olivier 2026-06-18).
+  const [keyLocation,       setKeyLocation]       = useState<string>('')
 
   // Motif DPR (Deplacement Pour Rien)
   const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
@@ -1464,6 +1468,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             zone_key:           suggestedZoneKey || undefined,
             is_rollable:        isPoliceAccident ? !!isRollable : undefined,
             is_right_direction: isPoliceAccident ? !!isRightDirection : undefined,
+            key_location:       keyLocation || undefined,
           },
           park_address: vr.address, park_lat: vr.lat, park_lng: vr.lng,
           redelivery_address: M.destination_address || undefined,
@@ -2053,6 +2058,27 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </div>
           )}
 
+          {/* Emplacement de la clé — obligatoire à la mise en parc. Olivier 2026-06-18. */}
+          {closeType === 'park' && (
+            <div className="bg-surface border border-amber-500/30 rounded-2xl p-4">
+              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">🔑 Où est la clé ?</p>
+              <div className="grid grid-cols-2 gap-2">
+                {KEY_LOCATIONS.map(k => {
+                  const selected = keyLocation === k.value
+                  return (
+                    <button key={k.value} onClick={() => setKeyLocation(k.value)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition active:scale-95 ${
+                        selected ? 'bg-amber-500/15 border border-amber-500/60' : 'bg-surface border border hover:border-zinc-600'
+                      }`}>
+                      <span className="text-lg flex-shrink-0">{k.icon}</span>
+                      <span className="text-ink text-xs font-medium leading-tight">{k.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Récap éditable — chaque ligne cliquable mène à l'écran correspondant */}
           <div className="bg-surface border border rounded-2xl divide-y divide-[#2a2a2a]">
             <div className="px-4 py-3">
@@ -2233,11 +2259,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
         <div className="px-4 py-4 border-t border">
           {closeType === 'park' ? (
-            <button onClick={() => parkDepot && doPark(parkDepot)}
-              disabled={loading || !parkDepot || totPh < 3}
-              className="w-full py-4 bg-amber-500 disabled:opacity-40 text-ink font-semibold rounded-2xl">
-              {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
-            </button>
+            <>
+              {!keyLocation && <p className="text-amber-400 text-xs text-center mb-2">🔑 Indique où se trouve la clé avant de confirmer.</p>}
+              <button onClick={() => parkDepot && doPark(parkDepot)}
+                disabled={loading || !parkDepot || totPh < 3 || !keyLocation}
+                className="w-full py-4 bg-amber-500 disabled:opacity-40 text-ink font-semibold rounded-2xl">
+                {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
+              </button>
+            </>
           ) : (
             <>
               {/* Blocage cloture tant que paiement incomplet (sauf DPR : pas de prestation, pas d encaissement attendu) */}

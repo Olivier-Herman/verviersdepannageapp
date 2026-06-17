@@ -79,6 +79,8 @@ export async function PATCH(
     'snc_scenario', 'snc_requires_balisage',
     // Olivier 2026-06-14 : bloc police éditable depuis la fiche dispatch.
     'police_zone', 'officer_name', 'officer_partner_id',
+    // Olivier 2026-06-18 : clés (emplacement chauffeur + crochet boîte saisie bureau).
+    'key_location', 'saisie_key_hook',
   ]
 
   // On charge l etat actuel pour comparer (notamment la source avant change).

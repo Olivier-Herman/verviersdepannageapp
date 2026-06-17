@@ -40,7 +40,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       saisie_motif_code, saisie_motif_label,
       dpr_motif, dpr_motif_label,
       parc_zone_key, parc_row_number, parc_slot_index,
-      keys_digibox_slot,
+      keys_digibox_slot, key_location, saisie_key_hook,
       parked_at, loaded_at, received_at, intervention_date, completed_at,
       requisitoire_at, requisitoire_note, requisitoire_doc_path,
       levee_saisie_date, levee_saisie_type, levee_saisie_at, levee_saisie_note,

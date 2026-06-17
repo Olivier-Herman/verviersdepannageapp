@@ -112,6 +112,7 @@ export async function POST(req: Request) {
       zone_key?:        string         // ex 'A', 'Transit', 'K1', ...
       is_rollable?:     boolean
       is_right_direction?: boolean
+      key_location?:    string         // emplacement de la clé (Olivier 2026-06-18)
     }
     park_address?:       string
     park_lat?:           number | null
@@ -233,6 +234,7 @@ export async function POST(req: Request) {
     if (park_data?.stage_id)   updatePayload.park_stage_id   = park_data.stage_id
     if (park_data?.stage_name) updatePayload.park_stage_name = park_data.stage_name
     if (park_data?.zone_key)   updatePayload.parc_zone_key   = park_data.zone_key
+    if (park_data?.key_location) updatePayload.key_location  = park_data.key_location
     // Note : la bascule destination<->relivraison + adresse du parc est faite
     // de maniere centralisee plus bas (cf bloc "mise en parc" avant la
     // conversion REM+REL), pour couvrir aussi le depot via complete_delivery.
