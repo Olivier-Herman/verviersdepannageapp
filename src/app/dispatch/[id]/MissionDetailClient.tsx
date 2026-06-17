@@ -10,6 +10,7 @@ import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
+import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
@@ -3306,6 +3307,12 @@ export default function MissionDetailClient({
                     {loadingSave ? '⏳ Sauvegarde…' : saveOk ? '✅ Enregistré — chauffeur notifié' : '💾 Sauvegarder & notifier le chauffeur'}
                   </button>
                 </div>
+              )}
+
+              {/* Fusionner une fiche en double (cette fiche est conservée).
+                  Olivier 2026-06-17. */}
+              {status !== 'cancelled' && status !== 'ignored' && (
+                <MergeMissionButton missionId={initialMission.id} />
               )}
 
               {/* Bouton Restituer — Olivier 2026-06-14 : remonté en haut du bloc
