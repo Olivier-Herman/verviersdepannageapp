@@ -36,10 +36,13 @@ const SOURCE_HINTS: Record<MissionSource, string> = {
   touring: `SOURCE: Touring Belgium (texte issu d'un RTF pipe-délimité).
 RÈGLES D'EXTRACTION:
 - external_id = N° Commande (format 2026189648MA)
-- dossier_number = N° Dossier (format 2026BE132588)
+- dossier_number = N° Dossier (format 2026BE132588). TOUJOURS l'extraire s'il est présent (il sert à regrouper les emails d'un même dossier — dépannage puis remorquage). Ne jamais le mettre à null si un "N° Dossier" figure dans le document.
 - mission_type: "Remorquage" → remorquage | "Depannage" → depannage
-- Adresse "De" = incident_address + incident_city
-- Adresse "A" = destination_name + destination_address
+- ADRESSES — ATTENTION, le document contient PLUSIEURS adresses, ne pas les confondre :
+  * incident_address + incident_city = bloc "Incident" UNIQUEMENT. C'est le LIEU DE LA PANNE : la rue (ex "Route Croix Maga, 30") puis le code postal + ville (ex "4860 CORNESSE") qui apparaissent juste sous le nom du membre et l'horodatage, AVANT le champ "Produit". C'est CE lieu qu'on doit mettre dans incident_address/incident_city.
+  * client_address = bloc "Adresse" (rue + code postal/ville du membre) = DOMICILE de l'assuré. NE JAMAIS le mettre dans incident_address.
+  * destination_name + destination_address = bloc "Depannage" champ "A" (garage/lieu de dépose) UNIQUEMENT s'il est renseigné. Si "De"/"A" sont vides, laisser destination à null. Ne jamais recopier le domicile en destination.
+- Si tu hésites entre deux adresses pour l'incident, choisis TOUJOURS celle du bloc "Incident" (sous le nom du membre), pas celle du bloc "Adresse" ni du bloc "Depannage".
 - client_name = valeur du champ Membre (nom propre, ignorer les noms de société)
 - vehicle_plate, vehicle_brand, vehicle_model dans le bloc Véhicule (format "plaque\nmarque\nmodèle")
 - vehicle_vin = champ Châssis

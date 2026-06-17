@@ -710,27 +710,49 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       }
     }
 
-    // Chercher une mission existante avec le même groupe dossier
+    // Chercher une mission existante avec le même groupe dossier.
+    // Olivier 2026-06-17 : robustesse anti-doublon. Touring renvoie un 2e mail
+    // (ex: remorquage après un dépannage) sur le MÊME N° Dossier. Avant, deux
+    // soucis créaient des doublons :
+    //   1) .maybeSingle() LÈVE une erreur s'il y a déjà >1 ligne → data=null →
+    //      on retombait sur un INSERT (doublon en cascade). On passe en
+    //      .order().limit(1) + [0] : on récupère toujours la plus récente.
+    //   2) si le parsing ratait le dossier_number, plus aucun rapprochement.
+    //      On ajoute un repli sur external_id (N° Commande), souvent stable.
     let existingMissionId: string | null = null
     let existingKazeJobId: string | null = null
-    if (dossierGroup) {
-      let existingQuery = supabase
+
+    const findExisting = async (apply: (q: any) => any) => {
+      let q = supabase
         .from('incoming_missions')
         .select('id, external_id, status, kaze_job_id')
         .not('id', 'eq', placeholderId || '')
         .not('status', 'in', '("ignored","cancelled","completed")')
+      q = apply(q)
+      const { data } = await q.order('created_at', { ascending: false }).limit(1)
+      return (data && data[0]) || null
+    }
 
-      if (['ethias', 'vivium', 'p&v', 'ima'].includes(source)) {
-        existingQuery = existingQuery.ilike('dossier_number', `${dossierGroup}%`)
-      } else {
-        existingQuery = existingQuery.eq('dossier_number', dossierGroup)
-      }
-
-      const { data: existing } = await existingQuery.maybeSingle()
+    if (dossierGroup) {
+      const isImaLike = ['ethias', 'vivium', 'p&v', 'ima'].includes(source)
+      const existing = await findExisting(q =>
+        isImaLike ? q.ilike('dossier_number', `${dossierGroup}%`) : q.eq('dossier_number', dossierGroup)
+      )
       if (existing) {
         existingMissionId = existing.id
         existingKazeJobId = (existing as any).kaze_job_id || null
-        console.log(`[Processor] Dossier existant trouvé: ${existing.external_id} (${existing.id}) → mise à jour`)
+        console.log(`[Processor] Dossier existant trouvé (dossier_number): ${existing.external_id} (${existing.id}) → mise à jour`)
+      }
+    }
+
+    // Repli : pas de rapprochement par dossier → tenter par external_id
+    // (N° Commande). Évite le doublon quand le LLM n'a pas extrait le dossier.
+    if (!existingMissionId && parsed.external_id && !parsed.external_id.startsWith('UNKNOWN_') && !parsed.external_id.startsWith('ERR_')) {
+      const existing = await findExisting(q => q.eq('external_id', parsed.external_id).eq('source', source))
+      if (existing) {
+        existingMissionId = existing.id
+        existingKazeJobId = (existing as any).kaze_job_id || null
+        console.log(`[Processor] Dossier existant trouvé (external_id): ${existing.external_id} (${existing.id}) → mise à jour`)
       }
     }
 

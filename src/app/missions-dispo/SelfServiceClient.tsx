@@ -59,13 +59,23 @@ export default function SelfServiceClient({ initialMissions, currentUserId }: { 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_missions' }, payload => {
         if (payload.eventType === 'INSERT') {
           const m = payload.new as any
-          if (m.status === 'new' && !m.assigned_to && m.source !== 'garage') {
+          if (m.status === 'new' && !m.assigned_to && m.source !== 'garage' && m.source !== 'unknown') {
             setMissions(prev => prev.some(x => x.id === m.id) ? prev : [m, ...prev])
           }
         } else if (payload.eventType === 'UPDATE') {
           const m = payload.new as any
-          if (m.assigned_to || m.status !== 'new') {
+          // Le placeholder est inséré en source='unknown' puis enrichi à l'UPDATE
+          // (source réelle + données parsées). On (re)joue donc l'éligibilité ici :
+          // mission fraîche + correctement sourcée → ajout/refresh ; sinon retrait.
+          const fresh = (Date.now() - new Date(m.received_at).getTime()) <= FRESH_MINUTES * 60 * 1000
+          const eligible = m.status === 'new' && !m.assigned_to
+            && m.source !== 'garage' && m.source !== 'unknown' && fresh
+          if (!eligible) {
             setMissions(prev => prev.filter(x => x.id !== m.id))
+          } else {
+            setMissions(prev => prev.some(x => x.id === m.id)
+              ? prev.map(x => (x.id === m.id ? { ...x, ...m } : x))
+              : [m, ...prev])
           }
         }
       })
