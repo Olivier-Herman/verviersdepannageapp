@@ -105,9 +105,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     upd.billed_to_id   = secondary.billed_to_id   ?? master.billed_to_id ?? null
     upd.billed_to_name = secondary.billed_to_name ?? master.billed_to_name ?? null
   }
-  // Champs qui comblent les trous de la principale uniquement.
+  // N° de dossier : on AJOUTE celui de la secondaire (assistance) à celui de la
+  // principale (police), au lieu de seulement combler si vide. Les deux sont
+  // conservés, séparés par « / ». Pas de doublon si déjà présent.
+  const mDoss = (master.dossier_number || '').trim()
+  const sDoss = (secondary.dossier_number || '').trim()
+  if (sDoss && !mDoss) {
+    upd.dossier_number = sDoss
+  } else if (sDoss && mDoss && !mDoss.split(/\s*\/\s*/).includes(sDoss)) {
+    upd.dossier_number = `${mDoss} / ${sDoss}`
+  }
+  // Autres champs : comblent les trous de la principale uniquement.
   const fillIfEmpty: [string, any, any][] = [
-    ['dossier_number',   master.dossier_number,   secondary.dossier_number],
     ['amount_guaranteed', master.amount_guaranteed, secondary.amount_guaranteed],
     ['client_name',      master.client_name,      secondary.client_name],
     ['client_phone',     master.client_phone,     secondary.client_phone],
