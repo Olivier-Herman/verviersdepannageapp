@@ -60,11 +60,16 @@ export function buildOverrideLines(mission: MissionLike): QuoteLine[] | null {
       })
     }
     if (toCollect > 0) {
+      // BUG fix Olivier 2026-06-17 : amount_to_collect est un montant TVAC
+      // (convention app + cf estimate-price.ts). Le price_unit Odoo attend du
+      // HTVA → on convertit (÷1,21, 4 décimales pour que HTVA×1,21 = TVAC exact).
+      // Avant : le TVAC TowSoft était mis tel quel en HTVA → TVA comptée 2×.
+      const toCollectHt = Math.round((toCollect / 1.21) * 10000) / 10000
       lines.push({
         kind:       'SERV-DIV',
         name:       `Paiement à réclamer au client — ${missionRef}`,
         qty:        1,
-        price_unit: toCollect,
+        price_unit: toCollectHt,
       })
     }
     return lines

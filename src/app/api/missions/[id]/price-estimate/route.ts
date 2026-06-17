@@ -105,13 +105,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // total = somme. Ecrase egalement le calcul auto (forfait/km/surcharges).
   const guaranteed = (mission as any).amount_guaranteed != null && Number((mission as any).amount_guaranteed) > 0
     ? Number((mission as any).amount_guaranteed) : 0
-  const toCollect = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
+  // amount_to_collect est un montant TVAC → on l'exprime en HTVA pour rester
+  // cohérent avec le devis (cf build-quote-lines, fix 2026-06-17). Évite la
+  // double TVA (TVAC TowSoft mis tel quel en HTVA).
+  const toCollectTvac = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
     ? Number(mission.amount_to_collect) : 0
+  const toCollect = toCollectTvac > 0 ? Math.round((toCollectTvac / 1.21) * 10000) / 10000 : 0
   if (guaranteed > 0 || toCollect > 0) {
     const total = guaranteed + toCollect
     const breakdown: Array<{ label: string; amount: number; note?: string }> = []
     if (guaranteed > 0) breakdown.push({ label: 'Montant garanti', amount: guaranteed })
-    if (toCollect > 0) breakdown.push({ label: 'Paiement à réclamer au client', amount: toCollect })
+    if (toCollect > 0) breakdown.push({ label: 'Paiement à réclamer au client', amount: toCollect, note: `${toCollectTvac.toFixed(2)} € TVAC` })
     return NextResponse.json({
       ok:            true,
       source:        mission.source,
