@@ -931,19 +931,28 @@ export default function DispatchClient({
   // Plaque comparee SANS tirets/espaces dans les 2 sens pour matcher "1ABC123"
   // qu on tape "1-ABC-123" ou inversement.
   const normPlate = (s: string) => s.replace(/[-.\s]/g, '').toLowerCase()
+  // Téléphone : on ne garde que les chiffres et on retire l'indicatif/0 de tête
+  // (+32 497…, 0497…, 497… deviennent tous "497…") pour matcher quelle que
+  // soit la forme saisie. Olivier 2026-06-16.
+  const normPhone = (s: string) => s.replace(/\D/g, '').replace(/^(0032|32|0)/, '')
   const filtered = missions.filter(m => {
     if (!search) return true
-    const q     = search.toLowerCase()
+    const q      = search.toLowerCase()
     const qPlate = normPlate(search)
+    const qPhone = normPhone(search)
     const plate  = m.vehicle_plate ? normPlate(m.vehicle_plate) : ''
+    const phones = [m.client_phone, (m as any).assisted_phone]
+      .filter(Boolean).map(p => normPhone(String(p)))
     return (
       m.client_name?.toLowerCase().includes(q)        ||
       m.external_id?.toLowerCase().includes(q)        ||
       m.mission_number?.toString().includes(q)        ||
+      m.dossier_number?.toLowerCase().includes(q)     ||
       m.vehicle_brand?.toLowerCase().includes(q)      ||
       m.vehicle_model?.toLowerCase().includes(q)      ||
       m.incident_address?.toLowerCase().includes(q)   ||
-      (plate && plate.includes(qPlate))
+      (plate && plate.includes(qPlate))               ||
+      (qPhone.length >= 3 && phones.some(p => p.includes(qPhone)))
     )
   })
 
