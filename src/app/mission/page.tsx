@@ -37,7 +37,10 @@ export default async function MissionListPage() {
     .from('incoming_missions')
     .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, awaiting_payment, amount_to_collect, payment_amount')
     .eq('assigned_to', user.id)
-    .or('status.in.(assigned,accepted,in_progress,delivering,parked),awaiting_payment.eq.true')
+    // Olivier 2026-06-17 : une mission 'parked' est en parc (fourrière) → elle
+    // sort de la liste active du chauffeur. On garde le cas awaiting_payment
+    // (mission à encaisser) même si parked.
+    .or('status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true')
     .order('assigned_at', { ascending: false })
     .limit(20)
 

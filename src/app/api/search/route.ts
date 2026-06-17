@@ -172,6 +172,7 @@ export async function GET(req: Request) {
       `client_phone.ilike.${qLike}`,
       `incident_address.ilike.${qLike}`,
       `destination_address.ilike.${qLike}`,
+      `vehicle_plate.ilike.${qLike}`,   // Olivier 2026-06-17 : plaque cherchée ici aussi (le second pass normalisé est plafonné à 200 récentes → ratait les anciennes)
       `vehicle_vin.ilike.${qLike}`,
       `vehicle_brand.ilike.${qLike}`,
       `vehicle_model.ilike.${qLike}`,
