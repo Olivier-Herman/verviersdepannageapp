@@ -16,10 +16,16 @@
 //
 // À la prochaine migration de modèle : mettre à jour ces défauts (ou l'env).
 
+// Olivier 2026-06-17 : on pinne le parsing sur le modèle le PLUS capable
+// (Opus 4.8). Le passage de Sonnet 4 → Sonnet 4.6 (retraite du 16/06) avait
+// dégradé l'extraction sur les fiches ambiguës (Touring flotte : adresse de
+// Touring prise comme lieu d'intervention). Un modèle haut de gamme est bien
+// plus robuste à ces ambiguïtés → moins de régressions à chaque changement de
+// modèle. Sonnet 4.6 reste en repli si Opus est indisponible (404).
 export const ANTHROPIC_MODELS: string[] = Array.from(new Set([
   process.env.ANTHROPIC_MODEL?.trim(),
-  'claude-sonnet-4-6',   // Sonnet 4.6 (défaut)
-  'claude-opus-4-8',     // repli haut de gamme si Sonnet indisponible
+  'claude-opus-4-8',     // Opus 4.8 (défaut) — le plus fiable pour l'extraction
+  'claude-sonnet-4-6',   // repli si Opus indisponible
 ].filter(Boolean) as string[]))
 
 // Modèle principal (1er de la liste).
