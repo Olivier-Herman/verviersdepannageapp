@@ -14,6 +14,7 @@ interface Prestation {
   odoo_sale_order_name: string | null
   notes:                string | null
   invoiced_at:          string | null
+  invoice_number:       string | null
   created_at:           string
 }
 
@@ -60,6 +61,24 @@ export default function CircuitClient() {
     setBusy(id)
     try {
       const r = await fetch(`/api/circuit-prestations/${id}`, { method: 'DELETE' })
+      const j = await r.json()
+      if (!r.ok) { alert(`Erreur : ${j.error}`); return }
+      await load()
+    } catch (e: any) {
+      alert(`Erreur réseau : ${e?.message}`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const saveInvoiceNumber = async (id: string, invoiceNumber: string) => {
+    setBusy(id)
+    try {
+      const r = await fetch(`/api/circuit-prestations/${id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ action: 'set_invoice_number', invoice_number: invoiceNumber }),
+      })
       const j = await r.json()
       if (!r.ok) { alert(`Erreur : ${j.error}`); return }
       await load()
@@ -194,6 +213,17 @@ export default function CircuitClient() {
                         <Check size={11} /> Facturée le {new Date(p.invoiced_at!).toLocaleDateString('fr-BE')}
                       </span>
                     )}
+                    {/* N° de facture éditable (sauvegarde au blur). Olivier 2026-06-17. */}
+                    <span className="inline-flex items-center gap-1">
+                      <span className="text-ink-muted">N° facture :</span>
+                      <input
+                        defaultValue={p.invoice_number || ''}
+                        onBlur={e => { const val = e.target.value.trim(); if (val !== (p.invoice_number || '')) saveInvoiceNumber(p.id, val) }}
+                        placeholder="—"
+                        disabled={busy === p.id}
+                        className="w-32 bg-surface border rounded px-2 py-0.5 text-ink text-xs disabled:opacity-50"
+                      />
+                    </span>
                   </div>
                 </div>
 

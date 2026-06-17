@@ -47,7 +47,7 @@ export async function GET(req: Request) {
       id, client_name, client_odoo_id,
       type, prestation_date, nb_depanneuses,
       odoo_sale_order_id, odoo_sale_order_name,
-      notes, invoiced_at, invoiced_by,
+      notes, invoiced_at, invoiced_by, invoice_number,
       created_by, created_at, updated_at
     `)
     .order('prestation_date', { ascending: true })

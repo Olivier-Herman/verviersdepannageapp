@@ -166,7 +166,23 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ ok: true, prestation: data, action: 'unmark_invoiced' })
   }
 
-  return NextResponse.json({ error: 'action invalide (mark_invoiced | unmark_invoiced)' }, { status: 400 })
+  if (action === 'set_invoice_number') {
+    const num = String(body.invoice_number || '').trim() || null
+    // Saisir un n° de facture marque aussi la prestation comme facturée.
+    // Olivier 2026-06-17.
+    const patch: Record<string, any> = { invoice_number: num, updated_at: new Date().toISOString() }
+    if (num) { patch.invoiced_at = new Date().toISOString(); patch.invoiced_by = actor?.id || null }
+    const { data, error } = await sb
+      .from('circuit_prestations')
+      .update(patch)
+      .eq('id', params.id)
+      .select()
+      .maybeSingle()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, prestation: data, action: 'set_invoice_number' })
+  }
+
+  return NextResponse.json({ error: 'action invalide (mark_invoiced | unmark_invoiced | set_invoice_number)' }, { status: 400 })
 }
 
 // ─────────────────────────────────────────────────────────────────
