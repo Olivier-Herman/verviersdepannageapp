@@ -122,8 +122,14 @@ export async function importTowsoftForBilling(towsoftNum: string | number): Prom
     remarks_general:    detail.remarque || row?.remarks || null,
     invoice_number:     detail.facture_no || row?.num_facture || null,
 
-    // Montant TVAC connu cote TowSoft (indicatif : la modale recalcule/edite)
-    amount_to_collect:  montantTtc,
+    // Montant TTC TowSoft -> tarif special HTVA (ecrase le calcul auto a la
+    // facturation, affiche le tag amber "prix convenu"). HTVA = TTC / 1.21
+    // (4 decimales pour que HTVA x 1.21 = TVAC exact). Olivier 2026-06-17 :
+    // avant on mettait le TTC dans amount_to_collect, qui etait ensuite traite
+    // comme du HTVA -> TVA comptee 2x.
+    special_tarif_htva: (montantTtc != null && Number(montantTtc) > 0)
+                          ? Math.round((Number(montantTtc) / 1.21) * 10000) / 10000
+                          : null,
 
     received_at:        dateIso,
     intervention_date:  dateIso,
