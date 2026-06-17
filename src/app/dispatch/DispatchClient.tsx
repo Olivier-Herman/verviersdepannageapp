@@ -516,6 +516,33 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   const openModal  = () => { setShowModal(true);  onModalChange?.(true) }
   const closeModal = () => { setShowModal(false); onModalChange?.(false) }
 
+  // Olivier 2026-06-17 : "Valider" confirme la mission (new → dispatching) sans
+  // ouvrir la fiche, comme le bouton Confirmer de la fiche detail. Cree le
+  // dossier Odoo cote serveur (best effort) et la fait passer en "En attente".
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const confirmMission = async () => {
+    if (confirmLoading) return
+    setConfirmLoading(true)
+    try {
+      const res = await fetch('/api/missions/confirm', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ mission_id: mission.id, action: 'confirm' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(`Echec validation : ${data?.error || `HTTP ${res.status}`}`)
+        return
+      }
+      onRefresh()
+    } catch (e: any) {
+      console.error('[DispatchClient] confirm reseau:', e?.message)
+      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+    } finally {
+      setConfirmLoading(false)
+    }
+  }
+
   const [assignLoading, setAssignLoading] = useState(false)
   const assign = async (driverId: string) => {
     if (assignLoading) return  // anti double-clic
@@ -550,7 +577,11 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   if (mission.status === 'new') {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-ink-faint text-xs">À confirmer</span>
+        <button type="button" onClick={confirmMission} disabled={confirmLoading}
+          title="Confirmer la mission et la passer en « En attente » sans ouvrir la fiche"
+          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition">
+          {confirmLoading ? '⏳…' : '✓ Valider'}
+        </button>
         <AutoDispatchButton
           missionId={mission.id}
           missionType={mission.mission_type}
