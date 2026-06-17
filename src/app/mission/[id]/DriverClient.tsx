@@ -840,7 +840,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // basculer en Transit s il n y a plus de place en J).
   const [parkZoneOverride,  setParkZoneOverride]  = useState<string | null>(null)
   // Emplacement de la clé à la mise en parc (Olivier 2026-06-18).
-  const [keyLocation,       setKeyLocation]       = useState<string>('')
+  // Défaut « Dans le véhicule » (cas le plus fréquent).
+  const [keyLocation,       setKeyLocation]       = useState<string>('in_vehicle')
 
   // Motif DPR (Deplacement Pour Rien)
   const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
