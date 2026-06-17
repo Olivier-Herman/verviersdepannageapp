@@ -2363,6 +2363,17 @@ export default function MissionDetailClient({
           </div>
         </div>
 
+        {/* ── Clés (emplacement + crochet boîte saisie) — au-dessus de la date. */}
+        <div className="px-4 lg:px-8 pt-6">
+          <KeyInfoCard
+            missionId={initialMission.id}
+            source={initialMission.source}
+            status={status}
+            keyLocation={(initialMission as any).key_location}
+            saisieKeyHook={(initialMission as any).saisie_key_hook}
+          />
+        </div>
+
         {/* ── Barre Date d'intervention ─────────────────────────── */}
         <div className="px-4 lg:px-8 pt-6">
           <div
@@ -3331,14 +3342,6 @@ export default function MissionDetailClient({
                   </pre>
                 )}
               </div>
-
-              {/* Clés : emplacement (chauffeur) + crochet boîte saisie (bureau). */}
-              <KeyInfoCard
-                missionId={initialMission.id}
-                source={initialMission.source}
-                keyLocation={(initialMission as any).key_location}
-                saisieKeyHook={(initialMission as any).saisie_key_hook}
-              />
 
               {/* Trajet du chauffeur — carte Google repliable (tracé GPS + lieux
                   de pointage). Olivier 2026-06-16 : placé au-dessus des Remarques. */}
