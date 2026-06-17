@@ -2363,17 +2363,6 @@ export default function MissionDetailClient({
           </div>
         </div>
 
-        {/* ── Clés (emplacement + crochet boîte saisie) — au-dessus de la date. */}
-        <div className="px-4 lg:px-8 pt-6">
-          <KeyInfoCard
-            missionId={initialMission.id}
-            source={initialMission.source}
-            status={status}
-            keyLocation={(initialMission as any).key_location}
-            saisieKeyHook={(initialMission as any).saisie_key_hook}
-          />
-        </div>
-
         {/* ── Barre Date d'intervention ─────────────────────────── */}
         <div className="px-4 lg:px-8 pt-6">
           <div
@@ -2436,39 +2425,51 @@ export default function MissionDetailClient({
         {/* ── Bandeau Position parc (visible si mission parked avec zone) ── */}
         {status === 'parked' && parcZone && (
           <div className="px-4 lg:px-8 pt-4">
-            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-4 flex items-center gap-4 flex-wrap">
-              <div className="w-11 h-11 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-2xl">🅿️</span>
+            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-4">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="w-11 h-11 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">🅿️</span>
+                </div>
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-amber-500">
+                    Position parc
+                  </span>
+                  <span className="text-lg font-bold text-ink truncate">
+                    Zone <span className="font-mono">{parcZone}</span>
+                    {parcRow != null && (
+                      <> · Rang <span className="font-mono">{parcRow}</span></>
+                    )}
+                    {parcSlot != null && (
+                      <> · Slot <span className="font-mono">{parcSlot}</span></>
+                    )}
+                    {initialMission.park_stage_name && (
+                      <span className="text-ink-muted font-normal text-sm"> — {initialMission.park_stage_name}</span>
+                    )}
+                  </span>
+                </div>
+                {/* Olivier 2026-06-04 : bouton transfert (module fourriere uniquement) */}
+                {userModules.includes('fourriere') && (
+                  <button
+                    onClick={() => setTransferModalOpen(true)}
+                    className="px-3 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
+                    🔄 Transférer
+                  </button>
+                )}
+                <a href="/fourriere/plan"
+                  className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
+                  Voir le plan parc →
+                </a>
               </div>
-              <div className="flex flex-col flex-1 min-w-0">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-amber-500">
-                  Position parc
-                </span>
-                <span className="text-lg font-bold text-ink truncate">
-                  Zone <span className="font-mono">{parcZone}</span>
-                  {parcRow != null && (
-                    <> · Rang <span className="font-mono">{parcRow}</span></>
-                  )}
-                  {parcSlot != null && (
-                    <> · Slot <span className="font-mono">{parcSlot}</span></>
-                  )}
-                  {initialMission.park_stage_name && (
-                    <span className="text-ink-muted font-normal text-sm"> — {initialMission.park_stage_name}</span>
-                  )}
-                </span>
-              </div>
-              {/* Olivier 2026-06-04 : bouton transfert (module fourriere uniquement) */}
-              {userModules.includes('fourriere') && (
-                <button
-                  onClick={() => setTransferModalOpen(true)}
-                  className="px-3 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
-                  🔄 Transférer
-                </button>
-              )}
-              <a href="/fourriere/plan"
-                className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 rounded-lg text-amber-600 text-xs font-semibold flex-shrink-0 transition">
-                Voir le plan parc →
-              </a>
+
+              {/* Clés intégrées au bandeau Position parc. Olivier 2026-06-18. */}
+              <KeyInfoCard
+                embedded
+                missionId={initialMission.id}
+                source={initialMission.source}
+                status={status}
+                keyLocation={(initialMission as any).key_location}
+                saisieKeyHook={(initialMission as any).saisie_key_hook}
+              />
             </div>
           </div>
         )}

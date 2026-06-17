@@ -10,12 +10,13 @@
 import { useState } from 'react'
 import { KEY_LOCATIONS, KEY_LOCATION_LABELS, keyTagValue } from '@/lib/key-location'
 
-export default function KeyInfoCard({ missionId, source, status, keyLocation, saisieKeyHook }: {
+export default function KeyInfoCard({ missionId, source, status, keyLocation, saisieKeyHook, embedded }: {
   missionId:      string
   source:         string
   status?:        string
   keyLocation?:   string | null
   saisieKeyHook?: string | null
+  embedded?:      boolean   // intégré dans un bandeau parent (pas de carte propre)
 }) {
   // « Saisie » au sens large = tout appel police + appel privé.
   const isSaisie = source.startsWith('police') || source === 'prive' || source === 'sia_couvert'
@@ -45,9 +46,13 @@ export default function KeyInfoCard({ missionId, source, status, keyLocation, sa
     setSavedHook(val)
   }
 
+  const wrapClass = embedded
+    ? 'w-full mt-4 pt-4 border-t border-amber-500/30'
+    : 'bg-surface border rounded-2xl p-5 md-card-enter'
+
   return (
-    <div className="bg-surface border rounded-2xl p-5 md-card-enter">
-      <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">🔑 Clés</h3>
+    <div className={wrapClass}>
+      <h3 className={`text-xs font-medium uppercase tracking-wide mb-3 ${embedded ? 'text-amber-500 font-bold' : 'text-ink-muted'}`}>🔑 Clés</h3>
 
       {/* Emplacement — boutons (choix chauffeur, modifiable bureau) */}
       <p className="text-ink-muted text-sm mb-2">Emplacement de la clé</p>
