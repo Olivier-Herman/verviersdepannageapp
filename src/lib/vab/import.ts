@@ -45,33 +45,32 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
 
   const sb = createAdminClient()
 
-  // Dedup par NUMERO DE DOSSIER (Olivier 2026-06-18). Le n° VAB est "X/Y" :
-  //   - X (7 chiffres, AVANT le "/") = numero de DOSSIER, stable entre actions
-  //   - Y = numero de MISSION, qui CHANGE a chaque nouvelle action
-  // Avant on dedoublonnait sur l AssignmentId (~ mission Y) -> chaque action
-  // reimportait le meme dossier (doublons). Desormais : si le DOSSIER (X) est
-  // deja connu cote VD Soft, on ne reimporte pas.
-  const dossierKey = (s: string | null | undefined) => String(s || '').split('/')[0].trim()
+  // Dedup par AssignmentId (= external_id en BDD pour les missions VAB)
+  const assignmentIds = missions
+    .map(m => m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1])
+    .filter((x): x is string => !!x)
 
-  const { data: existing } = await sb
-    .from('incoming_missions')
-    .select('dossier_number')
-    .ilike('source', 'vab')
-    .not('dossier_number', 'is', null)
-    .limit(10000)
-  const existingDossiers = new Set(
-    (existing || []).map(e => dossierKey(e.dossier_number)).filter(Boolean)
-  )
+  const { data: existing } = assignmentIds.length > 0
+    ? await sb.from('incoming_missions')
+        .select('external_id')
+        .ilike('source', 'vab')
+        .in('external_id', assignmentIds)
+    : { data: [] as { external_id: string }[] }
 
-  const items: VabPreviewItem[] = missions.map(m => ({
-    missionNumber:   m.missionNumber,
-    detailHref:      m.detailHref,
-    status:          m.status,
-    plate:           m.plate,
-    fromLocation:    m.fromLocation,
-    toLocation:      m.toLocation,
-    alreadyImported: existingDossiers.has(dossierKey(m.missionNumber)),
-  }))
+  const existingSet = new Set((existing || []).map(e => e.external_id))
+
+  const items: VabPreviewItem[] = missions.map(m => {
+    const aid = m.detailHref?.match(/[?&]AssignmentId=(\d+)/i)?.[1] || null
+    return {
+      missionNumber:   m.missionNumber,
+      detailHref:      m.detailHref,
+      status:          m.status,
+      plate:           m.plate,
+      fromLocation:    m.fromLocation,
+      toLocation:      m.toLocation,
+      alreadyImported: aid ? existingSet.has(aid) : false,
+    }
+  })
 
   const already = items.filter(i => i.alreadyImported).length
 
@@ -99,16 +98,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
   const defaultBilledToId   = vabCat?.default_billed_to_id || null
   const defaultBilledToName = vabCat?.default_billed_to_name || null
 
-  // Dedup intra-lot : si le scan liste deux actions du MEME dossier (X), on n en
-  // importe qu une seule (sinon doublon dans le meme batch).
-  const seenDossiers = new Set<string>()
-  const toImport = items.filter(i => {
-    if (i.alreadyImported || !i.detailHref) return false
-    const dk = dossierKey(i.missionNumber)
-    if (dk && seenDossiers.has(dk)) return false
-    if (dk) seenDossiers.add(dk)
-    return true
-  })
+  const toImport = items.filter(i => !i.alreadyImported && i.detailHref)
   const results: Array<{ missionNumber: string; ok: boolean; error?: string }> = []
   let success = 0, failed = 0
 
