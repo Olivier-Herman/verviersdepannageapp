@@ -66,9 +66,17 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
     payload = { _parse_error: true, raw: await req.text().catch(() => '') }
   }
 
-  // 3) Extraction event_type + job_id (best-effort, plusieurs noms possibles
-  //    selon ce qu envoie Kaze)
+  // 3) Extraction event_type + job_id.
+  //    Olivier 2026-06-18 : Kaze envoie en réalité une ENVELOPPE :
+  //      { payload: { id|job_id, title, status, ... }, trigger: "job_provider_assigned"|
+  //        "job_proposal_proposed"|..., webhook_id, notification_id, created_at }
+  //    Avant, on lisait event_type/id au niveau racine → toujours null → tous les
+  //    webhooks étaient "skip" → AUCUNE mission Kaze importée/reliée (incident go-live).
+  //    On lit donc `trigger` + l'id imbriqué (payload.payload.id pour les events job,
+  //    payload.payload.job_id pour les proposals). Fallbacks conservés par sécurité.
+  const inner = payload?.payload || {}
   const eventType = (
+    payload?.trigger    ||   // format réel Kaze
     payload?.event_type ||
     payload?.event      ||
     payload?.type       ||
@@ -77,6 +85,8 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
     null
   )
   const kazeJobId = (
+    inner?.id           ||   // events job (job_provider_assigned, task_updated…)
+    inner?.job_id       ||   // events proposal (job_proposal_proposed…)
     payload?.job_id     ||
     payload?.job?.id    ||
     payload?.data?.id   ||
