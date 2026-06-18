@@ -150,11 +150,13 @@ export function buildLinesFromEstimate(
   }
 
   if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
-    // Majoration : qty = % en decimal (ex 0.30), PU = total HT majorable
+    // Majoration : qty = % en decimal (ex 0.384 pour 38,4%), PU = total HT majorable.
+    // Olivier 2026-06-18 : NE PAS arrondir le pourcentage a l'entier avant de
+    // diviser (38,4% donnait Math.round(38.4)/100 = 0,38 au lieu de 0,384).
     lines.push({
       kind:       'SERV-MAJ',
       name:       `Majoration ${estimate.surcharge_pct}%`,
-      qty:        Math.round(estimate.surcharge_pct) / 100,
+      qty:        Math.round(estimate.surcharge_pct * 100) / 10000,
       price_unit: Math.round(estimate.subtotal_eur * 100) / 100,
     })
   }
