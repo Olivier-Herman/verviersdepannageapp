@@ -927,17 +927,26 @@ export default function DispatchClient({
       if (reqSource) params.set('source', reqSource)
       if (reqSearch) params.set('q', reqSearch)
 
+      // DIAG perf (temporaire) : chronomètre chaque fetch séparément pour
+      // identifier ce qui prend 18s. Visible dans la console navigateur.
+      const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+      const mark = (label: string) => {
+        const ms = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
+        // eslint-disable-next-line no-console
+        console.log(`[dispatch-perf] ${label}: ${ms.toFixed(0)}ms (tab=${reqTab}, silent=${silent})`)
+      }
       const requests: Promise<Response>[] = [
-        fetch(`/api/missions/list?${params}`),
-        fetch('/api/users/driver-status'),
+        fetch(`/api/missions/list?${params}`).then(r => { mark('list'); return r }),
+        fetch('/api/users/driver-status').then(r => { mark('driver-status'); return r }),
       ]
       if (viewMode === 'map') {
         const mapParams = new URLSearchParams({ view: 'map', sort: sortMode })
         if (reqSource) mapParams.set('source', reqSource)
-        requests.push(fetch(`/api/missions/list?${mapParams}`))
+        requests.push(fetch(`/api/missions/list?${mapParams}`).then(r => { mark('list-map'); return r }))
       }
 
       const responses = await Promise.all(requests)
+      mark('all-fetched')
       const mData = await responses[0].json()
       const sData = await responses[1].json()
 
