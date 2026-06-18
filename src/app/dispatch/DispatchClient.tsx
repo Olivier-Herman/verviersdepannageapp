@@ -845,10 +845,14 @@ export default function DispatchClient({
     fetch('/api/missions/reprocess').then(r => r.json()).then(d => setErrorCount(d.count || 0)).catch(() => {})
   }, [])
   useEffect(() => {
+    // Olivier 2026-06-18 : la bannière "missions non traitées" ne concerne que
+    // le superadmin (diagnostic). On évite aussi le fetch + le polling 60s pour
+    // tous les autres dispatchers (allège la charge et le temps de chargement).
+    if (userRole !== 'superadmin') return
     loadErrorCount()
     const t = setInterval(loadErrorCount, 60000)
     return () => clearInterval(t)
-  }, [loadErrorCount])
+  }, [loadErrorCount, userRole])
   async function relaunchParsing() {
     setReparsing(true)
     try {
@@ -1231,8 +1235,9 @@ export default function DispatchClient({
           </div>
         </div>
 
-        {/* ── Bandeau discret : mission(s) récente(s) à vérifier ────────── */}
-        {errorCount > 0 && (
+        {/* ── Bandeau discret : mission(s) récente(s) à vérifier ──────────
+            Réservé au superadmin (diagnostic). Olivier 2026-06-18. */}
+        {userRole === 'superadmin' && errorCount > 0 && (
           <div className="px-3 lg:px-8 pt-3">
             <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
               <p className="text-amber-900 text-sm">

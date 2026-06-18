@@ -147,30 +147,42 @@ export async function GET(req: Request) {
     }
   }
 
-  // Compteurs par statut (exclu les archivees pour coherence avec la liste)
-  // On selectionne aussi parc_zone_key pour compter uniquement les vehicules
-  // en zone K dans l onglet "En parc" (cf filter ligne 73-82).
-  const { data: counts } = await supabase
-    .from('incoming_missions')
-    .select('status, parc_zone_key, redelivery_address, destination_address')
-    .not('external_id', 'like', 'PROCESSING_%')
-    .not('external_id', 'like', 'UNKNOWN_SENDER_%')
-    .or('parse_confidence.is.null,parse_confidence.gt.0.3')
-    .is('archived_at', null)
+  // Compteurs par statut (exclu les archivees pour coherence avec la liste).
+  // Olivier 2026-06-18 PERF : avant, on chargeait TOUTES les missions non
+  // archivees (table qui grossit chaque jour) pour compter en JS → scan complet
+  // a chaque load/realtime/poll = 10-20s d'attente. Desormais : 7 requetes
+  // COUNT (head:true) en parallele, qui ne transferent AUCUNE ligne et
+  // s'appuient sur les index. Cout quasi constant quelle que soit la taille.
+  const countBy = (apply: (q: any) => any) => {
+    let q = supabase
+      .from('incoming_missions')
+      .select('*', { count: 'exact', head: true })
+      .not('external_id', 'like', 'PROCESSING_%')
+      .not('external_id', 'like', 'UNKNOWN_SENDER_%')
+      .or('parse_confidence.is.null,parse_confidence.gt.0.3')
+      .is('archived_at', null)
+    return apply(q)
+  }
+
+  const [cNew, cDisp, cAssigned, cInProg, cParked, cCompleted, cErrors] = await Promise.all([
+    countBy(q => q.eq('status', 'new')),
+    countBy(q => q.eq('status', 'dispatching')),
+    countBy(q => q.in('status', ['assigned', 'accepted'])),
+    countBy(q => q.in('status', ['in_progress', 'delivering'])),
+    // 'À Relivrer' = tous les vehicules en zone K (avec ou sans adresse).
+    countBy(q => q.eq('status', 'parked').eq('parc_zone_key', 'K')),
+    countBy(q => q.in('status', ['completed', 'to_invoice'])),
+    countBy(q => q.eq('status', 'parse_error')),
+  ])
 
   const counters = {
-    new:         counts?.filter(m => m.status === 'new').length         || 0,
-    dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
-    assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
-    in_progress: counts?.filter(m => ['in_progress','delivering'].includes(m.status)).length || 0,
-    // Olivier 2026-06-18 : compteur 'À Relivrer' aligne sur le filtre du tab =
-    // tous les vehicules en zone K (avec ou sans adresse de relivraison).
-    parked:      counts?.filter(m =>
-      m.status === 'parked'
-      && (m as any).parc_zone_key === 'K'
-    ).length || 0,
-    completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
-    errors:      counts?.filter(m => m.status === 'parse_error').length || 0,
+    new:         cNew.count       || 0,
+    dispatching: cDisp.count      || 0,
+    assigned:    cAssigned.count  || 0,
+    in_progress: cInProg.count    || 0,
+    parked:      cParked.count    || 0,
+    completed:   cCompleted.count || 0,
+    errors:      cErrors.count    || 0,
   }
 
   return NextResponse.json({ missions, counters })
