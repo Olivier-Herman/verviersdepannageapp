@@ -346,12 +346,14 @@ function ReparseButton({ missionId }: { missionId: string }) {
         setMsg(j.errors?.[0] || 'Aucun changement (pas de contenu brut exploitable ?)')
         setBusy(false); return
       }
-      // Succès : on affiche l'adresse re-parsée puis on rafraîchit la fiche.
+      // Succès : on affiche l'adresse re-parsée puis on RECHARGE complètement la
+      // page. router.refresh() ne suffit pas : les champs éditables (adresse, etc.)
+      // sont initialisés une seule fois au montage et gardent l'ancienne valeur
+      // à l'écran (ex: "Kan" reste affiché alors que la base a "Rue Mitoyenne").
       const s = j.sample
-      if (s) setMsg(`✅ Re-parsé — intervention : ${[s.incident_address, s.incident_city].filter(Boolean).join(', ') || '—'}`)
-      else   setMsg('✅ Re-parsé.')
-      setBusy(false)
-      router.refresh()
+      if (s) setMsg(`✅ Re-parsé — intervention : ${[s.incident_address, s.incident_city].filter(Boolean).join(', ') || '—'}. Rechargement…`)
+      else   setMsg('✅ Re-parsé. Rechargement…')
+      setTimeout(() => window.location.reload(), 1400)
     } catch (e: any) { setMsg(e.message); setBusy(false) }
   }
   return (
