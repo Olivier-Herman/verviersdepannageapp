@@ -1,4 +1,4 @@
-// Page Momo Market (ex Self-Service) : missions disponibles depuis < 15 min,
+// Page Momo Market (ex Self-Service) : missions disponibles depuis < 30 min,
 // non assignees. Le chauffeur clique "Je la prends" pour se l attribuer.
 // Olivier 2026-06-02 : pas de notif push (le dispatch appelle le chauffeur).
 // Olivier 2026-06-02 PM : renomme en "Momo Market" :-p
@@ -31,7 +31,10 @@ export default async function MissionsDispoPage() {
   if (!canAccess) redirect('/dashboard?error=access_denied')
 
   const sb = createAdminClient()
-  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+  // Olivier 2026-06-18 : fenêtre portée à 30 min, et on inclut les missions
+  // "En commande" (new) ET "En attente" (dispatching, confirmées mais pas encore
+  // assignées) pour que le chauffeur puisse les prendre dans les deux cas.
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
   const { data: missions } = await sb
     .from('incoming_missions')
     .select(`
@@ -40,7 +43,7 @@ export default async function MissionsDispoPage() {
       incident_address, incident_city,
       client_name, received_at, remarks_general
     `)
-    .eq('status', 'new')
+    .in('status', ['new', 'dispatching'])
     .is('assigned_to', null)
     .neq('source', 'garage')
     // Olivier 2026-06-17 : ne montrer QUE les missions correctement sourcées.
@@ -48,7 +51,7 @@ export default async function MissionsDispoPage() {
     // en erreur de parsing n'ont pas de données exploitables → on les exclut de
     // l'étal (elles s'affichaient en "Unknown / Client").
     .neq('source', 'unknown')
-    .gte('received_at', fifteenMinAgo)
+    .gte('received_at', thirtyMinAgo)
     .order('received_at', { ascending: false })
     .limit(20)
 

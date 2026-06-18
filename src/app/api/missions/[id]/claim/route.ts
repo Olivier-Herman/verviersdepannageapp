@@ -1,6 +1,6 @@
 // POST /api/missions/[id]/claim : un chauffeur s attribue une mission
-// disponible (status='new', non assignee, < 15 min). Atomique pour eviter
-// 2 chauffeurs qui prennent la meme mission en meme temps.
+// disponible (status 'new' ou 'dispatching', non assignee, < 30 min). Atomique
+// pour eviter 2 chauffeurs qui prennent la meme mission en meme temps.
 // Olivier 2026-06-02. Cf page /missions-dispo.
 
 import { NextResponse }      from 'next/server'
@@ -10,7 +10,8 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const FRESH_MINUTES = 15
+const FRESH_MINUTES = 30   // Olivier 2026-06-18 : aligné sur Momo Market (30 min)
+const CLAIMABLE_STATUSES = ['new', 'dispatching']   // "En commande" + "En attente"
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -33,8 +34,8 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     .maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
-  if (m.assigned_to)         return NextResponse.json({ error: 'Mission deja prise par un autre chauffeur' }, { status: 409 })
-  if (m.status !== 'new')    return NextResponse.json({ error: 'Mission deja traitee' }, { status: 409 })
+  if (m.assigned_to)                          return NextResponse.json({ error: 'Mission deja prise par un autre chauffeur' }, { status: 409 })
+  if (!CLAIMABLE_STATUSES.includes(m.status)) return NextResponse.json({ error: 'Mission deja traitee' }, { status: 409 })
 
   const ageMs = Date.now() - new Date(m.received_at).getTime()
   if (ageMs > FRESH_MINUTES * 60 * 1000) {
@@ -54,7 +55,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     })
     .eq('id', params.id)
     .is('assigned_to', null)
-    .eq('status', 'new')
+    .in('status', CLAIMABLE_STATUSES)
     .select('id, mission_number')
     .maybeSingle()
 

@@ -6,7 +6,9 @@ import { createClient }        from '@supabase/supabase-js'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-const FRESH_MINUTES = 15
+const FRESH_MINUTES = 30   // Olivier 2026-06-18 : fenêtre Momo Market portée à 30 min
+// Statuts visibles sur l'étal : "En commande" (new) + "En attente" (dispatching).
+const ELIGIBLE_STATUSES = ['new', 'dispatching']
 
 interface Mission {
   id:              string
@@ -43,7 +45,7 @@ export default function SelfServiceClient({ initialMissions, currentUserId }: { 
   const [busyId, setBusyId]     = useState<string | null>(null)
   const [error, setError]       = useState<string | null>(null)
 
-  // Tick toutes les 10s pour le countdown + auto-cleanup > 15 min
+  // Tick toutes les 10s pour le countdown + auto-cleanup > 30 min
   useEffect(() => {
     const tick = () => {
       setNow(Date.now())
@@ -59,7 +61,7 @@ export default function SelfServiceClient({ initialMissions, currentUserId }: { 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_missions' }, payload => {
         if (payload.eventType === 'INSERT') {
           const m = payload.new as any
-          if (m.status === 'new' && !m.assigned_to && m.source !== 'garage' && m.source !== 'unknown') {
+          if (ELIGIBLE_STATUSES.includes(m.status) && !m.assigned_to && m.source !== 'garage' && m.source !== 'unknown') {
             setMissions(prev => prev.some(x => x.id === m.id) ? prev : [m, ...prev])
           }
         } else if (payload.eventType === 'UPDATE') {
@@ -68,7 +70,7 @@ export default function SelfServiceClient({ initialMissions, currentUserId }: { 
           // (source réelle + données parsées). On (re)joue donc l'éligibilité ici :
           // mission fraîche + correctement sourcée → ajout/refresh ; sinon retrait.
           const fresh = (Date.now() - new Date(m.received_at).getTime()) <= FRESH_MINUTES * 60 * 1000
-          const eligible = m.status === 'new' && !m.assigned_to
+          const eligible = ELIGIBLE_STATUSES.includes(m.status) && !m.assigned_to
             && m.source !== 'garage' && m.source !== 'unknown' && fresh
           if (!eligible) {
             setMissions(prev => prev.filter(x => x.id !== m.id))
