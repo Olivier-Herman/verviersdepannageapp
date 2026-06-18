@@ -14,9 +14,13 @@ interface Source {
   has_surcharge: boolean
   default_billed_to_id?:   number | null
   default_billed_to_name?: string | null
+  default_depot_id?:       string | null
+  default_depot_name?:     string | null
   display_color?:          string | null
   group_key?:              string | null
 }
+
+interface Depot { id: string; name: string }
 
 // Palette de couleurs Tailwind proposees dans le modal d edition. L admin
 // peut aussi taper une classe Tailwind custom dans le champ texte libre.
@@ -41,7 +45,7 @@ const COLOR_PALETTE = [
   { value: 'bg-stone-600',   label: 'Pierre' },
 ]
 
-export default function SourcesClient({ initial }: { initial: Source[] }) {
+export default function SourcesClient({ initial, depots = [] }: { initial: Source[]; depots?: Depot[] }) {
   const [sources, setSources] = useState<Source[]>(initial)
   const [editing, setEditing] = useState<Source | null>(null)
   const [adding,  setAdding]  = useState(false)
@@ -114,6 +118,7 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
               <th className="px-4 py-2 text-left">Libellé</th>
               <th className="px-4 py-2 text-left">Clé</th>
               <th className="px-4 py-2 text-left">Client facturé par défaut</th>
+              <th className="px-4 py-2 text-left">Parc par défaut</th>
               <th className="px-4 py-2 text-left">Missions</th>
               <th className="px-4 py-2 text-left">Surcharge</th>
               <th className="px-4 py-2 text-left">État</th>
@@ -122,7 +127,7 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
           </thead>
           <tbody className="divide-y">
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-8 text-ink-muted text-sm">Aucune source.</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-ink-muted text-sm">Aucune source.</td></tr>
             ) : filtered.map(s => (
               <tr key={s.key} className={s.active ? '' : 'opacity-50'}>
                 <td className="px-4 py-2">
@@ -140,6 +145,14 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
                 <td className="px-4 py-2">
                   {s.default_billed_to_name
                     ? <span className="text-ink text-xs">{s.default_billed_to_name}</span>
+                    : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
+                        — à configurer
+                      </button>
+                  }
+                </td>
+                <td className="px-4 py-2">
+                  {s.default_depot_name
+                    ? <span className="text-ink text-xs">🅿️ {s.default_depot_name}</span>
                     : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
                         — à configurer
                       </button>
@@ -181,13 +194,13 @@ export default function SourcesClient({ initial }: { initial: Source[] }) {
         </table>
       </div>
 
-      {adding && <EditModal source={null} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh() }} />}
-      {editing && <EditModal source={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
+      {adding && <EditModal source={null} depots={depots} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh() }} />}
+      {editing && <EditModal source={editing} depots={depots} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
     </div>
   )
 }
 
-function EditModal({ source, onClose, onSaved }: { source: Source | null; onClose: () => void; onSaved: () => void }) {
+function EditModal({ source, depots, onClose, onSaved }: { source: Source | null; depots: Depot[]; onClose: () => void; onSaved: () => void }) {
   const isNew = !source
   const [label, setLabel] = useState(source?.label || '')
   const [key, setKey]     = useState(source?.key || '')
@@ -195,6 +208,7 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
   const [notes, setNotes] = useState(source?.notes || '')
   const [defaultBilledId,   setDefaultBilledId]   = useState<number | null>(source?.default_billed_to_id   || null)
   const [defaultBilledName, setDefaultBilledName] = useState<string>(source?.default_billed_to_name || '')
+  const [defaultDepotId,    setDefaultDepotId]    = useState<string>(source?.default_depot_id || '')
   const [displayColor, setDisplayColor] = useState<string>(source?.display_color || '')
   const [groupKey,     setGroupKey]     = useState<string>(source?.group_key     || '')
   const [clientQuery, setClientQuery] = useState('')
@@ -244,6 +258,8 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
         notes:                  notes.trim() || null,
         default_billed_to_id:   defaultBilledId,
         default_billed_to_name: defaultBilledName || null,
+        default_depot_id:       defaultDepotId || null,
+        default_depot_name:     defaultDepotId ? (depots.find(d => d.id === defaultDepotId)?.name || null) : null,
         display_color:          displayColor.trim() || null,
         group_key:              groupKey.trim() || null,
       }
@@ -332,6 +348,20 @@ function EditModal({ source, onClose, onSaved }: { source: Source | null; onClos
               )}
             </div>
           )}
+        </div>
+
+        <div>
+          <label className="block text-ink-muted text-xs mb-1">Parc par défaut (mise en parc)</label>
+          <p className="text-ink-faint text-[11px] mb-2">
+            Si défini, la mise en parc d'un véhicule de cette source pré-sélectionne ce dépôt. Le dispatcher/chauffeur peut toujours en choisir un autre.
+          </p>
+          <select value={defaultDepotId} onChange={e => setDefaultDepotId(e.target.value)}
+            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand">
+            <option value="">— Aucun (choix manuel à chaque fois)</option>
+            {depots.map(d => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
         </div>
 
         <div>

@@ -68,6 +68,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // Si on force "parked" → set parked_at + (optionnel) depot + zone parc
+  let m: any = null
   if (body.status === 'parked') {
     update.parked_at = now
 
@@ -87,11 +88,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // Auto-conversion REM -> REM+REL si source eligible ET adresse de
     // relivraison deja connue. Sans adresse, attente saisie.
-    const { data: m } = await sb
+    const { data: mRow } = await sb
       .from('incoming_missions')
       .select('source, mission_type, snc_scenario, destination_address, redelivery_address')
       .eq('id', params.id)
       .maybeSingle()
+    m = mRow
+
+    // Olivier 2026-06-18 : si aucun depot n'a ete choisi explicitement, on
+    // applique le parc par defaut configure pour la source (admin /sources).
+    if (!update.depot_depart_id && m?.source) {
+      const { data: cat } = await sb
+        .from('mission_source_catalog')
+        .select('default_depot_id')
+        .eq('key', m.source)
+        .maybeSingle()
+      if (cat?.default_depot_id) update.depot_depart_id = cat.default_depot_id
+    }
     const hasAddr = !!((m as any)?.redelivery_address || (m as any)?.destination_address)
     if (m && hasAddr && isRemorquage(m.mission_type) && isRelEligibleSource(m.source, (m as any).snc_scenario)) {
       update.mission_type = 'REM+REL'

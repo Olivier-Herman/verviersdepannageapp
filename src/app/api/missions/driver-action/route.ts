@@ -57,7 +57,10 @@ const ALLOWED: Record<string, string[]> = {
   accepted:    ['on_way', 'mark_photo_category', 'set_amount_to_collect'],
   in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop', 'mark_photo_category', 'set_amount_to_collect'],
   parked:      ['completed', 'start_delivery', 'change_type', 'save_photos', 'mark_photo_category', 'set_amount_to_collect'],
-  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
+  // Olivier 2026-06-18 : update_address autorisé en livraison (REL). Le chauffeur
+  // doit pouvoir corriger l'adresse de relivraison une fois en route (ex: client
+  // change de garage). Avant : "Action 'update_address' non permise depuis 'delivering'".
+  delivering:  ['arrive_stop', 'depart_stop', 'complete_delivery', 'completed', 'park', 'update_address', 'update_stops', 'save_photos', 'change_type', 'mark_photo_category', 'set_amount_to_collect'],
 }
 
 interface Stop {

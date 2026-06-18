@@ -72,16 +72,14 @@ export async function GET(req: Request) {
   } else if (status === 'in_progress') {
     query = query.in('status', ['in_progress', 'delivering'])
   } else if (status === 'parked') {
-    // Olivier 2026-05-28 : onglet "À Relivrer" du Dispatch = uniquement les
-    // vehicules en zone K avec une adresse de relivraison definie.
-    // Sans adresse, le vehicule reste en zone K mais n apparait PAS dans
-    // l onglet (Olivier 2026-06-08 fix : avant le filtre laissait passer les
-    // K sans adresse, ce qui polluait l onglet). Quand le bureau saisit
-    // l adresse, la mission apparait alors dans cet onglet.
+    // Olivier 2026-06-18 : onglet "À Relivrer" = TOUS les vehicules en zone K,
+    // meme sans adresse de relivraison encore saisie. (Avant on filtrait sur
+    // redelivery_address/destination_address non null, ce qui masquait les K
+    // en attente d'adresse — alors qu'ils doivent etre visibles pour qu'on
+    // pense a saisir l'adresse.)
     query = query
       .eq('status', 'parked')
       .eq('parc_zone_key', 'K')
-      .or('redelivery_address.not.is.null,destination_address.not.is.null')
   } else if (status === 'completed') {
     // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
     // chauffeur, en attente de validation employe facturation. Le tampon
@@ -165,13 +163,11 @@ export async function GET(req: Request) {
     dispatching: counts?.filter(m => m.status === 'dispatching').length || 0,
     assigned:    counts?.filter(m => ['assigned','accepted'].includes(m.status)).length || 0,
     in_progress: counts?.filter(m => ['in_progress','delivering'].includes(m.status)).length || 0,
-    // Olivier 2026-06-08 : compteur 'À Relivrer' aligne sur le filtre du tab :
-    // zone K + adresse de relivraison renseignee (sinon le badge mentait).
+    // Olivier 2026-06-18 : compteur 'À Relivrer' aligne sur le filtre du tab =
+    // tous les vehicules en zone K (avec ou sans adresse de relivraison).
     parked:      counts?.filter(m =>
       m.status === 'parked'
       && (m as any).parc_zone_key === 'K'
-      && (((m as any).redelivery_address && String((m as any).redelivery_address).trim())
-        || ((m as any).destination_address && String((m as any).destination_address).trim()))
     ).length || 0,
     completed:   counts?.filter(m => ['completed','to_invoice'].includes(m.status)).length || 0,
     errors:      counts?.filter(m => m.status === 'parse_error').length || 0,

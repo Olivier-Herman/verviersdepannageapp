@@ -34,11 +34,18 @@ export default async function SourcesPage() {
   const { data: clientLinks } = await sb.from('surcharge_clients').select('key')
   const surchargeSet = new Set((clientLinks || []).map(c => c.key))
 
+  // Liste des dépôts actifs pour le sélecteur "parc par défaut" (Olivier 2026-06-18)
+  const { data: depots } = await sb
+    .from('depots')
+    .select('id, name')
+    .eq('active', true)
+    .order('sort_order')
+
   const initial = (sources || []).map(s => ({
     ...s,
     mission_count: counts.get(s.key) || 0,
     has_surcharge: surchargeSet.has(s.key),
   }))
 
-  return <SourcesClient initial={initial} />
+  return <SourcesClient initial={initial} depots={(depots || []) as { id: string; name: string }[]} />
 }
