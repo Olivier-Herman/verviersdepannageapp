@@ -38,13 +38,12 @@ RÈGLES D'EXTRACTION:
 - external_id = N° Commande (format 2026189648MA)
 - dossier_number = N° Dossier (format 2026BE132588). TOUJOURS l'extraire s'il est présent (il sert à regrouper les emails d'un même dossier — dépannage puis remorquage). Ne jamais le mettre à null si un "N° Dossier" figure dans le document.
 - mission_type: "Remorquage" → remorquage | "Depannage" → depannage
-- ADRESSE D'INTERVENTION (incident_address + incident_city) — ATTENTION, le document contient PLUSIEURS adresses, ne pas les confondre. Procède dans cet ordre :
-  1. Candidat principal = l'adresse du bloc "Incident" : la rue (ex "Route Croix Maga, 30") puis le code postal + ville (ex "4860 CORNESSE") qui apparaissent juste sous le nom du membre et l'horodatage, AVANT le champ "Produit".
-  2. EXCEPTION CAPITALE : l'adresse de TOURING elle-même — "Boulevard Roi Albert II, 4" / "Koning Albert II(-laan) 4" / code postal "1000 Bruxelles" (elle figure EN HAUT du document comme expéditeur "TSA ... KONING ALBERT II ... 1000 BRUXELLES") — n'est JAMAIS un lieu d'intervention. Si le candidat du bloc "Incident" EST cette adresse de Touring (cas des véhicules de société/flotte, ex membre "KONE BELGIUM SA", "ARVAL"), IGNORE-la et prends à la place l'adresse du bloc "Adresse" (rue + code postal/ville, ex "Avenue Henri Massin, 100" / "4800 Verviers"), ou à défaut le champ "De" du bloc "Depannage".
-  3. Ne mets JAMAIS "Boulevard Roi Albert II 4, 1000 Bruxelles" (adresse de Touring) dans incident_address. C'est l'erreur à éviter absolument.
-- client_address = adresse du bloc "Adresse" = DOMICILE/siège du membre. (Si tu as dû l'utiliser comme adresse d'intervention via l'exception ci-dessus, tu peux mettre la même valeur dans les deux.)
-- destination_name + destination_address = bloc "Depannage" champ "A" (garage/lieu de dépose) UNIQUEMENT s'il est renseigné. Si "De"/"A" sont vides, laisser destination à null. Ne jamais recopier le domicile en destination.
-- client_name = nom de la personne réelle : champ "Membre" si c'est un nom propre, sinon le nom de l'"Interlocuteur" (ex "MEESSEN DOMINIQUE"). Ignore les codes membres (ex "IA8ZUFL") et préfère une personne à une raison sociale quand les deux sont présents.
+- ADRESSES : elles sont dans le bloc "Depannage" EN BAS du document (après "N°Commande", "Date", "Commentaire"), champs "De" et "A" :
+  * "De" = incident_address + incident_city (LIEU D'INTERVENTION : rue puis code postal + ville).
+  * "A"  = destination_name + destination_address (lieu de remorquage / dépose). Si "A" est vide → destination = null.
+  * N'utilise NI le bloc "Incident" du haut NI le bloc "Adresse" (= domicile/siège du membre) pour l'adresse d'intervention. L'adresse d'intervention est TOUJOURS le champ "De" du bloc Depannage en bas.
+- client_address = adresse du bloc "Adresse" (domicile/siège du membre), si présente.
+- client_name = valeur du champ "Membre" si c'est un nom propre ; sinon le nom de l'"Interlocuteur". Ignore les codes membres (ex "IA8ZUFL") et les raisons sociales si une personne est disponible.
 - vehicle_plate, vehicle_brand, vehicle_model dans le bloc Véhicule (format "plaque\nmarque\nmodèle")
 - vehicle_vin = champ Châssis
 - incident_at = date de l'incident format "JJ-MM-AAAA HH:MM:SS" → ISO 8601`,
