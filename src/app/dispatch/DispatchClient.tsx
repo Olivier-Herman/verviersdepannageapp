@@ -1039,6 +1039,23 @@ export default function DispatchClient({
       userId={userId}
       userRole={userRole}
       userModules={userModules}
+      headerExtra={
+        // Olivier 2026-06-18 : indicateur Sync/Live déplacé dans le header,
+        // près de la bouée d'aide (au lieu du bandeau de contrôle).
+        <div className="flex justify-end">
+          <div
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] uppercase tracking-wider transition-opacity ${
+              liveSyncing
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 opacity-100'
+                : 'bg-surface border text-ink-faint opacity-70'
+            }`}
+            title={liveSyncing ? 'Mise à jour en cours…' : 'Synchronisation temps réel active'}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${liveSyncing ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-400'}`}></span>
+            <span className="hidden sm:inline">{liveSyncing ? 'Sync…' : 'Live'}</span>
+          </div>
+        </div>
+      }
     >
       {/* ── Barre de contrôle ──────────────────────────────────────────────
           backdrop-blur pour fondre avec l'ambient background.
@@ -1101,21 +1118,6 @@ export default function DispatchClient({
 
             {/* Dispatcher de garde — badge cliquable pour cibler les escalades auto-dispatch */}
             <DispatcherOnDutyBadge userRole={userRole} />
-
-            {/* Indicateur live : pulse subtil quand un event realtime / polling
-                refresh les missions en arriere-plan. Donne un feedback visuel
-                que l ecran est en sync avec les autres dispatchers. */}
-            <div
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] uppercase tracking-wider transition-opacity ${
-                liveSyncing
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700 opacity-100'
-                  : 'bg-surface border text-ink-faint opacity-70'
-              }`}
-              title={liveSyncing ? 'Mise à jour en cours…' : 'Synchronisation temps réel active'}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${liveSyncing ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-400'}`}></span>
-              <span className="hidden sm:inline">{liveSyncing ? 'Sync…' : 'Live'}</span>
-            </div>
 
             {/* Import VAB — bouton dedie (orange ambre pour signal action externe) */}
             <VabImportButton onImportDone={() => load()} />
