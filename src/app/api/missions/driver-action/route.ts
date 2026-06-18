@@ -459,8 +459,29 @@ export async function POST(req: Request) {
         if (!advanceResult.ok) {
           console.warn('[driver-action] kaze advance failed:', advanceResult.error)
         }
+
+        // Olivier 2026-06-18 : tracer le résultat Kaze dans l'historique de la
+        // fiche (visible au dispatch) — sinon les échecs d'avancement Kaze sont
+        // silencieux (console only) et impossibles à diagnostiquer sans les logs.
+        const ok = (advanceResult.ok !== false)
+        await supabase.from('mission_logs').insert({
+          mission_id: mission_id,
+          actor_id:   actor.id,
+          action:     ok ? 'kaze_synced' : 'kaze_sync_error',
+          notes:      ok
+            ? `Kaze ↗ ${action} : workflow avancé${advanceResult.status ? ` (statut ${advanceResult.status})` : ''}${noteResult.ok ? '' : ' · note KO'}`
+            : `Kaze ↗ ${action} : échec avancement workflow — ${advanceResult.error || 'erreur inconnue'}`,
+          metadata:   { action, advance_ok: advanceResult.ok, advance_status: advanceResult.status ?? null, advance_error: advanceResult.error ?? null, note_ok: noteResult.ok, note_error: noteResult.error ?? null },
+        }).then(() => {}, () => {})
       } catch (e: any) {
         console.warn('[driver-action] kaze hooks exception:', e?.message)
+        await supabase.from('mission_logs').insert({
+          mission_id: mission_id,
+          actor_id:   actor.id,
+          action:     'kaze_sync_error',
+          notes:      `Kaze ↗ ${action} : exception — ${e?.message || 'inconnue'}`,
+          metadata:   { action, exception: e?.message ?? null },
+        }).then(() => {}, () => {})
       }
     })()
 

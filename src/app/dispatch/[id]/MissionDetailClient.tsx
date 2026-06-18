@@ -199,6 +199,9 @@ const LOG_ICONS: Record<string, string> = {
   merge_in:     '🔗',
   merged:       '🔗',
   partial_invoice: '🧾',
+  kaze_synced:     '🟦',
+  kaze_sync_error: '🟥',
+  odoo_synced:     '🟣',
 }
 
 // ── Date helpers (intervention_date) ──────────────────────────────────────────
