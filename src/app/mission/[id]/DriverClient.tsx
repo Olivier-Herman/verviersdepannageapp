@@ -73,7 +73,10 @@ interface VrLoc { id: string; name: string; address: string; lat: number | null;
 interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const plate = (v = '') => v.replace(/[-.\s]/g, '').toUpperCase()
+// Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
+// si le dispatcher n'a pas saisi de plaque, vehicle_plate vaut null -> plate(null)
+// faisait `null.replace(...)` -> crash client "Application error" a l'arrivee.
+const plate = (v?: string | null) => (v || '').replace(/[-.\s]/g, '').toUpperCase()
 // REM ou Transport (les 2 impliquent un transport vehicule). Insensible casse,
 // gere les variants REM/REMORQUAGE/rem/remorquage.
 const isREM = (t: string | null | undefined = '') => {
@@ -2670,7 +2673,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   {requiredAmount > 0 ? (
                     <>Le client doit régler <strong>{formatEur(requiredAmount)}</strong>. Ouvre l&apos;encaissement pour saisir le paiement.</>
                   ) : estimatedAmount ? (
-                    <>Le bureau n&apos;a pas pré-saisi de forfait. Tarif calculé : <strong>{estimatedAmount.tvac.toFixed(2)} € TVAC</strong> <span className="text-blue-700">({estimatedAmount.htva.toFixed(2)} € HTVA)</span>. Ouvre l&apos;encaissement pour saisir le montant à encaisser au client.</>
+                    (M as any).special_tarif_htva != null && Number((M as any).special_tarif_htva) > 0 ? (
+                      <>Tarif négocié par le bureau : <strong>{estimatedAmount.tvac.toFixed(2)} € TVAC</strong> <span className="text-blue-700">({estimatedAmount.htva.toFixed(2)} € HTVA)</span>. Ouvre l&apos;encaissement pour encaisser ce montant au client.</>
+                    ) : (
+                      <>Montant à encaisser : <strong>{estimatedAmount.tvac.toFixed(2)} € TVAC</strong> <span className="text-blue-700">({estimatedAmount.htva.toFixed(2)} € HTVA)</span> — tarif calculé automatiquement. Ouvre l&apos;encaissement pour saisir le paiement.</>
+                    )
                   ) : (
                     'Aucun montant pré-saisi par le bureau. Ouvre l\'encaissement pour saisir le montant à encaisser au client.'
                   )}
@@ -2865,7 +2872,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <span className="text-red-400 text-xs">✏️ Modifier</span>
           </div>
           <p className="text-ink font-semibold">{[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
-          {M.vehicle_plate && <p className="text-ink-secondary text-xs font-mono uppercase tracking-widest mt-1">{plate(M.vehicle_plate)}</p>}
+          {plate(M.vehicle_plate)
+            ? <p className="text-ink-secondary text-xs font-mono uppercase tracking-widest mt-1">{plate(M.vehicle_plate)}</p>
+            : <p className="mt-1 inline-flex items-center gap-1.5 text-amber-700 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1 text-xs font-semibold">
+                ⚠️ Plaque manquante — tape ici pour l'ajouter
+              </p>
+          }
         </button>
 
         {/* DSP : adresse unique (ni REM ni REL) */}
