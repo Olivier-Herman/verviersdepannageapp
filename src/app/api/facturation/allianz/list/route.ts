@@ -39,7 +39,15 @@ export async function GET() {
 
   let listing
   try { listing = await listAllianzToAssign(token) }
-  catch (e: any) { return NextResponse.json({ error: `Listing Allianz KO : ${e.message}` }, { status: 502 }) }
+  catch (e: any) {
+    // Olivier 2026-06-18 : 401/403 = token Hexalite rejeté (invalidé côté serveur
+    // avant son expiration). On le traite comme un besoin de reconnexion (OTP)
+    // plutôt qu'une erreur opaque → l'UI propose "Reconnecter Allianz".
+    if (/\b40[13]\b/.test(e.message || '')) {
+      return NextResponse.json({ error: `Connexion Allianz rejetée (${e.message}). Reconnecte-toi (OTP).`, needsAuth: true }, { status: 503 })
+    }
+    return NextResponse.json({ error: `Listing Allianz KO : ${e.message}` }, { status: 502 })
+  }
 
   const content = listing.content || []
   const sb = createAdminClient()

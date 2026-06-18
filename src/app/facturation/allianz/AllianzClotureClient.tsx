@@ -56,6 +56,19 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
   const [busyId, setBusyId]   = useState<string | null>(null)
   const [result, setResult]   = useState<Record<string, any>>({})
   const [svc, setSvc]         = useState<Record<string, 'T' | 'R' | 'D'>>({})
+  const [reconnecting, setReconnecting] = useState(false)
+  const [reconnectMsg, setReconnectMsg] = useState<string | null>(null)
+
+  async function reconnect() {
+    setReconnecting(true); setReconnectMsg(null)
+    try {
+      const r = await fetch('/api/facturation/allianz/reconnect', { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setReconnectMsg(j.message || 'OTP demandé. Patiente ~30s puis Rafraîchis.')
+    } catch (e: any) { setReconnectMsg('⚠ ' + e.message) }
+    finally { setReconnecting(false) }
+  }
 
   const serviceOf = (row: Row): 'T' | 'R' | 'D' => svc[row.assignmentId] ?? defaultService(row)
 
@@ -135,8 +148,15 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
           </div>
 
           {needsAuth && (
-            <div className="bg-warning/10 border border-warning/40 rounded-2xl p-4 text-sm text-warning">
-              ⚠ Connexion Allianz expirée. Le token Hexalite doit être renouvelé (OTP). {err}
+            <div className="bg-warning/10 border border-warning/40 rounded-2xl p-4 text-sm text-warning space-y-3">
+              <p>⚠ Connexion Allianz expirée. Le token Hexalite doit être renouvelé (OTP). {err}</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button onClick={reconnect} disabled={reconnecting}
+                  className="px-3 py-2 bg-warning/20 hover:bg-warning/30 border border-warning/50 rounded-xl text-warning font-semibold text-sm disabled:opacity-50">
+                  {reconnecting ? '⏳ Demande OTP…' : '🔑 Reconnecter Allianz'}
+                </button>
+                {reconnectMsg && <span className="text-ink-secondary text-xs">{reconnectMsg}</span>}
+              </div>
             </div>
           )}
           {err && !needsAuth && <div className="bg-critical/10 border border-critical/40 rounded-2xl p-3 text-sm text-critical">{err}</div>}
