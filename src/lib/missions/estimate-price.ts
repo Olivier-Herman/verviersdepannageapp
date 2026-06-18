@@ -990,6 +990,49 @@ async function estimateRelivraisonPrice(
   const sb = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
 
+  // ── Règles de tarif REL par source (Olivier 2026-06-18) ──────────────────
+  //   • AXA, Ardenne, Allianz(mondial) → la relivraison se facture au tarif
+  //     REMORQUAGE (forfait + km supplémentaires), pas au km pur.
+  //   • Touring → km total × prix km (comportement par défaut ci-dessous),
+  //     SAUF si la mission d'origine (parent) est un appel police ou Siabis
+  //     non couvert → alors tarif REMORQUAGE de cette source d'origine.
+  //   • Autres sources → km pur (inchangé).
+  let parentSource = source
+  let parentSnc: string | null = null
+  if (mission.parent_mission_id) {
+    const { data: parent } = await sb
+      .from('incoming_missions')
+      .select('source, snc_scenario')
+      .eq('id', mission.parent_mission_id)
+      .maybeSingle()
+    if (parent?.source) parentSource = String(parent.source).toLowerCase().trim()
+    parentSnc = (parent as any)?.snc_scenario || null
+  }
+  const parentIsPoliceOuSnc = parentSource.startsWith('police')
+    || ['sia_couvert', 'police_snc'].includes(parentSource)
+    || !!parentSnc
+  const REL_AU_TARIF_REM = new Set(['axa', 'ardenne', 'mondial'])
+
+  if (REL_AU_TARIF_REM.has(source) || parentIsPoliceOuSnc) {
+    // Source dont la REL se facture au tarif remorquage. Pour AXA/Ardenne/Allianz
+    // on garde leur propre source ; pour le cas police/SNC on prend la source
+    // d'origine (police_…) qui porte la grille remorquage applicable.
+    const remSource = REL_AU_TARIF_REM.has(source) ? source : parentSource
+    const remEstimate = await estimateMissionPrice({ ...mission, source: remSource, mission_type: 'remorquage' })
+    if (remEstimate.ok) {
+      return {
+        ...remEstimate,
+        mission_type: 'relivraison',
+        tariff_id:    `${remSource}-relivraison-tarif-remorquage`,
+        breakdown: [
+          ...remEstimate.breakdown,
+          { label: 'Relivraison', amount: null, note: `Facturée au tarif remorquage (${remSource})` },
+        ],
+      }
+    }
+    // Si pas de grille remorquage trouvée, on retombe sur le calcul km ci-dessous.
+  }
+
   // 1. Lookup prix km via source_tariff_lines (kind=SERV-KM)
   const { data: kmLinesRaw } = await sb
     .from('source_tariff_lines')

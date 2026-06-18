@@ -42,7 +42,7 @@ RÈGLES D'EXTRACTION:
   * "De" = incident_address + incident_city (LIEU D'INTERVENTION : rue puis code postal + ville).
   * "A"  = destination_name + destination_address (lieu de remorquage / dépose). Si "A" est vide → destination = null.
   * N'utilise NI le bloc "Incident" du haut NI le bloc "Adresse" (= domicile/siège du membre) pour l'adresse d'intervention. L'adresse d'intervention est TOUJOURS le champ "De" du bloc Depannage en bas.
-- client_address = adresse du bloc "Adresse" (domicile/siège du membre), si présente.
+- client_address = DOMICILE du membre = l'adresse affichée dans le bloc "Incident", juste sous le NOM du membre (ex "Kan, 67" / "4880 Aubel"). C'est l'adresse de référence/domicile du membre, à ne PAS confondre avec le lieu d'intervention (= "De" du bloc Depannage). N'y mets JAMAIS l'adresse "De".
 - client_name = valeur du champ "Membre" si c'est un nom propre ; sinon le nom de l'"Interlocuteur". Ignore les codes membres (ex "IA8ZUFL") et les raisons sociales si une personne est disponible.
 - vehicle_plate, vehicle_brand, vehicle_model dans le bloc Véhicule (format "plaque\nmarque\nmodèle")
 - vehicle_vin = champ Châssis
