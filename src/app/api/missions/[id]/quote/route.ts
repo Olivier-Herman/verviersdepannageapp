@@ -227,7 +227,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       const commonInput = {
         partner_id:       mission.billed_to_id as number,
         origin:           missionRef,
-        client_order_ref: mission.dossier_number || undefined,
+        client_order_ref: mission.dossier_number || mission.external_id || undefined,
         fleet_vehicle_id: fleetVehicleId,
         sections,
       }

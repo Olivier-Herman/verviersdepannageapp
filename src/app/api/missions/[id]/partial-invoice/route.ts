@@ -78,7 +78,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return await createSaleOrder({
         partner_id:       mission.billed_to_id as number,
         origin:           `${missionRef} (partiel)`,
-        client_order_ref: mission.dossier_number || undefined,
+        client_order_ref: mission.dossier_number || mission.external_id || undefined,
         fleet_vehicle_id: fleetVehicleId,
         sections:         [{ lines: quoteLines }],
       })

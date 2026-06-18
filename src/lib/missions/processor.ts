@@ -812,7 +812,10 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     const updatePayload: Record<string, unknown> = {
       external_id:          parsed.external_id,
-      dossier_number:       parsed.dossier_number,
+      // Olivier 2026-06-18 : si l'assistance n'a pas de N° Dossier distinct, on
+      // recopie sa référence (external_id) dans NOTRE champ dossier_number — sinon
+      // il reste vide et n'arrive pas en référence (client_order_ref) du devis.
+      dossier_number:       parsed.dossier_number || parsed.external_id || null,
       source,
       source_format:        content.sourceFormat,
       mission_type:         parsed.mission_type,

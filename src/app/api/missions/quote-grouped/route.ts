@@ -227,7 +227,7 @@ export async function POST(req: Request) {
       const input = {
         partner_id:       partnerId,
         origin:           originRef,
-        client_order_ref: parent.dossier_number || undefined,
+        client_order_ref: parent.dossier_number || parent.external_id || undefined,
         fleet_vehicle_id: fleetVehicleId,
         sections,
       }
