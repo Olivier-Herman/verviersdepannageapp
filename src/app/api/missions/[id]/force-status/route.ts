@@ -15,7 +15,8 @@ import { createAdminClient } from '@/lib/supabase'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 
-export const dynamic = 'force-dynamic'
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60   // clôture Kaze en arrière-plan peut prendre ~10s
 
 const ALLOWED_STATUS = ['new', 'dispatching', 'assigned', 'in_progress', 'parked', 'delivering', 'completed', 'to_invoice'] as const
 
@@ -123,6 +124,47 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     notes:      `Statut force par dispatcher → ${body.status}`,
     metadata:   { forced_by_role: role, ...(update.assigned_to === null ? { assignment_reset: true } : {}) },
   })
+
+  // Olivier 2026-06-18 : clôture FORCÉE par le dispatch d'une mission Kaze →
+  // clôturer AUSSI le job Kaze automatiquement (étapes + photos), comme le ferait
+  // le pointage chauffeur. Sans ça, une mission Kaze "forcée à facturer" restait
+  // "pas encore commencé" côté Kaze. En arrière-plan, non bloquant.
+  if (body.status === 'completed' || body.status === 'to_invoice') {
+    const { data: km } = await sb
+      .from('incoming_missions')
+      .select('kaze_job_id, driver_photos, client_signature')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (km?.kaze_job_id) {
+      const kazeBg = (async () => {
+        try {
+          const { advanceKazeMissionForAction } = await import('@/lib/kaze/outbound')
+          const r = await advanceKazeMissionForAction({
+            id:               params.id,
+            kaze_job_id:      km.kaze_job_id,
+            driver_photos:    Array.isArray((km as any).driver_photos) ? (km as any).driver_photos : null,
+            client_signature: (km as any).client_signature || null,
+          } as any, 'completed')
+          await sb.from('mission_logs').insert({
+            mission_id: params.id, actor_id: userId,
+            action: r.ok !== false ? 'kaze_synced' : 'kaze_sync_error',
+            notes:  r.ok !== false
+              ? `Kaze ↗ clôture forcée : workflow avancé${r.status ? ` (statut ${r.status})` : ''}`
+              : `Kaze ↗ clôture forcée : échec — ${r.error || 'inconnue'}`,
+            metadata: { forced: true, advance_ok: r.ok, advance_status: r.status ?? null, advance_error: r.error ?? null },
+          }).then(() => {}, () => {})
+        } catch (e: any) {
+          await sb.from('mission_logs').insert({
+            mission_id: params.id, actor_id: userId, action: 'kaze_sync_error',
+            notes: `Kaze ↗ clôture forcée : exception — ${e?.message || 'inconnue'}`,
+            metadata: { forced: true },
+          }).then(() => {}, () => {})
+        }
+      })()
+      try { const { waitUntil } = await import('@vercel/functions'); waitUntil(kazeBg) }
+      catch { await kazeBg }
+    }
+  }
 
   return NextResponse.json({ ok: true, new_status: body.status })
 }
