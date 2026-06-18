@@ -5,6 +5,8 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
+import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
+import { withOdooActor }      from '@/lib/odoo'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -197,6 +199,27 @@ export async function POST(req: Request) {
     tag:   `mission-${mission.id}`,
     icon:  '/icons/apple-touch-icon.png'
   }, 'dispatch_new_mission')
+
+  // Olivier 2026-06-18 : créer le dossier Odoo (helpdesk + tâche FSM) DÈS la
+  // création de la fiche — ce qui crée/lie aussi le VÉHICULE dans Odoo
+  // (findOrCreateFsmVehicle), pour qu'il soit déjà présent au moment du devis.
+  // Avant : la création manuelle ne créait pas le dossier (seuls confirm/assign
+  // le faisaient) → il fallait créer le véhicule à la main plus tard.
+  // Best-effort, non bloquant : si Odoo tousse, la fiche existe quand même et le
+  // bouton "Créer dossier Odoo" reste dispo.
+  try {
+    const odoo = await withOdooActor(actor?.id, () => createOdooDossierForMission(mission.id))
+    if (odoo?.created) {
+      await supabase.from('mission_logs').insert({
+        mission_id: mission.id,
+        actor_id:   actor?.id || null,
+        action:     'odoo_synced',
+        notes:      `Dossier Odoo créé : helpdesk #${odoo.ticketId}, task #${odoo.taskId}`,
+      })
+    }
+  } catch (e: any) {
+    console.error('[missions/create] Création dossier Odoo échouée (non bloquant):', e?.message)
+  }
 
   return NextResponse.json({ ok: true, mission_id: mission.id, external_id: mission.external_id })
 }

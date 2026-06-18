@@ -69,5 +69,25 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     notes:      'Mission auto-attribuee via self-service',
   })
 
+  // Olivier 2026-06-18 : prendre une mission via Momo Market doit aussi créer le
+  // dossier Odoo (helpdesk + tâche FSM + VÉHICULE), comme une assignation
+  // classique. Sans ça, une mission prise en self-service arrivait sans dossier
+  // ni véhicule Odoo. Best-effort, non bloquant.
+  try {
+    const { createOdooDossierForMission } = await import('@/lib/missions/odoo-dossier')
+    const { withOdooActor } = await import('@/lib/odoo')
+    const odoo = await withOdooActor(userId, () => createOdooDossierForMission(params.id))
+    if (odoo?.created) {
+      await sb.from('mission_logs').insert({
+        mission_id: params.id,
+        actor_id:   userId,
+        action:     'odoo_synced',
+        notes:      `Dossier Odoo créé : helpdesk #${odoo.ticketId}, task #${odoo.taskId}`,
+      })
+    }
+  } catch (e: any) {
+    console.error('[claim] Création dossier Odoo échouée (non bloquant):', e?.message)
+  }
+
   return NextResponse.json({ ok: true, missionId: claimed.id })
 }
