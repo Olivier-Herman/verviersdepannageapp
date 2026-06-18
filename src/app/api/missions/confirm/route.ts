@@ -9,6 +9,44 @@ import { createAdminClient }            from '@/lib/supabase'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }                from '@/lib/odoo'
 
+export const maxDuration = 60   // propagation Kaze en arrière-plan (~2-5s)
+
+/**
+ * Olivier 2026-06-18 : répercute la décision dispatch dans Kaze.
+ *  - Valider  → acceptProposal  (on accepte la proposition côté IMA)
+ *  - Refuser  → rejectProposal  (on refuse la proposition côté IMA)
+ * Best-effort + en arrière-plan : ne bloque JAMAIS la réponse au dispatcher.
+ * Ignoré si la mission n'est pas une mission Kaze (kaze_job_id absent).
+ */
+async function propagateKazeDecision(
+  missionId:  string,
+  kazeJobId:  string | null | undefined,
+  accept:     boolean,
+  actorId:    string | null,
+  supabase:   ReturnType<typeof createAdminClient>,
+) {
+  if (!kazeJobId) return
+  const run = (async () => {
+    try {
+      const { acceptProposal, rejectProposal } = await import('@/lib/kaze/client')
+      if (accept) await acceptProposal(kazeJobId)
+      else        await rejectProposal(kazeJobId)
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId, action: 'kaze_synced',
+        notes: accept ? 'Kaze ↗ proposition acceptée' : 'Kaze ↗ proposition refusée',
+      }).then(() => {}, () => {})
+    } catch (e: any) {
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId, action: 'kaze_sync_error',
+        notes: `Kaze ↗ ${accept ? 'acceptation' : 'refus'} proposition : échec — ${e?.message || 'inconnue'}`,
+        metadata: { kaze_job_id: kazeJobId, accept },
+      }).then(() => {}, () => {})
+    }
+  })()
+  try { const { waitUntil } = await import('@vercel/functions'); waitUntil(run) }
+  catch { await run }
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -33,7 +71,7 @@ export async function POST(req: Request) {
     // Vérifier si un chauffeur est déjà assigné
     const { data: mission } = await supabase
       .from('incoming_missions')
-      .select('assigned_to')
+      .select('assigned_to, kaze_job_id')
       .eq('id', mission_id)
       .single()
 
@@ -50,6 +88,9 @@ export async function POST(req: Request) {
       action:   'dispatched',
       notes:    `Mission confirmée par ${actor?.name || 'dispatcher'}`,
     })
+
+    // Mission Kaze → accepter la proposition côté IMA (best-effort, arrière-plan).
+    await propagateKazeDecision(mission_id, mission?.kaze_job_id, true, actor?.id || null, supabase)
 
     // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.
     // Si ça plante, le dispatcher peut toujours utiliser le bouton "Créer dossier Odoo"
@@ -89,6 +130,12 @@ export async function POST(req: Request) {
     })
 
   } else if (action === 'refuse') {
+    const { data: mission } = await supabase
+      .from('incoming_missions')
+      .select('kaze_job_id')
+      .eq('id', mission_id)
+      .single()
+
     await supabase
       .from('incoming_missions')
       .update({ status: 'ignored', updated_at: now })
@@ -100,6 +147,9 @@ export async function POST(req: Request) {
       action:   'cancelled',
       notes:    reason || 'Mission refusée',
     })
+
+    // Mission Kaze → refuser la proposition côté IMA (best-effort, arrière-plan).
+    await propagateKazeDecision(mission_id, mission?.kaze_job_id, false, actor?.id || null, supabase)
 
     return NextResponse.json({ ok: true, status: 'ignored' })
   }
