@@ -2,7 +2,7 @@
 // src/app/dispatch/DispatchClient.tsx
 // P6 — toggle liste/carte + panel statut chauffeurs + cartes colorées par urgence
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link        from 'next/link'
 import { useRouter }   from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
@@ -890,6 +890,19 @@ export default function DispatchClient({
     try { localStorage.setItem('dispatch-sort-mode', mode) } catch { /* ignore */ }
   }
 
+  // ── Refs : permettent à la souscription realtime + au polling d'appeler
+  // TOUJOURS la dernière version de load() et de lire l'onglet/filtre courant,
+  // SANS se ré-abonner à chaque changement (source de la course de refresh
+  // "nouveau → ancien → nouveau"). Olivier 2026-06-18.
+  const activeTabRef      = useRef(activeTab)
+  const sourceFilterRef   = useRef(sourceFilter)
+  const searchRef         = useRef(search)
+  const modalOpenCountRef = useRef(modalOpenCount)
+  useEffect(() => { activeTabRef.current = activeTab },            [activeTab])
+  useEffect(() => { sourceFilterRef.current = sourceFilter },      [sourceFilter])
+  useEffect(() => { searchRef.current = search },                  [search])
+  useEffect(() => { modalOpenCountRef.current = modalOpenCount },  [modalOpenCount])
+
   // ── Chargement missions + statuts chauffeurs ──────────────────────────────
 
   // Olivier 2026-05-28 : load() accepte un flag `silent` pour distinguer le
@@ -899,12 +912,20 @@ export default function DispatchClient({
   // le re-render perceptible (skeleton -> contenu) qui flashait l interface.
   const load = useCallback(async (opts: { silent?: boolean } = {}) => {
     const silent = opts.silent === true
+    // Onglet/filtres demandés au moment de l'appel. Si l'utilisateur change
+    // d'onglet pendant que la requête est en vol (ou qu'un refresh realtime/poll
+    // déclenché par l'ANCIENNE souscription se termine après), on jette la
+    // réponse périmée pour ne pas réafficher l'ancien contenu par-dessus le
+    // nouveau. Olivier 2026-06-18 (fix "nouveau → ancien → nouveau").
+    const reqTab    = activeTab
+    const reqSource = sourceFilter
+    const reqSearch = search
     if (silent) setLiveSyncing(true)
     else setLoading(true)
     try {
-      const params = new URLSearchParams({ status: activeTab, sort: sortMode })
-      if (sourceFilter) params.set('source', sourceFilter)
-      if (search)       params.set('q', search)
+      const params = new URLSearchParams({ status: reqTab, sort: sortMode })
+      if (reqSource) params.set('source', reqSource)
+      if (reqSearch) params.set('q', reqSearch)
 
       const requests: Promise<Response>[] = [
         fetch(`/api/missions/list?${params}`),
@@ -912,13 +933,20 @@ export default function DispatchClient({
       ]
       if (viewMode === 'map') {
         const mapParams = new URLSearchParams({ view: 'map', sort: sortMode })
-        if (sourceFilter) mapParams.set('source', sourceFilter)
+        if (reqSource) mapParams.set('source', reqSource)
         requests.push(fetch(`/api/missions/list?${mapParams}`))
       }
 
       const responses = await Promise.all(requests)
       const mData = await responses[0].json()
       const sData = await responses[1].json()
+
+      // Garde anti-périmé : la requête ne correspond plus à l'état courant.
+      const stale = reqTab    !== activeTabRef.current
+                 || reqSource !== sourceFilterRef.current
+                 || reqSearch !== searchRef.current
+      if (stale) return
+
       setMissions(mData.missions  || [])
       setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
       setDriverStatuses(sData.drivers || [])
@@ -936,27 +964,42 @@ export default function DispatchClient({
 
   useEffect(() => { load() }, [load])
 
+  // loadRef pointe toujours sur la dernière version de load() (avec le bon
+  // onglet/filtre). Les effets realtime/polling l'appellent via ce ref pour ne
+  // PAS se ré-abonner à chaque changement d'onglet.
+  const loadRef = useRef(load)
+  useEffect(() => { loadRef.current = load }, [load])
+
   // ── Realtime : nouvelle mission ou changement de statut ──────────────────
-  // Chaque INSERT/UPDATE/DELETE sur incoming_missions trigger un reload
-  // SILENCIEUX (pas de skeleton, pas de flash). Cela propage l action d un
-  // dispatcher sur tous les ecrans connectes en quelques centaines de ms.
-  // Suspendu si une modal est ouverte (evite reload pendant une edition).
+  // Chaque INSERT/UPDATE/DELETE sur incoming_missions déclenche un reload
+  // SILENCIEUX. Olivier 2026-06-18 : on s'abonne UNE SEULE FOIS (deps []), et on
+  // appelle loadRef.current pour toujours viser le bon onglet. Avant, l'effet se
+  // ré-abonnait à chaque changement d'onglet/filtre → pendant la bascule, un
+  // event reçu sur l'ancienne souscription rechargeait l'ANCIEN onglet et
+  // l'écrasait par-dessus le nouveau (clignotement "nouveau → ancien → nouveau").
+  // Petit debounce : coalescer les rafales d'events en un seul reload.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
     const channel = sb.channel('dispatch-missions')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'incoming_missions' },
-        () => { if (modalOpenCount === 0) load({ silent: true }) }
+        () => {
+          if (modalOpenCountRef.current !== 0) return
+          if (timer) clearTimeout(timer)
+          timer = setTimeout(() => loadRef.current({ silent: true }), 400)
+        }
       )
       .subscribe()
-    return () => { sb.removeChannel(channel) }
-  }, [load, modalOpenCount])
+    return () => { if (timer) clearTimeout(timer); sb.removeChannel(channel) }
+  }, [])
 
-  // ── Polling 20s : statuts chauffeurs (positions GPS, gardes) ─────────────
-  // Filet de securite si un event realtime est rate. Silencieux egalement.
+  // ── Polling 20s : filet de securite si un event realtime est rate. ────────
   useEffect(() => {
-    const id = setInterval(() => { if (modalOpenCount === 0) load({ silent: true }) }, 20_000)
+    const id = setInterval(() => {
+      if (modalOpenCountRef.current === 0) loadRef.current({ silent: true })
+    }, 20_000)
     return () => clearInterval(id)
-  }, [load, modalOpenCount])
+  }, [])
 
   // ── Tick 60s : recalcule les delais des cards (couleur urgence + label) ──
   // Sans ça, une mission passe de vert à jaune seulement quand le polling
