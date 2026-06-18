@@ -16,11 +16,13 @@ interface Source {
   default_billed_to_name?: string | null
   default_depot_id?:       string | null
   default_depot_name?:     string | null
+  default_parc_zone_key?:  string | null
   display_color?:          string | null
   group_key?:              string | null
 }
 
 interface Depot { id: string; name: string }
+interface Zone  { key: string; label: string; depot_id: string | null }
 
 // Palette de couleurs Tailwind proposees dans le modal d edition. L admin
 // peut aussi taper une classe Tailwind custom dans le champ texte libre.
@@ -45,7 +47,7 @@ const COLOR_PALETTE = [
   { value: 'bg-stone-600',   label: 'Pierre' },
 ]
 
-export default function SourcesClient({ initial, depots = [] }: { initial: Source[]; depots?: Depot[] }) {
+export default function SourcesClient({ initial, depots = [], zones = [] }: { initial: Source[]; depots?: Depot[]; zones?: Zone[] }) {
   const [sources, setSources] = useState<Source[]>(initial)
   const [editing, setEditing] = useState<Source | null>(null)
   const [adding,  setAdding]  = useState(false)
@@ -152,7 +154,7 @@ export default function SourcesClient({ initial, depots = [] }: { initial: Sourc
                 </td>
                 <td className="px-4 py-2">
                   {s.default_depot_name
-                    ? <span className="text-ink text-xs">🅿️ {s.default_depot_name}</span>
+                    ? <span className="text-ink text-xs">🅿️ {s.default_depot_name}{s.default_parc_zone_key ? ` · zone ${s.default_parc_zone_key}` : ''}</span>
                     : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
                         — à configurer
                       </button>
@@ -194,13 +196,13 @@ export default function SourcesClient({ initial, depots = [] }: { initial: Sourc
         </table>
       </div>
 
-      {adding && <EditModal source={null} depots={depots} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh() }} />}
-      {editing && <EditModal source={editing} depots={depots} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
+      {adding && <EditModal source={null} depots={depots} zones={zones} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh() }} />}
+      {editing && <EditModal source={editing} depots={depots} zones={zones} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
     </div>
   )
 }
 
-function EditModal({ source, depots, onClose, onSaved }: { source: Source | null; depots: Depot[]; onClose: () => void; onSaved: () => void }) {
+function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source | null; depots: Depot[]; zones: Zone[]; onClose: () => void; onSaved: () => void }) {
   const isNew = !source
   const [label, setLabel] = useState(source?.label || '')
   const [key, setKey]     = useState(source?.key || '')
@@ -209,6 +211,7 @@ function EditModal({ source, depots, onClose, onSaved }: { source: Source | null
   const [defaultBilledId,   setDefaultBilledId]   = useState<number | null>(source?.default_billed_to_id   || null)
   const [defaultBilledName, setDefaultBilledName] = useState<string>(source?.default_billed_to_name || '')
   const [defaultDepotId,    setDefaultDepotId]    = useState<string>(source?.default_depot_id || '')
+  const [defaultZoneKey,    setDefaultZoneKey]    = useState<string>(source?.default_parc_zone_key || '')
   const [displayColor, setDisplayColor] = useState<string>(source?.display_color || '')
   const [groupKey,     setGroupKey]     = useState<string>(source?.group_key     || '')
   const [clientQuery, setClientQuery] = useState('')
@@ -260,6 +263,7 @@ function EditModal({ source, depots, onClose, onSaved }: { source: Source | null
         default_billed_to_name: defaultBilledName || null,
         default_depot_id:       defaultDepotId || null,
         default_depot_name:     defaultDepotId ? (depots.find(d => d.id === defaultDepotId)?.name || null) : null,
+        default_parc_zone_key:  defaultZoneKey || null,
         display_color:          displayColor.trim() || null,
         group_key:              groupKey.trim() || null,
       }
@@ -355,13 +359,37 @@ function EditModal({ source, depots, onClose, onSaved }: { source: Source | null
           <p className="text-ink-faint text-[11px] mb-2">
             Si défini, la mise en parc d'un véhicule de cette source pré-sélectionne ce dépôt. Le dispatcher/chauffeur peut toujours en choisir un autre.
           </p>
-          <select value={defaultDepotId} onChange={e => setDefaultDepotId(e.target.value)}
+          <select value={defaultDepotId} onChange={e => {
+              const newDepot = e.target.value
+              setDefaultDepotId(newDepot)
+              // Reset la zone si elle n'appartient plus au dépôt choisi.
+              if (defaultZoneKey) {
+                const z = zones.find(z => z.key === defaultZoneKey)
+                if (newDepot && z && z.depot_id && z.depot_id !== newDepot) setDefaultZoneKey('')
+              }
+            }}
             className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand">
             <option value="">— Aucun (choix manuel à chaque fois)</option>
             {depots.map(d => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
+
+          {/* Zone par défaut : filtrée sur le dépôt choisi (sinon toutes). */}
+          <label className="block text-ink-muted text-xs mb-1 mt-3">Zone par défaut dans ce parc</label>
+          <select value={defaultZoneKey} onChange={e => setDefaultZoneKey(e.target.value)}
+            disabled={!defaultDepotId}
+            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand disabled:opacity-50">
+            <option value="">— Aucune (choix manuel à chaque fois)</option>
+            {zones
+              .filter(z => !defaultDepotId || !z.depot_id || z.depot_id === defaultDepotId)
+              .map(z => (
+                <option key={z.key} value={z.key}>{z.label || z.key}</option>
+              ))}
+          </select>
+          {!defaultDepotId && (
+            <p className="text-ink-faint text-[11px] mt-1">Choisis d'abord un parc pour pouvoir fixer une zone.</p>
+          )}
         </div>
 
         <div>

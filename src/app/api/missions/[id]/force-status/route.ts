@@ -95,15 +95,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .maybeSingle()
     m = mRow
 
-    // Olivier 2026-06-18 : si aucun depot n'a ete choisi explicitement, on
-    // applique le parc par defaut configure pour la source (admin /sources).
-    if (!update.depot_depart_id && m?.source) {
+    // Olivier 2026-06-18 : si aucun depot/zone n'a ete choisi explicitement, on
+    // applique le parc + zone par defaut configures pour la source (admin /sources).
+    if ((!update.depot_depart_id || !update.parc_zone_key) && m?.source) {
       const { data: cat } = await sb
         .from('mission_source_catalog')
-        .select('default_depot_id')
+        .select('default_depot_id, default_parc_zone_key')
         .eq('key', m.source)
         .maybeSingle()
-      if (cat?.default_depot_id) update.depot_depart_id = cat.default_depot_id
+      if (!update.depot_depart_id && cat?.default_depot_id) update.depot_depart_id = cat.default_depot_id
+      if (!update.parc_zone_key && cat?.default_parc_zone_key) update.parc_zone_key = cat.default_parc_zone_key
     }
     const hasAddr = !!((m as any)?.redelivery_address || (m as any)?.destination_address)
     if (m && hasAddr && isRemorquage(m.mission_type) && isRelEligibleSource(m.source, (m as any).snc_scenario)) {

@@ -87,6 +87,7 @@ export async function POST(req: Request) {
     default_billed_to_name?: string | null
     default_depot_id?: string | null
     default_depot_name?: string | null
+    default_parc_zone_key?: string | null
     display_color?: string | null
     group_key?: string | null
   }
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
       default_billed_to_name: body.default_billed_to_name ?? null,
       default_depot_id:       body.default_depot_id ?? null,
       default_depot_name:     body.default_depot_name ?? null,
+      default_parc_zone_key:  body.default_parc_zone_key ?? null,
       display_color:          body.display_color || null,
       group_key:              body.group_key || null,
     })
@@ -137,6 +139,7 @@ export async function PATCH(req: Request) {
     default_billed_to_name?: string | null
     default_depot_id?: string | null
     default_depot_name?: string | null
+    default_parc_zone_key?: string | null
     display_color?: string | null
     group_key?: string | null
   }
@@ -152,6 +155,7 @@ export async function PATCH(req: Request) {
   if (body.default_billed_to_name !== undefined) update.default_billed_to_name = body.default_billed_to_name
   if (body.default_depot_id !== undefined)       update.default_depot_id       = body.default_depot_id || null
   if (body.default_depot_name !== undefined)     update.default_depot_name     = body.default_depot_name || null
+  if (body.default_parc_zone_key !== undefined)  update.default_parc_zone_key  = body.default_parc_zone_key || null
   if (body.display_color !== undefined)          update.display_color          = body.display_color || null
   if (body.group_key !== undefined)              update.group_key              = body.group_key || null
 

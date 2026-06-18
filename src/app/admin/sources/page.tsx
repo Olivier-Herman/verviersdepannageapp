@@ -34,11 +34,16 @@ export default async function SourcesPage() {
   const { data: clientLinks } = await sb.from('surcharge_clients').select('key')
   const surchargeSet = new Set((clientLinks || []).map(c => c.key))
 
-  // Liste des dépôts actifs pour le sélecteur "parc par défaut" (Olivier 2026-06-18)
+  // Liste des dépôts actifs + zones pour les sélecteurs "parc par défaut" (Olivier 2026-06-18)
   const { data: depots } = await sb
     .from('depots')
     .select('id, name')
     .eq('active', true)
+    .order('sort_order')
+
+  const { data: zones } = await sb
+    .from('parc_zones')
+    .select('key, label, depot_id')
     .order('sort_order')
 
   const initial = (sources || []).map(s => ({
@@ -47,5 +52,9 @@ export default async function SourcesPage() {
     has_surcharge: surchargeSet.has(s.key),
   }))
 
-  return <SourcesClient initial={initial} depots={(depots || []) as { id: string; name: string }[]} />
+  return <SourcesClient
+    initial={initial}
+    depots={(depots || []) as { id: string; name: string }[]}
+    zones={(zones || []) as { key: string; label: string; depot_id: string | null }[]}
+  />
 }
