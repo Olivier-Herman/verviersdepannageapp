@@ -162,6 +162,8 @@ Si une information est absente, mets null. Ne devine jamais. Sois fidèle au con
 function buildUserPrompt(hint: string, subject: string): string {
   return `${hint}
 
+RÈGLE TRANSPORT / RAPATRIEMENT (PRIORITAIRE, toutes sources) : si le lieu de prise en charge OU le lieu de livraison/dépose est situé HORS BELGIQUE (pays ≠ Belgique — France, Allemagne, Pays-Bas, Luxembourg, etc.), alors mission_type = "transport" (rapatriement), QUELLE QUE SOIT la règle de type de la source. Ne mets "transport" que dans ce cas (un trajet 100% belge n'est jamais "transport").
+
 Sujet email: "${subject}"
 
 Extrais les données de cette mission et retourne ce JSON (null si absent):

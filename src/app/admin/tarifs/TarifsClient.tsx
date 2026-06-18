@@ -93,10 +93,10 @@ interface ExtractedTariff {
   raw_quote:             string
 }
 
-const MISSION_TYPES = ['remorquage', 'depannage', 'trajet_vide', 'parc']
+const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'parc']
 
 const TYPE_LABELS: Record<string, string> = {
-  remorquage: '🚛 Remorquage', depannage: '🔧 Dépannage', trajet_vide: '📍 Trajet vide', parc: '🅿️ Mise en parc',
+  remorquage: '🚛 Remorquage', depannage: '🔧 Dépannage', transport: '🚐 Transport (rapatriement)', trajet_vide: '📍 Trajet vide', parc: '🅿️ Mise en parc',
 }
 
 export default function TarifsClient(props: Props) {
