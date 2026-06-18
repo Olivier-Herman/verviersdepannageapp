@@ -6,6 +6,12 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import MissionDetailClient   from './MissionDetailClient'
 
+// Olivier 2026-06-18 : force le rendu dynamique → la fiche relit toujours la base
+// (sinon, après un re-parse, un reload pouvait servir une version cachée et le
+// champ adresse gardait l'ancienne valeur).
+export const dynamic    = 'force-dynamic'
+export const revalidate = 0
+
 export default async function MissionDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')

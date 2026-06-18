@@ -150,10 +150,20 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
       const { error: uErr } = await sb.from('incoming_missions').update(upd).eq('id', m.id)
       if (uErr) { failed++; errors.push(`${m.id}: ${uErr.message}`) } else {
         reparsed++
-        if (onlyId) sample = {
-          incident_address:    parsed.incident_address ?? null,
-          incident_city:       parsed.incident_city ?? null,
-          destination_address: parsed.destination_address ?? null,
+        // Olivier 2026-06-18 : on relit la ligne pour renvoyer la valeur RÉELLEMENT
+        // en base (pas juste ce que le LLM a renvoyé) — diagnostic fiable du
+        // "ça affiche encore l'ancienne adresse".
+        if (onlyId) {
+          const { data: after } = await sb
+            .from('incoming_missions')
+            .select('incident_address, incident_city, destination_address')
+            .eq('id', m.id)
+            .maybeSingle()
+          sample = {
+            incident_address:    after?.incident_address ?? parsed.incident_address ?? null,
+            incident_city:       after?.incident_city ?? parsed.incident_city ?? null,
+            destination_address: after?.destination_address ?? parsed.destination_address ?? null,
+          }
         }
       }
     } catch (e: any) {
