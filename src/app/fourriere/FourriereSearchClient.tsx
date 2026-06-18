@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
+import { parcZoneLabel } from '@/lib/parc/zone-label'
 import { Search, Loader2, X, MapPin, Calendar, FileText, Car, Hash, Building2, AlertTriangle, MapIcon, ScanLine, Trash2 } from 'lucide-react'
 import VehicleFicheSheet from './VehicleFicheSheet'
 import DepotsTilesModal from './DepotsTilesModal'
@@ -304,7 +305,7 @@ function ResultCard({ r, onOpen }: { r: SearchResult; onOpen: () => void }) {
             {isOut && <span className="text-xs px-1.5 py-0.5 bg-ink/10 text-ink-muted rounded">Sortie</span>}
             {!isOut && r.parc_zone_key && (
               <span className="text-xs px-1.5 py-0.5 bg-brand/15 text-brand rounded font-semibold">
-                {r.parc_zone_key}
+                {parcZoneLabel(r.parc_zone_key)}
                 {r.parc_row_number != null && r.parc_slot_index != null && (
                   <span className="ml-1 font-mono opacity-70">R{r.parc_row_number}·E{r.parc_slot_index}</span>
                 )}

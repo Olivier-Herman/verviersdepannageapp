@@ -25,6 +25,7 @@ import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturer
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
+import { parcZoneLabel } from '@/lib/parc/zone-label'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2452,7 +2453,7 @@ export default function MissionDetailClient({
                     Position parc
                   </span>
                   <span className="text-lg font-bold text-ink truncate">
-                    Zone <span className="font-mono">{parcZone}</span>
+                    Zone <span className={parcZone === 'K' ? '' : 'font-mono'}>{parcZoneLabel(parcZone)}</span>
                     {parcRow != null && (
                       <> · Rang <span className="font-mono">{parcRow}</span></>
                     )}

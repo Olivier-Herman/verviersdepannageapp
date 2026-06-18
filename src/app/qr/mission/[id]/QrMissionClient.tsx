@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Eye, Truck, Loader2, AlertTriangle, CheckCircle2, Building2, AlertOctagon, Printer, ExternalLink, MapPin, Calendar, FileText } from 'lucide-react'
 import { FOURRIERE_ZONES, SCRATCH_STATE_ID } from '@/lib/fourriere'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
+import { parcZoneLabel } from '@/lib/parc/zone-label'
 
 interface Mission {
   id:                 string
@@ -277,7 +278,7 @@ export default function QrMissionClient({
             </div>
             {mission.parc_zone_key && (
               <div className="flex-shrink-0 text-center">
-                <div className="text-3xl font-display font-extrabold text-brand">{mission.parc_zone_key}</div>
+                <div className="text-2xl font-display font-extrabold text-brand">{parcZoneLabel(mission.parc_zone_key)}</div>
                 <div className="text-[10px] uppercase tracking-wider text-ink-faint">Zone</div>
               </div>
             )}

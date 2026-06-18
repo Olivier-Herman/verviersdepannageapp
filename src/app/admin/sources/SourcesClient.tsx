@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Trash2, X, Edit2, Eye, EyeOff, ChevronRight } from 'lucide-react'
+import { parcZoneLabel } from '@/lib/parc/zone-label'
 
 interface Source {
   key:           string
@@ -154,7 +155,7 @@ export default function SourcesClient({ initial, depots = [], zones = [] }: { in
                 </td>
                 <td className="px-4 py-2">
                   {s.default_depot_name
-                    ? <span className="text-ink text-xs">🅿️ {s.default_depot_name}{s.default_parc_zone_key ? ` · zone ${s.default_parc_zone_key}` : ''}</span>
+                    ? <span className="text-ink text-xs">🅿️ {s.default_depot_name}{s.default_parc_zone_key ? ` · zone ${parcZoneLabel(s.default_parc_zone_key)}` : ''}</span>
                     : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
                         — à configurer
                       </button>
@@ -384,7 +385,7 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
             {zones
               .filter(z => !defaultDepotId || !z.depot_id || z.depot_id === defaultDepotId)
               .map(z => (
-                <option key={z.key} value={z.key}>{z.label || z.key}</option>
+                <option key={z.key} value={z.key}>{parcZoneLabel(z.key)}</option>
               ))}
           </select>
           {!defaultDepotId && (
