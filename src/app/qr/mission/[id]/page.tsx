@@ -20,6 +20,7 @@ import { getServerSession }   from 'next-auth'
 import { authOptions }        from '@/lib/auth'
 import { createAdminClient }  from '@/lib/supabase'
 import QrMissionClient        from './QrMissionClient'
+import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,7 +84,11 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   const isRemRelMission = mission.mission_type === 'REM+REL'
   const isPriveDepot = mission.source === 'prive'
                     && (mission.parc_zone_key === 'K' || mission.parc_zone_key === 'Transit')
-  const isElligibleForRel = isParked && (isRemRelMission || isSiabisRemDepot || isPriveDepot)
+  // Olivier 2026-06-18 : cas general — tout véhicule en zone K (file relivraison)
+  // dont la source est éligible REL peut être relivré, même si non converti REM+REL.
+  const isZoneKRelEligible = mission.parc_zone_key === 'K'
+                          && isRelEligibleSource(mission.source, mission.snc_scenario)
+  const isElligibleForRel = isParked && (isRemRelMission || isSiabisRemDepot || isPriveDepot || isZoneKRelEligible)
 
   // Determine roles + modules + odoo_api_key du scanneur pour les permissions par fonction.
   const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)

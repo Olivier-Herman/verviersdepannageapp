@@ -20,6 +20,7 @@ import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { createRelivraisonMission }  from '@/lib/missions/create-relivraison'
 import { sendPushToUser }            from '@/lib/push'
+import { isRelEligibleSource }       from '@/lib/missions/rel-eligible'
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -44,18 +45,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const sb = createAdminClient()
 
-  // 1. Lecture mission parent
+  // 1. Lecture mission parent.
+  // Olivier 2026-06-18 : select('*') au lieu d'une liste explicite. Avant, la
+  // liste référençait une colonne potentiellement absente (destination_city) →
+  // PostgREST renvoyait une erreur → le code affichait "Mission introuvable" au
+  // chauffeur dès qu'il tentait de créer la REL au scan (le cas où la REL était
+  // pré-créée n'appelle pas cette route, d'où "ça marche si je l'ai créée moi-même").
   const { data: parent, error: pErr } = await sb
     .from('incoming_missions')
-    .select(`
-      id, external_id, source, mission_type, status, snc_scenario,
-      parc_zone_key,
-      vehicle_plate, destination_address, destination_city, redelivery_address,
-      incident_address, incident_lat, incident_lng
-    `)
+    .select('*')
     .eq('id', params.id)
-    .single()
-  if (pErr || !parent) {
+    .maybeSingle()
+  if (pErr) {
+    console.error('[qr-rel-action] lecture mission échouée:', pErr.message)
+    return NextResponse.json({ ok: false, error: `Erreur lecture mission : ${pErr.message}` }, { status: 500 })
+  }
+  if (!parent) {
     return NextResponse.json({ ok: false, error: 'Mission introuvable' }, { status: 404 })
   }
 
@@ -69,7 +74,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
                         && parent.snc_scenario === 'rem_depot'
   const isPriveDepot = parent.source === 'prive'
                     && (parent.parc_zone_key === 'K' || parent.parc_zone_key === 'Transit')
-  if (!isParked || !(isRemRel || isSiabisRemDepot || isPriveDepot)) {
+  // Olivier 2026-06-18 : cas general. Tout vehicule parque en zone K (= file
+  // relivraison) dont la source est eligible REL doit pouvoir generer la REL au
+  // scan, meme si le type n'a pas ete converti en REM+REL (ex: assistance dont
+  // l'adresse de relivraison vient d'etre saisie). Avant : seuls REM+REL / SNC
+  // rem_depot / prive etaient acceptes -> "Mission non eligible" au scan.
+  const isZoneKRelEligible = parent.parc_zone_key === 'K'
+                          && isRelEligibleSource(parent.source, parent.snc_scenario)
+  if (!isParked || !(isRemRel || isSiabisRemDepot || isPriveDepot || isZoneKRelEligible)) {
     return NextResponse.json({
       ok: false,
       error: `Mission non eligible pour relivraison (statut=${parent.status}, type=${parent.mission_type})`,
