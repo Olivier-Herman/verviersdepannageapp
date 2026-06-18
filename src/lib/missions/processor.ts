@@ -722,6 +722,12 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     let existingMissionId: string | null = null
     let existingKazeJobId: string | null = null
 
+    // Olivier 2026-06-18 : PRIORITÉ KAZE robuste. On ne prend plus seulement la
+    // fiche la plus récente — on récupère TOUS les candidats du même dossier et,
+    // si l'un d'eux est une mission Kaze (kaze_job_id présent), on la choisit en
+    // priorité quel que soit l'ordre d'arrivée. Sans ça, un mail Ethias arrivé
+    // après la fiche Kaze (ou une 2e fiche plus récente) faisait rater la
+    // détection Kaze → doublon Ethias visible au dispatch.
     const findExisting = async (apply: (q: any) => any) => {
       let q = supabase
         .from('incoming_missions')
@@ -729,8 +735,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         .not('id', 'eq', placeholderId || '')
         .not('status', 'in', '("ignored","cancelled","completed")')
       q = apply(q)
-      const { data } = await q.order('created_at', { ascending: false }).limit(1)
-      return (data && data[0]) || null
+      const { data } = await q.order('created_at', { ascending: false })
+      const rows = data || []
+      return rows.find((r: any) => r.kaze_job_id) || rows[0] || null
     }
 
     if (dossierGroup) {
@@ -764,10 +771,17 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     if (existingMissionId && existingKazeJobId) {
       console.log(`[Processor] Dossier ${dossierGroup} deja synchronise via Kaze (job ${existingKazeJobId}) — skip update email`)
       await markAsRead(token, messageId)
+      // Olivier 2026-06-18 : SUPPRIMER le placeholder. Avant, le skip retournait
+      // sans nettoyer → le placeholder restait en base comme fiche fantôme
+      // "unknown / PROCESSING_" visible au dispatch. C'est la source des doublons
+      // "unknown" qu'on voyait apparaître à côté de la mission Kaze.
+      if (placeholderId && placeholderId !== existingMissionId) {
+        await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      }
       await supabase.from('mission_logs').insert({
         mission_id: existingMissionId,
         action:     'email_skipped_kaze_priority',
-        notes:      `Mail ${source.toUpperCase()} ignoré : mission deja synchronisée via Kaze`,
+        notes:      `Mail ${source.toUpperCase()} ignoré : mission deja synchronisée via Kaze (priorité Kaze)`,
         metadata:   { source_email_id: messageId, kaze_job_id: existingKazeJobId, from: fromEmail },
       })
       return { status: 'duplicate', externalId: parsed.external_id, source }
