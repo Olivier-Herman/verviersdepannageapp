@@ -108,21 +108,42 @@ export async function importKazeJob(
     existingId = byKaze.id
     action     = 'update_by_kaze_id'
   } else if (mapped.dossier_number) {
-    // 2. Recherche par dossier_number sur sources Ethias/Vivium/pv_assistance/kaze
-    //    (la meme mission peut etre arrivee d abord par mail Ethias/Vivium puis
-    //    par Kaze — on relie en mettant a jour la ligne mail avec kaze_job_id)
-    const { data: byDossier } = await sb
+    // 2. Recherche de TOUS les doublons du meme dossier (la meme mission IMA
+    //    arrive souvent en plusieurs exemplaires : mail Ethias/Vivium/P&V +
+    //    placeholder 'unknown' + webhook Kaze). Olivier 2026-06-18 : on veut
+    //    qu'il ne reste QUE la mission Kaze. On garde 1 survivant (de preference
+    //    deja Kaze, sinon celui le plus avance par le chauffeur — on ne casse pas
+    //    son travail), on le passe en Kaze, et on FUSIONNE les autres (ignored).
+    const { data: cands } = await sb
       .from('incoming_missions')
-      .select('id, source')
+      .select('id, source, status, kaze_job_id, assigned_to, received_at')
       .eq('dossier_number', mapped.dossier_number)
-      .in('source', ['ethias', 'vivium', 'pv_assistance', 'kaze'])
-      .order('received_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .in('source', ['ethias', 'vivium', 'pv_assistance', 'kaze', 'unknown'])
+      .not('status', 'in', '("cancelled","ignored","completed","to_invoice")')
 
-    if (byDossier?.id) {
-      existingId = byDossier.id
+    if (cands && cands.length) {
+      const STATUS_RANK: Record<string, number> = {
+        in_progress: 5, delivering: 5, assigned: 4, accepted: 4, parked: 3, dispatching: 2, new: 1,
+      }
+      const score = (m: any) =>
+        (m.kaze_job_id === kazeJobId ? 1000 : 0)
+        + (m.assigned_to ? 100 : 0)
+        + (STATUS_RANK[m.status] || 0)
+      const sorted = [...cands].sort((a, b) => score(b) - score(a))
+      existingId = sorted[0].id
       action     = 'update_by_dossier'
+
+      for (const dup of sorted.slice(1)) {
+        await sb.from('incoming_missions')
+          .update({ status: 'ignored', updated_at: new Date().toISOString() })
+          .eq('id', dup.id)
+        await sb.from('mission_logs').insert({
+          mission_id: dup.id,
+          action:     'merged',
+          notes:      `Doublon fusionné dans la mission Kaze (dossier ${mapped.dossier_number}) — source d'origine ${dup.source}`,
+          metadata:   { merged_into: existingId, kaze_job_id: kazeJobId, from_source: dup.source },
+        }).then(() => {}, () => {})
+      }
     }
   }
 
