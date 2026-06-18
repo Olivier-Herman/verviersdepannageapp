@@ -346,6 +346,11 @@ function ReparseButton({ missionId }: { missionId: string }) {
         setMsg(j.errors?.[0] || 'Aucun changement (pas de contenu brut exploitable ?)')
         setBusy(false); return
       }
+      // Succès : on affiche l'adresse re-parsée puis on rafraîchit la fiche.
+      const s = j.sample
+      if (s) setMsg(`✅ Re-parsé — intervention : ${[s.incident_address, s.incident_city].filter(Boolean).join(', ') || '—'}`)
+      else   setMsg('✅ Re-parsé.')
+      setBusy(false)
       router.refresh()
     } catch (e: any) { setMsg(e.message); setBusy(false) }
   }
@@ -353,9 +358,9 @@ function ReparseButton({ missionId }: { missionId: string }) {
     <div className="px-5 pb-4 border-t pt-3">
       <button onClick={run} disabled={busy}
         className="text-xs px-3 py-1.5 bg-brand/10 hover:bg-brand/20 border border-brand/30 rounded-lg text-brand font-semibold disabled:opacity-50 transition">
-        {busy ? '⏳ Re-parsing…' : '🔄 Re-parser depuis le contenu brut'}
+        {busy ? '⏳ Re-parsing… (≈10s)' : '🔄 Re-parser depuis le contenu brut'}
       </button>
-      {msg && <p className="text-amber-700 text-xs mt-2">{msg}</p>}
+      {msg && <p className={`text-xs mt-2 ${msg.startsWith('✅') ? 'text-green-700' : 'text-amber-700'}`}>{msg}</p>}
     </div>
   )
 }

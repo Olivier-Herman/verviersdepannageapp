@@ -20,6 +20,7 @@ export interface ReprocessResult {
   processed: number
   more:      boolean
   errors:    string[]
+  sample?:   { incident_address: string | null; incident_city: string | null; destination_address: string | null } | null
 }
 
 const REPROCESS_FILTER = 'status.eq.parse_error,source.eq.unknown,external_id.like.PROCESSING_%,external_id.like.UNKNOWN_SENDER_%'
@@ -95,6 +96,9 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
   const { processEmailMessage } = await import('./processor')
   let reparsed = 0, refetched = 0, failed = 0
   const errors: string[] = []
+  // Olivier 2026-06-18 : pour une action ciblée (onlyId), on renvoie l'adresse
+  // d'intervention re-parsée afin que la fiche affiche immédiatement le résultat.
+  let sample: { incident_address: string | null; incident_city: string | null; destination_address: string | null } | null = null
 
   for (const m of candidates) {
     const raw = (m.raw_content || '').trim()
@@ -144,12 +148,19 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
       // rejet timestamptz qui ferait échouer tout l'UPDATE).
       if (parsed.incident_at && !isNaN(Date.parse(String(parsed.incident_at)))) upd.incident_at = parsed.incident_at
       const { error: uErr } = await sb.from('incoming_missions').update(upd).eq('id', m.id)
-      if (uErr) { failed++; errors.push(`${m.id}: ${uErr.message}`) } else reparsed++
+      if (uErr) { failed++; errors.push(`${m.id}: ${uErr.message}`) } else {
+        reparsed++
+        if (onlyId) sample = {
+          incident_address:    parsed.incident_address ?? null,
+          incident_city:       parsed.incident_city ?? null,
+          destination_address: parsed.destination_address ?? null,
+        }
+      }
     } catch (e: any) {
       failed++; errors.push(`${m.id}: ${e.message?.slice(0, 120)}`)
     }
   }
 
   const processed = (rows || []).length
-  return { reparsed, refetched, failed, processed, more: !onlyId && processed >= BATCH, errors: errors.slice(0, 10) }
+  return { reparsed, refetched, failed, processed, more: !onlyId && processed >= BATCH, errors: errors.slice(0, 10), sample }
 }
