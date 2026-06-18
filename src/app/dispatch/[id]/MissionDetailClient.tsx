@@ -324,6 +324,42 @@ function AddressReviewModal({
   )
 }
 
+// Olivier 2026-06-18 : re-parse manuel d'une fiche depuis son contenu brut
+// (ex: corriger une adresse Touring mal extraite) SANS changer son statut ni
+// son assignation. Réservé dispatch/admin/fourrière (cf /api/missions/reprocess).
+function ReparseButton({ missionId }: { missionId: string }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [msg,  setMsg]  = useState<string | null>(null)
+  const run = async () => {
+    if (!confirm('Re-parser cette fiche depuis le contenu brut ?\nLes champs extraits (adresse, véhicule…) sont recalculés. Le statut et l\'assignation ne changent pas.')) return
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch('/api/missions/reprocess', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id: missionId }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      if ((j.reparsed || 0) < 1 && (j.refetched || 0) < 1) {
+        setMsg(j.errors?.[0] || 'Aucun changement (pas de contenu brut exploitable ?)')
+        setBusy(false); return
+      }
+      router.refresh()
+    } catch (e: any) { setMsg(e.message); setBusy(false) }
+  }
+  return (
+    <div className="px-5 pb-4 border-t pt-3">
+      <button onClick={run} disabled={busy}
+        className="text-xs px-3 py-1.5 bg-brand/10 hover:bg-brand/20 border border-brand/30 rounded-lg text-brand font-semibold disabled:opacity-50 transition">
+        {busy ? '⏳ Re-parsing…' : '🔄 Re-parser depuis le contenu brut'}
+      </button>
+      {msg && <p className="text-amber-700 text-xs mt-2">{msg}</p>}
+    </div>
+  )
+}
+
 function RelivrerButton({
   missionId, initialRedeliveryAddress, originalDestination, parentSource, gmKey,
 }: {
@@ -3351,6 +3387,10 @@ export default function MissionDetailClient({
                   <pre className="px-5 pb-4 text-xs text-ink-secondary font-mono overflow-x-auto whitespace-pre-wrap border-t border pt-3 max-h-96 overflow-y-auto">
                     {initialMission.raw_content}
                   </pre>
+                )}
+                {showRawContent && initialMission.raw_content
+                  && (['admin', 'superadmin', 'dispatcher'].includes(userRole) || userModules.includes('fourriere')) && (
+                  <ReparseButton missionId={initialMission.id} />
                 )}
               </div>
 

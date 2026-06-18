@@ -63,15 +63,19 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
 
   let q = sb
     .from('incoming_missions')
-    .select('id, source, source_format, raw_content, external_id, source_email_id, received_at')
-    .or(REPROCESS_FILTER)
-    .order('received_at', { ascending: false })
+    .select('id, status, source, source_format, raw_content, external_id, source_email_id, received_at')
   if (onlyId) {
+    // Olivier 2026-06-18 : action manuelle ciblée sur UNE fiche → on autorise le
+    // re-parsing quel que soit le statut (pas seulement les erreurs). Permet de
+    // re-parser une fiche "réussie" mais mal extraite (ex: adresse Touring).
     q = q.eq('id', onlyId)
   } else {
     // Lot auto : seulement les blocages récents (pas de re-parsing en boucle
     // de vieux contenus non parsables).
-    q = q.gte('received_at', new Date(Date.now() - REPROCESS_WINDOW_HOURS * 3600_000).toISOString())
+    q = q
+      .or(REPROCESS_FILTER)
+      .gte('received_at', new Date(Date.now() - REPROCESS_WINDOW_HOURS * 3600_000).toISOString())
+      .order('received_at', { ascending: false })
   }
   const { data: rows, error } = await q.limit(BATCH + 4)  // marge pour filtrer les in-flight
   if (error) throw new Error(error.message)
@@ -118,11 +122,18 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
         { textContent: raw, sourceFormat: (m.source_format as any) || 'email_plain', rawContent: raw },
         'Reprocess parse_error',
       )
+      // Olivier 2026-06-18 : on ne remet 'new' QUE si la fiche était en erreur.
+      // Re-parser une fiche déjà avancée (parked, to_invoice, dispatching…) ne
+      // doit PAS la renvoyer en "En commande" — on garde son statut, on ne
+      // rafraîchit que les champs extraits (ex: corriger l'adresse).
+      const wasError = m.status === 'parse_error'
+        || String(m.external_id || '').startsWith('PROCESSING_')
+        || String(m.external_id || '').startsWith('UNKNOWN_')
       const upd: Record<string, any> = {
-        status:           'new',
         parse_confidence: parsed.confidence ?? 0.5,
         updated_at:       new Date().toISOString(),
       }
+      if (wasError) upd.status = 'new'
       for (const f of ['dossier_number','mission_type','incident_type','incident_description',
         'client_name','client_phone','client_address','vehicle_plate','vehicle_brand','vehicle_model',
         'vehicle_vin','vehicle_fuel','vehicle_gearbox','incident_address','incident_city',
