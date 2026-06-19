@@ -69,6 +69,22 @@ export async function fetchAllianzAssignmentByNumber(assignmentNumber: string): 
   return null
 }
 
+/**
+ * Détail complet d'une affectation (plus riche que la liste : VIN, km, couleur,
+ * assistanceCaseNumber, adresses sous jobAssignmentCustomer). Renvoie null si KO.
+ */
+export async function fetchAllianzAssignmentDetail(assignmentId: string): Promise<any | null> {
+  if (!assignmentId) return null
+  try {
+    const token = await getValidAllianzToken()
+    const res = await fetch(`${BASE_URL}/hexalite-job-monitoring/v1.0/assignments/${assignmentId}`, {
+      headers: headers(token), signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
 function fmtAddress(x: any): string | null {
   if (!x) return null
   const line1 = [x.street, x.streetNumber].filter(Boolean).join(' ')
@@ -86,6 +102,7 @@ export interface AllianzMapped {
     vehicle_plate?:        string | null
     vehicle_brand?:        string | null
     vehicle_model?:        string | null
+    vehicle_vin?:          string | null
     incident_address?:     string | null
     incident_city?:        string | null
     incident_country?:     string | null
@@ -105,8 +122,12 @@ export interface AllianzMapped {
  *   (règle rapatriement), sinon 'remorquage' si benefitIcon = iconTowing.
  */
 export function mapAllianzAssignment(a: any): AllianzMapped {
-  const inc = a?.breakdownAddress || {}
-  const dst = a?.repairShopAddress || {}
+  // Gère les 2 formes : LISTE (breakdownAddress/customerVehicle* au 1er niveau)
+  // et DÉTAIL (jobAssignmentCustomer.breakdownAddress, jobAssignmentVehicle.*).
+  const cust = a?.jobAssignmentCustomer || {}
+  const veh  = a?.jobAssignmentVehicle  || {}
+  const inc = a?.breakdownAddress  || cust.breakdownAddress  || {}
+  const dst = a?.repairShopAddress || cust.repairShopAddress || {}
   const incCountry = (inc.countryCode || '').toUpperCase() || null
   const dstCountry = (dst.countryCode || '').toUpperCase() || null
   const horsBelg = (incCountry && incCountry !== 'BE') || (dstCountry && dstCountry !== 'BE')
@@ -121,9 +142,10 @@ export function mapAllianzAssignment(a: any): AllianzMapped {
     hex_assignment_id:  a?.assignmentId || null,
     hex_status:         a?.currentStatus || null,
     fields: {
-      vehicle_plate:       a?.customerLicensePlate || null,
-      vehicle_brand:       a?.customerVehicleBrand || null,
-      vehicle_model:       a?.customerVehicleModel || null,
+      vehicle_plate:       a?.customerLicensePlate || veh.vehicleLicensePlate || null,
+      vehicle_brand:       a?.customerVehicleBrand || veh.vehicleBrand || null,
+      vehicle_model:       a?.customerVehicleModel || veh.vehicleModel || null,
+      vehicle_vin:         veh.vehicleVin || null,
       incident_address:    fmtAddress(inc),
       incident_city:       inc.city || null,
       incident_country:    incCountry,
@@ -155,21 +177,26 @@ export async function completeAllianzMissionFromApi(
   const sb = createAdminClient()
   const { data: m } = await sb
     .from('incoming_missions')
-    .select('id, source, dossier_number, external_id, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, incident_country, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, remarks_general, mission_type')
+    .select('id, source, dossier_number, external_id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, incident_address, incident_city, incident_country, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, remarks_general, mission_type')
     .eq('id', missionId)
     .maybeSingle()
   if (!m) return { ok: false, filled: [], reason: 'mission introuvable' }
 
   // Le n° d'affectation Allianz est stocké dans dossier_number (repli external_id).
-  const assignmentNumber = (m.dossier_number || m.external_id || '').trim()
+  // Olivier 2026-06-19 : dossier_number peut être au format "ASSIGNMENT / CASE"
+  // (ex. "39261703745447 / 202602698840") → on ne garde que le n° d'affectation
+  // (avant le "/"), qui est la clé de recherche Hexalite.
+  const assignmentNumber = (m.dossier_number || m.external_id || '').split('/')[0].trim()
   if (!assignmentNumber) return { ok: false, filled: [], reason: 'pas de n° affectation' }
 
-  let raw: any
-  try { raw = await fetchAllianzAssignmentByNumber(assignmentNumber) }
+  let listItem: any
+  try { listItem = await fetchAllianzAssignmentByNumber(assignmentNumber) }
   catch (e: any) { return { ok: false, filled: [], reason: e?.message || 'fetch KO' } }
-  if (!raw) return { ok: false, filled: [], reason: 'affectation introuvable côté Hexalite' }
+  if (!listItem) return { ok: false, filled: [], reason: 'affectation introuvable côté Hexalite' }
 
-  const mapped = mapAllianzAssignment(raw)
+  // Détail (plus riche : VIN, km, adresses complètes) ; fallback sur la liste.
+  const detail = listItem.assignmentId ? await fetchAllianzAssignmentDetail(listItem.assignmentId) : null
+  const mapped = mapAllianzAssignment(detail || listItem)
   const isEmpty = (v: any) => v === null || v === undefined || v === ''
 
   const update: Record<string, any> = {}
