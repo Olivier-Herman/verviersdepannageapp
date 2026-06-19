@@ -97,6 +97,15 @@ function allianzLineAmount(tariffName: string, distance: number, rates: AllianzR
   return null   // Siabis / Siabis Majoré / inconnu → non calculable
 }
 
+/** Lignes tarifaires Allianz à IGNORER (ni facturées, ni bloquantes pour la
+ *  clôture). Olivier 2026-06-19 : "Réparation pneu" est renvoyée par Allianz pour
+ *  le service R même quand l'intervention n'a rien à voir (ex. batterie) → on
+ *  facture "Réparé sur place" et on ignore cette ligne. */
+function isIgnoredAllianzLine(tariffName: string): boolean {
+  const n = (tariffName || '').toLowerCase()
+  return /r[ée]paration\s+pneu/.test(n)
+}
+
 /** Géocode une adresse via Google → coords + composants (pour finalDestination). */
 async function geocodeAddress(address: string): Promise<
   { lat: number; lng: number; street?: string; streetNumber?: string; zipCode?: string; city?: string; formatted?: string } | null
@@ -383,6 +392,7 @@ export async function closeAllianzAssignment(input: CloseInput): Promise<CloseRe
     // Une ligne non calculable (ex "Siabis") => on la signale (clôture manuelle).
     const nonComputable: string[] = []
     const bills = tariffs.filter(t => t.self).map(t => {
+      if (isIgnoredAllianzLine(t.tariffName)) return null   // ligne ignorée : ni bill, ni blocage
       const calc = allianzLineAmount(t.tariffName, declaredDistance, rates)
       if (!calc) { nonComputable.push(t.tariffName || '?'); return null }
       return tariffToBill(t, calc.amount, calc.qty)
