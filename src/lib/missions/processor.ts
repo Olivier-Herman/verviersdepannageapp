@@ -696,14 +696,43 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     }
 
     // Olivier 2026-06-19 : le mail Touring « Checklist Repatriation groupages »
-    // est un document ANNEXE (checklist sans véhicule ni adresses — les vraies
-    // données arrivent dans un second mail de remorquage avec un autre n° de
-    // dossier). On l'ignore pour ne pas créer une fiche "rapatriement" vide.
+    // est un document ANNEXE (pas de véhicule/adresses — les vraies données
+    // arrivent dans le mail de REMORQUAGE du MÊME dossier). On NE crée PAS de
+    // fiche et on N'ÉCRASE PAS la mission ; on ANNEXE le checklist aux remarques
+    // de la mission remorquage (rapprochée par n° dossier) pour que le chauffeur
+    // y ait accès.
     if (source === 'touring' && /repatriation\s+groupages|checklist\s+repatriation/i.test(content.textContent || content.rawContent || '')) {
-      console.log('[Processor] Touring checklist Repatriation groupages — ignoré (doc annexe)')
+      const txt = content.textContent || ''
+      const dMatch = txt.match(/File Number\s*\|?\s*([A-Z0-9]{6,})/i) || txt.match(/\b(20\d{2}[A-Z]{2}\d{5,7})\b/)
+      const dossier = dMatch ? dMatch[1].trim() : null
+      // Nettoie le RTF en texte lisible (retire l'entête de contrôle TX_RTF32).
+      const clean = txt.split('\n')
+        .filter(l => !/TX_RTF32|shapeType|fFlip|fillColor|lineWidth|fLayoutInCell|posrelh|dxWrap|fBackground/i.test(l))
+        .map(l => l.replace(/\s*\|\s*/g, ' ').replace(/\s+/g, ' ').trim())
+        .filter(Boolean).join('\n').slice(0, 2000)
+      const MARK = '— ℹ️ Checklist Touring (rapatriement) —'
+      if (dossier) {
+        const { data: ex } = await supabase
+          .from('incoming_missions')
+          .select('id, remarks_general')
+          .eq('dossier_number', dossier)
+          .not('status', 'in', '("ignored","cancelled")')
+          .order('created_at', { ascending: false })
+          .limit(1)
+        const target = ex && ex[0]
+        if (target && !String(target.remarks_general || '').includes(MARK)) {
+          const merged = [target.remarks_general, `${MARK}\n${clean}`].filter(Boolean).join('\n\n')
+          await supabase.from('incoming_missions').update({ remarks_general: merged, updated_at: new Date().toISOString() }).eq('id', target.id)
+          await supabase.from('mission_logs').insert({
+            mission_id: target.id, action: 'note',
+            notes: 'Checklist Touring rapatriement annexée aux remarques',
+          }).then(() => {}, () => {})
+          console.log(`[Processor] Checklist Touring annexée aux remarques de la mission (dossier ${dossier})`)
+        }
+      }
       if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
       await markAsRead(token, messageId)
-      return { status: 'skipped', reason: 'Touring checklist Repatriation groupages (doc annexe ignoré)' }
+      return { status: 'skipped', reason: 'Touring checklist annexé aux remarques (pas de fiche créée)' }
     }
 
     // Parser avec Claude
