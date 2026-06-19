@@ -8,7 +8,7 @@ import AmbientBackground from '@/components/AmbientBackground'
 interface Vd {
   id: string; mission_number: number | null; external_id: string | null
   source: string | null; status: string | null; mission_type: string | null
-  destination_address: string | null; received_at: string | null
+  destination_address: string | null; destination_lat: number | null; destination_lng: number | null; received_at: string | null
 }
 
 // Type de service Allianz (providedService) + libellé
@@ -115,8 +115,15 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
       }
       if (row.vdsoft) {
         body.distanceKm  = km ?? undefined
-        // Destination seulement pour le remorquage (T).
-        if (providedService === 'T' && dest) body.destination = { name: dest, countryCode: 'BE', countryName: 'Belgique' }
+        // Destination seulement pour le remorquage (T). On envoie les
+        // coordonnées déjà connues (filet API) → la clôture les utilise
+        // directement au lieu de re-géocoder le nom via Google (qui échoue
+        // souvent sur un nom commercial de garage). Olivier 2026-06-19.
+        if (providedService === 'T' && dest) body.destination = {
+          name: dest, countryCode: 'BE', countryName: 'Belgique',
+          latitude:  row.vdsoft.destination_lat  ?? undefined,
+          longitude: row.vdsoft.destination_lng  ?? undefined,
+        }
       } else if (row.towsoft) {
         body.towsoftNum     = row.towsoft.towsoft_num   // serveur récupère distance + destination
         body.plate          = row.plate                 // pour regrouper les fiches du même dossier
