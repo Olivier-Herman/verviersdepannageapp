@@ -709,11 +709,46 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       const txt = content.textContent || ''
       const dMatch = txt.match(/File Number\s*\|?\s*([A-Z0-9]{6,})/i) || txt.match(/\b(20\d{2}[A-Z]{2}\d{5,7})\b/)
       const dossier = dMatch ? dMatch[1].trim() : null
-      // Nettoie le RTF en texte lisible (retire l'entête de contrôle TX_RTF32).
-      const clean = txt.split('\n')
-        .filter(l => !/TX_RTF32|shapeType|fFlip|fillColor|lineWidth|fLayoutInCell|posrelh|dxWrap|fBackground/i.test(l))
-        .map(l => l.replace(/\s*\|\s*/g, ' ').replace(/\s+/g, ' ').trim())
-        .filter(Boolean).join('\n').slice(0, 2000)
+
+      // Olivier 2026-06-19 : RÉSUMÉ STRUCTURÉ LISIBLE du checklist (au lieu du
+      // pavé RTF brut). On extrait les points actionnables pour le chauffeur.
+      const lines = txt.split('\n')
+      const cell = (j: number) => (lines[j] || '').replace(/\|/g, '').trim()
+      // checkbox yes/no : le "X" est dans la cellule juste avant l'option cochée.
+      const yn = (label: string): boolean | null => {
+        const i = lines.findIndex(l => l.toLowerCase().includes(label.toLowerCase()))
+        if (i < 0) return null
+        for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
+          const c = cell(j).toUpperCase()
+          if (c === 'YES' && cell(j - 1).toUpperCase() === 'X') return true
+          if (c === 'NO'  && cell(j - 1).toUpperCase() === 'X') return false
+        }
+        return null
+      }
+      const gard = (txt.match(/Parking\/Gardiennage[\s|]*amount:[\s|]*([0-9][^\n|]*)/i) || [])[1]?.trim()
+      const rollable = yn('Vehicle is rollable')
+      const wheels   = yn('wheels are blocked')
+      const steering = yn('steering is blocked')
+      const keys     = yn('key(s) VHL in garage')
+      const doc      = yn('Presence of vehicle document')
+      const crane    = yn('equipped (clark or crane) to help with loading')
+      const parts: string[] = []
+      if (gard)                parts.push(`🅿️ Gardiennage : ${gard}`)
+      if (rollable === false)  parts.push('🚗 Véhicule NON roulant')
+      else if (rollable === true) parts.push('🚗 Véhicule roulant')
+      if (wheels === true)     parts.push('🔒 Roues bloquées')
+      if (steering === true)   parts.push('🔒 Direction bloquée')
+      if (keys === true)       parts.push('🔑 Clés dans le garage')
+      else if (keys === false) parts.push('🔑 Pas de clés')
+      if (doc === false)       parts.push('📄 Document véhicule ABSENT')
+      else if (doc === true)   parts.push('📄 Document véhicule présent')
+      if (crane === true)      parts.push('🏗️ Garage équipé (grue/clark)')
+      // Fallback si rien d'extrait : texte nettoyé (sans entête RTF / tél / fax).
+      const clean = parts.length
+        ? parts.join('\n')
+        : lines.filter(l => !/TX_RTF32|shapeType|fFlip|fillColor|lineWidth|fLayoutInCell|posrelh|dxWrap|fBackground|dial|Phone|Fax/i.test(l))
+            .map(l => l.replace(/\s*\|\s*/g, ' ').replace(/\s+/g, ' ').trim())
+            .filter(Boolean).join('\n').slice(0, 1500)
       const MARK = '— ℹ️ Checklist Touring (rapatriement) —'
       if (dossier) {
         const { data: ex } = await supabase

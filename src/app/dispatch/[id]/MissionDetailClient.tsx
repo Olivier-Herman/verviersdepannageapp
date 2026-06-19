@@ -3442,6 +3442,17 @@ export default function MissionDetailClient({
                 />
               )}
 
+              {/* Remarques SOURCE (parsées du mail + checklist Touring annexé) —
+                  lecture seule. Olivier 2026-06-19 : avant, remarks_general
+                  n'était affiché QUE côté chauffeur → le dispatcher ne voyait pas
+                  le checklist annexé. */}
+              {(initialMission as any).remarks_general && (
+                <div className="bg-surface border rounded-2xl p-5">
+                  <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide mb-2">📋 Remarques (source)</p>
+                  <p className="text-ink text-sm whitespace-pre-wrap">{(initialMission as any).remarks_general}</p>
+                </div>
+              )}
+
               {/* Remarques dispatcher (notes + pièces jointes) */}
               <MissionRemarks missionId={initialMission.id} />
 
