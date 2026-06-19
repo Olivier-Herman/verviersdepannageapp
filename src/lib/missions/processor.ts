@@ -701,7 +701,11 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // fiche et on N'ÉCRASE PAS la mission ; on ANNEXE le checklist aux remarques
     // de la mission remorquage (rapprochée par n° dossier) pour que le chauffeur
     // y ait accès.
-    if (source === 'touring' && /repatriation\s+groupages|checklist\s+repatriation/i.test(content.textContent || content.rawContent || '')) {
+    // Détection par le SUJET (pas le corps) : seul le mail « Checklist / RV Check »
+    // est annexé ; le mail « Remorquage » (même rapatriement) reste une vraie
+    // mission. Vaut pour tous les rapatriements (Frontalier, Groupage…) car on
+    // cible le mot "checklist", pas le type de rapatriement. Olivier 2026-06-19.
+    if (source === 'touring' && /checklist|RV\s*check/i.test(subject || '')) {
       const txt = content.textContent || ''
       const dMatch = txt.match(/File Number\s*\|?\s*([A-Z0-9]{6,})/i) || txt.match(/\b(20\d{2}[A-Z]{2}\d{5,7})\b/)
       const dossier = dMatch ? dMatch[1].trim() : null
