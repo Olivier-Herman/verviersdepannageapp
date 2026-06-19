@@ -1271,11 +1271,27 @@ export default function MissionDetailClient({
   //    explicite (sinon on figerait le gardiennage). Le bouton « Sauvegarder &
   //    notifier » reste utile pour pousser les changements au chauffeur. ──
   const autosaveHydrated = useRef(false)
+  // Olivier 2026-06-19 : référence du dernier état SAUVÉ. L'autosave ne pousse
+  // QUE les champs réellement modifiés depuis — sinon il re-poussait tout le
+  // formulaire (y compris les champs vides), écrasant en null des données
+  // remplies côté serveur (ex. enrichissement Allianz) sur une fiche ouverte.
+  const savedFormRef = useRef<any>(form)
   useEffect(() => {
-    if (!autosaveHydrated.current) { autosaveHydrated.current = true; return }
+    if (!autosaveHydrated.current) {
+      autosaveHydrated.current = true
+      savedFormRef.current = form
+      return
+    }
     const t = setTimeout(() => {
-      const { parked_at: _pa, delivering_at: _da, ...rest } = form as any
-      silentPatch(rest)
+      const prev = savedFormRef.current || {}
+      const changed: Record<string, any> = {}
+      for (const [k, v] of Object.entries(form as any)) {
+        if (k === 'parked_at' || k === 'delivering_at') continue   // sauve explicite uniquement
+        if (JSON.stringify(v) !== JSON.stringify(prev[k])) changed[k] = v
+      }
+      if (Object.keys(changed).length === 0) return   // rien d'édité → ne rien écraser
+      savedFormRef.current = { ...form }
+      silentPatch(changed)
     }, 900)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
