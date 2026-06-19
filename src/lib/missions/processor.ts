@@ -777,17 +777,20 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     }
 
     // ── Déduplication sur dossier_number ────────────────────────────────────
-    // Calculer le "groupe dossier" selon la source
+    // Calculer le "groupe dossier" selon la source.
+    // Olivier 2026-06-19 : pour les sources IMA (ethias/vivium/p&v), si le LLM
+    // n'a PAS extrait dossier_number, on se rabat sur external_id — qui est LA
+    // MÊME référence (ex. B61181504AA). Sans ce repli, dossierGroup restait null
+    // → la PRIORITÉ KAZE était sautée → un doublon Ethias était créé juste après
+    // l'acceptation Kaze (le mail IMA arrive ~1 min après). Règle : dossier
+    // Ethias/PV == dossier Kaze ⇒ pas de 2e fiche.
+    const isImaLikeSrc = ['ethias', 'vivium', 'p&v', 'ima'].includes(source)
+    const dossierRef = (parsed.dossier_number || (isImaLikeSrc ? parsed.external_id : null) || '').trim()
     let dossierGroup: string | null = null
-    if (parsed.dossier_number) {
-      const dn = parsed.dossier_number.trim()
-      if (['ethias', 'vivium', 'p&v', 'ima'].includes(source)) {
-        // Ethias/P&V/IMA : dossier = référence sans les 2 dernières lettres
-        dossierGroup = dn.length > 2 ? dn.slice(0, -2) : dn
-      } else {
-        // Touring et autres : dossier_number est déjà le groupe
-        dossierGroup = dn
-      }
+    if (dossierRef) {
+      dossierGroup = isImaLikeSrc
+        ? (dossierRef.length > 2 ? dossierRef.slice(0, -2) : dossierRef)   // sans les 2 dernières lettres
+        : dossierRef                                                        // Touring/autres : tel quel
     }
 
     // Chercher une mission existante avec le même groupe dossier.
