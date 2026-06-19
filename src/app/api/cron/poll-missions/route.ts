@@ -8,7 +8,7 @@ import { NextResponse }          from 'next/server'
 import { getGraphToken, processEmailMessage } from '@/lib/missions/processor'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
-const MAX_MESSAGES   = 25
+const MAX_MESSAGES   = 200   // Olivier 2026-06-19 : élargi TEMPORAIREMENT pour rattraper le remorquage Touring 2026BX244888 sorti de la fenêtre (à remettre à 25 après)
 
 // Categorie Outlook posee par le processor sur les emails traites (succes
 // ou skip definitif). Au prochain poll, on ignore les emails qui ont deja
