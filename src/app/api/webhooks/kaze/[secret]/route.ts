@@ -114,10 +114,25 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
   const action = detectAction(eventType)
   let result: any = { action, event: eventType, job_id: kazeJobId }
 
+  // Olivier 2026-06-19 : id de PROPOSITION (≠ job). Envoyé par l'event
+  // job_proposal_proposed sous inner.proposal_id. On le mémorise sur la mission
+  // pour pouvoir accepter ensuite via l'appli web (/job_proposals/{id}/accept).
+  const proposalId = inner?.proposal_id || payload?.proposal_id || null
+
   if (action !== 'skip' && kazeJobId) {
     try {
       if (action === 'import') {
         result.import = await importKazeJob(kazeJobId, { webhookEventId: eventId })
+        // Stocke le proposal_id sur la mission importée (best-effort).
+        const importedId = (result.import as any)?.mission_id
+        if (proposalId && importedId) {
+          try {
+            const sb2 = createAdminClient()
+            await sb2.from('incoming_missions').update({ kaze_proposal_id: proposalId }).eq('id', importedId)
+          } catch (e: any) {
+            console.warn('[kaze-webhook] set kaze_proposal_id failed:', e?.message)
+          }
+        }
       } else if (action === 'cancel') {
         result.cancel = await cancelKazeJob(kazeJobId, {
           webhookEventId: eventId,
