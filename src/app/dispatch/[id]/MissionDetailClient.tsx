@@ -1320,6 +1320,10 @@ export default function MissionDetailClient({
             incident_lng:     r.suggestion!.lng,
           })
         }
+      } else if (form.incident_address && initialMission.incident_lat != null && initialMission.incident_lng != null) {
+        // Olivier 2026-06-19 : adresse déjà géolocalisée (filet API Allianz /
+        // enrichissement) → on la considère confirmée, pas de validation manuelle.
+        setIncidentGeo({ state: 'confirmed', suggestion: { addr: form.incident_address, lat: Number(initialMission.incident_lat), lng: Number(initialMission.incident_lng) } })
       }
       if (form.destination_address) {
         setDestinationGeo({ state: 'checking' })
