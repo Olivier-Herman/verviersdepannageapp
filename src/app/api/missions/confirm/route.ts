@@ -49,6 +49,39 @@ async function acceptKazeProposalBg(
   catch { await run }
 }
 
+// Mission Allianz/mondial : accepter l'affectation dans Hexalite (API à token,
+// PUT status EDSRA). Best-effort en arrière-plan. Olivier 2026-06-19.
+async function acceptAllianzBg(
+  missionId:        string,
+  assignmentNumber: string | null | undefined,
+  actorId:          string | null,
+  supabase:         ReturnType<typeof createAdminClient>,
+) {
+  if (!assignmentNumber) return
+  const run = (async () => {
+    try {
+      const { acceptAllianzByNumber } = await import('@/lib/allianz/intake')
+      const r = await acceptAllianzByNumber(assignmentNumber)
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId,
+        action: r.ok ? 'allianz_synced' : 'allianz_sync_error',
+        notes:  r.ok
+          ? 'Allianz ↗ affectation acceptée (Hexalite)'
+          : `Allianz ↗ acceptation : échec — ${r.error || 'inconnue'}`,
+        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, error: r.error ?? null },
+      }).then(() => {}, () => {})
+    } catch (e: any) {
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId, action: 'allianz_sync_error',
+        notes: `Allianz ↗ acceptation : exception — ${e?.message || 'inconnue'}`,
+        metadata: { assignment_number: assignmentNumber },
+      }).then(() => {}, () => {})
+    }
+  })()
+  try { const { waitUntil } = await import('@vercel/functions'); waitUntil(run) }
+  catch { await run }
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -73,7 +106,7 @@ export async function POST(req: Request) {
     // Vérifier si un chauffeur est déjà assigné
     const { data: mission } = await supabase
       .from('incoming_missions')
-      .select('assigned_to, kaze_proposal_id')
+      .select('assigned_to, kaze_proposal_id, source, dossier_number, external_id')
       .eq('id', mission_id)
       .single()
 
@@ -93,6 +126,11 @@ export async function POST(req: Request) {
 
     // Mission Kaze en proposition → accepter dans Kaze (appli web, arrière-plan).
     await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
+
+    // Mission Allianz/mondial → accepter l'affectation dans Hexalite (API, arrière-plan).
+    if (mission?.source === 'mondial') {
+      await acceptAllianzBg(mission_id, mission?.dossier_number || mission?.external_id || null, actor?.id || null, supabase)
+    }
 
     // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.
     // Si ça plante, le dispatcher peut toujours utiliser le bouton "Créer dossier Odoo"

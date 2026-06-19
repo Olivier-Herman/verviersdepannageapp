@@ -161,6 +161,49 @@ export function mapAllianzAssignment(a: any): AllianzMapped {
 }
 
 /**
+ * Accepte une affectation Allianz (propositions du portail) via l'API Hexalite.
+ * Capturé F12 (Olivier 2026-06-19) : PUT .../assistanceCases/{caseId}/assignments/
+ * {assignmentId}/status  body {"subStatus":"EDSRA"}. Même endpoint que
+ * putManualAssign (clôture) mais subStatus EDSRA = "accepté/affecté prestataire".
+ * Token Hexalite (pas de session web, contrairement à Kaze).
+ *
+ * Prend le n° d'affectation (notre dossier_number/external_id), résout
+ * assignmentId + caseId via la liste, puis PUT. Idempotent (déjà EDSRA = ok).
+ */
+export async function acceptAllianzByNumber(
+  assignmentNumber: string,
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  const an = (assignmentNumber || '').split('/')[0].trim()
+  if (!an) return { ok: false, error: 'pas de n° affectation' }
+
+  let item: any
+  try { item = await fetchAllianzAssignmentByNumber(an) }
+  catch (e: any) { return { ok: false, error: e?.message || 'lookup KO' } }
+  if (!item?.assignmentId || !item?.assistanceCaseId) {
+    return { ok: false, error: 'affectation introuvable côté Hexalite' }
+  }
+
+  try {
+    const token = await getValidAllianzToken()
+    const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${item.assistanceCaseId}/assignments/${item.assignmentId}/status?cache_buster=${Date.now()}`
+    const res = await fetch(url, {
+      method: 'PUT', headers: headers(token),
+      body: JSON.stringify({ subStatus: 'EDSRA' }),
+      signal: AbortSignal.timeout(20000),
+    })
+    if (res.ok) return { ok: true, status: res.status }
+    const txt = await res.text().catch(() => '')
+    // Déjà accepté (EDSRA→EDSRA) → transition refusée mais ce n'est pas une erreur.
+    if (res.status === 400 && /DUPLICATE_STATUS_UPDATE|EDSRA\s+to\s+EDSRA/i.test(txt)) {
+      return { ok: true, status: res.status }
+    }
+    return { ok: false, status: res.status, error: `HTTP ${res.status} ${txt.slice(0, 120)}` }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'PUT KO' }
+  }
+}
+
+/**
  * Filet anti-"mal complétée" : complète une mission Allianz/mondial depuis l'API
  * Hexalite (token persistant, SANS OTP), en NE remplissant QUE les champs vides
  * (jamais d'écrasement). Idéal en fallback quand l'enrichissement OTP/drawer a
