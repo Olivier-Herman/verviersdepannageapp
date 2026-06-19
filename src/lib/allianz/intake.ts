@@ -17,6 +17,7 @@
 // quoi écrire.
 
 import { getValidAllianzToken } from './closure'
+import { createAdminClient }    from '@/lib/supabase'
 
 const BASE_URL = 'https://global.allianzpartners-providerplatform.com'
 
@@ -135,4 +136,61 @@ export function mapAllianzAssignment(a: any): AllianzMapped {
       mission_type,
     },
   }
+}
+
+/**
+ * Filet anti-"mal complétée" : complète une mission Allianz/mondial depuis l'API
+ * Hexalite (token persistant, SANS OTP), en NE remplissant QUE les champs vides
+ * (jamais d'écrasement). Idéal en fallback quand l'enrichissement OTP/drawer a
+ * laissé des trous, ou pour réparer une fiche déjà créée.
+ *
+ * NB : le nom/téléphone client NE sont PAS récupérés ici (masqués dans l'API de
+ * monitoring) — ils viennent du flux OTP/drawer existant.
+ *
+ * Retourne le nombre de champs remplis. Non bloquant (renvoie ok:false si KO).
+ */
+export async function completeAllianzMissionFromApi(
+  missionId: string,
+): Promise<{ ok: boolean; filled: string[]; reason?: string }> {
+  const sb = createAdminClient()
+  const { data: m } = await sb
+    .from('incoming_missions')
+    .select('id, source, dossier_number, external_id, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, incident_country, incident_lat, incident_lng, destination_address, destination_lat, destination_lng, remarks_general, mission_type')
+    .eq('id', missionId)
+    .maybeSingle()
+  if (!m) return { ok: false, filled: [], reason: 'mission introuvable' }
+
+  // Le n° d'affectation Allianz est stocké dans dossier_number (repli external_id).
+  const assignmentNumber = (m.dossier_number || m.external_id || '').trim()
+  if (!assignmentNumber) return { ok: false, filled: [], reason: 'pas de n° affectation' }
+
+  let raw: any
+  try { raw = await fetchAllianzAssignmentByNumber(assignmentNumber) }
+  catch (e: any) { return { ok: false, filled: [], reason: e?.message || 'fetch KO' } }
+  if (!raw) return { ok: false, filled: [], reason: 'affectation introuvable côté Hexalite' }
+
+  const mapped = mapAllianzAssignment(raw)
+  const isEmpty = (v: any) => v === null || v === undefined || v === ''
+
+  const update: Record<string, any> = {}
+  const filled: string[] = []
+  for (const [k, v] of Object.entries(mapped.fields)) {
+    if (isEmpty(v)) continue
+    if (isEmpty((m as any)[k])) { update[k] = v; filled.push(k) }
+  }
+
+  if (filled.length === 0) return { ok: true, filled: [] }
+
+  update.updated_at = new Date().toISOString()
+  const { error } = await sb.from('incoming_missions').update(update).eq('id', missionId)
+  if (error) return { ok: false, filled: [], reason: error.message }
+
+  await sb.from('mission_logs').insert({
+    mission_id: missionId,
+    action:     'enriched',
+    notes:      `Complétée depuis l'API Hexalite (filet) : ${filled.join(', ')}`,
+    metadata:   { source: 'allianz_api_intake', assignment_number: assignmentNumber, filled },
+  }).then(() => {}, () => {})
+
+  return { ok: true, filled }
 }

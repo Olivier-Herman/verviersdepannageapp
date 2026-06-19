@@ -449,6 +449,23 @@ async function handleAllianzOTP(message: any, token: string): Promise<void> {
         await supabase.from('allianz_otp_pending').update({ status: 'done' }).eq('id', pending.id)
         console.log(`[Allianz] Mission ${pending.mission_id} enrichie avec succès`)
       }
+
+      // Olivier 2026-06-19 : FILET anti-"mal complétée". Après l'enrichissement
+      // OTP/drawer, on complète les champs encore vides depuis l'API Hexalite
+      // (token persistant, sans OTP) — surtout la destination garage / le
+      // véhicule complet que le drawer peut rater, ou TOUT si le fetch OTP a
+      // échoué. Non destructif (ne remplit que les trous). Best-effort.
+      try {
+        const { completeAllianzMissionFromApi } = await import('@/lib/allianz/intake')
+        const r = await completeAllianzMissionFromApi(pending.mission_id)
+        if (r.ok && r.filled.length) {
+          console.log(`[Allianz] Filet API : ${r.filled.length} champ(s) complété(s) — ${r.filled.join(', ')}`)
+        } else if (!r.ok) {
+          console.warn(`[Allianz] Filet API non appliqué : ${r.reason}`)
+        }
+      } catch (e: any) {
+        console.warn('[Allianz] Filet API exception:', e?.message)
+      }
     }
 
   } catch (err: any) {
