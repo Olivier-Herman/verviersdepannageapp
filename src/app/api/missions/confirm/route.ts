@@ -14,9 +14,40 @@ export const maxDuration = 60   // création dossier Odoo en synchrone (~2-5s)
 // NB Kaze (Olivier 2026-06-19) : l'acceptation d'une PROPOSITION Kaze ne passe
 // PAS par la clé API (testé : /job_proposals/{id} → 404, /jobs/{id}/proposals →
 // 403 feature_not_enabled). C'est une action de l'APPLI WEB (cookie de session
-// + CSRF, POST /job_proposals/{proposal_id}/accept avec _method=put +
-// proposal[estimation] + duration). À implémenter en session web façon VAB.
-// Le câblage clé-API précédent (acceptProposal/rejectProposal) est retiré.
+// + CSRF). Implémentée dans lib/kaze/web-session.ts (loginKazeWeb +
+// acceptKazeProposal). On la déclenche sur "Valider" si la mission a un
+// kaze_proposal_id. Best-effort en arrière-plan : ne bloque jamais le dispatch.
+
+async function acceptKazeProposalBg(
+  missionId:  string,
+  proposalId: string | null | undefined,
+  actorId:    string | null,
+  supabase:   ReturnType<typeof createAdminClient>,
+) {
+  if (!proposalId) return
+  const run = (async () => {
+    try {
+      const { acceptKazeProposal } = await import('@/lib/kaze/web-session')
+      const r = await acceptKazeProposal(proposalId)
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId,
+        action: r.ok ? 'kaze_synced' : 'kaze_sync_error',
+        notes:  r.ok
+          ? 'Kaze ↗ proposition acceptée (session web)'
+          : `Kaze ↗ acceptation proposition : échec — ${r.error || 'inconnue'}`,
+        metadata: { proposal_id: proposalId, http: r.status, ok: r.ok, error: r.error ?? null },
+      }).then(() => {}, () => {})
+    } catch (e: any) {
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId, action: 'kaze_sync_error',
+        notes: `Kaze ↗ acceptation proposition : exception — ${e?.message || 'inconnue'}`,
+        metadata: { proposal_id: proposalId },
+      }).then(() => {}, () => {})
+    }
+  })()
+  try { const { waitUntil } = await import('@vercel/functions'); waitUntil(run) }
+  catch { await run }
+}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -42,7 +73,7 @@ export async function POST(req: Request) {
     // Vérifier si un chauffeur est déjà assigné
     const { data: mission } = await supabase
       .from('incoming_missions')
-      .select('assigned_to')
+      .select('assigned_to, kaze_proposal_id')
       .eq('id', mission_id)
       .single()
 
@@ -59,6 +90,9 @@ export async function POST(req: Request) {
       action:   'dispatched',
       notes:    `Mission confirmée par ${actor?.name || 'dispatcher'}`,
     })
+
+    // Mission Kaze en proposition → accepter dans Kaze (appli web, arrière-plan).
+    await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
 
     // Création AUTO du dossier Odoo (Helpdesk + FSM Task) — best effort, non bloquant.
     // Si ça plante, le dispatcher peut toujours utiliser le bouton "Créer dossier Odoo"
