@@ -53,7 +53,7 @@ export async function GET(req: Request) {
   query = query
     .not('external_id', 'like', 'PROCESSING_%')
     .not('external_id', 'like', 'UNKNOWN_SENDER_%')
-    .or('parse_confidence.is.null,parse_confidence.gt.0.3')
+    .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
     // Exclure les missions archivees (auto-archivees 7j apres facturation).
     // Recherche globale ratisse partout, c'est le seul endroit ou on les voit.
     .is('archived_at', null)
@@ -159,7 +159,7 @@ export async function GET(req: Request) {
       .select('*', { count: 'exact', head: true })
       .not('external_id', 'like', 'PROCESSING_%')
       .not('external_id', 'like', 'UNKNOWN_SENDER_%')
-      .or('parse_confidence.is.null,parse_confidence.gt.0.3')
+      .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
       .is('archived_at', null)
     return apply(q)
   }
