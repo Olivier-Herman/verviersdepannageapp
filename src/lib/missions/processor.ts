@@ -695,6 +695,17 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'skipped', reason: `Contenu vide (source: ${source})` }
     }
 
+    // Olivier 2026-06-19 : le mail Touring « Checklist Repatriation groupages »
+    // est un document ANNEXE (checklist sans véhicule ni adresses — les vraies
+    // données arrivent dans un second mail de remorquage avec un autre n° de
+    // dossier). On l'ignore pour ne pas créer une fiche "rapatriement" vide.
+    if (source === 'touring' && /repatriation\s+groupages|checklist\s+repatriation/i.test(content.textContent || content.rawContent || '')) {
+      console.log('[Processor] Touring checklist Repatriation groupages — ignoré (doc annexe)')
+      if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      await markAsRead(token, messageId)
+      return { status: 'skipped', reason: 'Touring checklist Repatriation groupages (doc annexe ignoré)' }
+    }
+
     // Parser avec Claude
     console.log(`[Processor] step=parse_mission messageId=${msgIdShort} contentBytes=${content.pdfBase64?.length || content.textContent.length}`)
     let parsed
