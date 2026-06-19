@@ -721,6 +721,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     //      On ajoute un repli sur external_id (N° Commande), souvent stable.
     let existingMissionId: string | null = null
     let existingKazeJobId: string | null = null
+    let existingStatus:    string | null = null
 
     // Olivier 2026-06-18 : PRIORITÉ KAZE robuste. On ne prend plus seulement la
     // fiche la plus récente — on récupère TOUS les candidats du même dossier et,
@@ -748,6 +749,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       if (existing) {
         existingMissionId = existing.id
         existingKazeJobId = (existing as any).kaze_job_id || null
+        existingStatus    = (existing as any).status || null
         console.log(`[Processor] Dossier existant trouvé (dossier_number): ${existing.external_id} (${existing.id}) → mise à jour`)
       }
     }
@@ -759,6 +761,7 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       if (existing) {
         existingMissionId = existing.id
         existingKazeJobId = (existing as any).kaze_job_id || null
+        existingStatus    = (existing as any).status || null
         console.log(`[Processor] Dossier existant trouvé (external_id): ${existing.external_id} (${existing.id}) → mise à jour`)
       }
     }
@@ -783,6 +786,31 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         action:     'email_skipped_kaze_priority',
         notes:      `Mail ${source.toUpperCase()} ignoré : mission deja synchronisée via Kaze (priorité Kaze)`,
         metadata:   { source_email_id: messageId, kaze_job_id: existingKazeJobId, from: fromEmail },
+      })
+      return { status: 'duplicate', externalId: parsed.external_id, source }
+    }
+
+    // Olivier 2026-06-19 : ANTI-ÉCRASEMENT d'une mission déjà prise en charge.
+    // Cas réel (#10019769, Allianz) : Allianz renvoie 2-3 fois une notification
+    // "Nieuwe toewijzing" qui ne contient QUE un lien (aucune donnée). À chaque
+    // ré-arrivée, on ré-parsait ce mail vide et on ÉCRASAIT les données déjà
+    // enrichies (client, plaque, adresses, type) d'une mission assignée/en cours/
+    // terminée → fiche "mal complétée". Désormais, si la mission existante est
+    // déjà au-delà du dispatch (assignée et +), on marque le mail lu + log, sans
+    // toucher à la fiche. Une mission encore 'new'/'dispatching' peut toujours
+    // être complétée par un mail ultérieur.
+    const LOCKED_STATUSES = ['assigned', 'accepted', 'in_progress', 'delivering', 'parked', 'to_invoice', 'completed']
+    if (existingMissionId && existingStatus && LOCKED_STATUSES.includes(existingStatus)) {
+      console.log(`[Processor] Mission ${existingMissionId} déjà ${existingStatus} — mail ré-arrivé ignoré (pas d'écrasement)`)
+      await markAsRead(token, messageId)
+      if (placeholderId && placeholderId !== existingMissionId) {
+        await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+      }
+      await supabase.from('mission_logs').insert({
+        mission_id: existingMissionId,
+        action:     'email_skipped_active',
+        notes:      `Mail ${source.toUpperCase()} ré-arrivé ignoré : mission déjà ${existingStatus} (pas d'écrasement des données)`,
+        metadata:   { source_email_id: messageId, from: fromEmail, status: existingStatus },
       })
       return { status: 'duplicate', externalId: parsed.external_id, source }
     }
