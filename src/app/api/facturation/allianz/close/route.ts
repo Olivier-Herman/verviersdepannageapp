@@ -70,6 +70,38 @@ export async function POST(req: Request) {
     dryRun:            !!body.dryRun,
   })
 
+  // Olivier 2026-06-19 : si la clôture Hexalite a réussi (réel), on passe la
+  // fiche VD Soft liée en AUTO-FACTURATION pour clôturer notre dossier
+  // (équivalent de l'action /api/missions/invoice method=auto). Best-effort :
+  // n'impacte pas la réponse de clôture Hexalite si ça échoue.
+  const vdsoftMissionId = body.vdsoftMissionId ? String(body.vdsoftMissionId) : null
+  if (result.ok && !body.dryRun && vdsoftMissionId) {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase')
+      const { releaseParcAndShift } = await import('@/lib/parc/release')
+      const sb = createAdminClient()
+      const userId = (session!.user as any).id || null
+      const now = new Date().toISOString()
+      const { error: updErr } = await sb.from('incoming_missions').update({
+        status:         'completed',
+        invoice_method: 'auto',
+        invoiced_at:    now,
+        invoiced_by:    userId,
+        updated_at:     now,
+      }).eq('id', vdsoftMissionId)
+      if (updErr) throw new Error(updErr.message)
+      try { await releaseParcAndShift(sb, vdsoftMissionId) } catch { /* hors parc : ok */ }
+      await sb.from('mission_logs').insert({
+        mission_id: vdsoftMissionId, actor_id: userId, action: 'invoiced',
+        notes: 'Auto-facturation (clôture Allianz Hexalite)',
+        metadata: { method: 'auto', allianz: true, assignmentId },
+      }).then(() => {}, () => {})
+      ;(result as any).vdsoft_autofactured = true
+    } catch (e: any) {
+      ;(result as any).vdsoft_autofacture_error = e?.message || 'échec auto-facturation VD Soft'
+    }
+  }
+
   const status = result.ok ? 200 : 502
   return NextResponse.json(result, { status })
 }

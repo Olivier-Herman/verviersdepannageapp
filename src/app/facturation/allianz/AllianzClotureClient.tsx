@@ -114,7 +114,8 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
         dryRun,
       }
       if (row.vdsoft) {
-        body.distanceKm  = km ?? undefined
+        body.distanceKm       = km ?? undefined
+        body.vdsoftMissionId  = row.vdsoft.id   // → auto-facturation de notre fiche après clôture Hexalite
         // Destination seulement pour le remorquage (T). On envoie les
         // coordonnées déjà connues (filet API) → la clôture les utilise
         // directement au lieu de re-géocoder le nom via Google (qui échoue
