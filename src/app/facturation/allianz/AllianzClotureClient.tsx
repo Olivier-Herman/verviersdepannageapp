@@ -93,8 +93,8 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
     } catch { return null }
   }
 
-  async function runClose(row: Row, dryRun: boolean) {
-    if (!row.vdsoft && !row.towsoft) { setResult(p => ({ ...p, [row.assignmentId]: { error: 'Mission non rapprochée (ni VD Soft ni TowSoft).' } })); return }
+  async function runClose(row: Row, dryRun: boolean, skipReload = false): Promise<any> {
+    if (!row.vdsoft && !row.towsoft) { setResult(p => ({ ...p, [row.assignmentId]: { error: 'Mission non rapprochée (ni VD Soft ni TowSoft).' } })); return { ok: false } }
     setBusyId(row.assignmentId + (dryRun ? ':dry' : ':real'))
     setResult(p => ({ ...p, [row.assignmentId]: null }))
     try {
@@ -134,10 +134,35 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
       })
       const j = await r.json()
       setResult(p => ({ ...p, [row.assignmentId]: { ...j, _km: km } }))
-      if (!dryRun && j.ok) setTimeout(load, 1500)
+      if (!dryRun && j.ok && !skipReload) setTimeout(load, 1500)
+      return j
     } catch (e: any) {
       setResult(p => ({ ...p, [row.assignmentId]: { error: e.message } }))
+      return { ok: false, error: e.message }
     } finally { setBusyId(null) }
+  }
+
+  // ── Tout clôturer : enchaîne les clôtures réelles sur toutes les lignes
+  //    rapprochées (VD Soft ou TowSoft), séquentiellement, 1 seul refresh à la
+  //    fin. Les échecs (ligne non automatisable, etc.) sont comptés sans bloquer
+  //    le reste. Olivier 2026-06-19.
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg,  setBulkMsg]  = useState<string | null>(null)
+
+  async function closeAll() {
+    const matched = rows.filter(r => r.vdsoft || r.towsoft)
+    if (matched.length === 0) { setBulkMsg('Aucune mission rapprochée à clôturer.'); return }
+    if (!confirm(`Clôturer ${matched.length} mission(s) rapprochée(s) dans Allianz ?\nAction réelle et irréversible (affectation + soumission du résultat).`)) return
+    setBulkBusy(true); setBulkMsg(null)
+    let ok = 0, ko = 0
+    for (let i = 0; i < matched.length; i++) {
+      setBulkMsg(`Clôture en cours… ${i + 1}/${matched.length} (✓ ${ok} · ✗ ${ko})`)
+      const j = await runClose(matched[i], false, true)
+      if (j?.ok) ok++; else ko++
+    }
+    setBulkBusy(false)
+    setBulkMsg(`Terminé : ${ok} clôturée(s)${ko ? ` · ${ko} en échec (voir le détail par ligne)` : ''}.`)
+    await load()
   }
 
   return (
@@ -149,10 +174,22 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
               <Link href="/facturation" className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm">← Facturation</Link>
               <h1 className="text-lg font-semibold text-ink">🟦 Clôture Allianz (Mondial / AWP)</h1>
             </div>
-            <button onClick={load} disabled={loading} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm disabled:opacity-50">
-              {loading ? '⏳…' : 'Rafraîchir'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={closeAll}
+                disabled={loading || bulkBusy || busyId !== null || rows.filter(r => r.vdsoft || r.towsoft).length === 0}
+                title="Clôturer toutes les missions rapprochées dans Allianz"
+                className="px-3 py-2 bg-success/15 hover:bg-success/25 border border-success/40 text-success rounded-xl text-sm font-semibold disabled:opacity-50">
+                {bulkBusy ? '⏳ Clôture…' : `✅ Tout clôturer (${rows.filter(r => r.vdsoft || r.towsoft).length})`}
+              </button>
+              <button onClick={load} disabled={loading || bulkBusy} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm disabled:opacity-50">
+                {loading ? '⏳…' : 'Rafraîchir'}
+              </button>
+            </div>
           </div>
+
+          {bulkMsg && (
+            <div className="bg-surface-2 border rounded-xl px-4 py-2.5 text-sm text-ink-secondary">{bulkMsg}</div>
+          )}
 
           {needsAuth && (
             <div className="bg-warning/10 border border-warning/40 rounded-2xl p-4 text-sm text-warning space-y-3">
