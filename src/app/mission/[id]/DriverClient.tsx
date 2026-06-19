@@ -13,6 +13,7 @@ import OcrScanModal from '@/components/OcrScanModal'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import type { VehicleMatch } from '@/types/vehicles'
 import { KEY_LOCATIONS } from '@/lib/key-location'
+import { KeyTag } from '@/components/missions/KeyInfoCard'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
@@ -31,6 +32,7 @@ interface Mission {
   id: string; status: string; mission_type?: string
   incident_type?: string                                       // 'relivraison' = REL
   parent_mission_id?: string | null                            // si REL, lien vers la mission parente parc
+  key_location?: string | null; saisie_key_hook?: string | null // emplacement clé (hérité du parc pour une REL)
   client_name?: string; client_phone?: string
   billed_to_name?: string; source?: string; dossier_number?: string; external_id?: string
   vehicle_brand?: string; vehicle_model?: string; vehicle_plate?: string; vehicle_vin?: string
@@ -2615,6 +2617,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <p className="text-ink-secondary text-xs mb-3">
               Le véhicule est déjà en parc chez nous (zone TRANSIT). Tu pars du parc avec le véhicule chargé et tu le livres à l'adresse client originale.
             </p>
+            {/* Emplacement de la clé (hérité de la mise en parc) — pour aller
+                chercher la clé avant de charger. Olivier 2026-06-19. */}
+            {M.key_location && (
+              <div className="flex items-center gap-2 mb-3 bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-2">
+                <span className="text-amber-200 text-sm font-semibold">
+                  🔑 Clé : {KEY_LOCATIONS.find(k => k.value === M.key_location)?.label || M.key_location}
+                </span>
+                <KeyTag keyLocation={M.key_location} hook={M.saisie_key_hook} />
+              </div>
+            )}
             {M.parent_mission_id && (
               <a href={`/mission/${M.parent_mission_id}`}
                 className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-purple-300 font-medium">

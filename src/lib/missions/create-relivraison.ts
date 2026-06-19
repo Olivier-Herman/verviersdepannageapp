@@ -97,6 +97,10 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
       vehicle_vin:           parent.vehicle_vin,
       vehicle_fuel:          parent.vehicle_fuel,
       vehicle_gearbox:       parent.vehicle_gearbox,
+      // Emplacement de la clé hérité du parent (Olivier 2026-06-19) : le chauffeur
+      // qui vient CHARGER le véhicule en parc doit voir où est la clé (+ n° crochet).
+      key_location:          (parent as any).key_location ?? null,
+      saisie_key_hook:       (parent as any).saisie_key_hook ?? null,
       // Lieu d'incident = parc (lieu actuel du véhicule)
       incident_address:      input.parkAddress,
       incident_lat:          input.parkLat   ?? null,
