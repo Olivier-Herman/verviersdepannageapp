@@ -1248,6 +1248,26 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     finally { setLoading(false) }
   }
 
+  // ── Reclasser en Siabis couvert / non couvert ───────────────────────────────
+  // Olivier 2026-06-21 : Momo oublie parfois de typer la mission en Siabis au
+  // dispatch → pas de balisage ni de scénario côté chauffeur. Le chauffeur peut
+  // reclasser ici. Recharge ensuite pour basculer sur la vue Siabis.
+  const setSiabisSource = async (newSource: 'police_snc' | 'sia_couvert') => {
+    setShowGrid(false); setLoading(true); setErr('')
+    try {
+      const r = await fetch(`/api/missions/${M.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: newSource }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      const __url = new URL(window.location.href)
+      __url.searchParams.set('t', String(Date.now()))
+      window.location.href = __url.toString()
+    } catch (e: any) { setErr(e.message || 'Échec de la reclassification Siabis') }
+    finally { setLoading(false) }
+  }
+
   // ── Upload photos ─────────────────────────────────────────────────────────
   const compressPhoto = (file: File): Promise<Blob> => new Promise(resolve => {
     const img = new window.Image()
@@ -3249,6 +3269,22 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   {rem ? <T k="mission_detail.action_swap_to_dsp" /> : <T k="mission_detail.action_swap_to_rem" />}
                 </span>
               </button>
+              {/* Reclasser en Siabis (Olivier 2026-06-21) — si le dispatch a oublié
+                  de typer la mission. Affiche le bouton de l'AUTRE variante. */}
+              {M.source !== 'police_snc' && (
+                <button onClick={() => setSiabisSource('police_snc')} disabled={loading}
+                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-orange-600/10 border-orange-600/30 transition active:scale-95 disabled:opacity-50">
+                  <span className="text-2xl">🚨</span>
+                  <span className="text-sm font-medium text-orange-400 text-center leading-tight">Siabis NON couvert</span>
+                </button>
+              )}
+              {M.source !== 'sia_couvert' && (
+                <button onClick={() => setSiabisSource('sia_couvert')} disabled={loading}
+                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-teal-600/10 border-teal-600/30 transition active:scale-95 disabled:opacity-50">
+                  <span className="text-2xl">🚨</span>
+                  <span className="text-sm font-medium text-teal-400 text-center leading-tight">Siabis couvert</span>
+                </button>
+              )}
               {/* Mise en parc (REM uniquement) */}
               {rem && (
                 <button onClick={() => { setShowGrid(false); setShowPark(true) }}
