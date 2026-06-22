@@ -3520,7 +3520,7 @@ export default function MissionDetailClient({
                 <button
                   type="button"
                   onClick={() => setShowForceParkModal(true)}
-                  className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 rounded-2xl text-sm font-semibold transition"
+                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-sm font-bold shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
                 >
                   🅿️ Mettre en Parc
                 </button>
