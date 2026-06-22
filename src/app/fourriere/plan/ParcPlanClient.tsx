@@ -38,6 +38,7 @@ interface Zone {
   is_pool?:        boolean
   pool_capacity?:  number | null
   driver_allowed?: boolean
+  zone_type?:      string | null
 }
 
 // Dimensions en pixels (zones auto-sized selon contenu).
@@ -157,7 +158,7 @@ const VehicleSelectionCtx = createContext<{
   onSelect:   (id: string) => void
 }>({ selectedId: null, onSelect: () => {} })
 
-export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, canBlock, userRole, userName, userEmail, userModules, depotId, depotName, depotZoneKeys, allDepots }: {
+export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, canBlock, userRole, userName, userEmail, userModules, depotId, depotName, depotZoneKeys, allDepots, visibleZoneTypes }: {
   isDispatcher:   boolean
   isDriver:       boolean
   canEditLayout:  boolean
@@ -172,6 +173,9 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
   depotName?:     string
   depotZoneKeys?: string[]
   allDepots?:     { id: string; name: string }[]
+  // Olivier 2026-06-22 : visibilité des types de parc selon le module/profil.
+  // null/undefined = tous les types visibles (facturation, admin, chauffeur).
+  visibleZoneTypes?: string[] | null
 }) {
   const [state, setState] = useState<State | null>(null)
   const [loading, setLoading] = useState(true)
@@ -233,13 +237,28 @@ export default function ParcPlanClient({ isDispatcher, isDriver, canEditLayout, 
         j.blocked       = (j.blocked       || []).filter((b: any) => keys.has(b.zone_key))
         j.merged_groups = (j.merged_groups || []).filter((g: any) => keys.has(g.primary?.zone_key))
       }
+      // Olivier 2026-06-22 : filtre par TYPE de parc selon le module/profil.
+      // Dispatch → relivraison + accident ; Fourrière → saisie ; Facturation/
+      // admin/chauffeur → tout (visibleZoneTypes null). La RECHERCHE n'est pas
+      // filtrée (elle cherche partout) — ce filtre ne vaut que pour la vue plan.
+      if (visibleZoneTypes && visibleZoneTypes.length > 0) {
+        const allowed = new Set(visibleZoneTypes)
+        const tkeys = new Set(
+          (j.zones || []).filter((z: any) => allowed.has(z.zone_type || '')).map((z: any) => z.key)
+        )
+        j.zones         = (j.zones         || []).filter((z: any) => allowed.has(z.zone_type || ''))
+        j.rows          = (j.rows          || []).filter((r: any) => tkeys.has(r.zone_key))
+        j.placed        = (j.placed        || []).filter((p: any) => p.parc_zone_key && tkeys.has(p.parc_zone_key))
+        j.blocked       = (j.blocked       || []).filter((b: any) => tkeys.has(b.zone_key))
+        j.merged_groups = (j.merged_groups || []).filter((g: any) => tkeys.has(g.primary?.zone_key))
+      }
       setState(j)
     } catch (e: any) {
       setError(e.message || 'Erreur réseau')
     } finally {
       setLoading(false)
     }
-  }, [depotZoneKeys])
+  }, [depotZoneKeys, visibleZoneTypes])
 
   useEffect(() => { load() }, [load])
 

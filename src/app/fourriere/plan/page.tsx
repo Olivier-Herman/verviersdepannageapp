@@ -26,6 +26,17 @@ export default async function ParcPlanPage({ searchParams }: { searchParams: { d
   const isDriver     = isSuperadmin || normalized.includes('chauffeur') || normalized.includes('driver')
   const canBlock     = isAdmin || modules.includes('fourriere')
 
+  // Olivier 2026-06-22 : visibilité des TYPES de parc selon le module/profil.
+  //   Dispatch → Relivraison + Accident · Fourrière → Saisie · Facturation /
+  //   admin / chauffeur → tout (null). La recherche n'est PAS filtrée.
+  let visibleZoneTypes: string[] | null = null
+  if (!isAdmin && !isDriver && !modules.includes('facturation')) {
+    const types = new Set<string>()
+    if (normalized.includes('dispatcher')) { types.add('relivraison'); types.add('accident') }
+    if (modules.includes('fourriere'))     { types.add('saisie') }
+    visibleZoneTypes = types.size > 0 ? Array.from(types) : null
+  }
+
   // Olivier 2026-06-03 : si ?depot=ID, on charge le nom + les zones du parc
   // pour filtrer le plan affiche et naviguer entre parcs.
   let depotName: string | undefined
@@ -56,6 +67,7 @@ export default async function ParcPlanPage({ searchParams }: { searchParams: { d
       depotName={depotName}
       depotZoneKeys={depotZoneKeys}
       allDepots={allDepots}
+      visibleZoneTypes={visibleZoneTypes}
     />
   )
 }
