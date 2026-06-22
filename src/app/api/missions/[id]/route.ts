@@ -67,6 +67,9 @@ export async function PATCH(
     // REL). Permet d enregistrer l adresse pour qu elle apparaisse sur l etiquette
     // parc K (sinon "En attente d info adresse de relivraison").
     'redelivery_address',
+    // Olivier 2026-06-22 : coords de l'adresse de relivraison (géocodées côté
+    // navigateur par le dispatch) → tri par tournée de l'onglet À Relivrer.
+    'redelivery_lat', 'redelivery_lng',
     'depot_depart_id',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',

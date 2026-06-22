@@ -15,6 +15,7 @@ import VabImportButton from '@/components/dispatch/VabImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
+import { verifyAddressViaPlaces } from '@/components/AddressField'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -53,6 +54,8 @@ interface Mission {
   destination_name: string | null
   destination_address: string | null
   redelivery_address: string | null
+  redelivery_lat: number | null
+  redelivery_lng: number | null
   received_at: string
   intervention_date: string | null
   incident_at: string | null
@@ -965,6 +968,44 @@ export default function DispatchClient({
 
   useEffect(() => { load() }, [load])
 
+  // Onglet À Relivrer : géocodage CÔTÉ NAVIGATEUR des adresses de relivraison
+  // manquantes (l'API Geocoding serveur n'est pas activée — seule la clé Maps
+  // navigateur fonctionne, via Places). On persiste redelivery_lat/lng en base
+  // puis on recharge → le serveur renvoie la liste triée par tournée.
+  const geocodingRef   = useRef(false)
+  const geocodeTriedRef = useRef<Set<string>>(new Set()) // ids déjà tentés (évite les boucles sur adresses non géocodables)
+  useEffect(() => {
+    if (activeTab !== 'parked') return
+    const gmKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+    if (!gmKey) return
+    const toGeo = missions.filter(m =>
+      m.redelivery_address &&
+      (m.redelivery_lat == null || m.redelivery_lng == null) &&
+      !geocodeTriedRef.current.has(m.id))
+    if (toGeo.length === 0 || geocodingRef.current) return
+    geocodingRef.current = true
+    ;(async () => {
+      let any = false
+      for (const m of toGeo) {
+        geocodeTriedRef.current.add(m.id)
+        try {
+          const r = await verifyAddressViaPlaces(m.redelivery_address as string, gmKey)
+          if (r) {
+            await fetch(`/api/missions/${m.id}`, {
+              method:  'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ redelivery_lat: r.lat, redelivery_lng: r.lng }),
+            })
+            any = true
+          }
+        } catch { /* best effort */ }
+      }
+      geocodingRef.current = false
+      if (any) loadRef.current?.({ silent: true }) // recharge → tri serveur sur coords fraîches
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missions, activeTab])
+
   // loadRef pointe toujours sur la dernière version de load() (avec le bon
   // onglet/filtre). Les effets realtime/polling l'appellent via ce ref pour ne
   // PAS se ré-abonner à chaque changement d'onglet.
@@ -1403,7 +1444,7 @@ export default function DispatchClient({
                     <th className="px-4 py-3 text-left font-medium">Véhicule</th>
                     <th className="px-4 py-3 text-left font-medium">Lieu incident</th>
                     <th className="px-4 py-3 text-left font-medium">{activeTab === 'parked' ? 'Adresse de relivraison' : 'Destination'}</th>
-                    <th className="px-4 py-3 text-left font-medium">Chauffeur</th>
+                    {activeTab !== 'parked' && <th className="px-4 py-3 text-left font-medium">Chauffeur</th>}
                     <th className="px-4 py-3 text-left font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -1466,6 +1507,7 @@ export default function DispatchClient({
                             ? (m.redelivery_address || '—')
                             : (m.destination_name || m.destination_address || '—')}
                         </td>
+                        {activeTab !== 'parked' && (
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
                           {m.auto_dispatch_status && (
@@ -1481,6 +1523,7 @@ export default function DispatchClient({
                             </p>
                           )}
                         </td>
+                        )}
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <Link href={`/dispatch/${m.id}`}
                             className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-ink rounded-lg text-xs font-medium transition inline-block">

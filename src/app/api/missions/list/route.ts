@@ -129,19 +129,18 @@ export async function GET(req: Request) {
   // à relivrer dans le même secteur se retrouvent côte à côte dans la liste,
   // ce qui facilite le regroupement d'une tournée. Olivier 2026-06-22.
   if (status === 'parked' && visibleMissions.length > 1) {
-    const GKEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-
     // 0) Lire les coords de relivraison en cache (requête séparée + try/catch :
     //    tant que la migration redelivery_lat/lng n'est pas appliquée, ce bloc
     //    no-op proprement au lieu de casser tout /api/missions/list).
-    let coordsOk = true
+    //    NB : le géocodage se fait CÔTÉ NAVIGATEUR (DispatchClient via Places),
+    //    car l'API Geocoding serveur n'est pas activée sur le projet Google ;
+    //    le client persiste redelivery_lat/lng puis recharge → tri ci-dessous.
     try {
       const { data: coordRows, error: coordErr } = await supabase
         .from('incoming_missions')
         .select('id, redelivery_lat, redelivery_lng')
         .in('id', visibleMissions.map(m => m.id))
-      if (coordErr) { coordsOk = false }
-      else {
+      if (!coordErr) {
         const cmap = new Map((coordRows || []).map(r => [r.id, r]))
         for (const m of visibleMissions) {
           const c = cmap.get(m.id)
@@ -149,34 +148,9 @@ export async function GET(req: Request) {
           ;(m as any).redelivery_lng = c?.redelivery_lng ?? null
         }
       }
-    } catch { coordsOk = false }
+    } catch { /* migration pas encore appliquée → tri no-op */ }
 
-    // 1) Géocoder + mettre en cache les adresses de relivraison sans coords.
-    //    Plafonné à 12/chargement : le cache fait que les suivants sont gratuits.
-    //    (coordsOk faux = migration pas encore appliquée → on saute le tri,
-    //     la liste reste rendue normalement, no-op propre.)
-    if (coordsOk && GKEY) {
-      const toGeo = visibleMissions
-        .filter(m => (m as any).redelivery_address &&
-          ((m as any).redelivery_lat == null || (m as any).redelivery_lng == null))
-        .slice(0, 12)
-      for (const m of toGeo) {
-        try {
-          const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent((m as any).redelivery_address)}&key=${GKEY}&language=fr&region=be`
-          const j = await (await fetch(url)).json()
-          const loc = j.results?.[0]?.geometry?.location
-          if (loc?.lat != null && loc?.lng != null) {
-            ;(m as any).redelivery_lat = loc.lat
-            ;(m as any).redelivery_lng = loc.lng
-            await supabase.from('incoming_missions')
-              .update({ redelivery_lat: loc.lat, redelivery_lng: loc.lng })
-              .eq('id', m.id)
-          }
-        } catch { /* best effort */ }
-      }
-    }
-
-    // 2) Tournée plus proche voisin depuis le dépôt par défaut (Pepinster).
+    // Tournée plus proche voisin depuis le dépôt par défaut (Pepinster).
     //    Distance équirectangulaire au carré : suffisant pour ORDONNER (pas
     //    besoin de haversine, on ne compare que des distances entre elles).
     const DEPOT = { lat: 50.5703357, lng: 5.8216501 }
