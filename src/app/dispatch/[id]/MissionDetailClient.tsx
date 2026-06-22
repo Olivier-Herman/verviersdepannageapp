@@ -635,7 +635,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-surface border rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <h3 className="text-ink font-bold text-base mb-1">🅿️ Forcer en parc</h3>
+        <h3 className="text-ink font-bold text-base mb-1">🅿️ Mettre en Parc</h3>
         <p className="text-ink-muted text-xs mb-4">
           Choisis le dépôt de départ et la zone du parc pour cette mission.
         </p>
@@ -698,7 +698,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
               </button>
               <button onClick={submit} disabled={submitting || !depotId}
                 className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
-                {submitting ? '⏳ ...' : 'Forcer en parc'}
+                {submitting ? '⏳ ...' : 'Mettre en Parc'}
               </button>
             </div>
           </div>
@@ -3522,7 +3522,7 @@ export default function MissionDetailClient({
                   onClick={() => setShowForceParkModal(true)}
                   className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 rounded-2xl text-sm font-semibold transition"
                 >
-                  🅿️ Forcer en parc
+                  🅿️ Mettre en Parc
                 </button>
               )}
 
