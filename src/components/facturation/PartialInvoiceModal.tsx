@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 
 interface Line { kind: string; label: string; qty: number; price_unit: number; checked: boolean }
-interface BilledItem { kind: string; label: string; amount_htva: number; period_from: string | null; period_to: string | null; billed_at: string }
+interface BilledItem { kind: string; label: string; amount_htva: number; period_from: string | null; period_to: string | null; billed_at: string; odoo_quote_id: number | null; invoice_number: string | null }
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const addDays = (iso: string, n: number) => { const d = new Date(iso); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
@@ -30,6 +30,22 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
 
   const [lines, setLines] = useState<Line[]>([])
   const [billed, setBilled] = useState<BilledItem[]>([])
+  const [invDraft, setInvDraft] = useState<Record<number, string>>({})
+  const [savingInv, setSavingInv] = useState<number | null>(null)
+
+  async function saveInvoiceNumber(quoteId: number) {
+    const num = (invDraft[quoteId] || '').trim()
+    if (!num) return
+    setSavingInv(quoteId)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/billed-items`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ odoo_quote_id: quoteId, invoice_number: num }),
+      })
+      if (r.ok) setBilled(bs => bs.map(b => b.odoo_quote_id === quoteId ? { ...b, invoice_number: num } : b))
+    } finally { setSavingInv(null) }
+  }
 
   // Gardiennage
   const [parcOn, setParcOn]       = useState(false)
@@ -77,6 +93,10 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
       // Postes déjà facturés
       const items: BilledItem[] = bi?.items || []
       setBilled(items)
+      // Pré-remplit les n° de facture déjà saisis (par lot odoo_quote_id).
+      const drafts: Record<number, string> = {}
+      for (const it of items) if (it.odoo_quote_id && it.invoice_number) drafts[it.odoo_quote_id] = it.invoice_number
+      setInvDraft(drafts)
       // Période gardiennage par défaut : après la dernière facturée, sinon entrée parc
       const start = bi?.last_parc_period_to ? addDays(bi.last_parc_period_to, 1) : (parkedSince ? parkedSince.slice(0, 10) : todayISO())
       setParcFrom(start)
@@ -123,18 +143,53 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
 
         {!loading && (
           <>
-            {/* Déjà facturé */}
-            {billed.length > 0 && (
-              <div className="mb-4 rounded-xl bg-surface-2 border p-3">
-                <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide mb-1.5">✓ Déjà facturé</p>
-                {billed.map((b, i) => (
-                  <p key={i} className="text-ink-faint text-xs">
-                    {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
-                    {b.period_from && b.period_to ? ` (du ${fmt(b.period_from)} au ${fmt(b.period_to)})` : ''}
-                  </p>
-                ))}
-              </div>
-            )}
+            {/* Déjà facturé — groupé par facture partielle (lot odoo_quote_id),
+                avec saisie du n° de facture par lot. */}
+            {billed.length > 0 && (() => {
+              const groups = new Map<number | string, { quoteId: number | null; items: BilledItem[]; total: number; invoice: string | null }>()
+              for (const b of billed) {
+                const key = b.odoo_quote_id ?? `none-${b.billed_at}`
+                const g = groups.get(key) || { quoteId: b.odoo_quote_id, items: [], total: 0, invoice: b.invoice_number }
+                g.items.push(b); g.total += Number(b.amount_htva || 0); g.invoice = g.invoice || b.invoice_number
+                groups.set(key, g)
+              }
+              return (
+                <div className="mb-4 space-y-2">
+                  <p className="text-ink-muted text-xs font-semibold uppercase tracking-wide">✓ Déjà facturé</p>
+                  {[...groups.values()].map((g, gi) => (
+                    <div key={gi} className="rounded-xl bg-surface-2 border p-3 space-y-1">
+                      {g.items.map((b, i) => (
+                        <p key={i} className="text-ink-faint text-xs">
+                          {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
+                          {b.period_from && b.period_to ? ` (du ${fmt(b.period_from)} au ${fmt(b.period_to)})` : ''}
+                        </p>
+                      ))}
+                      <p className="text-ink text-xs font-semibold pt-1">Total : {g.total.toFixed(2)} € HTVA</p>
+                      {g.quoteId != null && (
+                        <div className="flex items-center gap-2 pt-1.5 border-t mt-1">
+                          <span className="text-ink-muted text-xs whitespace-nowrap">N° facture :</span>
+                          <input
+                            type="text"
+                            value={invDraft[g.quoteId] ?? ''}
+                            onChange={e => setInvDraft(d => ({ ...d, [g.quoteId as number]: e.target.value }))}
+                            placeholder="ex. INV/2026/0123"
+                            className="flex-1 bg-surface border rounded px-2 py-1 text-ink text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveInvoiceNumber(g.quoteId as number)}
+                            disabled={savingInv === g.quoteId || !(invDraft[g.quoteId] || '').trim()}
+                            className="px-2.5 py-1 bg-brand hover:bg-brand-dark text-white rounded text-xs font-semibold disabled:opacity-50"
+                          >
+                            {savingInv === g.quoteId ? '…' : (g.invoice ? '✓ Maj' : 'Enregistrer')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
 
             {/* Postes dépannage */}
             <div className="space-y-2 mb-4">

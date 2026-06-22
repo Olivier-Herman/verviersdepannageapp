@@ -27,9 +27,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sb = createAdminClient()
+  // select('*') pour rester résilient si la migration invoice_number n'est pas
+  // encore appliquée (une colonne absente ferait planter un select explicite).
   const { data, error } = await sb
     .from('mission_billed_items')
-    .select('id, kind, label, qty, price_unit, amount_htva, period_from, period_to, odoo_quote_id, billed_at')
+    .select('*')
     .eq('mission_id', params.id)
     .order('billed_at', { ascending: true })
 
@@ -45,4 +47,27 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .pop() || null
 
   return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo })
+}
+
+// PATCH : enregistre le n° de facture d'une facture partielle (lot odoo_quote_id).
+//   body: { odoo_quote_id: number, invoice_number: string }
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const body = await req.json().catch(() => ({}))
+  const quoteId = body.odoo_quote_id != null ? Number(body.odoo_quote_id) : null
+  const invoiceNumber = String(body.invoice_number || '').trim()
+  if (!quoteId)        return NextResponse.json({ error: 'odoo_quote_id requis' }, { status: 400 })
+  if (!invoiceNumber)  return NextResponse.json({ error: 'Numéro de facture requis' }, { status: 400 })
+
+  const sb = createAdminClient()
+  const { error } = await sb
+    .from('mission_billed_items')
+    .update({ invoice_number: invoiceNumber })
+    .eq('mission_id', params.id)
+    .eq('odoo_quote_id', quoteId)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
 }
