@@ -1091,7 +1091,10 @@ async function estimateRelivraisonPrice(
   const isMajored = surchargePct > 0
   const kmPrice = (isMajored && kmPriceMajored != null) ? kmPriceMajored : kmPriceNormal
 
-  // 4. Recupere les kilometres
+  // 4. Recupere les kilometres — la relivraison se facture en ALLER-RETOUR :
+  //    parc → adresse de relivraison → parc (Olivier 2026-06-22). chargedKm
+  //    (computeMissionKm) = aller seul (incident=parc → destination=adresse),
+  //    on double pour le retour.
   let km = 0
   if (mission.charged_km != null) {
     km = Number(mission.charged_km)
@@ -1102,7 +1105,9 @@ async function estimateRelivraisonPrice(
   } else if (mission.id) {
     try {
       const computed = await computeMissionKm(mission.id)
-      km = computed.chargedKm ?? computed.totalKm ?? 0
+      km = computed.chargedKm != null
+        ? computed.chargedKm * 2                 // aller-retour parc ↔ relivraison
+        : (computed.totalKm ?? 0)
     } catch {}
   }
   km = Math.max(0, Math.ceil(km))
@@ -1139,7 +1144,7 @@ async function estimateRelivraisonPrice(
     tariff_doc_path: null,
     tariff_doc_name: null,
     breakdown: [
-      { label: priceLabel, amount: total, note: `${km} km × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
+      { label: priceLabel, amount: total, note: `${km} km (aller-retour parc ↔ relivraison) × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
       ...(surchargeEur > 0 ? [{ label: `Majoration horaire (+${surchargePct}%)`, amount: surchargeEur, note: surchargeNote }] : []),
     ],
   }
