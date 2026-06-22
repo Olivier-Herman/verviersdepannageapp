@@ -841,11 +841,13 @@ function ManageParkButton({ missionId, source, currentAddress, gmKey, onConverte
 // Olivier 2026-06-14 : sur une fiche HORS zone K, indiquer que le véhicule
 // nécessite une relivraison. Encode l'adresse + bascule en zone K (file
 // d'attente, impression étiquette REL). NE crée PAS encore la fiche REL.
-function NeedsRelivraisonButton({ missionId, currentAddress, gmKey, onDone }: {
+function NeedsRelivraisonButton({ missionId, currentAddress, gmKey, onDone, saisieWarning = false }: {
   missionId:      string
   currentAddress: string
   gmKey:          string
   onDone:         () => void
+  /** Véhicule saisi sans levée de saisie confirmée → avertissement à l'encodage. */
+  saisieWarning?: boolean
 }) {
   const [open,    setOpen]    = useState(false)
   const [addr,    setAddr]    = useState(currentAddress || '')
@@ -884,6 +886,14 @@ function NeedsRelivraisonButton({ missionId, currentAddress, gmKey, onDone }: {
               Le véhicule passe en zone K (file d'attente relivraison) avec l'adresse ci-dessous. La fiche de relivraison sera créée plus tard, depuis la zone K.
             </p>
           </div>
+          {saisieWarning && (
+            <div className="bg-amber-100 border-2 border-amber-400 rounded-xl px-3 py-2.5">
+              <p className="text-amber-900 text-sm font-bold">⚠ Véhicule saisi</p>
+              <p className="text-amber-800 text-xs mt-0.5">
+                A-t-on bien une <strong>levée de saisie</strong> (documents Parquet/Police) ? Ne pas relivrer sans levée confirmée.
+              </p>
+            </div>
+          )}
           <div>
             <label className="block text-blue-900 text-xs font-semibold mb-1.5">Adresse de relivraison *</label>
             <AddressField
@@ -3599,11 +3609,10 @@ export default function MissionDetailClient({
               </a>
 
               {/* "Ce véhicule nécessite une relivraison ?" — Olivier 2026-06-22 :
-                  visible pour tout véhicule en parc dans une zone de type
-                  Relivraison ou Accident, hors zone K. On encode l'adresse →
-                  bascule auto en zone K (cf. PATCH). Ne crée PAS encore la REL. */}
+                  visible sur TOUTES les fiches en parc (hors zone K). On encode
+                  l'adresse → bascule auto en zone K (cf. PATCH). Ne crée PAS
+                  encore la REL. Avertissement si véhicule saisi sans levée. */}
               {status === 'parked' && !linkedChild
-                && (parcZoneType === 'relivraison' || parcZoneType === 'accident')
                 && (initialMission as any).parc_zone_key !== 'K' && (
                 <NeedsRelivraisonButton
                   missionId={initialMission.id}
@@ -3614,13 +3623,16 @@ export default function MissionDetailClient({
                   }
                   gmKey={googleMapsKey}
                   onDone={() => router.refresh()}
+                  saisieWarning={
+                    ['police_saisie', 'police_rodeo'].includes(initialMission.source)
+                    && !(initialMission as any).police_levee_saisie_ok
+                  }
                 />
               )}
 
-              {/* Bloc Relivraison — Olivier 2026-06-14 : disponible UNIQUEMENT pour
-                  les véhicules en zone K (file d'attente relivraison). Masque donc
-                  le bloc pour les saisies et tout véhicule pas encore prêt à relivrer. */}
-              {status === 'parked' && !linkedChild && !['police_mg', 'police_rodeo'].includes(initialMission.source)
+              {/* Bloc Relivraison (création REL) — Olivier 2026-06-22 : pour tout
+                  véhicule en zone K (file d'attente relivraison), sans exclusion. */}
+              {status === 'parked' && !linkedChild
                 && (initialMission as any).parc_zone_key === 'K' && (
                 <RelivrerButton
                   missionId={initialMission.id}

@@ -198,8 +198,8 @@ export async function PATCH(
   }
 
   // Olivier 2026-06-22 : dès qu'une adresse de relivraison est ajoutée à une
-  // fiche en parc située dans une zone de type Relivraison ou Accident (hors K),
-  // le véhicule bascule automatiquement en zone K (file d'attente relivraison).
+  // fiche en parc (quelle que soit la zone, hors K), le véhicule bascule
+  // automatiquement en zone K (file d'attente relivraison).
   if (
     'redelivery_address' in body
     && !!(data as any).redelivery_address
@@ -207,30 +207,23 @@ export async function PATCH(
     && (data as any).parc_zone_key
     && (data as any).parc_zone_key !== 'K'
   ) {
-    const { data: zt } = await supabase
-      .from('parc_zones')
-      .select('zone_type')
-      .eq('key', (data as any).parc_zone_key)
-      .maybeSingle()
-    if (zt?.zone_type === 'relivraison' || zt?.zone_type === 'accident') {
-      const fromZone = (data as any).parc_zone_key
-      await supabase
-        .from('incoming_missions')
-        .update({
-          parc_zone_key:   'K',
-          parc_row_number: null,
-          parc_slot_index: null,
-          updated_at:      new Date().toISOString(),
-        })
-        .eq('id', params.id)
-      ;(data as any).parc_zone_key = 'K'
-      await supabase.from('mission_logs').insert({
-        mission_id: params.id,
-        action:     'auto_transfer_zone_k',
-        notes:      `Bascule auto en zone K (relivraison) après saisie de l'adresse — depuis ${fromZone}`,
-        metadata:   { from_zone: fromZone, to_zone: 'K', trigger: 'redelivery_address_set' },
+    const fromZone = (data as any).parc_zone_key
+    await supabase
+      .from('incoming_missions')
+      .update({
+        parc_zone_key:   'K',
+        parc_row_number: null,
+        parc_slot_index: null,
+        updated_at:      new Date().toISOString(),
       })
-    }
+      .eq('id', params.id)
+    ;(data as any).parc_zone_key = 'K'
+    await supabase.from('mission_logs').insert({
+      mission_id: params.id,
+      action:     'auto_transfer_zone_k',
+      notes:      `Bascule auto en zone K (relivraison) après saisie de l'adresse — depuis ${fromZone}`,
+      metadata:   { from_zone: fromZone, to_zone: 'K', trigger: 'redelivery_address_set' },
+    })
   }
 
   // Notification push au chauffeur si demandé (modifications dispatcher après assignation).
