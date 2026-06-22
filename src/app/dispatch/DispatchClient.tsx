@@ -52,6 +52,7 @@ interface Mission {
   incident_lng: number | null
   destination_name: string | null
   destination_address: string | null
+  redelivery_address: string | null
   received_at: string
   intervention_date: string | null
   incident_at: string | null
@@ -1393,7 +1394,7 @@ export default function DispatchClient({
                     <th className="px-4 py-3 text-left font-medium">Type</th>
                     <th className="px-4 py-3 text-left font-medium">Véhicule</th>
                     <th className="px-4 py-3 text-left font-medium">Lieu incident</th>
-                    <th className="px-4 py-3 text-left font-medium">Destination</th>
+                    <th className="px-4 py-3 text-left font-medium">{activeTab === 'parked' ? 'Adresse de relivraison' : 'Destination'}</th>
                     <th className="px-4 py-3 text-left font-medium">Chauffeur</th>
                     <th className="px-4 py-3 text-left font-medium">Actions</th>
                   </tr>
@@ -1453,7 +1454,9 @@ export default function DispatchClient({
                           {m.incident_city && <p className="text-ink-muted text-xs">{m.incident_city}</p>}
                         </td>
                         <td className="px-4 py-3 text-ink-secondary text-xs">
-                          {m.destination_name || m.destination_address || '—'}
+                          {activeTab === 'parked'
+                            ? (m.redelivery_address || '—')
+                            : (m.destination_name || m.destination_address || '—')}
                         </td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <AssignAction mission={m} drivers={drivers} driverStatuses={driverStatuses} onRefresh={load} onModalChange={onModalChange} userRole={userRole} userModules={userModules} />
