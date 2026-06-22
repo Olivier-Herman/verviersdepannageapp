@@ -153,7 +153,12 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
             // Gardiennage / SERV-PARC).
             const isGardiennage = (label: string) =>
               /\b(parc|gardiennage|serv-parc)\b/i.test(label)
-            const depannageLines  = data.breakdown.filter(l => !isGardiennage(l.label))
+            // Olivier 2026-06-22 (fix double majoration) : la ligne "Majoration
+            // horaire" du breakdown est déjà ré-affichée + recomptée plus bas
+            // (bloc explicite + surcharge_eur). On l'exclut ici pour éviter le
+            // double comptage (affichage ET sous-total).
+            const isSurcharge = (label: string) => /majoration/i.test(label)
+            const depannageLines  = data.breakdown.filter(l => !isGardiennage(l.label) && !isSurcharge(l.label))
             const gardiennageLines = data.breakdown.filter(l =>  isGardiennage(l.label))
 
             // La majoration s applique au depannage (pas au gardiennage)

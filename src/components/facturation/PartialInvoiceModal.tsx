@@ -44,16 +44,36 @@ export default function PartialInvoiceModal({ missionId, parkedSince, onClose, o
       fetch(`/api/missions/${missionId}/billed-items`).then(r => r.json()),
     ]).then(([est, bi]) => {
       if (cancelled) return
-      // Postes dépannage proposés depuis l'estimation
+      // Postes dépannage proposés depuis l'estimation — CHAQUE ligne est
+      // sélectionnable (Olivier 2026-06-22). Le gardiennage (SERV-PARC) est géré
+      // séparément dans sa propre section (période + prix/jour).
       const proposed: Line[] = []
+      let parcUnitFromLines: number | null = null
       if (est?.ok) {
-        if (est.forfait && est.forfait > 0) proposed.push({ kind: 'SERV-PEC', label: 'Prise en charge / forfait', qty: 1, price_unit: round(est.forfait), checked: true })
-        if (est.km_extra > 0 && est.km_extra_eur > 0) proposed.push({ kind: 'SERV-KM', label: 'Km supplémentaires', qty: est.km_extra, price_unit: round(est.km_extra_eur / est.km_extra), checked: true })
+        if (Array.isArray(est.template_lines) && est.template_lines.length > 0) {
+          // Chemin "lines" (police / saisie / accident) : reprend chaque ligne.
+          for (const tl of est.template_lines) {
+            if (tl.kind === 'SERV-PARC') {
+              // Gardiennage → section dédiée (récupère le prix/jour).
+              if (tl.default_price != null) parcUnitFromLines = round(Number(tl.default_price))
+              continue
+            }
+            const qty = tl.default_qty != null && Number(tl.default_qty) > 0 ? Number(tl.default_qty) : 1
+            const pu  = tl.default_price != null ? round(Number(tl.default_price)) : 0
+            if (pu <= 0) continue
+            proposed.push({ kind: tl.kind, label: tl.name, qty, price_unit: pu, checked: true })
+          }
+        } else {
+          // Chemin "forfait" (assurances / garage / privé).
+          if (est.forfait && est.forfait > 0) proposed.push({ kind: 'SERV-PEC', label: 'Prise en charge / forfait', qty: 1, price_unit: round(est.forfait), checked: true })
+          if (est.km_extra > 0 && est.km_extra_eur > 0) proposed.push({ kind: 'SERV-KM', label: 'Km supplémentaires', qty: est.km_extra, price_unit: round(est.km_extra_eur / est.km_extra), checked: true })
+        }
         if (est.surcharge_eur > 0) proposed.push({ kind: 'SERV-MAJ', label: `Majoration ${est.surcharge_pct || ''}%`, qty: 1, price_unit: round(est.surcharge_eur), checked: true })
       }
       setLines(proposed)
-      // Prix gardiennage / jour depuis l'estimation
+      // Prix gardiennage / jour depuis l'estimation (forfait OU ligne SERV-PARC).
       if (est?.parc_jours > 0 && est?.parc_eur > 0) setParcPrice(round(est.parc_eur / est.parc_jours))
+      else if (parcUnitFromLines && parcUnitFromLines > 0) setParcPrice(parcUnitFromLines)
       // Postes déjà facturés
       const items: BilledItem[] = bi?.items || []
       setBilled(items)
