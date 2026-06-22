@@ -3570,6 +3570,22 @@ export default function MissionDetailClient({
                 <SaisiePanel mission={initialMission as any} onChanged={() => router.refresh()} />
               )}
 
+              {/* Annuler la fiche — entre "Restituer" et "Avance de fonds".
+                  Passe en 'cancelled' (invisible dans l'app, conservée en base). */}
+              {status !== 'cancelled'
+                && (['admin', 'superadmin', 'dispatcher'].includes(userRole)
+                    || userModules.includes('facturation')
+                    || userModules.includes('fourriere')) && (
+                <CancelMissionButton
+                  missionId={initialMission.id}
+                  className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-semibold transition"
+                  onCancelled={() => {
+                    if (typeof window !== 'undefined' && window.history.length > 1) router.back()
+                    else router.push('/dispatch')
+                  }}
+                />
+              )}
+
               {/* Avance de fonds — Olivier 2026-06-01 : permet a un dispatcher
                   (ou admin) d enregistrer une avance liee a cette mission. La
                   facture sera ajoutee au devis Odoo lors de la facturation. */}
@@ -3766,29 +3782,6 @@ export default function MissionDetailClient({
                       </div>
                     </button>
                   </div>
-                </div>
-              )}
-
-              {/* ── Annuler la fiche (Dispatch / Facturation / Fourrière) ──
-                  Passe en 'cancelled' (invisible dans l'app, conservée en base). */}
-              {status !== 'cancelled'
-                && (['admin', 'superadmin', 'dispatcher'].includes(userRole)
-                    || userModules.includes('facturation')
-                    || userModules.includes('fourriere')) && (
-                <div className="bg-surface border border-red-500/30 rounded-2xl p-5 md-card-enter">
-                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">
-                    🚫 Annuler la fiche
-                  </h3>
-                  <p className="text-ink-faint text-xs mb-4">
-                    La fiche est masquée de l&apos;app mais conservée en base de données. Un motif est demandé.
-                  </p>
-                  <CancelMissionButton
-                    missionId={initialMission.id}
-                    onCancelled={() => {
-                      if (typeof window !== 'undefined' && window.history.length > 1) router.back()
-                      else router.push('/dispatch')
-                    }}
-                  />
                 </div>
               )}
 
