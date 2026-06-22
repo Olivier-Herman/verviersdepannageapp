@@ -223,14 +223,17 @@ body {
   }
 }
 
-/* Tablette en portrait -> demande paysage */
+/* Tablette en portrait -> demande paysage.
+   Olivier 2026-06-22 : exception pour les admins (tablette Samsung utilisée en
+   portrait). La classe .portrait-ok est posée sur <body> selon le rôle
+   (cf. PortraitMode component) → l overlay ne s applique pas. */
 @media (orientation: portrait) and (min-width: 768px) {
-  body::before {
+  body:not(.portrait-ok)::before {
     content: "";
     position: fixed; inset: 0;
     background: #0f172a; z-index: 999998;
   }
-  body::after {
+  body:not(.portrait-ok)::after {
     content: "📱 → 🖥️ Tourne ton écran en mode paysage pour utiliser VD Soft sur tablette";
     position: fixed; inset: 0;
     display: flex; align-items: center; justify-content: center;
