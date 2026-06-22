@@ -1203,32 +1203,40 @@ export default function DispatchClient({
           )}
 
           {/* Toggle de tri — segmented control discret (paramètre d'affichage,
-              à différencier visuellement des KPI tabs statut qui sont des filtres) */}
+              à différencier visuellement des KPI tabs statut qui sont des filtres).
+              Sur l'onglet À Relivrer, le tri est forcé par proximité (tournée) :
+              on remplace le toggle date par un badge explicatif. */}
           <div className="mt-4">
-            <div className="bg-surface-2 border rounded-lg p-1 inline-flex gap-1">
-              <button
-                type="button"
-                onClick={() => handleSortChange('intervention_date')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                  sortMode === 'intervention_date'
-                    ? 'bg-surface text-ink shadow-sm'
-                    : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
-                }`}
-              >
-                Date intervention
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSortChange('received_at')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                  sortMode === 'received_at'
-                    ? 'bg-surface text-ink shadow-sm'
-                    : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
-                }`}
-              >
-                Date réception
-              </button>
-            </div>
+            {activeTab === 'parked' ? (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 inline-flex items-center gap-2 text-emerald-300 text-sm font-medium">
+                🗺️ <span>Tri par tournée — adresses de relivraison proches regroupées</span>
+              </div>
+            ) : (
+              <div className="bg-surface-2 border rounded-lg p-1 inline-flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('intervention_date')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
+                    sortMode === 'intervention_date'
+                      ? 'bg-surface text-ink shadow-sm'
+                      : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                  }`}
+                >
+                  Date intervention
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('received_at')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
+                    sortMode === 'received_at'
+                      ? 'bg-surface text-ink shadow-sm'
+                      : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                  }`}
+                >
+                  Date réception
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Onglets — version mobile (select) + desktop (tabs flex).

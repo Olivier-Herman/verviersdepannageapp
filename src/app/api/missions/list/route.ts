@@ -120,9 +120,89 @@ export async function GET(req: Request) {
   const parkedActiveCount = parkedIds.filter(id => !parkedWithChild.has(id)).length
 
   // Liste visible : sur l'onglet À Relivrer, on retire les parents déjà reliés.
-  const visibleMissions = (status === 'parked')
+  let visibleMissions = (status === 'parked')
     ? (missions || []).filter(m => !parkedWithChild.has(m.id))
     : (missions || [])
+
+  // Onglet À Relivrer : ordonner par PROXIMITÉ géographique des adresses de
+  // relivraison (tournée "plus proche voisin" depuis le dépôt) → les véhicules
+  // à relivrer dans le même secteur se retrouvent côte à côte dans la liste,
+  // ce qui facilite le regroupement d'une tournée. Olivier 2026-06-22.
+  if (status === 'parked' && visibleMissions.length > 1) {
+    const GKEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+    // 0) Lire les coords de relivraison en cache (requête séparée + try/catch :
+    //    tant que la migration redelivery_lat/lng n'est pas appliquée, ce bloc
+    //    no-op proprement au lieu de casser tout /api/missions/list).
+    let coordsOk = true
+    try {
+      const { data: coordRows, error: coordErr } = await supabase
+        .from('incoming_missions')
+        .select('id, redelivery_lat, redelivery_lng')
+        .in('id', visibleMissions.map(m => m.id))
+      if (coordErr) { coordsOk = false }
+      else {
+        const cmap = new Map((coordRows || []).map(r => [r.id, r]))
+        for (const m of visibleMissions) {
+          const c = cmap.get(m.id)
+          ;(m as any).redelivery_lat = c?.redelivery_lat ?? null
+          ;(m as any).redelivery_lng = c?.redelivery_lng ?? null
+        }
+      }
+    } catch { coordsOk = false }
+
+    // 1) Géocoder + mettre en cache les adresses de relivraison sans coords.
+    //    Plafonné à 12/chargement : le cache fait que les suivants sont gratuits.
+    //    (coordsOk faux = migration pas encore appliquée → on saute le tri,
+    //     la liste reste rendue normalement, no-op propre.)
+    if (coordsOk && GKEY) {
+      const toGeo = visibleMissions
+        .filter(m => (m as any).redelivery_address &&
+          ((m as any).redelivery_lat == null || (m as any).redelivery_lng == null))
+        .slice(0, 12)
+      for (const m of toGeo) {
+        try {
+          const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent((m as any).redelivery_address)}&key=${GKEY}&language=fr&region=be`
+          const j = await (await fetch(url)).json()
+          const loc = j.results?.[0]?.geometry?.location
+          if (loc?.lat != null && loc?.lng != null) {
+            ;(m as any).redelivery_lat = loc.lat
+            ;(m as any).redelivery_lng = loc.lng
+            await supabase.from('incoming_missions')
+              .update({ redelivery_lat: loc.lat, redelivery_lng: loc.lng })
+              .eq('id', m.id)
+          }
+        } catch { /* best effort */ }
+      }
+    }
+
+    // 2) Tournée plus proche voisin depuis le dépôt par défaut (Pepinster).
+    //    Distance équirectangulaire au carré : suffisant pour ORDONNER (pas
+    //    besoin de haversine, on ne compare que des distances entre elles).
+    const DEPOT = { lat: 50.5703357, lng: 5.8216501 }
+    const dist = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+      const dLat = a.lat - b.lat
+      const dLng = (a.lng - b.lng) * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180)
+      return dLat * dLat + dLng * dLng
+    }
+    const hasCoord = (m: any) => m.redelivery_lat != null && m.redelivery_lng != null
+    const pool = visibleMissions.filter(hasCoord)
+    const without = visibleMissions.filter(m => !hasCoord(m)) // en attente d'adresse → fin
+    const ordered: typeof visibleMissions = []
+    let cursor = DEPOT
+    while (pool.length) {
+      let bi = 0, bd = Infinity
+      for (let i = 0; i < pool.length; i++) {
+        const c = { lat: Number((pool[i] as any).redelivery_lat), lng: Number((pool[i] as any).redelivery_lng) }
+        const d = dist(cursor, c)
+        if (d < bd) { bd = d; bi = i }
+      }
+      const next = pool.splice(bi, 1)[0]
+      ordered.push(next)
+      cursor = { lat: Number((next as any).redelivery_lat), lng: Number((next as any).redelivery_lng) }
+    }
+    visibleMissions = [...ordered, ...without]
+  }
 
   // Enrichissement : auto-dispatch status actif (1 attempt par mission max)
   // → permet au dispatcher de voir 'En cours d assignation a Franck' /
