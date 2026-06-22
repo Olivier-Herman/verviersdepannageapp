@@ -8,6 +8,7 @@ import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 import { printVdSoftParcLabel } from '@/lib/missions/print-parc-label'
 import { plateOrVinTail }       from '@/lib/plate'
 import { FOURRIERE_TYPE_TO_SOURCE, PREFIX_BY_TYPE, zoneForType } from '@/lib/missions/police-mapping'
+import { getDefaultParcZone } from '@/lib/missions/parc-default'
 
 export const maxDuration = 60
 
@@ -236,8 +237,12 @@ export async function POST(req: Request) {
 
   if (!isAssistance && FOURRIERE_TYPE_TO_SOURCE[type]) {
     const vdSource = FOURRIERE_TYPE_TO_SOURCE[type]
-    const vdZone   = zoneForType(type, sncScenario, appelPriveDestination, malGareeScenario)
-    const nowIso   = new Date().toISOString()
+    // Olivier 2026-06-22 « catalog strict » : zoneForType décide si la mission
+    // va au parc (selon le scénario) ; quand oui, la zone vient du parc par
+    // défaut de la source (Administration → Sources de mission).
+    const vdZoneRaw = zoneForType(type, sncScenario, appelPriveDestination, malGareeScenario)
+    const vdZone    = vdZoneRaw ? (await getDefaultParcZone(vdSource, supabase) || vdZoneRaw) : null
+    const nowIso    = new Date().toISOString()
 
     // Combine date (DD-MM-YYYY) + time (HH:MM) en ISO pour intervention_date.
     let interventionISO = nowIso

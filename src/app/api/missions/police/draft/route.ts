@@ -20,6 +20,7 @@ import { createAdminClient } from '@/lib/supabase'
 // Olivier 2026-06-03 (audit J-2 W10) : mappings centralises pour eviter le
 // drift entre cette route draft et /api/towsoft/create.
 import { FOURRIERE_TYPE_TO_SOURCE, PREFIX_BY_TYPE, zoneForType } from '@/lib/missions/police-mapping'
+import { getDefaultParcZone } from '@/lib/missions/parc-default'
 
 export const maxDuration = 30
 
@@ -70,8 +71,11 @@ export async function POST(req: Request) {
   }
 
   const vdSource = FOURRIERE_TYPE_TO_SOURCE[type]
-  const vdZone   = zoneForType(type, sncScenario, appelPriveDestination, malGareeScenario)
-  const nowIso   = new Date().toISOString()
+  // Olivier 2026-06-22 « catalog strict » : si la mission va au parc, la zone
+  // vient du parc par défaut de la source (Administration → Sources de mission).
+  const vdZoneRaw = zoneForType(type, sncScenario, appelPriveDestination, malGareeScenario)
+  const vdZone    = vdZoneRaw ? (await getDefaultParcZone(vdSource, supabase) || vdZoneRaw) : null
+  const nowIso    = new Date().toISOString()
 
   // Olivier 2026-06-03 : si le caller fournit intervention_at deja calcule
   // (PoliceClient le fait cote browser pour respecter le fuseau Belgique),

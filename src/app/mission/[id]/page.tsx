@@ -5,6 +5,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DriverClient          from './DriverClient'
 import SncMissionFiche       from './SncMissionFiche'
+import { getDefaultParcZone } from '@/lib/missions/parc-default'
 
 // Olivier 2026-06-03 : force-dynamic obligatoire — sinon Next.js peut cacher
 // la fiche mission cote serveur, et apres action driver (load_vehicle, etc.)
@@ -76,12 +77,17 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
     )
   }
 
+  // Parc par défaut de la source (Administration → Sources de mission) : zone
+  // suggérée à la mise en parc côté chauffeur (« catalog strict »).
+  const defaultParcZone = await getDefaultParcZone(mission.source, supabase)
+
   return (
     <DriverClient
       mission={mission}
       currentUserId={currentUser.id}
       isReadOnly={isStaff && !isDriverOfMission}
       navApp={currentUser.nav_app || 'gmaps'}
+      defaultParcZone={defaultParcZone}
     />
   )
 }

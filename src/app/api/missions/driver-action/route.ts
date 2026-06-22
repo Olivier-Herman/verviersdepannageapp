@@ -8,6 +8,7 @@ import { updateOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }       from '@/lib/odoo'
 import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
+import { getDefaultParcZone }  from '@/lib/missions/parc-default'
 
 export const maxDuration = 60   // hook PDF via waitUntil peut prendre 30s+
 
@@ -236,7 +237,13 @@ export async function POST(req: Request) {
   if (action === 'park') {
     if (park_data?.stage_id)   updatePayload.park_stage_id   = park_data.stage_id
     if (park_data?.stage_name) updatePayload.park_stage_name = park_data.stage_name
-    if (park_data?.zone_key)   updatePayload.parc_zone_key   = park_data.zone_key
+    // Olivier 2026-06-22 « catalog strict » : la zone de mise en parc vient du
+    // parc par défaut de la source (Administration → Sources de mission), source
+    // de vérité unique. Repli sur la zone envoyée par l'app si le catalog n'en
+    // définit pas. (Serveur autoritaire → correct même sur d'anciens builds.)
+    const catalogZone = await getDefaultParcZone(mission.source, supabase)
+    const parkZone = catalogZone || park_data?.zone_key || null
+    if (parkZone) updatePayload.parc_zone_key = parkZone
     if (park_data?.key_location) updatePayload.key_location  = park_data.key_location
     // Note : la bascule destination<->relivraison + adresse du parc est faite
     // de maniere centralisee plus bas (cf bloc "mise en parc" avant la

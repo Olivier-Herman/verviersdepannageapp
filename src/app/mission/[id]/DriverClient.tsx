@@ -73,7 +73,7 @@ interface Mission {
   awaiting_payment?: boolean | null
 }
 interface VrLoc { id: string; name: string; address: string; lat: number | null; lng: number | null; is_default?: boolean }
-interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp }
+interface Props { mission: Mission; currentUserId?: string; isReadOnly?: boolean; navApp?: NavApp; defaultParcZone?: string | null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Olivier 2026-06-18 : null-safe. Le defaut `= ''` ne couvre QUE undefined ;
@@ -586,7 +586,7 @@ function BriefingTtsButton({ mission }: { mission: Mission }) {
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function DriverClient({ mission: init, currentUserId, isReadOnly = false, navApp: initNav }: Props) {
+export default function DriverClient({ mission: init, currentUserId, isReadOnly = false, navApp: initNav, defaultParcZone = null }: Props) {
   const router = useRouter()
 
   const [M, setM]               = useState<Mission>(init)
@@ -1456,16 +1456,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // depuis le bureau via le module Facturation.
   const isAppelPrive     = M.source === 'prive'
 
-  let suggestedZoneKey: string | null = null
-  if (parkZoneOverride) {
-    suggestedZoneKey = parkZoneOverride
-  } else if (isPoliceAccident) {
-    suggestedZoneKey = (isRollable === true && isRightDirection === true) ? 'A' : 'Transit'
-  } else if (isPoliceSaisie) {
-    suggestedZoneKey = 'J'
-  } else if (isAppelPrive) {
-    suggestedZoneKey = 'Transit'
-  }
+  // Olivier 2026-06-22 « catalog strict » : la zone de mise en parc vient du
+  // parc par défaut de la source (Administration → Sources de mission), résolu
+  // côté serveur et passé en prop. Le serveur (driver-action) reste autoritaire.
+  const suggestedZoneKey: string | null = defaultParcZone ?? null
 
   // ── Mise en parc ──────────────────────────────────────────────────────────
   const doPark = async (vr: VrLoc) => {
@@ -3313,69 +3307,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <button onClick={() => setShowPark(false)} className="text-ink-muted text-2xl">×</button>
             </div>
 
-            {/* Appel Prive : zone Transit par defaut (pas de livraison sans paiement) */}
-            {isAppelPrive && (
-              <div className="bg-amber-900/15 border border-amber-700/30 rounded-2xl p-3 space-y-2">
-                <p className="text-amber-300 text-xs font-medium">📞 Appel Privé — zone parc</p>
-                <p className="text-ink-muted text-xs">
-                  Zone : <strong className="text-ink">Transit</strong>. Le véhicule reste chez nous tant que le client n&apos;a pas réglé. Facturation gérée depuis le bureau.
+            {/* « Catalog strict » : la zone vient du parc par défaut de la
+                source (Administration → Sources de mission). Olivier 2026-06-22. */}
+            {suggestedZoneKey && (
+              <div className="bg-blue-900/15 border border-blue-700/30 rounded-2xl p-3">
+                <p className="text-blue-300 text-xs font-medium">🅿️ Zone de parc</p>
+                <p className="text-ink-muted text-xs mt-1">
+                  Le véhicule va en zone <strong className="text-ink">{suggestedZoneKey}</strong> (définie pour cette source).
                 </p>
-              </div>
-            )}
-
-            {/* Police Saisie : zone J par defaut, override Transit si pas de place */}
-            {isPoliceSaisie && (
-              <div className="bg-blue-900/15 border border-blue-700/30 rounded-2xl p-3 space-y-2">
-                <p className="text-blue-300 text-xs font-medium">🚓 Police Saisie — zone parc</p>
-                <p className="text-ink-muted text-xs">Zone par défaut : <strong className="text-ink">J (Pepinster)</strong>. Bascule en Transit s'il n'y a plus de place en J.</p>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setParkZoneOverride('J')}
-                    className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${suggestedZoneKey === 'J' ? 'bg-success text-white border-success' : 'bg-surface border text-ink-secondary'}`}>
-                    Zone J (place dispo)
-                  </button>
-                  <button type="button" onClick={() => setParkZoneOverride('Transit')}
-                    className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${suggestedZoneKey === 'Transit' ? 'bg-warning text-white border-warning' : 'bg-surface border text-ink-secondary'}`}>
-                    Transit (J complet)
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Questions Police Accident : roulant + bon sens -> suggestion zone */}
-            {isPoliceAccident && (
-              <div className="bg-blue-900/15 border border-blue-700/30 rounded-2xl p-3 space-y-3">
-                <p className="text-blue-300 text-xs font-medium">🚓 Police Accident — état du véhicule</p>
-                <div>
-                  <p className="text-ink text-xs mb-1.5">Le véhicule est-il roulant ?</p>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setIsRollable(true)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRollable === true ? 'bg-success text-white border-success' : 'bg-surface border text-ink-secondary'}`}>
-                      Oui
-                    </button>
-                    <button type="button" onClick={() => setIsRollable(false)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRollable === false ? 'bg-warning text-white border-warning' : 'bg-surface border text-ink-secondary'}`}>
-                      Non
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-ink text-xs mb-1.5">Dans le bon sens ?</p>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setIsRightDirection(true)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRightDirection === true ? 'bg-success text-white border-success' : 'bg-surface border text-ink-secondary'}`}>
-                      Oui
-                    </button>
-                    <button type="button" onClick={() => setIsRightDirection(false)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${isRightDirection === false ? 'bg-warning text-white border-warning' : 'bg-surface border text-ink-secondary'}`}>
-                      Non
-                    </button>
-                  </div>
-                </div>
-                {suggestedZoneKey && (
-                  <div className={`px-3 py-2 rounded-xl text-sm font-bold ${suggestedZoneKey === 'A' ? 'bg-success-soft text-success border border-success/40' : 'bg-warning-soft text-warning border border-warning/40'}`}>
-                    Zone suggérée : <strong>{suggestedZoneKey}</strong>
-                  </div>
-                )}
               </div>
             )}
 
@@ -3387,20 +3326,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               </div>
             )}
 
-            {/* Le bouton "choisir un depot" reste disabled tant que les questions
-                Police Accident ne sont pas repondues. Pour les autres types, libre. */}
-            {isPoliceAccident && (isRollable === null || isRightDirection === null) && (
-              <p className="text-amber-400 text-xs text-center py-2">
-                ⚠ Réponds aux 2 questions ci-dessus avant de choisir le dépôt
-              </p>
-            )}
-
             {vrLocs.length === 0
               ? <p className="text-ink-faint text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
               : vrLocs.map(vr => {
-                const blocked = isPoliceAccident && (isRollable === null || isRightDirection === null)
                 return (
-                  <button key={vr.id} onClick={() => doPark(vr)} disabled={loading || blocked}
+                  <button key={vr.id} onClick={() => doPark(vr)} disabled={loading}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 bg-surface border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
                       vr.is_default ? 'border-amber-500/40' : 'border'
                     }`}>
