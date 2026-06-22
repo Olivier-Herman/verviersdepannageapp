@@ -73,6 +73,12 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
   if (typeof body.driver_allowed === 'boolean') {
     patch.driver_allowed = body.driver_allowed
   }
+  // zone_type : regroupement organisationnel (relivraison / accident / saisie).
+  if (body.zone_type === null || body.zone_type === '') {
+    patch.zone_type = null
+  } else if (['relivraison', 'accident', 'saisie'].includes(body.zone_type)) {
+    patch.zone_type = body.zone_type
+  }
   // active : soft-delete (false) ou reactivation (true)
   if (typeof body.active === 'boolean') {
     patch.active = body.active

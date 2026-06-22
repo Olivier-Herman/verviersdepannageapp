@@ -29,6 +29,16 @@ interface Zone {
   pool_capacity:   number | null
   depot_id:        string | null
   driver_allowed:  boolean
+  zone_type:       string | null
+}
+
+// Types de parc (regroupement organisationnel). Olivier 2026-06-22.
+const ZONE_TYPE_ORDER = ['relivraison', 'accident', 'saisie', ''] as const
+const ZONE_TYPE_LABEL: Record<string, string> = {
+  relivraison: '🔁 Relivraison',
+  accident:    '🚗 Accident',
+  saisie:      '🚓 Saisie',
+  '':          '— Non classé',
 }
 
 interface Depot {
@@ -108,7 +118,7 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
     }
   }
 
-  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id' | 'driver_allowed' | 'active' | 'label'>>) {
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id' | 'driver_allowed' | 'active' | 'label' | 'zone_type'>>) {
     setBusy(true)
     setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
     try {
@@ -367,8 +377,17 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {zones.filter(z => showInactive || z.active).map(zone => {
+      {/* Olivier 2026-06-22 : zones regroupées par TYPE de parc (organisation). */}
+      {ZONE_TYPE_ORDER.map(zt => {
+        const zonesOfType = zones.filter(z => (showInactive || z.active) && (z.zone_type || '') === zt)
+        if (zonesOfType.length === 0) return null
+        return (
+        <div key={`zt-${zt}`} className="mb-6">
+          <h2 className="text-ink-muted text-xs font-bold uppercase tracking-wide mb-2 border-b pb-1">
+            {ZONE_TYPE_LABEL[zt]} <span className="text-ink-faint font-normal">· {zonesOfType.length} zone{zonesOfType.length > 1 ? 's' : ''}</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {zonesOfType.map(zone => {
           const zRows = rowsOf(zone.key)
           return (
             <div key={zone.key} className={`bg-surface-2 border rounded-2xl overflow-hidden transition ${!zone.active ? 'opacity-50' : ''}`}>
@@ -421,6 +440,21 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
                     {depots.filter(d => d.active).map(d => (
                       <option key={d.id} value={d.id}>{d.name}{d.is_default_parc ? ' ★' : ''}</option>
                     ))}
+                  </select>
+                </div>
+                {/* Olivier 2026-06-22 : type de parc (regroupement organisationnel). */}
+                <div className="flex items-center gap-2 text-[11px]">
+                  <label className="text-ink-muted">Type :</label>
+                  <select
+                    value={zone.zone_type || ''}
+                    disabled={busy}
+                    onChange={e => toggleZoneOption(zone.key, { zone_type: e.target.value || null })}
+                    className="bg-surface border rounded px-2 py-1 text-ink text-[11px] focus:outline-none focus:border-brand disabled:opacity-50"
+                  >
+                    <option value="">— Non classé —</option>
+                    <option value="relivraison">Relivraison</option>
+                    <option value="accident">Accident</option>
+                    <option value="saisie">Saisie</option>
                   </select>
                 </div>
                 {/* Options de la zone : type, orientation + sens */}
@@ -533,7 +567,10 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
             </div>
           )
         })}
-      </div>
+          </div>
+        </div>
+        )
+      })}
 
       {createModalOpen && (
         <CreateZoneModal

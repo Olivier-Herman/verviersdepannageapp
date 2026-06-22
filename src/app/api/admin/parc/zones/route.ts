@@ -22,7 +22,10 @@ interface Body {
   strict_capacity?: boolean
   driver_allowed?: boolean
   sort_order?:     number
+  zone_type?:      string | null
 }
+
+const ZONE_TYPES = ['relivraison', 'accident', 'saisie'] as const
 
 async function ensureAdmin() {
   const session = await getServerSession(authOptions)
@@ -86,6 +89,9 @@ export async function POST(req: Request) {
 
   if (body.depot_id && /^[0-9a-f-]{36}$/i.test(body.depot_id)) {
     payload.depot_id = body.depot_id
+  }
+  if (body.zone_type && (ZONE_TYPES as readonly string[]).includes(body.zone_type)) {
+    payload.zone_type = body.zone_type
   }
 
   const { data: created, error } = await sb
