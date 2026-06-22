@@ -14,6 +14,7 @@ import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyIn
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
+import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
@@ -3608,38 +3609,23 @@ export default function MissionDetailClient({
                 💰 Avance de fonds pour cette mission
               </a>
 
-              {/* "Ce véhicule nécessite une relivraison ?" — Olivier 2026-06-22 :
-                  visible sur TOUTES les fiches en parc (hors zone K). On encode
-                  l'adresse → bascule auto en zone K (cf. PATCH). Ne crée PAS
-                  encore la REL. Avertissement si véhicule saisi sans levée. */}
-              {status === 'parked' && !linkedChild
-                && (initialMission as any).parc_zone_key !== 'K' && (
-                <NeedsRelivraisonButton
+              {/* Bloc Relivraison — Olivier 2026-06-22 : bouton unique + modal
+                  (adresse pré-remplie modifiable) sur TOUTES les fiches en parc.
+                  « Enregistrer » sauve l'adresse (bascule auto en K) ; « Relivrer
+                  maintenant » crée la fiche REL prête à assigner. Avertissement
+                  si véhicule saisi sans levée. */}
+              {status === 'parked' && !linkedChild && (
+                <RelivraisonModalButton
                   missionId={initialMission.id}
-                  currentAddress={
-                    (initialMission as any).redelivery_address
-                    || initialMission.destination_address
-                    || ''
-                  }
+                  currentAddress={(initialMission as any).redelivery_address || ''}
+                  currentLat={(initialMission as any).redelivery_lat ?? null}
+                  currentLng={(initialMission as any).redelivery_lng ?? null}
                   gmKey={googleMapsKey}
                   onDone={() => router.refresh()}
                   saisieWarning={
                     ['police_saisie', 'police_rodeo'].includes(initialMission.source)
                     && !(initialMission as any).police_levee_saisie_ok
                   }
-                />
-              )}
-
-              {/* Bloc Relivraison (création REL) — Olivier 2026-06-22 : pour tout
-                  véhicule en zone K (file d'attente relivraison), sans exclusion. */}
-              {status === 'parked' && !linkedChild
-                && (initialMission as any).parc_zone_key === 'K' && (
-                <RelivrerButton
-                  missionId={initialMission.id}
-                  initialRedeliveryAddress={(initialMission as any).redelivery_address}
-                  originalDestination={initialMission.destination_address || ''}
-                  parentSource={initialMission.source}
-                  gmKey={googleMapsKey}
                 />
               )}
 
