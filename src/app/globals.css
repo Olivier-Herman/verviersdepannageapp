@@ -223,24 +223,8 @@ body {
   }
 }
 
-/* Tablette en portrait -> demande paysage.
-   Olivier 2026-06-22 : exception pour les admins (tablette Samsung utilisée en
-   portrait). La classe .portrait-ok est posée sur <body> selon le rôle
-   (cf. PortraitMode component) → l overlay ne s applique pas. */
-@media (orientation: portrait) and (min-width: 768px) {
-  body:not(.portrait-ok)::before {
-    content: "";
-    position: fixed; inset: 0;
-    background: #0f172a; z-index: 999998;
-  }
-  body:not(.portrait-ok)::after {
-    content: "📱 → 🖥️ Tourne ton écran en mode paysage pour utiliser VD Soft sur tablette";
-    position: fixed; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    padding: 2rem;
-    color: white; font-size: 1.5rem; font-weight: 600;
-    text-align: center; line-height: 1.4;
-    z-index: 999999;
-    pointer-events: none;
-  }
-}
+/* Olivier 2026-06-22 : le blocage "tablette en portrait → demande paysage" a
+   été RETIRÉ. Il empêchait l'usage en portrait (chauffeur sur tablette Samsung)
+   et bloquait même l'écran de login (avant connexion, donc impossible à gater
+   par rôle). Les tablettes peuvent désormais s'utiliser en portrait comme en
+   paysage. Le smartphone reste incité au portrait (règle ci-dessus). */
