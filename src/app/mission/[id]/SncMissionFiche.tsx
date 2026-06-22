@@ -27,6 +27,7 @@ import { Loader2 } from 'lucide-react'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import AddressField from '@/components/AddressField'
+import { openNavigation, navHttpsUrl } from '@/lib/open-navigation'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -79,14 +80,6 @@ interface Props {
 
 // ── Helpers (mirror DriverClient) ─────────────────────────────────────────
 const plate = (v = '') => v.replace(/[-.\s]/g, '').toUpperCase()
-
-const gUrl = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
-  const q = lat && lng ? `${lat},${lng}` : encodeURIComponent(addr || '')
-  if (!q) return null
-  if (app === 'waze')  return `https://waze.com/ul?ll=${q}&navigate=yes`
-  if (app === 'apple') return `https://maps.apple.com/?daddr=${q}&dirflg=d`
-  return `https://www.google.com/maps/dir/?api=1&destination=${q}`
-}
 
 // Section box (clone du composant Section de PoliceClient.tsx)
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -509,8 +502,8 @@ export default function SncMissionFiche({
       || (M.snc_scenario === 'dsp' && isFullyPaid)      // DSP SNC : si paye
     )
 
-  const navUrl = gUrl(navApp, M.incident_lat, M.incident_lng,
-    [M.incident_address, M.incident_city].filter(Boolean).join(', '))
+  const navAddr = [M.incident_address, M.incident_city].filter(Boolean).join(', ')
+  const navUrl = navHttpsUrl(navApp, M.incident_lat, M.incident_lng, navAddr)
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -595,14 +588,13 @@ export default function SncMissionFiche({
               </div>
             )}
             {navUrl && (
-              <a
-                href={navUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => openNavigation(navApp, M.incident_lat, M.incident_lng, navAddr)}
                 className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl ${accentBgSoft} ${accentText2} text-sm font-semibold border ${accentBorder} hover:opacity-90`}
               >
                 🗺️ Naviguer
-              </a>
+              </button>
             )}
             {M.incident_description && (
               <p className="text-ink-muted text-xs mt-2 border-t border pt-2">

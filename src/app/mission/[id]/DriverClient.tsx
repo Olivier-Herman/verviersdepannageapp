@@ -15,6 +15,7 @@ import type { VehicleMatch } from '@/types/vehicles'
 import { KEY_LOCATIONS } from '@/lib/key-location'
 import { KeyTag } from '@/components/missions/KeyInfoCard'
 import { TtsButton } from '@/components/audio/TtsButton'
+import { openNavigation } from '@/lib/open-navigation'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 
@@ -100,13 +101,6 @@ const isRELMission = (m: Mission) => {
       || m.incident_type === 'relivraison'
       || !!m.parent_mission_id
 }
-const gUrl  = (app: NavApp, lat?: number, lng?: number, addr?: string) => {
-  const q = lat && lng ? `${lat},${lng}` : encodeURIComponent(addr || ''); if (!q) return null
-  if (app === 'waze')  return `https://waze.com/ul?ll=${q}&navigate=yes`
-  if (app === 'apple') return `https://maps.apple.com/?daddr=${q}&dirflg=d`
-  return `https://www.google.com/maps/dir/?api=1&destination=${q}`
-}
-
 // Olivier 2026-06-16 : capture GPS au moment d'un pointage (lieu de pointage
 // sur la carte trajet dispatch). STRICTEMENT non bloquant : cap ~2s, renvoie
 // null sur le moindre échec/refus/timeout → le pointage part quand même.
@@ -3487,7 +3481,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {addrModal && (
         <AddrActionModal
           title={addrModal.title} address={addrModal.address}
-          onNavigate={() => { const u = gUrl(navApp, addrModal.lat, addrModal.lng, addrModal.address); if (u) window.open(u, '_blank'); setAddrModal(null) }}
+          onNavigate={() => { openNavigation(navApp, addrModal.lat, addrModal.lng, addrModal.address); setAddrModal(null) }}
           onModify={addrModal.field ? () => {
             const f = addrModal.field!
             if (f.startsWith('stop:')) {
@@ -3512,8 +3506,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {showNav && <NavModal onPick={async app => {
         setNavApp(app); setShowNav(false)
         await fetch('/api/users/nav-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nav_app: app }) })
-        const u = gUrl(app, M.incident_lat, M.incident_lng, M.incident_address)
-        if (u) window.open(u, '_blank')
+        openNavigation(app, M.incident_lat, M.incident_lng, M.incident_address)
         api('on_way')
       }} />}
 
