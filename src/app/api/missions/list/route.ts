@@ -95,10 +95,39 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Olivier 2026-06-22 : 'À Relivrer' = véhicules parked zone K SANS REL enfant
+  // déjà créée. Quand une relivraison est liée (ex. acceptée depuis Kaze), le
+  // parent REM doit SORTIR de l'onglet À Relivrer (sinon il reste affiché alors
+  // que la REL est déjà en cours). On calcule l'ensemble des parents zone K qui
+  // ont une REL enfant active → exclus de la liste ET du compteur.
+  const { data: parkedIdsRows } = await supabase
+    .from('incoming_missions')
+    .select('id')
+    .eq('status', 'parked').eq('parc_zone_key', 'K')
+    .not('external_id', 'like', 'PROCESSING_%').not('external_id', 'like', 'UNKNOWN_SENDER_%')
+    .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
+    .is('archived_at', null)
+  const parkedIds = (parkedIdsRows || []).map(r => r.id)
+  const parkedWithChild = new Set<string>()
+  if (parkedIds.length > 0) {
+    const { data: kids } = await supabase
+      .from('incoming_missions')
+      .select('parent_mission_id')
+      .in('parent_mission_id', parkedIds)
+      .not('status', 'in', '("cancelled","ignored")')
+    for (const kk of (kids || [])) if (kk.parent_mission_id) parkedWithChild.add(kk.parent_mission_id)
+  }
+  const parkedActiveCount = parkedIds.filter(id => !parkedWithChild.has(id)).length
+
+  // Liste visible : sur l'onglet À Relivrer, on retire les parents déjà reliés.
+  const visibleMissions = (status === 'parked')
+    ? (missions || []).filter(m => !parkedWithChild.has(m.id))
+    : (missions || [])
+
   // Enrichissement : auto-dispatch status actif (1 attempt par mission max)
   // → permet au dispatcher de voir 'En cours d assignation a Franck' /
   //   'Tentative d appel a Franck' sur les cards et liste.
-  const missionIds = (missions || []).map(m => m.id)
+  const missionIds = visibleMissions.map(m => m.id)
   if (missionIds.length > 0) {
     const { data: activeAttempts } = await supabase
       .from('dispatch_attempts_log')
@@ -113,7 +142,7 @@ export async function GET(req: Request) {
       if (!byMission.has(att.mission_id)) byMission.set(att.mission_id, att)
     }
 
-    for (const m of missions || []) {
+    for (const m of visibleMissions) {
       const att = byMission.get(m.id)
       if (!att) continue
       const driverName = (att.driver as any)?.name || '?'
@@ -142,7 +171,7 @@ export async function GET(req: Request) {
       .in('mission_id', missionIds)
       .eq('status', 'pending')
     const derogSet = new Set((pendingDerogs || []).map(d => d.mission_id))
-    for (const m of missions || []) {
+    for (const m of visibleMissions) {
       if (derogSet.has(m.id)) (m as any).has_pending_derogation = true
     }
   }
@@ -164,13 +193,13 @@ export async function GET(req: Request) {
     return apply(q)
   }
 
-  const [cNew, cDisp, cAssigned, cInProg, cParked, cCompleted, cErrors] = await Promise.all([
+  // 'À Relivrer' (parked) : compteur calculé plus haut (parkedActiveCount) en
+  // excluant les parents ayant déjà une REL enfant active.
+  const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors] = await Promise.all([
     countBy(q => q.eq('status', 'new')),
     countBy(q => q.eq('status', 'dispatching')),
     countBy(q => q.in('status', ['assigned', 'accepted'])),
     countBy(q => q.in('status', ['in_progress', 'delivering'])),
-    // 'À Relivrer' = tous les vehicules en zone K (avec ou sans adresse).
-    countBy(q => q.eq('status', 'parked').eq('parc_zone_key', 'K')),
     countBy(q => q.in('status', ['completed', 'to_invoice'])),
     countBy(q => q.eq('status', 'parse_error')),
   ])
@@ -180,10 +209,10 @@ export async function GET(req: Request) {
     dispatching: cDisp.count      || 0,
     assigned:    cAssigned.count  || 0,
     in_progress: cInProg.count    || 0,
-    parked:      cParked.count    || 0,
+    parked:      parkedActiveCount,
     completed:   cCompleted.count || 0,
     errors:      cErrors.count    || 0,
   }
 
-  return NextResponse.json({ missions, counters })
+  return NextResponse.json({ missions: visibleMissions, counters })
 }
