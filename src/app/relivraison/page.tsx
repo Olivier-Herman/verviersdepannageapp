@@ -18,8 +18,8 @@ export default async function RelivraisonPage() {
   const user = session.user as any
   const role: string      = user.role || ''
   const modules: string[] = user.modules || []
-  const hasAccess = ['admin', 'superadmin'].includes(role) || modules.includes('relivraison')
-  if (!hasAccess) redirect('/dashboard?error=access_denied')
+  // Olivier 2026-06-22 : module en construction → superadmin uniquement.
+  if (role !== 'superadmin') redirect('/dashboard?error=access_denied')
 
   return (
     <RelivraisonClient

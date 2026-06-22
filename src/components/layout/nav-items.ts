@@ -20,7 +20,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',     label: 'Dashboard',        i18nKey: 'nav.dashboard',     icon: '🏠', moduleId: null },
   { href: '/recherche',     label: 'Recherche',        i18nKey: 'nav.search',        icon: '🔍', moduleId: null },
   { href: '/dispatch',      label: 'Dispatch',         icon: '📡', moduleId: 'missions' },
-  { href: '/relivraison',   label: 'Relivraison',      icon: '🔁', moduleId: 'relivraison' },
+  // Olivier 2026-06-22 : module en construction → visible superadmin uniquement
+  // pour l'instant (repasser sur moduleId 'relivraison' quand opérationnel).
+  { href: '/relivraison',   label: 'Relivraison',      icon: '🔁', moduleId: null, role: 'superadmin' },
   { href: '/mission',          label: 'Mes Missions',        i18nKey: 'nav.my_missions',   icon: '🚗', moduleId: 'driver_missions' },
   { href: '/missions-dispo',   label: 'Momo Market',                                       icon: '🛒', moduleId: 'driver_missions' },
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
