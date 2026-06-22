@@ -13,6 +13,7 @@ import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
+import CancelMissionButton from '@/components/missions/CancelMissionButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
@@ -3765,6 +3766,29 @@ export default function MissionDetailClient({
                       </div>
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* ── Annuler la fiche (Dispatch / Facturation / Fourrière) ──
+                  Passe en 'cancelled' (invisible dans l'app, conservée en base). */}
+              {status !== 'cancelled'
+                && (['admin', 'superadmin', 'dispatcher'].includes(userRole)
+                    || userModules.includes('facturation')
+                    || userModules.includes('fourriere')) && (
+                <div className="bg-surface border border-red-500/30 rounded-2xl p-5 md-card-enter">
+                  <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-2">
+                    🚫 Annuler la fiche
+                  </h3>
+                  <p className="text-ink-faint text-xs mb-4">
+                    La fiche est masquée de l&apos;app mais conservée en base de données. Un motif est demandé.
+                  </p>
+                  <CancelMissionButton
+                    missionId={initialMission.id}
+                    onCancelled={() => {
+                      if (typeof window !== 'undefined' && window.history.length > 1) router.back()
+                      else router.push('/dispatch')
+                    }}
+                  />
                 </div>
               )}
 

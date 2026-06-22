@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { X, Car, FileText, ShieldAlert, MapPin, Calculator, ExternalLink, Loader2, Building2, Clock, User, Wrench, Hash, Receipt } from 'lucide-react'
 import Link from 'next/link'
 import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturerModal'
+import CancelMissionButton from '@/components/missions/CancelMissionButton'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import { KEY_LOCATION_LABELS } from '@/lib/key-location'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
@@ -361,6 +362,15 @@ function FicheContent({ fiche, userModules, userRole, router, onClose, onChanged
             </a>
           )}
         </div>
+        {/* Annuler la fiche (cancelled, invisible dans l'app, conservée en base) */}
+        {m.status !== 'cancelled'
+          && (userModules.includes('fourriere') || userModules.includes('facturation')
+              || ['admin', 'superadmin', 'dispatcher'].includes(userRole)) && (
+          <CancelMissionButton
+            missionId={m.id}
+            onCancelled={() => { onClose(); router.refresh() }}
+          />
+        )}
       </div>
     </div>
   )
