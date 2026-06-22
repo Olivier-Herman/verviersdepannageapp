@@ -147,5 +147,10 @@ export async function GET() {
     }
   })
 
-  return NextResponse.json({ ok: true, count: rows.length, counts: listing.counts, rows })
+  // Olivier 2026-06-22 : n'afficher que les missions en statut "À facturer"
+  // (to_invoice) côté VD Soft. On masque les non-rapprochées et celles encore
+  // en cours / déjà clôturées.
+  const filtered = rows.filter((r: any) => r.vdsoft && r.vdsoft.status === 'to_invoice')
+
+  return NextResponse.json({ ok: true, count: filtered.length, counts: listing.counts, rows: filtered })
 }
