@@ -3504,12 +3504,30 @@ export default function MissionDetailClient({
                   <button
                     onClick={handleSave}
                     disabled={loadingSave || vehicleDecisionPending}
-                    title="Sauvegarder et notifier le chauffeur"
+                    title="Sauvegarder les modifications"
                     className="w-full py-3 bg-brand hover:bg-brand/80 text-white rounded-2xl font-semibold text-sm shadow-lg shadow-brand/20 transition disabled:opacity-50"
                   >
-                    {loadingSave ? '⏳ Sauvegarde…' : saveOk ? '✅ Enregistré — chauffeur notifié' : '💾 Sauvegarder & notifier le chauffeur'}
+                    {loadingSave ? '⏳ Sauvegarde…' : saveOk ? '✅ Enregistré' : '💾 Sauvegarder les modifications'}
                   </button>
                 </div>
+              )}
+
+              {/* Bloc Relivraison — Olivier 2026-06-22 : placé juste sous le
+                  bouton Sauvegarder. Bouton unique + modal (adresse pré-remplie)
+                  sur toute fiche en parc. */}
+              {status === 'parked' && !linkedChild && (
+                <RelivraisonModalButton
+                  missionId={initialMission.id}
+                  currentAddress={(initialMission as any).redelivery_address || ''}
+                  currentLat={(initialMission as any).redelivery_lat ?? null}
+                  currentLng={(initialMission as any).redelivery_lng ?? null}
+                  gmKey={googleMapsKey}
+                  onDone={() => router.refresh()}
+                  saisieWarning={
+                    ['police_saisie', 'police_rodeo'].includes(initialMission.source)
+                    && !(initialMission as any).police_levee_saisie_ok
+                  }
+                />
               )}
 
               {/* Fusionner une fiche en double (cette fiche est conservée).
@@ -3609,25 +3627,6 @@ export default function MissionDetailClient({
                 💰 Avance de fonds pour cette mission
               </a>
 
-              {/* Bloc Relivraison — Olivier 2026-06-22 : bouton unique + modal
-                  (adresse pré-remplie modifiable) sur TOUTES les fiches en parc.
-                  « Enregistrer » sauve l'adresse (bascule auto en K) ; « Relivrer
-                  maintenant » crée la fiche REL prête à assigner. Avertissement
-                  si véhicule saisi sans levée. */}
-              {status === 'parked' && !linkedChild && (
-                <RelivraisonModalButton
-                  missionId={initialMission.id}
-                  currentAddress={(initialMission as any).redelivery_address || ''}
-                  currentLat={(initialMission as any).redelivery_lat ?? null}
-                  currentLng={(initialMission as any).redelivery_lng ?? null}
-                  gmKey={googleMapsKey}
-                  onDone={() => router.refresh()}
-                  saisieWarning={
-                    ['police_saisie', 'police_rodeo'].includes(initialMission.source)
-                    && !(initialMission as any).police_levee_saisie_ok
-                  }
-                />
-              )}
 
               {linkedChild && (
                 <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4">
