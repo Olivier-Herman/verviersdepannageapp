@@ -1138,6 +1138,7 @@ export default function MissionDetailClient({
   userHasOdooAccess = false,
   googleMapsKey,
   autoDispatchStatus,
+  parcZoneType = null,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -1153,6 +1154,7 @@ export default function MissionDetailClient({
   userHasOdooAccess?: boolean
   googleMapsKey: string
   autoDispatchStatus?: string | null
+  parcZoneType?: string | null
 }) {
   const router = useRouter()
 
@@ -3596,14 +3598,12 @@ export default function MissionDetailClient({
                 💰 Avance de fonds pour cette mission
               </a>
 
-              {/* "Ce véhicule nécessite une relivraison ?" — Olivier 2026-06-14 :
-                  sur une fiche HORS zone K, encode l'adresse + bascule en zone K
-                  (file d'attente relivraison). Ne crée PAS encore la fiche REL.
-                  Visible pour les REM en parc dont la source autorise une relivraison. */}
+              {/* "Ce véhicule nécessite une relivraison ?" — Olivier 2026-06-22 :
+                  visible pour tout véhicule en parc dans une zone de type
+                  Relivraison ou Accident, hors zone K. On encode l'adresse →
+                  bascule auto en zone K (cf. PATCH). Ne crée PAS encore la REL. */}
               {status === 'parked' && !linkedChild
-                && (initialMission.mission_type === 'REM' || /^rem$/i.test(initialMission.mission_type || ''))
-                && !['police_mg', 'police_rodeo', 'police_saisie', 'police_avp'].includes(initialMission.source)
-                && !(initialMission.source === 'police_snc' && initialMission.snc_scenario !== 'rem_depot')
+                && (parcZoneType === 'relivraison' || parcZoneType === 'accident')
                 && (initialMission as any).parc_zone_key !== 'K' && (
                 <NeedsRelivraisonButton
                   missionId={initialMission.id}

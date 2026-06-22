@@ -124,6 +124,18 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     userHasOdooAccess = Boolean(meRow?.odoo_api_key)
   }
 
+  // Type de la zone de parc actuelle (relivraison / accident / saisie) → pilote
+  // la visibilité du bloc relivraison sur la fiche. Olivier 2026-06-22.
+  let parcZoneType: string | null = null
+  if ((mission as any).parc_zone_key) {
+    const { data: pz } = await supabase
+      .from('parc_zones')
+      .select('zone_type')
+      .eq('key', (mission as any).parc_zone_key)
+      .maybeSingle()
+    parcZoneType = (pz?.zone_type as string) || null
+  }
+
   return (
     <MissionDetailClient
       mission={mission}
@@ -140,6 +152,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       userHasOdooAccess={userHasOdooAccess}
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
       autoDispatchStatus={autoDispatchStatus}
+      parcZoneType={parcZoneType}
     />
   )
 }
