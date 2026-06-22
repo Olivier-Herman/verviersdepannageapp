@@ -183,12 +183,14 @@ export class QuoteNotFoundError extends Error {
 export async function updateSaleOrder(quoteId: number, input: Partial<CreateQuoteInput>): Promise<{ id: number; url: string }> {
   // Verifie d abord l existence pour eviter d ecrire dans le vide
   let existingLineIds: number[] = []
+  let orderState = 'draft'
   try {
     const existing = await rpc<any[]>('sale.order', 'read', [[quoteId], ['order_line', 'state']])
     if (!existing || existing.length === 0) {
       throw new QuoteNotFoundError(quoteId)
     }
     existingLineIds = existing[0].order_line || []
+    orderState      = existing[0].state || 'draft'
   } catch (e: any) {
     const msg = String(e.message || '')
     if (msg.includes('does not exist') || msg.includes('Missing') || msg.includes('AccessError')) {
@@ -205,9 +207,19 @@ export async function updateSaleOrder(quoteId: number, input: Partial<CreateQuot
 
   if (input.sections) {
     const newLines = await buildOrderLines(input.sections)
+    // Olivier 2026-06-22 (fix bug facturation) : Odoo INTERDIT de supprimer une
+    // ligne d'une commande CONFIRMÉE (state sale/done) — "définissez plutôt la
+    // quantité sur 0". Donc :
+    //   - devis brouillon (draft/sent)  → delete + recreate (propre)
+    //   - commande confirmée (sale/done) → on met les anciennes lignes à qty 0
+    //     (au lieu de les supprimer) puis on ajoute les nouvelles lignes.
+    const isConfirmed = orderState === 'sale' || orderState === 'done'
+    const removeCmds = isConfirmed
+      ? existingLineIds.map(id => [1, id, { product_uom_qty: 0 }]) // update qty -> 0
+      : existingLineIds.map(id => [2, id, false])                  // delete
     const orderLineCmds = [
-      ...existingLineIds.map(id => [2, id, false]),  // delete each existing line
-      ...newLines,                                   // create new lines
+      ...removeCmds,
+      ...newLines,        // create new lines
     ]
     vals.order_line = orderLineCmds
   }
