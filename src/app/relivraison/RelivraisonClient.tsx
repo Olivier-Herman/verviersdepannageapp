@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
+import { getSourceLabel, getSourceColor, type SourceDisplay } from '@/lib/missions/source-display'
 
 interface Mission {
   id:                 string
@@ -21,11 +22,12 @@ interface Mission {
 
 interface ZoneTab { key: string; label: string; count: number }
 
-export default function RelivraisonClient({ userRole, userName, userEmail, userModules }: {
+export default function RelivraisonClient({ userRole, userName, userEmail, userModules, sources }: {
   userRole:    string
   userName:    string
   userEmail?:  string
   userModules: string[]
+  sources:     SourceDisplay[]
 }) {
   const [zone,     setZone]     = useState('K')      // onglet actif (défaut K)
   const [zones,    setZones]    = useState<ZoneTab[]>([])
@@ -144,13 +146,19 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
               >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <p className="text-ink font-bold font-mono text-sm">
-                      {m.vehicle_plate || '—'}
-                      <span className="text-ink-secondary font-normal font-sans"> {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-ink font-bold font-mono text-sm">
+                        {m.vehicle_plate || '—'}
+                        <span className="text-ink-secondary font-normal font-sans"> {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>
+                      </p>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase text-white ${getSourceColor(m.source, sources)}`}>
+                        {getSourceLabel(m.source, sources)}
+                      </span>
+                    </div>
                     <p className="text-ink-muted text-xs mt-0.5">{m.client_name || '—'}</p>
                     <p className="text-ink text-sm mt-1">
-                      📍 {m.redelivery_address || <span className="text-amber-500">Adresse de relivraison à saisir</span>}
+                      <span className="text-ink-muted text-xs">Adresse de relivraison :</span>{' '}
+                      📍 {m.redelivery_address || <span className="text-amber-500">à saisir</span>}
                     </p>
                   </div>
                   <span className="text-brand text-xs font-semibold flex-shrink-0">VOIR →</span>
