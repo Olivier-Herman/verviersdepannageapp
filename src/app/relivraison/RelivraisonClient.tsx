@@ -19,24 +19,32 @@ interface Mission {
   redelivery_lng:     number | null
 }
 
+interface ZoneTab { key: string; label: string; count: number }
+
 export default function RelivraisonClient({ userRole, userName, userEmail, userModules }: {
   userRole:    string
   userName:    string
   userEmail?:  string
   userModules: string[]
 }) {
+  const [zone,     setZone]     = useState('K')      // onglet actif (défaut K)
+  const [zones,    setZones]    = useState<ZoneTab[]>([])
   const [missions, setMissions] = useState<Mission[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
 
-  const load = useCallback(async (silent = false) => {
+  const zoneRef = useRef(zone)
+  useEffect(() => { zoneRef.current = zone }, [zone])
+
+  const load = useCallback(async (z: string, silent = false) => {
     if (!silent) setLoading(true)
     try {
-      // Réutilise la liste « À relivrer » du dispatch (parked zone K) : déjà
-      // triée par tournée + parents avec REL enfant exclus.
-      const res = await fetch('/api/missions/list?status=parked')
+      const res = await fetch(`/api/relivraison/list?zone=${encodeURIComponent(z)}`)
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Erreur')
+      // Garde anti-périmé : ignore une réponse d'un onglet qu'on a quitté.
+      if (zoneRef.current !== z) return
+      setZones(j.zones || [])
       setMissions(j.missions || [])
       setError('')
     } catch (e: any) {
@@ -46,10 +54,10 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
-  // Rafraîchissement léger périodique.
+  useEffect(() => { load(zone) }, [zone, load])
+  // Rafraîchissement léger périodique de l'onglet courant.
   useEffect(() => {
-    const t = setInterval(() => load(true), 30000)
+    const t = setInterval(() => load(zoneRef.current, true), 30000)
     return () => clearInterval(t)
   }, [load])
 
@@ -84,22 +92,39 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
         } catch { /* best effort */ }
       }
       geocodingRef.current = false
-      if (any) load(true)
+      if (any) load(zoneRef.current, true)
     })()
   }, [missions, load])
 
   return (
     <AppShell title="Relivraison" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <main className="p-4 lg:p-8 max-w-5xl mx-auto">
-        <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-ink text-xl font-bold">🔁 À relivrer</h1>
-            <p className="text-ink-muted text-sm">
-              Véhicules en parc en attente de relivraison — triés par tournée (adresses proches regroupées).
-            </p>
-          </div>
-          <span className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 text-emerald-300 text-sm font-medium flex-shrink-0">
-            🗺️ Tri par tournée · {missions.length}
+        <div className="mb-3">
+          <h1 className="text-ink text-xl font-bold">🔁 Relivraison</h1>
+          <p className="text-ink-muted text-sm">
+            Véhicules en parc en attente de relivraison — triés par tournée (adresses proches regroupées).
+          </p>
+        </div>
+
+        {/* Onglets par zone (type Relivraison) */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {zones.map(z => (
+            <button
+              key={z.key}
+              type="button"
+              onClick={() => setZone(z.key)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold border transition ${
+                zone === z.key
+                  ? 'bg-brand text-white border-brand'
+                  : 'bg-surface border text-ink-secondary hover:text-ink hover:border-brand/40'
+              }`}
+            >
+              {z.label}
+              <span className={`ml-2 ${zone === z.key ? 'text-white/80' : 'text-ink-faint'}`}>{z.count}</span>
+            </button>
+          ))}
+          <span className="ml-auto bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 text-emerald-300 text-xs font-medium">
+            🗺️ Tri par tournée
           </span>
         </div>
 
@@ -108,7 +133,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
         ) : error ? (
           <p className="text-critical py-8 text-center">⚠ {error}</p>
         ) : missions.length === 0 ? (
-          <div className="text-center py-16 text-ink-muted">Aucun véhicule à relivrer 🎉</div>
+          <div className="text-center py-16 text-ink-muted">Aucun véhicule à relivrer dans cette zone 🎉</div>
         ) : (
           <div className="space-y-2">
             {missions.map(m => (
