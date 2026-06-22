@@ -291,7 +291,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                 disabled={!!mBusy || !mAddr.trim()}
                 className="w-full py-2.5 bg-surface-2 border text-ink rounded-xl text-sm font-semibold transition disabled:opacity-50"
               >
-                {mBusy === 'save' ? 'Enregistrement…' : '💾 Enregistrer les modifications'}
+                {mBusy === 'save' ? 'Enregistrement…' : '🕒 Relivrer plus tard'}
               </button>
               <button
                 type="button"
@@ -304,7 +304,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
             </div>
 
             <p className="text-ink-faint text-xs">
-              « Relivrer maintenant » enregistre l&apos;adresse <strong>et</strong> crée la fiche de relivraison prête à assigner. « Enregistrer les modifications » ne fait qu&apos;enregistrer l&apos;adresse.
+              « Relivrer maintenant » enregistre l&apos;adresse <strong>et</strong> crée la fiche de relivraison prête à assigner. « Relivrer plus tard » enregistre seulement l&apos;adresse (le véhicule reste dans la file).
             </p>
           </div>
         </div>
