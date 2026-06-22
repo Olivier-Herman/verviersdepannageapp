@@ -68,6 +68,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Olivier 2026-05-28 : ajout Appel Prive REM depot.
   // Olivier 2026-06-05 : bascule Transit -> K pour rem_depot, on accepte
   // les 2 zones (rétrocompat missions migrees).
+  // Olivier 2026-06-22 : si le chauffeur saisit l'adresse au scan (véhicule en
+  // parc de type Relivraison/Accident, sans adresse encore), on l'enregistre
+  // d'abord (+ bascule en zone K) avant de créer la REL.
+  const scannedAddress = String(body.redelivery_address || '').trim()
+  const scannedLat = body.redelivery_lat != null ? Number(body.redelivery_lat) : null
+  const scannedLng = body.redelivery_lng != null ? Number(body.redelivery_lng) : null
+  // Le véhicule avait-il déjà une adresse de relivraison AVANT ce scan ? (sert
+  // à notifier un dispatcher quand le chauffeur l'a saisie lui-même au scan.)
+  const hadAddressBefore = !!parent.redelivery_address
+  if (scannedAddress && !parent.redelivery_address) {
+    const upd: any = { redelivery_address: scannedAddress, updated_at: new Date().toISOString() }
+    if (scannedLat != null && Number.isFinite(scannedLat)) upd.redelivery_lat = scannedLat
+    if (scannedLng != null && Number.isFinite(scannedLng)) upd.redelivery_lng = scannedLng
+    if (parent.parc_zone_key !== 'K') { upd.parc_zone_key = 'K'; upd.parc_row_number = null; upd.parc_slot_index = null }
+    await sb.from('incoming_missions').update(upd).eq('id', parent.id)
+    parent.redelivery_address = scannedAddress
+    if (upd.parc_zone_key) parent.parc_zone_key = 'K'
+  }
+
+  // Type de la zone de parc actuelle : relivraison/accident → relivrable au scan.
+  let isRelZoneType = false
+  if (parent.parc_zone_key) {
+    const { data: zt } = await sb.from('parc_zones').select('zone_type').eq('key', parent.parc_zone_key).maybeSingle()
+    isRelZoneType = zt?.zone_type === 'relivraison' || zt?.zone_type === 'accident'
+  }
+
   const isParked = parent.status === 'parked'
   const isRemRel = parent.mission_type === 'REM+REL'
   const isSiabisRemDepot = ['police_snc', 'sia_couvert'].includes(parent.source || '')
@@ -81,10 +107,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // rem_depot / prive etaient acceptes -> "Mission non eligible" au scan.
   const isZoneKRelEligible = parent.parc_zone_key === 'K'
                           && isRelEligibleSource(parent.source, parent.snc_scenario)
-  if (!isParked || !(isRemRel || isSiabisRemDepot || isPriveDepot || isZoneKRelEligible)) {
+  if (!isParked || !(isRemRel || isSiabisRemDepot || isPriveDepot || isZoneKRelEligible || isRelZoneType)) {
     return NextResponse.json({
       ok: false,
       error: `Mission non eligible pour relivraison (statut=${parent.status}, type=${parent.mission_type})`,
+    }, { status: 400 })
+  }
+  // Une adresse de relivraison est indispensable pour créer la REL.
+  if (!parent.redelivery_address && !parent.destination_address) {
+    return NextResponse.json({
+      ok: false,
+      error: 'Adresse de relivraison requise — saisis-la avant de relivrer.',
     }, { status: 400 })
   }
 
@@ -180,6 +213,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       notes:      `Cree via scan QR REL et assigne a ${targetDriverId} par ${userId}`,
       metadata:   { qr_scan: true, created_via_qr: true, assigned_by: userId, assigned_to: targetDriverId },
     })
+  }
+
+  // Olivier 2026-06-22 : si le chauffeur a saisi lui-même l'adresse au scan
+  // (véhicule sans adresse de relivraison avant), on demande à un dispatcher de
+  // confirmer via une notification push.
+  if (!hadAddressBefore && scannedAddress && !isAdminOrDispatcher) {
+    try {
+      const { data: dispatchers } = await sb
+        .from('users')
+        .select('id')
+        .eq('active', true)
+        .or('role.in.(dispatcher,admin,superadmin),roles.ov.{dispatcher,admin,superadmin}')
+      const scannerName = user.name || user.email || 'Un chauffeur'
+      for (const d of (dispatchers || [])) {
+        if (d.id === userId) continue
+        sendPushToUser(d.id, {
+          title: '🔁 Relivraison à confirmer',
+          body:  `${scannerName} a saisi l'adresse de relivraison de ${parent.vehicle_plate || 'un véhicule'} au scan — à vérifier.`,
+          url:   `/dispatch/${relMissionId}`,
+          tag:   `rel-confirm-${relMissionId}`,
+        }).catch(() => {})
+      }
+      await sb.from('mission_logs').insert({
+        mission_id: relMissionId,
+        actor_id:   userId,
+        action:     'rel_address_needs_confirm',
+        notes:      `Adresse de relivraison saisie au scan par ${scannerName} — confirmation dispatcher demandée : ${scannedAddress}`,
+        metadata:   { redelivery_address: scannedAddress, needs_dispatch_confirm: true },
+      })
+    } catch { /* notif best-effort */ }
   }
 
   // Redirect : dispatcher -> fiche dispatch (suivi). Driver scanneur -> fiche mission chauffeur.

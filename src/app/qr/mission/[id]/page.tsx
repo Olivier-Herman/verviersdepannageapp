@@ -88,7 +88,14 @@ export default async function QrMissionPage({ params }: { params: { id: string }
   // dont la source est éligible REL peut être relivré, même si non converti REM+REL.
   const isZoneKRelEligible = mission.parc_zone_key === 'K'
                           && isRelEligibleSource(mission.source, mission.snc_scenario)
-  const isElligibleForRel = isParked && (isRemRelMission || isSiabisRemDepot || isPriveDepot || isZoneKRelEligible)
+  // Olivier 2026-06-22 : tout véhicule parqué dans une zone de TYPE relivraison
+  // ou accident est relivrable au scan (avec saisie de l'adresse si absente).
+  let isRelZoneType = false
+  if (mission.parc_zone_key) {
+    const { data: zt } = await sb.from('parc_zones').select('zone_type').eq('key', mission.parc_zone_key).maybeSingle()
+    isRelZoneType = zt?.zone_type === 'relivraison' || zt?.zone_type === 'accident'
+  }
+  const isElligibleForRel = isParked && (isRemRelMission || isSiabisRemDepot || isPriveDepot || isZoneKRelEligible || isRelZoneType)
 
   // Determine roles + modules + odoo_api_key du scanneur pour les permissions par fonction.
   const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
@@ -151,6 +158,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
         incident_city:      mission.incident_city,
         destination_address: mission.destination_address,
         destination_city:    mission.destination_city,
+        redelivery_address:  mission.redelivery_address || null,
         // Donnees fourriere supplementaires (carte enrichie)
         parc_zone_key:      mission.parc_zone_key,
         parc_row_number:    mission.parc_row_number,
@@ -187,6 +195,7 @@ export default async function QrMissionPage({ params }: { params: { id: string }
       activeDrivers={activeDrivers}
       consultUrl={consultUrl}
       isElligibleForRel={isElligibleForRel}
+      relZoneType={isRelZoneType}
     />
   )
 }

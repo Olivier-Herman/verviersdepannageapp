@@ -7,6 +7,9 @@ import { Eye, Truck, Loader2, AlertTriangle, CheckCircle2, Building2, AlertOctag
 import { FOURRIERE_ZONES, SCRATCH_STATE_ID } from '@/lib/fourriere'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
+import AddressField from '@/components/AddressField'
+
+const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
 
 interface Mission {
   id:                 string
@@ -27,6 +30,7 @@ interface Mission {
   incident_city:      string | null
   destination_address: string | null
   destination_city:    string | null
+  redelivery_address:  string | null
   parc_zone_key:      string | null
   parc_row_number:    number | null
   parc_slot_index:    number | null
@@ -70,7 +74,7 @@ const fmtDate = (iso: string | null) => {
 }
 
 export default function QrMissionClient({
-  mission, existingRel, currentUser, permissions, consultUrl, isElligibleForRel, activeDrivers = [],
+  mission, existingRel, currentUser, permissions, consultUrl, isElligibleForRel, activeDrivers = [], relZoneType = false,
 }: {
   mission:            Mission
   existingRel:        ExistingRel | null
@@ -79,6 +83,7 @@ export default function QrMissionClient({
   consultUrl:         string
   isElligibleForRel:  boolean
   activeDrivers?:     { id: string; name: string }[]   // pour selecteur Relivrer dispatcher
+  relZoneType?:       boolean   // zone de type relivraison/accident → saisie adresse possible au scan
 }) {
   const router = useRouter()
   const [working,      setWorking]      = useState(false)
@@ -93,6 +98,10 @@ export default function QrMissionClient({
   const [noChargeReason, setNoChargeReason] = useState('')
   const [actionMenu,     setActionMenu]     = useState<null | 'transfer' | 'domaine' | 'scratch'>(null)
   const [selectedState,  setSelectedState]  = useState<number | null>(null)
+  // Saisie de l'adresse de relivraison au scan (véhicule sans adresse, zone rel/accident)
+  const [relAddr, setRelAddr] = useState(mission.redelivery_address || '')
+  const [relLat,  setRelLat]  = useState<number | null>(null)
+  const [relLng,  setRelLng]  = useState<number | null>(null)
 
   function showToast(kind: 'ok' | 'err', msg: string) {
     setToast({ kind, msg })
@@ -102,6 +111,9 @@ export default function QrMissionClient({
   const brandModel = [mission.vehicle_brand, mission.vehicle_model].filter(Boolean).join(' ')
   const address    = [mission.destination_address, mission.destination_city].filter(Boolean).join(', ')
   const entryDate  = mission.parked_at || mission.intervention_date || mission.received_at
+  // Adresse de relivraison connue ? Sinon, si zone rel/accident, saisie au scan.
+  const relAddress       = mission.redelivery_address || ''
+  const needsAddressEntry = !relAddress && relZoneType
 
   // Bouton "Relivrer" disponible si mission eligible REL + (driver OU dispatcher avec selecteur).
   // Olivier 2026-05-28 : ajout dispatcher avec selecteur chauffeur.
@@ -130,6 +142,10 @@ export default function QrMissionClient({
           // Olivier 2026-05-28 : si dispatcher, on envoie le chauffeur cible
           // (sinon backend auto-assign au scanneur).
           assigned_to_driver_id:   isDispatcherMode ? selectedDriverId : undefined,
+          // Olivier 2026-06-22 : adresse saisie au scan (véhicule sans adresse).
+          redelivery_address:      relAddr.trim() || undefined,
+          redelivery_lat:          relLat ?? undefined,
+          redelivery_lng:          relLng ?? undefined,
         }),
       })
       const j = await r.json()
@@ -373,8 +389,21 @@ export default function QrMissionClient({
               </div>
               <div className="pt-2 border-t">
                 <p className="text-ink-muted text-xs uppercase tracking-wider">Adresse de relivraison</p>
-                {address ? (
-                  <p className="text-ink text-sm leading-tight">{address}</p>
+                {relAddress ? (
+                  <p className="text-ink text-sm leading-tight">{relAddress}</p>
+                ) : needsAddressEntry ? (
+                  <div className="mt-1">
+                    <AddressField
+                      value={relAddr}
+                      onChange={setRelAddr}
+                      onSelect={(a, la, ln) => { setRelAddr(a); setRelLat(la); setRelLng(ln) }}
+                      gmKey={GM_KEY}
+                      placeholder="Saisis l'adresse de relivraison"
+                    />
+                    <p className="text-amber-700 text-xs mt-1.5">
+                      ⚠ Un dispatcher sera notifié pour confirmer cette adresse.
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-amber-700 text-xs italic">
                     ⚠ Pas d&apos;adresse définie — contacte le dispatcher avant de partir
@@ -416,7 +445,7 @@ export default function QrMissionClient({
                 Annuler
               </button>
               <button onClick={() => { setShowRelConfirm(false); doRelivrer(false) }}
-                disabled={working || (isDispatcherMode && !selectedDriverId)}
+                disabled={working || (isDispatcherMode && !selectedDriverId) || (needsAddressEntry && !relAddr.trim())}
                 className="flex-1 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-bold transition disabled:opacity-40">
                 {working ? <><Loader2 size={16} className="inline animate-spin" /> ...</> : 'Confirmer'}
               </button>
