@@ -113,6 +113,11 @@ export default function SncMissionFiche({
   // Tuile SNC selectionnee : saving in-flight + message info
   const [sncSaving, setSncSaving] = useState<string | null>(null)
   const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
+  // Modal "adresse de destination" (REM client / REM dépôt / REM directe).
+  const [destPrompt, setDestPrompt] = useState<null | { kind: 'rem_client' | 'rem_depot' | 'rem_direct' }>(null)
+  const [destAddr,   setDestAddr]   = useState('')
+  const [destLat,    setDestLat]    = useState<number | null>(null)
+  const [destLng,    setDestLng]    = useState<number | null>(null)
 
   // Preview tarif (calcul live via /api/snc-preview-tarif)
   const [sncPreview, setSncPreview] = useState<any>(null)
@@ -269,10 +274,15 @@ export default function SncMissionFiche({
 
   // ── Choix du scenario SNC + recalcul tarif + PATCH amount_to_collect ────
   // Reprend strictement la logique de pickSncScenario dans DriverClient.tsx
-  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
+  const pickSncScenario = async (
+    scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct',
+    destOverride?: { lat: number | null; lng: number | null },
+  ) => {
     setSncInfoMsg(null)
+    const dLat = destOverride?.lat ?? M.destination_lat
+    const dLng = destOverride?.lng ?? M.destination_lng
     if ((scenario === 'rem_client' || scenario === 'rem_direct')
-        && (M.destination_lat == null || M.destination_lng == null)) {
+        && (dLat == null || dLng == null)) {
       setSncInfoMsg('Saisis d\'abord l\'adresse de destination plus bas (avec autocomplete Google).')
       return
     }
@@ -293,8 +303,8 @@ export default function SncMissionFiche({
             requires_balisage: Boolean(M.snc_requires_balisage),
             incident_lat:      M.incident_lat,
             incident_lng:      M.incident_lng,
-            destination_lat:   M.destination_lat,
-            destination_lng:   M.destination_lng,
+            destination_lat:   dLat,
+            destination_lng:   dLng,
             intervention_at:   M.intervention_date || M.received_at || new Date().toISOString(),
             billed_to_id:      M.billed_to_id ?? null,
             billed_to_name:    M.billed_to_name ?? null,
@@ -317,6 +327,34 @@ export default function SncMissionFiche({
     } finally {
       setSncSaving(null)
     }
+  }
+
+  // ── Modal adresse de destination (REM client / REM dépôt / REM directe) ──
+  const openDestPrompt = (kind: 'rem_client' | 'rem_depot' | 'rem_direct') => {
+    setErr('')
+    setDestAddr(M.destination_address || '')
+    setDestLat(M.destination_lat ?? null)
+    setDestLng(M.destination_lng ?? null)
+    setDestPrompt({ kind })
+  }
+
+  // later=true : "Adresse communiquée plus tard" (uniquement REM dépôt).
+  const confirmDestPrompt = async (later = false) => {
+    if (!destPrompt) return
+    const kind = destPrompt.kind
+    if (!later) {
+      const a = destAddr.trim()
+      if (!a) { setErr('Adresse de destination requise'); return }
+      try {
+        const body: any = { destination_address: a }
+        if (destLat != null) body.destination_lat = destLat
+        if (destLng != null) body.destination_lng = destLng
+        await patchMission(body)
+        setM(prev => ({ ...prev, destination_address: a, destination_lat: destLat as any, destination_lng: destLng as any }))
+      } catch { setErr('Erreur réseau'); return }
+    }
+    setDestPrompt(null)
+    await pickSncScenario(kind, later ? undefined : { lat: destLat, lng: destLng })
   }
 
   // Toggle balisage : PATCH + recalcul tarif si scenario actif
@@ -640,7 +678,7 @@ export default function SncMissionFiche({
                     <button
                       key={opt.key}
                       type="button"
-                      onClick={() => pickSncScenario(opt.key)}
+                      onClick={() => opt.key === 'dsp' ? pickSncScenario('dsp') : openDestPrompt(opt.key)}
                       disabled={sncSaving !== null}
                       className={`p-3 rounded-xl border-2 text-left transition disabled:opacity-50 ${
                         isActive
@@ -927,6 +965,43 @@ export default function SncMissionFiche({
               ✅ Mission terminée
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal Adresse de destination (REM client / REM dépôt / REM directe) */}
+      {destPrompt && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setDestPrompt(null)}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center">
+              <h2 className="text-ink font-semibold text-lg">📍 Adresse de destination</h2>
+              <button onClick={() => setDestPrompt(null)} className="text-ink-muted text-2xl">×</button>
+            </div>
+            <p className="text-ink-muted text-sm">
+              {M.destination_address
+                ? 'Confirme ou modifie l\'adresse de destination du remorquage.'
+                : 'Indique l\'adresse de destination du remorquage.'}
+            </p>
+            <AddressField
+              value={destAddr}
+              onChange={setDestAddr}
+              onSelect={(a, la, ln) => { setDestAddr(a); setDestLat(la); setDestLng(ln) }}
+              gmKey={gmKey}
+              placeholder="Adresse de destination"
+            />
+            {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
+            <button onClick={() => confirmDestPrompt(false)} disabled={sncSaving !== null || !destAddr.trim()}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition disabled:opacity-50">
+              {sncSaving ? '⏳…' : 'Valider'}
+            </button>
+            {destPrompt.kind === 'rem_depot' && (
+              <button onClick={() => confirmDestPrompt(true)} disabled={sncSaving !== null}
+                className="w-full py-3 bg-surface-2 border text-ink rounded-2xl text-sm font-semibold transition disabled:opacity-50">
+                🕒 Adresse communiquée plus tard
+              </button>
+            )}
+            <button onClick={() => setDestPrompt(null)} disabled={sncSaving !== null}
+              className="w-full py-2 text-ink-muted text-sm disabled:opacity-50">Annuler</button>
+          </div>
         </div>
       )}
     </div>

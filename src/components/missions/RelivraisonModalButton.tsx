@@ -35,6 +35,18 @@ export default function RelivraisonModalButton({
   const [lng,  setLng]  = useState<number | null>(currentLng)
   const [busy, setBusy] = useState<'save' | 'relivrer' | null>(null)
   const [err,  setErr]  = useState('')
+  const [printing, setPrinting] = useState(false)
+  const [printMsg, setPrintMsg] = useState('')
+
+  async function printLabel() {
+    setPrinting(true); setPrintMsg('')
+    try {
+      const r = await fetch(`/api/missions/${missionId}/reprint-label`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      setPrintMsg(r.ok ? '✅ Étiquette envoyée' : (j.error || 'Échec impression'))
+    } catch { setPrintMsg('Erreur réseau') }
+    finally { setPrinting(false); setTimeout(() => setPrintMsg(''), 4000) }
+  }
 
   function openModal() {
     setAddr(currentAddress || '')
@@ -100,6 +112,15 @@ export default function RelivraisonModalButton({
             ? <>📍 {currentAddress}</>
             : <span className="text-amber-600 font-medium">⏳ En attente d&apos;adresse de relivraison</span>}
         </p>
+        <button
+          type="button"
+          onClick={printLabel}
+          disabled={printing}
+          className="w-full mt-2 py-2 bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-semibold transition disabled:opacity-50"
+        >
+          {printing ? '⏳ Impression…' : '🖨️ Imprimer l\'étiquette'}
+        </button>
+        {printMsg && <p className="text-blue-800 text-xs mt-1 text-center">{printMsg}</p>}
       </div>
 
       {open && (

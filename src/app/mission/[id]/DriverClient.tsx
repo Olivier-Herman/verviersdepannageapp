@@ -16,6 +16,7 @@ import { KEY_LOCATIONS } from '@/lib/key-location'
 import { KeyTag } from '@/components/missions/KeyInfoCard'
 import { TtsButton } from '@/components/audio/TtsButton'
 import { openNavigation } from '@/lib/open-navigation'
+import AddressField from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
 
@@ -1116,12 +1117,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [sncSaving, setSncSaving]   = useState<string | null>(null)
   const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
 
-  const pickSncScenario = async (scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
+  // Modal "adresse de destination" (DSP→REM, SNC/SC REM client & REM dépôt).
+  const [destPrompt, setDestPrompt] = useState<null | { kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' }>(null)
+  const [destAddr,   setDestAddr]   = useState('')
+  const [destLat,    setDestLat]    = useState<number | null>(null)
+  const [destLng,    setDestLng]    = useState<number | null>(null)
+
+  const pickSncScenario = async (
+    scenario: 'dsp' | 'rem_client' | 'rem_depot' | 'rem_direct',
+    destOverride?: { lat: number | null; lng: number | null },
+  ) => {
     setSncInfoMsg(null)
     // REM client + REM directe ont besoin de la destination (lat/lng)
     // pour estimer le tarif. REM depot n en a pas besoin (mise en parc).
+    const dLat = destOverride?.lat ?? M.destination_lat
+    const dLng = destOverride?.lng ?? M.destination_lng
     if ((scenario === 'rem_client' || scenario === 'rem_direct')
-        && (M.destination_lat == null || M.destination_lng == null)) {
+        && (dLat == null || dLng == null)) {
       setSncInfoMsg('Saisis d\'abord l\'adresse de destination (clique sur l\'itinéraire pour l\'ajouter).')
       return
     }
@@ -1150,8 +1162,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             requires_balisage: Boolean(M.snc_requires_balisage),
             incident_lat:      M.incident_lat,
             incident_lng:      M.incident_lng,
-            destination_lat:   M.destination_lat,
-            destination_lng:   M.destination_lng,
+            destination_lat:   dLat,
+            destination_lng:   dLng,
             intervention_at:   M.intervention_date || (M as any).received_at || new Date().toISOString(),
           }),
         })
@@ -1240,6 +1252,44 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       }
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
+  }
+
+  // ── Modal adresse de destination (DSP→REM, SNC/SC REM client & REM dépôt) ──
+  const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
+    setShowGrid(false)
+    setErr('')
+    setDestAddr(M.destination_address || '')
+    setDestLat(M.destination_lat ?? null)
+    setDestLng(M.destination_lng ?? null)
+    setDestPrompt({ kind })
+  }
+
+  // later=true : "Adresse communiquée plus tard" (uniquement REM dépôt).
+  const confirmDestPrompt = async (later = false) => {
+    if (!destPrompt) return
+    const kind = destPrompt.kind
+    if (!later) {
+      const a = destAddr.trim()
+      if (!a) { setErr('Adresse de destination requise'); return }
+      setLoading(true)
+      try {
+        const body: any = { destination_address: a }
+        if (destLat != null) body.destination_lat = destLat
+        if (destLng != null) body.destination_lng = destLng
+        const r = await fetch(`/api/missions/${M.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        })
+        if (!r.ok) { const j = await r.json().catch(() => ({})); setErr(j.error || 'Échec enregistrement adresse'); setLoading(false); return }
+        setM(prev => ({ ...prev, destination_address: a, destination_lat: destLat as any, destination_lng: destLng as any }))
+      } catch { setErr('Erreur réseau'); setLoading(false); return }
+      finally { setLoading(false) }
+    }
+    setDestPrompt(null)
+    if (kind === 'rem') {
+      await changeType('REM')   // recharge la fiche
+    } else {
+      await pickSncScenario(kind, later ? undefined : { lat: destLat, lng: destLng })
+    }
   }
 
   // ── Reclasser en Siabis couvert / non couvert ───────────────────────────────
@@ -2785,7 +2835,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   <button
                     key={opt.key}
                     type="button"
-                    onClick={() => pickSncScenario(opt.key)}
+                    onClick={() => opt.key === 'dsp' ? pickSncScenario('dsp') : openDestPrompt(opt.key)}
                     disabled={sncSaving !== null}
                     className={`p-3 rounded-xl border-2 text-left transition disabled:opacity-50 ${
                       isActive
@@ -3250,7 +3300,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 </a>
               )}
               {/* DSP↔REM */}
-              <button onClick={() => changeType(rem ? 'DSP' : 'REM')} disabled={loading}
+              <button onClick={() => rem ? changeType('DSP') : openDestPrompt('rem')} disabled={loading}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-blue-600/10 border-blue-600/30 transition active:scale-95 disabled:opacity-50">
                 <span className="text-2xl">🔄</span>
                 <span className="text-sm font-medium text-blue-400">
@@ -3294,6 +3344,43 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 <span className="text-sm font-bold text-ink"><T k="mission_detail.action_finish" /></span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Adresse de destination (DSP→REM, SNC/SC REM) ───────────── */}
+      {destPrompt && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !loading && setDestPrompt(null)}>
+          <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center">
+              <h2 className="text-ink font-semibold text-lg">📍 Adresse de destination</h2>
+              <button onClick={() => setDestPrompt(null)} className="text-ink-muted text-2xl">×</button>
+            </div>
+            <p className="text-ink-muted text-sm">
+              {M.destination_address
+                ? 'Confirme ou modifie l\'adresse de destination du remorquage.'
+                : 'Indique l\'adresse de destination du remorquage.'}
+            </p>
+            <AddressField
+              value={destAddr}
+              onChange={setDestAddr}
+              onSelect={(a, la, ln) => { setDestAddr(a); setDestLat(la); setDestLng(ln) }}
+              gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+              placeholder="Adresse de destination"
+            />
+            {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
+            <button onClick={() => confirmDestPrompt(false)} disabled={loading || !destAddr.trim()}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition disabled:opacity-50">
+              {loading ? '⏳…' : 'Valider'}
+            </button>
+            {destPrompt.kind === 'rem_depot' && (
+              <button onClick={() => confirmDestPrompt(true)} disabled={loading}
+                className="w-full py-3 bg-surface-2 border text-ink rounded-2xl text-sm font-semibold transition disabled:opacity-50">
+                🕒 Adresse communiquée plus tard
+              </button>
+            )}
+            <button onClick={() => setDestPrompt(null)} disabled={loading}
+              className="w-full py-2 text-ink-muted text-sm disabled:opacity-50">Annuler</button>
           </div>
         </div>
       )}
