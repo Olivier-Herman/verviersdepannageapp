@@ -34,6 +34,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
   const [missions, setMissions] = useState<Mission[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
+  const [busyId,   setBusyId]   = useState<string | null>(null)
 
   const zoneRef = useRef(zone)
   useEffect(() => { zoneRef.current = zone }, [zone])
@@ -53,6 +54,34 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
       setError(e.message || 'Erreur réseau')
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  // Crée la fiche de relivraison (REL) à partir d'une mission parc-ée.
+  const relivrer = useCallback(async (m: Mission) => {
+    let address = (m.redelivery_address || '').trim()
+    if (!address) {
+      const entered = window.prompt(`Adresse de relivraison pour ${m.vehicle_plate || 'ce véhicule'} ?`)
+      address = (entered || '').trim()
+      if (!address) return
+    } else if (!window.confirm(`Créer la relivraison pour ${m.vehicle_plate || 'ce véhicule'} ?\n→ ${address}`)) {
+      return
+    }
+    setBusyId(m.id)
+    try {
+      const res = await fetch(`/api/missions/${m.id}/relivrer`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(m.redelivery_address ? {} : { redelivery_address: address }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(j.error || 'Création de la relivraison échouée.'); return }
+      // La REL est créée → le parent sort de la liste. On recharge.
+      await load(zoneRef.current, true)
+    } catch {
+      alert('Erreur réseau.')
+    } finally {
+      setBusyId(null)
     }
   }, [])
 
@@ -161,7 +190,17 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                       📍 {m.redelivery_address || <span className="text-amber-500">à saisir</span>}
                     </p>
                   </div>
-                  <span className="text-brand text-xs font-semibold flex-shrink-0">VOIR →</span>
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); relivrer(m) }}
+                      disabled={busyId === m.id}
+                      className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                    >
+                      {busyId === m.id ? '…' : '🔁 Relivrer'}
+                    </button>
+                    <span className="text-ink-muted text-xs">VOIR →</span>
+                  </div>
                 </div>
               </Link>
             ))}
