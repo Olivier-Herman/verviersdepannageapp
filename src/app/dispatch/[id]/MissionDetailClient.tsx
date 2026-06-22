@@ -3512,6 +3512,20 @@ export default function MissionDetailClient({
                 </div>
               )}
 
+              {/* Forcer en parc — Olivier 2026-06-22 : déplacé ici, juste sous
+                  Sauvegarder (était dans le bloc Actions dispatcher). Pour les
+                  véhicules pas encore en parc. */}
+              {['admin', 'superadmin', 'dispatcher'].includes(userRole)
+                && !['parked', 'cancelled', 'ignored'].includes(status) && (
+                <button
+                  type="button"
+                  onClick={() => setShowForceParkModal(true)}
+                  className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 rounded-2xl text-sm font-semibold transition"
+                >
+                  🅿️ Forcer en parc
+                </button>
+              )}
+
               {/* Bloc Relivraison — Olivier 2026-06-22 : placé juste sous le
                   bouton Sauvegarder. Bouton unique + modal (adresse pré-remplie)
                   sur toute fiche en parc. */}
@@ -3768,16 +3782,7 @@ export default function MissionDetailClient({
                         <p className="text-ink-muted text-xs">Passe en "À facturer" sans pointage ni photos</p>
                       </div>
                     </button>
-
-                    <button type="button"
-                      onClick={() => setShowForceParkModal(true)}
-                      className="w-full flex items-center gap-3 px-4 py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-left transition">
-                      <span className="text-xl flex-shrink-0">🅿️</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-amber-400 text-sm font-semibold">Forcer en parc</p>
-                        <p className="text-ink-muted text-xs">Sélection dépôt + zone, puis mise en parc</p>
-                      </div>
-                    </button>
+                    {/* 'Forcer en parc' déplacé sous 'Sauvegarder les modifications'. */}
                   </div>
                 </div>
               )}
