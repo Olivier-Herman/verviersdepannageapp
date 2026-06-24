@@ -276,13 +276,28 @@ export async function completeAllianzMissionFromApi(
   const assignmentNumber = (m.dossier_number || m.external_id || '').split('/')[0].trim()
   if (!assignmentNumber) return { ok: false, filled: [], reason: 'pas de n° affectation' }
 
-  let listItem: any
+  let listItem: any = null
   try { listItem = await fetchAllianzAssignmentByNumber(assignmentNumber) }
-  catch (e: any) { return { ok: false, filled: [], reason: e?.message || 'fetch KO' } }
-  if (!listItem) return { ok: false, filled: [], reason: 'affectation introuvable côté Hexalite' }
+  catch { /* on tentera le fallback lien mail */ }
 
-  // Détail (plus riche : VIN, km, adresses complètes) ; fallback sur la liste.
-  const detail = listItem.assignmentId ? await fetchAllianzAssignmentDetail(listItem.assignmentId) : null
+  // Détail (plus riche : VIN, km, adresses complètes).
+  let detail: any = listItem?.assignmentId ? await fetchAllianzAssignmentDetail(listItem.assignmentId) : null
+
+  // GARDE-FOU (Olivier 2026-06-22) : si la recherche par numéro ne trouve rien,
+  // on récupère le détail via l'assignmentId du LIEN DU MAIL d'origine.
+  if (!detail && !listItem) {
+    const { data: otp } = await sb
+      .from('allianz_otp_pending')
+      .select('dispatch_link, assignment_id')
+      .eq('mission_id', missionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const aid = otp?.assignment_id || parseAllianzDispatchLink(otp?.dispatch_link).assignmentId
+    if (aid) detail = await fetchAllianzAssignmentDetail(aid)
+  }
+
+  if (!detail && !listItem) return { ok: false, filled: [], reason: 'affectation introuvable côté Hexalite' }
   const mapped = mapAllianzAssignment(detail || listItem)
   const isEmpty = (v: any) => v === null || v === undefined || v === ''
 

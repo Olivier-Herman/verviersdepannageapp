@@ -15,6 +15,7 @@ import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
 import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton'
+import AllianzCompleteButton from '@/components/missions/AllianzCompleteButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
@@ -3510,6 +3511,12 @@ export default function MissionDetailClient({
                     {loadingSave ? '⏳ Sauvegarde…' : saveOk ? '✅ Enregistré' : '💾 Sauvegarder les modifications'}
                   </button>
                 </div>
+              )}
+
+              {/* Relancer la complétion Hexalite (missions Allianz/Mondial). */}
+              {['mondial', 'allianz'].includes(initialMission.source)
+                && !['cancelled', 'ignored'].includes(status) && (
+                <AllianzCompleteButton missionId={initialMission.id} onDone={() => router.refresh()} />
               )}
 
               {/* Forcer en parc — Olivier 2026-06-22 : déplacé ici, juste sous
