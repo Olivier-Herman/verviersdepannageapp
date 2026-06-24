@@ -159,9 +159,8 @@ export default function AvanceFondsClient({ user }: { user: any }) {
     }
   }
 
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // Traitement commun (input file OU plugin Camera natif).
+  const processPhotoFile = (file: File) => {
     setForm(f => ({ ...f, photoFile: file, photoPreview: URL.createObjectURL(file) }))
     // Lance l OCR en parallele (non bloquant, l user peut continuer)
     runOcr(file)
@@ -171,6 +170,37 @@ export default function AvanceFondsClient({ user }: { user: any }) {
       setStep('details')
     } else {
       setStep('plate')
+    }
+  }
+
+  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processPhotoFile(file)
+  }
+
+  // Olivier 2026-06-24 : sur l'app native (Android/iOS), le <input type=file>
+  // n'ouvre que la galerie. On utilise le plugin Camera (appareil photo direct),
+  // comme pour les photos de mission.
+  const takePhoto = async () => {
+    try {
+      const { Capacitor } = await import('@capacitor/core')
+      if (!Capacitor.isNativePlatform()) { cameraRef.current?.click(); return }
+      const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
+      const photo = await Camera.getPhoto({
+        source:     CameraSource.Camera,
+        resultType: CameraResultType.DataUrl,
+        quality:    70,
+        correctOrientation: true,
+      })
+      if (!photo?.dataUrl) return
+      const res  = await fetch(photo.dataUrl)
+      const blob = await res.blob()
+      const file = new File([blob], `facture-${Date.now()}.${(photo.format || 'jpg')}`, { type: blob.type || 'image/jpeg' })
+      processPhotoFile(file)
+    } catch (e: any) {
+      // Annulation utilisateur ou plugin indispo → fallback input file.
+      if (!/cancel/i.test(e?.message || '')) cameraRef.current?.click()
     }
   }
 
@@ -304,11 +334,11 @@ export default function AvanceFondsClient({ user }: { user: any }) {
           <p className="text-ink-muted text-sm mt-1">Photo de la facture reçue chez le garage</p>
         </div>
         <div className="w-full flex flex-col gap-3">
-          <button onClick={() => cameraRef.current?.click()}
+          <button onClick={takePhoto}
             className="w-full py-5 bg-brand hover:bg-brand/90 text-ink rounded-2xl font-semibold text-lg flex items-center justify-center gap-3">
             <span className="text-2xl">📷</span> Prendre une photo
           </button>
-          <input ref={cameraRef} type="file" accept="image/*"
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment"
             className="hidden" onChange={handlePhoto} />
           <button onClick={() => fileRef.current?.click()}
             className="w-full py-4 bg-surface border border text-ink-secondary rounded-2xl font-medium flex items-center justify-center gap-3">
