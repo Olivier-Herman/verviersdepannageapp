@@ -61,14 +61,28 @@ async function acceptAllianzBg(
   const run = (async () => {
     try {
       const { acceptAllianzByNumber } = await import('@/lib/allianz/intake')
-      const r = await acceptAllianzByNumber(assignmentNumber)
+      // Garde-fou : on récupère le lien dispatch-drawer du mail d'origine
+      // (assignmentId + caseId) pour pouvoir accepter même si la recherche par
+      // numéro échoue, et pour proposer un lien direct vers la fiche Hexalite.
+      const { data: otp } = await supabase
+        .from('allianz_otp_pending')
+        .select('dispatch_link, assignment_id')
+        .eq('mission_id', missionId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const r = await acceptAllianzByNumber(assignmentNumber, {
+        dispatchLink: otp?.dispatch_link || null,
+        assignmentId: otp?.assignment_id || null,
+      })
+      const link = r.dispatchLink || otp?.dispatch_link || null
       await supabase.from('mission_logs').insert({
         mission_id: missionId, actor_id: actorId,
         action: r.ok ? 'allianz_synced' : 'allianz_sync_error',
         notes:  r.ok
-          ? 'Allianz ↗ affectation acceptée (Hexalite)'
-          : `Allianz ↗ acceptation : échec — ${r.error || 'inconnue'}`,
-        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, error: r.error ?? null },
+          ? `Allianz ↗ affectation acceptée (Hexalite${r.usedFallback ? ' — via lien mail' : ''})`
+          : `Allianz ↗ acceptation : échec — ${r.error || 'inconnue'}${link ? ` · Ouvrir la fiche Hexalite : ${link}` : ''}`,
+        metadata: { assignment_number: assignmentNumber, http: r.status ?? null, ok: r.ok, error: r.error ?? null, used_fallback: r.usedFallback ?? false, dispatch_link: link },
       }).then(() => {}, () => {})
     } catch (e: any) {
       await supabase.from('mission_logs').insert({

@@ -170,22 +170,17 @@ export function mapAllianzAssignment(a: any): AllianzMapped {
  * Prend le n° d'affectation (notre dossier_number/external_id), résout
  * assignmentId + caseId via la liste, puis PUT. Idempotent (déjà EDSRA = ok).
  */
-export async function acceptAllianzByNumber(
-  assignmentNumber: string,
-): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const an = (assignmentNumber || '').split('/')[0].trim()
-  if (!an) return { ok: false, error: 'pas de n° affectation' }
+/** Extrait assignmentId + caseId du lien dispatch-drawer du mail. */
+export function parseAllianzDispatchLink(url: string | null | undefined): { assignmentId: string | null; caseId: string | null } {
+  const m = (url || '').match(/dispatch-drawer\/([^/]+)\/([^/?#]+)/i)
+  return { assignmentId: m?.[1] || null, caseId: m?.[2] || null }
+}
 
-  let item: any
-  try { item = await fetchAllianzAssignmentByNumber(an) }
-  catch (e: any) { return { ok: false, error: e?.message || 'lookup KO' } }
-  if (!item?.assignmentId || !item?.assistanceCaseId) {
-    return { ok: false, error: 'affectation introuvable côté Hexalite' }
-  }
-
+/** PUT EDSRA (accepte l'affectation) sur des IDs Hexalite connus. */
+async function putAllianzAccept(caseId: string, assignmentId: string): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
     const token = await getValidAllianzToken()
-    const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${item.assistanceCaseId}/assignments/${item.assignmentId}/status?cache_buster=${Date.now()}`
+    const url = `${BASE_URL}/hexalite-job-monitoring/v1.0/assistanceCases/${caseId}/assignments/${assignmentId}/status?cache_buster=${Date.now()}`
     const res = await fetch(url, {
       method: 'PUT', headers: headers(token),
       body: JSON.stringify({ subStatus: 'EDSRA' }),
@@ -201,6 +196,55 @@ export async function acceptAllianzByNumber(
   } catch (e: any) {
     return { ok: false, error: e?.message || 'PUT KO' }
   }
+}
+
+/**
+ * Accepte une affectation Allianz. Stratégie :
+ *   1. recherche par n° d'affectation (onglets Hexalite) → IDs → PUT EDSRA.
+ *   2. GARDE-FOU (Olivier 2026-06-22) : si la recherche ne trouve rien (fenêtre
+ *      de date, cache, onglet non couvert…), on RÉUTILISE assignmentId + caseId
+ *      du LIEN DU MAIL d'origine (dispatch-drawer) pour accepter directement.
+ * Le dispatchLink est renvoyé pour permettre à l'UI d'ouvrir la fiche Hexalite.
+ */
+export async function acceptAllianzByNumber(
+  assignmentNumber: string,
+  fallback?: { dispatchLink?: string | null; assignmentId?: string | null; caseId?: string | null },
+): Promise<{ ok: boolean; status?: number; error?: string; usedFallback?: boolean; dispatchLink?: string | null }> {
+  const an = (assignmentNumber || '').split('/')[0].trim()
+  const link = fallback?.dispatchLink || null
+
+  // 1. Résolution des IDs via la recherche par numéro.
+  let assignmentId: string | null = null
+  let caseId: string | null = null
+  if (an) {
+    try {
+      const item = await fetchAllianzAssignmentByNumber(an)
+      if (item?.assignmentId && item?.assistanceCaseId) {
+        assignmentId = String(item.assignmentId)
+        caseId       = String(item.assistanceCaseId)
+      }
+    } catch { /* on tentera le fallback */ }
+  }
+
+  // 2. Garde-fou : IDs issus du lien du mail.
+  let usedFallback = false
+  if (!assignmentId || !caseId) {
+    const fromLink = parseAllianzDispatchLink(link)
+    const fbAssign = fallback?.assignmentId || fromLink.assignmentId
+    const fbCase   = fallback?.caseId       || fromLink.caseId
+    if (fbAssign && fbCase) {
+      assignmentId = fbAssign
+      caseId       = fbCase
+      usedFallback = true
+    }
+  }
+
+  if (!assignmentId || !caseId) {
+    return { ok: false, error: 'affectation introuvable côté Hexalite', dispatchLink: link }
+  }
+
+  const r = await putAllianzAccept(caseId, assignmentId)
+  return { ...r, usedFallback, dispatchLink: link }
 }
 
 /**
