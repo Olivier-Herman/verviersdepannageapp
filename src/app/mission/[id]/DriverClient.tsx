@@ -1118,7 +1118,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
 
   // Modal "adresse de destination" (DSP→REM, SNC/SC REM client & REM dépôt).
-  const [destPrompt, setDestPrompt] = useState<null | { kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' }>(null)
+  const [destPrompt, setDestPrompt] = useState<null | { kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival' }>(null)
   const [destAddr,   setDestAddr]   = useState('')
   const [destLat,    setDestLat]    = useState<number | null>(null)
   const [destLng,    setDestLng]    = useState<number | null>(null)
@@ -1255,7 +1255,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   }
 
   // ── Modal adresse de destination (DSP→REM, SNC/SC REM client & REM dépôt) ──
-  const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct') => {
+  const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival') => {
     setShowGrid(false)
     setErr('')
     setDestAddr(M.destination_address || '')
@@ -1287,6 +1287,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     setDestPrompt(null)
     if (kind === 'rem') {
       await changeType('REM')   // recharge la fiche
+    } else if (kind === 'arrival') {
+      // Arrivée à destination d'un REM sans adresse : adresse enregistrée →
+      // on enchaîne sur l'écran de clôture.
+      setCloseType('rem')
+      setScreen('close')
     } else {
       await pickSncScenario(kind, later ? undefined : { lat: destLat, lng: destLng })
     }
@@ -3176,7 +3181,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {/* REM/REL : véhicule chargé → arrivée à destination (+ mise en parc pour REM uniquement) */}
           {(rem || rel) && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
             <>
-              <button onClick={() => { setCloseType(rel ? 'rel' : 'rem'); setScreen('close') }} disabled={loading}
+              <button onClick={() => {
+                  // Olivier 2026-06-24 : REM sans adresse de destination → on
+                  // demande de l'encoder à l'arrivée avant de clôturer.
+                  if (rem && !rel && !M.destination_address) { openDestPrompt('arrival'); return }
+                  setCloseType(rel ? 'rel' : 'rem'); setScreen('close')
+                }} disabled={loading}
                 className="w-full py-4 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl text-base flex items-center justify-center gap-2">
                 <T k="mission_detail.btn_arrived_dest" />
                 {M.destination_address && (
