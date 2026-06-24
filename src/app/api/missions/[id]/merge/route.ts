@@ -44,16 +44,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .single()
   if (!me?.vehicle_plate) return NextResponse.json({ candidates: [] })
 
+  // Olivier 2026-06-24 : on filtre la PLAQUE dans la requête SQL (et pas après
+  // un limit global) — sinon une fiche plus ancienne (ex. appel police déjà en
+  // parc) sortait du top 50 récent et n'était jamais proposée à la fusion.
+  // ilike tolérant aux séparateurs : "2BNG325" matche "2-BNG-325", "2 BNG 325"…
+  const plate = norm(me.vehicle_plate)
+  const likePattern = '%' + plate.split('').join('%') + '%'
+
   const { data: all } = await sb
     .from('incoming_missions')
     .select('id, mission_number, source, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, client_name, billed_to_name, dossier_number, incident_address, received_at')
     .neq('id', params.id)
     .not('status', 'in', '(cancelled,ignored)')
     .is('merged_into_mission_id', null)
+    .ilike('vehicle_plate', likePattern)
     .order('received_at', { ascending: false })
     .limit(50)
 
-  const plate = norm(me.vehicle_plate)
+  // Filtre exact (plaque normalisée) pour écarter les faux positifs de l'ilike.
   const candidates = (all || []).filter(m => m.vehicle_plate && norm(m.vehicle_plate) === plate)
   return NextResponse.json({ candidates })
 }
