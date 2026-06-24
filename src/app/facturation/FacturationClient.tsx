@@ -566,10 +566,24 @@ export default function FacturationClient({
       {selected && (
         <FacturerModal
           mission={selected}
-          siblings={[
-            ...((selected.parent_mission_id && siblingsByMission.byId.get(selected.parent_mission_id)) ? [siblingsByMission.byId.get(selected.parent_mission_id)!] : []),
-            ...(siblingsByMission.byParentId.get(selected.id) || []),
-          ]}
+          siblings={(() => {
+            // Olivier 2026-06-24 : le parent (REM) peut être lui-même dans la
+            // liste principale `data` (cas REM+REL ET REL tous deux to_invoice)
+            // → on le cherche dans siblings ET dans data, sinon partir de la REL
+            // n'affichait qu'elle. Idem enfants (depuis data si déjà chargés).
+            const out: any[] = []
+            if (selected.parent_mission_id) {
+              const p = siblingsByMission.byId.get(selected.parent_mission_id)
+                     || data.find(d => d.id === selected.parent_mission_id)
+              if (p) out.push(p)
+            }
+            const kids = [
+              ...(siblingsByMission.byParentId.get(selected.id) || []),
+              ...data.filter(d => d.parent_mission_id === selected.id),
+            ]
+            for (const k of kids) if (!out.some(o => o.id === k.id)) out.push(k)
+            return out as any
+          })()}
           payments={paymentsByMission.get(selected.id) || []}
           driverName={driverName}
           onClose={() => setSelected(null)}
