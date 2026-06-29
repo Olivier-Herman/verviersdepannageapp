@@ -242,7 +242,15 @@ export async function extractContent(
       )
       if (rtfAtt?.contentBytes) {
         try {
-          const rtfRaw = Buffer.from(rtfAtt.contentBytes, 'base64').toString('latin1')
+          let rtfRaw = Buffer.from(rtfAtt.contentBytes, 'base64').toString('latin1')
+          // Olivier 2026-06-29 : retire les images embarquées (\pict) et les longs
+          // blobs hexadécimaux AVANT le parsing. Sans ça, rtfToText parcourait des
+          // centaines de Ko de données binaires → lenteur extrême et TIMEOUT du
+          // poll. Le texte mission, lui, est minuscule. Cap de sécurité à 600 Ko.
+          rtfRaw = rtfRaw
+            .replace(/\{\\\*?\\pict[\s\S]*?\}/gi, ' ')   // groupes image
+            .replace(/[0-9a-fA-F]{200,}/g, ' ')          // blobs hex résiduels
+          if (rtfRaw.length > 600_000) rtfRaw = rtfRaw.slice(0, 600_000)
           const text   = rtfToText(rtfRaw)
           if (text && text.length > 20) {
             console.log(`[Extractor] RTF parsé: ${text.length} chars`)
