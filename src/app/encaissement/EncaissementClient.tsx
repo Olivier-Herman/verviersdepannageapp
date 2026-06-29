@@ -430,7 +430,7 @@ export default function EncaissementClient({
     if (!document.getElementById('google-maps-script')) {
       const s = document.createElement('script')
       s.id = 'google-maps-script'
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initGooglePlaces`
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&region=BE&callback=initGooglePlaces`
       s.async = true; document.head.appendChild(s)
     } else if (window.google?.maps?.places) {
       initAC(locationInputRef, autocompleteRef, setLocation)

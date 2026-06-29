@@ -123,7 +123,7 @@ export default function CreateClientModal({ initialName, gmKey, onClose, onCreat
     if (!document.getElementById('gm-script')) {
       const s = document.createElement('script')
       s.id     = 'gm-script'
-      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
+      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&region=BE&language=fr`
       s.onload = init
       document.head.appendChild(s)
     } else {

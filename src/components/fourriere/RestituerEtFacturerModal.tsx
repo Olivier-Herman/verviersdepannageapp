@@ -102,7 +102,7 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
     if (window.google?.maps?.places) return
     const s = document.createElement('script')
     s.id = 'google-maps-script'
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&region=BE`
     s.async = true
     document.head.appendChild(s)
   }, [])

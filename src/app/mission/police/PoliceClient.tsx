@@ -263,7 +263,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       if (!existing) {
         const script = document.createElement('script')
         script.id = 'gmaps-script'
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&region=BE`
         script.async = true
         script.onload = init
         document.head.appendChild(script)

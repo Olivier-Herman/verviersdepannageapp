@@ -282,7 +282,7 @@ export default function NewDriverMissionClient() {
     <>
       {/* Chargement Google Maps uniquement si pas déjà présent */}
       <Script
-        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&region=BE`}
         strategy="afterInteractive"
         onLoad={() => setMapsReady(true)}
         onReady={() => setMapsReady(true)}

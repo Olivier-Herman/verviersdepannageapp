@@ -11,7 +11,10 @@ export function loadGoogleMaps(gmKey: string): Promise<void> {
     if (!document.getElementById('gm-script')) {
       const s = document.createElement('script')
       s.id     = 'gm-script'
-      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
+      // region=BE : biaise les résultats ambigus vers la Belgique (ex. même rue
+      // en BE et en FR → la belge d'abord). Ne filtre pas : les adresses
+      // étrangères restent proposées. Olivier 2026-06-29.
+      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr&region=BE`
       s.onload = () => resolve()
       s.onerror = () => reject(new Error('Échec chargement Google Maps'))
       document.head.appendChild(s)
@@ -138,7 +141,7 @@ export default function AddressField({
     if (!document.getElementById('gm-script')) {
       const s = document.createElement('script')
       s.id     = 'gm-script'
-      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr`
+      s.src    = `https://maps.googleapis.com/maps/api/js?key=${gmKey}&libraries=places&language=fr&region=BE`
       s.onload = init
       document.head.appendChild(s)
     } else {

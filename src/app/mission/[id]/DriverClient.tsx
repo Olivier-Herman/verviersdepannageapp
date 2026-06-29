@@ -994,7 +994,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY; if (!key || document.getElementById('gm-v4')) return
     const s = document.createElement('script'); s.id = 'gm-v4'
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&language=fr`
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&region=BE&language=fr`
     document.head.appendChild(s)
   }, [])
 
