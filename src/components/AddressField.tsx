@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/Input'
 
 // Charge le script Google Maps + Places (idempotent, partagé avec AddressField)
@@ -105,6 +105,33 @@ export default function AddressField({
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
 
+  // Suggestion "établissement à cette adresse" (recherche inverse non-destructive).
+  // Quand on choisit une ADRESSE (pas un établissement), on cherche s'il y a un
+  // commerce à ce point ; si oui on propose une pastille à ajouter. Olivier 2026-06-29.
+  const [estabHint, setEstabHint] = useState<{ name: string; addr: string; lat: number; lng: number; city?: string } | null>(null)
+
+  const lookupEstablishmentAt = (lat: number, lng: number, addr: string, city?: string) => {
+    try {
+      const g = (window as any).google
+      const svc = new g.maps.places.PlacesService(document.createElement('div'))
+      svc.nearbySearch(
+        { location: { lat, lng }, rankBy: g.maps.places.RankBy.DISTANCE, type: 'establishment' },
+        (results: any[], status: string) => {
+          if (status !== g.maps.places.PlacesServiceStatus.OK || !results?.length) return
+          const top = results[0]
+          if (!top?.name || !top.geometry?.location) return
+          // Garde-fou : l'établissement doit être quasiment AU point saisi (~40 m).
+          const dLat = (top.geometry.location.lat() - lat) * 111000
+          const dLng = (top.geometry.location.lng() - lng) * 111000 * Math.cos(lat * Math.PI / 180)
+          const dist = Math.sqrt(dLat * dLat + dLng * dLng)
+          if (dist <= 40 && !addr.toLowerCase().startsWith(top.name.toLowerCase())) {
+            setEstabHint({ name: top.name, addr, lat, lng, city })
+          }
+        },
+      )
+    } catch { /* best-effort */ }
+  }
+
   useEffect(() => {
     if (!ref.current || !gmKey) return
 
@@ -134,6 +161,10 @@ export default function AddressField({
         const display = name ? `${name}, ${addr}` : addr
         onChangeRef.current(display)
         onSelectRef.current?.(display, lat, lng, city, name)
+        // Si on a choisi une adresse simple, on tente de retrouver l'établissement
+        // à ce point pour le proposer (pastille). Sinon on efface une suggestion.
+        setEstabHint(null)
+        if (!name) lookupEstablishmentAt(lat, lng, addr, city)
       })
     }
 
@@ -153,14 +184,28 @@ export default function AddressField({
   }, [gmKey])
 
   return (
-    <Input
-      ref={ref}
-      label={label}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      className={className}
-      iconTrailing={<span aria-hidden="true">📍</span>}
-    />
+    <div>
+      <Input
+        ref={ref}
+        label={label}
+        value={value}
+        onChange={e => { onChange(e); setEstabHint(null) }}
+        placeholder={placeholder}
+        className={className}
+        iconTrailing={<span aria-hidden="true">📍</span>}
+      />
+      {estabHint && (
+        <button type="button"
+          onClick={() => {
+            const display = `${estabHint.name}, ${estabHint.addr}`
+            onChangeRef.current(display)
+            onSelectRef.current?.(display, estabHint.lat, estabHint.lng, estabHint.city, estabHint.name)
+            setEstabHint(null)
+          }}
+          className="mt-1 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand/10 text-brand text-xs font-medium hover:bg-brand/20 transition">
+          🏢 {estabHint.name} — ajouter ce nom à l'adresse
+        </button>
+      )}
+    </div>
   )
 }
