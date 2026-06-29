@@ -24,6 +24,7 @@ export async function GET(req: Request) {
   const { data, error } = await sb
     .from('incoming_missions')
     .select(`id, status, assigned_to, remarks_general, amount_to_collect, amount_collected,
+             parked_at, received_at,
              assigned_user:users!assigned_to(id, name)`)
     .eq('source', 'francofolies')
     .not('status', 'in', '(cancelled,ignored)')
@@ -57,9 +58,28 @@ export async function GET(req: Request) {
 
   const drivers = [...byDriver.values()].sort((a, b) => b.total - a.total)
 
+  // Véhicules dépannés (arrivés) par jour — date locale Europe/Brussels.
+  const byDayMap = new Map<string, number>()
+  for (const m of rows as any[]) {
+    const ts = m.parked_at || m.received_at
+    if (!ts) continue
+    const d = new Date(ts)
+    if (isNaN(d.getTime())) continue
+    const day = d.toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric' })
+    byDayMap.set(day, (byDayMap.get(day) || 0) + 1)
+  }
+  // Tri chronologique (clé fr-BE = JJ/MM/AAAA → on reparse pour trier).
+  const byDay = [...byDayMap.entries()]
+    .map(([day, count]) => ({ day, count }))
+    .sort((a, b) => {
+      const pa = a.day.split('/').reverse().join(''); const pb = b.day.split('/').reverse().join('')
+      return pb.localeCompare(pa)   // plus récent d'abord
+    })
+
   return NextResponse.json({
     ok: true,
     totals: { vehicles: rows.length, picked: totalPicked, parked: totalParked, collected: Math.round(totalCollected * 100) / 100 },
     drivers,
+    byDay,
   })
 }

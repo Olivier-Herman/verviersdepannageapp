@@ -200,6 +200,9 @@ export async function POST(req: Request) {
     ff_base_htva:        baseHtva,
     ff_gardiennage_days: gDays,
     ff_gardiennage_pu:   gardienPu,
+    // Horodatage de l'enlèvement (cohérent avec les autres flux to_invoice qui
+    // posent completed_at à la clôture chauffeur). Sert au registre des enlevés.
+    completed_at:        now,
     // NB : released_at/released_by n'existent pas sur incoming_missions.
   }
   const { error: updErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)

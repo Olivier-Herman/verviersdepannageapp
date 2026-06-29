@@ -248,16 +248,20 @@ export default function FrancofoliesClient({
 
   // ── Stats chauffeur ──────────────────────────────────────────────────────
   interface DriverStat { name: string; total: number; picked: number; collected: number }
-  const [stats, setStats] = useState<{ totals: { vehicles: number; picked: number; parked: number; collected: number }; drivers: DriverStat[] } | null>(null)
+  interface DayStat { day: string; count: number }
+  const [stats, setStats] = useState<{ totals: { vehicles: number; picked: number; parked: number; collected: number }; drivers: DriverStat[]; byDay: DayStat[] } | null>(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const loadStats = useCallback(async () => {
     setLoadingStats(true)
     try {
       const r = await fetch('/api/francofolies/stats')
       const j = await r.json()
-      if (j.ok) setStats({ totals: j.totals, drivers: j.drivers })
+      if (j.ok) setStats({ totals: j.totals, drivers: j.drivers, byDay: j.byDay || [] })
     } catch {} finally { setLoadingStats(false) }
   }, [])
+  // Export registre des enlèvements (période)
+  const [expFrom, setExpFrom] = useState('')
+  const [expTo,   setExpTo]   = useState('')
   useEffect(() => { if (screen === 'stats') loadStats() }, [screen, loadStats])
 
   const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
@@ -658,6 +662,48 @@ export default function FrancofoliesClient({
               ))}
             </div>
           )}
+
+          {/* Véhicules dépannés par jour */}
+          {stats.byDay && stats.byDay.length > 0 && (
+            <div>
+              <h2 className="text-ink-secondary text-xs font-semibold uppercase tracking-wide mt-2 mb-1">Véhicules par jour</h2>
+              <div className="space-y-1">
+                {stats.byDay.map(d => (
+                  <div key={d.day} className="flex items-center justify-between bg-surface border rounded-lg px-3 py-2">
+                    <span className="text-ink text-sm">{d.day}</span>
+                    <span className="text-ink font-bold">{d.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Export registre des enlèvements (période) */}
+          <div className="bg-surface border rounded-2xl p-4 space-y-3">
+            <h2 className="text-ink-secondary text-xs font-semibold uppercase tracking-wide">📄 Liste des véhicules enlevés (Excel)</h2>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-ink-muted text-xs mb-1">Du</label>
+                <input type="date" value={expFrom} onChange={e => setExpFrom(e.target.value)}
+                  className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
+              </div>
+              <div>
+                <label className="block text-ink-muted text-xs mb-1">Au</label>
+                <input type="date" value={expTo} onChange={e => setExpTo(e.target.value)}
+                  className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
+              </div>
+            </div>
+            <button type="button"
+              onClick={() => {
+                if (!expFrom || !expTo) { showToast('⚠ Choisis la période (du / au)'); return }
+                if (expFrom > expTo) { showToast('⚠ La date de début doit précéder la fin'); return }
+                window.location.href = `/api/francofolies/export?from=${expFrom}&to=${expTo}`
+              }}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition">
+              ⬇️ Générer le fichier Excel
+            </button>
+            <p className="text-ink-faint text-[11px]">Date, heure, marque/modèle, immatriculation, coordonnées propriétaire, payé / pas payé.</p>
+          </div>
         </>
       )}
     </main>, 'Statistiques',
