@@ -94,16 +94,21 @@ export async function POST(req: Request) {
   if (body.mode === 'no_charge') {
     const reason = String(body.no_charge_reason || '').trim()
     if (!reason) return NextResponse.json({ error: 'Motif requis pour la restitution sans frais' }, { status: 400 })
-    await sb.from('incoming_missions').update({
+    // NB : `released_at`/`released_by` n'existent PAS sur incoming_missions → on
+    // ne les met pas. Et Supabase ne *rejette* pas sur erreur SQL (il résout avec
+    // {error}) → on vérifie explicitement l'erreur et on renvoie un 500 si ça
+    // échoue (avant, l'échec passait silencieux et la fiche restait 'parked').
+    const { error: ncErr } = await sb.from('incoming_missions').update({
       status:           'completed',
       no_charge_at:     now,
       no_charge_reason: reason,
       no_charge_by:     user.id,
-      released_at:      now,
       completed_at:     now,
-    }).eq('id', missionId).then(() => {}, async () => {
-      await sb.from('incoming_missions').update({ status: 'completed', no_charge_at: now, no_charge_reason: reason }).eq('id', missionId)
-    })
+    }).eq('id', missionId)
+    if (ncErr) {
+      console.error('[francofolies pickup] no_charge update KO:', ncErr.message)
+      return NextResponse.json({ error: `Échec restitution sans frais : ${ncErr.message}` }, { status: 500 })
+    }
     await sb.from('mission_logs').insert({
       mission_id: missionId, actor_id: user.id, action: 'francofolies_no_charge',
       notes: `Enlèvement sans frais (Francofolies) : ${reason}`,
@@ -195,8 +200,7 @@ export async function POST(req: Request) {
     ff_base_htva:        baseHtva,
     ff_gardiennage_days: gDays,
     ff_gardiennage_pu:   gardienPu,
-    released_at:         now,
-    released_by:         user.id,
+    // NB : released_at/released_by n'existent pas sur incoming_missions.
   }
   const { error: updErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)
   if (updErr) {
