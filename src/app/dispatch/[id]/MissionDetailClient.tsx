@@ -69,6 +69,7 @@ interface Mission {
   destination_sens: string | null
   odoo_vehicle_id: number | null
   depot_depart_id: string | null
+  depot_depart_locked?: boolean | null
   amount_guaranteed: number | null
   amount_currency: string
   amount_to_collect: number | null
@@ -1378,6 +1379,7 @@ export default function MissionDetailClient({
   const [showForceParkModal, setShowForceParkModal] = useState(false)
   const [depots, setDepots]                   = useState<Array<{id:string;name:string;address:string;is_default:boolean}>>([])
   const [depotId, setDepotId]                 = useState<string>(initialMission.depot_depart_id || '')
+  const [depotLocked, setDepotLocked]         = useState<boolean>(!!initialMission.depot_depart_locked)
   // Stops intermédiaires : liste de {id, label, address, lat, lng, sort_order}
   // Le dernier stop = destination dans le calcul KM. Sauvegarde en extra_addresses (JSONB).
   const [stops, setStops]                     = useState<Stop[]>(() => {
@@ -2405,7 +2407,25 @@ export default function MissionDetailClient({
             <div className="bg-surface border rounded-xl p-4 space-y-3">
               {/* Dépôt de départ */}
               <div>
-                <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Dépôt de départ</p>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-ink-muted text-[11px] uppercase tracking-wide">Dépôt de départ</p>
+                  <button type="button"
+                    onClick={() => {
+                      const next = !depotLocked
+                      setDepotLocked(next)
+                      silentPatch({ depot_depart_locked: next })
+                    }}
+                    title={depotLocked
+                      ? 'Dépôt verrouillé — choix manuel conservé. Cliquer pour déverrouiller (recalcul auto du plus proche).'
+                      : 'Cliquer pour verrouiller ce dépôt et empêcher le recalcul automatique.'}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold transition ${
+                      depotLocked
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-surface-2 text-ink-muted border border-transparent hover:border-ink-faint'
+                    }`}>
+                    {depotLocked ? '🔒 Verrouillé' : '🔓 Auto'}
+                  </button>
+                </div>
                 <select value={depotId} onChange={e => {
                   const newId = e.target.value
                   setDepotId(newId)
@@ -2418,6 +2438,9 @@ export default function MissionDetailClient({
                     <option key={d.id} value={d.id}>{d.name} {d.is_default ? '(défaut)' : ''} — {d.address}</option>
                   ))}
                 </select>
+                {depotLocked
+                  ? <p className="text-amber-700 text-[11px] mt-1">Choix verrouillé — non recalculé automatiquement.</p>
+                  : <p className="text-ink-faint text-[11px] mt-1">Auto : dépôt le plus proche de l'intervention (Touring).</p>}
                 {depots.length === 0 && (
                   <p className="text-ink-faint text-xs mt-1">Aucun dépôt — <Link href="/admin/depots" className="text-brand underline">configurer</Link></p>
                 )}

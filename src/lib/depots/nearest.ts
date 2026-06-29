@@ -41,6 +41,8 @@ export async function findNearestDepot(lat: number, lng: number, sb?: any): Prom
  */
 export async function ensureTouringDepartDepot(sb: any, mission: any): Promise<NearestDepot | null> {
   if (!mission || String(mission.source || '').toLowerCase().trim() !== 'touring') return null
+  // Choix humain verrouillé (cadenas) → on ne recalcule jamais.
+  if (mission.depot_depart_locked) return null
   if (mission.incident_lat == null || mission.incident_lng == null) return null
   const nearest = await findNearestDepot(Number(mission.incident_lat), Number(mission.incident_lng), sb)
   if (!nearest) return null
