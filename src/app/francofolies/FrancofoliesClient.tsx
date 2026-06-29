@@ -284,6 +284,7 @@ export default function FrancofoliesClient({
       <VehiclePlateLookup
         plate={lookupPlateVal}
         open={lookupOpen}
+        confirmAlways
         onSelect={fillFromVehicle}
         onCreateNew={() => { setLookupOpen(false); setLookupStatus('notfound') }}
         onCancel={() => setLookupOpen(false)}

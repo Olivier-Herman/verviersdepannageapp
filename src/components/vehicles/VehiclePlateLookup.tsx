@@ -29,6 +29,7 @@ export default function VehiclePlateLookup({
   plate,
   open,
   withPreviousClients = false,
+  confirmAlways = false,
   onSelect,
   onCreateNew,
   onCancel,
@@ -36,6 +37,9 @@ export default function VehiclePlateLookup({
   plate:                string
   open:                 boolean
   withPreviousClients?: boolean
+  /** Si true : même 1 seul résultat est affiché dans le modal pour confirmation
+   *  (pas d'auto-sélection). Olivier 2026-06-24 (Francofolies). */
+  confirmAlways?:       boolean
   onSelect:             (vehicle: VehicleMatch) => void
   onCreateNew:          () => void
   onCancel?:            () => void
@@ -98,13 +102,14 @@ export default function VehiclePlateLookup({
         return
       }
 
-      if (list.length === 1 && !list[0].archived) {
+      if (list.length === 1 && !list[0].archived && !confirmAlways) {
         // Skip modal : 1 résultat exact non-archivé → sélection directe
+        // (sauf confirmAlways : on garde le modal pour confirmation).
         onSelect(list[0])
         return
       }
 
-      // Sinon (2+ résultats OU 1 archivé) : modal liste
+      // Sinon (2+ résultats OU 1 archivé OU confirmAlways) : modal liste
       setStatus('list')
     } catch (e: any) {
       if (e?.name === 'AbortError' || ac.signal.aborted) return
