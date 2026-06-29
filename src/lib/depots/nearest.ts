@@ -32,9 +32,11 @@ export async function findNearestDepot(lat: number, lng: number, sb?: any): Prom
 }
 
 /**
- * Touring : pose `depot_depart_id` = dépôt le plus proche du lieu d'intervention
- * s'il n'est pas encore renseigné. Mute la mission en mémoire (depot_depart_id)
- * et persiste en base. Retourne le dépôt retenu (ou null si non applicable).
+ * Touring : (ré)aligne `depot_depart_id` sur le dépôt le plus proche du lieu
+ * d'intervention. Olivier 2026-06-29 : pour Touring le dépôt est TOUJOURS le plus
+ * proche (règle métier), donc on corrige aussi les fiches dont le dépôt stocké
+ * diffère (ex. anciennes missions figées sur le dépôt par défaut). Mute la mission
+ * en mémoire et persiste. Retourne le dépôt retenu (ou null si non applicable).
  * Idempotent et non bloquant.
  */
 export async function ensureTouringDepartDepot(sb: any, mission: any): Promise<NearestDepot | null> {
@@ -42,8 +44,7 @@ export async function ensureTouringDepartDepot(sb: any, mission: any): Promise<N
   if (mission.incident_lat == null || mission.incident_lng == null) return null
   const nearest = await findNearestDepot(Number(mission.incident_lat), Number(mission.incident_lng), sb)
   if (!nearest) return null
-  // On ne remplit que si vide (on respecte un choix manuel existant du dispatcher).
-  if (!mission.depot_depart_id) {
+  if (mission.depot_depart_id !== nearest.id) {
     try {
       await sb.from('incoming_missions').update({ depot_depart_id: nearest.id }).eq('id', mission.id)
       mission.depot_depart_id = nearest.id
