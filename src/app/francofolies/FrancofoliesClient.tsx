@@ -11,7 +11,16 @@ interface Row {
   id: string; mission_number: number | null
   vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null
   status: string; amount_to_collect: number | null; parked_at: string | null
+  police_blocked?: boolean | null
   assigned_user?: { id: string; name: string } | null
+}
+
+/** Jours de gardiennage facturables : "jour entamé au-delà de 24h". */
+function gardiennageDaysSince(parkedAt: string | null): number {
+  if (!parkedAt) return 0
+  const over = (Date.now() - new Date(parkedAt).getTime()) - 24 * 3600 * 1000
+  if (over <= 0) return 0
+  return Math.ceil(over / (24 * 3600 * 1000))
 }
 
 const LAST_DRIVER_KEY = 'ff_last_driver'
@@ -23,7 +32,7 @@ export default function FrancofoliesClient({
   currentUserId: string; isDriverOnly: boolean; drivers: Driver[]
   price: number; gardiennagePrice: number
 }) {
-  const [screen, setScreen] = useState<'home' | 'arrival' | 'list'>('home')
+  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup'>('home')
 
   // ── Encodage arrivée (rapide) ──────────────────────────────────────────────
   const [plate,      setPlate]      = useState('')
@@ -35,6 +44,7 @@ export default function FrancofoliesClient({
   const [loadingModels, setLoadingModels] = useState(false)
   const [driverId,   setDriverId]   = useState(isDriverOnly ? currentUserId : '')
   const [otherDriver, setOtherDriver] = useState('')   // nom libre si "Autre"
+  const [policeBlock, setPoliceBlock] = useState(false)
   const [saving,     setSaving]     = useState(false)
   const [scan,       setScan]       = useState(false)
   const [toast,      setToast]      = useState<string | null>(null)
@@ -134,7 +144,7 @@ export default function FrancofoliesClient({
     try {
       const res = await fetch('/api/francofolies/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plate: p, brand: brandName, model: modelName, driver_id: realDriverId, driver_name: driverNameFree }),
+        body: JSON.stringify({ plate: p, brand: brandName, model: modelName, driver_id: realDriverId, driver_name: driverNameFree, police_blocked: policeBlock }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
@@ -142,7 +152,7 @@ export default function FrancofoliesClient({
       setLastSaved(`${p} · ${[brandName, modelName].filter(Boolean).join(' ')}`)
       showToast('✅ Véhicule enregistré')
       // Reset rapide pour le suivant (on garde le chauffeur).
-      setPlate(''); setBrandId(null); setBrandName(''); setModelName(''); setModels([])
+      setPlate(''); setBrandId(null); setBrandName(''); setModelName(''); setModels([]); setPoliceBlock(false)
       setTimeout(() => plateRef.current?.focus(), 100)
     } catch { showToast('⚠ Erreur réseau') }
     finally { setSaving(false) }
@@ -166,6 +176,66 @@ export default function FrancofoliesClient({
     const t = setTimeout(() => loadList(q), 250)
     return () => clearTimeout(t)
   }, [q, screen, loadList])
+
+  // ── Enlèvement (Phase 2) ─────────────────────────────────────────────────
+  const [picked,    setPicked]    = useState<Row | null>(null)
+  const [cName,     setCName]     = useState('')
+  const [cAddress,  setCAddress]  = useState('')
+  const [cZip,      setCZip]      = useState('')
+  const [cCity,     setCCity]     = useState('')
+  const [cPhone,    setCPhone]    = useState('')
+  const [cEmail,    setCEmail]    = useState('')
+  const [cVat,      setCVat]      = useState('')
+  const [payMode,   setPayMode]   = useState<'cash' | 'bancontact'>('cash')
+  const [chargeGard, setChargeGard] = useState(true)
+  const [policeOk,  setPoliceOk]  = useState(false)
+  const [pickupSaving, setPickupSaving] = useState(false)
+  const [noChargeMode, setNoChargeMode] = useState(false)
+  const [noChargeReason, setNoChargeReason] = useState('')
+
+  const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
+  const baseTvac = Math.round(price * 1.21 * 100) / 100
+  const gardTvac = Math.round(gardiennagePrice * 1.21 * (chargeGard ? gardDays : 0) * 100) / 100
+  const totalTvac = Math.round((baseTvac + gardTvac) * 100) / 100
+
+  function openPickup(row: Row) {
+    setPicked(row)
+    setCName(''); setCAddress(''); setCZip(''); setCCity(''); setCPhone(''); setCEmail(''); setCVat('')
+    setPayMode('cash'); setChargeGard(true); setPoliceOk(false)
+    setNoChargeMode(false); setNoChargeReason('')
+    setScreen('pickup')
+  }
+
+  async function submitPickup() {
+    if (!picked) return
+    if (noChargeMode) {
+      if (!noChargeReason.trim()) { showToast('⚠ Motif requis'); return }
+    } else {
+      if (!cName.trim()) { showToast('⚠ Nom du client requis'); return }
+      if (picked.police_blocked && !policeOk) { showToast('⚠ Confirme le passage au commissariat'); return }
+    }
+    setPickupSaving(true)
+    try {
+      const res = await fetch('/api/francofolies/pickup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(noChargeMode ? {
+          mission_id: picked.id, mode: 'no_charge', no_charge_reason: noChargeReason.trim(),
+        } : {
+          mission_id: picked.id, mode: 'invoice',
+          client: { name: cName.trim(), address: cAddress.trim(), zip: cZip.trim(), city: cCity.trim(), phone: cPhone.trim(), email: cEmail.trim(), vat: cVat.trim() },
+          payment_mode: payMode,
+          gardiennage_days: chargeGard ? gardDays : 0,
+          police_verified: policeOk,
+        }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      showToast(noChargeMode ? '✅ Restitué sans frais'
+        : `✅ Encaissé ${j.total_tvac?.toFixed?.(2) || ''} € TVAC${j.receipt_sent ? ' · reçu envoyé' : ''}`)
+      setScreen('list'); setPicked(null); loadList(q)
+    } catch { showToast('⚠ Erreur réseau') }
+    finally { setPickupSaving(false) }
+  }
 
   const shell = (children: React.ReactNode, title = 'Francofolies') => (
     <AppShell title={title} userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
@@ -272,6 +342,19 @@ export default function FrancofoliesClient({
         )}
       </div>
 
+      <button type="button" onClick={() => setPoliceBlock(v => !v)}
+        className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl border-2 transition text-left ${
+          policeBlock ? 'bg-red-50 border-red-500' : 'bg-surface border'
+        }`}>
+        <span className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-sm flex-shrink-0 ${policeBlock ? 'bg-red-600' : 'bg-ink-faint'}`}>
+          {policeBlock ? '✓' : ''}
+        </span>
+        <span>
+          <span className="block text-ink font-semibold text-sm">🚔 Blocage police</span>
+          <span className="block text-ink-muted text-xs">Le propriétaire devra passer au commissariat avant l'enlèvement</span>
+        </span>
+      </button>
+
       <button onClick={save} disabled={saving}
         className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold text-lg disabled:opacity-50 transition">
         {saving ? '⏳ Enregistrement…' : '💾 Enregistrer'}
@@ -292,6 +375,127 @@ export default function FrancofoliesClient({
     </main>
   )
 
+  // ── ENLÈVEMENT (Phase 2) ────────────────────────────────────────────────────
+  if (screen === 'pickup' && picked) return shell(
+    <main className="p-4 max-w-md mx-auto space-y-4">
+      <button onClick={() => { setScreen('list'); setPicked(null) }} className="text-ink-muted text-sm">← Liste</button>
+
+      <div className="bg-surface border rounded-2xl p-4">
+        <p className="text-ink font-bold font-mono text-lg">{picked.vehicle_plate || '—'}</p>
+        <p className="text-ink-secondary text-sm">{[picked.vehicle_brand, picked.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
+        {picked.police_blocked && (
+          <p className="mt-2 text-red-700 text-xs font-semibold bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+            🚔 Blocage police — le propriétaire doit avoir réglé sa situation au commissariat.
+          </p>
+        )}
+      </div>
+
+      {/* Bascule sans frais */}
+      <button type="button" onClick={() => setNoChargeMode(v => !v)}
+        className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm font-semibold transition ${
+          noChargeMode ? 'bg-amber-50 border-amber-500 text-amber-800' : 'bg-surface border text-ink-secondary'
+        }`}>
+        {noChargeMode ? '✓ Restitution sans frais' : '🚫 Restituer sans frais'}
+      </button>
+
+      {noChargeMode ? (
+        <div>
+          <label className="block text-ink-secondary text-xs font-semibold mb-1">Motif (obligatoire) *</label>
+          <textarea value={noChargeReason} onChange={e => setNoChargeReason(e.target.value)} rows={3}
+            placeholder="Ex : erreur d'enlèvement, geste commercial…"
+            className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand" />
+        </div>
+      ) : (
+        <>
+          {/* Client */}
+          <div className="space-y-2">
+            <label className="block text-ink-secondary text-xs font-semibold">Client</label>
+            <input value={cName} onChange={e => setCName(e.target.value)} placeholder="Nom / Société *"
+              className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand" />
+            <input value={cAddress} onChange={e => setCAddress(e.target.value)} placeholder="Adresse (rue + n°)"
+              className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+            <div className="grid grid-cols-3 gap-2">
+              <input value={cZip} onChange={e => setCZip(e.target.value)} placeholder="CP"
+                className="bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+              <input value={cCity} onChange={e => setCCity(e.target.value)} placeholder="Ville"
+                className="col-span-2 bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+            </div>
+            <input value={cPhone} onChange={e => setCPhone(e.target.value)} placeholder="Téléphone" inputMode="tel"
+              className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+            <input value={cEmail} onChange={e => setCEmail(e.target.value)} placeholder="Email (reçu envoyé)" inputMode="email" autoCapitalize="none"
+              className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+            <input value={cVat} onChange={e => setCVat(e.target.value)} placeholder="N° TVA (optionnel)" autoCapitalize="characters"
+              className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+          </div>
+
+          {/* Gardiennage */}
+          {gardDays > 0 && (
+            <button type="button" onClick={() => setChargeGard(v => !v)}
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl border-2 text-left transition ${
+                chargeGard ? 'bg-emerald-50 border-emerald-500' : 'bg-surface border'
+              }`}>
+              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-sm flex-shrink-0 ${chargeGard ? 'bg-emerald-600' : 'bg-ink-faint'}`}>
+                {chargeGard ? '✓' : ''}
+              </span>
+              <span className="text-sm">
+                <span className="block text-ink font-semibold">Il y a {gardDays} jour{gardDays > 1 ? 's' : ''} de gardiennage</span>
+                <span className="block text-ink-muted text-xs">Les comptabiliser ({gardiennagePrice} € HTVA/jour) ?</span>
+              </span>
+            </button>
+          )}
+
+          {/* Paiement */}
+          <div>
+            <label className="block text-ink-secondary text-xs font-semibold mb-1">Mode de paiement</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([['cash', '💵 Espèces'], ['bancontact', '💳 Bancontact']] as const).map(([v, lbl]) => (
+                <button key={v} type="button" onClick={() => setPayMode(v)}
+                  className={`py-3 rounded-xl border-2 text-sm font-semibold transition ${
+                    payMode === v ? 'bg-brand text-white border-brand' : 'bg-surface border text-ink-secondary'
+                  }`}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Blocage police : confirmation */}
+          {picked.police_blocked && (
+            <button type="button" onClick={() => setPoliceOk(v => !v)}
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl border-2 text-left transition ${
+                policeOk ? 'bg-red-50 border-red-500' : 'bg-surface border border-red-300'
+              }`}>
+              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-sm flex-shrink-0 ${policeOk ? 'bg-red-600' : 'bg-ink-faint'}`}>
+                {policeOk ? '✓' : ''}
+              </span>
+              <span className="text-ink text-sm font-semibold">Le propriétaire est passé au commissariat</span>
+            </button>
+          )}
+
+          {/* Total */}
+          <div className="bg-surface-2 border rounded-2xl p-4 space-y-1">
+            <div className="flex justify-between text-sm text-ink-secondary">
+              <span>Réquisition mal garée</span><span>{baseTvac.toFixed(2)} €</span>
+            </div>
+            {chargeGard && gardDays > 0 && (
+              <div className="flex justify-between text-sm text-ink-secondary">
+                <span>Gardiennage ({gardDays} j)</span><span>{gardTvac.toFixed(2)} €</span>
+              </div>
+            )}
+            <div className="flex justify-between text-ink font-bold text-lg pt-1 border-t">
+              <span>Total TVAC</span><span>{totalTvac.toFixed(2)} €</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      <button onClick={submitPickup} disabled={pickupSaving}
+        className={`w-full py-5 text-white rounded-2xl font-bold text-lg disabled:opacity-50 transition ${
+          noChargeMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+        }`}>
+        {pickupSaving ? '⏳…' : noChargeMode ? '🚫 Restituer sans frais' : `💰 Encaisser ${totalTvac.toFixed(2)} € & enlever`}
+      </button>
+    </main>, 'Enlèvement',
+  )
+
   // ── LISTE / RECHERCHE ──────────────────────────────────────────────────────
   return shell(
     <main className="p-4 max-w-2xl mx-auto space-y-3">
@@ -306,15 +510,21 @@ export default function FrancofoliesClient({
       ) : (
         <div className="space-y-2">
           {rows.map(m => (
-            <button key={m.id} onClick={() => showToast('🚧 Enlèvement / encaissement : à venir (Phase 2)')}
+            <button key={m.id} onClick={() => openPickup(m)}
               className="w-full text-left bg-surface border rounded-xl p-3 hover:border-brand/40 transition">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-ink font-bold font-mono">{m.vehicle_plate || '—'}</p>
+                  <p className="text-ink font-bold font-mono">
+                    {m.vehicle_plate || '—'}
+                    {m.police_blocked && <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold align-middle">🚔 BLOCAGE</span>}
+                  </p>
                   <p className="text-ink-secondary text-sm">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
                   {m.assigned_user?.name && <p className="text-ink-faint text-xs mt-0.5">🚚 {m.assigned_user.name}</p>}
                 </div>
-                <span className="text-ink-faint text-xs">{m.parked_at ? new Date(m.parked_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                <div className="text-right">
+                  <span className="text-ink-faint text-xs block">{m.parked_at ? new Date(m.parked_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                  <span className="text-emerald-600 text-xs font-semibold">Enlèvement →</span>
+                </div>
               </div>
             </button>
           ))}

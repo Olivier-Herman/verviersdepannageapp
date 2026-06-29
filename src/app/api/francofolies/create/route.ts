@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({})) as {
     plate?: string; brand?: string; model?: string; remarks?: string; photo_url?: string
-    driver_id?: string; driver_name?: string
+    driver_id?: string; driver_name?: string; police_blocked?: boolean
   }
   const plate = String(body.plate || '').trim().toUpperCase()
   const driverId = body.driver_id && /^[0-9a-f-]{36}$/i.test(body.driver_id) ? body.driver_id : null
@@ -68,6 +68,8 @@ export async function POST(req: Request) {
       driver_photos:     body.photo_url ? [body.photo_url] : null,
       status:            'parked',
       dispatch_mode:     'manual',
+      // Blocage police : le propriétaire devra passer au commissariat avant enlèvement.
+      police_blocked:    body.police_blocked === true,
       // Chauffeur qui a ramené le véhicule (traçabilité dégâts + stats).
       assigned_to:       driverId,
       assigned_at:       driverId ? now : null,

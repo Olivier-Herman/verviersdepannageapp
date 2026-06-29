@@ -20,6 +20,10 @@ interface MissionLike {
   special_tarif_htva?: number | null
   amount_guaranteed?:  number | null
   amount_to_collect?:  number | null
+  // Francofolies (Phase 2) : tarification figée à l'enlèvement.
+  ff_base_htva?:        number | null
+  ff_gardiennage_days?: number | null
+  ff_gardiennage_pu?:   number | null
 }
 
 /**
@@ -31,6 +35,34 @@ interface MissionLike {
  */
 export function buildOverrideLines(mission: MissionLike): QuoteLine[] | null {
   const missionRef = mission.external_id || mission.dossier_number || `M-${mission.id.slice(0, 8)}`
+
+  // 0. Francofolies (mal garée évènementiel) — tarification figée à l'enlèvement.
+  //    Ligne SERV-DIV réquisition (PU = ff_base_htva) + ligne gardiennage si jours
+  //    retenus. Passe AVANT les autres branches car amount_to_collect est aussi
+  //    renseigné (total TVAC) et donnerait sinon la ligne générique. Olivier 2026-06-29.
+  if (mission.source === 'francofolies') {
+    const base = mission.ff_base_htva != null ? Number(mission.ff_base_htva) : 0
+    const gDays = mission.ff_gardiennage_days != null ? Number(mission.ff_gardiennage_days) : 0
+    const gPu   = mission.ff_gardiennage_pu  != null ? Number(mission.ff_gardiennage_pu)  : 0
+    const ffLines: QuoteLine[] = []
+    if (base > 0) {
+      ffLines.push({
+        kind:       'SERV-DIV',
+        name:       `Réquisitionné par la police pour véhicule mal garé dans le cadre des Francofolies de Spa — ${missionRef}`,
+        qty:        1,
+        price_unit: base,
+      })
+    }
+    if (gDays > 0 && gPu > 0) {
+      ffLines.push({
+        kind:       'GARDIENNAGE',
+        name:       `Gardiennage (${gDays} jour${gDays > 1 ? 's' : ''})`,
+        qty:        gDays,
+        price_unit: gPu,
+      })
+    }
+    if (ffLines.length > 0) return ffLines
+  }
 
   // 1. Tarif special HTVA -> 1 seule ligne ecrase tout
   if (mission.special_tarif_htva != null && Number(mission.special_tarif_htva) > 0) {

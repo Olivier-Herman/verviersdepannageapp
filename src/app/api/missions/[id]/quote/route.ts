@@ -84,6 +84,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       billed_to_id, billed_to_name,
       amount_to_collect, special_tarif_htva, amount_guaranteed,
+      ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, extra_addresses,
       odoo_quote_id, odoo_quote_url

@@ -138,6 +138,10 @@ export default async function AdminPage() {
         <Card href="/admin/surcharges" icon={DollarSign} label="Surcharges horaires"
           desc="Majorations selon plages horaires (nuit, weekend, jours fériés)."
           count={surcharges} />
+        {user.role === 'superadmin' && (
+          <Card href="/admin/francofolies" icon={DollarSign} label="Francofolies"
+            desc="Prix réquisition mal garée + gardiennage/jour pour l'évènement Francofolies de Spa." />
+        )}
       </Group>
 
       <Group title="Workflow & Communication">
