@@ -30,6 +30,7 @@ const PAYMENT_MODE_LABELS: Record<string, string> = {
   tap: 'Tap to Pay SumUp',
   email: 'Lien de paiement SumUp',
   sumup_manual: 'SumUp (manuel)',
+  sumup: 'SumUp',
   bancontact: 'Bancontact Bureau',
   unpaid: 'À facturer',
 }

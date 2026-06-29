@@ -186,7 +186,7 @@ export default function FrancofoliesClient({
   const [cPhone,    setCPhone]    = useState('')
   const [cEmail,    setCEmail]    = useState('')
   const [cVat,      setCVat]      = useState('')
-  const [payMode,   setPayMode]   = useState<'cash' | 'bancontact'>('cash')
+  const [payMode,   setPayMode]   = useState<'cash' | 'bancontact' | 'sumup' | 'unpaid'>('cash')
   const [chargeGard, setChargeGard] = useState(true)
   const [policeOk,  setPoliceOk]  = useState(false)
   const [pickupSaving, setPickupSaving] = useState(false)
@@ -448,13 +448,18 @@ export default function FrancofoliesClient({
           <div>
             <label className="block text-ink-secondary text-xs font-semibold mb-1">Mode de paiement</label>
             <div className="grid grid-cols-2 gap-2">
-              {([['cash', '💵 Espèces'], ['bancontact', '💳 Bancontact']] as const).map(([v, lbl]) => (
+              {([['cash', '💵 Espèces'], ['bancontact', '💳 Bancontact'], ['sumup', '📲 Sumup'], ['unpaid', '🧾 À facturer']] as const).map(([v, lbl]) => (
                 <button key={v} type="button" onClick={() => setPayMode(v)}
                   className={`py-3 rounded-xl border-2 text-sm font-semibold transition ${
-                    payMode === v ? 'bg-brand text-white border-brand' : 'bg-surface border text-ink-secondary'
+                    payMode === v
+                      ? (v === 'unpaid' ? 'bg-amber-500 text-white border-amber-500' : 'bg-brand text-white border-brand')
+                      : 'bg-surface border text-ink-secondary'
                   }`}>{lbl}</button>
               ))}
             </div>
+            {payMode === 'unpaid' && (
+              <p className="text-amber-600 text-xs mt-1">Le client recevra une confirmation « non payée » ; le montant reste à facturer.</p>
+            )}
           </div>
 
           {/* Blocage police : confirmation */}
@@ -491,7 +496,9 @@ export default function FrancofoliesClient({
         className={`w-full py-5 text-white rounded-2xl font-bold text-lg disabled:opacity-50 transition ${
           noChargeMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
         }`}>
-        {pickupSaving ? '⏳…' : noChargeMode ? '🚫 Restituer sans frais' : `💰 Encaisser ${totalTvac.toFixed(2)} € & enlever`}
+        {pickupSaving ? '⏳…' : noChargeMode ? '🚫 Restituer sans frais'
+          : payMode === 'unpaid' ? `🧾 Enlever (${totalTvac.toFixed(2)} € à facturer)`
+          : `💰 Encaisser ${totalTvac.toFixed(2)} € & enlever`}
       </button>
     </main>, 'Enlèvement',
   )

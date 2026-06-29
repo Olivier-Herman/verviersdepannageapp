@@ -46,7 +46,7 @@ interface PickupBody {
   mode:              'invoice' | 'no_charge'
   // invoice
   client?:           { name?: string; address?: string; zip?: string; city?: string; phone?: string; email?: string; vat?: string }
-  payment_mode?:     'cash' | 'bancontact'
+  payment_mode?:     'cash' | 'bancontact' | 'sumup' | 'unpaid'
   gardiennage_days?: number        // jours retenus (0 = non comptabilisé)
   police_verified?:  boolean        // si police_blocked : proprio passé au commissariat
   // no_charge
@@ -115,7 +115,9 @@ export async function POST(req: Request) {
   const client = body.client || {}
   const clientName = String(client.name || '').trim()
   if (!clientName) return NextResponse.json({ error: 'Nom du client requis' }, { status: 400 })
-  const paymentMode = body.payment_mode === 'bancontact' ? 'bancontact' : 'cash'
+  const PAY_MODES = ['cash', 'bancontact', 'sumup', 'unpaid'] as const
+  const paymentMode = PAY_MODES.includes(body.payment_mode as any) ? body.payment_mode! : 'cash'
+  const isUnpaid = paymentMode === 'unpaid'   // "À facturer" : rien d'encaissé sur place
 
   // Réglages tarifaires (figés sur la fiche pour la facturation).
   const { data: settings } = await sb.from('app_settings').select('key, value')
@@ -150,26 +152,28 @@ export async function POST(req: Request) {
     // Non bloquant : on facturera quand même, le partner sera à compléter.
   }
 
-  // 2. Encaissement (interventions).
-  const { data: actorRow } = await sb.from('users').select('id').eq('email', user.email).maybeSingle()
-  await sb.from('interventions').insert({
-    service_type:    'encaissement',
-    driver_id:       actorRow?.id || user.id || null,
-    mission_id:      missionId,
-    plate:           mission.vehicle_plate,
-    brand_text:      mission.vehicle_brand,
-    model_text:      mission.vehicle_model,
-    motif_text:      'Véhicule mal garé — Francofolies de Spa',
-    location_address:'Francofolies de Spa',
-    amount:          totalTvac,
-    payment_mode:    paymentMode,
-    client_name:     clientName,
-    client_address:  client.address || null,
-    client_phone:    client.phone || null,
-    client_email:    client.email || null,
-    client_vat:      client.vat || null,
-    notes:           `Francofolies — base ${baseHtva}€ HTVA${gDays > 0 ? ` + gardiennage ${gDays}j × ${gardienPu}€` : ''}`,
-  }).then(() => {}, (e) => console.error('[francofolies pickup] intervention KO:', e?.message))
+  // 2. Encaissement (interventions) — sauf "À facturer" (rien encaissé sur place).
+  if (!isUnpaid) {
+    const { data: actorRow } = await sb.from('users').select('id').eq('email', user.email).maybeSingle()
+    await sb.from('interventions').insert({
+      service_type:    'encaissement',
+      driver_id:       actorRow?.id || user.id || null,
+      mission_id:      missionId,
+      plate:           mission.vehicle_plate,
+      brand_text:      mission.vehicle_brand,
+      model_text:      mission.vehicle_model,
+      motif_text:      'Véhicule mal garé — Francofolies de Spa',
+      location_address:'Francofolies de Spa',
+      amount:          totalTvac,
+      payment_mode:    paymentMode,
+      client_name:     clientName,
+      client_address:  client.address || null,
+      client_phone:    client.phone || null,
+      client_email:    client.email || null,
+      client_vat:      client.vat || null,
+      notes:           `Francofolies — base ${baseHtva}€ HTVA${gDays > 0 ? ` + gardiennage ${gDays}j × ${gardienPu}€` : ''}`,
+    }).then(() => {}, (e) => console.error('[francofolies pickup] intervention KO:', e?.message))
+  }
 
   // 3. Mission → to_invoice + tarification figée + client.
   const update: Record<string, any> = {
@@ -184,7 +188,7 @@ export async function POST(req: Request) {
     client_vat:          client.vat || null,
     payment_method:      paymentMode,
     amount_to_collect:   totalTvac,
-    amount_collected:    totalTvac,
+    amount_collected:    isUnpaid ? 0 : totalTvac,
     ff_base_htva:        baseHtva,
     ff_gardiennage_days: gDays,
     ff_gardiennage_pu:   gardienPu,
