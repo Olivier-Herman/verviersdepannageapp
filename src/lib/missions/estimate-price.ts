@@ -74,6 +74,57 @@ async function routesDistanceKm(origin: Coord, destination: Coord): Promise<numb
   }
 }
 
+/** Distance à vol d'oiseau (pour départager des dépôts, sans coût API). */
+function haversineKm(a: Coord, b: Coord): number {
+  const R = 6371, toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Dépôt VD actif le plus proche d'un point (sélection par haversine — suffisant
+ * pour départager ; la distance facturée exacte est ensuite calculée par route).
+ */
+async function findNearestDepotCoord(sb: any, ref: Coord): Promise<{ name: string; lat: number; lng: number } | null> {
+  const { data: depots } = await sb.from('depots').select('name, lat, lng').eq('active', true)
+  let best: any = null, bestD = Infinity
+  for (const d of depots || []) {
+    if (d.lat == null || d.lng == null) continue
+    const dist = haversineKm(ref, { lat: Number(d.lat), lng: Number(d.lng) })
+    if (dist < bestD) { bestD = dist; best = d }
+  }
+  return best ? { name: best.name, lat: Number(best.lat), lng: Number(best.lng) } : null
+}
+
+/**
+ * Km facturé Touring : route depuis le dépôt VD le plus proche de `refForDepot`,
+ * passant par `waypoints` dans l'ordre, puis retour à ce même dépôt.
+ * Olivier 2026-06-29 : pour Touring, le dépôt le plus proche du LIEU
+ * D'INTERVENTION détermine le dépôt de départ/retour de tout le dossier.
+ *   - REM mise en parc / DSP : waypoints = [intervention]
+ *       → Dépôt → intervention → Dépôt (parc ignoré).
+ *   - REM livraison directe   : waypoints = [intervention, destination]
+ *       → Dépôt → intervention → destination → Dépôt.
+ *   - REL                     : refForDepot = intervention d'origine (parent),
+ *       waypoints = [destination] → Dépôt → destination → Dépôt.
+ */
+async function touringRouteFromNearestDepot(
+  sb: any, refForDepot: Coord, waypoints: Coord[],
+): Promise<{ km: number; depotName: string } | null> {
+  const depot = await findNearestDepotCoord(sb, refForDepot)
+  if (!depot) return null
+  const D: Coord = { lat: depot.lat, lng: depot.lng }
+  const chain: Coord[] = [D, ...waypoints, D]
+  let acc = 0
+  for (let i = 0; i < chain.length - 1; i++) {
+    const km = await routesDistanceKm(chain[i], chain[i + 1])
+    if (km == null) return null
+    acc += km
+  }
+  return { km: acc, depotName: depot.name }
+}
+
 /**
  * Calcule deux notions de km pour une mission :
  *   - chargedKm : segments incident → stops → destination (véhicule du client sur le plateau).
@@ -416,7 +467,31 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
     kmCharged    = km.chargedKm ?? 0
     kmTotalRoute = km.totalKm   ?? 0
   }
-  const kmBase = kmBasis === 'total' ? kmTotalRoute : kmCharged
+  let kmBase = kmBasis === 'total' ? kmTotalRoute : kmCharged
+
+  // Olivier 2026-06-29 — Touring : le dépôt de départ/retour est le dépôt VD le
+  // plus proche du LIEU D'INTERVENTION (pas le défaut, pas le parc). Facturation :
+  //   • mise en parc / DSP / sur place : Dépôt → intervention → Dépôt
+  //   • livraison directe              : Dépôt → intervention → destination → Dépôt
+  // (la REL est gérée à part dans estimateRelivraisonPrice avec le même dépôt.)
+  let touringDepotNote = ''
+  if (source === 'touring' && mission.id) {
+    const { data: c } = await sb.from('incoming_missions')
+      .select('incident_lat, incident_lng, destination_lat, destination_lng, parked_at, mission_type')
+      .eq('id', mission.id).maybeSingle()
+    if (c?.incident_lat != null && c?.incident_lng != null) {
+      const inc: Coord = { lat: Number(c.incident_lat), lng: Number(c.incident_lng) }
+      const t = String(c.mission_type || mission.mission_type || '').toLowerCase()
+      const onSite = isDsp(t) || isTrajetVide(t)
+      const parked = c.parked_at != null || mission.parked_at != null
+      const dest: Coord | null = c.destination_lat != null && c.destination_lng != null
+        ? { lat: Number(c.destination_lat), lng: Number(c.destination_lng) } : null
+      const waypoints: Coord[] = (onSite || parked || !dest) ? [inc] : [inc, dest]
+      const rt = await touringRouteFromNearestDepot(sb, inc, waypoints)
+      if (rt) { kmBase = Math.round(rt.km * 10) / 10; touringDepotNote = rt.depotName }
+    }
+  }
+
   const kmInclus = Number(tariff.km_inclus || 0)
   // Km supplementaires arrondis a l unite superieure (pas de decimales sur les
   // quantites facturables : "12,4 km extras" devient "13 km")
@@ -511,7 +586,9 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   const surchargeEur = (subtotal * surchargePct) / 100
   const total = subtotal + surchargeEur
 
-  const kmBasisLabel = kmBasis === 'total' ? 'km totaux' : 'km chargés'
+  const kmBasisLabel = touringDepotNote
+    ? `aller-retour dépôt ${touringDepotNote}`
+    : kmBasis === 'total' ? 'km totaux' : 'km chargés'
   const breakdown = [
     { label: 'Forfait',   amount: forfait, note: kmInclus > 0 ? `${kmInclus} km inclus` : undefined },
     { label: `Km extra (${kmBasisLabel})`, amount: kmExtraEur > 0 ? kmExtraEur : null, note: kmExtra > 0 ? `${kmExtra} km × ${Number(tariff.km_price || 0).toFixed(2)} €` : `base : ${kmBase} km` },
@@ -999,14 +1076,20 @@ async function estimateRelivraisonPrice(
   //   • Autres sources → km pur (inchangé).
   let parentSource = source
   let parentSnc: string | null = null
+  // Coords du lieu d'intervention d'origine (parent) : pour Touring, déterminent
+  // le dépôt VD utilisé pour TOUT le dossier (cf touringRouteFromNearestDepot).
+  let originIncident: Coord | null = null
   if (mission.parent_mission_id) {
     const { data: parent } = await sb
       .from('incoming_missions')
-      .select('source, snc_scenario')
+      .select('source, snc_scenario, incident_lat, incident_lng')
       .eq('id', mission.parent_mission_id)
       .maybeSingle()
     if (parent?.source) parentSource = String(parent.source).toLowerCase().trim()
     parentSnc = (parent as any)?.snc_scenario || null
+    if (parent?.incident_lat != null && parent?.incident_lng != null) {
+      originIncident = { lat: Number(parent.incident_lat), lng: Number(parent.incident_lng) }
+    }
   }
   const parentIsPoliceOuSnc = parentSource.startsWith('police')
     || ['sia_couvert', 'police_snc'].includes(parentSource)
@@ -1110,6 +1193,21 @@ async function estimateRelivraisonPrice(
         : (computed.totalKm ?? 0)
     } catch {}
   }
+
+  // Olivier 2026-06-29 — Touring : la REL se facture en aller-retour depuis le
+  // dépôt VD le plus proche du lieu d'intervention D'ORIGINE (parent), pas depuis
+  // le parc : Dépôt → destination → Dépôt. Override du calcul parc↔relivraison.
+  let touringRelDepot = ''
+  if (source === 'touring' && mission.id && originIncident) {
+    const { data: c } = await sb.from('incoming_missions')
+      .select('destination_lat, destination_lng').eq('id', mission.id).maybeSingle()
+    if (c?.destination_lat != null && c?.destination_lng != null) {
+      const dest: Coord = { lat: Number(c.destination_lat), lng: Number(c.destination_lng) }
+      const rt = await touringRouteFromNearestDepot(sb, originIncident, [dest])
+      if (rt) { km = rt.km; touringRelDepot = rt.depotName }
+    }
+  }
+
   km = Math.max(0, Math.ceil(km))
 
   const total = Math.round(km * kmPrice * 100) / 100
@@ -1144,7 +1242,7 @@ async function estimateRelivraisonPrice(
     tariff_doc_path: null,
     tariff_doc_name: null,
     breakdown: [
-      { label: priceLabel, amount: total, note: `${km} km (aller-retour parc ↔ relivraison) × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
+      { label: priceLabel, amount: total, note: `${km} km (${touringRelDepot ? `aller-retour dépôt ${touringRelDepot} ↔ destination` : 'aller-retour parc ↔ relivraison'}) × ${kmPrice.toFixed(4)} €${isMajored && hasOwnMajorPrice ? ' (tarif majoré)' : ''}` },
       ...(surchargeEur > 0 ? [{ label: `Majoration horaire (+${surchargePct}%)`, amount: surchargeEur, note: surchargeNote }] : []),
     ],
   }
