@@ -35,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/finance',           label: 'Finance',             icon: '💵', moduleId: 'finance' },
   { href: '/stats',             label: 'Statistiques',        icon: '📊', moduleId: 'stats' },
   { href: '/fourriere',     label: 'Fourrière',        icon: '🚓', moduleId: 'fourriere' },
+  { href: '/francofolies',  label: 'Francofolies',     icon: '🎪', moduleId: 'francofolies' },
   { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: 'check_vehicle' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
