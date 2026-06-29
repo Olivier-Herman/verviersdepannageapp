@@ -165,6 +165,16 @@ export async function POST(req: Request) {
   if (mapping.status)         updatePayload.status     = mapping.status
   if (mapping.timestampField) updatePayload[mapping.timestampField] = now
 
+  // Sources internes sans facturation (ex. Car Parts & Recycling) : la mission
+  // clôturée par le chauffeur est archivée directement (completed), pas envoyée
+  // en facturation. Olivier 2026-06-29.
+  if (updatePayload.status === 'to_invoice') {
+    const { sourceSkipsFacturation } = await import('@/lib/missions/source-flags')
+    if (await sourceSkipsFacturation(mission.source, supabase)) {
+      updatePayload.status = 'completed'
+    }
+  }
+
   // Olivier 2026-06-01 : copie automatique de la depanneuse en service du
   // chauffeur sur la mission, dès l'acceptation ou la première action. C'est
   // ce truck_id qui sert au matching amendes plus tard. On le copie une fois,

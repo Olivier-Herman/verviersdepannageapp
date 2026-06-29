@@ -90,6 +90,7 @@ export async function POST(req: Request) {
     default_parc_zone_key?: string | null
     display_color?: string | null
     group_key?: string | null
+    skip_facturation?: boolean
   }
   const label = (body.label || '').trim()
   if (!label) return NextResponse.json({ error: 'Libellé requis' }, { status: 400 })
@@ -112,6 +113,7 @@ export async function POST(req: Request) {
       default_parc_zone_key:  body.default_parc_zone_key ?? null,
       display_color:          body.display_color || null,
       group_key:              body.group_key || null,
+      skip_facturation:       body.skip_facturation ?? false,
     })
     .select()
     .single()
@@ -142,6 +144,7 @@ export async function PATCH(req: Request) {
     default_parc_zone_key?: string | null
     display_color?: string | null
     group_key?: string | null
+    skip_facturation?: boolean
   }
   const key = (body.key || '').trim()
   if (!key) return NextResponse.json({ error: 'key requis' }, { status: 400 })
@@ -158,6 +161,7 @@ export async function PATCH(req: Request) {
   if (body.default_parc_zone_key !== undefined)  update.default_parc_zone_key  = body.default_parc_zone_key || null
   if (body.display_color !== undefined)          update.display_color          = body.display_color || null
   if (body.group_key !== undefined)              update.group_key              = body.group_key || null
+  if (body.skip_facturation !== undefined)       update.skip_facturation       = !!body.skip_facturation
 
   const sb = createAdminClient()
   const { data, error } = await sb

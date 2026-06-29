@@ -20,6 +20,7 @@ interface Source {
   default_parc_zone_key?:  string | null
   display_color?:          string | null
   group_key?:              string | null
+  skip_facturation?:       boolean | null
 }
 
 interface Depot { id: string; name: string }
@@ -215,6 +216,7 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
   const [defaultZoneKey,    setDefaultZoneKey]    = useState<string>(source?.default_parc_zone_key || '')
   const [displayColor, setDisplayColor] = useState<string>(source?.display_color || '')
   const [groupKey,     setGroupKey]     = useState<string>(source?.group_key     || '')
+  const [skipFacturation, setSkipFacturation] = useState<boolean>(!!source?.skip_facturation)
   const [clientQuery, setClientQuery] = useState('')
   const [clientResults, setClientResults] = useState<Array<{ id: number; name: string }>>([])
   const [clientSearching, setClientSearching] = useState(false)
@@ -267,6 +269,7 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
         default_parc_zone_key:  defaultZoneKey || null,
         display_color:          displayColor.trim() || null,
         group_key:              groupKey.trim() || null,
+        skip_facturation:       skipFacturation,
       }
       const body = isNew
         ? { key: autoKey, ...common }
@@ -428,6 +431,19 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
             Sources avec le même groupe sont regroupées sous un menu unique. Laisser vide pour une source autonome.
           </p>
         </div>
+
+        <button type="button" onClick={() => setSkipFacturation(v => !v)}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition ${
+            skipFacturation ? 'bg-amber-50 border-amber-400' : 'bg-surface-2 border'
+          }`}>
+          <span className={`w-5 h-5 rounded flex items-center justify-center text-white text-xs flex-shrink-0 ${skipFacturation ? 'bg-amber-600' : 'bg-ink-faint'}`}>
+            {skipFacturation ? '✓' : ''}
+          </span>
+          <span>
+            <span className="block text-ink text-sm font-medium">Sans facturation (transport interne)</span>
+            <span className="block text-ink-muted text-xs">La mission clôturée par le chauffeur est archivée directement, sans passer par /facturation.</span>
+          </span>
+        </button>
 
         <div>
           <label className="block text-ink-muted text-xs mb-1">Notes (optionnel)</label>
