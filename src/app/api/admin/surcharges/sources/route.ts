@@ -67,6 +67,17 @@ export async function GET() {
     mappingMap.set(m.source, { label: m.label, odoo_partner_id: m.odoo_partner_id })
   }
 
+  // Catalog = source de vérité pour la DÉNOMINATION (ex. garage_14528a → "Centracar").
+  // Olivier 2026-06-29 : mission_sources peut contenir un libellé erroné
+  // (garage_14528a y était "Touring"). Le catalog prime sur l'affichage.
+  const { data: catalog } = await sb
+    .from('mission_source_catalog')
+    .select('key, label')
+  const catalogMap = new Map<string, string>()
+  for (const c of catalog || []) {
+    if (c.label) catalogMap.set(c.key, c.label)
+  }
+
   // Clients deja crees (a exclure)
   const { data: existing } = await sb
     .from('surcharge_clients')
@@ -79,13 +90,16 @@ export async function GET() {
     ...Object.keys(KNOWN_SOURCES),
     ...counts.keys(),
     ...mappingMap.keys(),
+    ...catalogMap.keys(),
   ])
 
   const result = [...allSources]
     .filter(s => !existingSet.has(s))
     .map(source => ({
       source,
-      label:           mappingMap.get(source)?.label || KNOWN_SOURCES[source] || capitalize(source),
+      // Priorité d'affichage : catalog (dénomination canonique) > mission_sources
+      // > sources connues > capitalize. Évite "Touring"/ID pour un garage.
+      label:           catalogMap.get(source) || mappingMap.get(source)?.label || KNOWN_SOURCES[source] || capitalize(source),
       odoo_partner_id: mappingMap.get(source)?.odoo_partner_id || null,
       mission_count:   counts.get(source) || 0,
     }))
