@@ -14,7 +14,7 @@ import { getServerSession }      from 'next-auth'
 import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
-import { buildOverrideLines }    from '@/lib/missions/build-quote-lines'
+import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { attachFileToOrder, withOdooActor } from '@/lib/odoo'
 
@@ -80,6 +80,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .select(`
       id, external_id, dossier_number, source, mission_type, status,
       client_name, vehicle_plate, vehicle_mileage, vehicle_class,
+      incident_address, destination_address, redelivery_address,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       billed_to_id, billed_to_name,
@@ -231,6 +232,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         client_order_ref: mission.dossier_number || mission.external_id || undefined,
         fleet_vehicle_id: fleetVehicleId,
         sections,
+        description:      buildInterventionDescription(mission as any),
       }
       if (mission.odoo_quote_id) {
         try {

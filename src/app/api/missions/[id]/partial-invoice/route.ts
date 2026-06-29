@@ -16,6 +16,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { createSaleOrder, findFleetVehicleByPlate, type QuoteLine } from '@/lib/odoo-quote'
+import { buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { withOdooActor }     from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
@@ -53,7 +54,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { data: mission } = await sb
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, billed_to_id, billed_to_name, vehicle_plate')
+    .select('id, mission_number, external_id, dossier_number, billed_to_id, billed_to_name, vehicle_plate, mission_type, intervention_date, received_at, incident_address, destination_address, redelivery_address')
     .eq('id', params.id)
     .single()
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -81,6 +82,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         client_order_ref: mission.dossier_number || mission.external_id || undefined,
         fleet_vehicle_id: fleetVehicleId,
         sections:         [{ lines: quoteLines }],
+        description:      buildInterventionDescription(mission as any),
       })
     })
   } catch (e: any) {

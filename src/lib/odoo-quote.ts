@@ -101,6 +101,9 @@ export interface CreateQuoteInput {
   fleet_vehicle_id?: number | null
   /** Sections de lignes a inclure. Si une seule section sans label, on ne met pas de display_type. */
   sections:     QuoteSection[]
+  /** Descriptif d'intervention (date/heure, prise en charge, destination) affiché
+   *  en tête du devis/facture sous forme de note. Olivier 2026-06-29. */
+  description?: string
 }
 
 /** Construit l URL web Odoo d un devis pour ouverture directe. */
@@ -109,10 +112,15 @@ export function buildQuoteUrl(quoteId: number): string {
 }
 
 /** Build le tableau `order_line` (format Odoo many2many tuple) a partir des sections. */
-async function buildOrderLines(sections: QuoteSection[]): Promise<any[]> {
+async function buildOrderLines(sections: QuoteSection[], description?: string): Promise<any[]> {
   const productIds = await getProductIds()
   const lines: any[] = []
   const showSections = sections.length > 1 || sections.some(s => s.section_label)
+
+  // Descriptif d'intervention en tête (note Odoo, visible sur le devis/facture).
+  if (description && description.trim()) {
+    lines.push([0, 0, { display_type: 'line_note', name: description.trim() }])
+  }
 
   for (const section of sections) {
     if (showSections && section.section_label) {
@@ -143,7 +151,7 @@ async function buildOrderLines(sections: QuoteSection[]): Promise<any[]> {
  * Retourne l id Odoo + l URL d acces direct.
  */
 export async function createSaleOrder(input: CreateQuoteInput): Promise<{ id: number; url: string }> {
-  const orderLines = await buildOrderLines(input.sections)
+  const orderLines = await buildOrderLines(input.sections, input.description)
   const vals: any = {
     partner_id:        input.partner_id,
     origin:            input.origin,
@@ -196,7 +204,7 @@ export async function updateSaleOrder(quoteId: number, input: Partial<CreateQuot
   if (input.fleet_vehicle_id != null)  vals[VEHICLE_FIELD]    = input.fleet_vehicle_id
 
   if (input.sections) {
-    const newLines = await buildOrderLines(input.sections)
+    const newLines = await buildOrderLines(input.sections, input.description)
     // Olivier 2026-06-22 (fix bug facturation) : Odoo INTERDIT de supprimer une
     // ligne d'une commande CONFIRMÉE (state sale/done) — "définissez plutôt la
     // quantité sur 0". Donc :

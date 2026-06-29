@@ -25,7 +25,7 @@ import { createAdminClient }       from '@/lib/supabase'
 import { releaseParcAndShift }     from '@/lib/parc/release'
 import { createSaleOrder, type QuoteLine } from '@/lib/odoo-quote'
 import { withOdooActor }            from '@/lib/odoo'
-import { buildOverrideLines }       from '@/lib/missions/build-quote-lines'
+import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -297,6 +297,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           section_label: paymentNote || undefined,
           lines,
         }],
+        description:      buildInterventionDescription(mission as any),
       }))
       quoteId  = result.id
       quoteUrl = result.url

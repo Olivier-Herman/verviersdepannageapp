@@ -10,6 +10,43 @@
 
 import type { QuoteLine } from '@/lib/odoo-quote'
 import type { PriceEstimate } from '@/lib/missions/estimate-price'
+import { isDsp, isTrajetVide } from '@/lib/missions/mission-types'
+
+/**
+ * Descriptif d'intervention affiché en tête de chaque facture (note Odoo) :
+ *   - date + heure de la mission
+ *   - adresse de prise en charge
+ *   - adresse de destination (uniquement si remorquage / déplacement véhicule)
+ * Olivier 2026-06-29.
+ */
+export function buildInterventionDescription(mission: {
+  mission_type?:        string | null
+  intervention_date?:   string | null
+  received_at?:         string | null
+  incident_address?:    string | null
+  destination_address?: string | null
+  redelivery_address?:  string | null
+}): string {
+  const out: string[] = []
+  const dt = mission.intervention_date || mission.received_at
+  if (dt) {
+    const d = new Date(dt)
+    if (!isNaN(d.getTime())) {
+      const fmt = d.toLocaleString('fr-BE', {
+        timeZone: 'Europe/Brussels',
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      })
+      out.push(`Intervention du ${fmt}`)
+    }
+  }
+  if (mission.incident_address) out.push(`Prise en charge : ${mission.incident_address}`)
+  // Destination uniquement si le véhicule est déplacé (pas DSP / dépannage sur place).
+  const t = String(mission.mission_type || '').toLowerCase()
+  const onSite = isDsp(t) || isTrajetVide(t)
+  const dest = mission.destination_address || mission.redelivery_address
+  if (!onSite && dest) out.push(`Destination : ${dest}`)
+  return out.join('\n')
+}
 
 interface MissionLike {
   id:                  string
