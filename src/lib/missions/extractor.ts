@@ -222,29 +222,38 @@ export async function extractContent(
   source: MissionSource
 ): Promise<ExtractedContent> {
 
-  // === TOURING → RTF joint en priorité ===
+  // === TOURING ===
   if (source === 'touring') {
-    const rtfAtt = attachments.find(a =>
-      a.contentBytes &&
-      (a.name?.toLowerCase().endsWith('.rtf') ||
-       a.contentType?.toLowerCase().includes('rtf') ||
-       a.contentType?.toLowerCase().includes('octet-stream'))
-    )
-    if (rtfAtt?.contentBytes) {
-      try {
-        const rtfRaw = Buffer.from(rtfAtt.contentBytes, 'base64').toString('latin1')
-        const text   = rtfToText(rtfRaw)
-        if (text && text.length > 20) {
-          console.log(`[Extractor] RTF parsé: ${text.length} chars`)
-          return { textContent: text, sourceFormat: 'rtf', rawContent: text }
+    // Olivier 2026-06-29 (incident intake) : les mails RI@Touring.be ont TOUT
+    // dans le corps HTML + une grosse PJ RTF (150 Ko, image embarquée). Parser
+    // ce RTF sur une rafale faisait TIMEOUTER le poll (60s) → placeholders vides
+    // bloqués et missions non ingérées. Donc si le corps email contient déjà les
+    // données mission, on l'utilise directement et on SAUTE le RTF. Le RTF reste
+    // le repli quand le corps est maigre (autres formats Touring).
+    const bodyText = extractEmailBody(graphMessage.body)
+    const bodyHasMissionData = bodyText.length > 200
+      && /(dossier|incident|commande|membre|mission)/i.test(bodyText)
+    if (!bodyHasMissionData) {
+      const rtfAtt = attachments.find(a =>
+        a.contentBytes &&
+        (a.name?.toLowerCase().endsWith('.rtf') ||
+         a.contentType?.toLowerCase().includes('rtf') ||
+         a.contentType?.toLowerCase().includes('octet-stream'))
+      )
+      if (rtfAtt?.contentBytes) {
+        try {
+          const rtfRaw = Buffer.from(rtfAtt.contentBytes, 'base64').toString('latin1')
+          const text   = rtfToText(rtfRaw)
+          if (text && text.length > 20) {
+            console.log(`[Extractor] RTF parsé: ${text.length} chars`)
+            return { textContent: text, sourceFormat: 'rtf', rawContent: text }
+          }
+          console.warn(`[Extractor] RTF vide après parsing (${text.length} chars)`)
+        } catch (e: any) {
+          console.error('[Extractor] Erreur parsing RTF:', e.message)
         }
-        console.warn(`[Extractor] RTF vide après parsing (${text.length} chars)`)
-      } catch (e: any) {
-        console.error('[Extractor] Erreur parsing RTF:', e.message)
       }
     }
-    // Fallback corps email (RI@touring.be avec body HTML)
-    const bodyText = extractEmailBody(graphMessage.body)
     return { textContent: bodyText, sourceFormat: 'email_plain', rawContent: bodyText }
   }
 
