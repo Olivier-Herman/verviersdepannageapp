@@ -211,6 +211,29 @@ export default function FrancofoliesClient({
   const [pickupSaving, setPickupSaving] = useState(false)
   const [noChargeMode, setNoChargeMode] = useState(false)
   const [noChargeReason, setNoChargeReason] = useState('')
+  const [viesLoading, setViesLoading] = useState(false)
+  const [viesResult,  setViesResult]  = useState<null | { valid: boolean; name?: string; error?: string }>(null)
+
+  // VIES : valide le n° TVA (source officielle UE) et auto-remplit nom + adresse.
+  async function checkVies() {
+    const cleaned = cVat.replace(/[\s.\-]/g, '').toUpperCase()
+    if (cleaned.length < 6) { setViesResult(null); return }
+    setViesLoading(true)
+    try {
+      const res = await fetch(`/api/vies?vat=${encodeURIComponent(cleaned)}`)
+      const j   = await res.json()
+      setViesResult(j)
+      if (j.valid) {
+        if (j.name) setCName(j.name)
+        if (j.address) {
+          const m = j.address.match(/^(.+?)\s+(\d{4,5})\s+(.+)$/)
+          if (m) { setCAddress(m[1].trim()); setCZip(m[2].trim()); setCCity(m[3].trim()) }
+          else   { setCAddress(j.address); setCZip(''); setCCity('') }
+        }
+      }
+    } catch { setViesResult({ valid: false, error: 'VIES indisponible' }) }
+    finally { setViesLoading(false) }
+  }
 
   // ── Stats chauffeur ──────────────────────────────────────────────────────
   interface DriverStat { name: string; total: number; picked: number; collected: number }
@@ -236,7 +259,7 @@ export default function FrancofoliesClient({
     setPicked(row)
     setCName(''); setCAddress(''); setCZip(''); setCCity(''); setCPhone(''); setCEmail(''); setCVat('')
     setPayMode('cash'); setChargeGard(true); setPoliceOk(false)
-    setNoChargeMode(false); setNoChargeReason('')
+    setNoChargeMode(false); setNoChargeReason(''); setViesResult(null)
     setScreen('pickup')
   }
 
@@ -462,8 +485,22 @@ export default function FrancofoliesClient({
               className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
             <input value={cEmail} onChange={e => setCEmail(e.target.value)} placeholder="Email (reçu envoyé)" inputMode="email" autoCapitalize="none"
               className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
-            <input value={cVat} onChange={e => setCVat(e.target.value)} placeholder="N° TVA (optionnel)" autoCapitalize="characters"
-              className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+            <div>
+              <div className="flex gap-2">
+                <input value={cVat} onChange={e => { setCVat(e.target.value); setViesResult(null) }} onBlur={checkVies}
+                  placeholder="N° TVA (ex BE0123456789)" autoCapitalize="characters"
+                  className="flex-1 bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
+                <button type="button" onClick={checkVies} disabled={viesLoading}
+                  className="px-3 py-2.5 bg-surface-2 border rounded-xl text-ink-secondary text-sm font-semibold disabled:opacity-50 whitespace-nowrap">
+                  {viesLoading ? '⏳' : '🔎 VIES'}
+                </button>
+              </div>
+              {viesResult && (
+                viesResult.valid
+                  ? <p className="text-emerald-600 text-xs mt-1">✅ TVA valide{viesResult.name ? ` — ${viesResult.name}` : ''} (nom + adresse remplis)</p>
+                  : <p className="text-amber-600 text-xs mt-1">⚠ {viesResult.error || 'TVA non reconnue par VIES'}</p>
+              )}
+            </div>
           </div>
 
           {/* Gardiennage */}
