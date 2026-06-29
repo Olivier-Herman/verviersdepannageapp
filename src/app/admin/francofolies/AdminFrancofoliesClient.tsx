@@ -16,7 +16,7 @@ export default function AdminFrancofoliesClient({
   const [msg, setMsg] = useState<string | null>(null)
 
   const priceN = Number(price), gardN = Number(gard)
-  const baseTvac = isFinite(priceN) ? (priceN * 1.21).toFixed(2) : '—'
+  const baseHtva = isFinite(priceN) ? (priceN / 1.21).toFixed(2) : '—'
 
   async function save() {
     setSaving(true); setMsg(null)
@@ -37,16 +37,16 @@ export default function AdminFrancofoliesClient({
         <Link href="/admin" className="text-ink-muted text-sm">← Administration</Link>
         <div>
           <h1 className="text-ink text-xl font-bold">🎪 Tarifs Francofolies de Spa</h1>
-          <p className="text-ink-muted text-sm">Mal garée évènementiel. Montants en HTVA (la TVA 21 % est ajoutée à la facturation).</p>
+          <p className="text-ink-muted text-sm">Mal garée évènementiel.</p>
         </div>
 
         <div className="bg-surface border rounded-2xl p-4 space-y-4">
           <div>
-            <label className="block text-ink-secondary text-xs font-semibold mb-1">Prix réquisition mal garée (HTVA, par véhicule)</label>
+            <label className="block text-ink-secondary text-xs font-semibold mb-1">Prix réquisition mal garée (TVAC, par véhicule)</label>
             <div className="flex items-center gap-2">
               <input value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal"
                 className="w-40 bg-surface border rounded-xl px-3 py-3 text-ink text-lg focus:outline-none focus:border-brand" />
-              <span className="text-ink-muted text-sm">€ HTVA · soit {baseTvac} € TVAC</span>
+              <span className="text-ink-muted text-sm">€ TVAC · soit {baseHtva} € HTVA</span>
             </div>
           </div>
           <div>

@@ -123,16 +123,19 @@ export async function POST(req: Request) {
   const { data: settings } = await sb.from('app_settings').select('key, value')
     .in('key', ['francofolies_price', 'francofolies_gardiennage_price'])
   const priceMap = new Map((settings || []).map((s: any) => [s.key, Number(s.value)]))
-  const baseHtva   = priceMap.get('francofolies_price') || 220
-  const gardienPu  = priceMap.get('francofolies_gardiennage_price') || 20
+  // francofolies_price = prix réquisition TVAC (220) ; gardiennage = HTVA/jour (20).
+  const baseTvac   = priceMap.get('francofolies_price') || 220
+  const gardienPu  = priceMap.get('francofolies_gardiennage_price') || 20   // HTVA/jour
+  // PU HTVA de la ligne Odoo (4 déc. pour que HTVA×1,21 = TVAC exact).
+  const baseHtva   = Math.round((baseTvac / 1.21) * 10000) / 10000
 
   // Jours de gardiennage : on borne ce que l'opérateur demande au calcul réel.
   const entry      = mission.parked_at || mission.received_at || mission.intervention_date || now
   const maxDays    = computeGardiennageDays(entry, now)
   const gDays      = Math.max(0, Math.min(Number(body.gardiennage_days || 0), maxDays))
 
-  const totalHtva  = baseHtva + gardienPu * gDays
-  const totalTvac  = Math.round(totalHtva * 1.21 * 100) / 100
+  const gardTvac   = Math.round(gardienPu * 1.21 * gDays * 100) / 100
+  const totalTvac  = Math.round((baseTvac + gardTvac) * 100) / 100
 
   // 1. Partner Odoo (créé/retrouvé) — actor-aware (clé perso si présente).
   let partnerId: number | null = null

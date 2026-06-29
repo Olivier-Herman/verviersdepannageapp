@@ -227,7 +227,8 @@ export default function FrancofoliesClient({
   useEffect(() => { if (screen === 'stats') loadStats() }, [screen, loadStats])
 
   const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
-  const baseTvac = Math.round(price * 1.21 * 100) / 100
+  // price = prix réquisition TVAC (220 par défaut) ; gardiennagePrice = HTVA/jour (20).
+  const baseTvac = Math.round(price * 100) / 100
   const gardTvac = Math.round(gardiennagePrice * 1.21 * (chargeGard ? gardDays : 0) * 100) / 100
   const totalTvac = Math.round((baseTvac + gardTvac) * 100) / 100
 
