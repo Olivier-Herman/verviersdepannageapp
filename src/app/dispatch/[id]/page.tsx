@@ -4,6 +4,7 @@ import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { ensureTouringDepartDepot } from '@/lib/depots/nearest'
 import MissionDetailClient   from './MissionDetailClient'
 
 // Olivier 2026-06-18 : force le rendu dynamique → la fiche relit toujours la base
@@ -41,6 +42,10 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     : await baseQuery.eq('id', params.id).single()
 
   if (!mission) redirect('/dispatch')
+
+  // Touring : le dépôt de départ = dépôt VD le plus proche du lieu d'intervention.
+  // On le pose si absent (mute mission.depot_depart_id pour l'affichage immédiat).
+  await ensureTouringDepartDepot(supabase, mission)
 
   // Logs de la mission
   const { data: logs } = await supabase
