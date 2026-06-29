@@ -35,19 +35,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const formData = await req.formData()
-  const remiseDate = String(formData.get('remise_date') || '').trim()  // YYYY-MM-DD
-  const venteDate  = String(formData.get('vente_date') || '').trim()   // YYYY-MM-DD (optionnel)
+  const remiseDate = String(formData.get('remise_date') || '').trim()       // YYYY-MM-DD
+  const enlevDate  = String(formData.get('enlevement_date') || '').trim()    // YYYY-MM-DD (optionnel)
+  const venteDate  = String(formData.get('vente_date') || '').trim()         // YYYY-MM-DD (optionnel)
   const note       = String(formData.get('note') || '').trim()
   const files = (formData.getAll('files') as File[]).filter(f => f && f.size > 0)
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(remiseDate)) {
     return NextResponse.json({ error: 'Date de remise requise (format AAAA-MM-JJ).' }, { status: 400 })
   }
+  if (enlevDate && !/^\d{4}-\d{2}-\d{2}$/.test(enlevDate)) {
+    return NextResponse.json({ error: 'Date d\'enlèvement invalide (format AAAA-MM-JJ).' }, { status: 400 })
+  }
+  if (enlevDate && enlevDate < remiseDate) {
+    return NextResponse.json({ error: 'L\'enlèvement ne peut pas précéder la remise.' }, { status: 400 })
+  }
   if (venteDate && !/^\d{4}-\d{2}-\d{2}$/.test(venteDate)) {
     return NextResponse.json({ error: 'Date de vente invalide (format AAAA-MM-JJ).' }, { status: 400 })
   }
-  if (venteDate && venteDate < remiseDate) {
-    return NextResponse.json({ error: 'La date de vente ne peut pas précéder la date de remise.' }, { status: 400 })
+  if (venteDate && enlevDate && venteDate < enlevDate) {
+    return NextResponse.json({ error: 'La vente ne peut pas précéder l\'enlèvement.' }, { status: 400 })
   }
   if (files.length === 0 && !note) {
     return NextResponse.json({ error: 'Annexe un document OU saisis un commentaire.' }, { status: 400 })
@@ -99,12 +106,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const update: any = {
-    domaine_at:          new Date().toISOString(),
-    domaine_remise_date: remiseDate,
-    domaine_vente_date:  venteDate || null,
-    domaine_note:        note || null,
-    domaine_by:          actor.id,
-    police_levee_saisie_ok: true,
+    domaine_at:              new Date().toISOString(),
+    domaine_remise_date:     remiseDate,
+    domaine_enlevement_date: enlevDate || null,
+    domaine_vente_date:      venteDate || null,
+    domaine_note:            note || null,
+    domaine_by:              actor.id,
+    police_levee_saisie_ok:  true,
   }
   if (firstPath) update.domaine_doc_path = firstPath
 

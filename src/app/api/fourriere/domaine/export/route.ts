@@ -29,25 +29,31 @@ export async function GET(req: Request) {
   if (!from || !to) return NextResponse.json({ error: 'Période (from/to) requise' }, { status: 400 })
 
   const sb = createAdminClient()
-  const { rows, total, totalDays } = await computeDomaineBilling(sb, from, to)
+  const { groups, total, totalDays } = await computeDomaineBilling(sb, from, to)
 
-  const header = ['Immatriculation', 'Véhicule', 'Dossier', 'Remise Domaine', 'Vente', 'Jours (période)', 'Tarif/jour (€)', 'Montant HTVA (€)']
-  const aoa: any[][] = [
-    [`Gardiennage Domaine (État) — du ${fmtDate(from)} au ${fmtDate(to)}`],
-    [],
-    header,
-  ]
-  for (const r of rows) {
-    aoa.push([
-      r.plate, r.vehicle, r.dossier, fmtDate(r.remise), r.vente ? fmtDate(r.vente) : 'en cours',
-      r.days, r.rate != null ? r.rate : '(variable)', Math.round(r.amount * 100) / 100,
-    ])
+  // Format calqué sur le registre existant : groupes "Vente d'épaves du …",
+  // colonnes N° Véhicule / MARQUE / CHASSIS N° / Date IN / Date OUT / Jours / Frais.
+  const header = ['N° Véhicule', 'MARQUE', 'CHASSIS N°', 'Date IN', 'Date OUT', 'Nombre de jours', 'Frais H.TVA']
+  const aoa: any[][] = []
+  for (const g of groups) {
+    aoa.push([`Vente d'épaves du`, fmtDate(g.vente)])
+    aoa.push([])
+    aoa.push(header)
+    for (const r of g.rows) {
+      aoa.push([
+        r.plate || (r.mission_number != null ? `#${r.mission_number}` : ''),
+        r.vehicle, r.vin, fmtDate(r.remise),
+        r.enlevement ? fmtDate(r.enlevement) : '(à compléter)',
+        r.days, Math.round(r.amount * 100) / 100,
+      ])
+    }
+    aoa.push(['', '', '', '', '', g.days, Math.round(g.amount * 100) / 100])
+    aoa.push([])
   }
-  aoa.push([])
-  aoa.push(['', '', '', '', 'TOTAL', totalDays, '', Math.round(total * 100) / 100])
+  aoa.push(['', '', '', '', 'TOTAL', totalDays, Math.round(total * 100) / 100])
 
   const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!cols'] = [{ wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 13 }, { wch: 16 }]
+  ws['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Domaine')
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })

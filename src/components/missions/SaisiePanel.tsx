@@ -47,8 +47,9 @@ export interface SaisieMission {
   temp_returned_at?:      string | null
   // Remise au Domaine (État)
   domaine_at?:            string | null
-  domaine_remise_date?:   string | null
-  domaine_vente_date?:    string | null
+  domaine_remise_date?:     string | null
+  domaine_enlevement_date?: string | null
+  domaine_vente_date?:      string | null
   domaine_note?:          string | null
 }
 
@@ -391,6 +392,7 @@ function TemporaireCycleSection({ mission, onDone }: { mission: SaisieMission; o
 function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: () => void }) {
   const [open,   setOpen]   = useState(false)
   const [remise, setRemise] = useState(mission.domaine_remise_date || todayYmd())
+  const [enlevement, setEnlevement] = useState(mission.domaine_enlevement_date || '')
   const [vente,  setVente]  = useState(mission.domaine_vente_date || '')
   const [note,   setNote]   = useState('')
   const [busy,   setBusy]   = useState(false)
@@ -398,7 +400,9 @@ function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: (
   const fileRef = useRef<HTMLInputElement>(null)
 
   const recorded = !!mission.domaine_at
-  const joursEtat = recorded ? joursEntre(mission.domaine_remise_date, mission.domaine_vente_date) : 0
+  // Période État = Date IN (remise) → Date OUT (enlèvement) = jours d'écart.
+  const joursEtat = recorded && mission.domaine_enlevement_date
+    ? joursEntre(mission.domaine_remise_date, mission.domaine_enlevement_date) : 0
 
   async function submit() {
     setError(null)
@@ -407,11 +411,13 @@ function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: (
       setError('Annexe un document OU saisis un commentaire.'); return
     }
     if (!remise) { setError('Date de remise requise.'); return }
-    if (vente && vente < remise) { setError('La date de vente ne peut pas précéder la remise.'); return }
+    if (enlevement && enlevement < remise) { setError('L\'enlèvement ne peut pas précéder la remise.'); return }
+    if (vente && enlevement && vente < enlevement) { setError('La vente ne peut pas précéder l\'enlèvement.'); return }
     setBusy(true)
     try {
       const fd = new FormData()
       fd.append('remise_date', remise)
+      if (enlevement) fd.append('enlevement_date', enlevement)
       if (vente) fd.append('vente_date', vente)
       if (note.trim()) fd.append('note', note.trim())
       if (files) for (const f of Array.from(files)) fd.append('files', f)
@@ -428,12 +434,14 @@ function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: (
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
           <div className="flex items-center gap-2 text-indigo-800 text-sm font-medium">
             <Landmark size={16} /> Remis au Domaine — remise : {fmtDate(mission.domaine_remise_date)}
-            {mission.domaine_vente_date ? ` · vente : ${fmtDate(mission.domaine_vente_date)}` : ' · vente : à venir'}
+            {mission.domaine_enlevement_date ? ` · enlèvement : ${fmtDate(mission.domaine_enlevement_date)}` : ' · enlèvement : à venir'}
+            {mission.domaine_vente_date ? ` · vente : ${fmtDate(mission.domaine_vente_date)}` : ''}
           </div>
           {mission.domaine_note && <p className="text-indigo-900/80 text-xs mt-1 italic">« {mission.domaine_note} »</p>}
           <p className="text-ink-muted text-[11px] mt-1">
-            Facturation client/parquet arrêtée à la remise. Période État : {joursEtat} j
-            {mission.domaine_vente_date ? '' : ' (en cours)'} au tarif parc saisie → tableau Domaine trimestriel.
+            Facturation client/parquet arrêtée à la remise. Gardiennage État (remise → enlèvement inclus) :{' '}
+            {mission.domaine_enlevement_date ? `${joursEtat} j` : 'en attente de la date d\'enlèvement'} au tarif parc saisie.
+            {mission.domaine_vente_date ? ` Apparaît au trimestre de la vente (${fmtDate(mission.domaine_vente_date)}).` : ' La vente déterminera le trimestre.'}
           </p>
           <button onClick={() => setOpen(o => !o)} className="text-indigo-700 text-xs underline mt-1">
             Modifier (ex : ajouter la date de vente)
@@ -455,19 +463,24 @@ function DomaineSection({ mission, onDone }: { mission: SaisieMission; onDone: (
 
       {open && (
         <div className="bg-surface-2 border rounded-xl p-3 space-y-2.5">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <label className="block">
-              <span className="text-ink-secondary text-xs font-medium">Date de remise *</span>
+              <span className="text-ink-secondary text-xs font-medium">Remise *</span>
               <input type="date" value={remise} onChange={e => setRemise(e.target.value)}
                 className="block w-full mt-1 bg-surface border border-strong rounded-lg px-2 py-2 text-ink text-sm outline-none focus:border-indigo-500" />
             </label>
             <label className="block">
-              <span className="text-ink-secondary text-xs font-medium">Date de vente</span>
+              <span className="text-ink-secondary text-xs font-medium">Enlèvement</span>
+              <input type="date" value={enlevement} onChange={e => setEnlevement(e.target.value)}
+                className="block w-full mt-1 bg-surface border border-strong rounded-lg px-2 py-2 text-ink text-sm outline-none focus:border-indigo-500" />
+            </label>
+            <label className="block">
+              <span className="text-ink-secondary text-xs font-medium">Vente</span>
               <input type="date" value={vente} onChange={e => setVente(e.target.value)}
                 className="block w-full mt-1 bg-surface border border-strong rounded-lg px-2 py-2 text-ink text-sm outline-none focus:border-indigo-500" />
             </label>
           </div>
-          <p className="text-ink-muted text-[10px]">Remise = fin facturation client/parquet. Remise→vente facturé à l'État (tarif parc saisie).</p>
+          <p className="text-ink-muted text-[10px]">Remise = fin facturation client/parquet. Gardiennage État = remise → <b>enlèvement</b> (inclus). La <b>vente</b> détermine le trimestre.</p>
 
           <label className="block">
             <span className="text-ink-secondary text-xs font-medium">Document (optionnel si commentaire)</span>

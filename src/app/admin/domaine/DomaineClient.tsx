@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 
 interface Row {
-  mission_number: number | null; plate: string; vehicle: string; dossier: string
-  remise: string; vente: string; days: number; rate: number | null; amount: number
+  mission_number: number | null; plate: string; vehicle: string; vin: string; dossier: string
+  remise: string; enlevement: string; vente: string; days: number; rate: number | null; amount: number
 }
+interface Group { vente: string; rows: Row[]; days: number; amount: number }
 const fmt = (ymd: string) => ymd ? ymd.split('-').reverse().join('/') : ''
 
 export default function DomaineClient({ userRole, userName, userEmail, userModules }: {
@@ -17,7 +18,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
   const [year, setYear] = useState(now.getFullYear())
   const [from, setFrom] = useState('')
   const [to,   setTo]   = useState('')
-  const [rows, setRows] = useState<Row[] | null>(null)
+  const [groups, setGroups] = useState<Group[] | null>(null)
   const [total, setTotal] = useState(0)
   const [totalDays, setTotalDays] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -37,8 +38,8 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     try {
       const r = await fetch(`/api/fourriere/domaine?from=${from}&to=${to}`)
       const j = await r.json()
-      if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); setRows(null); return }
-      setRows(j.rows); setTotal(j.total); setTotalDays(j.totalDays)
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); setGroups(null); return }
+      setGroups(j.groups); setTotal(j.total); setTotalDays(j.totalDays)
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }
 
@@ -93,39 +94,52 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
           {msg && <p className="text-sm text-amber-600">{msg}</p>}
         </div>
 
-        {rows && (
-          rows.length === 0 ? (
-            <p className="text-ink-muted py-8 text-center">Aucun véhicule au Domaine sur cette période.</p>
+        {groups && (
+          groups.length === 0 ? (
+            <p className="text-ink-muted py-8 text-center">Aucune vente Domaine sur cette période.</p>
           ) : (
             <div className="bg-surface border rounded-2xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-ink-muted text-xs uppercase border-b">
-                    <th className="text-left px-3 py-2">Plaque</th>
-                    <th className="text-left px-3 py-2">Véhicule</th>
-                    <th className="text-left px-3 py-2">Remise</th>
-                    <th className="text-left px-3 py-2">Vente</th>
+                    <th className="text-left px-3 py-2">N° Véhicule</th>
+                    <th className="text-left px-3 py-2">Marque</th>
+                    <th className="text-left px-3 py-2">Châssis n°</th>
+                    <th className="text-left px-3 py-2">Date IN</th>
+                    <th className="text-left px-3 py-2">Date OUT</th>
                     <th className="text-right px-3 py-2">Jours</th>
-                    <th className="text-right px-3 py-2">€/j</th>
-                    <th className="text-right px-3 py-2">Montant</th>
+                    <th className="text-right px-3 py-2">Frais H.TVA</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="px-3 py-2 font-mono text-ink">{r.plate}</td>
-                      <td className="px-3 py-2 text-ink-secondary">{r.vehicle || '—'}</td>
-                      <td className="px-3 py-2 text-ink-secondary">{fmt(r.remise)}</td>
-                      <td className="px-3 py-2 text-ink-secondary">{r.vente ? fmt(r.vente) : <span className="text-amber-600">en cours</span>}</td>
-                      <td className="px-3 py-2 text-right text-ink">{r.days}</td>
-                      <td className="px-3 py-2 text-right text-ink-muted">{r.rate != null ? r.rate.toFixed(2) : '—'}</td>
-                      <td className="px-3 py-2 text-right text-ink font-semibold">{r.amount.toFixed(2)} €</td>
-                    </tr>
+                  {groups.map(g => (
+                    <Fragment key={g.vente}>
+                      <tr className="bg-indigo-50/60 border-b">
+                        <td colSpan={7} className="px-3 py-1.5 text-indigo-800 text-xs font-bold uppercase tracking-wide">
+                          🏷️ Vente d'épaves du {fmt(g.vente)} — {g.rows.length} véhicule{g.rows.length > 1 ? 's' : ''}
+                        </td>
+                      </tr>
+                      {g.rows.map((r, i) => (
+                        <tr key={g.vente + i} className="border-b last:border-0">
+                          <td className="px-3 py-2 font-mono text-ink">{r.plate || (r.mission_number != null ? `#${r.mission_number}` : '—')}</td>
+                          <td className="px-3 py-2 text-ink-secondary">{r.vehicle || '—'}</td>
+                          <td className="px-3 py-2 text-ink-secondary font-mono text-xs">{r.vin || '—'}</td>
+                          <td className="px-3 py-2 text-ink-secondary">{fmt(r.remise)}</td>
+                          <td className="px-3 py-2 text-ink-secondary">{r.enlevement ? fmt(r.enlevement) : <span className="text-amber-600">à compléter</span>}</td>
+                          <td className="px-3 py-2 text-right text-ink">{r.days}</td>
+                          <td className="px-3 py-2 text-right text-ink font-semibold">{r.amount.toFixed(2)} €</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-surface-2 text-sm">
+                        <td colSpan={5} className="px-3 py-1.5 text-right text-ink-secondary">Sous-total</td>
+                        <td className="px-3 py-1.5 text-right font-semibold">{g.days}</td>
+                        <td className="px-3 py-1.5 text-right font-semibold">{g.amount.toFixed(2)} €</td>
+                      </tr>
+                    </Fragment>
                   ))}
-                  <tr className="bg-surface-2 font-bold">
-                    <td className="px-3 py-2" colSpan={4}>TOTAL ({rows.length} véhicule{rows.length > 1 ? 's' : ''})</td>
+                  <tr className="bg-indigo-100 font-bold">
+                    <td className="px-3 py-2" colSpan={5}>TOTAL</td>
                     <td className="px-3 py-2 text-right">{totalDays}</td>
-                    <td></td>
                     <td className="px-3 py-2 text-right">{total.toFixed(2)} €</td>
                   </tr>
                 </tbody>
