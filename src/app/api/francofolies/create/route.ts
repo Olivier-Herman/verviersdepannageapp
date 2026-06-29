@@ -28,10 +28,13 @@ export async function POST(req: Request) {
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({})) as {
-    plate?: string; brand?: string; model?: string; remarks?: string; photo_url?: string; driver_id?: string
+    plate?: string; brand?: string; model?: string; remarks?: string; photo_url?: string
+    driver_id?: string; driver_name?: string
   }
   const plate = String(body.plate || '').trim().toUpperCase()
   const driverId = body.driver_id && /^[0-9a-f-]{36}$/i.test(body.driver_id) ? body.driver_id : null
+  // Chauffeur "Autre" (pas un user enregistré) → on garde son nom en remarque.
+  const driverNameFree = !driverId ? String(body.driver_name || '').trim() : ''
   const brand = String(body.brand || '').trim()
   const model = String(body.model || '').trim()
   if (!plate)            return NextResponse.json({ error: 'Immatriculation requise' }, { status: 400 })
@@ -56,7 +59,8 @@ export async function POST(req: Request) {
       vehicle_model:     model || null,
       incident_address:  'Francofolies de Spa',
       incident_city:     'Spa',
-      remarks_general:   body.remarks?.trim() || null,
+      remarks_general:   [body.remarks?.trim(), driverNameFree ? `Ramené par : ${driverNameFree}` : '']
+                           .filter(Boolean).join(' · ') || null,
       driver_photos:     body.photo_url ? [body.photo_url] : null,
       status:            'parked',
       dispatch_mode:     'manual',

@@ -71,26 +71,29 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Search exact côté Odoo (multi-match supporté grâce à limit 50)
-    const domain: any[] = [['license_plate', '=', plate]]
-    if (includeArchived) {
-      domain.push(['active', 'in', [true, false]])
-    }
+    const fields = [
+      'id', 'license_plate', 'vin_sn',
+      'model_id', 'fuel_type', 'transmission', 'color',
+      'active', 'driver_id',
+    ]
+    const ctx = includeArchived ? { context: { active_test: false } } : {}
 
-    const rawVehicles = await rpc<any[]>('fleet.vehicle', 'search_read',
-      [domain],
-      {
-        fields: [
-          'id', 'license_plate', 'vin_sn',
-          'model_id', 'fuel_type', 'transmission', 'color',
-          'active', 'driver_id',
-        ],
-        limit: 50,
-        order: 'id desc',
-        // Inclut les archived dans search_read uniquement si on a ajouté le domain
-        ...(includeArchived ? { context: { active_test: false } } : {}),
-      }
-    )
+    const searchPlate = (dom: any[]) => rpc<any[]>('fleet.vehicle', 'search_read',
+      [includeArchived ? [...dom, ['active', 'in', [true, false]]] : dom],
+      { fields, limit: 50, order: 'id desc', ...ctx })
+
+    // 1. Search EXACT côté Odoo.
+    let rawVehicles = await searchPlate([['license_plate', '=', plate]])
+
+    // 2. Olivier 2026-06-24 : repli TOLÉRANT aux séparateurs. Odoo peut stocker
+    //    "1-ABC-234" alors que la recherche est normalisée "1ABC234" → le "="
+    //    échouait. On cherche en ilike (chars dans l'ordre) puis on filtre sur
+    //    l'égalité normalisée pour écarter les faux positifs.
+    if (rawVehicles.length === 0 && plate.length >= 4) {
+      const likePattern = '%' + plate.split('').join('%') + '%'
+      const cand = await searchPlate([['license_plate', 'ilike', likePattern]])
+      rawVehicles = (cand || []).filter(v => normalizePlate(v.license_plate || '') === plate)
+    }
 
     if (rawVehicles.length === 0) {
       return NextResponse.json({ found: false, plate, vehicles: [] } as LookupByPlateResponse)

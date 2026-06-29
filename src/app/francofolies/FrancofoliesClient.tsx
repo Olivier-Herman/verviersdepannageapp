@@ -32,6 +32,7 @@ export default function FrancofoliesClient({
   const [models,     setModels]     = useState<{ id: number; name: string }[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [driverId,   setDriverId]   = useState(isDriverOnly ? currentUserId : '')
+  const [otherDriver, setOtherDriver] = useState('')   // nom libre si "Autre"
   const [saving,     setSaving]     = useState(false)
   const [scan,       setScan]       = useState(false)
   const [toast,      setToast]      = useState<string | null>(null)
@@ -104,15 +105,21 @@ export default function FrancofoliesClient({
     if (!p) { showToast('⚠ Immatriculation requise'); plateRef.current?.focus(); return }
     if (!brandName) { showToast('⚠ Sélectionne la marque'); return }
     if (!modelName) { showToast('⚠ Sélectionne le modèle'); return }
+    if (!isDriverOnly) {
+      if (!driverId) { showToast('⚠ Sélectionne le chauffeur'); return }
+      if (driverId === '__other__' && !otherDriver.trim()) { showToast('⚠ Indique le nom du chauffeur'); return }
+    }
+    const realDriverId = (driverId && driverId !== '__other__') ? driverId : undefined
+    const driverNameFree = driverId === '__other__' ? otherDriver.trim() : undefined
     setSaving(true)
     try {
       const res = await fetch('/api/francofolies/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plate: p, brand: brandName, model: modelName, driver_id: driverId || undefined }),
+        body: JSON.stringify({ plate: p, brand: brandName, model: modelName, driver_id: realDriverId, driver_name: driverNameFree }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
-      if (!isDriverOnly && driverId) { try { localStorage.setItem(LAST_DRIVER_KEY, driverId) } catch {} }
+      if (!isDriverOnly && realDriverId) { try { localStorage.setItem(LAST_DRIVER_KEY, realDriverId) } catch {} }
       setLastSaved(`${p} · ${[brandName, modelName].filter(Boolean).join(' ')}`)
       showToast('✅ Véhicule enregistré')
       // Reset rapide pour le suivant (on garde le chauffeur).
@@ -216,11 +223,29 @@ export default function FrancofoliesClient({
         {isDriverOnly ? (
           <div className="w-full bg-surface-2 border rounded-xl px-3 py-3 text-ink text-base">{userName}</div>
         ) : (
-          <select value={driverId} onChange={e => setDriverId(e.target.value)}
-            className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand">
-            <option value="">— Sélectionner —</option>
-            {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              {drivers.map(d => (
+                <button key={d.id} type="button" onClick={() => setDriverId(d.id)}
+                  className={`py-3 px-1 rounded-xl text-sm font-semibold border transition ${
+                    driverId === d.id ? 'bg-brand text-white border-brand' : 'bg-surface border text-ink-secondary hover:border-brand/40'
+                  }`}>
+                  {d.name}
+                </button>
+              ))}
+              <button type="button" onClick={() => setDriverId('__other__')}
+                className={`py-3 px-1 rounded-xl text-sm font-semibold border transition ${
+                  driverId === '__other__' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface border text-ink-secondary hover:border-amber-400'
+                }`}>
+                ✏️ Autre
+              </button>
+            </div>
+            {driverId === '__other__' && (
+              <input value={otherDriver} onChange={e => setOtherDriver(e.target.value)}
+                placeholder="Nom du chauffeur"
+                className="w-full mt-2 bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand" />
+            )}
+          </>
         )}
       </div>
 
