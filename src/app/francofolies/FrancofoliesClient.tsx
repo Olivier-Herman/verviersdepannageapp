@@ -181,6 +181,17 @@ export default function FrancofoliesClient({
   const [rows, setRows] = useState<Row[]>([])
   const [q, setQ] = useState('')
   const [loadingList, setLoadingList] = useState(false)
+  const [pendingCount, setPendingCount] = useState<number | null>(null)
+
+  // Compteur "en attente d'enlèvement" — chargé en permanence sur l'accueil.
+  const loadPendingCount = useCallback(async () => {
+    try {
+      const r = await fetch('/api/francofolies/list?scope=pending')
+      const j = await r.json()
+      if (typeof j.count === 'number') setPendingCount(j.count)
+    } catch {}
+  }, [])
+  useEffect(() => { if (screen === 'home') loadPendingCount() }, [screen, loadPendingCount])
   const loadList = useCallback(async (query = '') => {
     setLoadingList(true)
     try {
@@ -313,14 +324,26 @@ export default function FrancofoliesClient({
         <h1 className="text-ink text-xl font-bold">Francofolies de Spa</h1>
         <p className="text-ink-muted text-sm">Mal garée — encodage & enlèvement</p>
       </div>
+
+      {/* Compteur permanent : véhicules en attente d'enlèvement */}
+      <div className="mb-4 bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 flex items-center justify-center gap-3">
+        <span className="text-4xl font-bold text-emerald-700">{pendingCount ?? '—'}</span>
+        <span className="text-emerald-800 text-sm font-semibold leading-tight">
+          véhicule{(pendingCount ?? 0) > 1 ? 's' : ''}<br />en attente d'enlèvement
+        </span>
+      </div>
+
       <div className="space-y-3">
         <button onClick={() => { setScreen('arrival'); setTimeout(() => plateRef.current?.focus(), 150) }}
           className="w-full py-6 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-red-600/20 transition">
           📷 Nouveau véhicule (arrivée)
         </button>
         <button onClick={() => setScreen('list')}
-          className="w-full py-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-emerald-600/20 transition">
+          className="w-full py-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2">
           🔍 Liste / Enlèvement
+          {pendingCount != null && pendingCount > 0 && (
+            <span className="px-2.5 py-0.5 bg-white/25 rounded-full text-base">{pendingCount}</span>
+          )}
         </button>
         {userRole === 'superadmin' && (
           <button onClick={() => setScreen('stats')}
