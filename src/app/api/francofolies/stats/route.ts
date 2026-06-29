@@ -13,20 +13,12 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-function canAccess(session: any): boolean {
-  if (!session) return false
-  const u = session.user as any
-  const role = u.role || ''
-  const roles: string[] = Array.isArray(u.roles) ? u.roles : [role]
-  const modules: string[] = u.modules || []
-  return ['admin', 'superadmin', 'dispatcher'].some(r => role === r || roles.includes(r))
-    || modules.includes('francofolies')
-    || roles.includes('driver') || roles.includes('chauffeur')
-}
-
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
-  if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Stats réservées au superadmin pour l'instant (Olivier 2026-06-29).
+  if (!session || (session.user as any).role !== 'superadmin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const sb = createAdminClient()
   const { data, error } = await sb

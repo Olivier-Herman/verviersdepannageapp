@@ -322,10 +322,12 @@ export default function FrancofoliesClient({
           className="w-full py-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-emerald-600/20 transition">
           🔍 Liste / Enlèvement
         </button>
-        <button onClick={() => setScreen('stats')}
-          className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
-          📊 Statistiques chauffeurs
-        </button>
+        {userRole === 'superadmin' && (
+          <button onClick={() => setScreen('stats')}
+            className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
+            📊 Statistiques chauffeurs
+          </button>
+        )}
       </div>
       <p className="text-ink-faint text-xs text-center mt-6">Tarif : {price} € · gardiennage {gardiennagePrice} €/jour au-delà de 24h</p>
     </main>
@@ -588,8 +590,8 @@ export default function FrancofoliesClient({
     </main>, 'Enlèvement',
   )
 
-  // ── STATS CHAUFFEUR ─────────────────────────────────────────────────────────
-  if (screen === 'stats') return shell(
+  // ── STATS CHAUFFEUR (superadmin uniquement) ─────────────────────────────────
+  if (screen === 'stats' && userRole === 'superadmin') return shell(
     <main className="p-4 max-w-2xl mx-auto space-y-4">
       <button onClick={() => setScreen('home')} className="text-ink-muted text-sm">← Accueil</button>
       <h1 className="text-ink text-lg font-bold">📊 Statistiques chauffeurs</h1>
