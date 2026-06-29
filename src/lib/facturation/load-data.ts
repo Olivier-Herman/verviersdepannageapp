@@ -1,0 +1,91 @@
+// src/lib/facturation/load-data.ts
+//
+// Chargement des données de la page Facturation (missions to_invoice + voisins
+// REM+REL + encaissements + chauffeurs + avances). Partagé entre la liste
+// générale (/facturation, exclut Touring) et la page dédiée Touring
+// (/facturation/touring, uniquement Touring). Olivier 2026-06-24.
+
+const MISSION_COLS = `
+  id, mission_number, external_id, dossier_number, source, status,
+  mission_type, incident_type, parent_mission_id,
+  client_name, client_phone,
+  vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
+  incident_address, destination_address,
+  received_at, intervention_date, completed_at,
+  amount_to_collect, amount_collected, payment_method,
+  special_tarif_htva,
+  assigned_to,
+  invoice_method, invoice_number, invoice_url,
+  no_charge_at, no_charge_reason,
+  odoo_quote_id, odoo_quote_url, odoo_quoted_at,
+  billed_to_id, billed_to_name
+`
+
+export async function loadFacturationData(
+  supabase: any,
+  opts: { onlySource?: string; excludeSource?: string } = {},
+) {
+  let q = supabase
+    .from('incoming_missions')
+    .select(MISSION_COLS)
+    .eq('status', 'to_invoice')
+  if (opts.onlySource)    q = q.eq('source', opts.onlySource)
+  if (opts.excludeSource) q = q.neq('source', opts.excludeSource)
+  q = q
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .order('received_at', { ascending: false })
+    .limit(200)
+  const { data: missions } = await q
+
+  // Voisins (chaînes REM+REL) — parent OU enfant aussi à facturer.
+  const allIds = new Set((missions || []).map((m: any) => m.id))
+  const parentIds = (missions || [])
+    .map((m: any) => m.parent_mission_id)
+    .filter((x: any): x is string => !!x && !allIds.has(x))
+
+  let siblings: any[] = []
+  if (parentIds.length > 0 || allIds.size > 0) {
+    const { data: extra } = await supabase
+      .from('incoming_missions')
+      .select(`
+        id, external_id, dossier_number, source, status,
+        mission_type, incident_type, parent_mission_id,
+        client_name, vehicle_plate,
+        received_at, completed_at,
+        invoice_method, invoice_number,
+        no_charge_at, no_charge_reason,
+        odoo_quote_id, odoo_quote_url,
+        billed_to_id, billed_to_name
+      `)
+      .or([
+        parentIds.length > 0 ? `id.in.(${parentIds.join(',')})` : '',
+        allIds.size > 0      ? `parent_mission_id.in.(${[...allIds].join(',')})` : '',
+      ].filter(Boolean).join(','))
+    siblings = extra || []
+  }
+
+  const { data: payments } = allIds.size > 0
+    ? await supabase.from('interventions')
+        .select('id, mission_id, amount, payment_mode, client_name, created_at, driver_id')
+        .in('mission_id', [...allIds])
+    : { data: [] }
+
+  const driverIds = [...new Set((payments || []).map((p: any) => p.driver_id).filter(Boolean))] as string[]
+  const { data: drivers } = driverIds.length > 0
+    ? await supabase.from('users').select('id, name').in('id', driverIds)
+    : { data: [] }
+
+  const { data: advances } = allIds.size > 0
+    ? await supabase.from('fund_advances')
+        .select('id, mission_id, amount_htva, plate, invoice_url')
+        .in('mission_id', [...allIds])
+    : { data: [] }
+
+  return {
+    missions: missions || [],
+    siblings,
+    payments: payments || [],
+    drivers:  drivers || [],
+    advances: advances || [],
+  }
+}

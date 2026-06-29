@@ -89,6 +89,7 @@ interface Props {
   userName:    string
   userEmail?:  string | null
   userModules: string[]
+  variant?:    'general' | 'touring'
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -133,8 +134,9 @@ const KIND_COLOR: Record<string, string> = {
 
 export default function FacturationClient({
   missions, siblings, payments, drivers, advances = [],
-  userRole, userName, userEmail, userModules,
+  userRole, userName, userEmail, userModules, variant = 'general',
 }: Props) {
+  const isTouring = variant === 'touring'
 
   // Olivier 2026-06-01 : map mission_id -> avances liees, pour highlight des
   // cartes "A facturer" qui contiennent une avance de fonds (attention requise).
@@ -305,23 +307,36 @@ export default function FacturationClient({
   }
 
   return (
-    <AppShell title="Facturation" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
+    <AppShell title={isTouring ? 'Facturation Touring' : 'Facturation'} userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
       <AmbientBackground>
       <div className="p-4 lg:p-6 space-y-4">
 
         {/* Hero header */}
         <div className="ambient-fade-up flex items-start gap-3 mb-2">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-success/20 via-brand/15 to-purple-500/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
-            <span>🧾</span>
+            <span>{isTouring ? '🚗' : '🧾'}</span>
           </div>
           <div className="flex-1">
-            <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Facturation</h1>
-            <p className="text-ink-muted text-sm mt-1">{filtered.length} mission{filtered.length > 1 ? 's' : ''} à facturer.</p>
+            <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">{isTouring ? 'Facturation Touring' : 'Facturation'}</h1>
+            <p className="text-ink-muted text-sm mt-1">{filtered.length} mission{filtered.length > 1 ? 's' : ''} à facturer{isTouring ? ' (Touring)' : ''}.</p>
           </div>
-          <Link href="/facturation/allianz"
-            className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition self-start">
-            🟦 Clôture Allianz
-          </Link>
+          {isTouring ? (
+            <Link href="/facturation"
+              className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition self-start">
+              ← Facturation
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2 self-start">
+              <Link href="/facturation/touring"
+                className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition">
+                🚗 Touring
+              </Link>
+              <Link href="/facturation/allianz"
+                className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition">
+                🟦 Clôture Allianz
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Filtres */}
