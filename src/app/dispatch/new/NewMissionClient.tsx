@@ -543,7 +543,7 @@ export default function NewMissionClient({
     const handle = setTimeout(async () => {
       setTarifLoading(true); setTarifError(null)
       try {
-        const interventionAt = rdvDate && rdvTime ? `${rdvDate}T${rdvTime}:00` : new Date().toISOString()
+        const interventionAt = rdvDate && rdvTime ? new Date(`${rdvDate}T${rdvTime}:00`).toISOString() : new Date().toISOString()
         let res: Response
         if (isSiabisLocal) {
           res = await fetch('/api/snc-preview-tarif', {
@@ -768,7 +768,11 @@ export default function NewMissionClient({
         .filter(w => selectedWarnings.includes(w.id))
         .map(w => `${w.icon} ${w.label}`)
 
-      const rdvAt = rdvDate && rdvTime ? `${rdvDate}T${rdvTime}:00` : null
+      // Olivier 2026-06-29 : `${date}T${time}:00` est une heure LOCALE sans
+      // fuseau → stockée telle quelle en timestamptz (= UTC) elle décalait
+      // l'heure d'intervention de +2h à l'affichage. On convertit l'heure locale
+      // du navigateur en UTC ISO avant l'envoi.
+      const rdvAt = rdvDate && rdvTime ? new Date(`${rdvDate}T${rdvTime}:00`).toISOString() : null
 
       const res = await fetch('/api/missions/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
