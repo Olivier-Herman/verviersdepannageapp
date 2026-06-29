@@ -38,7 +38,14 @@ export async function verifyAddressViaPlaces(
   const acService = new google.maps.places.AutocompleteService()
   const predictions: any[] = await new Promise(resolve => {
     acService.getPlacePredictions(
-      { input: address, componentRestrictions: { country: ['be','lu','fr','nl','de'] } },
+      {
+        input: address,
+        componentRestrictions: { country: ['be','lu','fr','nl','de'] },
+        // Biais Belgique : les résultats belges remontent en premier (sans
+        // exclure les pays frontaliers). Olivier 2026-06-29.
+        bounds: new google.maps.LatLngBounds(
+          { lat: 49.49, lng: 2.51 }, { lat: 51.51, lng: 6.41 }),
+      },
       (results: any[], status: string) => {
         resolve(status === google.maps.places.PlacesServiceStatus.OK && results ? results : [])
       }
@@ -49,7 +56,7 @@ export async function verifyAddressViaPlaces(
   const placesService = new google.maps.places.PlacesService(document.createElement('div'))
   const details: any = await new Promise(resolve => {
     placesService.getDetails(
-      { placeId: predictions[0].place_id, fields: ['formatted_address', 'geometry'] },
+      { placeId: predictions[0].place_id, fields: ['name', 'formatted_address', 'geometry', 'types'] },
       (place: any, status: string) => {
         resolve(status === google.maps.places.PlacesServiceStatus.OK && place ? place : null)
       }
@@ -57,7 +64,12 @@ export async function verifyAddressViaPlaces(
   })
   if (!details?.geometry) return null
 
-  const formatted = details.formatted_address || predictions[0].description
+  const addr0 = details.formatted_address || predictions[0].description
+  // Établissement (garage, hôtel…) : on préfixe le nom comme dans le widget,
+  // pour conserver "Nom, adresse" même via cette re-vérification.
+  const isEstab = (details.types || []).some((t: string) => t === 'establishment' || t === 'point_of_interest')
+  const formatted = isEstab && details.name && !addr0.startsWith(details.name)
+    ? `${details.name}, ${addr0}` : addr0
   const lat = details.geometry.location.lat()
   const lng = details.geometry.location.lng()
   // "Same" si l'adresse normalisée Google contient la 1re partie de l'input (rue+numéro)
@@ -98,6 +110,10 @@ export default function AddressField({
       acRef.current = new (window as any).google.maps.places.Autocomplete(ref.current!, {
         componentRestrictions: { country: ['be','lu','fr','nl','de'] },
         fields: ['name', 'formatted_address', 'geometry', 'address_components', 'types'],
+        // Biais Belgique : priorise les adresses belges dans les suggestions
+        // (strictBounds=false par défaut → les pays frontaliers restent
+        // proposables si on tape une adresse étrangère). Olivier 2026-06-29.
+        bounds: { south: 49.49, west: 2.51, north: 51.51, east: 6.41 },
       })
       acRef.current.addListener('place_changed', () => {
         const p = acRef.current.getPlace()
