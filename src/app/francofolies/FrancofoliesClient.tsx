@@ -51,7 +51,7 @@ export default function FrancofoliesClient({
   currentUserId: string; isDriverOnly: boolean; drivers: Driver[]
   price: number; gardiennagePrice: number
 }) {
-  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup'>('home')
+  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup' | 'stats'>('home')
 
   // ── Encodage arrivée (rapide) ──────────────────────────────────────────────
   const [plate,      setPlate]      = useState('')
@@ -212,6 +212,20 @@ export default function FrancofoliesClient({
   const [noChargeMode, setNoChargeMode] = useState(false)
   const [noChargeReason, setNoChargeReason] = useState('')
 
+  // ── Stats chauffeur ──────────────────────────────────────────────────────
+  interface DriverStat { name: string; total: number; picked: number; collected: number }
+  const [stats, setStats] = useState<{ totals: { vehicles: number; picked: number; parked: number; collected: number }; drivers: DriverStat[] } | null>(null)
+  const [loadingStats, setLoadingStats] = useState(false)
+  const loadStats = useCallback(async () => {
+    setLoadingStats(true)
+    try {
+      const r = await fetch('/api/francofolies/stats')
+      const j = await r.json()
+      if (j.ok) setStats({ totals: j.totals, drivers: j.drivers })
+    } catch {} finally { setLoadingStats(false) }
+  }, [])
+  useEffect(() => { if (screen === 'stats') loadStats() }, [screen, loadStats])
+
   const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
   const baseTvac = Math.round(price * 1.21 * 100) / 100
   const gardTvac = Math.round(gardiennagePrice * 1.21 * (chargeGard ? gardDays : 0) * 100) / 100
@@ -283,6 +297,10 @@ export default function FrancofoliesClient({
         <button onClick={() => setScreen('list')}
           className="w-full py-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-emerald-600/20 transition">
           🔍 Liste / Enlèvement
+        </button>
+        <button onClick={() => setScreen('stats')}
+          className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
+          📊 Statistiques chauffeurs
         </button>
       </div>
       <p className="text-ink-faint text-xs text-center mt-6">Tarif : {price} € · gardiennage {gardiennagePrice} €/jour au-delà de 24h</p>
@@ -530,6 +548,56 @@ export default function FrancofoliesClient({
           : `💰 Encaisser ${totalTvac.toFixed(2)} € & enlever`}
       </button>
     </main>, 'Enlèvement',
+  )
+
+  // ── STATS CHAUFFEUR ─────────────────────────────────────────────────────────
+  if (screen === 'stats') return shell(
+    <main className="p-4 max-w-2xl mx-auto space-y-4">
+      <button onClick={() => setScreen('home')} className="text-ink-muted text-sm">← Accueil</button>
+      <h1 className="text-ink text-lg font-bold">📊 Statistiques chauffeurs</h1>
+
+      {loadingStats ? (
+        <p className="text-ink-muted py-6 text-center">Chargement…</p>
+      ) : !stats ? (
+        <p className="text-ink-muted py-10 text-center">Aucune donnée.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-surface border rounded-xl p-3 text-center">
+              <p className="text-ink text-2xl font-bold">{stats.totals.vehicles}</p>
+              <p className="text-ink-muted text-xs">Véhicules</p>
+            </div>
+            <div className="bg-surface border rounded-xl p-3 text-center">
+              <p className="text-ink text-2xl font-bold">{stats.totals.parked}</p>
+              <p className="text-ink-muted text-xs">En attente</p>
+            </div>
+            <div className="bg-surface border rounded-xl p-3 text-center">
+              <p className="text-ink text-2xl font-bold">{stats.totals.collected.toFixed(0)} €</p>
+              <p className="text-ink-muted text-xs">Encaissé</p>
+            </div>
+          </div>
+
+          {stats.drivers.length === 0 ? (
+            <p className="text-ink-muted py-6 text-center">Aucun véhicule encore encodé.</p>
+          ) : (
+            <div className="space-y-2">
+              {stats.drivers.map((d, i) => (
+                <div key={d.name + i} className="bg-surface border rounded-xl p-3 flex items-center gap-3">
+                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                    i === 0 ? 'bg-amber-400 text-white' : i === 1 ? 'bg-gray-300 text-white' : i === 2 ? 'bg-amber-700 text-white' : 'bg-surface-2 text-ink-secondary'
+                  }`}>{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-ink font-semibold text-sm truncate">{d.name}</p>
+                    <p className="text-ink-muted text-xs">{d.picked} enlevé{d.picked > 1 ? 's' : ''} · {(d.total - d.picked)} en attente</p>
+                  </div>
+                  <span className="text-ink font-bold text-lg">{d.total}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </main>, 'Statistiques',
   )
 
   // ── LISTE / RECHERCHE ──────────────────────────────────────────────────────
