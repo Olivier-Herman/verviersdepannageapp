@@ -94,16 +94,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: 'Une des fiches est déjà annulée ou fusionnée' }, { status: 409 })
   }
 
-  // ── Déterminer automatiquement la fiche à CONSERVER (principale) ──────────
-  //   1) la fiche à source police (= fiche chauffeur) si une seule l'est
-  //   2) sinon celle qui porte le travail (chauffeur assigné / photos / parc)
-  //   3) sinon la plus ancienne (received_at)
-  const isPolice = (m: any) => String(m.source || '').startsWith('police')
-  const hasWork  = (m: any) => !!(m.assigned_to || (Array.isArray(m.driver_photos) && m.driver_photos.length) || m.parc_zone_key)
+  // ── Déterminer la fiche à CONSERVER (principale) ──────────────────────────
+  // Olivier 2026-06-29 : la principale est TOUJOURS la plus ancienne (received_at).
+  // Sa source ET son heure/date d'intervention sont préservées → le prix
+  // (majoration horaire) ne change pas à la fusion. La plus récente est absorbée.
   let master: any, secondary: any
-  if (isPolice(a) !== isPolice(b))      master = isPolice(a) ? a : b
-  else if (hasWork(a) !== hasWork(b))   master = hasWork(a)  ? a : b
-  else                                  master = (new Date(a.received_at || 0) <= new Date(b.received_at || 0)) ? a : b
+  const aTime = new Date(a.received_at || 0).getTime()
+  const bTime = new Date(b.received_at || 0).getTime()
+  master    = aTime <= bTime ? a : b
   secondary = master.id === a.id ? b : a
 
   // ── Construire les màj de la principale (source CONSERVÉE) ────────────────
