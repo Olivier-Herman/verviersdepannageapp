@@ -80,5 +80,20 @@ export async function POST(req: Request) {
     notes:      `Véhicule encodé à l'arrivée (Francofolies) — ${plate} ${[brand, model].filter(Boolean).join(' ')}`,
   }).then(() => {}, () => {})
 
+  // Olivier 2026-06-24 : on crée le véhicule dans Odoo DÈS l'arrivée (pas d'attente
+  // du devis). findOrCreateVehicle crée marque/modèle/véhicule si absent. En
+  // arrière-plan pour ne pas ralentir l'encodage.
+  const ensureVehicle = (async () => {
+    try {
+      const { findOrCreateVehicle } = await import('@/lib/odoo')
+      const vid = await findOrCreateVehicle({ licensePlate: plate, brandName: brand, modelName: model || brand })
+      if (vid) await sb.from('incoming_missions').update({ odoo_vehicle_id: vid }).eq('id', created.id)
+    } catch (e: any) {
+      console.error('[francofolies] findOrCreateVehicle KO:', e?.message)
+    }
+  })()
+  try { const { waitUntil } = await import('@vercel/functions'); waitUntil(ensureVehicle) }
+  catch { /* dev/local : on n'attend pas */ ensureVehicle.catch(() => {}) }
+
   return NextResponse.json({ ok: true, id: created.id, mission_number: created.mission_number })
 }

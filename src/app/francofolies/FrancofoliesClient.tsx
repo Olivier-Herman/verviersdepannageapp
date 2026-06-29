@@ -25,14 +25,37 @@ export default function FrancofoliesClient({
 
   // ── Encodage arrivée (rapide) ──────────────────────────────────────────────
   const [plate,      setPlate]      = useState('')
-  const [brandModel, setBrandModel] = useState('')
+  const [brandId,    setBrandId]    = useState<number | null>(null)
+  const [brandName,  setBrandName]  = useState('')
+  const [modelName,  setModelName]  = useState('')
+  const [brands,     setBrands]     = useState<{ id: number; name: string }[]>([])
+  const [models,     setModels]     = useState<{ id: number; name: string }[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
   const [driverId,   setDriverId]   = useState(isDriverOnly ? currentUserId : '')
   const [saving,     setSaving]     = useState(false)
   const [scan,       setScan]       = useState(false)
   const [toast,      setToast]      = useState<string | null>(null)
   const [lastSaved,  setLastSaved]  = useState<string | null>(null)
   const plateRef = useRef<HTMLInputElement>(null)
-  const bmRef    = useRef<HTMLInputElement>(null)
+
+  // Marque / Modèle = référentiel Odoo (listes dépendantes).
+  useEffect(() => {
+    if (brands.length > 0) return
+    fetch('/api/vehicles?type=brands').then(r => r.json()).then(d => setBrands(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [brands.length])
+
+  const onBrandChange = useCallback(async (id: number | null) => {
+    setBrandId(id)
+    setBrandName(id ? (brands.find(b => b.id === id)?.name || '') : '')
+    setModelName(''); setModels([])
+    if (!id) return
+    setLoadingModels(true)
+    try {
+      const r = await fetch(`/api/vehicles?type=models&brandId=${id}`)
+      const d = await r.json()
+      setModels(Array.isArray(d) ? d : [])
+    } catch {} finally { setLoadingModels(false) }
+  }, [brands])
 
   // Mémorise le dernier chauffeur choisi (staff encode pour plusieurs chauffeurs).
   useEffect(() => {
@@ -42,38 +65,58 @@ export default function FrancofoliesClient({
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(null), 2500) }
 
-  // OCR plaque → remplit + tente le lookup marque/modèle (non bloquant).
-  const onPlateScanned = useCallback(async (value: string) => {
+  // Lookup Odoo dès qu'une plaque est saisie : si le véhicule est connu,
+  // pré-remplit Marque/Modèle (en matchant les listes Odoo).
+  const lastLookup = useRef('')
+  const lookupPlate = useCallback(async (p: string) => {
+    const plt = p.trim().toUpperCase()
+    if (plt.length < 5 || plt === lastLookup.current) return
+    lastLookup.current = plt
+    try {
+      const r = await fetch(`/api/vehicles/lookup-by-plate?plate=${encodeURIComponent(plt)}`)
+      const j = await r.json()
+      const v = j?.vehicles?.[0]
+      if (!j?.found || !v || !v.brand) return
+      const b = brands.find(x => x.name.toLowerCase() === String(v.brand).toLowerCase())
+      if (!b) return
+      setBrandId(b.id); setBrandName(b.name)
+      setLoadingModels(true)
+      try {
+        const md = await (await fetch(`/api/vehicles?type=models&brandId=${b.id}`)).json()
+        const arr = Array.isArray(md) ? md : []
+        setModels(arr)
+        const mm = v.model ? arr.find((x: any) => x.name.toLowerCase() === String(v.model).toLowerCase()) : null
+        setModelName(mm ? mm.name : '')
+      } finally { setLoadingModels(false) }
+      showToast(`✅ Véhicule connu : ${v.brand}${v.model ? ' ' + v.model : ''}`)
+    } catch {}
+  }, [brands])
+
+  // OCR plaque → remplit l'immatriculation + lookup auto.
+  const onPlateScanned = useCallback((value: string) => {
     const p = value.trim().toUpperCase()
     setPlate(p); setScan(false)
-    if (!brandModel.trim()) {
-      try {
-        const r = await fetch(`/api/vehicles/lookup-by-plate?plate=${encodeURIComponent(p)}`)
-        const j = await r.json()
-        const v = j?.vehicles?.[0]
-        if (v && (v.brand || v.model)) setBrandModel([v.brand, v.model].filter(Boolean).join(' '))
-      } catch {}
-    }
-    setTimeout(() => bmRef.current?.focus(), 100)
-  }, [brandModel])
+    lookupPlate(p)
+  }, [lookupPlate])
 
   const save = async () => {
     const p = plate.trim().toUpperCase()
     if (!p) { showToast('⚠ Immatriculation requise'); plateRef.current?.focus(); return }
-    if (!brandModel.trim()) { showToast('⚠ Marque / Modèle requis'); bmRef.current?.focus(); return }
+    if (!brandName) { showToast('⚠ Sélectionne la marque'); return }
+    if (!modelName) { showToast('⚠ Sélectionne le modèle'); return }
     setSaving(true)
     try {
       const res = await fetch('/api/francofolies/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plate: p, brand: brandModel.trim(), driver_id: driverId || undefined }),
+        body: JSON.stringify({ plate: p, brand: brandName, model: modelName, driver_id: driverId || undefined }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
       if (!isDriverOnly && driverId) { try { localStorage.setItem(LAST_DRIVER_KEY, driverId) } catch {} }
-      setLastSaved(`${p} · ${brandModel.trim()}`)
+      setLastSaved(`${p} · ${[brandName, modelName].filter(Boolean).join(' ')}`)
       showToast('✅ Véhicule enregistré')
       // Reset rapide pour le suivant (on garde le chauffeur).
-      setPlate(''); setBrandModel('')
+      setPlate(''); setBrandId(null); setBrandName(''); setModelName(''); setModels([])
       setTimeout(() => plateRef.current?.focus(), 100)
     } catch { showToast('⚠ Erreur réseau') }
     finally { setSaving(false) }
@@ -145,15 +188,27 @@ export default function FrancofoliesClient({
       <div>
         <label className="block text-ink-secondary text-xs font-semibold mb-1">Immatriculation *</label>
         <input ref={plateRef} value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
+          onBlur={() => lookupPlate(plate)}
           autoCapitalize="characters" placeholder="1ABC234"
           className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-lg font-mono tracking-wide focus:outline-none focus:border-brand" />
       </div>
 
       <div>
-        <label className="block text-ink-secondary text-xs font-semibold mb-1">Marque et Modèle *</label>
-        <input ref={bmRef} value={brandModel} onChange={e => setBrandModel(e.target.value)}
-          placeholder="Renault Clio" enterKeyHint="done" onKeyDown={e => { if (e.key === 'Enter') save() }}
-          className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand" />
+        <label className="block text-ink-secondary text-xs font-semibold mb-1">Marque *</label>
+        <select value={brandId ?? ''} onChange={e => onBrandChange(e.target.value ? Number(e.target.value) : null)}
+          className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand">
+          <option value="">— Sélectionner la marque —</option>
+          {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-ink-secondary text-xs font-semibold mb-1">Modèle *</label>
+        <select value={modelName} onChange={e => setModelName(e.target.value)} disabled={!brandId || loadingModels}
+          className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand disabled:opacity-50">
+          <option value="">{!brandId ? '— Choisis d\'abord la marque —' : loadingModels ? 'Chargement…' : '— Sélectionner le modèle —'}</option>
+          {models.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+        </select>
       </div>
 
       <div>
