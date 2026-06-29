@@ -561,16 +561,18 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     // et le bouton bloque eternellement en 'Creation...'. Maintenant on garantit
     // setLoading(false) via finally + message d erreur clair via setErr.
     try {
+    // Olivier 2026-06-03/29 : pre-calcul de intervention_at cote browser pour
+    // que la timezone soit correctement gerée. Sinon le serveur Node (Vercel UTC)
+    // interprete `date`+`time` en UTC au lieu de l'heure Belgique → décalage +2h
+    // (heure d'intervention affichée 2h trop tard + perte majoration nuit).
+    // Hissé ici pour servir AUSSI le flux towsoft/create (accident/saisie), pas
+    // seulement le flux paiement immédiat.
+    const [dd0, mm0, yyyy0] = (date || '').split('-')
+    const [hh0, mn0] = (time || '00:00').split(':')
+    const interventionAtIso = (dd0 && mm0 && yyyy0)
+      ? new Date(`${yyyy0}-${mm0}-${dd0}T${hh0}:${mn0}:00`).toISOString()
+      : new Date().toISOString()
     if (needsImmediatePaymentLocal) {
-      // Olivier 2026-06-03 : pre-calcul de intervention_at cote browser pour
-      // que la timezone soit correctement gerée (sinon le serveur Node UTC
-      // interprete date/time en UTC au lieu de heure Belgique → decalage 2h
-      // qui fait perdre la majoration nuit).
-      const [dd0, mm0, yyyy0] = (date || '').split('-')
-      const [hh0, mn0] = (time || '00:00').split(':')
-      const interventionAtIso = (dd0 && mm0 && yyyy0)
-        ? new Date(`${yyyy0}-${mm0}-${dd0}T${hh0}:${mn0}:00`).toISOString()
-        : new Date().toISOString()
       const draftRes = await fetch('/api/missions/police/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -611,7 +613,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: selectedType, date, time, plate: finalPlate, vin, brand, model,
+        type: selectedType, date, time, intervention_at: interventionAtIso, plate: finalPlate, vin, brand, model,
         location, policeZone, officerName,
         ownerFirstName, ownerLastName, ownerPhone,
         remarks, photoUrls,

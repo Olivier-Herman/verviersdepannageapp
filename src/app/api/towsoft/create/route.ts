@@ -244,15 +244,27 @@ export async function POST(req: Request) {
     const vdZone    = vdZoneRaw ? (await getDefaultParcZone(vdSource, supabase) || vdZoneRaw) : null
     const nowIso    = new Date().toISOString()
 
-    // Combine date (DD-MM-YYYY) + time (HH:MM) en ISO pour intervention_date.
+    // Heure d'intervention. Olivier 2026-06-29 (fix +2h) : PoliceClient calcule
+    // déjà intervention_at côté navigateur (fuseau Belgique correct) → on l'utilise
+    // en priorité. Sinon fallback : on interprète date/time en heure Europe/Brussels
+    // (PAS en UTC — le serveur Vercel tourne en UTC, donc `new Date('...T...')`
+    // sans offset décalait de +2h en été). Approximation DST par le mois.
     let interventionISO = nowIso
-    try {
-      const [dd, mm, yyyy] = (date || '').split('-')
-      const [hh, mn] = (time || '00:00').split(':')
-      if (dd && mm && yyyy) {
-        interventionISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`).toISOString()
-      }
-    } catch {}
+    if (typeof body.intervention_at === 'string' && body.intervention_at) {
+      interventionISO = body.intervention_at
+    } else {
+      try {
+        const [dd, mm, yyyy] = (date || '').split('-')
+        const [hh, mn] = (time || '00:00').split(':')
+        if (dd && mm && yyyy) {
+          const month = parseInt(mm, 10)
+          const offMin = (month >= 4 && month <= 10) ? 120 : 60   // BE : +2 été, +1 hiver
+          const offH = String(Math.floor(offMin / 60)).padStart(2, '0')
+          const offM = String(offMin % 60).padStart(2, '0')
+          interventionISO = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00+${offH}:${offM}`).toISOString()
+        }
+      } catch {}
+    }
 
     const fullName = [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || null
 
