@@ -5,6 +5,25 @@ import AppShell from '@/components/layout/AppShell'
 import OcrScanModal from '@/components/OcrScanModal'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import type { VehicleMatch } from '@/types/vehicles'
+import { COMPANY } from '@/config/company'
+
+/**
+ * Construit le payload d'un QR EPC (EPC069-12, virement SEPA). Scanné par les
+ * apps bancaires belges → ouvre un virement prérempli (bénéficiaire + montant +
+ * communication = plaque). BIC vide autorisé pour la zone SEPA/EEE.
+ */
+function buildEpcPayload(amount: number, communication: string): string {
+  const iban = COMPANY.iban.replace(/\s/g, '')
+  return [
+    'BCD', '002', '1', 'SCT', '',
+    COMPANY.name.slice(0, 70),
+    iban,
+    `EUR${amount.toFixed(2)}`,
+    '', '',
+    communication.slice(0, 140),
+    '',
+  ].join('\n')
+}
 
 interface Driver { id: string; name: string }
 interface Row {
@@ -186,7 +205,7 @@ export default function FrancofoliesClient({
   const [cPhone,    setCPhone]    = useState('')
   const [cEmail,    setCEmail]    = useState('')
   const [cVat,      setCVat]      = useState('')
-  const [payMode,   setPayMode]   = useState<'cash' | 'bancontact' | 'sumup' | 'unpaid'>('cash')
+  const [payMode,   setPayMode]   = useState<'cash' | 'bancontact' | 'sumup' | 'qr_transfer' | 'unpaid'>('cash')
   const [chargeGard, setChargeGard] = useState(true)
   const [policeOk,  setPoliceOk]  = useState(false)
   const [pickupSaving, setPickupSaving] = useState(false)
@@ -448,7 +467,7 @@ export default function FrancofoliesClient({
           <div>
             <label className="block text-ink-secondary text-xs font-semibold mb-1">Mode de paiement</label>
             <div className="grid grid-cols-2 gap-2">
-              {([['cash', '💵 Espèces'], ['bancontact', '💳 Bancontact'], ['sumup', '📲 Sumup'], ['unpaid', '🧾 À facturer']] as const).map(([v, lbl]) => (
+              {([['cash', '💵 Espèces'], ['bancontact', '💳 Bancontact'], ['sumup', '📲 Sumup'], ['qr_transfer', '📷 QR virement'], ['unpaid', '🧾 À facturer']] as const).map(([v, lbl]) => (
                 <button key={v} type="button" onClick={() => setPayMode(v)}
                   className={`py-3 rounded-xl border-2 text-sm font-semibold transition ${
                     payMode === v
@@ -459,6 +478,16 @@ export default function FrancofoliesClient({
             </div>
             {payMode === 'unpaid' && (
               <p className="text-amber-600 text-xs mt-1">Le client recevra une confirmation « non payée » ; le montant reste à facturer.</p>
+            )}
+            {payMode === 'qr_transfer' && (
+              <div className="mt-2 bg-surface border rounded-xl p-3 text-center">
+                <p className="text-ink-secondary text-xs mb-2">Le client scanne ce QR avec son app bancaire — virement prérempli ({totalTvac.toFixed(2)} € · comm. {picked?.vehicle_plate}).</p>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(buildEpcPayload(totalTvac, `${picked?.vehicle_plate || ''} Francofolies`))}`}
+                  alt="QR virement SEPA" width={240} height={240}
+                  className="mx-auto rounded-lg bg-white" />
+                <p className="text-ink-faint text-[11px] mt-2">Virement {COMPANY.iban} — bénéficiaire {COMPANY.name}</p>
+              </div>
             )}
           </div>
 

@@ -31,6 +31,7 @@ const PAYMENT_MODE_LABELS: Record<string, string> = {
   email: 'Lien de paiement SumUp',
   sumup_manual: 'SumUp (manuel)',
   sumup: 'SumUp',
+  qr_transfer: 'Virement (QR)',
   bancontact: 'Bancontact Bureau',
   unpaid: 'À facturer',
 }

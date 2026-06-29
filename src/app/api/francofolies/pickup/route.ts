@@ -46,7 +46,7 @@ interface PickupBody {
   mode:              'invoice' | 'no_charge'
   // invoice
   client?:           { name?: string; address?: string; zip?: string; city?: string; phone?: string; email?: string; vat?: string }
-  payment_mode?:     'cash' | 'bancontact' | 'sumup' | 'unpaid'
+  payment_mode?:     'cash' | 'bancontact' | 'sumup' | 'qr_transfer' | 'unpaid'
   gardiennage_days?: number        // jours retenus (0 = non comptabilisé)
   police_verified?:  boolean        // si police_blocked : proprio passé au commissariat
   // no_charge
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
   const client = body.client || {}
   const clientName = String(client.name || '').trim()
   if (!clientName) return NextResponse.json({ error: 'Nom du client requis' }, { status: 400 })
-  const PAY_MODES = ['cash', 'bancontact', 'sumup', 'unpaid'] as const
+  const PAY_MODES = ['cash', 'bancontact', 'sumup', 'qr_transfer', 'unpaid'] as const
   const paymentMode = PAY_MODES.includes(body.payment_mode as any) ? body.payment_mode! : 'cash'
   const isUnpaid = paymentMode === 'unpaid'   // "À facturer" : rien d'encaissé sur place
 
