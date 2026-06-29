@@ -171,7 +171,7 @@ function buildEmailHtml(event: GarageEvent, m: MissionLite, opts?: { decisionNot
         </td></tr>
 
         <tr><td style="background:#f9fafb;padding:14px;text-align:center;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;color:#9ca3af;font-size:11px;">Verviers Dépannage SA · +32 87 22 66 76</p>
+          <p style="margin:0;color:#9ca3af;font-size:11px;">Verviers Dépannage SA · +32 87 60 08 35</p>
         </td></tr>
 
       </table>

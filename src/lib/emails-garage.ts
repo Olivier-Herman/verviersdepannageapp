@@ -109,7 +109,7 @@ function buildWelcomeHtml(d: WelcomeData): string {
         <!-- Support -->
         <tr><td style="padding:16px 32px 24px 32px;">
           <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">
-            <strong>Une question, un problème ?</strong> Contactez notre équipe au <a href="tel:+3287226676" style="color:#b91c1c;text-decoration:none;">+32 87 22 66 76</a> ou répondez à cet email.
+            <strong>Une question, un problème ?</strong> Contactez notre équipe au <a href="tel:+3287600835" style="color:#b91c1c;text-decoration:none;">+32 87 60 08 35</a> ou répondez à cet email.
           </p>
         </td></tr>
 
