@@ -3641,8 +3641,11 @@ export default function MissionDetailClient({
 
               {/* Panneau Saisie (réquisitoire / levée de saisie / Domaine) —
                   Olivier 2026-06-14 : remonté en haut du bloc droit. */}
-              {['police_saisie', 'police_mg', 'police_rodeo', 'police_avp'].includes(initialMission.source) && (
-                <SaisiePanel mission={initialMission as any} onChanged={() => router.refresh()} />
+              {(['police_saisie', 'police_mg', 'police_rodeo', 'police_avp'].includes(initialMission.source) || parcZoneType === 'saisie') && (
+                <SaisiePanel
+                  mission={initialMission as any}
+                  forceSaisie={parcZoneType === 'saisie' && !['police_saisie', 'police_mg', 'police_rodeo', 'police_avp'].includes(initialMission.source)}
+                  onChanged={() => router.refresh()} />
               )}
 
               {/* Annuler la fiche — entre "Restituer" et "Avance de fonds".
