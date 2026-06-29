@@ -68,18 +68,20 @@ export default function FrancofoliesClient({
 
   // Lookup Odoo dès qu'une plaque est saisie : si le véhicule est connu,
   // pré-remplit Marque/Modèle (en matchant les listes Odoo).
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'searching' | 'found' | 'notfound'>('idle')
   const lastLookup = useRef('')
   const lookupPlate = useCallback(async (p: string) => {
-    const plt = p.trim().toUpperCase()
-    if (plt.length < 5 || plt === lastLookup.current) return
+    const plt = p.trim().toUpperCase().replace(/[-.\s]/g, '')
+    if (plt.length < 4 || plt === lastLookup.current) return
     lastLookup.current = plt
+    setLookupStatus('searching')
     try {
       const r = await fetch(`/api/vehicles/lookup-by-plate?plate=${encodeURIComponent(plt)}`)
       const j = await r.json()
       const v = j?.vehicles?.[0]
-      if (!j?.found || !v || !v.brand) return
+      if (!j?.found || !v || !v.brand) { setLookupStatus('notfound'); return }
       const b = brands.find(x => x.name.toLowerCase() === String(v.brand).toLowerCase())
-      if (!b) return
+      if (!b) { setLookupStatus('notfound'); return }
       setBrandId(b.id); setBrandName(b.name)
       setLoadingModels(true)
       try {
@@ -89,8 +91,9 @@ export default function FrancofoliesClient({
         const mm = v.model ? arr.find((x: any) => x.name.toLowerCase() === String(v.model).toLowerCase()) : null
         setModelName(mm ? mm.name : '')
       } finally { setLoadingModels(false) }
+      setLookupStatus('found')
       showToast(`✅ Véhicule connu : ${v.brand}${v.model ? ' ' + v.model : ''}`)
-    } catch {}
+    } catch { setLookupStatus('idle') }
   }, [brands])
 
   // OCR plaque → remplit l'immatriculation + lookup auto.
@@ -99,6 +102,15 @@ export default function FrancofoliesClient({
     setPlate(p); setScan(false)
     lookupPlate(p)
   }, [lookupPlate])
+
+  // Recherche LIVE pendant la frappe (débouncée).
+  useEffect(() => {
+    if (screen !== 'arrival') return
+    const p = plate.trim().toUpperCase().replace(/[-.\s]/g, '')
+    if (p.length < 4) { setLookupStatus('idle'); lastLookup.current = ''; return }
+    const t = setTimeout(() => lookupPlate(p), 450)
+    return () => clearTimeout(t)
+  }, [plate, screen, lookupPlate])
 
   const save = async () => {
     const p = plate.trim().toUpperCase()
@@ -198,6 +210,9 @@ export default function FrancofoliesClient({
           onBlur={() => lookupPlate(plate)}
           autoCapitalize="characters" placeholder="1ABC234"
           className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-lg font-mono tracking-wide focus:outline-none focus:border-brand" />
+        {lookupStatus === 'searching' && <p className="text-ink-muted text-xs mt-1">🔎 Recherche dans Odoo…</p>}
+        {lookupStatus === 'found'     && <p className="text-emerald-600 text-xs mt-1">✅ Véhicule connu — marque/modèle pré-remplis</p>}
+        {lookupStatus === 'notfound'  && <p className="text-amber-600 text-xs mt-1">ℹ️ Inconnu — sélectionne marque/modèle (le véhicule sera créé)</p>}
       </div>
 
       <div>
