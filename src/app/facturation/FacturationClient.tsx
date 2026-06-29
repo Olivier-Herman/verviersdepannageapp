@@ -288,6 +288,29 @@ export default function FacturationClient({
     })
   }, [data, search, sourceFilter])
 
+  // Olivier 2026-06-29 : missions liées (chaîne REM+REL) affichées l'une à la
+  // suite de l'autre et encadrées ensemble. On regroupe les fiches visibles par
+  // racine de chaîne (parent = sa propre id, enfant = parent_mission_id). On
+  // préserve l'ordre d'apparition des groupes ; dans un groupe, le parent (REM)
+  // passe avant ses enfants (REL).
+  const grouped = useMemo(() => {
+    const groups: { root: string; items: MissionRow[] }[] = []
+    const byRoot = new Map<string, { root: string; items: MissionRow[] }>()
+    for (const m of filtered) {
+      const root = m.parent_mission_id || m.id
+      let g = byRoot.get(root)
+      if (!g) { g = { root, items: [] }; byRoot.set(root, g); groups.push(g) }
+      g.items.push(m)
+    }
+    // Tri intra-groupe : le parent (id === root) en tête, puis les enfants.
+    for (const g of groups) {
+      g.items.sort((a, b) =>
+        (a.id === g.root ? 0 : 1) - (b.id === g.root ? 0 : 1)
+        || (a.parent_mission_id ? 1 : 0) - (b.parent_mission_id ? 1 : 0))
+    }
+    return groups
+  }, [filtered])
+
   function handleInvoiceUpdated(updated: { id: string; status: string; invoice_method?: string | null; invoice_number?: string | null; invoice_url?: string | null }[]) {
     // Retirer les fiches passees a 'completed' (= facturees)
     const completedIds = new Set(updated.filter(u => u.status === 'completed').map(u => u.id))
@@ -470,7 +493,8 @@ export default function FacturationClient({
           </div>
         ) : (
           <ul className="space-y-2">
-            {filtered.map(m => {
+            {grouped.map(group => {
+              const renderCard = (m: MissionRow) => {
               const kind         = missionKind(m)
               const childRels    = siblingsByMission.byParentId.get(m.id) || []
               const parentRow    = m.parent_mission_id ? siblingsByMission.byId.get(m.parent_mission_id) : null
@@ -488,7 +512,6 @@ export default function FacturationClient({
               const hasSpecial   = m.special_tarif_htva != null && Number(m.special_tarif_htva) > 0
 
               return (
-                <li key={m.id}>
                   <Link
                     href={`/dispatch/${m.id}`}
                     className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${
@@ -570,8 +593,30 @@ export default function FacturationClient({
                       Facturer →
                     </button>
                   </Link>
-                </li>
               )
+              } // fin renderCard
+
+              // Chaîne liée (≥2 fiches visibles) : on encadre l'ensemble en violet.
+              if (group.items.length >= 2) {
+                return (
+                  <li key={group.root}>
+                    <div className="rounded-2xl border-2 border-purple-400 bg-purple-50/60 p-2 space-y-2">
+                      <div className="flex items-center gap-2 px-2 pt-1">
+                        <span className="px-2 py-0.5 bg-purple-600 text-white text-[11px] rounded font-bold uppercase tracking-wide">
+                          🔗 Chaîne liée
+                        </span>
+                        <span className="text-purple-700 text-xs font-medium">
+                          {group.items.length} fiches à facturer ensemble (REM + REL)
+                        </span>
+                      </div>
+                      {group.items.map(m => (
+                        <div key={m.id}>{renderCard(m)}</div>
+                      ))}
+                    </div>
+                  </li>
+                )
+              }
+              return <li key={group.items[0].id}>{renderCard(group.items[0])}</li>
             })}
           </ul>
         )}
