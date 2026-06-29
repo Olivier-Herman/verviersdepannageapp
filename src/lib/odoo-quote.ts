@@ -37,24 +37,14 @@ export type { ProductCode }
 
 const VEHICLE_FIELD = 'x_studio_many2one_field_78n_1j6fmmeom'
 
+// Olivier 2026-06-24 (fix clé perso) : ce module avait son PROPRE rpc codé en dur
+// sur ODOO_API_KEY (service account "VD App") → les devis étaient créés au nom de
+// VD App même quand le user a une clé Odoo perso. On délègue désormais à odooRpc
+// (@/lib/odoo) qui lit l'acteur courant (withOdooActor) et utilise sa clé perso
+// si présente, sinon le service account. Comportement identique hors contexte acteur.
 async function rpc<T = any>(model: string, method: string, args: any[] = [], kwargs: object = {}): Promise<T> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method:  'call',
-      id:      Date.now(),
-      params:  {
-        service: 'object',
-        method:  'execute_kw',
-        args:    [ODOO_DB, ODOO_UID, ODOO_API_KEY, model, method, args, kwargs],
-      },
-    }),
-  })
-  const data = await res.json()
-  if (data.error) throw new Error(`Odoo ${model}.${method}: ${JSON.stringify(data.error)}`)
-  return data.result
+  const { odooRpc } = await import('@/lib/odoo')
+  return odooRpc<T>(model, method, args, kwargs)
 }
 
 // Cache process-level pour eviter de re-lookup les products a chaque appel.

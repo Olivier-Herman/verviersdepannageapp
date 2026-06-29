@@ -47,9 +47,13 @@ export async function POST(req: Request) {
   const { data: priceRow } = await sb.from('app_settings').select('value').eq('key', 'francofolies_price').maybeSingle()
   const price = Number(priceRow?.value || 220)
 
+  // external_id requis (NOT NULL) — identifiant interne unique pour Francofolies.
+  const externalId = `FF-${plate}-${Date.now().toString(36).toUpperCase()}`
+
   const { data: created, error } = await sb
     .from('incoming_missions')
     .insert({
+      external_id:       externalId,
       source:            'francofolies',
       source_format:     'francofolies_arrival',
       mission_type:      'remorquage',
