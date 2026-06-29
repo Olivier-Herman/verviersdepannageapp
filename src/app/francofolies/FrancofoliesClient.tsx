@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import OcrScanModal from '@/components/OcrScanModal'
+import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import type { VehicleMatch } from '@/types/vehicles'
 
 interface Driver { id: string; name: string }
 interface Row {
@@ -66,51 +68,56 @@ export default function FrancofoliesClient({
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(null), 2500) }
 
-  // Lookup Odoo dès qu'une plaque est saisie : si le véhicule est connu,
-  // pré-remplit Marque/Modèle (en matchant les listes Odoo).
-  const [lookupStatus, setLookupStatus] = useState<'idle' | 'searching' | 'found' | 'notfound'>('idle')
+  // Lookup véhicule via le MODAL partagé VehiclePlateLookup (liste des
+  // correspondances Odoo + "pas dans la liste"). 0 → manuel, 1 → auto, 2+ → modal.
+  const [lookupStatus,   setLookupStatus]   = useState<'idle' | 'found' | 'notfound'>('idle')
+  const [lookupOpen,     setLookupOpen]     = useState(false)
+  const [lookupPlateVal, setLookupPlateVal] = useState('')
   const lastLookup = useRef('')
-  const lookupPlate = useCallback(async (p: string) => {
+
+  // Remplit Marque/Modèle depuis le véhicule Odoo choisi (match sur les listes).
+  const fillFromVehicle = useCallback(async (v: VehicleMatch) => {
+    setLookupOpen(false)
+    if (!v?.brand) { setLookupStatus('notfound'); return }
+    const b = brands.find(x => x.name.toLowerCase() === String(v.brand).toLowerCase())
+    if (!b) { setLookupStatus('notfound'); showToast('ℹ️ Marque non listée — sélectionne manuellement'); return }
+    setBrandId(b.id); setBrandName(b.name)
+    setLoadingModels(true)
+    try {
+      const md = await (await fetch(`/api/vehicles?type=models&brandId=${b.id}`)).json()
+      const arr = Array.isArray(md) ? md : []
+      setModels(arr)
+      const mm = v.model ? arr.find((x: any) => x.name.toLowerCase() === String(v.model).toLowerCase()) : null
+      setModelName(mm ? mm.name : '')
+    } finally { setLoadingModels(false) }
+    setLookupStatus('found')
+    showToast(`✅ ${v.brand}${v.model ? ' ' + v.model : ''}`)
+  }, [brands])
+
+  // Ouvre le modal de recherche pour une plaque (idempotent par plaque).
+  const openLookup = useCallback((p: string) => {
     const plt = p.trim().toUpperCase().replace(/[-.\s]/g, '')
     if (plt.length < 4 || plt === lastLookup.current) return
     lastLookup.current = plt
-    setLookupStatus('searching')
-    try {
-      const r = await fetch(`/api/vehicles/lookup-by-plate?plate=${encodeURIComponent(plt)}`)
-      const j = await r.json()
-      const v = j?.vehicles?.[0]
-      if (!j?.found || !v || !v.brand) { setLookupStatus('notfound'); return }
-      const b = brands.find(x => x.name.toLowerCase() === String(v.brand).toLowerCase())
-      if (!b) { setLookupStatus('notfound'); return }
-      setBrandId(b.id); setBrandName(b.name)
-      setLoadingModels(true)
-      try {
-        const md = await (await fetch(`/api/vehicles?type=models&brandId=${b.id}`)).json()
-        const arr = Array.isArray(md) ? md : []
-        setModels(arr)
-        const mm = v.model ? arr.find((x: any) => x.name.toLowerCase() === String(v.model).toLowerCase()) : null
-        setModelName(mm ? mm.name : '')
-      } finally { setLoadingModels(false) }
-      setLookupStatus('found')
-      showToast(`✅ Véhicule connu : ${v.brand}${v.model ? ' ' + v.model : ''}`)
-    } catch { setLookupStatus('idle') }
-  }, [brands])
+    setLookupPlateVal(plt)
+    setLookupOpen(true)
+  }, [])
 
-  // OCR plaque → remplit l'immatriculation + lookup auto.
+  // OCR plaque → remplit l'immatriculation + ouvre la recherche.
   const onPlateScanned = useCallback((value: string) => {
     const p = value.trim().toUpperCase()
     setPlate(p); setScan(false)
-    lookupPlate(p)
-  }, [lookupPlate])
+    openLookup(p)
+  }, [openLookup])
 
-  // Recherche LIVE pendant la frappe (débouncée).
+  // Déclenche la recherche (modal) quand la plaque saisie est complète (débouncée).
   useEffect(() => {
     if (screen !== 'arrival') return
     const p = plate.trim().toUpperCase().replace(/[-.\s]/g, '')
-    if (p.length < 4) { setLookupStatus('idle'); lastLookup.current = ''; return }
-    const t = setTimeout(() => lookupPlate(p), 450)
+    if (p.length < 6) { lastLookup.current = ''; return }
+    const t = setTimeout(() => openLookup(p), 600)
     return () => clearTimeout(t)
-  }, [plate, screen, lookupPlate])
+  }, [plate, screen, openLookup])
 
   const save = async () => {
     const p = plate.trim().toUpperCase()
@@ -207,12 +214,13 @@ export default function FrancofoliesClient({
       <div>
         <label className="block text-ink-secondary text-xs font-semibold mb-1">Immatriculation *</label>
         <input ref={plateRef} value={plate} onChange={e => setPlate(e.target.value.toUpperCase())}
-          onBlur={() => lookupPlate(plate)}
+          onBlur={() => openLookup(plate)}
           autoCapitalize="characters" placeholder="1ABC234"
           className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-lg font-mono tracking-wide focus:outline-none focus:border-brand" />
-        {lookupStatus === 'searching' && <p className="text-ink-muted text-xs mt-1">🔎 Recherche dans Odoo…</p>}
-        {lookupStatus === 'found'     && <p className="text-emerald-600 text-xs mt-1">✅ Véhicule connu — marque/modèle pré-remplis</p>}
-        {lookupStatus === 'notfound'  && <p className="text-amber-600 text-xs mt-1">ℹ️ Inconnu — sélectionne marque/modèle (le véhicule sera créé)</p>}
+        {lookupStatus === 'found'     && <p className="text-emerald-600 text-xs mt-1">✅ Véhicule trouvé — marque/modèle pré-remplis</p>}
+        {lookupStatus === 'notfound'  && <p className="text-amber-600 text-xs mt-1">ℹ️ Pas dans la liste — sélectionne marque/modèle (le véhicule sera créé)</p>}
+        <button type="button" onClick={() => { lastLookup.current = ''; openLookup(plate) }}
+          className="text-brand text-xs mt-1 underline">🔍 Rechercher dans Odoo</button>
       </div>
 
       <div>
@@ -272,6 +280,14 @@ export default function FrancofoliesClient({
       {lastSaved && <p className="text-emerald-600 text-sm text-center">✅ Dernier : {lastSaved}</p>}
 
       {scan && <OcrScanModal mode="plate" current={plate} onPick={onPlateScanned} onClose={() => setScan(false)} />}
+
+      <VehiclePlateLookup
+        plate={lookupPlateVal}
+        open={lookupOpen}
+        onSelect={fillFromVehicle}
+        onCreateNew={() => { setLookupOpen(false); setLookupStatus('notfound') }}
+        onCancel={() => setLookupOpen(false)}
+      />
     </main>
   )
 
