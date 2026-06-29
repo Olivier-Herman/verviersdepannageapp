@@ -155,6 +155,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }).eq('id', secondary.id).eq('status', secondary.status)  // garde anti-course
   if (secErr) return NextResponse.json({ error: secErr.message }, { status: 500 })
 
+  // ── Conserver l'historique de la fiche fusionnée sur la principale ────────
+  // Olivier 2026-06-29 : avant, les logs de la secondaire restaient sur la fiche
+  // cachée → la principale ne montrait qu'une ligne « fusion » et l'historique
+  // initial disparaissait. On rattache désormais les logs de la secondaire à la
+  // principale (timestamps préservés) pour garder l'historique complet, classé
+  // chronologiquement avec celui de la principale.
+  await sb.from('mission_logs').update({ mission_id: master.id }).eq('mission_id', secondary.id)
+    .then(() => {}, (e) => console.error('[merge] reparent logs KO:', e?.message))
+
   // ── Traces ────────────────────────────────────────────────────────────────
   await sb.from('mission_logs').insert([
     { mission_id: master.id,    actor_id: actor?.id ?? null, action: 'merge_in', notes: `Fiche ${secRef} fusionnée dans celle-ci`, metadata: { secondary_id: secondary.id, fields: Object.keys(upd) } },
