@@ -67,18 +67,25 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
               const invNum = info?.invoice_number || manualNum
               return (
                 <div key={k}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-0.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
                     <span className="text-ink text-xs font-semibold">
-                      🧾 Facture partielle{qid != null ? '' : ''} — {total.toFixed(2)} € HTVA
+                      🧾 Facture partielle — {total.toFixed(2)} € HTVA
                     </span>
                     <span className="flex items-center gap-2">
-                      {invNum
-                        ? <span className="text-emerald-700 dark:text-emerald-300 text-xs font-mono font-semibold">N° {invNum}</span>
-                        : <span className="text-ink-faint text-xs italic">facture Odoo à émettre</span>}
+                      {invNum ? (
+                        <span
+                          className="inline-block border-[2.5px] border-green-600 text-green-600 font-black uppercase tracking-widest px-3 py-1 rounded-md text-sm sm:text-base bg-surface/40 shadow-sm"
+                          style={{ transform: 'rotate(-8deg)', letterSpacing: '0.12em' }}
+                        >
+                          {invNum}
+                        </span>
+                      ) : (
+                        <span className="text-ink-faint text-xs italic">facture Odoo à émettre</span>
+                      )}
                       {info?.invoice_url
-                        ? <a href={info.invoice_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 dark:text-amber-300 underline">Facture ↗</a>
+                        ? <a href={info.invoice_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 dark:text-amber-300 underline whitespace-nowrap">Facture ↗</a>
                         : info?.quote_url
-                          ? <a href={info.quote_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 dark:text-amber-300 underline">Devis ↗</a>
+                          ? <a href={info.quote_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 dark:text-amber-300 underline whitespace-nowrap">Devis ↗</a>
                           : null}
                     </span>
                   </div>
