@@ -74,7 +74,7 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
                     <span className="flex items-center gap-2">
                       {invNum ? (
                         <span
-                          className="inline-block border-[2.5px] border-green-600 text-green-600 font-black uppercase tracking-widest px-3 py-1 rounded-md text-sm sm:text-base bg-surface/40 shadow-sm"
+                          className="inline-block border-[3px] border-green-600 text-green-600 font-black uppercase tracking-widest px-5 py-2 rounded-md text-xl sm:text-2xl bg-surface/40 shadow-sm"
                           style={{ transform: 'rotate(-8deg)', letterSpacing: '0.12em' }}
                         >
                           {invNum}
