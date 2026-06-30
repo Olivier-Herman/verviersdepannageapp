@@ -2,10 +2,17 @@
 
 import { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import FacturerModal from '@/components/facturation/FacturerModal'
+
+// Client browser (anon) pour le realtime de la liste facturation.
+const sbRealtime = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
 interface MissionRow {
   id: string
@@ -168,6 +175,36 @@ export default function FacturationClient({
   const [sourceFilter, setSrc]  = useState<string>('all')
   const [selected, setSelected] = useState<MissionRow | null>(null)
   const [data, setData]         = useState(missions)
+
+  // ── Realtime : la liste se met à jour en direct (sans refresh) ───────────
+  // Quand une fiche est facturée/validée ou annulée (status ≠ to_invoice), elle
+  // disparaît de l'écran ; quand une nouvelle passe en to_invoice, elle apparaît.
+  // Olivier 2026-06-30. La variante (général/touring) filtre par source.
+  useEffect(() => {
+    const inScope = (m: any) => isTouring ? m.source === 'touring' : m.source !== 'touring'
+    const channel = sbRealtime.channel('facturation-list')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'incoming_missions' },
+        (payload: any) => {
+          const row = payload.new || payload.old
+          if (!row?.id) return
+          const isToInvoice = payload.eventType !== 'DELETE'
+            && payload.new?.status === 'to_invoice'
+            && inScope(payload.new)
+          setData(prev => {
+            const exists = prev.some(m => m.id === row.id)
+            if (isToInvoice) {
+              // Nouvelle fiche à facturer → on l'ajoute si absente.
+              return exists ? prev.map(m => m.id === row.id ? { ...m, ...payload.new } : m)
+                            : [payload.new as MissionRow, ...prev]
+            }
+            // Plus à facturer (facturée/annulée/autre) → on la retire.
+            return exists ? prev.filter(m => m.id !== row.id) : prev
+          })
+        })
+      .subscribe()
+    return () => { sbRealtime.removeChannel(channel) }
+  }, [isTouring])
 
   // ── Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) ──────────
   const [advType, setAdvType]       = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
