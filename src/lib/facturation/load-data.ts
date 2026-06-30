@@ -81,11 +81,19 @@ export async function loadFacturationData(
         .in('mission_id', [...allIds])
     : { data: [] }
 
+  // Libellés des sources (catalog = source de vérité) → affichage de la
+  // dénomination (ex. garage_14528a → « Centracar ») au lieu de la clé brute.
+  const { data: catalog } = await supabase
+    .from('mission_source_catalog').select('key, label')
+  const sourceLabels: Record<string, string> = {}
+  for (const c of catalog || []) if (c.label) sourceLabels[c.key] = c.label
+
   return {
     missions: missions || [],
     siblings,
     payments: payments || [],
     drivers:  drivers || [],
     advances: advances || [],
+    sourceLabels,
   }
 }

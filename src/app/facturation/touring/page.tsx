@@ -23,7 +23,7 @@ export default async function FacturationTouringPage() {
   if (!hasAccess) redirect('/dashboard?error=access_denied')
 
   const supabase = createAdminClient()
-  const { missions, siblings, payments, drivers, advances } =
+  const { missions, siblings, payments, drivers, advances, sourceLabels } =
     await loadFacturationData(supabase, { onlySource: 'touring' })
 
   return (
@@ -33,6 +33,7 @@ export default async function FacturationTouringPage() {
       payments={payments}
       drivers={drivers}
       advances={advances}
+      sourceLabels={sourceLabels}
       userRole={role}
       userName={user.name || ''}
       userEmail={user.email}

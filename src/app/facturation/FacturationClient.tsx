@@ -85,6 +85,7 @@ interface Props {
   payments:    PaymentRow[]
   drivers:     DriverRow[]
   advances?:   AdvanceRow[]
+  sourceLabels?: Record<string, string>
   userRole:    string
   userName:    string
   userEmail?:  string | null
@@ -133,10 +134,15 @@ const KIND_COLOR: Record<string, string> = {
 }
 
 export default function FacturationClient({
-  missions, siblings, payments, drivers, advances = [],
+  missions, siblings, payments, drivers, advances = [], sourceLabels = {},
   userRole, userName, userEmail, userModules, variant = 'general',
 }: Props) {
   const isTouring = variant === 'touring'
+
+  // Dénomination de source : catalog (ex. garage_14528a → « Centracar ») en
+  // priorité, puis libellés connus, puis la clé brute en dernier recours.
+  const fmtSource = (s: string | null): string =>
+    !s ? '—' : (sourceLabels[s] || SOURCE_LABEL[s.toLowerCase()] || s)
 
   // Olivier 2026-06-01 : map mission_id -> avances liees, pour highlight des
   // cartes "A facturer" qui contiennent une avance de fonds (attention requise).
