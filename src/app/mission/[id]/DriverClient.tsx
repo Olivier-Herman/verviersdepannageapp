@@ -3040,6 +3040,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
+        {/* Info complémentaire (saisie par le dispatcher, sous les adresses) */}
+        {(M as any).info_complementaire && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4">
+            <p className="text-amber-800 text-xs uppercase tracking-widest font-bold mb-1">ℹ️ Info complémentaire</p>
+            <p className="text-amber-900 text-sm font-medium whitespace-pre-wrap">{(M as any).info_complementaire}</p>
+          </div>
+        )}
+
         {/* Remarques */}
         {M.remarks_general && (
           <div className="bg-surface border border rounded-2xl p-4">

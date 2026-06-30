@@ -73,7 +73,7 @@ export async function PATCH(
     'depot_depart_id', 'depot_depart_locked',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',
-    'incident_at', 'intervention_date', 'remarks_general',
+    'incident_at', 'intervention_date', 'remarks_general', 'info_complementaire',
     // Olivier 2026-06-02 PM : dates parc modifiables (correction gardiennage post-coup).
     'parked_at', 'delivering_at',
     // Olivier 2026-06-02 : snc_scenario doit etre modifiable cote dispatch.
@@ -224,6 +224,15 @@ export async function PATCH(
       notes:      `Bascule auto en zone K (relivraison) après saisie de l'adresse — depuis ${fromZone}`,
       metadata:   { from_zone: fromZone, to_zone: 'K', trigger: 'redelivery_address_set' },
     })
+    // Olivier 2026-06-30 : imprimer l'étiquette relivraison à la bascule en K
+    // (comme request-relivraison / transfer-parc le font). Avant, ce chemin
+    // PATCH transférait en K mais n'imprimait pas. Non bloquant.
+    try {
+      const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
+      await reprintLabelForMission({ kind: 'uuid', value: params.id })
+    } catch (e: any) {
+      console.warn(`[mission PATCH] impression étiquette relivraison KO mission=${params.id}:`, e?.message)
+    }
   }
 
   // Notification push au chauffeur si demandé (modifications dispatcher après assignation).

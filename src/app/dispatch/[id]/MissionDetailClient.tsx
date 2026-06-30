@@ -1380,6 +1380,7 @@ export default function MissionDetailClient({
   const [depots, setDepots]                   = useState<Array<{id:string;name:string;address:string;is_default:boolean}>>([])
   const [depotId, setDepotId]                 = useState<string>(initialMission.depot_depart_id || '')
   const [depotLocked, setDepotLocked]         = useState<boolean>(!!initialMission.depot_depart_locked)
+  const [infoCompl, setInfoCompl]             = useState<string>((initialMission as any).info_complementaire || '')
   // Stops intermédiaires : liste de {id, label, address, lat, lng, sort_order}
   // Le dernier stop = destination dans le calcul KM. Sauvegarde en extra_addresses (JSONB).
   const [stops, setStops]                     = useState<Stop[]>(() => {
@@ -3181,6 +3182,21 @@ export default function MissionDetailClient({
                   </div>
                   )}
                 </div>
+                {/* Info complémentaire chauffeur — sous les adresses (Olivier 2026-06-30) */}
+                <div className="mt-4 pt-4 border-t">
+                  <label className="block text-ink-muted text-xs font-medium uppercase tracking-wide mb-1.5">
+                    ℹ️ Info complémentaire (visible par le chauffeur)
+                  </label>
+                  <textarea
+                    value={infoCompl}
+                    onChange={e => setInfoCompl(e.target.value)}
+                    onBlur={() => silentPatch({ info_complementaire: infoCompl.trim() || null })}
+                    rows={2}
+                    placeholder="Ex : clés à la réception, code portail 1234, demander Mr X…"
+                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none"
+                  />
+                </div>
+
                 {/* Kilométrage estimé — intégré au bloc Lieu/Destination (Olivier 2026-06-14) */}
                 <div className="mt-4 pt-4 border-t">
                   <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />
