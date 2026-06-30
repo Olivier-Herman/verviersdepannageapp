@@ -759,7 +759,7 @@ export default function TarifsClient(props: Props) {
                           className="mt-1"
                         />
                         <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                          <FieldSelect label="Source" value={item.source} options={sources.map(s => s.source)} onChange={v => updateField(idx, 'source', v)} />
+                          <FieldSelect label="Source" value={item.source} options={sources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => updateField(idx, 'source', v)} />
                           <FieldSelect label="Type" value={item.mission_type} options={MISSION_TYPES} onChange={v => updateField(idx, 'mission_type', v)} />
                           <FieldNumber label="Forfait €" value={item.unit_price} onChange={v => updateField(idx, 'unit_price', v)} />
                           <FieldNumber label="Km inclus" value={item.km_inclus} onChange={v => updateField(idx, 'km_inclus', v)} />
@@ -827,7 +827,7 @@ export default function TarifsClient(props: Props) {
                 {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}
               </h2>
               <div className="grid grid-cols-2 gap-3">
-                <FieldSelect label="Source" value={editTariff.source || ''} options={sources.map(s => s.source)} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
+                <FieldSelect label="Source" value={editTariff.source || ''} options={sources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
                 <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
 
                 {/* Toggle pricing mode : forfait vs brackets vs lines */}
@@ -1386,12 +1386,12 @@ function FieldNumber({ label, value, onChange }: { label: string; value: number 
   )
 }
 
-function FieldSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+function FieldSelect({ label, value, options, onChange, optionLabels }: { label: string; value: string; options: string[]; onChange: (v: string) => void; optionLabels?: Record<string, string> }) {
   return (
     <div>
       <label className="text-[10px] text-ink-faint uppercase tracking-wider">{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)} className="w-full px-2 py-1 bg-surface-hover rounded text-sm">
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map(o => <option key={o} value={o}>{optionLabels?.[o] || o}</option>)}
       </select>
     </div>
   )
