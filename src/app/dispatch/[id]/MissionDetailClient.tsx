@@ -18,6 +18,7 @@ import RelivraisonModalButton from '@/components/missions/RelivraisonModalButton
 import AllianzCompleteButton from '@/components/missions/AllianzCompleteButton'
 import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
+import FicheFacturerButton from '@/components/facturation/FicheFacturerButton'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
 import DriverPickerModal from '@/components/DriverPickerModal'
@@ -3653,6 +3654,14 @@ export default function MissionDetailClient({
                     🔑 Restituer le véhicule (encaissement chauffeur)
                   </button>
                 </>
+              )}
+
+              {/* Facturer — visible quand la fiche est en facturation (to_invoice)
+                  et que l'user a accès facturation (même visibilité que le module
+                  Facturation). Ouvre le même modal. Olivier 2026-06-30. */}
+              {status === 'to_invoice'
+                && (['admin', 'superadmin'].includes(userRole) || userModules.includes('facturation')) && (
+                <FicheFacturerButton missionId={initialMission.id} />
               )}
 
               {/* Panneau Saisie (réquisitoire / levée de saisie / Domaine) —
