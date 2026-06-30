@@ -106,6 +106,9 @@ export default function TarifsClient(props: Props) {
   const [view, setView] = useState<'tariffs' | 'rules'>('tariffs')
   const [sources, setSources] = useState<{ source: string; label: string }[]>([])
   const SOURCE_LABELS = Object.fromEntries(sources.map(s => [s.source, s.label]))
+  // Sources triées par dénomination (ordre alphabétique) pour les sélecteurs.
+  const sortedSources = [...sources].sort((a, b) =>
+    (a.label || a.source).localeCompare(b.label || b.source, 'fr', { sensitivity: 'base' }))
 
   // Fetch dynamique des sources connues (mission_sources + incoming_missions)
   useEffect(() => {
@@ -657,7 +660,7 @@ export default function TarifsClient(props: Props) {
                   <label className="text-xs text-ink-faint uppercase tracking-wider">Source (optionnel)</label>
                   <select value={textHint} onChange={e => setTextHint(e.target.value)} className="w-full mt-1 px-3 py-2 bg-surface-hover rounded">
                     <option value="">Auto (laisse l'IA détecter)</option>
-                    {sources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
+                    {sortedSources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -701,7 +704,7 @@ export default function TarifsClient(props: Props) {
                   <label className="text-xs text-ink-faint uppercase tracking-wider">Source (optionnel, aide l'IA)</label>
                   <select value={uploadHint} onChange={e => setUploadHint(e.target.value)} className="w-full mt-1 px-3 py-2 bg-surface-hover rounded">
                     <option value="">Auto (laisse l'IA détecter)</option>
-                    {sources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
+                    {sortedSources.map(s => <option key={s.source} value={s.source}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -759,7 +762,7 @@ export default function TarifsClient(props: Props) {
                           className="mt-1"
                         />
                         <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                          <FieldSelect label="Source" value={item.source} options={sources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => updateField(idx, 'source', v)} />
+                          <FieldSelect label="Source" value={item.source} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => updateField(idx, 'source', v)} />
                           <FieldSelect label="Type" value={item.mission_type} options={MISSION_TYPES} onChange={v => updateField(idx, 'mission_type', v)} />
                           <FieldNumber label="Forfait €" value={item.unit_price} onChange={v => updateField(idx, 'unit_price', v)} />
                           <FieldNumber label="Km inclus" value={item.km_inclus} onChange={v => updateField(idx, 'km_inclus', v)} />
@@ -827,7 +830,7 @@ export default function TarifsClient(props: Props) {
                 {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}
               </h2>
               <div className="grid grid-cols-2 gap-3">
-                <FieldSelect label="Source" value={editTariff.source || ''} options={sources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
+                <FieldSelect label="Source" value={editTariff.source || ''} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => setEditTariff(p => ({ ...p!, source: v }))} />
                 <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={MISSION_TYPES} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
 
                 {/* Toggle pricing mode : forfait vs brackets vs lines */}
