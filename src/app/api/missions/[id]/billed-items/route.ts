@@ -46,7 +46,45 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .sort()
     .pop() || null
 
-  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo })
+  // Olivier 2026-06-30 : récupération AUTOMATIQUE du n° de facture Odoo par
+  // facture partielle (devis = odoo_quote_id). Le devis, une fois facturé dans
+  // Odoo, porte une facture (account.move) avec un numéro → on le ramène pour
+  // l'afficher dans le bandeau (plus besoin de l'encoder à la main). Best-effort.
+  const quoteIds = [...new Set(items.map((i: any) => i.odoo_quote_id).filter((x: any): x is number => x != null))]
+  const quotesInfo: Record<number, { invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null }> = {}
+  if (quoteIds.length > 0) {
+    try {
+      const { odooRpc } = await import('@/lib/odoo')
+      const ODOO_URL = process.env.ODOO_URL || ''
+      const orders = await odooRpc<any[]>('sale.order', 'read', [quoteIds], { fields: ['id', 'invoice_ids'] })
+      const moveByQuote = new Map<number, number[]>()
+      const allMoveIds = new Set<number>()
+      for (const o of orders || []) {
+        const ids = (o.invoice_ids || []).map(Number)
+        moveByQuote.set(o.id, ids)
+        for (const id of ids) allMoveIds.add(id)
+      }
+      const moves = allMoveIds.size > 0
+        ? await odooRpc<any[]>('account.move', 'read', [[...allMoveIds]], { fields: ['id', 'name', 'state', 'move_type'] })
+        : []
+      const moveById = new Map((moves || []).map((m: any) => [m.id, m]))
+      for (const qid of quoteIds) {
+        const moveIds = moveByQuote.get(qid) || []
+        // 1re facture client (out_invoice) non annulée.
+        const inv = moveIds.map(id => moveById.get(id)).find((m: any) => m && m.move_type === 'out_invoice' && m.state !== 'cancel')
+        quotesInfo[qid] = {
+          invoice_number: inv && inv.name && inv.name !== '/' ? inv.name : null,
+          state:          inv ? inv.state : null,
+          quote_url:      `${ODOO_URL}/web#id=${qid}&model=sale.order&view_type=form`,
+          invoice_url:    inv ? `${ODOO_URL}/web#id=${inv.id}&model=account.move&view_type=form` : null,
+        }
+      }
+    } catch (e: any) {
+      console.warn('[billed-items] enrich Odoo KO:', e?.message)
+    }
+  }
+
+  return NextResponse.json({ items, count: items.length, total_htva: totalHtva, last_parc_period_to: lastParcTo, quotes_info: quotesInfo })
 }
 
 // PATCH : enregistre le n° de facture d'une facture partielle (lot odoo_quote_id).

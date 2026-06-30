@@ -21,11 +21,13 @@ interface Invoice {
 const STATE_LABEL: Record<string, string> = { draft: 'Brouillon', posted: 'Émise', cancel: 'Annulée' }
 const PAY_LABEL:   Record<string, string> = { paid: 'Payée', partial: 'Partielle', not_paid: 'Non payée', in_payment: 'En paiement', reversed: 'Extournée' }
 
-interface BilledItem { label: string; amount_htva: number; period_from: string | null; period_to: string | null }
+interface BilledItem { label: string; amount_htva: number; period_from: string | null; period_to: string | null; odoo_quote_id: number | null; invoice_number?: string | null }
+interface QuoteInfo { invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null }
 
 export default function MissionInvoicesBanner({ missionId }: { missionId: string }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [billed, setBilled]     = useState<BilledItem[]>([])
+  const [quotesInfo, setQuotesInfo] = useState<Record<number, QuoteInfo>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -35,7 +37,7 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
       .catch(() => {})
     fetch(`/api/missions/${missionId}/billed-items`)
       .then(r => r.json())
-      .then(d => { if (!cancelled) setBilled(d.items || []) })
+      .then(d => { if (!cancelled) { setBilled(d.items || []); setQuotesInfo(d.quotes_info || {}) } })
       .catch(() => {})
     return () => { cancelled = true }
   }, [missionId])
@@ -44,21 +46,58 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
 
   return (
     <div className="px-4 lg:px-8 pt-6 space-y-3">
-      {/* Partiellement facturée : postes déjà émis (facture partielle). */}
-      {billed.length > 0 && (
+      {/* Partiellement facturée : postes déjà émis, groupés par facture partielle
+          (devis Odoo) avec le n° de facture récupéré automatiquement. */}
+      {billed.length > 0 && (() => {
+        // Groupage par odoo_quote_id (1 facture partielle = 1 devis).
+        const groups = new Map<string, BilledItem[]>()
+        for (const b of billed) {
+          const k = b.odoo_quote_id != null ? String(b.odoo_quote_id) : 'sans'
+          const arr = groups.get(k) || []; arr.push(b); groups.set(k, arr)
+        }
+        return (
         <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4">
           <p className="text-amber-700 dark:text-amber-300 text-sm font-semibold mb-2">⏳ Partiellement facturée</p>
-          <div className="space-y-1">
-            {billed.map((b, i) => (
-              <p key={i} className="text-ink-secondary text-xs">
-                ✓ {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
-                {b.period_from && b.period_to ? ` (du ${new Date(b.period_from).toLocaleDateString('fr-BE')} au ${new Date(b.period_to).toLocaleDateString('fr-BE')})` : ''}
-              </p>
-            ))}
+          <div className="space-y-3">
+            {[...groups.entries()].map(([k, list]) => {
+              const qid  = k !== 'sans' ? Number(k) : null
+              const info = qid != null ? quotesInfo[qid] : undefined
+              const total = list.reduce((s, b) => s + Number(b.amount_htva || 0), 0)
+              const manualNum = list.find(b => b.invoice_number)?.invoice_number || null
+              const invNum = info?.invoice_number || manualNum
+              return (
+                <div key={k}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-0.5">
+                    <span className="text-ink text-xs font-semibold">
+                      🧾 Facture partielle{qid != null ? '' : ''} — {total.toFixed(2)} € HTVA
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {invNum
+                        ? <span className="text-emerald-700 dark:text-emerald-300 text-xs font-mono font-semibold">N° {invNum}</span>
+                        : <span className="text-ink-faint text-xs italic">facture Odoo à émettre</span>}
+                      {info?.invoice_url
+                        ? <a href={info.invoice_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 dark:text-amber-300 underline">Facture ↗</a>
+                        : info?.quote_url
+                          ? <a href={info.quote_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 dark:text-amber-300 underline">Devis ↗</a>
+                          : null}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 pl-1">
+                    {list.map((b, i) => (
+                      <p key={i} className="text-ink-secondary text-xs">
+                        ✓ {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
+                        {b.period_from && b.period_to ? ` (du ${new Date(b.period_from).toLocaleDateString('fr-BE')} au ${new Date(b.period_to).toLocaleDateString('fr-BE')})` : ''}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
           <p className="text-ink-faint text-xs mt-2">Ces postes seront exclus du solde à la facturation finale.</p>
         </div>
-      )}
+        )
+      })()}
 
       {invoices.length > 0 && (
       <div className="bg-emerald-500/10 border border-emerald-500/40 rounded-2xl p-4">
