@@ -1381,7 +1381,9 @@ export default function MissionDetailClient({
   const [depots, setDepots]                   = useState<Array<{id:string;name:string;address:string;is_default:boolean}>>([])
   const [depotId, setDepotId]                 = useState<string>(initialMission.depot_depart_id || '')
   const [depotLocked, setDepotLocked]         = useState<boolean>(!!initialMission.depot_depart_locked)
-  const [infoCompl, setInfoCompl]             = useState<string>((initialMission as any).info_complementaire || '')
+  const [incidentInfo, setIncidentInfo]       = useState<string>((initialMission as any).incident_info || '')
+  const [destinationInfo, setDestinationInfo] = useState<string>((initialMission as any).destination_info || '')
+  const [redeliveryInfo, setRedeliveryInfo]   = useState<string>((initialMission as any).redelivery_info || '')
   // Stops intermédiaires : liste de {id, label, address, lat, lng, sort_order}
   // Le dernier stop = destination dans le calcul KM. Sauvegarde en extra_addresses (JSONB).
   const [stops, setStops]                     = useState<Stop[]>(() => {
@@ -3144,6 +3146,10 @@ export default function MissionDetailClient({
                         </Field>
                       </div>
                     )}
+                    <textarea value={incidentInfo} onChange={e => setIncidentInfo(e.target.value)}
+                      onBlur={() => silentPatch({ incident_info: incidentInfo.trim() || null })}
+                      rows={2} placeholder="ℹ️ Info complémentaire intervention (visible chauffeur) — ex : code portail, demander Mr X…"
+                      className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
                   </div>
                   {!noDestination && (
                   <div className="space-y-3">
@@ -3180,24 +3186,26 @@ export default function MissionDetailClient({
                         </Field>
                       </div>
                     )}
+                    <textarea value={destinationInfo} onChange={e => setDestinationInfo(e.target.value)}
+                      onBlur={() => silentPatch({ destination_info: destinationInfo.trim() || null })}
+                      rows={2} placeholder="ℹ️ Info complémentaire destination (visible chauffeur) — ex : livrer à l'arrière, demander la réception…"
+                      className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
                   </div>
                   )}
                 </div>
-                {/* Info complémentaire chauffeur — sous les adresses (Olivier 2026-06-30) */}
-                <div className="mt-4 pt-4 border-t">
-                  <label className="block text-ink-muted text-xs font-medium uppercase tracking-wide mb-1.5">
-                    ℹ️ Info complémentaire (visible par le chauffeur)
-                  </label>
-                  <textarea
-                    value={infoCompl}
-                    onChange={e => setInfoCompl(e.target.value)}
-                    onBlur={() => silentPatch({ info_complementaire: infoCompl.trim() || null })}
-                    rows={2}
-                    placeholder="Ex : clés à la réception, code portail 1234, demander Mr X…"
-                    className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none"
-                  />
-                </div>
 
+                {/* Info complémentaire relivraison — visible quand une adresse de
+                    relivraison est définie. Olivier 2026-06-30. */}
+                {(initialMission as any).redelivery_address && (
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-1">Relivraison</p>
+                    <p className="text-ink-secondary text-xs mb-1.5">📍 {(initialMission as any).redelivery_address}</p>
+                    <textarea value={redeliveryInfo} onChange={e => setRedeliveryInfo(e.target.value)}
+                      onBlur={() => silentPatch({ redelivery_info: redeliveryInfo.trim() || null })}
+                      rows={2} placeholder="ℹ️ Info complémentaire relivraison (visible chauffeur)…"
+                      className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
+                  </div>
+                )}
                 {/* Kilométrage estimé — intégré au bloc Lieu/Destination (Olivier 2026-06-14) */}
                 <div className="mt-4 pt-4 border-t">
                   <MissionKmInfo missionId={initialMission.id} refreshKey={String(kmRefresh)} />

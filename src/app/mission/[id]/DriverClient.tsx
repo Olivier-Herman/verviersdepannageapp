@@ -2984,6 +2984,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 <p className="text-ink-muted text-xs">Prise en charge</p>
                 <p className="text-ink text-sm truncate">{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</p>
                 <HighwayInfo bk={M.incident_borne_km} sens={M.incident_sens} />
+                {(M as any).incident_info && (
+                  <p className="text-amber-700 text-xs font-medium mt-0.5 whitespace-pre-wrap">ℹ️ {(M as any).incident_info}</p>
+                )}
               </div>
               <span className="text-blue-400 text-xs flex-shrink-0">→</span>
             </button>
@@ -3020,7 +3023,15 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     <p className="text-ink-muted text-xs">{point.label}</p>
                     <p className="text-ink text-sm truncate">{point.address}</p>
                     {point.id === '__dest__' && (
-                      <HighwayInfo bk={M.destination_borne_km} sens={M.destination_sens} />
+                      <>
+                        <HighwayInfo bk={M.destination_borne_km} sens={M.destination_sens} />
+                        {(M as any).destination_info && (
+                          <p className="text-amber-700 text-xs font-medium mt-0.5 whitespace-pre-wrap">ℹ️ {(M as any).destination_info}</p>
+                        )}
+                        {(M as any).redelivery_info && (
+                          <p className="text-amber-700 text-xs font-medium mt-0.5 whitespace-pre-wrap">ℹ️ Relivraison : {(M as any).redelivery_info}</p>
+                        )}
+                      </>
                     )}
                     <p className="text-blue-400 text-xs mt-0.5">Tap → Naviguer ou Modifier</p>
                   </button>
@@ -3037,14 +3048,6 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               ))
             })()}
             </div>{/* end scrollable stops */}
-          </div>
-        )}
-
-        {/* Info complémentaire (saisie par le dispatcher, sous les adresses) */}
-        {(M as any).info_complementaire && (
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4">
-            <p className="text-amber-800 text-xs uppercase tracking-widest font-bold mb-1">ℹ️ Info complémentaire</p>
-            <p className="text-amber-900 text-sm font-medium whitespace-pre-wrap">{(M as any).info_complementaire}</p>
           </div>
         )}
 
