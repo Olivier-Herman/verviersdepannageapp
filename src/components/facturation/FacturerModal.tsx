@@ -1053,6 +1053,27 @@ export default function FacturerModal({
     setInvoiceNumber('')
   }
 
+  // Olivier 2026-06-30 : « Facturer OK » récupère le n° de facture depuis Odoo
+  // AUTOMATIQUEMENT (devis → facture émise → numéro) ; on ne demande la saisie
+  // manuelle QUE si la facture n'est pas encore émise dans Odoo (repli).
+  async function tryAutoNumber(ids: string[], label: string) {
+    setBusy(true); setError(null)
+    let found: string | null = null
+    try {
+      for (const id of ids) {
+        const r = await fetch(`/api/missions/${id}/invoices`).then(x => x.json()).catch(() => null)
+        const inv = (r?.invoices || []).find((i: any) => i.number && i.state === 'posted' && !i.isRefund)
+        if (inv?.number) { found = inv.number; break }
+      }
+    } catch { /* repli manuel */ }
+    if (found) {
+      await submit('manual', ids, found)   // submit gère busy + fermeture
+    } else {
+      setBusy(false)
+      askNumber(ids, label)                 // pas encore facturé dans Odoo → saisie
+    }
+  }
+
   function confirmNumber() {
     if (!numberPrompt) return
     const n = invoiceNumber.trim()
@@ -1274,7 +1295,7 @@ export default function FacturerModal({
                   payments={m.id === mission.id ? payments : []}
                   driverName={driverName}
                   busy={busy}
-                  onValidate={() => askNumber([m.id], m.external_id || m.id.slice(0,8))}
+                  onValidate={() => tryAutoNumber([m.id], m.external_id || m.id.slice(0,8))}
                   onAuto={() => submit('auto', [m.id])}
                   onNoCharge={() => askNoCharge([m.id], m.external_id || m.id.slice(0,8))}
                   onQuoteCreated={(missionId, quoteId, quoteUrl) => {
@@ -1329,7 +1350,7 @@ export default function FacturerModal({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => askNumber(readyIds, 'chaîne complète')}
+                  onClick={() => tryAutoNumber(readyIds, 'chaîne complète')}
                   className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
                 >
                   ✓ Tout facturer OK (1 n°)
