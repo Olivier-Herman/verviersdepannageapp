@@ -4,6 +4,7 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { Radio, Percent, Database, MapPin, Archive } from 'lucide-react'
+import TowsoftCreateToggle from './TowsoftCreateToggle'
 
 export const dynamic    = 'force-dynamic'
 export const revalidate = 0
@@ -79,6 +80,8 @@ export default async function DispatchAdminPage() {
           <h1 className="text-ink text-xl font-semibold">Module Dispatch</h1>
           <p className="text-ink-muted text-sm">Paramétrage du module de dispatch et de facturation.</p>
         </div>
+
+        <TowsoftCreateToggle canEdit={user.role === 'superadmin'} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {sections.map(s => (

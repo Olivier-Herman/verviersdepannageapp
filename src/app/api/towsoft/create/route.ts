@@ -106,6 +106,15 @@ export async function POST(req: Request) {
     ? (interventionType === 'rem_parc' ? 'A Relivrer' : '')
     : config!.motif
 
+  // Olivier 2026-06-30 : INTERRUPTEUR création TowSoft. Quand désactivé, on
+  // continue de créer la mission VD Soft + le ticket Odoo (dossier_number), mais
+  // on NE pousse PAS la fiche dans TowSoft : la queue est marquée 'skipped' et le
+  // dispatch GitHub Action (= push TowSoft) est sauté. La LECTURE TowSoft
+  // (recherche/historique) reste inchangée. Réversible en 1 clic (/admin/dispatch).
+  const { data: tsSetting } = await supabase
+    .from('app_settings').select('value').eq('key', 'towsoft_create').maybeSingle()
+  const towsoftEnabled = (tsSetting?.value as any)?.enabled !== false   // défaut = activé
+
   // Sauvegarder dans la queue
   const { data: queueEntry, error: queueError } = await supabase
     .from('towsoft_queue')
@@ -122,7 +131,7 @@ export async function POST(req: Request) {
       driver_name:   dbUser.towsoft_name,
       parc:          parcValue,
       motif:         motifValue,
-      status:        'pending',
+      status:        towsoftEnabled ? 'pending' : 'skipped',
     })
     .select('id')
     .single()
@@ -493,9 +502,11 @@ export async function POST(req: Request) {
   const towsoftDossierNumber = dossierNumber
     || (odooTicketId ? `Encodage automatique ${odooTicketId}` : 'Encodage automatique')
 
-  // 2. GH dispatch + email en parallèle (le ticket Odoo est déjà créé)
-  await Promise.allSettled([
-    fetch(
+  // 2. GH dispatch (push TowSoft) + email en parallèle (le ticket Odoo est déjà créé).
+  //    Le push TowSoft n'est déclenché que si l'interrupteur est ACTIVÉ.
+  const parallelTasks: Promise<any>[] = []
+  if (towsoftEnabled) {
+    parallelTasks.push(fetch(
       `https://api.github.com/repos/Olivier-Herman/verviersdepannageapp/dispatches`,
       {
         method: 'POST',
@@ -532,8 +543,12 @@ export async function POST(req: Request) {
     ).then(r => {
       if (!r.ok) r.text().then(e => console.error('[TowSoft] GitHub dispatch error:', e))
       else console.log('[TowSoft] GitHub Action déclenchée pour queue:', queueEntry.id)
-    }),
+    }))
+  } else {
+    console.log('[TowSoft] Interrupteur OFF — création fiche TowSoft sautée (queue skipped, mission VD Soft créée).')
+  }
 
+  parallelTasks.push(
     sendPoliceEmail({
       type, typeLabel, chauffeurName: dbUser.name,
       date, time, location,
@@ -551,7 +566,9 @@ export async function POST(req: Request) {
       parc:           parcValue,
     }).then(() => console.log('[TowSoft] Email envoyé'))
      .catch(e => console.error('[TowSoft] Email échec:', e)),
-  ])
+  )
+
+  await Promise.allSettled(parallelTasks)
 
   return NextResponse.json({
     ok:         true,
