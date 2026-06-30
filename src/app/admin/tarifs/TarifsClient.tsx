@@ -109,6 +109,10 @@ export default function TarifsClient(props: Props) {
   // Sources triées par dénomination (ordre alphabétique) pour les sélecteurs.
   const sortedSources = [...sources].sort((a, b) =>
     (a.label || a.source).localeCompare(b.label || b.source, 'fr', { sensitivity: 'base' }))
+  // Tarifs triés par dénomination de source puis type (ordre alphabétique).
+  const sortedTariffs = [...tariffs].sort((a, b) =>
+    (SOURCE_LABELS[a.source] || a.source).localeCompare(SOURCE_LABELS[b.source] || b.source, 'fr', { sensitivity: 'base' })
+    || (a.mission_type || '').localeCompare(b.mission_type || ''))
 
   // Fetch dynamique des sources connues (mission_sources + incoming_missions)
   useEffect(() => {
@@ -537,7 +541,7 @@ export default function TarifsClient(props: Props) {
         {/* ── Onglets par source ─────────────────────────────── */}
         <div className="flex gap-1 overflow-x-auto pb-1">
           <SourceTab active={filterSource === ''} label="Toutes" count={null} onClick={() => setFilterSource('')} />
-          {sources.map(s => {
+          {sortedSources.map(s => {
             const count = tariffs.filter(t => t.source === s.source).length
             return <SourceTab key={s.source} active={filterSource === s.source} label={s.label} count={filterSource === '' ? count : null} onClick={() => setFilterSource(s.source)} />
           })}
@@ -587,7 +591,7 @@ export default function TarifsClient(props: Props) {
                 </tr>
               </thead>
               <tbody>
-                {tariffs.map(t => {
+                {sortedTariffs.map(t => {
                   const isBrackets = t.pricing_mode === 'brackets'
                   const isLines    = t.pricing_mode === 'lines'
                   return (
