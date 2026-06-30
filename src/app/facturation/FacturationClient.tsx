@@ -45,6 +45,8 @@ interface MissionRow {
   invoice_url: string | null
   no_charge_at:     string | null
   no_charge_reason: string | null
+  billed_to_id?:    number | null
+  billed_to_name?:  string | null
 }
 
 interface SiblingRow {
@@ -605,6 +607,10 @@ export default function FacturationClient({
                         {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}
                         {' · '}
                         {m.client_name || '—'}
+                      </p>
+                      <p className="text-ink-muted text-xs mt-0.5 truncate">
+                        {m.dossier_number && <>📁 Dossier {m.dossier_number}{' · '}</>}
+                        💳 Facturé à : <span className="text-ink-secondary">{m.billed_to_name || '—'}</span>
                       </p>
                       <p className="text-ink-muted text-xs mt-0.5">
                         Terminé le {fmtDateTime(m.completed_at)}
