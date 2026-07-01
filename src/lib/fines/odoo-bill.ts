@@ -22,6 +22,14 @@ function fmtDateBE(iso: string | null): string {
   return d.toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+// YYYY-MM-DD (heure locale BE) pour la date de facturation Odoo.
+function dateOnlyBE(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+}
+
 export async function createFineVendorBill(
   sb: any,
   fineId: string,
@@ -47,6 +55,7 @@ export async function createFineVendorBill(
       move_type:  'in_invoice',
       partner_id: FINE_ODOO_PARTNER_ID,
       journal_id: FINE_ODOO_JOURNAL_ID,
+      invoice_date: dateOnlyBE(f.infraction_date),   // date de facturation = date de l'infraction
       ref:        f.infraction_ref || f.identification_code || null,
       invoice_line_ids: [[0, 0, {
         name:       libelle,
