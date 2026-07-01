@@ -18,6 +18,17 @@ export default function FinesMonthlyRecap() {
   const [show, setShow] = useState(false)
 
   useEffect(() => {
+    // Prévisualisation (admin) : ?fines_recap=preview → force l'affichage avec
+    // des données factices, sans tenir compte du jour / du flag mensuel.
+    const preview = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fines_recap') === 'preview'
+    if (preview) {
+      fetch('/api/driver/fines-recap?preview=1')
+        .then(r => r.json())
+        .then((d: Recap) => { if (d?.months?.length) { setRecap(d); setShow(true) } })
+        .catch(() => {})
+      return
+    }
+
     const now = new Date()
     if (now.getDate() !== 2) return   // le 2 du mois (les amendes sont clôturées le 1er)
     const key = `fines_recap_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

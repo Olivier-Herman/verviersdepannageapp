@@ -14,17 +14,31 @@ export const dynamic = 'force-dynamic'
 
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const preview = new URL(req.url).searchParams.get('preview') === '1'
 
   const sb = createAdminClient()
   const { data: me } = await sb.from('users').select('id, name, role, roles').eq('email', session.user.email).maybeSingle()
   if (!me) return NextResponse.json({ months: [], grand_total: 0 })
 
-  // Uniquement les users ayant le profil Driver (rôle principal OU dans roles[]).
   const isDriver = me.role === 'driver' || (Array.isArray(me.roles) && me.roles.includes('driver'))
-  if (!isDriver) return NextResponse.json({ months: [], grand_total: 0 })
+  const isAdmin  = ['admin', 'superadmin'].includes(me.role) || (Array.isArray(me.roles) && me.roles.some((r: string) => ['admin', 'superadmin'].includes(r)))
+
+  // Normal : uniquement profil Driver. Preview : autorisée aux admins pour tester.
+  if (!isDriver && !(preview && isAdmin)) return NextResponse.json({ months: [], grand_total: 0 })
+
+  // Mode prévisualisation → données FACTICES (pas les vraies amendes).
+  if (preview) {
+    const months = [
+      { ym: '2026-06', label: 'juin 2026',  total: 165.00, count: 2 },
+      { ym: '2026-05', label: 'mai 2026',   total: 58.00,  count: 1 },
+      { ym: '2026-04', label: 'avril 2026', total: 240.00, count: 3 },
+    ]
+    return NextResponse.json({ driver_name: me.name, months, grand_total: 463.00, preview: true })
+  }
 
   const { data: fines } = await sb
     .from('fines')
