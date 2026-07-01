@@ -59,6 +59,7 @@ interface Mission {
   received_at: string
   intervention_date: string | null
   incident_at: string | null
+  rdv_at: string | null
   status: string
   assigned_to: string | null
   parse_confidence: number | null
@@ -717,6 +718,11 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
           {mission.kaze_cancelled_after_accept && (
             <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">
               ⚠ Annulé Kaze — trajet à vide
+            </span>
+          )}
+          {mission.rdv_at && new Date(mission.rdv_at).getTime() > Date.now() && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-800">
+              📅 RDV {new Date(mission.rdv_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
         </div>

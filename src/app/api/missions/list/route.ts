@@ -34,7 +34,7 @@ export async function GET(req: Request) {
       incident_address, incident_city, incident_country,
       incident_lat, incident_lng,
       destination_name, destination_address, redelivery_address,
-      amount_guaranteed, incident_at, received_at, intervention_date,
+      amount_guaranteed, incident_at, received_at, intervention_date, rdv_at,
       status, dispatch_mode,
       assigned_to, assigned_at, accepted_at,
       parse_confidence,
