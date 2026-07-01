@@ -43,8 +43,14 @@ export async function POST(req: Request) {
 
   const created: any[] = []
   const errors: { name: string; error: string }[] = []
+  const duplicates: { name: string; ref: string }[] = []
   const toProcess = files.slice(0, MAX_FILES)
   const skipped = files.length - toProcess.length
+
+  // Anti-doublon sur le n° de PV : on charge les refs déjà présents (normalisés).
+  const normRef = (s: string | null) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const { data: existingRefs } = await sb.from('fines').select('infraction_ref').not('infraction_ref', 'is', null)
+  const seenRefs = new Set<string>((existingRefs || []).map((r: any) => normRef(r.infraction_ref)).filter(Boolean))
 
   for (const file of toProcess) {
     try {
@@ -53,16 +59,23 @@ export async function POST(req: Request) {
       const mime = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
       const ext = file.name.includes('.') ? file.name.split('.').pop() : (mime.includes('pdf') ? 'pdf' : 'jpg')
 
-      // 1. Upload scan
+      // 1. OCR d'abord (pour connaître le n° de PV avant tout upload/insert)
+      const ex = await extractFineFromScan(base64, mime)
+
+      // 2. Anti-doublon : si le n° de PV existe déjà → on ne recrée pas.
+      const refN = normRef(ex.infraction_ref)
+      if (refN && seenRefs.has(refN)) {
+        duplicates.push({ name: file.name, ref: ex.infraction_ref || '' })
+        continue
+      }
+
+      // 3. Upload scan
       const path = `${me.id}/${Date.now()}_${Math.round(Math.random() * 1e6)}.${ext}`
       const { error: upErr } = await sb.storage.from('fines').upload(path, buffer, { contentType: mime, upsert: false })
       if (upErr) throw new Error(`upload: ${upErr.message}`)
       const { data: signed } = await sb.storage.from('fines').createSignedUrl(path, ONE_YEAR)
 
-      // 2. OCR
-      const ex = await extractFineFromScan(base64, mime)
-
-      // 3. Suggestion chauffeur (si plaque + date lisibles)
+      // 4. Suggestion chauffeur (si plaque + date lisibles)
       let driverId: string | null = null
       let matchMethod: 'auto' | 'none' = 'none'
       let matchConfidence: string | null = null
@@ -96,11 +109,12 @@ export async function POST(req: Request) {
       }).select('id, plate, amount, infraction_date, infraction_type, infraction_ref').single()
       if (insErr) throw new Error(insErr.message)
 
+      if (refN) seenRefs.add(refN)   // évite un doublon dans le même lot
       created.push({ ...fine, ocr: ex })
     } catch (err: any) {
       errors.push({ name: file.name, error: err?.message || 'échec' })
     }
   }
 
-  return NextResponse.json({ ok: true, created, errors, skipped })
+  return NextResponse.json({ ok: true, created, errors, duplicates, skipped })
 }

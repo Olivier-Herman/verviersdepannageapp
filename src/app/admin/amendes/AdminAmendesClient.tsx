@@ -121,7 +121,7 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
       const j = await res.json()
       if (res.ok) {
         const withAmount = j.created.filter((c: any) => c.amount != null).length
-        setImportMsg(`✅ ${j.created.length} PV importé(s) en brouillon (${withAmount} avec montant lu)${j.errors?.length ? ` · ${j.errors.length} échec(s)` : ''}${j.skipped ? ` · ${j.skipped} en attente (relance)` : ''}`)
+        setImportMsg(`✅ ${j.created.length} PV importé(s) en brouillon (${withAmount} avec montant lu)${j.duplicates?.length ? ` · ${j.duplicates.length} doublon(s) ignoré(s)` : ''}${j.errors?.length ? ` · ${j.errors.length} échec(s)` : ''}${j.skipped ? ` · ${j.skipped} en attente (relance)` : ''}`)
         router.refresh()
       } else setImportMsg(`⚠ ${j.error || 'Échec import'}`)
     } catch { setImportMsg('⚠ Erreur réseau') }

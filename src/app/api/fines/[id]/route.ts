@@ -51,7 +51,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   if ('infraction_place' in body) update.infraction_place = body.infraction_place || null
   if ('infraction_type'  in body) update.infraction_type  = body.infraction_type  || null
-  if ('infraction_ref'   in body) update.infraction_ref   = body.infraction_ref   || null
+  if ('infraction_ref' in body) {
+    const refN = String(body.infraction_ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (refN) {
+      const { data: refs } = await sb.from('fines').select('id, infraction_ref').not('infraction_ref', 'is', null).neq('id', params.id)
+      const dup = (refs || []).some((r: any) => String(r.infraction_ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === refN)
+      if (dup) return NextResponse.json({ error: `Ce n° de PV (${body.infraction_ref}) est déjà enregistré sur une autre amende.` }, { status: 409 })
+    }
+    update.infraction_ref = body.infraction_ref || null
+  }
   if ('plate'            in body) update.plate            = String(body.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || '—'
   if ('infraction_date' in body && body.infraction_date) {
     const iso = parseTowsoftDateUTC(String(body.infraction_date))   // saisie = heure locale BE

@@ -55,6 +55,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'infraction_date invalide (ISO 8601 attendu)' }, { status: 400 })
   }
 
+  // Anti-doublon : un même n° de PV ne peut être enregistré deux fois.
+  const refN = String(body.infraction_ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (refN) {
+    const { data: refs } = await sb.from('fines').select('infraction_ref').not('infraction_ref', 'is', null)
+    const dup = (refs || []).some((r: any) => String(r.infraction_ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === refN)
+    if (dup) return NextResponse.json({ error: `Ce n° de PV (${body.infraction_ref}) est déjà enregistré.` }, { status: 409 })
+  }
+
   // Match chauffeur : si override + driver_id explicite, on prend ca. Sinon on
   // (re)lance le matching auto pour stocker la confidence + mission_id.
   let driverId    = body.driver_id || null
