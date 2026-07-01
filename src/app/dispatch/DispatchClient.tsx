@@ -103,6 +103,7 @@ interface Counters {
   in_progress: number
   parked: number
   completed: number
+  rdv: number
   errors: number
 }
 
@@ -150,6 +151,7 @@ const TABS = [
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
   { key: 'parked',      label: 'À Relivrer',  countKey: 'parked'      as const },
+  { key: 'rdv',         label: '📅 RDV',      countKey: 'rdv'         as const },
   { key: 'all',         label: 'Toutes',      countKey: null },
 ]
 // Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees
@@ -857,7 +859,7 @@ export default function DispatchClient({
   const onModalChange = useCallback((open: boolean) => {
     setModalOpenCount(c => Math.max(0, c + (open ? 1 : -1)))
   }, [])
-  const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
+  const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0 })
   const [loading,        setLoading]        = useState(true)
   // Indicateur subtil "mise a jour temps reel" affiche pendant les
   // refresh silencieux (realtime + polling). Olivier 2026-05-28.
@@ -976,7 +978,7 @@ export default function DispatchClient({
       if (stale) return
 
       setMissions(mData.missions  || [])
-      setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, errors: 0 })
+      setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0 })
       setDriverStatuses(sData.drivers || [])
       if (responses[2]) {
         const mapData = await responses[2].json()

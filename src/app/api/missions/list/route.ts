@@ -59,6 +59,9 @@ export async function GET(req: Request) {
     // Recherche globale ratisse partout, c'est le seul endroit ou on les voit.
     .is('archived_at', null)
 
+  // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.
+  const RDV_THRESHOLD = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+
   if (mapMode) {
     // Vue carte : missions actives à partir de "En attente" (les "En commande"
     // sont exclues car leurs adresses ne sont géocodées qu'à l'ouverture de la
@@ -86,8 +89,19 @@ export async function GET(req: Request) {
     // chauffeur, en attente de validation employe facturation. Le tampon
     // sur la card distingue visuellement le sous-statut facturation.
     query = query.in('status', ['completed', 'to_invoice'])
+  } else if (status === 'rdv') {
+    // Onglet RDV : interventions planifiées à +12h (rdv_at > maintenant+12h),
+    // pas encore clôturées. Pour ne pas polluer l'écran du jour.
+    query = query.gt('rdv_at', RDV_THRESHOLD).not('status', 'in', '("completed","to_invoice","cancelled","ignored","parse_error")')
   } else if (status === 'all') {
     query = query.not('status', 'in', '("parse_error","ignored")')
+  }
+
+  // Les RDV planifiés à +12h sont réservés à l'onglet RDV → on les retire des
+  // onglets "du jour" (carte + En commande / En attente / Assigné / En cours).
+  const DAY_TABS = ['new', 'dispatching', 'assigned', 'in_progress']
+  if (mapMode || DAY_TABS.includes(status)) {
+    query = query.or(`rdv_at.is.null,rdv_at.lte.${RDV_THRESHOLD}`)
   }
 
   if (source) query = query.eq('source', source)
@@ -231,6 +245,11 @@ export async function GET(req: Request) {
     }
   }
 
+  // Onglet RDV : trier par date de rendez-vous (le plus proche en premier).
+  if (status === 'rdv') {
+    visibleMissions = [...visibleMissions].sort((a: any, b: any) => String(a.rdv_at || '').localeCompare(String(b.rdv_at || '')))
+  }
+
   // Compteurs par statut (exclu les archivees pour coherence avec la liste).
   // Olivier 2026-06-18 PERF : avant, on chargeait TOUTES les missions non
   // archivees (table qui grossit chaque jour) pour compter en JS → scan complet
@@ -250,13 +269,16 @@ export async function GET(req: Request) {
 
   // 'À Relivrer' (parked) : compteur calculé plus haut (parkedActiveCount) en
   // excluant les parents ayant déjà une REL enfant active.
-  const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors] = await Promise.all([
-    countBy(q => q.eq('status', 'new')),
-    countBy(q => q.eq('status', 'dispatching')),
-    countBy(q => q.in('status', ['assigned', 'accepted'])),
-    countBy(q => q.in('status', ['in_progress', 'delivering'])),
+  // Les onglets "du jour" excluent les RDV planifiés à +12h (comme la liste).
+  const exclFutureRdv = (q: any) => q.or(`rdv_at.is.null,rdv_at.lte.${RDV_THRESHOLD}`)
+  const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors, cRdv] = await Promise.all([
+    countBy(q => exclFutureRdv(q.eq('status', 'new'))),
+    countBy(q => exclFutureRdv(q.eq('status', 'dispatching'))),
+    countBy(q => exclFutureRdv(q.in('status', ['assigned', 'accepted']))),
+    countBy(q => exclFutureRdv(q.in('status', ['in_progress', 'delivering']))),
     countBy(q => q.in('status', ['completed', 'to_invoice'])),
     countBy(q => q.eq('status', 'parse_error')),
+    countBy(q => q.gt('rdv_at', RDV_THRESHOLD).not('status', 'in', '("completed","to_invoice","cancelled","ignored","parse_error")')),
   ])
 
   const counters = {
@@ -266,6 +288,7 @@ export async function GET(req: Request) {
     in_progress: cInProg.count    || 0,
     parked:      parkedActiveCount,
     completed:   cCompleted.count || 0,
+    rdv:         cRdv.count       || 0,
     errors:      cErrors.count    || 0,
   }
 
