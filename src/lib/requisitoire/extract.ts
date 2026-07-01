@@ -62,9 +62,19 @@ RÈGLES :
 - Si une info n'est pas présente, mets null (ne devine pas).
 - Plaque belge : "1-ABC-234" ou "1ABC234". VIN = 17 caractères alphanumériques.
 - Ne confonds pas pv_number avec la plaque ou le VIN.
-- doc_type='levee_saisie' si le texte parle de LEVÉE / mainlevée / restitution / fin de saisie.
-- doc_type='requisitoire' si c'est un ordre d'enlèvement/saisie/gardiennage.
-- En cas de doute réel entre réquisitoire et autre → 'autre'.
+
+CLASSIFICATION (doc_type) — PRIORITÉ À LA LEVÉE :
+- 'levee_saisie' si le document/mail indique que la saisie est LEVÉE, qu'il y a
+  MAINLEVÉE, que le véhicule peut être RESTITUÉ / LIBÉRÉ / RÉCUPÉRÉ / RENDU, que
+  la saisie ou le blocage PREND FIN, ou qu'une restitution est AUTORISÉE. IMPORTANT :
+  même si le mot « saisie » apparaît, si l'OBJET du document est de LEVER / METTRE
+  FIN à la saisie → c'est 'levee_saisie'.
+  Indices : "mainlevée", "levée de la saisie", "la saisie est levée", "fin de
+  saisie", "restitution autorisée", "peut être restitué", "véhicule à restituer",
+  "libéré", "vous pouvez restituer/récupérer".
+- 'requisitoire' si le document ORDONNE l'enlèvement / la saisie / la mise en
+  fourrière / le gardiennage (MISE EN PLACE de la saisie).
+- 'autre' uniquement si ce n'est NI un réquisitoire NI une levée (facture, courrier divers).
 Retourne UNIQUEMENT le JSON.`
 
 /**

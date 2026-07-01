@@ -27,7 +27,7 @@ export async function attachRequisitoire(
   missionId: string,
   actorId: string | null,
   opts: AttachOptions = {},
-): Promise<{ ok: true; mailMoved: boolean; dateAdapted: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; mailMoved: boolean; mailMoveError?: string; dateAdapted: boolean } | { ok: false; error: string }> {
   const { data: intake, error: iErr } = await sb
     .from('requisitoire_intake').select('*').eq('id', intakeId).maybeSingle()
   if (iErr)     return { ok: false, error: iErr.message }
@@ -151,9 +151,13 @@ export async function attachRequisitoire(
   if (sErr) return { ok: false, error: sErr.message }
 
   let mailMoved = false
+  let mailMoveError: string | undefined
   if (intake.mailbox && intake.source_email_id) {
-    mailMoved = await moveMessageToFolder(intake.mailbox, intake.source_email_id, AUTO_MANAGED_FOLDER).catch(() => false)
+    const mv = await moveMessageToFolder(intake.mailbox, intake.source_email_id, AUTO_MANAGED_FOLDER)
+      .catch((e: any) => ({ ok: false, error: e?.message }))
+    mailMoved = mv.ok
+    mailMoveError = mv.error
   }
 
-  return { ok: true, mailMoved, dateAdapted }
+  return { ok: true, mailMoved, mailMoveError, dateAdapted }
 }

@@ -151,7 +151,7 @@ async function ensureFolderId(mailbox: string, name: string): Promise<string> {
 }
 
 /** Déplace un message vers un dossier (créé au besoin). Best-effort. */
-export async function moveMessageToFolder(mailbox: string, messageId: string, folderName: string): Promise<boolean> {
+export async function moveMessageToFolder(mailbox: string, messageId: string, folderName: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const destId = await ensureFolderId(mailbox, folderName)
     const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/move`, {
@@ -159,10 +159,14 @@ export async function moveMessageToFolder(mailbox: string, messageId: string, fo
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ destinationId: destId }),
     })
-    if (!res.ok) { console.warn(`[requisitoire] move mail ${messageId} fail:`, res.status, (await res.text()).slice(0, 160)); return false }
-    return true
+    if (!res.ok) {
+      const detail = `${res.status} ${(await res.text()).slice(0, 160)}`
+      console.warn(`[requisitoire] move mail ${messageId} fail:`, detail)
+      return { ok: false, error: detail }
+    }
+    return { ok: true }
   } catch (e: any) {
     console.warn(`[requisitoire] move mail ${messageId} error:`, e?.message)
-    return false
+    return { ok: false, error: e?.message || 'erreur' }
   }
 }

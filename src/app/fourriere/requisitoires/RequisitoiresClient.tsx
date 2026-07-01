@@ -95,7 +95,7 @@ export default function RequisitoiresClient(props: {
       body: JSON.stringify(body),
     })
     const j = await res.json()
-    if (res.ok) { setMsg(`✅ Document rattaché à la fiche${j.date_adapted ? ' · date adaptée au réquisitoire' : ''}${j.mail_moved ? ' · mail déplacé' : ' · ⚠ mail non déplacé (droits mail ?)'}`); await load(tab) }
+    if (res.ok) { setMsg(`✅ Document rattaché à la fiche${j.date_adapted ? ' · date adaptée au réquisitoire' : ''}${j.mail_moved ? ' · mail déplacé' : ` · ⚠ mail non déplacé${j.mail_move_error ? ` (${j.mail_move_error})` : ''}`}`); await load(tab) }
     else setMsg(`⚠ ${j.error || 'Échec du rattachement'}`)
   }
 
