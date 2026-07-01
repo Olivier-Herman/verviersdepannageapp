@@ -62,8 +62,8 @@ export default function FinesMonthlyRecap() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => setShow(false)}>
       <div className="bg-surface rounded-2xl border max-w-sm w-full p-5 shadow-xl" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink mb-1">🚦 Rappel — tes amendes</h2>
-        <p className="text-ink-secondary text-sm mb-3">Un petit point pour rester vigilant sur la route. Total de tes amendes, mois par mois :</p>
+        <h2 className="text-lg font-bold text-ink mb-1">🚦 Un petit visuel de tes amendes actuelles</h2>
+        <p className="text-ink-secondary text-sm mb-3">Le total de tes amendes, mois par mois :</p>
         <div className="space-y-1 mb-3 max-h-64 overflow-auto">
           {recap.months.map(m => (
             <div key={m.ym} className="flex items-center justify-between text-sm">
