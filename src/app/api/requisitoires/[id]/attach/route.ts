@@ -40,7 +40,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { data: actor } = await sb.from('users').select('id').eq('email', user.email).maybeSingle()
 
-  const res = await attachRequisitoire(sb, params.id, missionId, actor?.id ?? null)
+  const leveeType = body?.levee_type === 'temporaire' ? 'temporaire' : body?.levee_type === 'definitive' ? 'definitive' : undefined
+  const res = await attachRequisitoire(sb, params.id, missionId, actor?.id ?? null, {
+    leveeDate: body?.levee_date ? String(body.levee_date) : undefined,
+    leveeType,
+  })
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })
   return NextResponse.json({ ok: true })
 }

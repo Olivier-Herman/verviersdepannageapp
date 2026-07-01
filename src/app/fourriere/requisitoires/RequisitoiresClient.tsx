@@ -21,15 +21,19 @@ interface Candidate {
   score: number; reasons: string[]
 }
 interface Extracted {
-  is_requisitoire: boolean; pv_number: string | null; plaque: string | null
+  doc_type?: string; is_requisitoire: boolean; pv_number: string | null; plaque: string | null
   vin: string | null; marque: string | null; modele: string | null
   adresse: string | null; date_requisition: string | null; autorite: string | null; raw_quote: string | null
+  levee_date?: string | null; levee_type?: 'definitive' | 'temporaire' | null
 }
 interface Item {
   id: string; from_addr: string | null; subject: string | null; received_at: string | null
   file_name: string | null; doc_url: string | null; extracted: Extracted | null
   candidates: Candidate[]; confidence: string | null; status: string; matched_mission_id: string | null
+  doc_type?: string
 }
+
+interface AttachOpts { missionId?: string; missionNumber?: string; leveeDate?: string; leveeType?: string }
 
 const STATUS_TABS = [
   { key: 'pending',         label: 'À rattacher' },
@@ -81,14 +85,17 @@ export default function RequisitoiresClient(props: {
     setRunning(false)
   }
 
-  async function attach(id: string, missionId?: string, missionNumber?: string) {
+  async function attach(id: string, opts: AttachOpts) {
     setMsg('')
+    const body: Record<string, any> = opts.missionId ? { mission_id: opts.missionId } : { mission_number: opts.missionNumber }
+    if (opts.leveeDate) body.levee_date = opts.leveeDate
+    if (opts.leveeType) body.levee_type = opts.leveeType
     const res = await fetch(`/api/requisitoires/${id}/attach`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(missionId ? { mission_id: missionId } : { mission_number: missionNumber }),
+      body: JSON.stringify(body),
     })
     const j = await res.json()
-    if (res.ok) { setMsg('✅ Réquisitoire rattaché à la fiche'); await load(tab) }
+    if (res.ok) { setMsg('✅ Document rattaché à la fiche'); await load(tab) }
     else setMsg(`⚠ ${j.error || 'Échec du rattachement'}`)
   }
 
@@ -105,7 +112,7 @@ export default function RequisitoiresClient(props: {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <FileText size={20} className="text-brand" />
-              <h1 className="font-display text-xl font-bold text-ink">Réquisitoires reçus</h1>
+              <h1 className="font-display text-xl font-bold text-ink">Documents police (réquisitoires & levées)</h1>
             </div>
             <button onClick={runImport} disabled={running}
               className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold shadow-sm transition disabled:opacity-60">
@@ -115,9 +122,9 @@ export default function RequisitoiresClient(props: {
           </div>
 
           <p className="text-sm text-ink-secondary">
-            Les réquisitoires arrivés dans la boîte fourrière sont lus automatiquement.
-            Vérifie la fiche proposée puis clique <strong>Rattacher</strong> : le document est annexé à la fiche
-            et le n° de PV ajouté au n° de dossier.
+            Les <strong>réquisitoires</strong> et <strong>levées de saisie</strong> arrivés dans la boîte fourrière sont lus
+            automatiquement (y compris les levées reçues par simple mail, sans document). Vérifie la fiche proposée puis
+            rattache : le réquisitoire ajoute le n° de PV au dossier ; la levée lève le blocage police (pense à vérifier la date).
           </p>
 
           {msg && <div className="text-sm bg-surface-2 border rounded-xl px-4 py-2 text-ink">{msg}</div>}
@@ -163,19 +170,27 @@ function ConfidenceBadge({ c }: { c: string | null }) {
 
 function RequisitoireCard({ item, onAttach, onIgnore }: {
   item: Item
-  onAttach: (id: string, missionId?: string, missionNumber?: string) => void
+  onAttach: (id: string, opts: AttachOpts) => void
   onIgnore: (id: string) => void
 }) {
+  const ex = item.extracted
+  const isLevee = (item.doc_type || ex?.doc_type) === 'levee_saisie'
   const [manual, setManual]   = useState('')
   const [showPdf, setShowPdf] = useState(false)
-  const ex = item.extracted
+  const [lvDate, setLvDate]   = useState(ex?.levee_date || '')
+  const [lvType, setLvType]   = useState<'definitive' | 'temporaire'>(ex?.levee_type || 'definitive')
   const isActionable = item.status === 'pending' || item.status === 'to_verify'
+
+  const leveeOpts = (): AttachOpts => isLevee ? { leveeDate: lvDate, leveeType: lvType } : {}
 
   return (
     <div className="bg-surface border rounded-2xl p-4 space-y-3">
       {/* Entête mail */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
+          <span className={`inline-block mb-1 text-xs font-bold px-2 py-0.5 rounded-full ${isLevee ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+            {isLevee ? '🔓 Levée de saisie' : '📋 Réquisitoire'}
+          </span>
           <div className="text-sm font-semibold text-ink truncate">{item.subject || '(sans objet)'}</div>
           <div className="text-xs text-ink-faint">De {item.from_addr || '—'} · reçu le {fmtDate(item.received_at)}</div>
         </div>
@@ -212,10 +227,19 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm bg-surface-2 rounded-xl p-3">
           <Info icon={<Hash size={13} />} label="Plaque" value={ex.plaque} />
           <Info icon={<Car size={13} />} label="VIN" value={ex.vin} />
-          <Info icon={<Shield size={13} />} label="N° PV" value={ex.pv_number} />
+          {isLevee ? (
+            <>
+              <Info icon={<Calendar size={13} />} label="Date de levée" value={fmtDate(ex.levee_date ?? null)} />
+              <Info icon={<Shield size={13} />} label="Type" value={ex.levee_type === 'temporaire' ? 'Temporaire' : ex.levee_type === 'definitive' ? 'Définitive' : null} />
+            </>
+          ) : (
+            <>
+              <Info icon={<Shield size={13} />} label="N° PV" value={ex.pv_number} />
+              <Info icon={<Calendar size={13} />} label="Date" value={fmtDate(ex.date_requisition)} />
+            </>
+          )}
           <Info icon={<Car size={13} />} label="Véhicule" value={[ex.marque, ex.modele].filter(Boolean).join(' ') || null} />
           <Info icon={<MapPin size={13} />} label="Adresse" value={ex.adresse} />
-          <Info icon={<Calendar size={13} />} label="Date" value={fmtDate(ex.date_requisition)} />
           {ex.autorite && <Info icon={<Shield size={13} />} label="Autorité" value={ex.autorite} />}
         </div>
       )}
@@ -223,6 +247,24 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
       {/* Fiches candidates */}
       {isActionable && (
         <div className="space-y-2">
+          {isLevee && (
+            <div className="flex items-end gap-3 flex-wrap bg-purple-50 border border-purple-200 rounded-xl p-3">
+              <label className="text-xs text-purple-900">
+                <span className="block font-semibold mb-1">Date de levée *</span>
+                <input type="date" value={lvDate || ''} onChange={e => setLvDate(e.target.value)}
+                  className="bg-white border rounded-md px-2 py-1 text-sm text-ink" />
+              </label>
+              <label className="text-xs text-purple-900">
+                <span className="block font-semibold mb-1">Type</span>
+                <select value={lvType} onChange={e => setLvType(e.target.value as any)}
+                  className="bg-white border rounded-md px-2 py-1 text-sm text-ink">
+                  <option value="definitive">Définitive</option>
+                  <option value="temporaire">Temporaire</option>
+                </select>
+              </label>
+              <span className="text-xs text-purple-800 pb-1">La date pilote le gardiennage — vérifie-la avant de lever.</span>
+            </div>
+          )}
           <div className="text-xs font-semibold text-ink-secondary uppercase tracking-wide">Fiches proposées</div>
           {item.candidates.length === 0 ? (
             <div className="text-sm text-ink-faint">Aucune fiche ne correspond automatiquement. Rattache manuellement ci-dessous.</div>
@@ -235,9 +277,9 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
                   {c.incident_city || c.incident_address || '—'} · {fmtDate(c.incident_at)} · <span className="text-brand font-medium">{c.reasons.join(', ')}</span>
                 </div>
               </div>
-              <button onClick={() => onAttach(item.id, c.mission_id)}
+              <button onClick={() => onAttach(item.id, { missionId: c.mission_id, ...leveeOpts() })}
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition shrink-0">
-                <Check size={14} /> Rattacher
+                <Check size={14} /> {isLevee ? 'Lever la saisie' : 'Rattacher'}
               </button>
             </div>
           ))}
@@ -246,9 +288,9 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
           <div className="flex items-center gap-2 flex-wrap pt-1">
             <input value={manual} onChange={e => setManual(e.target.value)} placeholder="Rattacher à une autre fiche (n° de fiche)"
               className="flex-1 min-w-[200px] bg-surface-2 border rounded-md px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand" />
-            <button onClick={() => manual.trim() && onAttach(item.id, undefined, manual.trim())} disabled={!manual.trim()}
+            <button onClick={() => manual.trim() && onAttach(item.id, { missionNumber: manual.trim(), ...leveeOpts() })} disabled={!manual.trim()}
               className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
-              Rattacher
+              {isLevee ? 'Lever la saisie' : 'Rattacher'}
             </button>
             <button onClick={() => onIgnore(item.id)}
               className="flex items-center gap-1 px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-sm font-semibold transition">

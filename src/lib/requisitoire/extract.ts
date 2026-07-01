@@ -1,54 +1,68 @@
 // src/lib/requisitoire/extract.ts
 //
-// Extraction d'un réquisitoire (document police/parquet) via Claude.
-// Les réquisitoires arrivent dans fourriere@ depuis PLUSIEURS expéditeurs
-// (zones de police, parquets) → pas d'émetteur fixe : c'est Claude qui lit la
-// pièce jointe (PDF, souvent scanné → vision) pour (a) confirmer que c'est un
-// réquisitoire et (b) extraire les signaux de rapprochement + le n° de PV.
+// Extraction d'un document police (réquisitoire OU levée de saisie) via Claude.
+// Les documents arrivent dans fourriere@ depuis PLUSIEURS expéditeurs (zones de
+// police, parquets) → pas d'émetteur fixe : Claude lit la pièce jointe (PDF,
+// souvent scanné → vision) OU le corps du mail (levée parfois sans document) pour
+// (a) classer le type, (b) confirmer, (c) extraire les signaux de rapprochement
+// + le n° de PV (réquisitoire) ou la date/type de levée (levée de saisie).
 //
-// Réutilise le pattern de [anthropic-pdf.ts] (SDK Anthropic, bloc `document`
-// base64) + le modèle centralisé [anthropic-model.ts].
-//
+// Réutilise le pattern de [anthropic-pdf.ts] + le modèle centralisé.
 // Olivier 2026-07-01. Cf [[project_assistant_mail_module]].
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
 
+export type DocType = 'requisitoire' | 'levee_saisie' | 'autre'
+
 export interface RequisitoireExtract {
-  is_requisitoire: boolean          // false = ce PDF n'est pas un réquisitoire
-  pv_number:       string | null    // n° de PV / procès-verbal / dossier police
-  plaque:          string | null    // plaque d'immatriculation
-  vin:             string | null    // n° de châssis / VIN
-  marque:          string | null    // marque véhicule
-  modele:          string | null    // modèle véhicule
-  adresse:         string | null    // lieu de l'enlèvement / saisie
-  date_requisition: string | null   // date du réquisitoire (YYYY-MM-DD si possible)
-  autorite:        string | null    // zone de police / parquet émetteur
-  raw_quote:       string | null    // courte citation qui justifie (max 120 char)
+  doc_type:        DocType
+  is_requisitoire: boolean          // = doc_type === 'requisitoire' (compat)
+  // Identifiants véhicule (matching) — communs aux 2 types
+  plaque:          string | null
+  vin:             string | null
+  marque:          string | null
+  modele:          string | null
+  adresse:         string | null
+  autorite:        string | null
+  // Réquisitoire
+  pv_number:       string | null
+  date_requisition: string | null
+  // Levée de saisie
+  levee_date:      string | null    // date effective de levée (YYYY-MM-DD)
+  levee_type:      'definitive' | 'temporaire' | null
+  raw_quote:       string | null
 }
 
-const PROMPT = `Tu es un assistant d'une société de dépannage/fourrière en Belgique. On te fournit un document reçu par email (souvent un PDF scanné). Ce document PEUT être un "réquisitoire" : un ordre officiel d'une zone de police ou d'un parquet demandant l'enlèvement, la saisie ou le gardiennage d'un véhicule.
+const PROMPT = `Tu es un assistant d'une société de dépannage/fourrière en Belgique. On te fournit un document reçu par email (PDF scanné OU corps de mail). Il peut s'agir de :
+- un "réquisitoire" : ordre officiel d'une zone de police / parquet demandant l'enlèvement, la saisie ou le gardiennage d'un véhicule ;
+- une "levée de saisie" (mainlevée) : ordre/mail officiel indiquant que la saisie d'un véhicule est LEVÉE (le véhicule peut être restitué). Souvent un simple mail du policier, parfois avec document.
+- autre chose (facture, courrier divers).
 
-Analyse le document et retourne UNIQUEMENT un objet JSON (pas de markdown, pas de texte autour) avec EXACTEMENT cette structure :
+Retourne UNIQUEMENT un objet JSON (pas de markdown) avec EXACTEMENT :
 
 {
-  "is_requisitoire": "boolean — true seulement si c'est bien un réquisitoire/ordre de saisie/enlèvement police ou parquet. false pour tout autre document (facture, courrier, etc.)",
-  "pv_number": "string|null — numéro de PV / procès-verbal / numéro de notice / dossier police tel qu'écrit. null si absent.",
-  "plaque": "string|null — plaque d'immatriculation du véhicule (garde le format d'origine).",
-  "vin": "string|null — numéro de châssis / VIN complet.",
-  "marque": "string|null — marque du véhicule (ex: Volkswagen).",
-  "modele": "string|null — modèle du véhicule (ex: Golf).",
-  "adresse": "string|null — lieu de l'enlèvement / de la saisie (rue + localité).",
-  "date_requisition": "string|null — date du réquisitoire au format YYYY-MM-DD si identifiable, sinon null.",
-  "autorite": "string|null — zone de police / parquet / autorité émettrice.",
-  "raw_quote": "string|null — très courte citation du document qui justifie (max 120 caractères)."
+  "doc_type": "string — 'requisitoire' | 'levee_saisie' | 'autre'",
+  "plaque": "string|null — plaque d'immatriculation (format d'origine)",
+  "vin": "string|null — n° de châssis / VIN complet",
+  "marque": "string|null — marque du véhicule",
+  "modele": "string|null — modèle du véhicule",
+  "adresse": "string|null — lieu de l'enlèvement / saisie (rue + localité)",
+  "autorite": "string|null — zone de police / parquet / autorité émettrice",
+  "pv_number": "string|null — [réquisitoire] n° de PV / procès-verbal / notice",
+  "date_requisition": "string|null — [réquisitoire] date du réquisitoire YYYY-MM-DD si possible",
+  "levee_date": "string|null — [levée] date effective de la levée de saisie YYYY-MM-DD",
+  "levee_type": "string|null — [levée] 'definitive' ou 'temporaire' si précisé, sinon null",
+  "raw_quote": "string|null — très courte citation qui justifie (max 120 caractères)"
 }
 
 RÈGLES :
 - Si une info n'est pas présente, mets null (ne devine pas).
-- La plaque belge ressemble à "1-ABC-234" ou "1ABC234". Le VIN fait 17 caractères alphanumériques.
-- Ne confonds pas le numéro de PV avec la plaque ou le VIN.
-- Sois prudent sur is_requisitoire : en cas de doute réel, mets false.
+- Plaque belge : "1-ABC-234" ou "1ABC234". VIN = 17 caractères alphanumériques.
+- Ne confonds pas pv_number avec la plaque ou le VIN.
+- doc_type='levee_saisie' si le texte parle de LEVÉE / mainlevée / restitution / fin de saisie.
+- doc_type='requisitoire' si c'est un ordre d'enlèvement/saisie/gardiennage.
+- En cas de doute réel entre réquisitoire et autre → 'autre'.
 Retourne UNIQUEMENT le JSON.`
 
 let cachedClient: Anthropic | null = null
@@ -62,24 +76,28 @@ function getClient(): Anthropic {
 
 function coerce(item: any): RequisitoireExtract {
   const s = (v: any) => (v == null || v === '' ? null : String(v).trim())
+  const dt: DocType = ['requisitoire', 'levee_saisie', 'autre'].includes(item?.doc_type) ? item.doc_type : 'autre'
+  const lt = ['definitive', 'temporaire'].includes(item?.levee_type) ? item.levee_type : null
   return {
-    is_requisitoire:  Boolean(item?.is_requisitoire),
-    pv_number:        s(item?.pv_number),
-    plaque:           s(item?.plaque),
-    vin:              s(item?.vin),
-    marque:           s(item?.marque),
-    modele:           s(item?.modele),
-    adresse:          s(item?.adresse),
+    doc_type:        dt,
+    is_requisitoire: dt === 'requisitoire',
+    plaque:          s(item?.plaque),
+    vin:             s(item?.vin),
+    marque:          s(item?.marque),
+    modele:          s(item?.modele),
+    adresse:         s(item?.adresse),
+    autorite:        s(item?.autorite),
+    pv_number:       s(item?.pv_number),
     date_requisition: s(item?.date_requisition),
-    autorite:         s(item?.autorite),
-    raw_quote:        s(item?.raw_quote)?.slice(0, 120) ?? null,
+    levee_date:      s(item?.levee_date),
+    levee_type:      lt as any,
+    raw_quote:       s(item?.raw_quote)?.slice(0, 120) ?? null,
   }
 }
 
 function parseJson(text: string): any {
   const cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
   try { return JSON.parse(cleaned) } catch {
-    // tolère un objet unique éventuellement suivi de texte
     const start = cleaned.indexOf('{')
     const end   = cleaned.lastIndexOf('}')
     if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1))
@@ -87,7 +105,7 @@ function parseJson(text: string): any {
   }
 }
 
-/** Extrait les données d'un réquisitoire depuis un PDF (base64). */
+/** Extrait depuis un PDF (base64). */
 export async function extractRequisitoireFromPdf(pdfBase64: string): Promise<RequisitoireExtract> {
   const client = getClient()
   const response = await client.messages.create({
@@ -106,13 +124,13 @@ export async function extractRequisitoireFromPdf(pdfBase64: string): Promise<Req
   return coerce(parseJson(textBlock.text))
 }
 
-/** Variante texte (corps du mail) si pas de PDF exploitable. */
+/** Extrait depuis un texte (corps du mail — levée sans document). */
 export async function extractRequisitoireFromText(text: string): Promise<RequisitoireExtract> {
   const client = getClient()
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 1024,
-    messages: [{ role: 'user', content: `${PROMPT}\n\n--- DOCUMENT (texte) ---\n\n${text.slice(0, 12000)}` }],
+    messages: [{ role: 'user', content: `${PROMPT}\n\n--- DOCUMENT (texte du mail) ---\n\n${text.slice(0, 12000)}` }],
   })
   const textBlock = response.content.find(b => b.type === 'text')
   if (!textBlock || textBlock.type !== 'text') throw new Error('Aucun texte retourné par Claude')

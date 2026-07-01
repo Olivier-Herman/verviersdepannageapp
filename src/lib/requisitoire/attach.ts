@@ -1,87 +1,122 @@
 // src/lib/requisitoire/attach.ts
 //
-// Rattache un réquisitoire capturé (ligne requisitoire_intake) à une fiche
-// mission choisie. Réutilise la logique d'annexion manuelle
-// (/api/missions/[id]/requisitoire) : remarque de traçabilité + pièce jointe +
-// colonnes requisitoire_*. En plus : CONCATÈNE le n° de PV dans dossier_number
-// (jamais d'écrasement — règle Olivier 2026-07-01).
+// Rattache un document capturé (ligne requisitoire_intake) à une fiche mission.
+// Réutilise la logique d'annexion manuelle (remarque + PJ bucket mission-remarks
+// + colonnes dédiées). Branche selon doc_type :
+//   - requisitoire  → colonnes requisitoire_* + CONCATÈNE le n° de PV dans
+//                     dossier_number (jamais d'écrasement).
+//   - levee_saisie  → colonnes levee_saisie_* + police_levee_saisie_ok=true
+//                     (lève le blocage police ; la date pilote le gardiennage).
 //
-// Le PDF est déjà stocké dans le bucket 'mission-remarks' (préfixe _intake) : on
-// le référence tel quel (même bucket → download OK), pas de copie.
+// Le document (PDF ou capture HTML du mail) est déjà dans le bucket
+// 'mission-remarks' (préfixe _intake) : on le référence tel quel.
 //
-// Cf [[project_assistant_mail_module]].
+// Olivier 2026-07-01. Cf [[project_assistant_mail_module]].
 
 import type { RequisitoireExtract } from './extract'
 import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
+
+export interface AttachOptions {
+  leveeDate?: string                       // YYYY-MM-DD (override UI)
+  leveeType?: 'definitive' | 'temporaire'  // override UI
+}
 
 export async function attachRequisitoire(
   sb: any,
   intakeId: string,
   missionId: string,
   actorId: string | null,
+  opts: AttachOptions = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  // 1. Ligne d'intake.
   const { data: intake, error: iErr } = await sb
     .from('requisitoire_intake').select('*').eq('id', intakeId).maybeSingle()
   if (iErr)     return { ok: false, error: iErr.message }
-  if (!intake)  return { ok: false, error: 'Réquisitoire introuvable' }
+  if (!intake)  return { ok: false, error: 'Document introuvable' }
   if (intake.status === 'attached') return { ok: false, error: 'Déjà rattaché' }
 
-  // 2. Fiche cible.
   const { data: mission, error: mErr } = await sb
     .from('incoming_missions').select('id, dossier_number').eq('id', missionId).maybeSingle()
   if (mErr)     return { ok: false, error: mErr.message }
   if (!mission) return { ok: false, error: 'Fiche introuvable' }
 
   const ex = (intake.extracted || {}) as RequisitoireExtract
-  const pv = (ex.pv_number || '').trim()
+  const isLevee = intake.doc_type === 'levee_saisie'
 
-  // 3. Remarque de traçabilité (porte la PJ + apparaît dans la timeline).
-  const noteBits = [ex.autorite && `Autorité : ${ex.autorite}`, pv && `PV : ${pv}`].filter(Boolean).join(' · ')
-  const remarkText = `📋 Réquisitoire annexé (capture auto)${noteBits ? ` — ${noteBits}` : ''}`
+  // ── Validation spécifique levée : date obligatoire (pilote le gardiennage) ──
+  const leveeDate = (opts.leveeDate || ex.levee_date || '').trim()
+  const leveeType = (opts.leveeType || ex.levee_type || 'definitive') as 'definitive' | 'temporaire'
+  if (isLevee) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(leveeDate)) {
+      return { ok: false, error: 'Date de levée requise (AAAA-MM-JJ) avant de lever la saisie.' }
+    }
+  }
+
+  // ── Remarque de traçabilité (porte la PJ) ──────────────────────────────────
+  let remarkText: string
+  if (isLevee) {
+    const typeLabel = leveeType === 'definitive' ? 'définitive' : 'temporaire'
+    remarkText = `🔓 Levée de saisie ${typeLabel} (date : ${leveeDate.split('-').reverse().join('/')}) — capture auto${ex.autorite ? ` · ${ex.autorite}` : ''}`
+  } else {
+    const pv = (ex.pv_number || '').trim()
+    const noteBits = [ex.autorite && `Autorité : ${ex.autorite}`, pv && `PV : ${pv}`].filter(Boolean).join(' · ')
+    remarkText = `📋 Réquisitoire annexé (capture auto)${noteBits ? ` — ${noteBits}` : ''}`
+  }
+
   const { data: remark, error: rErr } = await sb
     .from('mission_remarks').insert({ mission_id: missionId, text: remarkText, created_by: actorId }).select().single()
   if (rErr) return { ok: false, error: rErr.message }
 
-  // 4. Pièce jointe (référence le PDF déjà stocké).
   if (intake.doc_path) {
     await sb.from('mission_remark_attachments').insert({
       remark_id:   remark.id,
       file_path:   intake.doc_path,
-      file_name:   intake.file_name || 'requisitoire.pdf',
-      mime_type:   'application/pdf',
+      file_name:   intake.file_name || (isLevee ? 'levee.html' : 'requisitoire.pdf'),
+      mime_type:   intake.file_name?.endsWith('.html') ? 'text/html' : 'application/pdf',
       uploaded_by: actorId,
     })
   }
 
-  // 5. Concaténer le PV dans dossier_number (jamais écraser).
-  let dossierUpdate: Record<string, any> = {}
-  if (pv) {
-    const current = (mission.dossier_number || '').trim()
-    if (!current) dossierUpdate.dossier_number = pv
-    else if (!current.split(/\s*\/\s*/).map((s: string) => s.trim()).includes(pv)) {
-      dossierUpdate.dossier_number = `${current} / ${pv}`
+  // ── Écritures sur la fiche selon le type ───────────────────────────────────
+  let update: Record<string, any>
+  if (isLevee) {
+    update = {
+      levee_saisie_at:        new Date().toISOString(),
+      levee_saisie_date:      leveeDate,
+      levee_saisie_type:      leveeType,
+      levee_saisie_note:      ex.autorite || null,
+      levee_saisie_doc_path:  intake.doc_path || null,
+      levee_saisie_by:        actorId,
+      police_levee_saisie_ok: true,
+    }
+  } else {
+    // Réquisitoire : colonnes requisitoire_* + concat PV dans dossier_number.
+    const pv = (ex.pv_number || '').trim()
+    const noteBits = [ex.autorite && `Autorité : ${ex.autorite}`, pv && `PV : ${pv}`].filter(Boolean).join(' · ')
+    update = {
+      requisitoire_at:       new Date().toISOString(),
+      requisitoire_note:     noteBits || null,
+      requisitoire_doc_path: intake.doc_path || null,
+      requisitoire_by:       actorId,
+    }
+    if (pv) {
+      const current = (mission.dossier_number || '').trim()
+      if (!current) update.dossier_number = pv
+      else if (!current.split(/\s*\/\s*/).map((s: string) => s.trim()).includes(pv)) {
+        update.dossier_number = `${current} / ${pv}`
+      }
     }
   }
 
-  // 6. Colonnes workflow réquisitoire sur la fiche.
-  const { error: uErr } = await sb.from('incoming_missions').update({
-    requisitoire_at:       new Date().toISOString(),
-    requisitoire_note:     noteBits || null,
-    requisitoire_doc_path: intake.doc_path || null,
-    requisitoire_by:       actorId,
-    ...dossierUpdate,
-  }).eq('id', missionId)
+  const { error: uErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)
   if (uErr) return { ok: false, error: uErr.message }
 
-  // 7. Marquer la ligne d'intake rattachée.
+  // ── Marquer rattaché + déplacer le mail source ─────────────────────────────
   const { error: sErr } = await sb.from('requisitoire_intake').update({
     status: 'attached', matched_mission_id: missionId,
     attached_at: new Date().toISOString(), attached_by: actorId,
   }).eq('id', intakeId)
   if (sErr) return { ok: false, error: sErr.message }
 
-  // 8. Déplacer le mail source vers le dossier « Mail auto-géré » (best-effort).
   if (intake.mailbox && intake.source_email_id) {
     await moveMessageToFolder(intake.mailbox, intake.source_email_id, AUTO_MANAGED_FOLDER).catch(() => {})
   }

@@ -152,9 +152,9 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
             <Link
               href="/fourriere/requisitoires"
               className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition"
-              title="Réquisitoires reçus par mail : rattacher à la bonne fiche">
+              title="Réquisitoires et levées de saisie reçus par mail : rattacher à la bonne fiche">
               <FileText size={16} />
-              Réquisitoires
+              Réquisitoires / levées
             </Link>
             <button
               onClick={() => setShowDepots(true)}

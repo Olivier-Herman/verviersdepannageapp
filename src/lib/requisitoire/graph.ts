@@ -60,6 +60,31 @@ export async function listInboxMessages(mailbox: string, top = 25): Promise<Grap
   }))
 }
 
+export interface GraphMessageBody {
+  subject:          string
+  from:             string
+  receivedDateTime: string
+  contentType:      'html' | 'text'
+  content:          string   // corps (html ou texte selon contentType)
+}
+
+/** Récupère le corps complet d'un message (pour les levées sans pièce jointe). */
+export async function getMessageBody(mailbox: string, messageId: string): Promise<GraphMessageBody> {
+  const token = await getAppOnlyToken()
+  if (!token) throw new Error('Graph non configuré')
+  const m = await graphGet(
+    token,
+    `/users/${encodeURIComponent(mailbox)}/messages/${messageId}?$select=subject,from,receivedDateTime,body`,
+  )
+  return {
+    subject:          m.subject || '',
+    from:             m.from?.emailAddress?.address || '',
+    receivedDateTime: m.receivedDateTime || '',
+    contentType:      (m.body?.contentType || 'text').toLowerCase() === 'html' ? 'html' : 'text',
+    content:          m.body?.content || '',
+  }
+}
+
 /** Récupère les pièces jointes PDF (avec contentBytes) d'un message. */
 export async function getPdfAttachments(mailbox: string, messageId: string): Promise<GraphPdfAttachment[]> {
   const token = await getAppOnlyToken()
