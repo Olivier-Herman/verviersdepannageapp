@@ -55,7 +55,7 @@ export function isGraphConfigured(): boolean {
   return readEnv() !== null
 }
 
-async function getAppOnlyToken(): Promise<string | null> {
+export async function getAppOnlyToken(): Promise<string | null> {
   const env = readEnv()
   if (!env) return null
 
