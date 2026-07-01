@@ -3,7 +3,7 @@
 import { createAdminClient }            from '@/lib/supabase'
 import { detectSource, extractContent } from './extractor'
 import { parseMissionContent }          from './parser'
-import { sendPushToRole }               from '@/lib/push'
+import { sendPushToRole, sendPushToUser } from '@/lib/push'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
 
@@ -919,6 +919,53 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // être complétée par un mail ultérieur.
     const LOCKED_STATUSES = ['assigned', 'accepted', 'in_progress', 'delivering', 'parked', 'to_invoice', 'completed']
     if (existingMissionId && existingStatus && LOCKED_STATUSES.includes(existingStatus)) {
+      // Olivier 2026-07-01 : ESCALADE DÉPANNAGE → REMORQUAGE (Touring/Comex).
+      // Un dépannage clôturé côté Comex peut finalement nécessiter un remorquage :
+      // Touring renvoie alors un mail REMORQUAGE sur le MÊME dossier. Avant, ce mail
+      // tombait dans l'anti-écrasement et était ignoré comme doublon. Désormais on
+      // FAIT ÉVOLUER la fiche existante (type → remorquage + destination/garage),
+      // sans toucher au statut/chauffeur/photos/incident.
+      if (parsed.mission_type === 'remorquage') {
+        const { data: cur } = await supabase
+          .from('incoming_missions')
+          .select('mission_type, destination_name, destination_address, assigned_to, mission_number')
+          .eq('id', existingMissionId)
+          .single()
+        if (cur && cur.mission_type !== 'remorquage') {
+          const upd: Record<string, any> = { mission_type: 'remorquage', updated_at: new Date().toISOString() }
+          // Ne jamais écraser une valeur déjà présente : on complète seulement les trous.
+          if (parsed.destination_name    && !cur.destination_name)    upd.destination_name    = parsed.destination_name
+          if (parsed.destination_address && !cur.destination_address) upd.destination_address = parsed.destination_address
+          await supabase.from('incoming_missions').update(upd).eq('id', existingMissionId)
+          await markAsRead(token, messageId)
+          if (placeholderId && placeholderId !== existingMissionId) {
+            await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+          }
+          const destTxt = upd.destination_address || upd.destination_name || cur.destination_address || cur.destination_name || ''
+          await supabase.from('mission_logs').insert({
+            mission_id: existingMissionId,
+            action:     'mission_type_escalated_rem',
+            notes:      `Mail ${source.toUpperCase()} : dépannage requalifié en REMORQUAGE (Comex).` +
+                        (destTxt ? ` Destination : ${destTxt}.` : ''),
+            metadata:   { source_email_id: messageId, from: fromEmail, previous_type: cur.mission_type, previous_status: existingStatus },
+          })
+          console.log(`[Processor] Mission ${existingMissionId} : ${cur.mission_type} → remorquage (escalade Comex)`)
+          // Prévenir le chauffeur assigné + le dispatch : la mission change de nature.
+          if (cur.assigned_to) {
+            await sendPushToUser(cur.assigned_to, {
+              title: '🔀 Dépannage devenu remorquage',
+              body:  `Ta mission #${cur.mission_number ?? ''} passe en REMORQUAGE.${destTxt ? ' Destination : ' + destTxt : ''}`.trim(),
+              url:   `/mission/${existingMissionId}`,
+            })
+          }
+          await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+            title: '🔀 Dépannage → Remorquage (Comex)',
+            body:  `Mission #${cur.mission_number ?? ''} requalifiée en remorquage par Touring.`,
+            url:   '/dispatch',
+          })
+          return { status: 'duplicate', externalId: parsed.external_id, source }
+        }
+      }
       console.log(`[Processor] Mission ${existingMissionId} déjà ${existingStatus} — mail ré-arrivé ignoré (pas d'écrasement)`)
       await markAsRead(token, messageId)
       if (placeholderId && placeholderId !== existingMissionId) {
