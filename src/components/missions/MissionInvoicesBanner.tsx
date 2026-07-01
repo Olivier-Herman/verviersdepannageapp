@@ -12,14 +12,14 @@ interface Invoice {
   state:        string
   isRefund:     boolean
   paymentState: string | null
+  amountUntaxed?: number
   amountTotal:  number
   invoiceDate:  string | null
+  lines?:       { name: string; subtotal: number }[]
+  description?: string | null
   odooUrl:      string
   pdfUrl:       string
 }
-
-const STATE_LABEL: Record<string, string> = { draft: 'Brouillon', posted: 'Émise', cancel: 'Annulée' }
-const PAY_LABEL:   Record<string, string> = { paid: 'Payée', partial: 'Partielle', not_paid: 'Non payée', in_payment: 'En paiement', reversed: 'Extournée' }
 
 interface BilledItem { label: string; amount_htva: number; period_from: string | null; period_to: string | null; odoo_quote_id: number | null; invoice_number?: string | null }
 interface QuoteInfo {
@@ -147,33 +147,43 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
           🧾 {invoices.length > 1 ? `${invoices.length} factures liées` : 'Facture liée'}
         </p>
         <div className="space-y-2">
-          {invoices.map(inv => (
-            <div key={inv.id} className="flex items-center justify-between gap-3 flex-wrap bg-surface/60 rounded-xl px-3 py-2">
-              <div className="min-w-0">
-                <span className="text-ink font-mono font-semibold text-sm">
-                  {inv.isRefund ? 'Avoir ' : ''}{inv.number || '(brouillon)'}
-                </span>
-                <span className="text-ink-secondary text-xs ml-2">{Number(inv.amountTotal).toFixed(2)} € TVAC</span>
-                {inv.invoiceDate && <span className="text-ink-faint text-xs ml-2">· {new Date(inv.invoiceDate).toLocaleDateString('fr-BE')}</span>}
-                <span className="text-ink-faint text-xs ml-2">· {STATE_LABEL[inv.state] || inv.state}</span>
-                {inv.paymentState && inv.state === 'posted' && (
-                  <span className={`text-xs ml-2 font-medium ${inv.paymentState === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    · {PAY_LABEL[inv.paymentState] || inv.paymentState}
+          {invoices.map(inv => {
+            const st = invoiceStatus(inv.state, inv.paymentState)
+            return (
+            <div key={inv.id} className="bg-surface/60 rounded-xl px-3 py-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+                <span className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className="text-ink font-mono font-semibold text-sm">
+                    {inv.isRefund ? 'Avoir ' : ''}{inv.number || '(brouillon)'}
                   </span>
-                )}
+                  <span className="text-ink-secondary text-xs">
+                    — {Number(inv.amountUntaxed ?? 0).toFixed(2)} € HTVA · {Number(inv.amountTotal).toFixed(2)} € TVAC
+                  </span>
+                  {st && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>}
+                  {inv.invoiceDate && <span className="text-ink-faint text-xs">· {new Date(inv.invoiceDate).toLocaleDateString('fr-BE')}</span>}
+                </span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
+                    📄 PDF
+                  </a>
+                  <a href={inv.odooUrl} target="_blank" rel="noopener noreferrer"
+                    className="px-2.5 py-1.5 bg-surface-2 hover:bg-surface border rounded-lg text-ink-secondary hover:text-ink text-xs whitespace-nowrap">
+                    Odoo ↗
+                  </a>
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
-                  📄 PDF
-                </a>
-                <a href={inv.odooUrl} target="_blank" rel="noopener noreferrer"
-                  className="px-2.5 py-1.5 bg-surface-2 hover:bg-surface border rounded-lg text-ink-secondary hover:text-ink text-xs whitespace-nowrap">
-                  Odoo ↗
-                </a>
-              </div>
+              {inv.description && <p className="text-ink-faint text-xs italic mb-0.5 pl-1">{inv.description}</p>}
+              {inv.lines && inv.lines.length > 0 && (
+                <div className="space-y-0.5 pl-1">
+                  {inv.lines.map((l, i) => (
+                    <p key={i} className="text-ink-secondary text-xs">✓ {l.name} — {l.subtotal.toFixed(2)} € HTVA</p>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
       )}

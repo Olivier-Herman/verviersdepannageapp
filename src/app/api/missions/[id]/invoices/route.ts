@@ -55,23 +55,40 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     if (moveIds.size === 0) return NextResponse.json({ invoices: [] })
 
     const moves = await odooRpc<any[]>('account.move', 'read', [[...moveIds]], {
-      fields: ['id', 'name', 'state', 'move_type', 'payment_state', 'amount_total', 'invoice_date'],
+      fields: ['id', 'name', 'state', 'move_type', 'payment_state', 'amount_untaxed', 'amount_total', 'invoice_date', 'invoice_line_ids'],
     })
 
-    const invoices = (moves || [])
-      // On ne garde que les factures/avoirs clients (pas les éventuels brouillons annulés)
-      .filter(m => m.move_type === 'out_invoice' || m.move_type === 'out_refund')
+    // Lignes réelles (produits) + descriptions (notes) de chaque facture.
+    const keptMoves = (moves || []).filter(m => m.move_type === 'out_invoice' || m.move_type === 'out_refund')
+    const allLineIds = new Set<number>()
+    for (const m of keptMoves) for (const lid of (m.invoice_line_ids || [])) allLineIds.add(Number(lid))
+    const lineRows = allLineIds.size > 0
+      ? await odooRpc<any[]>('account.move.line', 'read', [[...allLineIds]], { fields: ['id', 'name', 'price_subtotal', 'display_type'] })
+      : []
+    const lineById = new Map((lineRows || []).map((l: any) => [l.id, l]))
+
+    const invoices = keptMoves
       .map(m => {
         const isRefund   = m.move_type === 'out_refund'
         const reportName = isRefund ? 'account.report_invoice_with_payments' : 'account.report_invoice'
+        const raw = (m.invoice_line_ids || []).map((lid: number) => lineById.get(lid)).filter(Boolean)
+        const lines = raw
+          .filter((l: any) => l.display_type !== 'line_section' && l.display_type !== 'line_note')
+          .map((l: any) => ({ name: String(l.name || '').replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\n+\s*/g, ' — ').trim(), subtotal: Number(l.price_subtotal || 0) }))
+        const description = raw
+          .filter((l: any) => l.display_type === 'line_note')
+          .map((l: any) => String(l.name || '').replace(/\s*\n+\s*/g, ' · ').trim()).filter(Boolean).join(' · ') || null
         return {
           id:           m.id,
           number:       m.name && m.name !== '/' ? m.name : null,  // '/' = brouillon non numéroté
           state:        m.state,                                   // draft | posted | cancel
           isRefund,
           paymentState: m.payment_state || null,                   // not_paid | partial | paid
+          amountUntaxed: m.amount_untaxed || 0,
           amountTotal:  m.amount_total || 0,
           invoiceDate:  m.invoice_date || null,
+          lines,
+          description,
           odooUrl:      `${ODOO_URL}/web#id=${m.id}&model=account.move&view_type=form`,
           pdfUrl:       `${ODOO_URL}/report/pdf/${reportName}/${m.id}`,
         }
