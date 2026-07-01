@@ -92,8 +92,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         const inv = invByQuote.get(qid)
         const invLines = inv
           ? (inv.invoice_line_ids || []).map((lid: number) => lineById.get(lid))
-              .filter((l: any) => l && !l.display_type)   // exclut les notes/sections
-              .map((l: any) => ({ name: String(l.name || '').split('\n')[0], subtotal: Number(l.price_subtotal || 0) }))
+              // Garde les lignes produit ; exclut uniquement les sections et notes.
+              .filter((l: any) => l && l.display_type !== 'line_section' && l.display_type !== 'line_note')
+              .map((l: any) => ({
+                name: String(l.name || '').split('\n')[0].replace(/^\[[^\]]*\]\s*/, '').trim(),
+                subtotal: Number(l.price_subtotal || 0),
+              }))
           : []
         quotesInfo[qid] = {
           invoice_number: inv && inv.name && inv.name !== '/' ? inv.name : null,
