@@ -181,6 +181,22 @@ export async function checkMailboxAccess(mailbox: string): Promise<Record<string
   } else {
     out.write = `${cr.status} ${(await cr.text()).slice(0, 240)}`
   }
+
+  // Où se trouve/se trouvent le(s) dossier(s) « Mail auto-géré » ? (racine + sous Inbox)
+  const found: any[] = []
+  const scan = async (loc: string, path: string) => {
+    try {
+      const d = await authedGet(path)
+      for (const f of d.value || []) {
+        if ((f.displayName || '').toLowerCase() === AUTO_MANAGED_FOLDER.toLowerCase()) {
+          found.push({ location: loc, id: f.id, items: f.totalItemCount })
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  await scan('racine', `/users/${encodeURIComponent(mailbox)}/mailFolders?$top=100&$select=id,displayName,totalItemCount`)
+  await scan('sous Inbox', `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/childFolders?$top=100&$select=id,displayName,totalItemCount`)
+  out.auto_folders = found
   return out
 }
 
