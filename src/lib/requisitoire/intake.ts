@@ -43,21 +43,54 @@ function stripHtml(html: string): string {
     .trim()
 }
 
-/** Capture HTML autoportante du mail (preuve annexée quand pas de document). */
+// Convertit un corps HTML de mail en TEXTE lisible (sans balises/styles/disclaimer).
+function htmlToReadableText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<hr\s*\/?>/gi, '\n──────────\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
+// Échappe pour HTML ET convertit tout non-ASCII en entité numérique → fichier
+// 100 % ASCII, donc rendu correct quel que soit le charset servi (fini les « Ã© »).
+function toAsciiHtml(s: string): string {
+  return (s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    .replace(/[\u0080-\uffff]/g, c => `&#${c.charCodeAt(0)};`)
+}
+
+function fmtReceived(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Capture LISIBLE et autoportante du mail (preuve annexée quand pas de document). */
 function buildMailCaptureHtml(body: GraphMessageBody): string {
-  const safeBody = body.contentType === 'html'
-    ? body.content.replace(/<script[\s\S]*?<\/script>/gi, '')
-    : `<pre style="white-space:pre-wrap;font-family:inherit">${body.content.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' } as any)[c])}</pre>`
-  const esc = (s: string) => s.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' } as any)[c])
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${esc(body.subject)}</title></head>
-<body style="font-family:Arial,sans-serif;max-width:800px;margin:20px auto;color:#111">
-<div style="border:1px solid #ccc;border-radius:8px;padding:12px 16px;background:#f7f7f7;margin-bottom:16px">
-  <div><strong>De :</strong> ${esc(body.from)}</div>
-  <div><strong>Reçu :</strong> ${esc(body.receivedDateTime)}</div>
-  <div><strong>Objet :</strong> ${esc(body.subject)}</div>
-  <div style="color:#777;font-size:12px;margin-top:6px">Capture automatique du mail (aucun document joint) — preuve annexée par VD Soft.</div>
+  const text = body.contentType === 'html' ? htmlToReadableText(body.content) : body.content
+  // Note : labels accentués écrits en entités pour rester 100 % ASCII.
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>${toAsciiHtml(body.subject)}</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:24px auto;color:#111;line-height:1.55">
+<div style="border:1px solid #ddd;border-radius:10px;padding:16px 20px;background:#f7f7f9;margin-bottom:20px">
+  <div style="font-size:18px;font-weight:bold;margin-bottom:10px">${toAsciiHtml(body.subject) || '(sans objet)'}</div>
+  <div style="color:#333;font-size:13px"><strong>De&nbsp;:</strong> ${toAsciiHtml(body.from)}</div>
+  <div style="color:#333;font-size:13px"><strong>Re&#231;u&nbsp;:</strong> ${toAsciiHtml(fmtReceived(body.receivedDateTime))}</div>
+  <div style="color:#888;font-size:11px;margin-top:10px">Capture automatique du mail (aucun document joint) &#8212; preuve annex&#233;e par VD Soft.</div>
 </div>
-${safeBody}
+<div style="white-space:pre-wrap;font-size:14px">${toAsciiHtml(text)}</div>
 </body></html>`
 }
 
