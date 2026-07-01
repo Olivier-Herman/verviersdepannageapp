@@ -7,6 +7,7 @@ import { signOutCascade } from '@/lib/auth-signout'
 import { useState } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
+import FinesMonthlyRecap  from '@/components/FinesMonthlyRecap'
 import NotificationsProvider from '@/components/notifications/NotificationsProvider'
 import { T } from '@/lib/i18n/T'
 import WatchPairingBridge from '@/components/watch/WatchPairingBridge'
@@ -190,6 +191,9 @@ export default function AppShell({
 
         {/* Bannière check véhicule */}
         <VehicleCheckBanner />
+
+        {/* Récap amendes du mois (profil Driver, le 2 du mois, une fois — gaté côté API) */}
+        <FinesMonthlyRecap />
 
         {/* Contenu */}
         <main className="flex-1 overflow-y-auto">
