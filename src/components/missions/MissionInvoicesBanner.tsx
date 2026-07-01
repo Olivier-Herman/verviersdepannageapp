@@ -26,6 +26,7 @@ interface QuoteInfo {
   invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null
   amount_untaxed?: number | null; amount_total?: number | null
   lines?: { name: string; subtotal: number }[]
+  description?: string | null
 }
 
 export default function MissionInvoicesBanner({ missionId }: { missionId: string }) {
@@ -98,6 +99,9 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
                     </span>
                   </div>
                   <div className="space-y-0.5 pl-1">
+                    {useOdoo && info!.description && (
+                      <p className="text-ink-faint text-xs italic mb-0.5">{info!.description}</p>
+                    )}
                     {useOdoo
                       ? info!.lines!.map((l, i) => (
                           <p key={i} className="text-ink-secondary text-xs">✓ {l.name} — {l.subtotal.toFixed(2)} € HTVA</p>

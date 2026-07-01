@@ -117,18 +117,27 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   async function uploadFiles(fileList: FileList | File[]) {
     const arr = Array.from(fileList).filter(f => f.type.includes('pdf') || f.type.startsWith('image/'))
     if (arr.length === 0) { setImportMsg('⚠ Dépose des PDF ou images de PV.'); return }
-    setImporting(true); setImportMsg(`Lecture de ${arr.length} PV…`)
-    try {
-      const fd = new FormData()
-      arr.forEach(f => fd.append('files', f))
-      const res = await fetch('/api/fines/batch', { method: 'POST', body: fd })
-      const j = await res.json()
-      if (res.ok) {
-        const withAmount = j.created.filter((c: any) => c.amount != null).length
-        setImportMsg(`✅ ${j.created.length} PV importé(s) en brouillon (${withAmount} avec montant lu)${j.duplicates?.length ? ` · ${j.duplicates.length} doublon(s) ignoré(s)` : ''}${j.errors?.length ? ` · ${j.errors.length} échec(s)` : ''}${j.skipped ? ` · ${j.skipped} en attente (relance)` : ''}`)
-        router.refresh()
-      } else setImportMsg(`⚠ ${j.error || 'Échec import'}`)
-    } catch { setImportMsg('⚠ Erreur réseau') }
+    setImporting(true)
+    // Un fichier par requête : évite la limite de taille du body + le timeout
+    // (l'OCR est lent) quand on dépose plusieurs scans d'un coup.
+    let created = 0, withAmount = 0, dups = 0, errs = 0
+    for (let i = 0; i < arr.length; i++) {
+      setImportMsg(`Lecture ${i + 1}/${arr.length}…`)
+      try {
+        const fd = new FormData()
+        fd.append('files', arr[i])
+        const res = await fetch('/api/fines/batch', { method: 'POST', body: fd })
+        const j = await res.json().catch(() => ({}))
+        if (res.ok) {
+          created += (j.created?.length || 0)
+          withAmount += (j.created || []).filter((c: any) => c.amount != null).length
+          dups += (j.duplicates?.length || 0)
+          errs += (j.errors?.length || 0)
+        } else { errs++ }
+      } catch { errs++ }
+    }
+    setImportMsg(`✅ ${created} PV importé(s) en brouillon (${withAmount} avec montant lu)${dups ? ` · ${dups} doublon(s) ignoré(s)` : ''}${errs ? ` · ${errs} échec(s)` : ''}`)
+    router.refresh()
     setImporting(false)
   }
 

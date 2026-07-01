@@ -55,6 +55,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null
     amount_untaxed?: number | null; amount_total?: number | null
     lines?: { name: string; subtotal: number }[]
+    description?: string | null
   }> = {}
   if (quoteIds.length > 0) {
     try {
@@ -90,15 +91,20 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
       for (const qid of quoteIds) {
         const inv = invByQuote.get(qid)
-        const invLines = inv
-          ? (inv.invoice_line_ids || []).map((lid: number) => lineById.get(lid))
-              // Garde les lignes produit ; exclut uniquement les sections et notes.
-              .filter((l: any) => l && l.display_type !== 'line_section' && l.display_type !== 'line_note')
-              .map((l: any) => ({
-                name: String(l.name || '').split('\n')[0].replace(/^\[[^\]]*\]\s*/, '').trim(),
-                subtotal: Number(l.price_subtotal || 0),
-              }))
-          : []
+        const invRawLines = inv ? (inv.invoice_line_ids || []).map((lid: number) => lineById.get(lid)).filter(Boolean) : []
+        // Lignes produit (garde la description multi-ligne, retire le préfixe [CODE]).
+        const invLines = invRawLines
+          .filter((l: any) => l.display_type !== 'line_section' && l.display_type !== 'line_note')
+          .map((l: any) => ({
+            name: String(l.name || '').replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\n+\s*/g, ' — ').trim(),
+            subtotal: Number(l.price_subtotal || 0),
+          }))
+        // Notes/descriptions de la facture (lignes 'line_note').
+        const invDescription = invRawLines
+          .filter((l: any) => l.display_type === 'line_note')
+          .map((l: any) => String(l.name || '').replace(/\s*\n+\s*/g, ' · ').trim())
+          .filter(Boolean)
+          .join(' · ') || null
         quotesInfo[qid] = {
           invoice_number: inv && inv.name && inv.name !== '/' ? inv.name : null,
           state:          inv ? inv.state : null,
@@ -107,6 +113,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           amount_untaxed: inv ? Number(inv.amount_untaxed) : null,
           amount_total:   inv ? Number(inv.amount_total) : null,
           lines:          invLines,
+          description:    invDescription,
         }
       }
     } catch (e: any) {
