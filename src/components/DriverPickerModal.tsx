@@ -150,7 +150,9 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
             const free = d.status === 'free'
             const cm = d.current_mission
             const totalEta = !free && cm
-              ? (cm.eta_to_destination_min || 0) + (cm.eta_destination_to_incident_min || 0)
+              ? (cm.eta_to_destination_min != null && cm.eta_destination_to_incident_min != null
+                  ? cm.eta_to_destination_min + cm.eta_destination_to_incident_min
+                  : null)   // en mission sans ETA calculée → « ETA indispo »
               : d.eta_to_incident_min
 
             // Olivier 2026-06-03 : chauffeurs HORS GARDE affiches grises.
