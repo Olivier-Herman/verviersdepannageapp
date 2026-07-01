@@ -919,51 +919,71 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // être complétée par un mail ultérieur.
     const LOCKED_STATUSES = ['assigned', 'accepted', 'in_progress', 'delivering', 'parked', 'to_invoice', 'completed']
     if (existingMissionId && existingStatus && LOCKED_STATUSES.includes(existingStatus)) {
-      // Olivier 2026-07-01 : ESCALADE DÉPANNAGE → REMORQUAGE (Touring/Comex).
+      // Olivier 2026-07-01 : ESCALADE / ENRICHISSEMENT DÉPANNAGE → REMORQUAGE (Touring/Comex).
       // Un dépannage clôturé côté Comex peut finalement nécessiter un remorquage :
       // Touring renvoie alors un mail REMORQUAGE sur le MÊME dossier. Avant, ce mail
-      // tombait dans l'anti-écrasement et était ignoré comme doublon. Désormais on
-      // FAIT ÉVOLUER la fiche existante (type → remorquage + destination/garage),
-      // sans toucher au statut/chauffeur/photos/incident.
+      // tombait dans l'anti-écrasement et était ignoré comme doublon.
+      // NB (Olivier) : au moment où ce 2e mail arrive, le chauffeur a SOUVENT déjà
+      // requalifié la fiche en remorquage dans l'app → cur.mission_type = 'remorquage'.
+      // On ne se contente donc pas de la bascule de type : on COMPLÈTE aussi les trous
+      // (destination/garage saisis dans Comex) de façon non destructive, que la fiche
+      // soit déjà REM ou pas. On ne touche jamais au statut/chauffeur/photos/incident,
+      // ni à une valeur déjà présente.
       if (parsed.mission_type === 'remorquage') {
         const { data: cur } = await supabase
           .from('incoming_missions')
           .select('mission_type, destination_name, destination_address, assigned_to, mission_number')
           .eq('id', existingMissionId)
           .single()
-        if (cur && cur.mission_type !== 'remorquage') {
-          const upd: Record<string, any> = { mission_type: 'remorquage', updated_at: new Date().toISOString() }
+        if (cur) {
+          const wasUpgrade = cur.mission_type !== 'remorquage'
+          const upd: Record<string, any> = {}
+          if (wasUpgrade) upd.mission_type = 'remorquage'
           // Ne jamais écraser une valeur déjà présente : on complète seulement les trous.
           if (parsed.destination_name    && !cur.destination_name)    upd.destination_name    = parsed.destination_name
           if (parsed.destination_address && !cur.destination_address) upd.destination_address = parsed.destination_address
-          await supabase.from('incoming_missions').update(upd).eq('id', existingMissionId)
-          await markAsRead(token, messageId)
-          if (placeholderId && placeholderId !== existingMissionId) {
-            await supabase.from('incoming_missions').delete().eq('id', placeholderId)
-          }
-          const destTxt = upd.destination_address || upd.destination_name || cur.destination_address || cur.destination_name || ''
-          await supabase.from('mission_logs').insert({
-            mission_id: existingMissionId,
-            action:     'mission_type_escalated_rem',
-            notes:      `Mail ${source.toUpperCase()} : dépannage requalifié en REMORQUAGE (Comex).` +
-                        (destTxt ? ` Destination : ${destTxt}.` : ''),
-            metadata:   { source_email_id: messageId, from: fromEmail, previous_type: cur.mission_type, previous_status: existingStatus },
-          })
-          console.log(`[Processor] Mission ${existingMissionId} : ${cur.mission_type} → remorquage (escalade Comex)`)
-          // Prévenir le chauffeur assigné + le dispatch : la mission change de nature.
-          if (cur.assigned_to) {
-            await sendPushToUser(cur.assigned_to, {
-              title: '🔀 Dépannage devenu remorquage',
-              body:  `Ta mission #${cur.mission_number ?? ''} passe en REMORQUAGE.${destTxt ? ' Destination : ' + destTxt : ''}`.trim(),
-              url:   `/mission/${existingMissionId}`,
+          const destAdded = !!(upd.destination_name || upd.destination_address)
+
+          if (Object.keys(upd).length > 0) {
+            upd.updated_at = new Date().toISOString()
+            await supabase.from('incoming_missions').update(upd).eq('id', existingMissionId)
+            await markAsRead(token, messageId)
+            if (placeholderId && placeholderId !== existingMissionId) {
+              await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+            }
+            const destTxt = upd.destination_address || upd.destination_name || cur.destination_address || cur.destination_name || ''
+            await supabase.from('mission_logs').insert({
+              mission_id: existingMissionId,
+              action:     wasUpgrade ? 'mission_type_escalated_rem' : 'rem_destination_completed',
+              notes:      wasUpgrade
+                ? `Mail ${source.toUpperCase()} : dépannage requalifié en REMORQUAGE (Comex).${destTxt ? ` Destination : ${destTxt}.` : ''}`
+                : `Mail ${source.toUpperCase()} : destination remorquage complétée depuis Comex.${destTxt ? ` Destination : ${destTxt}.` : ''}`,
+              metadata:   { source_email_id: messageId, from: fromEmail, previous_type: cur.mission_type, previous_status: existingStatus, dest_added: destAdded },
             })
+            console.log(`[Processor] Mission ${existingMissionId} ${wasUpgrade ? `${cur.mission_type} → remorquage` : 'destination REM complétée'} (Comex)`)
+
+            // Prévenir le chauffeur si la nature change OU si une destination est ajoutée
+            // (il a besoin de savoir vers quel garage remorquer).
+            if (cur.assigned_to && (wasUpgrade || destAdded)) {
+              await sendPushToUser(cur.assigned_to, {
+                title: wasUpgrade ? '🔀 Dépannage devenu remorquage' : '📍 Destination de remorquage',
+                body:  wasUpgrade
+                  ? `Ta mission #${cur.mission_number ?? ''} passe en REMORQUAGE.${destTxt ? ' Destination : ' + destTxt : ''}`.trim()
+                  : `Mission #${cur.mission_number ?? ''} : destination = ${destTxt}`.trim(),
+                url:   `/mission/${existingMissionId}`,
+              })
+            }
+            // Dispatch prévenu uniquement sur un vrai changement de nature (éviter le bruit).
+            if (wasUpgrade) {
+              await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+                title: '🔀 Dépannage → Remorquage (Comex)',
+                body:  `Mission #${cur.mission_number ?? ''} requalifiée en remorquage par Touring.`,
+                url:   '/dispatch',
+              })
+            }
+            return { status: 'duplicate', externalId: parsed.external_id, source }
           }
-          await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
-            title: '🔀 Dépannage → Remorquage (Comex)',
-            body:  `Mission #${cur.mission_number ?? ''} requalifiée en remorquage par Touring.`,
-            url:   '/dispatch',
-          })
-          return { status: 'duplicate', externalId: parsed.external_id, source }
+          // Rien à compléter (déjà REM + destination déjà présente) → skip normal ci-dessous.
         }
       }
       console.log(`[Processor] Mission ${existingMissionId} déjà ${existingStatus} — mail ré-arrivé ignoré (pas d'écrasement)`)
