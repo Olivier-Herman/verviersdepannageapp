@@ -4,6 +4,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { redirect }         from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase'
 import AmendesClient        from './AmendesClient'
 
 export const metadata = { title: 'Amendes — VD Soft' }
@@ -19,5 +20,14 @@ export default async function AmendesPage() {
   const hasAccess = ['admin', 'superadmin'].includes(role) || modules.includes('facturation')
   if (!hasAccess) redirect('/dashboard?error=access_denied')
 
-  return <AmendesClient user={user} />
+  // Liste des chauffeurs pour l'attribution manuelle (si le matching auto échoue).
+  const sb = createAdminClient()
+  const { data: drivers } = await sb
+    .from('users')
+    .select('id, name')
+    .or('role.in.(driver,dispatcher,admin,superadmin),roles.ov.{driver,dispatcher,admin,superadmin}')
+    .eq('active', true)
+    .order('name')
+
+  return <AmendesClient user={user} drivers={drivers || []} />
 }

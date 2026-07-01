@@ -63,13 +63,36 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [yearFilter,   setYearFilter]   = useState<string>('all')
 
+  // Copie locale (mise à jour lors d'une attribution manuelle de chauffeur).
+  const [rows, setRows]       = useState<Fine[]>(fines)
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  async function assignDriver(fineId: string, driverId: string) {
+    setSavingId(fineId)
+    try {
+      const res = await fetch(`/api/fines/${fineId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driver_id: driverId || null }),
+      })
+      const j = await res.json()
+      if (res.ok) {
+        setRows(rs => rs.map(f => f.id === fineId
+          ? { ...f, driver_id: j.driver_id, driver_match_method: j.driver_id ? 'manual' : 'none',
+              driver: j.driver_id ? { id: j.driver_id, name: j.driver_name, email: '' } : null }
+          : f))
+      } else {
+        alert(j.error || 'Échec de l’attribution')
+      }
+    } finally { setSavingId(null) }
+  }
+
   const years = useMemo(() => {
     const set = new Set<number>()
-    fines.forEach(f => set.add(new Date(f.infraction_date).getFullYear()))
+    rows.forEach(f => set.add(new Date(f.infraction_date).getFullYear()))
     return Array.from(set).sort((a, b) => b - a)
-  }, [fines])
+  }, [rows])
 
-  const filtered = useMemo(() => fines.filter(f => {
+  const filtered = useMemo(() => rows.filter(f => {
     if (driverFilter !== 'all') {
       if (driverFilter === 'unknown') {
         if (f.driver_id) return false
@@ -78,11 +101,11 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
     if (statusFilter !== 'all' && f.status !== statusFilter) return false
     if (yearFilter !== 'all'   && String(new Date(f.infraction_date).getFullYear()) !== yearFilter) return false
     return true
-  }), [fines, driverFilter, statusFilter, yearFilter])
+  }), [rows, driverFilter, statusFilter, yearFilter])
 
   // Stats : total par chauffeur (sur le filtre courant sans driver)
   const statsByDriver = useMemo(() => {
-    const filteredSansDriver = fines.filter(f => {
+    const filteredSansDriver = rows.filter(f => {
       if (statusFilter !== 'all' && f.status !== statusFilter) return false
       if (yearFilter !== 'all'   && String(new Date(f.infraction_date).getFullYear()) !== yearFilter) return false
       return true
@@ -99,7 +122,7 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
     return Array.from(map.entries())
       .map(([id, v]) => ({ id, ...v }))
       .sort((a, b) => b.total - a.total)
-  }, [fines, statusFilter, yearFilter])
+  }, [rows, statusFilter, yearFilter])
 
   const grandTotal      = filtered.reduce((s, f) => s + Number(f.amount), 0)
   const grandCount      = filtered.length
@@ -208,6 +231,18 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
                       )}
                     </p>
                     {f.infraction_ref && <p className="text-ink-faint text-xs font-mono mt-0.5">N° {f.infraction_ref}</p>}
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <span className="text-ink-faint text-xs">Attribuer :</span>
+                      <select
+                        value={f.driver_id || ''}
+                        disabled={savingId === f.id}
+                        onChange={e => assignDriver(f.id, e.target.value)}
+                        className="bg-surface-2 border rounded-md px-2 py-1 text-xs text-ink max-w-[200px] disabled:opacity-50">
+                        <option value="">— Non identifié —</option>
+                        {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                      {savingId === f.id && <span className="text-ink-faint text-xs">…</span>}
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <span className="text-ink font-bold text-base tabular-nums">{formatEur(f.amount)}</span>

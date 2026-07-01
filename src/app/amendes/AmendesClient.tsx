@@ -43,13 +43,14 @@ interface FormState {
   suggestion:       SuggestResult | null
   selectedDriverId: string | null
   selectedMissionId: string | null
+  manualPick:       boolean          // chauffeur choisi manuellement dans la liste complète
 }
 
 const EMPTY_FORM: FormState = {
   photoFile: null, photoPreview: null, photoUrl: null,
   infractionDate: '', plate: '', amount: '',
   infractionPlace: '', infractionType: '', infractionRef: '', notes: '',
-  suggestion: null, selectedDriverId: null, selectedMissionId: null,
+  suggestion: null, selectedDriverId: null, selectedMissionId: null, manualPick: false,
 }
 
 const INFRACTION_TYPES = [
@@ -72,7 +73,7 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
   )
 }
 
-export default function AmendesClient({ user }: { user: any }) {
+export default function AmendesClient({ user, drivers = [] }: { user: any; drivers?: { id: string; name: string }[] }) {
   const router    = useRouter()
   const fileRef   = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
@@ -178,7 +179,7 @@ export default function AmendesClient({ user }: { user: any }) {
           infraction_ref:    form.infractionRef || undefined,
           driver_id:         form.selectedDriverId,
           mission_id:        form.selectedMissionId,
-          override_match:    !!form.selectedDriverId && form.selectedDriverId !== form.suggestion?.driver_id,
+          override_match:    !!form.selectedDriverId && (form.manualPick || form.selectedDriverId !== form.suggestion?.driver_id),
           notes:             form.notes || undefined,
         }),
       })
@@ -338,7 +339,7 @@ export default function AmendesClient({ user }: { user: any }) {
                 <p className="text-amber-700 text-xs mt-1">
                   Aucune mission VD avec cette dépanneuse autour de cette date. Vérifie la plaque saisie (doit être celle de la <strong>dépanneuse VD</strong>, pas du véhicule remorqué) ou choisis <strong>Indéterminé</strong> ci-dessous.
                 </p>
-                <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null }))}
+                <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null, manualPick: false }))}
                   className={`mt-3 w-full p-3 rounded-xl border-2 transition ${
                     form.selectedDriverId === null ? 'border-amber-600 bg-amber-100' : 'border-amber-300 bg-white hover:bg-amber-100'
                   }`}>
@@ -355,7 +356,7 @@ export default function AmendesClient({ user }: { user: any }) {
                     const confLabel = c.match_score >= 80 ? '🟢 Très probable' : c.match_score >= 50 ? '🟡 Probable' : '🟠 Possible'
                     return (
                       <button key={`${c.driver_id}-${c.mission_id}-${idx}`}
-                        onClick={() => setForm(f => ({ ...f, selectedDriverId: c.driver_id, selectedMissionId: c.mission_id }))}
+                        onClick={() => setForm(f => ({ ...f, selectedDriverId: c.driver_id, selectedMissionId: c.mission_id, manualPick: false }))}
                         className={`w-full text-left p-3 rounded-2xl border-2 transition ${
                           isSelected ? 'border-brand bg-brand/10' : 'border bg-surface hover:border-zinc-600'
                         }`}>
@@ -369,7 +370,7 @@ export default function AmendesClient({ user }: { user: any }) {
                     )
                   })}
 
-                  <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null }))}
+                  <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null, manualPick: false }))}
                     className={`w-full text-left p-3 rounded-2xl border-2 transition ${
                       form.selectedDriverId === null ? 'border-amber-500 bg-amber-50' : 'border bg-surface hover:border-amber-400'
                     }`}>
@@ -380,6 +381,23 @@ export default function AmendesClient({ user }: { user: any }) {
               </>
             )}
           </>
+        )}
+
+        {!loading && drivers.length > 0 && (
+          <div className="bg-surface border rounded-2xl p-4 space-y-2">
+            <p className="text-ink-secondary text-xs uppercase tracking-wider font-medium">Ou attribue manuellement un chauffeur</p>
+            <select
+              value={form.manualPick ? (form.selectedDriverId || '') : ''}
+              onChange={e => {
+                const id = e.target.value || null
+                setForm(f => ({ ...f, selectedDriverId: id, selectedMissionId: null, manualPick: !!id }))
+              }}
+              className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-sm text-ink">
+              <option value="">— Choisir un chauffeur —</option>
+              {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            {form.manualPick && <p className="text-brand text-xs">✓ Chauffeur attribué manuellement (hors correspondance auto).</p>}
+          </div>
         )}
 
         {error && <p className="text-critical text-sm bg-critical-soft border border-critical rounded-xl px-3 py-2">⚠️ {error}</p>}
@@ -410,7 +428,7 @@ export default function AmendesClient({ user }: { user: any }) {
             {form.infractionPlace && <Row label="Lieu" value={form.infractionPlace} />}
             {form.infractionRef && <Row label="N° PV" value={form.infractionRef} mono />}
             <div className="border-t border pt-2 mt-2">
-              <Row label="Chauffeur" value={selectedCand?.driver_name || (form.selectedDriverId ? 'sélectionné' : '— non identifié —')} />
+              <Row label="Chauffeur" value={selectedCand?.driver_name || (form.selectedDriverId ? (drivers.find(d => d.id === form.selectedDriverId)?.name || 'sélectionné') : '— non identifié —')} />
               {selectedCand && <Row label="Mission" value={selectedCand.mission_ref} />}
             </div>
           </div>
