@@ -24,7 +24,7 @@ export default async function AdminAmendesPage() {
     .from('fines')
     .select(`
       id, photo_url,
-      infraction_date, infraction_place, infraction_type, infraction_ref,
+      infraction_date, infraction_place, infraction_type, infraction_ref, identification_code,
       amount, plate,
       driver_id, driver_match_method, driver_match_confidence,
       mission_id, status, notes,

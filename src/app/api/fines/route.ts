@@ -21,6 +21,7 @@ interface CreateFineBody {
   infraction_place?: string
   infraction_type?:  string
   infraction_ref?:   string
+  identification_code?: string
   driver_id?:        string | null     // si user a choisi manuellement
   mission_id?:       string | null
   notes?:            string
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest) {
       infraction_place:        body.infraction_place || null,
       infraction_type:         body.infraction_type  || null,
       infraction_ref:          body.infraction_ref   || null,
+      identification_code:     body.identification_code || null,
       amount:                  body.amount,
       plate:                   normalizedPlate,
       driver_id:               driverId,

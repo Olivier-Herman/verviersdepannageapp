@@ -13,6 +13,7 @@ interface Fine {
   infraction_place:         string | null
   infraction_type:          string | null
   infraction_ref:           string | null
+  identification_code:      string | null
   amount:                   number
   plate:                    string
   driver_id:                string | null
@@ -328,7 +329,8 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
                         </Link></>
                       )}
                     </p>
-                    {f.infraction_ref && <p className="text-ink-faint text-xs font-mono mt-0.5">N° {f.infraction_ref}</p>}
+                    {f.infraction_ref && <p className="text-ink-faint text-xs font-mono mt-0.5">N° PV {f.infraction_ref}</p>}
+                    {f.identification_code && <p className="text-ink-faint text-xs font-mono mt-0.5">Code ident. {f.identification_code}</p>}
                     <div className="mt-1.5 flex items-center gap-2">
                       <span className="text-ink-faint text-xs">Attribuer :</span>
                       <select
@@ -396,6 +398,7 @@ function FineEditForm({ fine, saving, onSave }: {
   const [type,  setType]  = useState(fine.infraction_type || '')
   const [place, setPlace] = useState(fine.infraction_place || '')
   const [ref,   setRef]   = useState(fine.infraction_ref || '')
+  const [code,  setCode]  = useState(fine.identification_code || '')
   const inputCls = 'mt-1 w-full bg-surface-2 border rounded-md px-2 py-1.5 text-sm text-ink'
   return (
     <div className="mt-3 pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -413,12 +416,15 @@ function FineEditForm({ fine, saving, onSave }: {
       <label className="text-xs text-ink-muted">N° de PV
         <input value={ref} onChange={e => setRef(e.target.value)} className={inputCls} />
       </label>
+      <label className="text-xs text-ink-muted">Code d’identification
+        <input value={code} onChange={e => setCode(e.target.value)} className={inputCls} />
+      </label>
       <label className="text-xs text-ink-muted sm:col-span-2">Lieu
         <input value={place} onChange={e => setPlace(e.target.value)} className={inputCls} />
       </label>
       <div className="sm:col-span-2">
         <button disabled={saving}
-          onClick={() => onSave(fine.id, { plate, infraction_date: date, infraction_type: type, infraction_place: place, infraction_ref: ref })}
+          onClick={() => onSave(fine.id, { plate, infraction_date: date, infraction_type: type, infraction_place: place, infraction_ref: ref, identification_code: code })}
           className="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-semibold disabled:opacity-50">
           {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>

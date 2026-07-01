@@ -97,6 +97,7 @@ export async function POST(req: Request) {
         infraction_place:        ex.infraction_place,
         infraction_type:         ex.infraction_type,
         infraction_ref:          ex.infraction_ref,
+        identification_code:     ex.identification_code,
         amount:                  ex.amount,              // souvent null (à compléter)
         plate:                   ex.plate ? normPlate(ex.plate) : '—',
         driver_id:               driverId,

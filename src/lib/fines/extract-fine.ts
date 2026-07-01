@@ -16,6 +16,7 @@ export interface FineExtract {
   infraction_place: string | null
   infraction_type:  string | null   // speeding|parking|red_light|priority|phone|belt|other
   infraction_ref:   string | null   // n° de PV
+  identification_code: string | null // code d'identification figurant sur le PV
   raw_quote:        string | null
 }
 
@@ -32,6 +33,7 @@ Retourne UNIQUEMENT un objet JSON (pas de markdown) avec EXACTEMENT :
   "infraction_place": "string|null — lieu de l'infraction (rue + localité)",
   "infraction_type": "string|null — l'un de : speeding (excès de vitesse), parking (stationnement), red_light (feu rouge), priority (priorité), phone (téléphone au volant), belt (ceinture), other. Choisis le plus proche.",
   "infraction_ref": "string|null — numéro du PV / de la notice / du dossier",
+  "identification_code": "string|null — code d'identification figurant sur le PV (ex. code de perception immédiate, communication structurée de paiement, code d'identification du document). Distinct du numéro de PV. null si absent.",
   "raw_quote": "string|null — très courte citation qui justifie (max 120 caractères)"
 }
 
@@ -70,6 +72,7 @@ function coerce(item: any): FineExtract {
     infraction_place: s(item?.infraction_place),
     infraction_type:  t,
     infraction_ref:   s(item?.infraction_ref),
+    identification_code: s(item?.identification_code),
     raw_quote:        s(item?.raw_quote)?.slice(0, 120) ?? null,
   }
 }

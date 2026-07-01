@@ -49,7 +49,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     update.amount = amt
   }
-  if ('infraction_place' in body) update.infraction_place = body.infraction_place || null
+  if ('infraction_place'    in body) update.infraction_place    = body.infraction_place    || null
+  if ('identification_code' in body) update.identification_code = body.identification_code || null
   if ('infraction_type'  in body) update.infraction_type  = body.infraction_type  || null
   if ('infraction_ref' in body) {
     const refN = String(body.infraction_ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
