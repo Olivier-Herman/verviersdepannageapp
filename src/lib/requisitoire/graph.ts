@@ -150,6 +150,31 @@ async function ensureFolderId(mailbox: string, name: string): Promise<string> {
   return folder.id
 }
 
+/**
+ * Diagnostic : teste l'accès Graph à une mailbox (token + lecture des dossiers +
+ * écriture = création/recherche du dossier cible). Renvoie la cause exacte.
+ */
+export async function checkMailboxAccess(mailbox: string): Promise<Record<string, any>> {
+  const out: Record<string, any> = { mailbox }
+  const token = await getAppOnlyToken()
+  out.token = !!token
+  if (!token) { out.error = 'Pas de token (AZURE_AD_* manquants ?)'; return out }
+
+  // Lecture des dossiers
+  const r = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders?$top=5&$select=id,displayName`)
+  out.read = r.ok ? 'ok' : `${r.status} ${(await r.text()).slice(0, 240)}`
+
+  // Écriture : créer/retrouver le dossier "Mail auto-géré"
+  try {
+    const id = await ensureFolderId(mailbox, AUTO_MANAGED_FOLDER)
+    out.write = 'ok'
+    out.folderId = id
+  } catch (e: any) {
+    out.write = e?.message || 'échec'
+  }
+  return out
+}
+
 /** Déplace un message vers un dossier (créé au besoin). Best-effort. */
 export async function moveMessageToFolder(mailbox: string, messageId: string, folderName: string): Promise<{ ok: boolean; error?: string }> {
   try {
