@@ -33,19 +33,26 @@ export default async function MissionListPage() {
 
   if (!user) redirect('/dashboard')
 
+  // Missions clôturées il y a moins de 6h → gardées dans la liste pour que le
+  // chauffeur puisse encore modifier leur clôture (bouton dans la fiche).
+  const sixHAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+
   const { data: missions } = await supabase
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, awaiting_payment, amount_to_collect, payment_amount')
+    .select('id, mission_number, external_id, dossier_number, source, mission_type, status, client_name, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, received_at, assigned_at, completed_at, awaiting_payment, amount_to_collect, payment_amount')
     .eq('assigned_to', user.id)
     // Olivier 2026-06-17 : une mission 'parked' est en parc (fourrière) → elle
     // sort de la liste active du chauffeur. On garde le cas awaiting_payment
     // (mission à encaisser) même si parked.
-    .or('status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true')
+    // + missions terminées (to_invoice/completed) des 6 dernières heures :
+    // clôture encore modifiable par le chauffeur.
+    .or(`status.in.(assigned,accepted,in_progress,delivering),awaiting_payment.eq.true,and(status.in.(to_invoice,completed),completed_at.gte.${sixHAgo})`)
     .order('assigned_at', { ascending: false })
     .limit(20)
 
-  const active    = missions?.filter(m => m.status !== 'completed') || []
-  const completed = missions?.filter(m => m.status === 'completed') || []
+  const CLOSED    = ['to_invoice', 'completed']
+  const active    = missions?.filter(m => !CLOSED.includes(m.status)) || []
+  const completed = missions?.filter(m =>  CLOSED.includes(m.status)) || []
 
   return (
     <AppShell
@@ -92,14 +99,14 @@ export default async function MissionListPage() {
 
           {completed.length > 0 && (
             <div>
-              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Terminées</h2>
+              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Terminées récemment · clôture modifiable 6h</h2>
               <div className="space-y-2">
                 {completed.map(m => (
                   <Link key={m.id} href={`/mission/${m.id}`}
-                    className="block bg-surface border border rounded-2xl p-4 opacity-60 hover:opacity-100 transition-all">
+                    className="block bg-surface border border rounded-2xl p-4 opacity-75 hover:opacity-100 transition-all">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-ink-secondary text-xs font-mono">{m.dossier_number || m.external_id}</span>
-                      <span className="text-ink-muted text-xs">Terminée</span>
+                      <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
+                      <span className="text-amber-600 text-xs font-semibold">✏️ Modifiable</span>
                     </div>
                     <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>
                     <p className="text-ink-secondary text-sm">{m.vehicle_plate}</p>
