@@ -40,5 +40,10 @@ create index if not exists requisitoire_intake_status_idx
 
 alter table public.requisitoire_intake enable row level security;
 
+-- Table serveur-only : accédée via service_role uniquement (RLS on = anon/authenticated
+-- bloqués). Le service_role contourne la RLS MAIS a besoin du GRANT explicite, sinon
+-- 'permission denied for table' à l'INSERT/SELECT via l'API.
+grant all on public.requisitoire_intake to service_role;
+
 -- Recharger le cache PostgREST (sinon INSERT/SELECT via API échouent en 'schema cache').
 notify pgrst, 'reload schema';
