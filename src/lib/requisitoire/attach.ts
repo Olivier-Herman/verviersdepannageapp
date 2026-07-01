@@ -35,7 +35,7 @@ export async function attachRequisitoire(
   if (intake.status === 'attached') return { ok: false, error: 'Déjà rattaché' }
 
   const { data: mission, error: mErr } = await sb
-    .from('incoming_missions').select('id, dossier_number').eq('id', missionId).maybeSingle()
+    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin').eq('id', missionId).maybeSingle()
   if (mErr)     return { ok: false, error: mErr.message }
   if (!mission) return { ok: false, error: 'Fiche introuvable' }
 
@@ -106,6 +106,24 @@ export async function attachRequisitoire(
       }
     }
   }
+
+  // ── Complétion plaque / VIN depuis le document ─────────────────────────────
+  // Si présent sur le document et absent dans VD Soft → on remplit.
+  // Si présent mais DIFFÉRENT → on concatène (jamais d'écrasement).
+  const normCmp = (v: string) => (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const mergeField = (current: string | null, incoming: string | null): string | undefined => {
+    const inc = (incoming || '').trim()
+    if (!inc) return undefined
+    const cur = (current || '').trim()
+    if (!cur) return inc
+    const parts = cur.split(/\s*\/\s*/).map(normCmp)
+    if (parts.includes(normCmp(inc))) return undefined   // déjà présent
+    return `${cur} / ${inc}`
+  }
+  const plateUpd = mergeField(mission.vehicle_plate, ex.plaque)
+  const vinUpd   = mergeField(mission.vehicle_vin, ex.vin)
+  if (plateUpd !== undefined) update.vehicle_plate = plateUpd
+  if (vinUpd   !== undefined) update.vehicle_vin   = vinUpd
 
   const { error: uErr } = await sb.from('incoming_missions').update(update).eq('id', missionId)
   if (uErr) return { ok: false, error: uErr.message }
