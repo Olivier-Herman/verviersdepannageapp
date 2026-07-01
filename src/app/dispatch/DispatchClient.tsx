@@ -615,6 +615,11 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
           className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition">
           {confirmLoading ? '⏳…' : '✓ Valider'}
         </button>
+        <button type="button" onClick={openModal} disabled={confirmLoading || refuseLoading}
+          title="Assigner directement un chauffeur (valide la mission au passage)"
+          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition">
+          ⚡ Assigner
+        </button>
         <button type="button" onClick={refuseMission} disabled={confirmLoading || refuseLoading}
           title="Refuser la mission (l'écarte du dispatch) sans ouvrir la fiche"
           className="px-3 py-1.5 bg-red-600/15 hover:bg-red-600/25 text-red-700 dark:text-red-400 border border-red-600/40 rounded-lg text-xs font-bold transition disabled:opacity-50">
@@ -627,6 +632,13 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
           userModules={userModules}
           onTriggered={onRefresh}
         />
+        {showModal && (
+          <DriverPickerModal
+            missionId={mission.id}
+            onPick={assign}
+            onClose={closeModal}
+          />
+        )}
       </div>
     )
   }
