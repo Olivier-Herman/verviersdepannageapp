@@ -79,6 +79,20 @@ export function requisitoireIncidentAt(ex: Pick<RequisitoireExtract, 'date_requi
   return isNaN(d.getTime()) ? null : d.toISOString()
 }
 
+/**
+ * Immatriculation PROVISOIRE (« à compléter ») quand aucune plaque n'est connue :
+ * marque + 5 derniers caractères du châssis (VIN). Ex : "VOLKSWAGEN 3KS12".
+ * Renvoie null s'il n'y a pas de quoi construire (ni marque ni VIN exploitable).
+ */
+export function provisionalPlate(brand: string | null, vin: string | null): string | null {
+  const b = (brand || '').trim().toUpperCase()
+  const v = (vin || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const last5 = v.length >= 5 ? v.slice(-5) : v
+  if (!last5 && !b) return null
+  if (!last5) return null   // sans VIN exploitable, pas d'identifiant fiable
+  return `${b}${b ? ' ' : ''}${last5}`.trim()
+}
+
 let cachedClient: Anthropic | null = null
 function getClient(): Anthropic {
   if (cachedClient) return cachedClient

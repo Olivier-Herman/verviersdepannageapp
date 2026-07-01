@@ -9,7 +9,7 @@
 // Non disponible pour une levée de saisie (elle lève une saisie existante).
 // Olivier 2026-07-01. Cf [[project_assistant_mail_module]].
 
-import { requisitoireIncidentAt, type RequisitoireExtract } from './extract'
+import { requisitoireIncidentAt, provisionalPlate, type RequisitoireExtract } from './extract'
 import { attachRequisitoire } from './attach'
 
 export async function createFicheFromIntake(
@@ -40,7 +40,9 @@ export async function createFicheFromIntake(
       source_email_id:   `requisitoire_${intakeId}`,
       mission_type:      'remorquage',
       dossier_number:    ex.pv_number || null,
-      vehicle_plate:     ex.plaque || null,
+      // Pas de plaque sur le réquisitoire → immatriculation provisoire à compléter
+      // (marque + 5 derniers du châssis).
+      vehicle_plate:     ex.plaque || provisionalPlate(ex.marque, ex.vin) || null,
       vehicle_brand:     ex.marque || null,
       vehicle_model:     ex.modele || null,
       vehicle_vin:       ex.vin || null,

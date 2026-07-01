@@ -13,7 +13,7 @@
 //
 // Olivier 2026-07-01. Cf [[project_assistant_mail_module]].
 
-import { requisitoireIncidentAt, type RequisitoireExtract } from './extract'
+import { requisitoireIncidentAt, provisionalPlate, type RequisitoireExtract } from './extract'
 import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
 
 export interface AttachOptions {
@@ -131,7 +131,11 @@ export async function attachRequisitoire(
     if (parts.includes(normCmp(inc))) return undefined   // déjà présent
     return `${cur} / ${inc}`
   }
-  const plateUpd = mergeField(mission.vehicle_plate, ex.plaque)
+  // Plaque : la vraie du document si présente ; sinon, si la fiche n'a AUCUNE
+  // plaque, on pose une immatriculation provisoire (marque + 5 derniers du VIN).
+  const incomingPlate = ex.plaque
+    || ((mission.vehicle_plate || '').trim() ? null : provisionalPlate(ex.marque, ex.vin))
+  const plateUpd = mergeField(mission.vehicle_plate, incomingPlate)
   const vinUpd   = mergeField(mission.vehicle_vin, ex.vin)
   if (plateUpd !== undefined) update.vehicle_plate = plateUpd
   if (vinUpd   !== undefined) update.vehicle_vin   = vinUpd
