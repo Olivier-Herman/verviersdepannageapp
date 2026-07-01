@@ -30,6 +30,17 @@ function dateOnlyBE(iso: string | null): string | null {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 }
 
+// Libellé de statut lisible (stocké dans fines.odoo_move_status).
+export function odooMoveStatusLabel(state?: string | null, payment?: string | null): string {
+  if (state === 'cancel') return 'annulée'
+  if (state === 'draft')  return 'brouillon'
+  // posted :
+  if (payment === 'paid')       return 'payée'
+  if (payment === 'partial')    return 'partiellement payée'
+  if (payment === 'in_payment') return 'en paiement'
+  return 'comptabilisée'   // posted, non payée
+}
+
 export async function createFineVendorBill(
   sb: any,
   fineId: string,
@@ -91,23 +102,23 @@ export async function createFineVendorBill(
 
   // Lire le numéro + statut (brouillon = name '/').
   let moveName: string | null = null
-  let state = 'draft'
+  let statusLabel = 'brouillon'
   try {
     const rows = await odooRpc<any[]>('account.move', 'read', [[moveId]], { fields: ['name', 'state', 'payment_state'] })
     const m = rows?.[0]
-    if (m) { moveName = m.name && m.name !== '/' ? m.name : null; state = m.state || 'draft' }
+    if (m) { moveName = m.name && m.name !== '/' ? m.name : null; statusLabel = odooMoveStatusLabel(m.state, m.payment_state) }
   } catch { /* ignore */ }
 
   await sb.from('fines').update({
     odoo_move_id:     moveId,
     odoo_move_name:   moveName,
-    odoo_move_status: state,
+    odoo_move_status: statusLabel,
     status:           'sent_to_purchase',
     purchase_email_sent: true,
     purchase_email_sent_at: new Date().toISOString(),
   }).eq('id', fineId)
 
-  return { ok: true, move_id: moveId, move_name: moveName, status: state }
+  return { ok: true, move_id: moveId, move_name: moveName, status: statusLabel }
 }
 
 /** Rafraîchit le n° + statut de la facture Odoo liée. */
@@ -122,10 +133,47 @@ export async function refreshFineOdooStatus(
     const m = rows?.[0]
     if (!m) return { ok: false, error: 'Facture Odoo introuvable (supprimée ?).' }
     const moveName = m.name && m.name !== '/' ? m.name : null
-    const status = m.state === 'posted' && m.payment_state === 'paid' ? 'posted·payé' : (m.state || 'draft')
+    const status = odooMoveStatusLabel(m.state, m.payment_state)
     await sb.from('fines').update({ odoo_move_name: moveName, odoo_move_status: status }).eq('id', fineId)
     return { ok: true, move_name: moveName, status }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'échec' }
   }
+}
+
+/**
+ * Rafraîchit en lot le statut Odoo des amendes facturées non encore PAYÉES
+ * (les payées sont terminales). Une seule lecture Odoo pour tous les moves.
+ * Utilisé par le cron quotidien.
+ */
+export async function refreshManyFinesOdoo(sb: any): Promise<{ scanned: number; refreshed: number; errors: number }> {
+  const { data: fines } = await sb
+    .from('fines')
+    .select('id, odoo_move_id, odoo_move_status')
+    .not('odoo_move_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(500)
+  if (!fines?.length) return { scanned: 0, refreshed: 0, errors: 0 }
+
+  const moveIds = [...new Set(fines.map((f: any) => f.odoo_move_id))]
+  let rows: any[]
+  try {
+    rows = await odooRpc<any[]>('account.move', 'read', [moveIds], { fields: ['id', 'name', 'state', 'payment_state'] })
+  } catch {
+    return { scanned: fines.length, refreshed: 0, errors: fines.length }
+  }
+  const byId = new Map((rows || []).map((m: any) => [m.id, m]))
+
+  let refreshed = 0, errors = 0
+  for (const f of fines) {
+    const m = byId.get(f.odoo_move_id)
+    if (!m) { errors++; continue }
+    const moveName = m.name && m.name !== '/' ? m.name : null
+    const status = odooMoveStatusLabel(m.state, m.payment_state)
+    if (moveName !== null || status !== f.odoo_move_status) {
+      await sb.from('fines').update({ odoo_move_name: moveName, odoo_move_status: status }).eq('id', f.id)
+    }
+    refreshed++
+  }
+  return { scanned: fines.length, refreshed, errors }
 }
