@@ -164,13 +164,22 @@ export async function checkMailboxAccess(mailbox: string): Promise<Record<string
   const r = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders?$top=5&$select=id,displayName`)
   out.read = r.ok ? 'ok' : `${r.status} ${(await r.text()).slice(0, 240)}`
 
-  // Écriture : créer/retrouver le dossier "Mail auto-géré"
-  try {
-    const id = await ensureFolderId(mailbox, AUTO_MANAGED_FOLDER)
+  // ÉCRITURE RÉELLE : créer un dossier de test unique (que le compte n'a pas déjà),
+  // puis le supprimer. C'est le vrai test des droits d'écriture (= déplacement).
+  const testName = `VDSoft-test-${Date.now()}`
+  const cr = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName: testName }),
+  })
+  if (cr.ok) {
     out.write = 'ok'
-    out.folderId = id
-  } catch (e: any) {
-    out.write = e?.message || 'échec'
+    const folder = await cr.json().catch(() => null)
+    if (folder?.id) {
+      const del = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders/${folder.id}`, { method: 'DELETE' })
+      out.write_cleanup = del.ok ? 'ok' : `${del.status}`
+    }
+  } else {
+    out.write = `${cr.status} ${(await cr.text()).slice(0, 240)}`
   }
   return out
 }
