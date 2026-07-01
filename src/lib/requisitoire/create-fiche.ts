@@ -9,7 +9,7 @@
 // Non disponible pour une levée de saisie (elle lève une saisie existante).
 // Olivier 2026-07-01. Cf [[project_assistant_mail_module]].
 
-import type { RequisitoireExtract } from './extract'
+import { requisitoireIncidentAt, type RequisitoireExtract } from './extract'
 import { attachRequisitoire } from './attach'
 
 export async function createFicheFromIntake(
@@ -28,10 +28,8 @@ export async function createFicheFromIntake(
 
   const ex = (intake.extracted || {}) as RequisitoireExtract
   const now = new Date().toISOString()
-  // incident_at = date du réquisitoire si lisible (heure locale BE), sinon maintenant.
-  const incidentAt = /^\d{4}-\d{2}-\d{2}$/.test(ex.date_requisition || '')
-    ? new Date(`${ex.date_requisition}T09:00:00+02:00`).toISOString()
-    : now
+  // incident_at = date/heure du réquisitoire si lisible (heure locale BE), sinon maintenant.
+  const incidentAt = requisitoireIncidentAt(ex) || now
 
   const { data: mission, error } = await sb
     .from('incoming_missions')

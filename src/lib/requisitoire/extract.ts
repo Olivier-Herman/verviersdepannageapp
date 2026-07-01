@@ -27,7 +27,8 @@ export interface RequisitoireExtract {
   autorite:        string | null
   // Réquisitoire
   pv_number:       string | null
-  date_requisition: string | null
+  date_requisition: string | null   // YYYY-MM-DD
+  heure_requisition: string | null  // HH:MM si présent
   // Levée de saisie
   levee_date:      string | null    // date effective de levée (YYYY-MM-DD)
   levee_type:      'definitive' | 'temporaire' | null
@@ -50,7 +51,8 @@ Retourne UNIQUEMENT un objet JSON (pas de markdown) avec EXACTEMENT :
   "adresse": "string|null — lieu de l'enlèvement / saisie (rue + localité)",
   "autorite": "string|null — zone de police / parquet / autorité émettrice",
   "pv_number": "string|null — [réquisitoire] n° de PV / procès-verbal / notice",
-  "date_requisition": "string|null — [réquisitoire] date du réquisitoire YYYY-MM-DD si possible",
+  "date_requisition": "string|null — [réquisitoire] date de l'intervention/saisie YYYY-MM-DD si possible",
+  "heure_requisition": "string|null — [réquisitoire] heure de l'intervention/saisie HH:MM (24h) si présente, sinon null",
   "levee_date": "string|null — [levée] date effective de la levée de saisie YYYY-MM-DD",
   "levee_type": "string|null — [levée] 'definitive' ou 'temporaire' si précisé, sinon null",
   "raw_quote": "string|null — très courte citation qui justifie (max 120 caractères)"
@@ -64,6 +66,18 @@ RÈGLES :
 - doc_type='requisitoire' si c'est un ordre d'enlèvement/saisie/gardiennage.
 - En cas de doute réel entre réquisitoire et autre → 'autre'.
 Retourne UNIQUEMENT le JSON.`
+
+/**
+ * Construit le timestamp d'intervention (ISO) depuis la date + heure du
+ * réquisitoire (heure locale BE +02:00). Défaut 09:00 si pas d'heure lue.
+ * Renvoie null si la date n'est pas exploitable.
+ */
+export function requisitoireIncidentAt(ex: Pick<RequisitoireExtract, 'date_requisition' | 'heure_requisition'>): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ex.date_requisition || '')) return null
+  const time = /^\d{1,2}:\d{2}$/.test(ex.heure_requisition || '') ? (ex.heure_requisition as string).padStart(5, '0') : '09:00'
+  const d = new Date(`${ex.date_requisition}T${time}:00+02:00`)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
 
 let cachedClient: Anthropic | null = null
 function getClient(): Anthropic {
@@ -89,6 +103,7 @@ function coerce(item: any): RequisitoireExtract {
     autorite:        s(item?.autorite),
     pv_number:       s(item?.pv_number),
     date_requisition: s(item?.date_requisition),
+    heure_requisition: s(item?.heure_requisition),
     levee_date:      s(item?.levee_date),
     levee_type:      lt as any,
     raw_quote:       s(item?.raw_quote)?.slice(0, 120) ?? null,

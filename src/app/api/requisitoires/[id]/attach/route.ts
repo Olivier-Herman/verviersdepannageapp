@@ -46,5 +46,5 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     leveeType,
   })
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })
-  return NextResponse.json({ ok: true, mail_moved: res.mailMoved })
+  return NextResponse.json({ ok: true, mail_moved: res.mailMoved, date_adapted: res.dateAdapted })
 }

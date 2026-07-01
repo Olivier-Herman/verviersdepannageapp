@@ -13,7 +13,7 @@
 //
 // Olivier 2026-07-01. Cf [[project_assistant_mail_module]].
 
-import type { RequisitoireExtract } from './extract'
+import { requisitoireIncidentAt, type RequisitoireExtract } from './extract'
 import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
 
 export interface AttachOptions {
@@ -27,7 +27,7 @@ export async function attachRequisitoire(
   missionId: string,
   actorId: string | null,
   opts: AttachOptions = {},
-): Promise<{ ok: true; mailMoved: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; mailMoved: boolean; dateAdapted: boolean } | { ok: false; error: string }> {
   const { data: intake, error: iErr } = await sb
     .from('requisitoire_intake').select('*').eq('id', intakeId).maybeSingle()
   if (iErr)     return { ok: false, error: iErr.message }
@@ -35,12 +35,13 @@ export async function attachRequisitoire(
   if (intake.status === 'attached') return { ok: false, error: 'Déjà rattaché' }
 
   const { data: mission, error: mErr } = await sb
-    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin').eq('id', missionId).maybeSingle()
+    .from('incoming_missions').select('id, dossier_number, vehicle_plate, vehicle_vin, incident_at').eq('id', missionId).maybeSingle()
   if (mErr)     return { ok: false, error: mErr.message }
   if (!mission) return { ok: false, error: 'Fiche introuvable' }
 
   const ex = (intake.extracted || {}) as RequisitoireExtract
   const isLevee = intake.doc_type === 'levee_saisie'
+  let dateAdapted = false
 
   // ── Validation spécifique levée : date obligatoire (pilote le gardiennage) ──
   const leveeDate = (opts.leveeDate || ex.levee_date || '').trim()
@@ -105,6 +106,16 @@ export async function attachRequisitoire(
         update.dossier_number = `${current} / ${pv}`
       }
     }
+    // Adapter la date/heure de la fiche à celle du réquisitoire si différente.
+    const reqAt = requisitoireIncidentAt(ex)
+    if (reqAt) {
+      const cur = mission.incident_at ? new Date(mission.incident_at).getTime() : null
+      if (cur === null || Math.abs(cur - new Date(reqAt).getTime()) > 60_000) {
+        update.incident_at = reqAt
+        update.intervention_date = reqAt
+        dateAdapted = true
+      }
+    }
   }
 
   // ── Complétion plaque / VIN depuis le document ─────────────────────────────
@@ -140,5 +151,5 @@ export async function attachRequisitoire(
     mailMoved = await moveMessageToFolder(intake.mailbox, intake.source_email_id, AUTO_MANAGED_FOLDER).catch(() => false)
   }
 
-  return { ok: true, mailMoved }
+  return { ok: true, mailMoved, dateAdapted }
 }
