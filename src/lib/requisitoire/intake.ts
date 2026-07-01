@@ -108,12 +108,15 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
       .from('requisitoire_intake').select('id').eq('source_email_id', msg.id).maybeSingle()
     if (existing) { summary.skipped++; continue }
 
-    const looksLevee = LEVEE_KEYWORDS.some(k => `${msg.subject} ${msg.bodyPreview}`.toLowerCase().includes(k))
+    // Un mail d'une adresse police belge = à traiter systématiquement
+    // (réquisitoire ou levée), même sans PJ ni mot-clé. Olivier 2026-07-01.
+    const fromPolice = /@police\.belgium\.eu\s*>?\s*$/i.test((msg.from || '').trim())
+    const looksLevee = fromPolice || LEVEE_KEYWORDS.some(k => `${msg.subject} ${msg.bodyPreview}`.toLowerCase().includes(k))
 
     try {
       const pdfs = msg.hasAttachments ? await getPdfAttachments(FOURRIERE_MAILBOX, msg.id) : []
 
-      // Ni PDF, ni indice de levée → on ne dépense pas d'appel Claude.
+      // Ni PDF, ni indice de levée / police → on ne dépense pas d'appel Claude.
       if (pdfs.length === 0 && !looksLevee) {
         if (msg.hasAttachments) {
           // PJ mais pas de PDF → trace pour ne pas re-scanner.

@@ -53,6 +53,19 @@ function fmtDate(s: string): string {
   return new Date(s).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// UTC → "YYYY-MM-DDTHH:mm" pour un input datetime-local (heure locale du navigateur = BE).
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso); if (isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+const FINE_TYPE_OPTIONS: [string, string][] = [
+  ['', '— Type —'], ['speeding', '🚓 Excès de vitesse'], ['parking', '🅿️ Stationnement'],
+  ['red_light', '🚦 Feu rouge'], ['priority', '⚠️ Priorité'], ['phone', '📱 Téléphone'],
+  ['belt', '🔓 Ceinture'], ['other', '📝 Autre'],
+]
+
 export default function AdminAmendesClient({ fines, drivers, userRole, userName, userModules }: {
   fines:       Fine[]
   drivers:     Driver[]
@@ -67,6 +80,7 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   // Copie locale (mise à jour lors d'une attribution manuelle de chauffeur).
   const [rows, setRows]       = useState<Fine[]>(fines)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [editId, setEditId]     = useState<string | null>(null)
 
   async function assignDriver(fineId: string, driverId: string) {
     setSavingId(fineId)
@@ -126,6 +140,20 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
       const j = await res.json()
       if (res.ok) setRows(rs => rs.map(f => f.id === fineId ? { ...f, amount: (amount as any) } : f))
       else alert(j.error || 'Montant invalide')
+    } finally { setSavingId(null) }
+  }
+
+  // Édition des données saisies par le système (OCR) : plaque, date, type, lieu, n° PV.
+  async function patchFine(fineId: string, body: Record<string, any>) {
+    setSavingId(fineId)
+    try {
+      const res = await fetch(`/api/fines/${fineId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const j = await res.json()
+      if (res.ok) { setEditId(null); router.refresh() }
+      else alert(j.error || 'Erreur')
     } finally { setSavingId(null) }
   }
 
@@ -276,7 +304,8 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
               const status = STATUS_LABEL[f.status] || { label: f.status, color: 'bg-gray-500/15 text-gray-700 border-gray-500/30' }
               const isAuto = f.driver_match_method === 'auto'
               return (
-                <li key={f.id} className="bg-surface border rounded-2xl p-4 flex flex-col sm:flex-row gap-3">
+                <li key={f.id} className="bg-surface border rounded-2xl p-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
                   <a href={f.photo_url} target="_blank" rel="noopener noreferrer"
                     className="flex-shrink-0 w-16 h-16 bg-surface-2 border rounded-xl flex items-center justify-center text-xl hover:border-brand">
                     📄
@@ -312,6 +341,10 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
                       </select>
                       {savingId === f.id && <span className="text-ink-faint text-xs">…</span>}
                     </div>
+                    <button onClick={() => setEditId(editId === f.id ? null : f.id)}
+                      className="mt-1.5 text-xs text-brand hover:underline">
+                      {editId === f.id ? '✕ Fermer l’édition' : '✏️ Modifier les infos'}
+                    </button>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                     <div className="flex items-center gap-1">
@@ -335,6 +368,11 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
                       </button>
                     )}
                   </div>
+                  </div>
+
+                  {editId === f.id && (
+                    <FineEditForm fine={f} saving={savingId === f.id} onSave={patchFine} />
+                  )}
                 </li>
               )
             })}
@@ -342,5 +380,49 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
         )}
       </div>
     </AppShell>
+  )
+}
+
+// Panneau d'édition des données saisies par le système (OCR) : plaque, date,
+// type, lieu, n° PV. La date est en heure locale (navigateur = BE) → convertie
+// côté serveur (parseTowsoftDateUTC).
+function FineEditForm({ fine, saving, onSave }: {
+  fine:   Fine
+  saving: boolean
+  onSave: (id: string, body: Record<string, any>) => void
+}) {
+  const [plate, setPlate] = useState(fine.plate || '')
+  const [date,  setDate]  = useState(toLocalInput(fine.infraction_date))
+  const [type,  setType]  = useState(fine.infraction_type || '')
+  const [place, setPlace] = useState(fine.infraction_place || '')
+  const [ref,   setRef]   = useState(fine.infraction_ref || '')
+  const inputCls = 'mt-1 w-full bg-surface-2 border rounded-md px-2 py-1.5 text-sm text-ink'
+  return (
+    <div className="mt-3 pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label className="text-xs text-ink-muted">Plaque
+        <input value={plate} onChange={e => setPlate(e.target.value)} className={`${inputCls} uppercase`} />
+      </label>
+      <label className="text-xs text-ink-muted">Date &amp; heure (locale)
+        <input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+      </label>
+      <label className="text-xs text-ink-muted">Type
+        <select value={type} onChange={e => setType(e.target.value)} className={inputCls}>
+          {FINE_TYPE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
+      <label className="text-xs text-ink-muted">N° de PV
+        <input value={ref} onChange={e => setRef(e.target.value)} className={inputCls} />
+      </label>
+      <label className="text-xs text-ink-muted sm:col-span-2">Lieu
+        <input value={place} onChange={e => setPlace(e.target.value)} className={inputCls} />
+      </label>
+      <div className="sm:col-span-2">
+        <button disabled={saving}
+          onClick={() => onSave(fine.id, { plate, infraction_date: date, infraction_type: type, infraction_place: place, infraction_ref: ref })}
+          className="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-semibold disabled:opacity-50">
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+      </div>
+    </div>
   )
 }

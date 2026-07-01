@@ -15,6 +15,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { extractFineFromScan } from '@/lib/fines/extract-fine'
 import { suggestDriverForFine } from '@/lib/fines/suggest-driver'
+import { parseTowsoftDateUTC } from '@/lib/towsoft-client'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -66,9 +67,9 @@ export async function POST(req: Request) {
       let matchMethod: 'auto' | 'none' = 'none'
       let matchConfidence: string | null = null
       let missionId: string | null = null
-      const infractionDate = ex.infraction_date && !isNaN(Date.parse(ex.infraction_date))
-        ? new Date(ex.infraction_date).toISOString()
-        : new Date().toISOString()
+      // Le PV porte une heure LOCALE Belgique → parseTowsoftDateUTC l'interprète
+      // en Europe/Brussels (évite le décalage +2h). Défaut : maintenant.
+      const infractionDate = parseTowsoftDateUTC(ex.infraction_date) || new Date().toISOString()
       if (ex.plate && ex.infraction_date) {
         try {
           const sug = await suggestDriverForFine(normPlate(ex.plate), new Date(infractionDate))

@@ -10,6 +10,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { parseTowsoftDateUTC } from '@/lib/towsoft-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,8 +53,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ('infraction_type'  in body) update.infraction_type  = body.infraction_type  || null
   if ('infraction_ref'   in body) update.infraction_ref   = body.infraction_ref   || null
   if ('plate'            in body) update.plate            = String(body.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || '—'
-  if ('infraction_date'  in body && body.infraction_date && !isNaN(Date.parse(body.infraction_date))) {
-    update.infraction_date = new Date(body.infraction_date).toISOString()
+  if ('infraction_date' in body && body.infraction_date) {
+    const iso = parseTowsoftDateUTC(String(body.infraction_date))   // saisie = heure locale BE
+    if (iso) update.infraction_date = iso
   }
 
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Rien à mettre à jour' }, { status: 400 })

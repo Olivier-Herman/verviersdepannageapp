@@ -12,6 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { parseTowsoftDateUTC } from '@/lib/towsoft-client'
 
 export type DocType = 'requisitoire' | 'levee_saisie' | 'autre'
 
@@ -85,8 +86,8 @@ Retourne UNIQUEMENT le JSON.`
 export function requisitoireIncidentAt(ex: Pick<RequisitoireExtract, 'date_requisition' | 'heure_requisition'>): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ex.date_requisition || '')) return null
   const time = /^\d{1,2}:\d{2}$/.test(ex.heure_requisition || '') ? (ex.heure_requisition as string).padStart(5, '0') : '09:00'
-  const d = new Date(`${ex.date_requisition}T${time}:00+02:00`)
-  return isNaN(d.getTime()) ? null : d.toISOString()
+  // Date/heure du document = heure LOCALE Belgique → conversion UTC via Europe/Brussels.
+  return parseTowsoftDateUTC(`${ex.date_requisition}T${time}:00`)
 }
 
 /**
