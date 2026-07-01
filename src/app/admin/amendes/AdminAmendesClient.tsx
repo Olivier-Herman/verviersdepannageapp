@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { useRouter }          from 'next/navigation'
 import Link                   from 'next/link'
 import AppShell               from '@/components/layout/AppShell'
 import { formatEur }          from '@/lib/format'
@@ -86,6 +87,59 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
     } finally { setSavingId(null) }
   }
 
+  const router = useRouter()
+  useEffect(() => { setRows(fines) }, [fines])
+
+  // ── Import par lot (glisser-déposer de scans de PV) ────────────────────────
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string>('')
+
+  async function uploadFiles(fileList: FileList | File[]) {
+    const arr = Array.from(fileList).filter(f => f.type.includes('pdf') || f.type.startsWith('image/'))
+    if (arr.length === 0) { setImportMsg('⚠ Dépose des PDF ou images de PV.'); return }
+    setImporting(true); setImportMsg(`Lecture de ${arr.length} PV…`)
+    try {
+      const fd = new FormData()
+      arr.forEach(f => fd.append('files', f))
+      const res = await fetch('/api/fines/batch', { method: 'POST', body: fd })
+      const j = await res.json()
+      if (res.ok) {
+        const withAmount = j.created.filter((c: any) => c.amount != null).length
+        setImportMsg(`✅ ${j.created.length} PV importé(s) en brouillon (${withAmount} avec montant lu)${j.errors?.length ? ` · ${j.errors.length} échec(s)` : ''}${j.skipped ? ` · ${j.skipped} en attente (relance)` : ''}`)
+        router.refresh()
+      } else setImportMsg(`⚠ ${j.error || 'Échec import'}`)
+    } catch { setImportMsg('⚠ Erreur réseau') }
+    setImporting(false)
+  }
+
+  // ── Édition du montant (complète la fiche) + envoi aux achats ──────────────
+  async function saveAmount(fineId: string, value: string) {
+    const amount = value.trim() === '' ? null : Number(value.replace(',', '.'))
+    setSavingId(fineId)
+    try {
+      const res = await fetch(`/api/fines/${fineId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      })
+      const j = await res.json()
+      if (res.ok) setRows(rs => rs.map(f => f.id === fineId ? { ...f, amount: (amount as any) } : f))
+      else alert(j.error || 'Montant invalide')
+    } finally { setSavingId(null) }
+  }
+
+  async function sendToPurchase(fineId: string) {
+    if (!confirm('Envoyer cette amende aux achats ?')) return
+    setSavingId(fineId)
+    try {
+      const res = await fetch(`/api/fines/${fineId}/send-to-purchase`, { method: 'POST' })
+      const j = await res.json()
+      if (res.ok) setRows(rs => rs.map(f => f.id === fineId ? { ...f, status: 'sent_to_purchase', purchase_email_sent: true } : f))
+      else alert(j.error || 'Échec de l’envoi')
+    } finally { setSavingId(null) }
+  }
+
   const years = useMemo(() => {
     const set = new Set<number>()
     rows.forEach(f => set.add(new Date(f.infraction_date).getFullYear()))
@@ -142,6 +196,21 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
             + Saisir un PV
           </Link>
         </div>
+
+        {/* Import par lot (glisser-déposer) */}
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files) }}
+          onClick={() => !importing && fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition ${dragOver ? 'border-brand bg-brand/10' : 'border-zinc-400 bg-surface hover:bg-surface-2'}`}>
+          <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple className="hidden"
+            onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = '' }} />
+          <p className="text-ink font-semibold text-sm">📎 Glisse tes scans de PV ici (un fichier = un PV)</p>
+          <p className="text-ink-muted text-xs mt-1">PDF ou images · plusieurs à la fois · lecture auto (plaque, date, montant…) → brouillons à compléter</p>
+          {importing && <p className="text-brand text-xs mt-2">⏳ {importMsg}</p>}
+        </div>
+        {!importing && importMsg && <div className="text-sm bg-surface-2 border rounded-xl px-4 py-2 text-ink">{importMsg}</div>}
 
         {/* Filtres */}
         <div className="bg-surface border rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -244,11 +313,27 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
                       {savingId === f.id && <span className="text-ink-faint text-xs">…</span>}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="text-ink font-bold text-base tabular-nums">{formatEur(f.amount)}</span>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" step="0.01" min="0"
+                        defaultValue={f.amount != null ? String(f.amount) : ''}
+                        placeholder="montant"
+                        disabled={savingId === f.id || f.status === 'sent_to_purchase'}
+                        onBlur={e => { const v = e.target.value; if (v !== (f.amount != null ? String(f.amount) : '')) saveAmount(f.id, v) }}
+                        className="w-24 bg-surface-2 border rounded-md px-2 py-1 text-sm text-ink text-right tabular-nums disabled:opacity-60" />
+                      <span className="text-ink-muted text-xs">€</span>
+                    </div>
+                    {f.amount == null && <span className="text-amber-700 text-[11px] italic">à compléter</span>}
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold border ${status.color}`}>
                       {status.label}
                     </span>
+                    {f.status !== 'sent_to_purchase' && f.amount != null && Number(f.amount) > 0 && (
+                      <button onClick={() => sendToPurchase(f.id)} disabled={savingId === f.id}
+                        className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                        → Envoyer aux achats
+                      </button>
+                    )}
                   </div>
                 </li>
               )
