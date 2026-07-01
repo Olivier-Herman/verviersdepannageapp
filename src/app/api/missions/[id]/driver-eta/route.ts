@@ -15,7 +15,7 @@ import { authOptions }                           from '@/lib/auth'
 import { createAdminClient }                     from '@/lib/supabase'
 import { isInDaySchedule, isInNightSchedule, isAutoDispatchNight }    from '@/lib/schedule'
 import { ensureScheduleLoaded } from '@/lib/schedule-server'
-import { getDrivingRoute }       from '@/lib/routing/ors'
+import { getDrivingMatrix } from '@/lib/routing/ors'
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
@@ -33,16 +33,13 @@ type Coord = { lat: number; lng: number }
 // Migration vers Google Routes API (l'ancienne Directions API est depreciee
 // pour les nouveaux projets Cloud). On demande les steps avec un fieldmask
 // pour pouvoir capper la vitesse a 90 km/h sur les segments rapides.
-async function getTruckEtaMinutes(origin: Coord, destination: Coord): Promise<number | null> {
-  // Routage via OpenRouteService (gratuit) au lieu de Google Routes.
-  const r = await getDrivingRoute(origin, destination)
-  if (!r || !r.km || r.minutes == null) return r?.minutes ?? null
-  // Cap camion 90 km/h : si la vitesse moyenne dépasse 90 (autoroute), on recalcule.
+// Cap camion 90 km/h : si la vitesse moyenne dépasse 90 (autoroute), on recalcule.
+function truckCapMinutes(r: { minutes: number; km: number }): number {
   const hours = r.minutes / 60
-  const avgKmh = hours > 0 ? r.km / hours : 0
-  const TRUCK_MAX_KMH = 90
-  return avgKmh > TRUCK_MAX_KMH ? Math.round((r.km / TRUCK_MAX_KMH) * 60) : r.minutes
+  const avg = hours > 0 ? r.km / hours : 0
+  return avg > 90 ? Math.round((r.km / 90) * 60) : r.minutes
 }
+
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -114,6 +111,25 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   const now    = Date.now()
   const nowDt  = new Date(now)
+  // On ne calcule l'ETA que pour les chauffeurs DISPO (libres + en service,
+  // positionnés). Les on-mission / hors-service sont affichés sans ETA.
+  // Une seule requête matrice ORS pour tous les dispos → coût quasi nul.
+  const isAvailable = (d: any): boolean => {
+    if (d.last_location_lat == null || d.last_location_lng == null) return false
+    if ((missionsByDriver.get(d.id) || []).length > 0) return false   // en mission → pas dispo
+    const locAge = d.location_updated_at ? Math.floor((now - new Date(d.location_updated_at).getTime()) / 1000) : null
+    const isFresh = locAge != null && locAge < ACTIVE_WINDOW_MIN * 60
+    const onSchedule = (!!d.schedule_day && isInDaySchedule(nowDt)) || (!!d.schedule_night && isInNightSchedule(nowDt))
+    return isFresh || onSchedule   // en service
+  }
+  const available = drivers.filter(isAvailable)
+  const matrixEtas = await getDrivingMatrix(
+    available.map((d: any) => ({ lat: Number(d.last_location_lat), lng: Number(d.last_location_lng) })),
+    incident,
+  )
+  const etaToIncidentByDriver = new Map<string, number>()
+  available.forEach((d: any, i: number) => { const r = matrixEtas[i]; if (r) etaToIncidentByDriver.set(d.id, truckCapMinutes(r)) })
+
   const enriched = await Promise.all(drivers.map(async (d) => {
     const locAge = d.location_updated_at
       ? Math.floor((now - new Date(d.location_updated_at).getTime()) / 1000)
@@ -145,10 +161,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       ? { lat: Number(d.last_location_lat), lng: Number(d.last_location_lng) }
       : null
 
-    let etaPositionToIncident: number | null = null
-    if (driverPos) {
-      etaPositionToIncident = await getTruckEtaMinutes(driverPos, incident)
-    }
+    // Depuis la matrice précalculée (1 requête pour tous), plus 1 appel/chauffeur.
+    const etaPositionToIncident: number | null = driverPos ? (etaToIncidentByDriver.get(d.id) ?? null) : null
 
     let currentMission: any = null
     if (activeMission) {
@@ -160,14 +174,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         ? { lat: Number(destLat), lng: Number(destLng) }
         : null
 
-      let etaToDestination: number | null = null
-      let etaDestinationToIncident: number | null = null
-      if (destCoord && driverPos) {
-        etaToDestination = await getTruckEtaMinutes(driverPos, destCoord)
-      }
-      if (destCoord) {
-        etaDestinationToIncident = await getTruckEtaMinutes(destCoord, incident)
-      }
+      // Chauffeur en mission = pas dispo → on n'appelle PAS Google/ORS pour son ETA
+      // (économie). On l'affiche avec sa mission en cours, sans ETA.
+      const etaToDestination: number | null = null
+      const etaDestinationToIncident: number | null = null
 
       currentMission = {
         id:                          activeMission.id,
