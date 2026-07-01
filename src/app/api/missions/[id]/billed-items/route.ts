@@ -52,7 +52,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // l'afficher dans le bandeau (plus besoin de l'encoder à la main). Best-effort.
   const quoteIds = [...new Set(items.map((i: any) => i.odoo_quote_id).filter((x: any): x is number => x != null))]
   const quotesInfo: Record<number, {
-    invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null
+    invoice_number: string | null; state: string | null; payment_state?: string | null; quote_url: string; invoice_url: string | null
     amount_untaxed?: number | null; amount_total?: number | null
     lines?: { name: string; subtotal: number }[]
     description?: string | null
@@ -71,7 +71,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       }
       const moves = allMoveIds.size > 0
         ? await odooRpc<any[]>('account.move', 'read', [[...allMoveIds]],
-            { fields: ['id', 'name', 'state', 'move_type', 'amount_untaxed', 'amount_total', 'invoice_line_ids'] })
+            { fields: ['id', 'name', 'state', 'payment_state', 'move_type', 'amount_untaxed', 'amount_total', 'invoice_line_ids'] })
         : []
       const moveById = new Map((moves || []).map((m: any) => [m.id, m]))
 
@@ -108,6 +108,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         quotesInfo[qid] = {
           invoice_number: inv && inv.name && inv.name !== '/' ? inv.name : null,
           state:          inv ? inv.state : null,
+          payment_state:  inv ? inv.payment_state : null,
           quote_url:      `${ODOO_URL}/web#id=${qid}&model=sale.order&view_type=form`,
           invoice_url:    inv ? `${ODOO_URL}/web#id=${inv.id}&model=account.move&view_type=form` : null,
           amount_untaxed: inv ? Number(inv.amount_untaxed) : null,

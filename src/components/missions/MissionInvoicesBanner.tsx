@@ -23,10 +23,23 @@ const PAY_LABEL:   Record<string, string> = { paid: 'Payée', partial: 'Partiell
 
 interface BilledItem { label: string; amount_htva: number; period_from: string | null; period_to: string | null; odoo_quote_id: number | null; invoice_number?: string | null }
 interface QuoteInfo {
-  invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null
+  invoice_number: string | null; state: string | null; payment_state?: string | null; quote_url: string; invoice_url: string | null
   amount_untaxed?: number | null; amount_total?: number | null
   lines?: { name: string; subtotal: number }[]
   description?: string | null
+}
+
+function invoiceStatus(state?: string | null, payment?: string | null): { label: string; cls: string } | null {
+  if (!state) return null
+  if (state === 'draft')  return { label: 'Brouillon', cls: 'bg-gray-100 text-gray-700' }
+  if (state === 'cancel') return { label: 'Annulée',   cls: 'bg-gray-100 text-gray-700' }
+  switch (payment) {
+    case 'paid':       return { label: '✅ Payée',              cls: 'bg-green-100 text-green-800' }
+    case 'in_payment': return { label: 'En paiement',          cls: 'bg-blue-100 text-blue-800' }
+    case 'partial':    return { label: 'Partiellement payée',  cls: 'bg-amber-100 text-amber-800' }
+    case 'reversed':   return { label: 'Extournée',            cls: 'bg-gray-100 text-gray-700' }
+    default:           return { label: 'Non payée',            cls: 'bg-amber-100 text-amber-800' }
+  }
 }
 
 export default function MissionInvoicesBanner({ missionId }: { missionId: string }) {
@@ -76,9 +89,15 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
               return (
                 <div key={k}>
                   <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-                    <span className="text-ink text-xs font-semibold">
-                      🧾 Facture partielle — {total.toFixed(2)} € HTVA
-                      {useOdoo && info!.amount_total != null ? ` · ${Number(info!.amount_total).toFixed(2)} € TVAC` : ''}
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span className="text-ink text-xs font-semibold">
+                        🧾 Facture partielle — {total.toFixed(2)} € HTVA
+                        {useOdoo && info!.amount_total != null ? ` · ${Number(info!.amount_total).toFixed(2)} € TVAC` : ''}
+                      </span>
+                      {(() => {
+                        const st = useOdoo ? invoiceStatus(info!.state, info!.payment_state) : null
+                        return st ? <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span> : null
+                      })()}
                     </span>
                     <span className="flex items-center gap-2">
                       {invNum ? (
