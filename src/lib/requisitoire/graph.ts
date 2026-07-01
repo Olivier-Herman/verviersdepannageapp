@@ -129,16 +129,32 @@ export async function tagMessage(mailbox: string, messageId: string, category: s
 
 const folderIdCache = new Map<string, string>()  // clé: `${mailbox}|${name}`
 
-/** Trouve (ou crée) un dossier de mail par nom et renvoie son id. */
+/**
+ * Trouve (ou crée) un dossier de mail par nom et renvoie son id.
+ * Cherche d'abord SOUS la boîte de réception (là où l'utilisateur crée
+ * généralement ses dossiers, et d'où viennent les mails), puis À LA RACINE.
+ * Si introuvable, le crée SOUS la boîte de réception (emplacement visible).
+ */
 async function ensureFolderId(mailbox: string, name: string): Promise<string> {
   const cacheKey = `${mailbox}|${name}`
   const cached = folderIdCache.get(cacheKey)
   if (cached) return cached
 
-  const data = await authedGet(`/users/${encodeURIComponent(mailbox)}/mailFolders?$top=100&$select=id,displayName`)
-  let folder = (data.value || []).find((f: any) => (f.displayName || '').toLowerCase() === name.toLowerCase())
+  const wanted = name.toLowerCase()
+  const findIn = async (path: string): Promise<any | null> => {
+    try {
+      const d = await authedGet(path)
+      return (d.value || []).find((f: any) => (f.displayName || '').toLowerCase() === wanted) || null
+    } catch { return null }
+  }
+
+  // 1. Sous Inbox   2. À la racine
+  let folder = await findIn(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/childFolders?$top=100&$select=id,displayName`)
+  if (!folder) folder = await findIn(`/users/${encodeURIComponent(mailbox)}/mailFolders?$top=100&$select=id,displayName`)
+
+  // 3. Créer sous Inbox
   if (!folder) {
-    const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders`, {
+    const res = await authedFetch(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/childFolders`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ displayName: name }),
