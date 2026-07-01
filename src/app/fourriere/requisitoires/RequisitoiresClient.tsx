@@ -95,13 +95,21 @@ export default function RequisitoiresClient(props: {
       body: JSON.stringify(body),
     })
     const j = await res.json()
-    if (res.ok) { setMsg('✅ Document rattaché à la fiche'); await load(tab) }
+    if (res.ok) { setMsg(`✅ Document rattaché à la fiche${j.mail_moved ? ' · mail déplacé dans « Mail auto-géré »' : ' · ⚠ mail non déplacé (droits mail ?)'}`); await load(tab) }
     else setMsg(`⚠ ${j.error || 'Échec du rattachement'}`)
   }
 
   async function ignore(id: string) {
     const res = await fetch(`/api/requisitoires/${id}/ignore`, { method: 'POST' })
-    if (res.ok) { setMsg('Réquisitoire écarté'); await load(tab) }
+    if (res.ok) { setMsg('Document écarté'); await load(tab) }
+  }
+
+  async function createFiche(id: string) {
+    setMsg('')
+    const res = await fetch(`/api/requisitoires/${id}/create-fiche`, { method: 'POST' })
+    const j = await res.json()
+    if (res.ok) { setMsg(`✅ Fiche créée${j.mission_number ? ` (#${j.mission_number})` : ''} en parc J, réquisitoire annexé${j.mail_moved ? ' · mail déplacé' : ' · ⚠ mail non déplacé'}`); await load(tab) }
+    else setMsg(`⚠ ${j.error || 'Échec de la création'}`)
   }
 
   return (
@@ -148,7 +156,7 @@ export default function RequisitoiresClient(props: {
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} />)}
+              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} />)}
             </div>
           )}
         </div>
@@ -168,10 +176,11 @@ function ConfidenceBadge({ c }: { c: string | null }) {
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[k] || map.none}`}>{label[k] || label.none}</span>
 }
 
-function RequisitoireCard({ item, onAttach, onIgnore }: {
+function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche }: {
   item: Item
   onAttach: (id: string, opts: AttachOpts) => void
   onIgnore: (id: string) => void
+  onCreateFiche: (id: string) => void
 }) {
   const ex = item.extracted
   const isLevee = (item.doc_type || ex?.doc_type) === 'levee_saisie'
@@ -292,6 +301,13 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
               className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
               {isLevee ? 'Lever la saisie' : 'Rattacher'}
             </button>
+            {!isLevee && (
+              <button onClick={() => onCreateFiche(item.id)}
+                title="Créer une nouvelle fiche (véhicule saisi) en parc J, préremplie et réquisitoire annexé"
+                className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-semibold transition">
+                ＋ Créer la fiche (parc J)
+              </button>
+            )}
             <button onClick={() => onIgnore(item.id)}
               className="flex items-center gap-1 px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-sm font-semibold transition">
               <X size={14} /> Ignorer

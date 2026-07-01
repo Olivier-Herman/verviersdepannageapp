@@ -55,11 +55,11 @@ export function isGraphConfigured(): boolean {
   return readEnv() !== null
 }
 
-export async function getAppOnlyToken(): Promise<string | null> {
+export async function getAppOnlyToken(forceRefresh = false): Promise<string | null> {
   const env = readEnv()
   if (!env) return null
 
-  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+  if (!forceRefresh && cachedToken && cachedToken.expiresAt > Date.now()) {
     return cachedToken.value
   }
 
