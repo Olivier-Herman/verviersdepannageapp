@@ -22,6 +22,9 @@ interface Fine {
   mission_id:               string | null
   status:                   string
   notes:                    string | null
+  odoo_move_id:             number | null
+  odoo_move_name:           string | null
+  odoo_move_status:         string | null
   purchase_email_sent:      boolean
   purchase_email_sent_at:   string | null
   created_at:               string
@@ -159,13 +162,25 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   }
 
   async function sendToPurchase(fineId: string) {
-    if (!confirm('Envoyer cette amende aux achats ?')) return
+    if (!confirm('Créer la facture fournisseur Odoo (brouillon) pour cette amende ?')) return
     setSavingId(fineId)
     try {
       const res = await fetch(`/api/fines/${fineId}/send-to-purchase`, { method: 'POST' })
       const j = await res.json()
-      if (res.ok) setRows(rs => rs.map(f => f.id === fineId ? { ...f, status: 'sent_to_purchase', purchase_email_sent: true } : f))
-      else alert(j.error || 'Échec de l’envoi')
+      if (res.ok) setRows(rs => rs.map(f => f.id === fineId
+        ? { ...f, status: 'sent_to_purchase', purchase_email_sent: true, odoo_move_id: j.odoo_move_id, odoo_move_name: j.odoo_move_name, odoo_move_status: j.odoo_move_status }
+        : f))
+      else alert(j.error || 'Échec de la création')
+    } finally { setSavingId(null) }
+  }
+
+  async function refreshOdoo(fineId: string) {
+    setSavingId(fineId)
+    try {
+      const res = await fetch(`/api/fines/${fineId}/odoo-status`, { method: 'POST' })
+      const j = await res.json()
+      if (res.ok) setRows(rs => rs.map(f => f.id === fineId ? { ...f, odoo_move_name: j.odoo_move_name, odoo_move_status: j.odoo_move_status } : f))
+      else alert(j.error || 'Erreur')
     } finally { setSavingId(null) }
   }
 
@@ -363,11 +378,18 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold border ${status.color}`}>
                       {status.label}
                     </span>
-                    {f.status !== 'sent_to_purchase' && f.amount != null && Number(f.amount) > 0 && (
+                    {!f.odoo_move_id && f.amount != null && Number(f.amount) > 0 && (
                       <button onClick={() => sendToPurchase(f.id)} disabled={savingId === f.id}
                         className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
                         → Envoyer aux achats
                       </button>
+                    )}
+                    {f.odoo_move_id && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-ink-secondary">
+                        <span>🧾 {f.odoo_move_name || 'Brouillon'}{f.odoo_move_status ? ` · ${f.odoo_move_status}` : ''}</span>
+                        <button onClick={() => refreshOdoo(f.id)} disabled={savingId === f.id} title="Rafraîchir le statut Odoo"
+                          className="text-brand hover:underline">🔄</button>
+                      </div>
                     )}
                   </div>
                   </div>

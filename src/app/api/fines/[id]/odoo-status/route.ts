@@ -1,9 +1,8 @@
-// src/app/api/fines/[id]/send-to-purchase/route.ts
+// src/app/api/fines/[id]/odoo-status/route.ts
 //
-// POST /api/fines/[id]/send-to-purchase
-//   « Envoyer aux achats » : crée directement la FACTURE FOURNISSEUR Odoo
-//   (brouillon, avec le scan du PV) et passe l'amende en 'sent_to_purchase'.
-//   Remplace l'ancien envoi d'email. Accès : admin / superadmin / facturation.
+// POST /api/fines/[id]/odoo-status
+//   Rafraîchit le n° + statut de la facture fournisseur Odoo liée à l'amende
+//   (brouillon → comptabilisée → payée). Accès : admin / superadmin / facturation.
 //
 // Olivier 2026-07-01.
 
@@ -11,10 +10,9 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { createFineVendorBill } from '@/lib/fines/odoo-bill'
+import { refreshFineOdooStatus } from '@/lib/fines/odoo-bill'
 
-export const dynamic     = 'force-dynamic'
-export const maxDuration = 60
+export const dynamic = 'force-dynamic'
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -26,7 +24,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
 
   const sb = createAdminClient()
-  const res = await createFineVendorBill(sb, params.id)
+  const res = await refreshFineOdooStatus(sb, params.id)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 })
-  return NextResponse.json({ ok: true, odoo_move_id: res.move_id, odoo_move_name: res.move_name, odoo_move_status: res.status })
+  return NextResponse.json({ ok: true, odoo_move_name: res.move_name, odoo_move_status: res.status })
 }

@@ -28,6 +28,7 @@ export default async function AdminAmendesPage() {
       amount, plate,
       driver_id, driver_match_method, driver_match_confidence,
       mission_id, status, notes,
+      odoo_move_id, odoo_move_name, odoo_move_status,
       purchase_email_sent, purchase_email_sent_at,
       created_at,
       driver:users!fines_driver_id_fkey(id, name, email),
