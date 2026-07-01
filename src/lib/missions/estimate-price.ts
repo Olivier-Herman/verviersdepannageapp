@@ -8,6 +8,7 @@
 // Retourne un breakdown structure utilisable cote UI.
 
 import { createAdminClient } from '@/lib/supabase'
+import { getDrivingRoute } from '@/lib/routing/ors'
 import { getApplicableSurcharges, isBelgianHoliday } from '@/lib/surcharges'
 import { normalizeType, isRemorquage, isDsp, isTrajetVide, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
 
@@ -49,29 +50,9 @@ const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE
 type Coord = { lat: number; lng: number }
 
 async function routesDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
-  if (!GMAPS_KEY) return null
-  try {
-    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-      method: 'POST',
-      headers: {
-        'Content-Type':     'application/json',
-        'X-Goog-Api-Key':   GMAPS_KEY,
-        'X-Goog-FieldMask': 'routes.distanceMeters',
-      },
-      body: JSON.stringify({
-        origin:           { location: { latLng: { latitude: origin.lat,      longitude: origin.lng      } } },
-        destination:      { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-        travelMode:       'DRIVE',
-        routingPreference:'TRAFFIC_UNAWARE',
-      }),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    const meters = data.routes?.[0]?.distanceMeters
-    return typeof meters === 'number' ? meters / 1000 : null
-  } catch {
-    return null
-  }
+  // Distance routière via OpenRouteService (gratuit) au lieu de Google Routes.
+  const r = await getDrivingRoute(origin, destination)
+  return r?.km ?? null
 }
 
 /** Distance à vol d'oiseau (pour départager des dépôts, sans coût API). */

@@ -15,6 +15,7 @@ import { authOptions }                           from '@/lib/auth'
 import { createAdminClient }                     from '@/lib/supabase'
 import { isInDaySchedule, isInNightSchedule, isAutoDispatchNight }    from '@/lib/schedule'
 import { ensureScheduleLoaded } from '@/lib/schedule-server'
+import { getDrivingRoute }       from '@/lib/routing/ors'
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
 
@@ -33,66 +34,14 @@ type Coord = { lat: number; lng: number }
 // pour les nouveaux projets Cloud). On demande les steps avec un fieldmask
 // pour pouvoir capper la vitesse a 90 km/h sur les segments rapides.
 async function getTruckEtaMinutes(origin: Coord, destination: Coord): Promise<number | null> {
-  if (!GMAPS_KEY) {
-    console.error('[driver-eta] GMAPS_KEY non configuree')
-    return null
-  }
-  try {
-    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-      method: 'POST',
-      headers: {
-        'Content-Type':     'application/json',
-        'X-Goog-Api-Key':   GMAPS_KEY,
-        // Demande les steps : distanceMeters + staticDuration (sans trafic, pour reproductibilite)
-        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration',
-      },
-      body: JSON.stringify({
-        origin:      { location: { latLng: { latitude: origin.lat,      longitude: origin.lng      } } },
-        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-        travelMode:  'DRIVE',
-        routingPreference: 'TRAFFIC_UNAWARE',
-      }),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      console.error(`[driver-eta] Routes API ${res.status}: ${text.slice(0, 300)}`)
-      return null
-    }
-    const data = await res.json()
-    const steps = data.routes?.[0]?.legs?.[0]?.steps
-    if (!Array.isArray(steps) || steps.length === 0) {
-      // Fallback : pas de steps → utiliser duree totale brute
-      const totalMeters  = data.routes?.[0]?.distanceMeters
-      const totalDuration = data.routes?.[0]?.duration  // format "1234s"
-      if (typeof totalMeters !== 'number' || !totalDuration) return null
-      const totalSec = parseInt(String(totalDuration).replace('s', ''))
-      const speedKmh = (totalMeters / 1000) / (totalSec / 3600)
-      const TRUCK_MAX_KMH = 90
-      const adjustedSec = speedKmh > TRUCK_MAX_KMH
-        ? (totalMeters / 1000) / TRUCK_MAX_KMH * 3600
-        : totalSec
-      return Math.round(adjustedSec / 60)
-    }
-
-    const TRUCK_MAX_KMH = 90
-    let totalSec = 0
-    for (const step of steps) {
-      const distM = step.distanceMeters || 0
-      // staticDuration au format "1234s"
-      const durSec = parseInt(String(step.staticDuration || '0s').replace('s', '')) || 0
-      if (durSec === 0) continue
-      const speedKmh = (distM / 1000) / (durSec / 3600)
-      if (speedKmh > TRUCK_MAX_KMH) {
-        totalSec += (distM / 1000) / TRUCK_MAX_KMH * 3600
-      } else {
-        totalSec += durSec
-      }
-    }
-    return Math.round(totalSec / 60)
-  } catch (e: any) {
-    console.error('[driver-eta] fetch failed:', e.message)
-    return null
-  }
+  // Routage via OpenRouteService (gratuit) au lieu de Google Routes.
+  const r = await getDrivingRoute(origin, destination)
+  if (!r || !r.km || r.minutes == null) return r?.minutes ?? null
+  // Cap camion 90 km/h : si la vitesse moyenne dépasse 90 (autoroute), on recalcule.
+  const hours = r.minutes / 60
+  const avgKmh = hours > 0 ? r.km / hours : 0
+  const TRUCK_MAX_KMH = 90
+  return avgKmh > TRUCK_MAX_KMH ? Math.round((r.km / TRUCK_MAX_KMH) * 60) : r.minutes
 }
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {

@@ -11,6 +11,7 @@
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
+import { getDrivingRoute }   from '@/lib/routing/ors'
 import { createAdminClient } from '@/lib/supabase'
 
 const GMAPS_KEY = process.env.GOOGLE_GEOCODING || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
@@ -21,41 +22,9 @@ type Coord = { lat: number; lng: number }
 // l'ancien endpoint /maps/api/directions/json pour les nouveaux projets).
 // Doc : https://developers.google.com/maps/documentation/routes/compute_route_directions
 async function getDistanceKm(origin: Coord, destination: Coord): Promise<number | null> {
-  if (!GMAPS_KEY) {
-    console.error('[km] GMAPS_KEY non configuree')
-    return null
-  }
-  try {
-    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'X-Goog-Api-Key':    GMAPS_KEY,
-        'X-Goog-FieldMask':  'routes.distanceMeters,routes.duration',
-      },
-      body: JSON.stringify({
-        origin:      { location: { latLng: { latitude: origin.lat,      longitude: origin.lng      } } },
-        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-        travelMode:  'DRIVE',
-        routingPreference: 'TRAFFIC_UNAWARE',
-      }),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      console.error(`[km] Routes API ${res.status}: ${text.slice(0, 300)}`)
-      return null
-    }
-    const data = await res.json()
-    const meters = data.routes?.[0]?.distanceMeters
-    if (typeof meters !== 'number') {
-      console.error('[km] Routes API: pas de distance dans la reponse', JSON.stringify(data).slice(0, 200))
-      return null
-    }
-    return meters / 1000
-  } catch (e: any) {
-    console.error('[km] fetch failed:', e.message)
-    return null
-  }
+  // Distance routière via OpenRouteService (gratuit) au lieu de Google Routes.
+  const r = await getDrivingRoute(origin, destination)
+  return r?.km ?? null
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
