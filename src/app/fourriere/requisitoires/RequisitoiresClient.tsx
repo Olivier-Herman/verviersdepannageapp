@@ -10,7 +10,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import AppShell         from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
-import { FileText, Loader2, RefreshCw, Check, X, ExternalLink, Car, MapPin, Calendar, Hash, Shield } from 'lucide-react'
+import { FileText, Loader2, RefreshCw, Check, X, ExternalLink, Car, MapPin, Calendar, Hash, Shield, Eye } from 'lucide-react'
 
 interface Candidate {
   mission_id: string; mission_number: string | null
@@ -33,6 +33,7 @@ interface Item {
 
 const STATUS_TABS = [
   { key: 'pending',         label: 'À rattacher' },
+  { key: 'to_verify',       label: 'À vérifier' },
   { key: 'attached',        label: 'Rattachés' },
   { key: 'ignored',         label: 'Ignorés' },
   { key: 'not_requisitoire', label: 'Non-réquisitoires' },
@@ -165,9 +166,10 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
   onAttach: (id: string, missionId?: string, missionNumber?: string) => void
   onIgnore: (id: string) => void
 }) {
-  const [manual, setManual] = useState('')
+  const [manual, setManual]   = useState('')
+  const [showPdf, setShowPdf] = useState(false)
   const ex = item.extracted
-  const isPending = item.status === 'pending'
+  const isActionable = item.status === 'pending' || item.status === 'to_verify'
 
   return (
     <div className="bg-surface border rounded-2xl p-4 space-y-3">
@@ -180,13 +182,30 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
         <div className="flex items-center gap-2">
           <ConfidenceBadge c={item.confidence} />
           {item.doc_url && (
-            <a href={item.doc_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs font-semibold text-brand hover:underline">
-              <ExternalLink size={13} /> Voir le PDF
-            </a>
+            <>
+              <button onClick={() => setShowPdf(v => !v)}
+                className="flex items-center gap-1 text-xs font-semibold text-brand hover:underline">
+                <Eye size={13} /> {showPdf ? 'Masquer' : 'Aperçu'}
+              </button>
+              <a href={item.doc_url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs font-semibold text-brand hover:underline">
+                <ExternalLink size={13} /> Ouvrir
+              </a>
+            </>
           )}
         </div>
       </div>
+
+      {/* Aperçu PDF (pour vérifier avant de rattacher) */}
+      {showPdf && item.doc_url && (
+        <iframe src={item.doc_url} title="Réquisitoire" className="w-full h-[480px] rounded-xl border bg-white" />
+      )}
+
+      {item.status === 'to_verify' && (
+        <div className="text-sm bg-amber-100 text-amber-800 rounded-xl px-3 py-2">
+          ⚠ Ni plaque ni VIN exploitables lus dans le document — à vérifier manuellement (ouvre l'aperçu et rattache à la bonne fiche).
+        </div>
+      )}
 
       {/* Données lues */}
       {ex && (
@@ -202,7 +221,7 @@ function RequisitoireCard({ item, onAttach, onIgnore }: {
       )}
 
       {/* Fiches candidates */}
-      {isPending && (
+      {isActionable && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-ink-secondary uppercase tracking-wide">Fiches proposées</div>
           {item.candidates.length === 0 ? (

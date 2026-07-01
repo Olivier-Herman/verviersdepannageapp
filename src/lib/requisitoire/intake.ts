@@ -93,13 +93,20 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
       // 4. Matching multi-signal.
       const match = await findRequisitoireCandidates(sb, ex)
 
+      // Sans clé forte (ni plaque, ni 5 derniers du VIN), on ne peut pas
+      // rapprocher de façon fiable → statut « à vérifier » (revue humaine).
+      const plateAlnum = (ex.plaque || '').replace(/[^A-Za-z0-9]/g, '')
+      const vinAlnum   = (ex.vin || '').replace(/[^A-Za-z0-9]/g, '')
+      const hasStrongKey = plateAlnum.length >= 4 || vinAlnum.length >= 5
+      const status = hasStrongKey ? 'pending' : 'to_verify'
+
       await sb.from('requisitoire_intake').insert({
         id: intakeId, mailbox: FOURRIERE_MAILBOX, source_email_id: msg.id, from_addr: msg.from,
         subject: msg.subject, received_at: msg.receivedDateTime, file_name: pdf.name,
         doc_path: docPath, extracted: ex as any,
         candidates: match.candidates as any,
-        matched_mission_id: match.confidence === 'high' ? match.best?.mission_id ?? null : null,
-        confidence: match.confidence, status: 'pending',
+        matched_mission_id: (status === 'pending' && match.confidence === 'high') ? match.best?.mission_id ?? null : null,
+        confidence: match.confidence, status,
       })
       summary.captured++
     } catch (err: any) {
