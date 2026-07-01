@@ -820,11 +820,19 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // l'acceptation Kaze (le mail IMA arrive ~1 min après). Règle : dossier
     // Ethias/PV == dossier Kaze ⇒ pas de 2e fiche.
     const isImaLikeSrc = ['ethias', 'vivium', 'p&v', 'ima'].includes(source)
+    // Olivier 2026-07-01 : VAB — le dossier est la valeur AVANT le "/" (dossier
+    // stable). La valeur APRÈS le "/" est la référence de l'ACTION (dépannage,
+    // remorquage...). Une 2e action (ex: dépannage → remorquage) arrive donc avec
+    // le même dossier mais une réf d'action différente → on doit regrouper sur la
+    // partie avant "/" pour enrichir la fiche au lieu de créer un doublon.
+    const isVabSrc = source === 'vab'
     const dossierRef = (parsed.dossier_number || (isImaLikeSrc ? parsed.external_id : null) || '').trim()
     let dossierGroup: string | null = null
     if (dossierRef) {
       dossierGroup = isImaLikeSrc
         ? (dossierRef.length > 2 ? dossierRef.slice(0, -2) : dossierRef)   // sans les 2 dernières lettres
+        : isVabSrc
+        ? (dossierRef.split('/')[0] || dossierRef).trim()                  // VAB : partie avant "/"
         : dossierRef                                                        // Touring/autres : tel quel
     }
 
@@ -862,7 +870,9 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     if (dossierGroup) {
       const isImaLike = ['ethias', 'vivium', 'p&v', 'ima'].includes(source)
       const existing = await findExisting(q =>
-        isImaLike ? q.ilike('dossier_number', `${dossierGroup}%`) : q.eq('dossier_number', dossierGroup)
+        isImaLike  ? q.ilike('dossier_number', `${dossierGroup}%`)
+        : isVabSrc ? q.or(`dossier_number.ilike.${dossierGroup}/%,dossier_number.eq.${dossierGroup}`)
+        : q.eq('dossier_number', dossierGroup)
       )
       if (existing) {
         existingMissionId = existing.id

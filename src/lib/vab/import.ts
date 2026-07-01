@@ -10,6 +10,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { loginVab, listVabMissions, fetchVabMissionDetail } from './scraper'
+import { sendPushToRole, sendPushToUser } from '@/lib/push'
 
 export type VabImportMode = 'preview' | 'send'
 
@@ -128,6 +129,73 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
       const fullDossier = detail.dossierNumber
         ? `${detail.missionNumber}/${detail.dossierNumber}`
         : detail.missionNumber
+
+      const desiredType = detail.taskType?.toLowerCase().includes('remorquage') ? 'remorquage'
+                        : detail.taskType?.toLowerCase().includes('panne')      ? 'depannage'
+                        : detail.taskType?.toLowerCase().includes('livraison')  ? 'depannage'
+                        : 'depannage'
+      const destAddr = [detail.toStreet, detail.toZip, detail.toCity].filter(Boolean).join(', ') || null
+
+      // ── Anti-doublon / enrichissement par DOSSIER (Olivier 2026-07-01) ──────
+      // Le dossier VAB = la valeur AVANT le "/" (dossier stable). La valeur APRÈS
+      // le "/" est la référence de l'ACTION. Quand un dépannage devient un
+      // remorquage, VAB crée une NOUVELLE action (nouvel AssignmentId + nouvelle
+      // réf) sur le MÊME dossier → avant, on créait un doublon. Désormais, si une
+      // fiche existe déjà pour ce dossier de base, on l'ENRICHIT (type → remorquage
+      // + destination/garage) au lieu d'insérer une 2e fiche.
+      const dossierBase = (fullDossier.split('/')[0] || fullDossier).trim()
+      if (dossierBase && dossierBase.length >= 4) {
+        const { data: existingRows } = await sb.from('incoming_missions')
+          .select('id, mission_type, destination_name, destination_address, status, assigned_to, mission_number')
+          .ilike('source', 'vab')
+          .or(`dossier_number.ilike.${dossierBase}/%,dossier_number.eq.${dossierBase}`)
+          .not('status', 'in', '("ignored","cancelled")')
+          .order('created_at', { ascending: false })
+        const fiche = (existingRows || [])[0] || null
+        if (fiche) {
+          const wasUpgrade = fiche.mission_type !== 'remorquage' && desiredType === 'remorquage'
+          const upd: Record<string, any> = {}
+          if (wasUpgrade) upd.mission_type = 'remorquage'
+          if (detail.toName && !fiche.destination_name)    upd.destination_name    = detail.toName
+          if (destAddr      && !fiche.destination_address)  upd.destination_address = destAddr
+          const destAdded = !!(upd.destination_name || upd.destination_address)
+
+          if (Object.keys(upd).length > 0) {
+            upd.updated_at = new Date().toISOString()
+            await sb.from('incoming_missions').update(upd).eq('id', fiche.id)
+            const destTxt = upd.destination_address || upd.destination_name || fiche.destination_address || fiche.destination_name || ''
+            await sb.from('mission_logs').insert({
+              mission_id: fiche.id,
+              action:     wasUpgrade ? 'mission_type_escalated_rem' : 'rem_destination_completed',
+              notes:      wasUpgrade
+                ? `VAB : dépannage requalifié en REMORQUAGE (nouvelle action VAB).${destTxt ? ` Destination : ${destTxt}.` : ''}`
+                : `VAB : destination remorquage complétée (nouvelle action VAB).${destTxt ? ` Destination : ${destTxt}.` : ''}`,
+              metadata:   { external_id: assignmentId, dossier_base: dossierBase, previous_type: fiche.mission_type, previous_status: fiche.status },
+            })
+            if (fiche.assigned_to && (wasUpgrade || destAdded)) {
+              await sendPushToUser(fiche.assigned_to, {
+                title: wasUpgrade ? '🔀 Dépannage devenu remorquage' : '📍 Destination de remorquage',
+                body:  wasUpgrade
+                  ? `Ta mission #${fiche.mission_number ?? ''} passe en REMORQUAGE.${destTxt ? ' Destination : ' + destTxt : ''}`.trim()
+                  : `Mission #${fiche.mission_number ?? ''} : destination = ${destTxt}`.trim(),
+                url:   `/mission/${fiche.id}`,
+              })
+            }
+            if (wasUpgrade) {
+              await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+                title: '🔀 Dépannage → Remorquage (VAB)',
+                body:  `Mission #${fiche.mission_number ?? ''} requalifiée en remorquage par VAB.`,
+                url:   '/dispatch',
+              })
+            }
+            console.log(`[VAB] Dossier ${dossierBase} : fiche ${fiche.id} enrichie (${wasUpgrade ? 'REM' : 'destination'})`)
+          }
+          // Fiche existante trouvée → on n'insère JAMAIS de doublon.
+          results.push({ missionNumber: item.missionNumber, ok: true })
+          success++
+          continue
+        }
+      }
 
       // Construction de l adresse d intervention (rue + code postal + ville
       // + texte libre type "ENFACE N5" ou autoroute si dispo)
