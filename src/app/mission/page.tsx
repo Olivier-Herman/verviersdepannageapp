@@ -7,6 +7,7 @@ import Link       from 'next/link'
 import AppShell   from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import NewInterventionButton from '@/components/mission/NewInterventionButton'
+import ReopenClosureButton from '@/components/mission/ReopenClosureButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,24 +98,15 @@ export default async function MissionListPage() {
             </div>
           )}
 
-          {completed.length > 0 && (
-            <div>
-              <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Terminées récemment · clôture modifiable 6h</h2>
-              <div className="space-y-2">
-                {completed.map(m => (
-                  <Link key={m.id} href={`/mission/${m.id}`}
-                    className="block bg-surface border border rounded-2xl p-4 opacity-75 hover:opacity-100 transition-all">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-ink-secondary text-xs font-mono">{(m as any).mission_number != null ? `#${(m as any).mission_number}` : (m.dossier_number || m.external_id)}</span>
-                      <span className="text-amber-600 text-xs font-semibold">✏️ Modifiable</span>
-                    </div>
-                    <p className="text-ink font-semibold">{m.client_name || 'Client inconnu'}</p>
-                    <p className="text-ink-secondary text-sm">{m.vehicle_plate}</p>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Bouton discret : rouvrir une clôture récente (<6h) sans polluer la liste */}
+          <ReopenClosureButton missions={completed.map(m => ({
+            id: m.id,
+            mission_number: (m as any).mission_number ?? null,
+            dossier_number: m.dossier_number ?? null,
+            external_id: m.external_id ?? null,
+            client_name: m.client_name ?? null,
+            vehicle_plate: m.vehicle_plate ?? null,
+          }))} />
 
         </div>
 
