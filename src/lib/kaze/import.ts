@@ -14,6 +14,7 @@ import { createAdminClient }     from '@/lib/supabase'
 import { getJob }                 from '@/lib/kaze/client'
 import { mapKazeJobToMission }    from '@/lib/kaze/mapper'
 import { lookupPartner }          from '@/lib/odoo-quote'
+import { sendNotification, sendNotificationToRole } from '@/lib/notifications/send'
 
 export interface KazeImportResult {
   ok:           boolean
@@ -309,14 +310,19 @@ async function markEventProcessed(
  * Cherche par kaze_job_id et passe le status a 'cancelled' (sauf si deja
  * dans un etat terminal).
  */
+// Statuts où le chauffeur s'est ENGAGÉ (a accepté) : une annulation Kaze à ce
+// stade = trajet à vide à facturer → on NE fait PAS disparaître la mission.
+// (Olivier 2026-07-01 : seuil = dès 'accepted'.)
+const KAZE_STARTED_STATUSES = ['accepted', 'in_progress', 'delivering']
+
 export async function cancelKazeJob(
   kazeJobId: string,
   opts: { webhookEventId?: string; reason?: string } = {},
-): Promise<{ ok: boolean; mission_id: string | null; action: 'cancelled' | 'not_found' | 'skipped' }> {
+): Promise<{ ok: boolean; mission_id: string | null; action: 'cancelled' | 'trajet_vide' | 'not_found' | 'skipped' }> {
   const sb = createAdminClient()
   const { data: m } = await sb
     .from('incoming_missions')
-    .select('id, status')
+    .select('id, status, assigned_to, mission_type, mission_number')
     .eq('kaze_job_id', kazeJobId)
     .maybeSingle()
 
@@ -325,12 +331,48 @@ export async function cancelKazeJob(
     return { ok: false, mission_id: null, action: 'not_found' }
   }
 
-  // Etat terminal : on n annule pas si la mission est deja completed/ignored
-  if (['completed', 'cancelled', 'ignored'].includes(m.status)) {
+  // Etat terminal : on ne touche pas si deja completed/cancelled/ignored/facturable.
+  if (['completed', 'cancelled', 'ignored', 'to_invoice'].includes(m.status)) {
     await markEventProcessed(opts.webhookEventId, m.id, null)
     return { ok: true, mission_id: m.id, action: 'skipped' }
   }
 
+  // ── Chauffeur DÉJÀ ENGAGÉ → trajet à vide (mission gardée visible) ──────────
+  if (KAZE_STARTED_STATUSES.includes(m.status)) {
+    const { error } = await sb
+      .from('incoming_missions')
+      .update({ mission_type: 'trajet_vide', kaze_cancelled_after_accept: true })
+      .eq('id', m.id)
+    if (error) {
+      await markEventProcessed(opts.webhookEventId, m.id, error.message)
+      return { ok: false, mission_id: m.id, action: 'not_found' }
+    }
+
+    await sb.from('mission_logs').insert({
+      mission_id: m.id,
+      action:     'cancelled_by_kaze_after_accept',
+      notes:      `Annulée par Kaze après acceptation → trajet à vide à facturer. ${opts.reason || ''}`.trim(),
+      metadata:   { kaze_job_id: kazeJobId, original_mission_type: m.mission_type, previous_status: m.status },
+    }).then(() => {}, () => {})
+
+    // Notifier le chauffeur (fais demi-tour) + le dispatch.
+    const num = m.mission_number ? `#${m.mission_number}` : ''
+    const payload = {
+      title: 'Mission annulée par Kaze',
+      body:  `La mission ${num} a été annulée par Kaze après acceptation. Trajet à vide à facturer.`,
+      mission_id: m.id,
+      action_url: `/dispatch/${m.id}`,
+    }
+    if (m.assigned_to) await sendNotification(m.assigned_to, 'kaze_cancelled_after_start', {
+      ...payload, body: `La mission ${num} vient d'être annulée par Kaze. Fais demi-tour — trajet à vide.`,
+    }).catch(() => {})
+    await sendNotificationToRole('dispatcher', 'kaze_cancelled_after_start', payload).catch(() => {})
+
+    await markEventProcessed(opts.webhookEventId, m.id, null)
+    return { ok: true, mission_id: m.id, action: 'trajet_vide' }
+  }
+
+  // ── Pas encore engagé (new / dispatching / assigned) → annulation normale ──
   const { error } = await sb
     .from('incoming_missions')
     .update({ status: 'cancelled' })

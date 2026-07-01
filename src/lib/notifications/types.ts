@@ -124,6 +124,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['driver'],
     defaultEnabled:  true,
   },
+  {
+    key:             'kaze_cancelled_after_start',
+    label:           'Mission Kaze annulée après acceptation',
+    description:     'Kaze a annulé une mission déjà acceptée par le chauffeur → trajet à vide à facturer (chauffeur : fais demi-tour).',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 ] as const
 
 export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {

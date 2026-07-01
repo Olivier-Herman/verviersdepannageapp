@@ -40,6 +40,7 @@ export async function GET(req: Request) {
       parse_confidence,
       invoice_method, invoice_number,
       requested_by_garage_id,
+      kaze_cancelled_after_accept,
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
     .order(sortField, { ascending: false, nullsFirst: false })

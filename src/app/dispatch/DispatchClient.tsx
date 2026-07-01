@@ -71,6 +71,7 @@ interface Mission {
   has_pending_derogation?: boolean
   invoice_number?: string | null
   requested_by_garage_id?: string | null   // commande passée via l'espace client garage
+  kaze_cancelled_after_accept?: boolean     // Kaze a annulé après acceptation → trajet à vide
 }
 
 interface Driver {
@@ -699,6 +700,11 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
           {mission.mission_type && (
             <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-ink-secondary">
               {getTypeLabel(mission)}
+            </span>
+          )}
+          {mission.kaze_cancelled_after_accept && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">
+              ⚠ Annulé Kaze — trajet à vide
             </span>
           )}
         </div>
