@@ -17,6 +17,19 @@ export default function FinesMonthlyRecap() {
   const [recap, setRecap] = useState<Recap | null>(null)
   const [show, setShow] = useState(false)
 
+  // Prévisualisation déclenchée par un bouton (app native = pas d'URL) :
+  // window.dispatchEvent(new CustomEvent('fines-recap-preview')).
+  useEffect(() => {
+    const handler = () => {
+      fetch('/api/driver/fines-recap?preview=1')
+        .then(r => r.json())
+        .then((d: Recap) => { if (d?.months?.length) { setRecap(d); setShow(true) } })
+        .catch(() => {})
+    }
+    window.addEventListener('fines-recap-preview', handler)
+    return () => window.removeEventListener('fines-recap-preview', handler)
+  }, [])
+
   useEffect(() => {
     // Prévisualisation (admin) : ?fines_recap=preview → force l'affichage avec
     // des données factices, sans tenir compte du jour / du flag mensuel.

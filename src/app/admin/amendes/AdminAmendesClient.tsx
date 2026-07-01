@@ -244,10 +244,17 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
             <h1 className="text-ink font-bold text-xl">⚠️ Amendes / PV</h1>
             <p className="text-ink-muted text-sm mt-0.5">{grandCount} amende(s) — Total {formatEur(grandTotal)}{grandUnknown > 0 && ` · ${grandUnknown} sans chauffeur`}</p>
           </div>
-          <Link href="/amendes"
-            className="px-4 py-2 bg-brand text-ink rounded-xl text-sm font-semibold whitespace-nowrap">
-            + Saisir un PV
-          </Link>
+          <div className="flex items-center gap-2">
+            <button onClick={() => window.dispatchEvent(new CustomEvent('fines-recap-preview'))}
+              title="Aperçu du message mensuel affiché au chauffeur (données factices)"
+              className="px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold whitespace-nowrap transition">
+              👁️ Aperçu message chauffeur
+            </button>
+            <Link href="/amendes"
+              className="px-4 py-2 bg-brand text-ink rounded-xl text-sm font-semibold whitespace-nowrap">
+              + Saisir un PV
+            </Link>
+          </div>
         </div>
 
         {/* Import par lot (glisser-déposer) */}
