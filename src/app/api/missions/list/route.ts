@@ -90,18 +90,21 @@ export async function GET(req: Request) {
     // sur la card distingue visuellement le sous-statut facturation.
     query = query.in('status', ['completed', 'to_invoice'])
   } else if (status === 'rdv') {
-    // Onglet RDV : interventions planifiées à +12h (rdv_at > maintenant+12h),
-    // pas encore clôturées. Pour ne pas polluer l'écran du jour.
-    query = query.gt('rdv_at', RDV_THRESHOLD).not('status', 'in', '("completed","to_invoice","cancelled","ignored","parse_error")')
+    // Onglet RDV : missions VALIDÉES (donc plus 'new') planifiées à +12h, pas
+    // encore clôturées. Une mission 'new' future reste dans « En commande »
+    // (avec sa date de RDV) jusqu'à ce que le dispatch la valide.
+    query = query.gt('intervention_date', RDV_THRESHOLD)
+      .not('status', 'in', '("new","completed","to_invoice","cancelled","ignored","parse_error")')
   } else if (status === 'all') {
     query = query.not('status', 'in', '("parse_error","ignored")')
   }
 
-  // Les RDV planifiés à +12h sont réservés à l'onglet RDV → on les retire des
-  // onglets "du jour" (carte + En commande / En attente / Assigné / En cours).
-  const DAY_TABS = ['new', 'dispatching', 'assigned', 'in_progress']
+  // Les missions planifiées à +12h VALIDÉES sont dans l'onglet RDV → on les retire
+  // des onglets du jour (carte + En attente / Assigné / En cours). Les 'new'
+  // futures RESTENT visibles dans « En commande » avec leur date de RDV.
+  const DAY_TABS = ['dispatching', 'assigned', 'in_progress']
   if (mapMode || DAY_TABS.includes(status)) {
-    query = query.or(`rdv_at.is.null,rdv_at.lte.${RDV_THRESHOLD}`)
+    query = query.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
   }
 
   if (source) query = query.eq('source', source)
@@ -245,19 +248,20 @@ export async function GET(req: Request) {
     }
   }
 
-  // Onglet RDV : trier par date de rendez-vous (le plus proche en premier).
+  // Onglet RDV : trier par date d'intervention (le plus proche en premier).
   if (status === 'rdv') {
-    visibleMissions = [...visibleMissions].sort((a: any, b: any) => String(a.rdv_at || '').localeCompare(String(b.rdv_at || '')))
+    visibleMissions = [...visibleMissions].sort((a: any, b: any) => String(a.intervention_date || '').localeCompare(String(b.intervention_date || '')))
   }
 
-  // Onglets du jour : les missions à RDV futur (dans les 12h) passent EN BAS du
-  // tableau (pas encore urgentes), triées par date de RDV. Le reste garde son ordre.
-  if (['new', 'dispatching', 'assigned', 'in_progress'].includes(status)) {
+  // « En commande » : les missions futures (date d'intervention > maintenant, ex.
+  // RDV garage à venir) passent EN BAS du tableau (pas encore urgentes), triées
+  // par date. Le reste (immédiat) garde son ordre.
+  if (status === 'new') {
     const nowMs = Date.now()
-    const isFutureRdv = (m: any) => m.rdv_at && new Date(m.rdv_at).getTime() > nowMs
+    const isFuture = (m: any) => m.intervention_date && new Date(m.intervention_date).getTime() > nowMs
     visibleMissions = [
-      ...visibleMissions.filter((m: any) => !isFutureRdv(m)),
-      ...visibleMissions.filter(isFutureRdv).sort((a: any, b: any) => String(a.rdv_at || '').localeCompare(String(b.rdv_at || ''))),
+      ...visibleMissions.filter((m: any) => !isFuture(m)),
+      ...visibleMissions.filter(isFuture).sort((a: any, b: any) => String(a.intervention_date || '').localeCompare(String(b.intervention_date || ''))),
     ]
   }
 
@@ -281,15 +285,17 @@ export async function GET(req: Request) {
   // 'À Relivrer' (parked) : compteur calculé plus haut (parkedActiveCount) en
   // excluant les parents ayant déjà une REL enfant active.
   // Les onglets "du jour" excluent les RDV planifiés à +12h (comme la liste).
-  const exclFutureRdv = (q: any) => q.or(`rdv_at.is.null,rdv_at.lte.${RDV_THRESHOLD}`)
+  // Onglets du jour (hors 'new') : excluent les missions validées planifiées à +12h.
+  // 'new' compte TOUTES les commandes (y compris futures, restées en « En commande »).
+  const exclFuture = (q: any) => q.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
   const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors, cRdv] = await Promise.all([
-    countBy(q => exclFutureRdv(q.eq('status', 'new'))),
-    countBy(q => exclFutureRdv(q.eq('status', 'dispatching'))),
-    countBy(q => exclFutureRdv(q.in('status', ['assigned', 'accepted']))),
-    countBy(q => exclFutureRdv(q.in('status', ['in_progress', 'delivering']))),
+    countBy(q => q.eq('status', 'new')),
+    countBy(q => exclFuture(q.eq('status', 'dispatching'))),
+    countBy(q => exclFuture(q.in('status', ['assigned', 'accepted']))),
+    countBy(q => exclFuture(q.in('status', ['in_progress', 'delivering']))),
     countBy(q => q.in('status', ['completed', 'to_invoice'])),
     countBy(q => q.eq('status', 'parse_error')),
-    countBy(q => q.gt('rdv_at', RDV_THRESHOLD).not('status', 'in', '("completed","to_invoice","cancelled","ignored","parse_error")')),
+    countBy(q => q.gt('intervention_date', RDV_THRESHOLD).not('status', 'in', '("new","completed","to_invoice","cancelled","ignored","parse_error")')),
   ])
 
   const counters = {

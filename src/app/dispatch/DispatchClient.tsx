@@ -722,9 +722,9 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
               ⚠ Annulé Kaze — trajet à vide
             </span>
           )}
-          {mission.rdv_at && new Date(mission.rdv_at).getTime() > Date.now() && (
+          {mission.intervention_date && new Date(mission.intervention_date).getTime() > Date.now() + 30 * 60 * 1000 && (
             <span className="px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-800">
-              📅 RDV {new Date(mission.rdv_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              📅 RDV {new Date(mission.intervention_date).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
         </div>
