@@ -104,6 +104,18 @@ export default function RequisitoiresClient(props: {
     if (res.ok) { setMsg('Document écarté'); await load(tab) }
   }
 
+  async function moveAttached() {
+    setMsg('')
+    setRunning(true)
+    try {
+      const res = await fetch('/api/requisitoires/move-attached', { method: 'POST' })
+      const j = await res.json()
+      if (res.ok) setMsg(`📁 ${j.moved} mail(s) déplacé(s) vers « Mail auto-géré »${j.already_or_gone ? ` · ${j.already_or_gone} déjà rangé(s)/introuvable(s)` : ''}${j.failed ? ` · ⚠ ${j.failed} échec(s)${j.errors?.length ? ` (${j.errors[0]})` : ''}` : ''}`)
+      else setMsg(`⚠ ${j.error || 'Échec'}`)
+    } catch { setMsg('⚠ Erreur réseau') }
+    setRunning(false)
+  }
+
   async function createFiche(id: string) {
     setMsg('')
     const res = await fetch(`/api/requisitoires/${id}/create-fiche`, { method: 'POST' })
@@ -122,11 +134,18 @@ export default function RequisitoiresClient(props: {
               <FileText size={20} className="text-brand" />
               <h1 className="font-display text-xl font-bold text-ink">Documents police (réquisitoires & levées)</h1>
             </div>
-            <button onClick={runImport} disabled={running}
-              className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold shadow-sm transition disabled:opacity-60">
-              {running ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              Traiter les mails existants
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={moveAttached} disabled={running}
+                title="Déplacer vers « Mail auto-géré » les mails des documents déjà rattachés (nettoyage)"
+                className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition disabled:opacity-60">
+                📁 Ranger les mails rattachés
+              </button>
+              <button onClick={runImport} disabled={running}
+                className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold shadow-sm transition disabled:opacity-60">
+                {running ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                Traiter les mails existants
+              </button>
+            </div>
           </div>
 
           <p className="text-sm text-ink-secondary">
