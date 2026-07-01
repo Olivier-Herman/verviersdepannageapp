@@ -94,3 +94,52 @@ export async function tagMessage(mailbox: string, messageId: string, category: s
   })
   if (!res.ok) console.warn(`[requisitoire] tag mail ${messageId} fail:`, res.status)
 }
+
+// Dossier Outlook où atterrissent les mails traités automatiquement.
+export const AUTO_MANAGED_FOLDER = 'Mail auto-géré'
+
+const folderIdCache = new Map<string, string>()  // clé: `${mailbox}|${name}`
+
+/** Trouve (ou crée) un dossier de mail par nom et renvoie son id. */
+async function ensureFolderId(token: string, mailbox: string, name: string): Promise<string> {
+  const cacheKey = `${mailbox}|${name}`
+  const cached = folderIdCache.get(cacheKey)
+  if (cached) return cached
+
+  const data = await graphGet(token, `/users/${encodeURIComponent(mailbox)}/mailFolders?$top=100&$select=id,displayName`)
+  let folder = (data.value || []).find((f: any) => (f.displayName || '').toLowerCase() === name.toLowerCase())
+  if (!folder) {
+    const res = await fetch(`${GRAPH}/users/${encodeURIComponent(mailbox)}/mailFolders`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ displayName: name }),
+    })
+    if (!res.ok) throw new Error(`create folder ${res.status}: ${(await res.text()).slice(0, 160)}`)
+    folder = await res.json()
+  }
+  folderIdCache.set(cacheKey, folder.id)
+  return folder.id
+}
+
+/**
+ * Déplace un message vers un dossier (créé au besoin). Best-effort : renvoie
+ * false sans lever si le déplacement échoue. Nécessite Mail.ReadWrite (déjà
+ * utilisé par le tagging).
+ */
+export async function moveMessageToFolder(mailbox: string, messageId: string, folderName: string): Promise<boolean> {
+  const token = await getAppOnlyToken()
+  if (!token) return false
+  try {
+    const destId = await ensureFolderId(token, mailbox, folderName)
+    const res = await fetch(`${GRAPH}/users/${encodeURIComponent(mailbox)}/messages/${messageId}/move`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ destinationId: destId }),
+    })
+    if (!res.ok) { console.warn(`[requisitoire] move mail ${messageId} fail:`, res.status, (await res.text()).slice(0, 160)); return false }
+    return true
+  } catch (e: any) {
+    console.warn(`[requisitoire] move mail ${messageId} error:`, e?.message)
+    return false
+  }
+}

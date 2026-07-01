@@ -12,6 +12,7 @@
 // Cf [[project_assistant_mail_module]].
 
 import type { RequisitoireExtract } from './extract'
+import { moveMessageToFolder, AUTO_MANAGED_FOLDER } from './graph'
 
 export async function attachRequisitoire(
   sb: any,
@@ -79,6 +80,11 @@ export async function attachRequisitoire(
     attached_at: new Date().toISOString(), attached_by: actorId,
   }).eq('id', intakeId)
   if (sErr) return { ok: false, error: sErr.message }
+
+  // 8. Déplacer le mail source vers le dossier « Mail auto-géré » (best-effort).
+  if (intake.mailbox && intake.source_email_id) {
+    await moveMessageToFolder(intake.mailbox, intake.source_email_id, AUTO_MANAGED_FOLDER).catch(() => {})
+  }
 
   return { ok: true }
 }
