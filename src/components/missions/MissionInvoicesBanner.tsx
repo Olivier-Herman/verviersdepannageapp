@@ -22,7 +22,11 @@ const STATE_LABEL: Record<string, string> = { draft: 'Brouillon', posted: 'Émis
 const PAY_LABEL:   Record<string, string> = { paid: 'Payée', partial: 'Partielle', not_paid: 'Non payée', in_payment: 'En paiement', reversed: 'Extournée' }
 
 interface BilledItem { label: string; amount_htva: number; period_from: string | null; period_to: string | null; odoo_quote_id: number | null; invoice_number?: string | null }
-interface QuoteInfo { invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null }
+interface QuoteInfo {
+  invoice_number: string | null; state: string | null; quote_url: string; invoice_url: string | null
+  amount_untaxed?: number | null; amount_total?: number | null
+  lines?: { name: string; subtotal: number }[]
+}
 
 export default function MissionInvoicesBanner({ missionId }: { missionId: string }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -62,7 +66,10 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
             {[...groups.entries()].map(([k, list]) => {
               const qid  = k !== 'sans' ? Number(k) : null
               const info = qid != null ? quotesInfo[qid] : undefined
-              const total = list.reduce((s, b) => s + Number(b.amount_htva || 0), 0)
+              // Si la vraie facture Odoo existe (lignes + montants), on l'affiche ;
+              // sinon on retombe sur le registre app.
+              const useOdoo = !!(info && info.lines && info.lines.length && info.amount_untaxed != null)
+              const total = useOdoo ? Number(info!.amount_untaxed) : list.reduce((s, b) => s + Number(b.amount_htva || 0), 0)
               const manualNum = list.find(b => b.invoice_number)?.invoice_number || null
               const invNum = info?.invoice_number || manualNum
               return (
@@ -70,6 +77,7 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
                   <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
                     <span className="text-ink text-xs font-semibold">
                       🧾 Facture partielle — {total.toFixed(2)} € HTVA
+                      {useOdoo && info!.amount_total != null ? ` · ${Number(info!.amount_total).toFixed(2)} € TVAC` : ''}
                     </span>
                     <span className="flex items-center gap-2">
                       {invNum ? (
@@ -90,12 +98,16 @@ export default function MissionInvoicesBanner({ missionId }: { missionId: string
                     </span>
                   </div>
                   <div className="space-y-0.5 pl-1">
-                    {list.map((b, i) => (
-                      <p key={i} className="text-ink-secondary text-xs">
-                        ✓ {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
-                        {b.period_from && b.period_to ? ` (du ${new Date(b.period_from).toLocaleDateString('fr-BE')} au ${new Date(b.period_to).toLocaleDateString('fr-BE')})` : ''}
-                      </p>
-                    ))}
+                    {useOdoo
+                      ? info!.lines!.map((l, i) => (
+                          <p key={i} className="text-ink-secondary text-xs">✓ {l.name} — {l.subtotal.toFixed(2)} € HTVA</p>
+                        ))
+                      : list.map((b, i) => (
+                          <p key={i} className="text-ink-secondary text-xs">
+                            ✓ {b.label} — {Number(b.amount_htva).toFixed(2)} € HTVA
+                            {b.period_from && b.period_to ? ` (du ${new Date(b.period_from).toLocaleDateString('fr-BE')} au ${new Date(b.period_to).toLocaleDateString('fr-BE')})` : ''}
+                          </p>
+                        ))}
                   </div>
                 </div>
               )
