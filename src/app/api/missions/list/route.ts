@@ -250,6 +250,17 @@ export async function GET(req: Request) {
     visibleMissions = [...visibleMissions].sort((a: any, b: any) => String(a.rdv_at || '').localeCompare(String(b.rdv_at || '')))
   }
 
+  // Onglets du jour : les missions à RDV futur (dans les 12h) passent EN BAS du
+  // tableau (pas encore urgentes), triées par date de RDV. Le reste garde son ordre.
+  if (['new', 'dispatching', 'assigned', 'in_progress'].includes(status)) {
+    const nowMs = Date.now()
+    const isFutureRdv = (m: any) => m.rdv_at && new Date(m.rdv_at).getTime() > nowMs
+    visibleMissions = [
+      ...visibleMissions.filter((m: any) => !isFutureRdv(m)),
+      ...visibleMissions.filter(isFutureRdv).sort((a: any, b: any) => String(a.rdv_at || '').localeCompare(String(b.rdv_at || ''))),
+    ]
+  }
+
   // Compteurs par statut (exclu les archivees pour coherence avec la liste).
   // Olivier 2026-06-18 PERF : avant, on chargeait TOUTES les missions non
   // archivees (table qui grossit chaque jour) pour compter en JS → scan complet

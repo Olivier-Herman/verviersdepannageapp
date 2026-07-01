@@ -148,10 +148,10 @@ function getTypeLabel(m: { mission_type?: string | null; incident_type?: string 
 const TABS = [
   { key: 'new',         label: 'En commande', countKey: 'new'         as const },
   { key: 'dispatching', label: 'En attente',  countKey: 'dispatching' as const },
+  { key: 'rdv',         label: '📅 RDV',      countKey: 'rdv'         as const },
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
   { key: 'parked',      label: 'À Relivrer',  countKey: 'parked'      as const },
-  { key: 'rdv',         label: '📅 RDV',      countKey: 'rdv'         as const },
   { key: 'all',         label: 'Toutes',      countKey: null },
 ]
 // Note : l'onglet "Terminées" est retire — voir page dediee /missions-terminees
