@@ -2369,6 +2369,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       <div className="w-16 h-16 bg-green-600/20 border border-green-500/30 rounded-full flex items-center justify-center text-3xl">✅</div>
       <h1 className="text-ink font-semibold text-xl">Mission terminée</h1>
       <p className="text-ink-muted text-sm">{M.client_name} · {plate(M.vehicle_plate)}</p>
+      {M.completed_at && (Date.now() - new Date(M.completed_at).getTime()) < 6 * 60 * 60 * 1000 && (
+        <button onClick={() => setScreen('close')}
+          className="w-full max-w-xs py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-2xl text-sm">
+          ✏️ Modifier la clôture
+        </button>
+      )}
       <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
     </div>
   )

@@ -141,7 +141,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id, intervention_date, received_at')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -150,8 +150,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
-  // save_photos est toujours permis (pas de changement de statut)
-  if (action !== 'save_photos') {
+  // Modification de clôture par le chauffeur : ré-exécuter 'completed' sur une
+  // mission déjà clôturée (to_invoice/completed) est autorisé < 6h après la
+  // clôture ET si la mission n'est PAS encore facturée. Olivier 2026-07-01.
+  const RECLOSE_WINDOW_MS = 6 * 60 * 60 * 1000
+  const isReclose = action === 'completed' && ['to_invoice', 'completed'].includes(mission.status)
+  if (isReclose) {
+    const within6h = (mission as any).completed_at && (Date.now() - new Date((mission as any).completed_at).getTime()) < RECLOSE_WINDOW_MS
+    if (!within6h) return NextResponse.json({ error: 'La clôture n’est modifiable que dans les 6h.' }, { status: 422 })
+    const invoiced = !!((mission as any).invoice_number || (mission as any).invoice_odoo_id || (mission as any).odoo_quote_id)
+    if (invoiced) return NextResponse.json({ error: 'Mission déjà facturée : clôture non modifiable.' }, { status: 422 })
+  }
+
+  // save_photos est toujours permis (pas de changement de statut). La ré-clôture
+  // bypasse la garde ALLOWED (validée ci-dessus par la fenêtre 6h + non facturée).
+  if (action !== 'save_photos' && !isReclose) {
     const allowed = ALLOWED[mission.status] ?? []
     if (!allowed.includes(action)) {
       return NextResponse.json({ error: `Action '${action}' non permise depuis '${mission.status}'` }, { status: 422 })
@@ -164,6 +177,8 @@ export async function POST(req: Request) {
   const updatePayload: Record<string, unknown> = { updated_at: now }
   if (mapping.status)         updatePayload.status     = mapping.status
   if (mapping.timestampField) updatePayload[mapping.timestampField] = now
+  // Ré-clôture : garder la date de clôture d'origine (fenêtre 6h non réinitialisée).
+  if (isReclose) delete updatePayload.completed_at
 
   // Sources internes sans facturation (ex. Car Parts & Recycling) : la mission
   // clôturée par le chauffeur est archivée directement (completed), pas envoyée
