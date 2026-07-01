@@ -102,6 +102,13 @@ export async function POST(req: Request) {
   const nowIso     = new Date().toISOString()
   const externalId = `GRG-${Date.now().toString(36).toUpperCase()}`
 
+  // Date/heure d'intervention souhaitée (défaut = maintenant). Si le garage a
+  // choisi une date > 30 min dans le futur, c'est un RDV planifié (rdv_at).
+  const interventionIso = body.intervention_at && !isNaN(Date.parse(body.intervention_at))
+    ? new Date(body.intervention_at).toISOString()
+    : nowIso
+  const isFutureRdv = new Date(interventionIso).getTime() > Date.now() + 30 * 60 * 1000
+
   const { data: m, error } = await sb.from('incoming_missions').insert({
     external_id:             externalId,
     source:                  partner.source_key,  // ex: 'garage_abc123' (canonique catalog)
@@ -120,7 +127,9 @@ export async function POST(req: Request) {
     requested_by_garage_id:  partnerId,
     photos_visible_to_garage:false,  // dispatch decide d activer
     received_at:             nowIso,
-    intervention_date:       nowIso,
+    intervention_date:       interventionIso,
+    incident_at:             interventionIso,
+    rdv_at:                  isFutureRdv ? interventionIso : null,
     created_at:              nowIso,
     updated_at:              nowIso,
   }).select('id, mission_number, external_id').single()

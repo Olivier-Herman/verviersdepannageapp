@@ -4,6 +4,13 @@ import { useState }  from 'react'
 import { useRouter } from 'next/navigation'
 import Link          from 'next/link'
 
+// Date/heure locale (navigateur) au format d'un input datetime-local.
+function nowLocalInput(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export default function GarageDemandePage() {
   const router = useRouter()
   const [type, setType]                 = useState<'DSP' | 'REM'>('DSP')
@@ -13,6 +20,7 @@ export default function GarageDemandePage() {
   const [address, setAddress]           = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [remarks, setRemarks]           = useState('')
+  const [rdv, setRdv]                   = useState(nowLocalInput())   // défaut : maintenant, modifiable
   const [busy, setBusy]                 = useState(false)
   const [error, setError]               = useState<string | null>(null)
 
@@ -30,6 +38,8 @@ export default function GarageDemandePage() {
           incident_address: address,
           contact_phone:    contactPhone,
           remarks,
+          // Date/heure d'intervention souhaitée (défaut = maintenant). ISO UTC.
+          intervention_at:  rdv ? new Date(rdv).toISOString() : undefined,
         }),
       })
       const data = await res.json()
@@ -104,6 +114,19 @@ export default function GarageDemandePage() {
           <input type="text" value={address} onChange={e => setAddress(e.target.value)}
             placeholder="Rue, code postal, ville"
             className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
+        </div>
+
+        <div>
+          <label className="block text-gray-700 text-sm font-semibold mb-1.5">Date &amp; heure d&apos;intervention</label>
+          <div className="flex items-center gap-2">
+            <input type="datetime-local" value={rdv} min={nowLocalInput()} onChange={e => setRdv(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
+            <button type="button" onClick={() => setRdv(nowLocalInput())}
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-xl text-gray-700 text-xs font-semibold whitespace-nowrap">
+              Maintenant
+            </button>
+          </div>
+          <p className="text-gray-500 text-xs mt-1">Par défaut : maintenant. Choisis une date/heure future pour planifier un rendez-vous.</p>
         </div>
 
         <div>
