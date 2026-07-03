@@ -1118,7 +1118,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [sncInfoMsg, setSncInfoMsg] = useState<string | null>(null)
 
   // Modal "adresse de destination" (DSP→REM, SNC/SC REM client & REM dépôt).
-  const [destPrompt, setDestPrompt] = useState<null | { kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival' }>(null)
+  const [destPrompt, setDestPrompt] = useState<null | { kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival' | 'park' }>(null)
+  // Adresse de relivraison confirmée au moment de la mise en parc (dispatch REM).
+  // null = « communiquée plus tard » → le serveur retombe sur la destination
+  // pré-parc comme relivraison par défaut. Passée à doPark.
+  const [parkRedelivery, setParkRedelivery] = useState<string | null>(null)
   const [destAddr,   setDestAddr]   = useState('')
   const [destLat,    setDestLat]    = useState<number | null>(null)
   const [destLng,    setDestLng]    = useState<number | null>(null)
@@ -1255,7 +1259,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   }
 
   // ── Modal adresse de destination (DSP→REM, SNC/SC REM client & REM dépôt) ──
-  const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival') => {
+  const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival' | 'park') => {
     setShowGrid(false)
     setErr('')
     setDestAddr(M.destination_address || '')
@@ -1268,6 +1272,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const confirmDestPrompt = async (later = false) => {
     if (!destPrompt) return
     const kind = destPrompt.kind
+    // Mise en parc (dispatch REM) : l'adresse saisie = adresse de RELIVRAISON.
+    // On NE modifie PAS la destination ici (le serveur la remplacera par le dépôt
+    // au moment du parc). On capture la relivraison puis on enchaîne sur l'écran
+    // parc (dépôt / clé / photos).
+    if (kind === 'park') {
+      setParkRedelivery(later ? null : (destAddr.trim() || null))
+      setDestPrompt(null)
+      setCloseType('park')
+      setScreen('close')
+      return
+    }
     if (!later) {
       const a = destAddr.trim()
       if (!a) { setErr('Adresse de destination requise'); return }
@@ -1506,6 +1521,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   //   - autres          : null (le personnel parc choisit a l inventaire)
   const isPoliceAccident = M.source === 'police_accident'
   const isPoliceSaisie   = M.source === 'police_saisie'
+  // REM dispatch (assistance/Touring/Kaze/VAB/privé…), hors police & SIABIS :
+  // la mise en parc demande d'abord de confirmer l'adresse de relivraison.
+  const isDispatchRem = rem && !isPoliceAccident && !isPoliceSaisie
+    && M.source !== 'police_snc' && M.source !== 'sia_couvert'
   // Appel Prive : si le client n a pas regle, mise en parc obligatoire en
   // Transit (pas de livraison sans paiement). Le forfait/tarif sera facture
   // depuis le bureau via le module Facturation.
@@ -1540,7 +1559,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             key_location:       keyLocation || undefined,
           },
           park_address: vr.address, park_lat: vr.lat, park_lng: vr.lng,
-          redelivery_address: M.destination_address || undefined,
+          // Relivraison confirmée dans le modal (dispatch REM) ; sinon repli sur
+          // la destination pré-parc (le serveur fait ce repli aussi).
+          redelivery_address: parkRedelivery ?? (M.destination_address || undefined),
         }),
       })
       const j = await r.json()
@@ -3226,8 +3247,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                         const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
                         if (def) setParkDepot(def)
                       }
-                      setCloseType('park')
-                      setScreen('close')
+                      // Dispatch REM : on confirme d'abord l'adresse de relivraison.
+                      // Police / SIABIS : parc direct (fourrière, pas de relivraison).
+                      if (isDispatchRem) { openDestPrompt('park') }
+                      else { setCloseType('park'); setScreen('close') }
                     }} disabled={loading}
                     className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
                     <T k="mission_detail.btn_park" />
@@ -3362,7 +3385,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               )}
               {/* Mise en parc (REM uniquement) */}
               {rem && (
-                <button onClick={() => { setShowGrid(false); setShowPark(true) }}
+                <button onClick={() => { setShowGrid(false); if (isDispatchRem) { openDestPrompt('park') } else { setShowPark(true) } }}
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-amber-600/10 border-amber-600/30 transition active:scale-95">
                   <span className="text-2xl">🅿️</span>
                   <span className="text-sm font-medium text-amber-400"><T k="mission_detail.action_park" /></span>
@@ -3390,27 +3413,33 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !loading && setDestPrompt(null)}>
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-              <h2 className="text-ink font-semibold text-lg">📍 Adresse de destination</h2>
+              <h2 className="text-ink font-semibold text-lg">
+                {destPrompt.kind === 'park' ? '🅿️ Confirmer la mise en parc' : '📍 Adresse de destination'}
+              </h2>
               <button onClick={() => setDestPrompt(null)} className="text-ink-muted text-2xl">×</button>
             </div>
             <p className="text-ink-muted text-sm">
-              {M.destination_address
-                ? 'Confirme ou modifie l\'adresse de destination du remorquage.'
-                : 'Indique l\'adresse de destination du remorquage.'}
+              {destPrompt.kind === 'park'
+                ? (M.destination_address
+                    ? 'Confirme (ou corrige) l\'adresse de relivraison — là où le véhicule repartira depuis le parc. Le véhicule est déposé au dépôt.'
+                    : 'Indique l\'adresse de relivraison, ou choisis « communiquée plus tard » si tu ne la connais pas encore.')
+                : (M.destination_address
+                    ? 'Confirme ou modifie l\'adresse de destination du remorquage.'
+                    : 'Indique l\'adresse de destination du remorquage.')}
             </p>
             <AddressField
               value={destAddr}
               onChange={setDestAddr}
               onSelect={(a, la, ln) => { setDestAddr(a); setDestLat(la); setDestLng(ln) }}
               gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
-              placeholder="Adresse de destination"
+              placeholder={destPrompt.kind === 'park' ? 'Adresse de relivraison' : 'Adresse de destination'}
             />
             {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
             <button onClick={() => confirmDestPrompt(false)} disabled={loading || !destAddr.trim()}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition disabled:opacity-50">
-              {loading ? '⏳…' : 'Valider'}
+              {loading ? '⏳…' : (destPrompt.kind === 'park' ? 'Confirmer et déposer au parc' : 'Valider')}
             </button>
-            {destPrompt.kind === 'rem_depot' && (
+            {(destPrompt.kind === 'rem_depot' || destPrompt.kind === 'park') && (
               <button onClick={() => confirmDestPrompt(true)} disabled={loading}
                 className="w-full py-3 bg-surface-2 border text-ink rounded-2xl text-sm font-semibold transition disabled:opacity-50">
                 🕒 Adresse communiquée plus tard
