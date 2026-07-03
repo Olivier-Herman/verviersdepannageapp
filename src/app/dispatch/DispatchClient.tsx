@@ -2,7 +2,7 @@
 // src/app/dispatch/DispatchClient.tsx
 // P6 — toggle liste/carte + panel statut chauffeurs + cartes colorées par urgence
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import Link        from 'next/link'
 import { useRouter }   from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
@@ -845,7 +845,10 @@ export default function DispatchClient({
 }) {
   const router = useRouter()
 
-  const [activeTab,      setActiveTab]      = useState('new')
+  // Olivier 2026-07-03 : défaut sur « En attente » (dispatching) qui regroupe
+  // aussi les commandes à valider (new) en tête → validation + assignation dans
+  // le même écran.
+  const [activeTab,      setActiveTab]      = useState('dispatching')
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
@@ -1140,6 +1143,24 @@ export default function DispatchClient({
     )
   })
 
+  // Onglet « En attente » : on sépare les commandes à valider (new) des missions
+  // déjà validées en attente d'assignation (dispatching), avec un bandeau.
+  const isDispatchTab = activeTab === 'dispatching'
+  const newToValidate = isDispatchTab ? filtered.filter(m => m.status === 'new')  : []
+  const restWaiting   = isDispatchTab ? filtered.filter(m => m.status !== 'new') : filtered
+  const missionGroups: { key: string; header: string | null; tone: 'validate' | 'wait' | null; items: Mission[] }[] =
+    (isDispatchTab && newToValidate.length > 0)
+      ? [
+          { key: 'validate', header: '🆕 À valider',                 tone: 'validate', items: newToValidate },
+          { key: 'wait',     header: "En attente d'assignation",     tone: 'wait',     items: restWaiting },
+        ].filter(g => g.items.length > 0) as any
+      : [{ key: 'all', header: null, tone: null, items: filtered }]
+
+  const bandClass = (tone: 'validate' | 'wait' | null) =>
+    tone === 'validate'
+      ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30'
+      : 'bg-surface-2 text-ink-secondary border'
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -1420,19 +1441,30 @@ export default function DispatchClient({
           ) : viewMode === 'card' ? (
 
             /* ── VUE CARTES ─────────────────────────────────────── */
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-              {filtered.map(m => (
-                <MissionCard
-                  key={m.id}
-                  mission={m}
-                  drivers={drivers}
-                  driverStatuses={driverStatuses}
-                  sources={sources}
-                  onRefresh={load}
-                  onModalChange={onModalChange}
-                  userRole={userRole}
-                  userModules={userModules}
-                />
+            <div className="space-y-5">
+              {missionGroups.map(g => (
+                <div key={g.key}>
+                  {g.header && (
+                    <div className={`mb-3 px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-2 ${bandClass(g.tone)}`}>
+                      {g.header} <span className="opacity-70">({g.items.length})</span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                    {g.items.map(m => (
+                      <MissionCard
+                        key={m.id}
+                        mission={m}
+                        drivers={drivers}
+                        driverStatuses={driverStatuses}
+                        sources={sources}
+                        onRefresh={load}
+                        onModalChange={onModalChange}
+                        userRole={userRole}
+                        userModules={userModules}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
 
@@ -1441,19 +1473,30 @@ export default function DispatchClient({
             /* ── VUE LISTE ──────────────────────────────────────── */
             <>
               {/* Mobile : cards (la table ne tient pas) */}
-              <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {filtered.map(m => (
-                  <MissionCard
-                    key={m.id}
-                    mission={m}
-                    drivers={drivers}
-                    driverStatuses={driverStatuses}
-                    sources={sources}
-                    onRefresh={load}
-                    onModalChange={onModalChange}
-                    userRole={userRole}
-                    userModules={userModules}
-                  />
+              <div className="lg:hidden space-y-4">
+                {missionGroups.map(g => (
+                  <div key={g.key}>
+                    {g.header && (
+                      <div className={`mb-2 px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-2 ${bandClass(g.tone)}`}>
+                        {g.header} <span className="opacity-70">({g.items.length})</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {g.items.map(m => (
+                        <MissionCard
+                          key={m.id}
+                          mission={m}
+                          drivers={drivers}
+                          driverStatuses={driverStatuses}
+                          sources={sources}
+                          onRefresh={load}
+                          onModalChange={onModalChange}
+                          userRole={userRole}
+                          userModules={userModules}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
 
@@ -1475,7 +1518,16 @@ export default function DispatchClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#222]">
-                  {filtered.map(m => {
+                  {missionGroups.map(g => (
+                  <Fragment key={g.key}>
+                  {g.header && (
+                    <tr>
+                      <td colSpan={99} className={`px-4 py-2 text-xs font-bold border-y ${bandClass(g.tone)}`}>
+                        {g.header} <span className="opacity-70">({g.items.length})</span>
+                      </td>
+                    </tr>
+                  )}
+                  {g.items.map(m => {
                     const delai   = getDelai(m.intervention_date, m.status)
                     const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
                     const showDelai = delai.urgency !== 'muted'
@@ -1559,6 +1611,8 @@ export default function DispatchClient({
                       </tr>
                     )
                   })}
+                  </Fragment>
+                  ))}
                 </tbody>
               </table>
               </div>

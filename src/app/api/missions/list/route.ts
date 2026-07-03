@@ -70,7 +70,13 @@ export async function GET(req: Request) {
   } else if (status === 'new') {
     query = query.eq('status', 'new')
   } else if (status === 'dispatching') {
-    query = query.eq('status', 'dispatching')
+    // Olivier 2026-07-03 : l'onglet « En attente » regroupe désormais les
+    // commandes à valider (new) ET les missions validées en attente
+    // d'assignation (dispatching). Le client les sépare en 2 bandes
+    // ("🆕 À valider" au-dessus). Les 'new' futures restent filtrées par
+    // DAY_TABS (voir plus bas) → elles n'apparaissent pas ici, seulement en
+    // « En commande » / RDV.
+    query = query.in('status', ['new', 'dispatching'])
   } else if (status === 'assigned') {
     query = query.in('status', ['assigned', 'accepted'])
   } else if (status === 'in_progress') {
