@@ -25,15 +25,19 @@ export interface ParsedHighway {
 const HIGHWAY_RE = /\bA\s?0*(\d{1,3}[a-z]?)\b/i
 
 // Borne : "BK 22.3", "B.K.22,3", "borne 22.3", "PK 22.3", "km 22.3",
-// notation belge "22+300" (= 22 km + 300 m). On tolère l'absence de mot-clé
-// quand un nombre décimal suit directement l'autoroute.
+// notation belge "22+300" (= 22 km + 300 m), décimal nu "22.3", ou entier nu
+// "22". La recherche se fait APRÈS l'autoroute pour ne pas confondre avec son
+// numéro.
 const BORNE_KEYWORD_RE = /\b(?:b\.?\s?k\.?|p\.?\s?k\.?|borne|km)\s*[:.]?\s*(\d{1,3})(?:\s*[+]\s*(\d{1,3})|[.,](\d{1,3}))?/i
 const BORNE_BELGE_RE   = /\b(\d{1,3})\s*\+\s*(\d{1,3})\b/                 // 22+300
 const BORNE_DECIMAL_RE = /\b(\d{1,3})[.,](\d{1,2})\b/                    // 22.3 / 22,3
+const BORNE_INT_RE     = /\b(\d{1,3})\b/                                 // 22 (entier nu)
 
-// Direction / sens : "direction Luxembourg", "dir. Aachen", "vers Liège",
-// "sens Verviers". On capture jusqu'à une virgule / fin.
+// Direction / sens avec mot-clé : "direction Luxembourg", "dir. Aachen",
+// "vers Liège", "sens Verviers". On capture jusqu'à une virgule / fin.
 const DIRECTION_RE = /\b(?:direction|dir\.?|vers|sens)\s+([A-Za-zÀ-ÿ'’.\- ]{2,40}?)(?:[,;]|$)/i
+// Mots-clés de borne, à retirer avant le repli "direction en un mot".
+const BORNE_WORDS_RE = /\b(?:b\.?\s?k\.?|p\.?\s?k\.?|borne|km|pk)\b/gi
 
 /** Convertit une borne "22", "22.3", "22+300" en km décimal. */
 function toKm(whole: string, plusMeters?: string, decimals?: string): number {
@@ -56,23 +60,29 @@ export function parseHighwayAddress(input: string | null | undefined): ParsedHig
   const hw = text.match(HIGHWAY_RE)
   const highwayRef = hw ? `A${hw[1].toUpperCase()}` : null
 
-  // Borne : priorité au mot-clé (BK/PK/borne/km), puis notation belge, puis décimal.
-  let km: number | null = null
-  const mk = text.match(BORNE_KEYWORD_RE)
-  if (mk) {
-    km = toKm(mk[1], mk[2], mk[3])
-  } else {
-    const mb = text.match(BORNE_BELGE_RE)
-    if (mb) km = toKm(mb[1], mb[2])
-    else {
-      const md = text.match(BORNE_DECIMAL_RE)
-      if (md) km = toKm(md[1], undefined, md[2])
-    }
-  }
+  // On cherche la borne APRÈS l'autoroute pour ne pas prendre son numéro.
+  const after = hw ? text.slice((hw.index || 0) + hw[0].length) : text
 
+  // Borne : mot-clé (BK/PK/borne/km) > notation belge (22+300) > décimal (22.3)
+  // > entier nu (22).
+  let km: number | null = null
+  let m: RegExpMatchArray | null
+  if      ((m = after.match(BORNE_KEYWORD_RE))) km = toKm(m[1], m[2], m[3])
+  else if ((m = after.match(BORNE_BELGE_RE)))   km = toKm(m[1], m[2])
+  else if ((m = after.match(BORNE_DECIMAL_RE))) km = toKm(m[1], undefined, m[2])
+  else if ((m = after.match(BORNE_INT_RE)))     km = toKm(m[1])
+
+  // Direction : mot-clé explicite, sinon repli "un seul mot restant" (ex "lux",
+  // "Liège") une fois l'autoroute + la borne retirées.
   let direction: string | null = null
   const md = text.match(DIRECTION_RE)
-  if (md) direction = md[1].trim().replace(/\s+/g, ' ')
+  if (md) {
+    direction = md[1].trim().replace(/\s+/g, ' ')
+  } else {
+    const rest = after.replace(BORNE_WORDS_RE, ' ').replace(/[\d.,+]/g, ' ')
+    const tokens = rest.split(/[\s;]+/).filter(t => t.length >= 2 && /^[A-Za-zÀ-ÿ'’.\-]+$/.test(t))
+    if (tokens.length === 1) direction = tokens[0]
+  }
 
   return {
     ok:         !!(highwayRef && km != null),
