@@ -151,6 +151,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [photos,         setPhotos]         = useState<File[]>([])
   const [previews,       setPreviews]       = useState<string[]>([])
   const [loading,        setLoading]        = useState(false)
+  const submittingRef = useRef(false)   // garde synchrone anti double-soumission
   const [err,            setErr]            = useState('')
   const [done,           setDone]           = useState(false)
   // Id mission VD Soft renvoye par /api/towsoft/create. Utilise sur l ecran
@@ -499,11 +500,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const filteredModels = models.filter(m => m.name.toLowerCase().includes(modelSearch.toLowerCase()))
 
   const handleSubmit = async () => {
+    // Garde synchrone anti double-soumission : le disabled={loading} ne suffit pas
+    // contre le double-tap mobile (2 'click' avant le re-render) → 2 fiches créées.
+    if (submittingRef.current) return
     if (!selectedType) return
     if (!location.trim()) { setErr('Le lieu d\'intervention est requis'); return }
     if (!plate && !vin)   { setErr('Plaque ou VIN requis'); return }
     if (!brand)           { setErr('La marque du véhicule est requise'); return }
     if (!model)           { setErr('Le modèle du véhicule est requis'); return }
+    // 3 photos minimum obligatoires à la création (preuve terrain).
+    if (photos.length < 3) { setErr('Ajoute au moins 3 photos (obligatoire).'); return }
     // Saisie : motif obligatoire (demande Franck 2026-06-01).
     if (selectedType === 'saisie' && !saisieMotifCode) {
       setErr('Le motif de la saisie est obligatoire'); return
@@ -526,6 +532,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     // Si plaque vide, utiliser le VIN
     const finalPlate = plate.trim() || vin.trim()
 
+    submittingRef.current = true
     setLoading(true); setErr('')
 
     // Upload photos vers Supabase
@@ -711,6 +718,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       setErr(`Erreur reseau : ${e?.message || 'impossible de joindre le serveur'}. Verifie ta connexion et reessaie.`)
     } finally {
       setLoading(false)
+      submittingRef.current = false
     }
   }
 
@@ -1390,9 +1398,16 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
           )}
           <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addPhotos(e.target.files)} />
           <button onClick={() => photoRef.current?.click()}
-            className="w-full py-3 border-2 border-dashed border-strong rounded-xl text-ink-faint text-sm hover:border-gray-400">
+            className={`w-full py-3 border-2 border-dashed rounded-xl text-sm ${
+              photos.length < 3 ? 'border-amber-400 text-amber-600 hover:border-amber-500' : 'border-strong text-ink-faint hover:border-gray-400'
+            }`}>
             📷 Ajouter des photos
           </button>
+          {photos.length < 3 && (
+            <p className="text-amber-600 text-xs mt-1.5 text-center">
+              ⚠️ {3 - photos.length} photo(s) encore requise(s) — minimum 3 pour créer la fiche.
+            </p>
+          )}
         </Section>
 
         {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-critical text-sm">{err}</div>}

@@ -106,6 +106,33 @@ export async function POST(req: Request) {
     ? (interventionType === 'rem_parc' ? 'A Relivrer' : '')
     : config!.motif
 
+  // ── Anti-doublon (Olivier 2026-07-03) ────────────────────────────────────
+  // Double-tap mobile / retry réseau → 2 fiches identiques (incident : 2 fiches
+  // police_saisie même plaque 1BUD475). Backstop serveur : si une mission du même
+  // type/source, même plaque, existe depuis < 2 min et n'est pas annulée, on la
+  // renvoie au lieu d'en créer une 2e (+ ticket Odoo + queue orphelins).
+  if (!isAssistance) {
+    const dupSource = FOURRIERE_TYPE_TO_SOURCE[type]
+    const dupPlate  = plateOrVinTail(plate, vin)
+    if (dupSource && dupPlate) {
+      const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+      const { data: dup } = await supabase
+        .from('incoming_missions')
+        .select('id, mission_number')
+        .eq('source', dupSource)
+        .eq('vehicle_plate', dupPlate)
+        .gte('created_at', twoMinAgo)
+        .not('status', 'in', '("cancelled","ignored")')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (dup) {
+        console.warn(`[towsoft/create] DOUBLON evite : mission ${dup.id} (#${dup.mission_number}) existe deja pour ${dupSource}/${dupPlate} < 2 min`)
+        return NextResponse.json({ ok: true, missionId: dup.id, missionNumber: dup.mission_number, duplicate_prevented: true })
+      }
+    }
+  }
+
   // Olivier 2026-06-30 : INTERRUPTEUR création TowSoft. Quand désactivé, on
   // continue de créer la mission VD Soft + le ticket Odoo (dossier_number), mais
   // on NE pousse PAS la fiche dans TowSoft : la queue est marquée 'skipped' et le
