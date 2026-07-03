@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const {
     source, mission_type, incident_address, incident_city,
-    incident_lat, incident_lng,
+    incident_lat, incident_lng, incident_borne_km, incident_sens,
     vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
     remarks_general,
   } = body
@@ -63,6 +63,8 @@ export async function POST(req: Request) {
       incident_city:    incident_city  || null,
       incident_lat:     incident_lat   || null,
       incident_lng:     incident_lng   || null,
+      incident_borne_km: incident_borne_km || null,
+      incident_sens:     incident_sens     || null,
       vehicle_plate:    vehicle_plate  || null,
       vehicle_brand:    vehicle_brand  || null,
       vehicle_model:    vehicle_model  || null,

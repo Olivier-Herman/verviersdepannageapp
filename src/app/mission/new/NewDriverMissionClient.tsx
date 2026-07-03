@@ -13,6 +13,7 @@ import Script from 'next/script'
 import ScanButton from '@/components/ScanButton'
 import { T } from '@/lib/i18n/T'
 import { normalizePlate } from '@/lib/plate'
+import { parseHighwayAddress } from '@/lib/highways/parse'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,10 +41,11 @@ const TYPES = [
 
 // ── Composant Adresse avec Google Maps ───────────────────────────────────────
 
-function AddressInput({ value, onChange, onSelect, mapsReady }: {
+function AddressInput({ value, onChange, onSelect, onBlur, mapsReady }: {
   value: string
   onChange: (v: string) => void
   onSelect: (addr: string, lat: number, lng: number, city: string) => void
+  onBlur?: () => void
   mapsReady: boolean
 }) {
   const ref   = useRef<HTMLInputElement>(null)
@@ -79,7 +81,8 @@ function AddressInput({ value, onChange, onSelect, mapsReady }: {
       ref={ref}
       value={value}
       onChange={e => onChange(e.target.value)}
-      placeholder="Ex: Rue de la Paix 12, Liège"
+      onBlur={onBlur}
+      placeholder="Adresse, ou 'A27 BK22.3 dir. Luxembourg'"
       autoFocus
       className="w-full bg-surface border border rounded-xl px-4 py-4 text-ink text-base focus:outline-none focus:border-brand placeholder:text-ink-faint"
     />
@@ -101,6 +104,42 @@ export default function NewDriverMissionClient() {
   const [addrLat,     setAddrLat]     = useState<number|null>(null)
   const [addrLng,     setAddrLng]     = useState<number|null>(null)
   const [addrCity,    setAddrCity]    = useState('')
+  const [addrBorneKm, setAddrBorneKm] = useState('')
+  const [addrSens,    setAddrSens]    = useState('')
+  const [resolvingBk, setResolvingBk] = useState(false)
+
+  // Résout une adresse autoroute "A27 BK22.3 dir. Luxembourg" (que Google ne
+  // géocode pas) via les bornes kilométriques du SPW → coords + ville. Déclenché
+  // quand le chauffeur quitte le champ adresse.
+  const resolveHighwayBk = async (raw: string) => {
+    const p = parseHighwayAddress(raw)
+    if (!p.ok || !p.highwayRef || p.km == null) return
+    setResolvingBk(true)
+    try {
+      const res = await fetch(`/api/highways/resolve-bk?address=${encodeURIComponent(raw)}`)
+      const j = await res.json()
+      if (!j.ok || typeof j.lat !== 'number') return
+      let city = ''
+      try {
+        const g = (window as any).google
+        if (g?.maps) {
+          const geocoder = new g.maps.Geocoder()
+          const results: any[] = await new Promise(resolve => {
+            geocoder.geocode({ location: { lat: j.lat, lng: j.lng }, language: 'fr' },
+              (r: any[], s: string) => resolve(s === 'OK' && r ? r : []))
+          })
+          for (const r of results) {
+            const c = (r.address_components || []).find((x: any) =>
+              x.types.includes('locality') || x.types.includes('postal_town'))
+            if (c) { city = c.long_name; break }
+          }
+        }
+      } catch { /* best-effort */ }
+      const label = city ? `${p.highwayRef} ${city}` : `${p.highwayRef} (BK ${p.borneLabel})`
+      setAddress(label); setAddrLat(j.lat); setAddrLng(j.lng); setAddrCity(city)
+      setAddrBorneKm(p.borneLabel || ''); setAddrSens(p.direction || '')
+    } catch { /* noop */ } finally { setResolvingBk(false) }
+  }
 
   // Véhicule — recherche
   const [plateQuery,   setPlateQuery]   = useState('')
@@ -253,6 +292,8 @@ export default function NewDriverMissionClient() {
           incident_city:    addrCity || null,
           incident_lat:     addrLat,
           incident_lng:     addrLng,
+          incident_borne_km: addrBorneKm || null,
+          incident_sens:     addrSens    || null,
           vehicle_plate:    plate,
           vehicle_brand:    brand,
           vehicle_model:    model,
@@ -355,19 +396,27 @@ export default function NewDriverMissionClient() {
 
               <AddressInput
                 value={address}
-                onChange={setAddress}
+                onChange={v => { setAddress(v); setAddrBorneKm(''); setAddrSens('') }}
                 mapsReady={mapsReady}
                 onSelect={(addr, lat, lng, city) => {
                   setAddress(addr); setAddrLat(lat); setAddrLng(lng); setAddrCity(city)
+                  setAddrBorneKm(''); setAddrSens('')
                 }}
+                onBlur={() => { resolveHighwayBk(address) }}
               />
               {!mapsReady && (
                 <p className="text-ink-faint text-xs">⏳ Chargement de la recherche d&apos;adresse…</p>
               )}
+              {resolvingBk && (
+                <p className="text-ink-faint text-xs">📍 Localisation de la borne autoroute…</p>
+              )}
               {address && addrLat && (
                 <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 text-green-400 text-sm">
                   <span>✓</span>
-                  <span className="truncate">{address}</span>
+                  <span className="truncate">
+                    {address}
+                    {addrBorneKm && <span className="text-green-300/80"> · BK {addrBorneKm}{addrSens ? ` · ${addrSens}` : ''}</span>}
+                  </span>
                 </div>
               )}
             </>
