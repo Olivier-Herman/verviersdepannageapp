@@ -3210,19 +3210,29 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   <span className="text-xs opacity-75 font-normal truncate max-w-[140px]">{M.destination_address}</span>
                 )}
               </button>
-              {/* "Mise en parc" : pour REM seulement (une REL ramène DEPUIS le parc, pas vers) */}
+              {/* "Mise en parc" : pour REM seulement (une REL ramène DEPUIS le parc, pas vers).
+                  Olivier 2026-07-03 : séparateur non-cliquable ("ou") + marge entre les
+                  deux boutons → évite le fat-finger « Arrivé » ⇄ « Mise en parc ». */}
               {!rel && (
-                <button onClick={() => {
-                    if (!parkDepot) {
-                      const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
-                      if (def) setParkDepot(def)
-                    }
-                    setCloseType('park')
-                    setScreen('close')
-                  }} disabled={loading}
-                  className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
-                  <T k="mission_detail.btn_park" />
-                </button>
+                <>
+                  <div aria-hidden="true"
+                    className="flex items-center gap-3 py-3 my-1 select-none pointer-events-none">
+                    <div className="flex-1 h-px bg-surface-hover" />
+                    <span className="text-ink-faint text-xs font-medium">ou</span>
+                    <div className="flex-1 h-px bg-surface-hover" />
+                  </div>
+                  <button onClick={() => {
+                      if (!parkDepot) {
+                        const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
+                        if (def) setParkDepot(def)
+                      }
+                      setCloseType('park')
+                      setScreen('close')
+                    }} disabled={loading}
+                    className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
+                    <T k="mission_detail.btn_park" />
+                  </button>
+                </>
               )}
             </>
           )}
