@@ -57,7 +57,12 @@ const ALLOWED: Record<string, string[]> = {
   assigned:    ['accept', 'set_amount_to_collect'],
   accepted:    ['on_way', 'mark_photo_category', 'set_amount_to_collect'],
   in_progress: ['on_site', 'completed', 'park', 'start_delivery', 'load_vehicle', 'change_type', 'update_address', 'update_stops', 'save_photos', 'arrive_stop', 'depart_stop', 'mark_photo_category', 'set_amount_to_collect'],
-  parked:      ['completed', 'start_delivery', 'change_type', 'save_photos', 'mark_photo_category', 'set_amount_to_collect'],
+  // Olivier 2026-07-03 : une mission mise en parc n'est PLUS clôturable/modifiable
+  // par le chauffeur (elle attend la relivraison / la reprise par le bureau).
+  // 'completed' retiré → évite le cas "mise en parc → saute en terminé" (double
+  // action / bouton Terminer resté accessible). La relivraison passe par
+  // start_delivery → complete_delivery, pas par 'completed' depuis parked.
+  parked:      ['start_delivery', 'change_type', 'save_photos', 'mark_photo_category', 'set_amount_to_collect'],
   // Olivier 2026-06-18 : update_address autorisé en livraison (REL). Le chauffeur
   // doit pouvoir corriger l'adresse de relivraison une fois en route (ex: client
   // change de garage). Avant : "Action 'update_address' non permise depuis 'delivering'".
@@ -160,6 +165,13 @@ export async function POST(req: Request) {
     if (!within6h) return NextResponse.json({ error: 'La clôture n’est modifiable que dans les 6h.' }, { status: 422 })
     const invoiced = !!((mission as any).invoice_number || (mission as any).invoice_odoo_id || (mission as any).odoo_quote_id)
     if (invoiced) return NextResponse.json({ error: 'Mission déjà facturée : clôture non modifiable.' }, { status: 422 })
+  }
+
+  // Une mission déjà mise en parc ne se clôture pas côté chauffeur (message clair
+  // plutôt que « action non permise »). La suite du workflow (relivraison /
+  // facturation) est reprise par le dispatch / le bureau.
+  if (['completed', 'complete_delivery'].includes(action) && mission.status === 'parked') {
+    return NextResponse.json({ error: 'Mission déjà mise en parc — la clôture se fait après relivraison, pas ici.' }, { status: 422 })
   }
 
   // save_photos est toujours permis (pas de changement de statut). La ré-clôture
