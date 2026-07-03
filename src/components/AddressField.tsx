@@ -117,12 +117,13 @@ export async function reverseGeocodeCity(
 }
 
 export default function AddressField({
-  label, value, onChange, onSelect, gmKey, placeholder, className,
+  label, value, onChange, onSelect, onBlur, gmKey, placeholder, className,
 }: {
   label?:       string
   value:        string
   onChange:     (v: string) => void
   onSelect?:    (addr: string, lat: number, lng: number, city?: string, name?: string) => void
+  onBlur?:      () => void
   gmKey:        string
   placeholder?: string
   className?:   string
@@ -225,6 +226,7 @@ export default function AddressField({
         label={label}
         value={value}
         onChange={e => { onChange(e); setEstabHint(null) }}
+        onBlur={onBlur}
         placeholder={placeholder}
         className={className}
         iconTrailing={<span aria-hidden="true">📍</span>}

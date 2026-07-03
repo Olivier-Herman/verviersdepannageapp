@@ -1298,6 +1298,33 @@ export default function MissionDetailClient({
     } catch { return null }
   }
 
+  // Résout + applique une adresse autoroute pour l'INCIDENT (coords, BK, sens,
+  // adresse lisible), et met la bannière en "borne SPW". Réutilisé au montage et
+  // au onBlur du champ. Retourne true si résolu.
+  const applyIncidentHighway = async (addr: string): Promise<boolean> => {
+    if (!parseHighwayAddress(addr).ok) return false
+    setIncidentGeo({ state: 'checking' })
+    const hb = await resolveHighwayBk(addr)
+    if (!hb) return false
+    setIncidentGeo({ state: 'confirmed', via: 'spw', suggestion: { addr: hb.addr, lat: hb.lat, lng: hb.lng } })
+    setForm(prev => ({
+      ...prev,
+      incident_address:  hb.addr,
+      incident_lat:      String(hb.lat),
+      incident_lng:      String(hb.lng),
+      incident_borne_km: hb.borneLabel || prev.incident_borne_km,
+      incident_sens:     hb.direction  || prev.incident_sens,
+    }))
+    silentPatch({
+      incident_address:  hb.addr,
+      incident_lat:      hb.lat,
+      incident_lng:      hb.lng,
+      ...(hb.borneLabel ? { incident_borne_km: hb.borneLabel } : {}),
+      ...(hb.direction  ? { incident_sens:     hb.direction }  : {}),
+    })
+    return true
+  }
+
   // Persistance silencieuse partielle — pour que d'autres opérations (driver-eta,
   // calcul KM…) puissent lire les champs depuis la DB sans attendre un save manuel.
   // Incrémente automatiquement kmRefresh pour rafraîchir le calcul KM live.
@@ -1368,29 +1395,9 @@ export default function MissionDetailClient({
             incident_lng:     r.suggestion!.lng,
           })
         } else if (r.state === 'not_found' && isHighway(form.incident_address)) {
-          // Google échoue mais c'est une autoroute → tenter la borne kilométrique (SPW).
-          const hb = await resolveHighwayBk(form.incident_address)
-          if (hb) {
-            setIncidentGeo({ state: 'confirmed', via: 'spw', suggestion: { addr: hb.addr, lat: hb.lat, lng: hb.lng } })
-            setForm(prev => ({
-              ...prev,
-              incident_address:  hb.addr,
-              incident_lat:      String(hb.lat),
-              incident_lng:      String(hb.lng),
-              // Remplit la BK / le sens s'ils sont vides (jamais d'écrasement).
-              incident_borne_km: prev.incident_borne_km || hb.borneLabel || '',
-              incident_sens:     prev.incident_sens     || hb.direction  || '',
-            }))
-            silentPatch({
-              incident_address:  hb.addr,
-              incident_lat:      hb.lat,
-              incident_lng:      hb.lng,
-              ...(hb.borneLabel && !form.incident_borne_km ? { incident_borne_km: hb.borneLabel } : {}),
-              ...(hb.direction  && !form.incident_sens     ? { incident_sens:     hb.direction }  : {}),
-            })
-          } else {
-            setIncidentGeo(r)
-          }
+          // Google échoue mais c'est une autoroute → tenter la borne km (SPW).
+          const ok = await applyIncidentHighway(form.incident_address)
+          if (!ok) setIncidentGeo(r)
         } else {
           setIncidentGeo(r)
         }
@@ -3183,8 +3190,11 @@ export default function MissionDetailClient({
                         setIncidentGeo({ state: 'confirmed', suggestion: { addr, lat, lng } })
                         silentPatch({ incident_address: addr, incident_lat: lat, incident_lng: lng, ...(city ? { incident_city: city } : {}) })
                       }}
+                      // Autoroute "A27 BK22.3…" non géocodable par Google : dès qu'on
+                      // quitte le champ, on résout la borne (SPW) → coords + ville.
+                      onBlur={() => { applyIncidentHighway(form.incident_address) }}
                       gmKey={googleMapsKey}
-                      placeholder="Tapez et choisissez une suggestion Google..."
+                      placeholder="Tapez une adresse, ou 'A27 BK22.3 dir. Luxembourg'"
                     />
                     <GeoStatusBanner status={incidentGeo} onReview={() => reopenReview('incident')} />
                     {initialMission.incident_address && initialMission.incident_address !== form.incident_address && (

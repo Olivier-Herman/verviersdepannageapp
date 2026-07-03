@@ -41,6 +41,7 @@ export type InputSize    = 'sm' | 'md' | 'lg'
 export interface InputProps {
   value:         string
   onChange:      (value: string) => void
+  onBlur?:       () => void
   variant?:      InputVariant
   size?:         InputSize
   type?:         'text' | 'number' | 'email' | 'tel' | 'password' | 'search'
@@ -89,6 +90,7 @@ export const Input = forwardRef(function Input(
   {
     value,
     onChange,
+    onBlur,
     variant      = 'default',
     size         = 'md',
     type         = 'text',
@@ -153,6 +155,7 @@ export const Input = forwardRef(function Input(
           type={type}
           value={value}
           onChange={e => onChange(e.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
           disabled={disabled}
           required={required}
