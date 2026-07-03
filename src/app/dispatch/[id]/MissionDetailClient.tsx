@@ -20,7 +20,8 @@ import PartialInvoiceModal from '@/components/facturation/PartialInvoiceModal'
 import SaisiePanel from '@/components/missions/SaisiePanel'
 import FicheFacturerButton from '@/components/facturation/FicheFacturerButton'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
-import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
+import AddressField, { verifyAddressViaPlaces, reverseGeocodeCity } from '@/components/AddressField'
+import { parseHighwayAddress } from '@/lib/highways/parse'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
@@ -1002,11 +1003,21 @@ function MissionKmInfo({ missionId, refreshKey }: { missionId: string; refreshKe
 }
 
 function GeoStatusBanner({ status, onReview }: {
-  status:   { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
+  status:   { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number }; via?: 'google'|'spw' }
   onReview: () => void
 }) {
   if (status.state === 'idle')      return null
   if (status.state === 'checking')  return <p className="text-ink-muted text-xs">⏳ Vérification Google…</p>
+  // Borne d'autoroute localisée via le SPW (Google ne géocode pas ce type d'adresse).
+  if (status.via === 'spw') return (
+    <div className="px-3 py-2 bg-success-soft border border-success rounded-xl flex items-center justify-between gap-2">
+      <p className="text-success text-xs">📍 Borne autoroute localisée{status.suggestion ? ` : ${status.suggestion.addr}` : ''} (source SPW)</p>
+      <button type="button" onClick={onReview}
+        className="flex-shrink-0 px-2.5 py-1 bg-surface-hover hover:bg-surface-2 text-ink-secondary rounded-lg text-xs transition">
+        Pas la bonne ?
+      </button>
+    </div>
+  )
   if (status.state === 'confirmed') return <p className="text-success text-xs">✅ Adresse confirmée par Google</p>
   if (status.state === 'different') return (
     <div className="px-3 py-2 bg-success-soft border border-success rounded-xl flex items-center justify-between gap-2">
@@ -1247,7 +1258,7 @@ export default function MissionDetailClient({
 
   // ── Auto-vérification Google sur chargement ─────────────────────────────────
   // État par adresse : 'idle' | 'checking' | 'confirmed' | 'different' | 'not_found'
-  type GeoStatus = { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number } }
+  type GeoStatus = { state: 'idle'|'checking'|'confirmed'|'different'|'not_found'; suggestion?: { addr: string; lat: number; lng: number }; via?: 'google'|'spw' }
   const [incidentGeo,    setIncidentGeo]    = useState<GeoStatus>({ state: 'idle' })
   const [destinationGeo, setDestinationGeo] = useState<GeoStatus>({ state: 'idle' })
 
@@ -1265,6 +1276,26 @@ export default function MissionDetailClient({
     } catch {
       return { state: 'not_found' }
     }
+  }
+
+  // Résolution d'une adresse d'autoroute ("A27 BK22.3 direction Luxembourg") que
+  // Google ne sait pas géocoder : borne kilométrique → coordonnées (bornes SPW)
+  // → ville (reverse-geocode Google) → adresse lisible "A27 <Ville>". Débloque le
+  // calcul du montant (qui n'a besoin que de lat/lng).
+  const resolveHighwayBk = async (addr: string): Promise<{
+    addr: string; lat: number; lng: number; borneLabel: string | null; direction: string | null
+  } | null> => {
+    const p = parseHighwayAddress(addr)
+    if (!p.ok || !p.highwayRef || p.km == null) return null
+    try {
+      const res = await fetch(`/api/highways/resolve-bk?address=${encodeURIComponent(addr)}`)
+      const j = await res.json()
+      if (!j.ok || typeof j.lat !== 'number') return null
+      let city: string | null = null
+      try { city = (await reverseGeocodeCity(j.lat, j.lng, googleMapsKey))?.city || null } catch { /* noop */ }
+      const label = city ? `${p.highwayRef} ${city}` : `${p.highwayRef} (BK ${p.borneLabel})`
+      return { addr: label, lat: j.lat, lng: j.lng, borneLabel: p.borneLabel, direction: p.direction }
+    } catch { return null }
   }
 
   // Persistance silencieuse partielle — pour que d'autres opérations (driver-eta,
@@ -1323,8 +1354,8 @@ export default function MissionDetailClient({
       if (form.incident_address && !initialMission.incident_lat) {
         setIncidentGeo({ state: 'checking' })
         const r = await verifyAddress(form.incident_address)
-        setIncidentGeo(r)
         if (r.suggestion && (r.state === 'confirmed' || r.state === 'different')) {
+          setIncidentGeo(r)
           setForm(prev => ({
             ...prev,
             incident_address: r.suggestion!.addr,
@@ -1336,6 +1367,32 @@ export default function MissionDetailClient({
             incident_lat:     r.suggestion!.lat,
             incident_lng:     r.suggestion!.lng,
           })
+        } else if (r.state === 'not_found' && isHighway(form.incident_address)) {
+          // Google échoue mais c'est une autoroute → tenter la borne kilométrique (SPW).
+          const hb = await resolveHighwayBk(form.incident_address)
+          if (hb) {
+            setIncidentGeo({ state: 'confirmed', via: 'spw', suggestion: { addr: hb.addr, lat: hb.lat, lng: hb.lng } })
+            setForm(prev => ({
+              ...prev,
+              incident_address:  hb.addr,
+              incident_lat:      String(hb.lat),
+              incident_lng:      String(hb.lng),
+              // Remplit la BK / le sens s'ils sont vides (jamais d'écrasement).
+              incident_borne_km: prev.incident_borne_km || hb.borneLabel || '',
+              incident_sens:     prev.incident_sens     || hb.direction  || '',
+            }))
+            silentPatch({
+              incident_address:  hb.addr,
+              incident_lat:      hb.lat,
+              incident_lng:      hb.lng,
+              ...(hb.borneLabel && !form.incident_borne_km ? { incident_borne_km: hb.borneLabel } : {}),
+              ...(hb.direction  && !form.incident_sens     ? { incident_sens:     hb.direction }  : {}),
+            })
+          } else {
+            setIncidentGeo(r)
+          }
+        } else {
+          setIncidentGeo(r)
         }
       } else if (form.incident_address && initialMission.incident_lat != null && initialMission.incident_lng != null) {
         // Olivier 2026-06-19 : adresse déjà géolocalisée (filet API Allianz /

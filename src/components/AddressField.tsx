@@ -81,6 +81,41 @@ export async function verifyAddressViaPlaces(
   return { formatted, lat, lng, same }
 }
 
+/**
+ * Reverse-geocode (coords → localité) via le Geocoder Google côté client.
+ * Utilisé pour transformer une borne d'autoroute (A27 BK22.3) résolue en
+ * coordonnées → une ville affichable ("Jalhay"). Retourne null si échec.
+ */
+export async function reverseGeocodeCity(
+  lat: number, lng: number, gmKey: string
+): Promise<{ city: string | null; formatted: string | null } | null> {
+  await loadGoogleMaps(gmKey)
+  const google = (window as any).google
+  const geocoder = new google.maps.Geocoder()
+  const results: any[] = await new Promise(resolve => {
+    geocoder.geocode({ location: { lat, lng }, language: 'fr' }, (res: any[], status: string) => {
+      resolve(status === 'OK' && res ? res : [])
+    })
+  })
+  if (results.length === 0) return null
+  // Cherche la localité (locality) dans les composants d'adresse.
+  let city: string | null = null
+  for (const r of results) {
+    const comp = (r.address_components || []).find((c: any) =>
+      c.types.includes('locality') || c.types.includes('postal_town'))
+    if (comp) { city = comp.long_name; break }
+  }
+  if (!city) {
+    // repli : commune administrative niveau 2/3
+    for (const r of results) {
+      const comp = (r.address_components || []).find((c: any) =>
+        c.types.includes('administrative_area_level_3') || c.types.includes('administrative_area_level_2'))
+      if (comp) { city = comp.long_name; break }
+    }
+  }
+  return { city, formatted: results[0]?.formatted_address || null }
+}
+
 export default function AddressField({
   label, value, onChange, onSelect, gmKey, placeholder, className,
 }: {
