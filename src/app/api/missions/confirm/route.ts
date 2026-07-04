@@ -157,6 +157,24 @@ export async function POST(req: Request) {
         // 1. Validation Kaze conservée (proposal de la relivraison).
         await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
 
+        // Adresse du parc (dépôt où le véhicule est physiquement) → destination.
+        // Règle métier : véhicule en parc ⇒ destination = adresse du parc, et
+        // l'adresse de RELIVRAISON = l'ancienne destination (le garage/client).
+        let parcAddr: string | null = null
+        {
+          const { data: pRow } = await supabase.from('incoming_missions')
+            .select('depot_depart_id').eq('id', parentId).maybeSingle()
+          const depotId = (pRow as any)?.depot_depart_id
+          if (depotId) {
+            const { data: d } = await supabase.from('depots').select('address').eq('id', depotId).maybeSingle()
+            parcAddr = (d?.address || '').trim() || null
+          }
+          if (!parcAddr) {
+            const { data: d } = await supabase.from('depots').select('address').eq('is_default', true).eq('active', true).maybeSingle()
+            parcAddr = (d?.address || '').trim() || null
+          }
+        }
+
         // 2. Compléter la fiche parc parent + transfert du lien Kaze.
         const redelivery = (mission.destination_address || '').trim() || null
         const updParent: Record<string, any> = {
@@ -171,7 +189,8 @@ export async function POST(req: Request) {
           rel_kaze_job_id:  mission.kaze_job_id || null,
           updated_at:       now,
         }
-        if (redelivery)                      updParent.redelivery_address = redelivery
+        if (redelivery)                      updParent.redelivery_address  = redelivery
+        if (parcAddr)                        updParent.destination_address = parcAddr   // destination = le parc
         if (mission.destination_lat != null) updParent.redelivery_lat     = mission.destination_lat
         if (mission.destination_lng != null) updParent.redelivery_lng     = mission.destination_lng
         await supabase.from('incoming_missions').update(updParent).eq('id', parentId)
