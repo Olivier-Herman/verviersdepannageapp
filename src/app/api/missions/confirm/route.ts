@@ -132,7 +132,11 @@ export async function POST(req: Request) {
     // l'acceptation Kaze (sinon rien n'est validé côté Kaze) et on TRANSFÈRE le lien
     // Kaze sur le parent pour que la relivraison se clôture automatiquement dans Kaze
     // à la fin (la REL généralisée hérite du kaze_job_id — voir create-relivraison.ts).
-    const isKazeRel = mission?.source === 'kaze' && mission?.incident_type === 'relivraison'
+    // Détection robuste : une mission Kaze RELivraison = incident_type 'relivraison'
+    // OU (plus fiable) une mission Kaze qui pointe déjà vers une fiche parente REM
+    // (parent_mission_id posé à l'import via la convention IMA AA/AB).
+    const isKazeRel = mission?.source === 'kaze'
+      && (mission?.incident_type === 'relivraison' || !!mission?.parent_mission_id)
     if (isKazeRel) {
       // Rapprochement : lien parent AA/AB d'abord, sinon même plaque en parc.
       let parentId: string | null = null
@@ -160,8 +164,11 @@ export async function POST(req: Request) {
           parc_row_number:  null,
           parc_slot_index:  null,
           mission_type:     'REM+REL',
-          kaze_job_id:      mission.kaze_job_id || null,
-          kaze_proposal_id: mission.kaze_proposal_id || null,
+          // Job Kaze de la RELIVRAISON stocké à part : NE PAS écraser kaze_job_id du
+          // parent (= job du REMORQUAGE, qui a sa propre clôture). La relivraison
+          // généralisée héritera de rel_kaze_job_id (voir create-relivraison.ts) →
+          // les DEUX jobs Kaze se clôturent, chacun le sien.
+          rel_kaze_job_id:  mission.kaze_job_id || null,
           updated_at:       now,
         }
         if (redelivery)                      updParent.redelivery_address = redelivery

@@ -124,10 +124,11 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
       parse_confidence:      1.0,
       odoo_vehicle_id:       parent.odoo_vehicle_id,
       depot_depart_id:       parent.depot_depart_id,
-      // Olivier 2026-07-04 : hérite le lien Kaze du parent (cas relivraison Kaze
-      // fusionnée dans la fiche parc) → la clôture Kaze se déclenche à la fin de
-      // la relivraison via ce kaze_job_id, comme pour une mission Kaze normale.
-      kaze_job_id:           (parent as any).kaze_job_id ?? null,
+      // Olivier 2026-07-04 : hérite le job Kaze de la RELIVRAISON (rel_kaze_job_id,
+      // posé lors de la fusion d'une relivraison Kaze dans la fiche parc), sinon le
+      // job Kaze du parent. → la clôture Kaze de la relivraison se déclenche à la
+      // fin, sur le BON job (celui de la relivraison, pas celui du remorquage).
+      kaze_job_id:           (parent as any).rel_kaze_job_id ?? (parent as any).kaze_job_id ?? null,
     })
     .select('id')
     .single()
