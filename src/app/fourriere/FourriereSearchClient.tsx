@@ -80,6 +80,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
   const [includeHistory, setIncludeHistory] = useState(false)
+  const [showCancelled, setShowCancelled] = useState(false)
   const [results,  setResults]  = useState<SearchResult[]>([])
   const [loading,  setLoading]  = useState(false)
   const [searched, setSearched] = useState(false)
@@ -94,7 +95,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
     const t = setTimeout(() => { runSearch() }, 350)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plate, vin, pv, vehicle, address, dateFrom, dateTo, includeHistory])
+  }, [plate, vin, pv, vehicle, address, dateFrom, dateTo, includeHistory, showCancelled])
 
   async function runSearch() {
     setLoading(true); setSearched(true)
@@ -108,6 +109,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
       if (dateFrom) sp.set('date_from', dateFrom)
       if (dateTo)   sp.set('date_to', dateTo)
       if (includeHistory) sp.set('include_history', '1')
+      if (showCancelled)  sp.set('show_cancelled', '1')
       const r = await fetch(`/api/fourriere/search?${sp.toString()}`)
       const j = await r.json()
       setResults(j.results || [])
@@ -121,7 +123,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
 
   function clearAll() {
     setPlate(''); setVin(''); setPv(''); setVehicle(''); setAddress('')
-    setDateFrom(''); setDateTo(''); setIncludeHistory(false)
+    setDateFrom(''); setDateTo(''); setIncludeHistory(false); setShowCancelled(false)
     setResults([]); setSearched(false)
   }
 
@@ -210,11 +212,18 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t">
-              <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
-                <input type="checkbox" checked={includeHistory} onChange={e => setIncludeHistory(e.target.checked)}
-                  className="w-4 h-4 accent-brand" />
-                Inclure l'historique (véhicules déjà sortis)
-              </label>
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
+                  <input type="checkbox" checked={includeHistory} onChange={e => setIncludeHistory(e.target.checked)}
+                    className="w-4 h-4 accent-brand" />
+                  Inclure l'historique (véhicules déjà sortis)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
+                  <input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)}
+                    className="w-4 h-4 accent-brand" />
+                  Afficher également les missions annulées
+                </label>
+              </div>
               {hasAnyFilter && (
                 <button onClick={clearAll}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-ink-muted hover:text-ink text-xs transition">

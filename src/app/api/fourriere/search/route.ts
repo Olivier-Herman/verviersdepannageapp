@@ -49,6 +49,8 @@ export async function GET(req: Request) {
   const dateTo   = (url.searchParams.get('date_to')   || '').trim()
   const depotId  = (url.searchParams.get('depot_id')  || '').trim()
   const includeHistory = url.searchParams.get('include_history') === '1'
+  const showCancelled  = url.searchParams.get('show_cancelled') === '1'
+  const isSuperadmin   = role === 'superadmin'
 
   const hasAnyFilter = !!(plate || vin || pv || vehicle || address || dateFrom || dateTo || depotId)
   if (!hasAnyFilter) {
@@ -88,6 +90,12 @@ export async function GET(req: Request) {
 
   if (!includeHistory) {
     q = q.in('status', ACTIVE_PARC_STATUSES)
+  }
+  // Olivier 2026-07-04 : non-superadmin → jamais de missions 'unknown' (placeholder),
+  // et 'cancelled' masquées sauf case cochée. Superadmin voit tout.
+  if (!isSuperadmin) {
+    q = q.neq('source', 'unknown')
+    if (!showCancelled) q = q.neq('status', 'cancelled')
   }
   if (zoneKeys) q = q.in('parc_zone_key', zoneKeys)
   if (plate)    q = q.ilike('vehicle_plate', `%${escapeIlike(plate.replace(/[-.\s]/g, '').toUpperCase())}%`)

@@ -237,7 +237,20 @@ export async function GET(req: Request) {
   for (const m of [...(missionsBase || []), ...missionsByPlate, ...missionsByDate, ...missionsByRemark]) {
     if (!missionsMap.has(m.id)) missionsMap.set(m.id, m)
   }
-  const missions = [...missionsMap.values()].slice(0, PER_CATEGORY_LIMIT)
+  // Olivier 2026-07-04 : les non-superadmin ne voient PAS les missions sans intérêt
+  // (source 'unknown' = placeholder / expéditeur non identifié). Les 'cancelled'
+  // sont masquées par défaut, affichables via ?show_cancelled=1 (case à cocher UI).
+  // Superadmin voit tout.
+  const isSuperadmin  = (session.user as any)?.role === 'superadmin'
+  const showCancelled = searchParams.get('show_cancelled') === '1'
+  const missions = [...missionsMap.values()]
+    .filter(m => {
+      if (isSuperadmin) return true
+      if (m.source === 'unknown') return false
+      if (!showCancelled && m.status === 'cancelled') return false
+      return true
+    })
+    .slice(0, PER_CATEGORY_LIMIT)
 
   for (const m of missions) {
     const plate = m.vehicle_plate || '—'

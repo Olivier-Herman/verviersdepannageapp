@@ -40,6 +40,7 @@ export default function GlobalSearch() {
   const [error, setError]         = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [activeCats, setActiveCats]   = useState<Set<string>>(new Set())
+  const [showCancelled, setShowCancelled] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<any>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -98,7 +99,8 @@ export default function GlobalSearch() {
       abortRef.current = ctl
       try {
         const catsParam = activeCats.size > 0 ? `&cats=${Array.from(activeCats).join(',')}` : ''
-        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}${catsParam}`, { signal: ctl.signal })
+        const cancelParam = showCancelled ? '&show_cancelled=1' : ''
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}${catsParam}${cancelParam}`, { signal: ctl.signal })
         if (!res.ok) { setError('Erreur recherche'); setResults({}); setTotal(0); return }
         const j = await res.json()
         setResults(j.categories || {})
@@ -110,7 +112,7 @@ export default function GlobalSearch() {
         setLoading(false)
       }
     }, 250)
-  }, [query, open, activeCats])
+  }, [query, open, activeCats, showCancelled])
 
   const flatResults: SearchResult[] = []
   for (const cat of CATEGORY_ORDER) {
@@ -241,6 +243,11 @@ export default function GlobalSearch() {
                   </button>
                 )}
               </div>
+              <label className="flex items-center gap-2 mt-2 text-xs text-ink-muted cursor-pointer w-fit">
+                <input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-brand" />
+                Afficher également les missions annulées
+              </label>
             </div>
 
             {/* Résultats */}

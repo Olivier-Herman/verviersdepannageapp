@@ -217,6 +217,7 @@ export default function FacturationClient({
   const [advDone, setAdvDone]       = useState(false)
   const [rowBusy, setRowBusy]       = useState<string | null>(null)
   const [advMsg, setAdvMsg]         = useState<string | null>(null)
+  const [advShowCancelled, setAdvShowCancelled] = useState(false)
   // Si on facture une fiche issue de TowSoft, on garde son num pour proposer
   // l'annulation de la fiche TowSoft une fois la facturation validée.
   const [pendingTowsoftNum, setPendingTowsoftNum] = useState<string | null>(null)
@@ -227,7 +228,7 @@ export default function FacturationClient({
     try {
       const r = await fetch('/api/facturation/search', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ searchType: advType, key: advKey.trim() }),
+        body: JSON.stringify({ searchType: advType, key: advKey.trim(), showCancelled: advShowCancelled }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur de recherche')
@@ -471,6 +472,13 @@ export default function FacturationClient({
               {advBusy ? '⏳…' : 'Rechercher'}
             </button>
           </div>
+
+          <label className="flex items-center gap-2 text-xs text-ink-muted cursor-pointer w-fit">
+            <input type="checkbox" checked={advShowCancelled}
+              onChange={e => { setAdvShowCancelled(e.target.checked); if (advDone) setTimeout(runAdvSearch, 0) }}
+              className="w-3.5 h-3.5 accent-brand" />
+            Afficher également les missions annulées
+          </label>
 
           {advErr && <div className="text-critical text-xs">⚠ {advErr}</div>}
           {advMsg && <div className="text-ink-secondary text-xs bg-surface-2 border rounded-lg px-3 py-2">{advMsg}</div>}

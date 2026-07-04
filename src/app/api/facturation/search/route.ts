@@ -121,6 +121,14 @@ export async function POST(req: Request) {
     // client_nom / origine_destination / montant / remarques : TowSoft uniquement
     // (la recherche VD Soft globale existe deja dans /api/search pour ces cas).
 
+    // Olivier 2026-07-04 : non-superadmin → pas de missions 'unknown' (placeholder),
+    // et 'cancelled' masquées sauf case cochée (body.showCancelled). Superadmin voit tout.
+    const isSuperadmin  = (session!.user as any)?.role === 'superadmin'
+    const showCancelled = body.showCancelled === true || body.showCancelled === '1'
+    if (!isSuperadmin) {
+      vdRows = vdRows.filter(m => m.source !== 'unknown' && (showCancelled || m.status !== 'cancelled'))
+    }
+
     for (const m of vdRows) {
       results.push({
         source:        'vdsoft',
