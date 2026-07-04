@@ -94,10 +94,17 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
     linkedParent = parent
   }
   {
+    // Olivier 2026-07-04 : on ignore les enfants annulés/ignorés (ex. relivraison
+    // Kaze fusionnée dans la fiche parc → REL passée en 'ignored'). Sinon la fiche
+    // parent affichait « Relivraison liée » vers une fiche morte ET masquait le
+    // bouton relivraison (gate `!linkedChild`). Aligne avec la liste À Relivrer.
     const { data: child } = await supabase
       .from('incoming_missions')
       .select('id, mission_number, external_id, dossier_number, status, vehicle_plate, assigned_to, received_at, intervention_date')
       .eq('parent_mission_id', mission.id)
+      .not('status', 'in', '("cancelled","ignored")')
+      .order('received_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
     linkedChild = child
   }
