@@ -4,7 +4,6 @@
 // précédentes repliées (dépliables). Fonds alternés par leg (A gris, B blanc…).
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 
 interface Leg {
   letter:          string
@@ -20,11 +19,13 @@ interface Leg {
   is_last:         boolean
   details:         any
 }
+interface HistoryLine { letter: string; at: string | null; action: string | null; notes: string | null; actor: string | null }
 interface Dossier {
   ref: string; root_id: string; dossier_number: string | null; source: string | null
   vehicle: { plate: string | null; brand: string | null; model: string | null; vin: string | null }
   client:  { name: string | null; phone: string | null }
   legs: Leg[]
+  history: HistoryLine[]
 }
 
 const fmt = (v: string | null | undefined) =>
@@ -113,9 +114,9 @@ export default function DossierClient({ id, isSuperadmin }: { id: string; isSupe
       <div className="space-y-2">
         {legsDisplay.map((leg) => {
           const isOpen = open.has(leg.letter)
-          // Fond alterné par lettre : A(gris) B(blanc) C(gris)…
+          // Fond alterné par lettre : A(gris) B(blanc) C(gris)… contraste marqué.
           const idx = leg.letter.charCodeAt(0) - 65
-          const bg  = idx % 2 === 0 ? 'bg-surface-2' : 'bg-surface'
+          const bg  = idx % 2 === 0 ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-white dark:bg-zinc-900'
           return (
             <div key={leg.letter} className={`${bg} border rounded-2xl overflow-hidden`}>
               {/* Bandeau (toujours visible) */}
@@ -146,12 +147,7 @@ export default function DossierClient({ id, isSuperadmin }: { id: string; isSupe
                       <Row label="Gardiennage" value={`${leg.details?.gardiennage_days ?? '—'} jour(s)${leg.details?.still_parked ? ' (en cours)' : ''}`} />
                     </>
                   )}
-                  <div className="pt-2">
-                    <Link href={`/dispatch/${leg.mission_id}`}
-                      className="inline-block px-3 py-1.5 bg-surface border rounded-lg text-xs font-medium text-ink-secondary hover:text-ink transition">
-                      Ouvrir la fiche {leg.mission_number != null ? `#${leg.mission_number}` : ''} →
-                    </Link>
-                  </div>
+                  <p className="text-ink-faint text-xs pt-2 italic">Actions de l'étape — à câbler (inline, sans quitter le dossier).</p>
                 </div>
               )}
             </div>
@@ -159,8 +155,26 @@ export default function DossierClient({ id, isSuperadmin }: { id: string; isSupe
         })}
       </div>
 
-      <p className="text-ink-faint text-xs text-center pt-2">
-        ↑ dernière action en haut · première action en bas ↓ — vue lecture seule (skeleton)
+      {/* Historique UNIFIÉ — toutes actions confondues, du début à la fin (anté-chrono) */}
+      {data.history?.length > 0 && (
+        <div className="bg-surface border rounded-2xl p-5">
+          <h2 className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Historique — dossier complet</h2>
+          <div className="space-y-2.5">
+            {data.history.map((h, i) => (
+              <div key={i} className="flex gap-2.5 text-sm">
+                <span className="flex-shrink-0 mt-0.5 h-5 min-w-[26px] px-1 text-center text-[10px] font-bold text-ink-secondary bg-ink/5 border rounded flex items-center justify-center">-{h.letter}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-ink leading-snug">{h.notes || h.action}</p>
+                  <p className="text-ink-faint text-xs">{h.actor ? `${h.actor} · ` : ''}{fmt(h.at)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-ink-faint text-xs text-center pt-1">
+        ↑ dernière action en haut · première action en bas ↓ — preview
       </p>
     </div>
   )

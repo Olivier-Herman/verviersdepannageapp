@@ -133,6 +133,30 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const lastIdx = legs.reduce((mx, leg, i, arr) => (ts(leg.started_at) || 0) >= (ts(arr[mx].started_at) || 0) ? i : mx, 0)
   legs.forEach((leg, i) => { leg.is_last = i === lastIdx })
 
+  // ── Historique UNIFIÉ (toutes actions confondues, du début à la fin) ───────
+  const chainIds = [root.id, ...children.map(c => c.id)]
+  const { data: logs } = await sb.from('mission_logs')
+    .select('mission_id, action, notes, created_at, actor_id')
+    .in('mission_id', chainIds)
+    .order('created_at', { ascending: false })
+    .limit(300)
+  const actorIds = Array.from(new Set((logs || []).map((l: any) => l.actor_id).filter(Boolean)))
+  const actorName: Record<string, string> = {}
+  if (actorIds.length) {
+    const { data: au } = await sb.from('users').select('id, name').in('id', actorIds)
+    for (const u of au || []) actorName[(u as any).id] = (u as any).name
+  }
+  const parcLetter = legs.find(l => l.kind === 'parc')?.letter || null
+  const remLetter  = legs.find(l => l.kind === 'rem')?.letter  || 'A'
+  const relLetterByMission: Record<string, string> = {}
+  for (const leg of legs) if (leg.kind === 'rel') relLetterByMission[leg.mission_id] = leg.letter
+  const history = (logs || []).map((l: any) => {
+    let letter = remLetter
+    if (l.mission_id !== root.id) letter = relLetterByMission[l.mission_id] || '?'
+    else if (parcLetter && /park|parc|reliv|gardien|zone k/i.test(l.action || '')) letter = parcLetter
+    return { letter, at: l.created_at, action: l.action, notes: l.notes, actor: l.actor_id ? (actorName[l.actor_id] || null) : null }
+  })
+
   return NextResponse.json({
     ok: true,
     dossier: {
@@ -143,6 +167,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       vehicle:    { plate: root.vehicle_plate, brand: root.vehicle_brand, model: root.vehicle_model, vin: root.vehicle_vin },
       client:     { name: root.client_name, phone: root.client_phone },
       legs,
+      history,
     },
   })
 }
