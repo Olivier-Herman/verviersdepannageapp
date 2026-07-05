@@ -38,6 +38,10 @@ interface AppShellProps {
   userEmail?:   string
   userId?:      string
   userModules?: string[]
+  /** Mode embarqué : rend UNIQUEMENT le contenu (sans sidebar ni header). Sert à
+   *  afficher une fiche existante telle quelle dans un groupe de la vue dossier.
+   *  Défaut false → aucun impact sur l'affichage normal. */
+  embedded?:    boolean
 }
 
 export default function AppShell({
@@ -50,6 +54,7 @@ export default function AppShell({
   userEmail,
   userId,
   userModules = [],
+  embedded = false,
 }: AppShellProps) {
   const pathname = usePathname()
   // Lit l'ordre personnalise du menu depuis la session (set via /profil).
@@ -62,6 +67,15 @@ export default function AppShell({
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
+
+  // Mode embarqué (groupe de la vue dossier) : uniquement le contenu, sans chrome.
+  if (embedded) {
+    return (
+      <NotificationsProvider userId={userId || null}>
+        <div>{children}</div>
+      </NotificationsProvider>
+    )
+  }
 
   return (
    <NotificationsProvider userId={userId || null}>

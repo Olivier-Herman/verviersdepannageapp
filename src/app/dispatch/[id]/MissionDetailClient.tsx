@@ -1165,6 +1165,7 @@ export default function MissionDetailClient({
   googleMapsKey,
   autoDispatchStatus,
   parcZoneType = null,
+  embed = false,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -1181,6 +1182,7 @@ export default function MissionDetailClient({
   googleMapsKey: string
   autoDispatchStatus?: string | null
   parcZoneType?: string | null
+  embed?: boolean
 }) {
   const router = useRouter()
 
@@ -2258,6 +2260,7 @@ export default function MissionDetailClient({
 
   return (
     <AppShell
+      embedded={embed}
       title={`Mission ${initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}`}
       headerExtra={
         <div className="flex items-center gap-2 flex-wrap">
@@ -2268,6 +2271,12 @@ export default function MissionDetailClient({
             </span>
           )}
           <span className={`text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
+          {userRole === 'superadmin' && (
+            <Link href={`/dispatch/dossier/${initialMission.id}`}
+              className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition">
+              🧪 Vue dossier
+            </Link>
+          )}
         </div>
       }
       userName={userName}
