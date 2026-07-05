@@ -60,8 +60,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // ── Construction des legs ────────────────────────────────────────────────
   const legs: any[] = []
 
-  // Leg REM (toujours) — mappe la ligne racine.
-  legs.push({
+  // Leg REM (toujours) — CARTE : mappe la ligne racine (fiche embarquée complète).
+  const remLeg: any = {
     kind:            'rem',
     mission_id:      root.id,
     mission_number:  root.mission_number,
@@ -70,43 +70,43 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     billed_to_name:  root.billed_to_name || null,
     driver_name:     root.assigned_to ? (nameById[root.assigned_to] || null) : null,
     started_at:      root.received_at || root.intervention_date || null,
+    is_card:         true,
     details: {
       incident_address:    root.incident_address || null,
       destination_address: root.destination_address || null,
       source:              root.source,
     },
-  })
+  }
+  legs.push(remLeg)
 
-  // Leg PARC / GARDIENNAGE (si le véhicule a été mis en parc) — leg à part pour
-  // le calcul des jours de gardiennage. Mappe aussi la ligne racine (état).
+  // « Leg » PARC / GARDIENNAGE : PAS une carte (le parc est un état du REM, sa
+  // fiche est celle du remorquage). On garde la lettre -B pour l'historique + le
+  // comptage des jours, et on reflète le gardiennage sur la carte REM.
   if (root.parked_at) {
     const parkedMs = ts(root.parked_at)!
-    // Sortie du parc : chargement REL le plus tôt, sinon clôture, sinon maintenant.
     const childLoaded = children.map(c => ts(c.loaded_at) || ts(c.delivering_at)).filter(Boolean) as number[]
-    const exitMs = childLoaded.length ? Math.min(...childLoaded)
-                 : ts(root.completed_at) || Date.now()
+    const exitMs = childLoaded.length ? Math.min(...childLoaded) : ts(root.completed_at) || Date.now()
     const days = Math.max(1, Math.ceil((exitMs - parkedMs) / DAY_MS))
     legs.push({
       kind:            'parc',
-      mission_id:      root.id,           // le parc est un état de la racine
+      mission_id:      root.id,
       mission_number:  root.mission_number,
       status:          'parked',
       title:           '🅿️ Mise en parc / gardiennage',
-      // Client parc = additif plus tard ; pour l'instant hérité du remorquage.
       billed_to_name:  root.billed_to_name || null,
       billed_inherited: true,
       driver_name:     null,
       started_at:      root.parked_at,
-      details: {
-        parc_zone_key:       root.parc_zone_key || null,
-        redelivery_address:  root.redelivery_address || null,
-        gardiennage_days:    days,
-        still_parked:        root.status === 'parked',
-      },
+      is_card:         false,
+      details:         { parc_zone_key: root.parc_zone_key || null, gardiennage_days: days, still_parked: root.status === 'parked' },
     })
+    // Reflet sur la carte REM.
+    remLeg.details.gardiennage_days = days
+    remLeg.details.parc_zone_key    = root.parc_zone_key || null
+    remLeg.details.still_parked     = root.status === 'parked'
   }
 
-  // Legs REL (enfants).
+  // Legs REL (enfants) — CARTES.
   for (const c of children) {
     legs.push({
       kind:            'rel',
@@ -117,9 +117,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       billed_to_name:  c.billed_to_name || null,
       driver_name:     c.assigned_to ? (nameById[c.assigned_to] || null) : null,
       started_at:      c.received_at || c.intervention_date || null,
+      is_card:         true,
       details: {
-        incident_address:    c.incident_address || null,     // = parc (départ REL)
-        destination_address: c.destination_address || null,  // = adresse de relivraison
+        incident_address:    c.incident_address || null,
+        destination_address: c.destination_address || null,
         source:              c.source,
       },
     })
@@ -129,9 +130,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   legs.sort((a, b) => (ts(a.started_at) || 0) - (ts(b.started_at) || 0))
   const LETTERS = 'ABCDEFGHIJ'
   legs.forEach((leg, i) => { leg.letter = LETTERS[i] || String(i + 1) })
-  // Leg le plus récent = déplié par défaut.
-  const lastIdx = legs.reduce((mx, leg, i, arr) => (ts(leg.started_at) || 0) >= (ts(arr[mx].started_at) || 0) ? i : mx, 0)
-  legs.forEach((leg, i) => { leg.is_last = i === lastIdx })
+  // Dépliage par défaut : la CARTE la plus récente (le parc n'est pas une carte).
+  const cardLegs = legs.filter(l => l.is_card)
+  const lastCard = cardLegs.reduce((mx, leg) => (ts(leg.started_at) || 0) >= (ts(mx.started_at) || 0) ? leg : mx, cardLegs[0])
+  legs.forEach(leg => { leg.is_last = !!lastCard && leg === lastCard })
 
   // ── Historique UNIFIÉ (toutes actions confondues, du début à la fin) ───────
   const chainIds = [root.id, ...children.map(c => c.id)]

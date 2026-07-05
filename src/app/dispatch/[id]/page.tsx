@@ -13,7 +13,10 @@ import MissionDetailClient   from './MissionDetailClient'
 export const dynamic    = 'force-dynamic'
 export const revalidate = 0
 
-export default async function MissionDetailPage({ params }: { params: { id: string } }) {
+export default async function MissionDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
+  // Mode embarqué (dossier) : ?embed=1 → rend la fiche SANS le chrome AppShell,
+  // pour l'intégrer telle quelle dans la vue dossier. Invisible en usage normal.
+  const embed = searchParams?.embed === '1'
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -165,6 +168,7 @@ export default async function MissionDetailPage({ params }: { params: { id: stri
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
       autoDispatchStatus={autoDispatchStatus}
       parcZoneType={parcZoneType}
+      embed={embed}
     />
   )
 }

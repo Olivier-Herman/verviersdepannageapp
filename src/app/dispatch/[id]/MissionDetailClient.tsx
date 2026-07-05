@@ -1165,6 +1165,7 @@ export default function MissionDetailClient({
   googleMapsKey,
   autoDispatchStatus,
   parcZoneType = null,
+  embed = false,
 }: {
   mission:       Mission
   logs:          MissionLog[]
@@ -1181,6 +1182,7 @@ export default function MissionDetailClient({
   googleMapsKey: string
   autoDispatchStatus?: string | null
   parcZoneType?: string | null
+  embed?: boolean
 }) {
   const router = useRouter()
 
@@ -2258,6 +2260,7 @@ export default function MissionDetailClient({
 
   return (
     <AppShell
+      embedded={embed}
       title={`Mission ${initialMission.mission_number != null ? `#${initialMission.mission_number}` : initialMission.external_id}`}
       headerExtra={
         <div className="flex items-center gap-2 flex-wrap">
