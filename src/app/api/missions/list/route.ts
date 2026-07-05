@@ -70,13 +70,15 @@ export async function GET(req: Request) {
   } else if (status === 'new') {
     query = query.eq('status', 'new')
   } else if (status === 'dispatching') {
-    // Olivier 2026-07-03 : l'onglet « En attente » regroupe désormais les
-    // commandes à valider (new) ET les missions validées en attente
-    // d'assignation (dispatching). Le client les sépare en 2 bandes
-    // ("🆕 À valider" au-dessus). Les 'new' futures restent filtrées par
-    // DAY_TABS (voir plus bas) → elles n'apparaissent pas ici, seulement en
-    // « En commande » / RDV.
-    query = query.in('status', ['new', 'dispatching'])
+    // Olivier 2026-07-03/05 : l'onglet « En attente » regroupe les commandes à
+    // valider (new) ET les missions validées en attente d'assignation (dispatching).
+    // Le client les sépare en 2 bandes ("🆕 À valider" au-dessus).
+    // - TOUTES les 'new' apparaissent (y compris les futures/RDV) → on peut tout
+    //   valider depuis un seul écran.
+    // - Les 'dispatching' restent limitées à l'horizon du jour (les futures sont
+    //   dans l'onglet RDV). Filtre appliqué INLINE ici (et 'dispatching' retiré de
+    //   DAY_TABS plus bas) pour ne PAS filtrer les 'new' futures.
+    query = query.or(`status.eq.new,and(status.eq.dispatching,or(intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}))`)
   } else if (status === 'assigned') {
     query = query.in('status', ['assigned', 'accepted'])
   } else if (status === 'in_progress') {
@@ -108,7 +110,9 @@ export async function GET(req: Request) {
   // Les missions planifiées à +12h VALIDÉES sont dans l'onglet RDV → on les retire
   // des onglets du jour (carte + En attente / Assigné / En cours). Les 'new'
   // futures RESTENT visibles dans « En commande » avec leur date de RDV.
-  const DAY_TABS = ['dispatching', 'assigned', 'in_progress']
+  // 'dispatching' n'est PLUS ici : son filtre du jour est appliqué inline ci-dessus
+  // (seulement sur les 'dispatching', pas sur les 'new' → toutes les new visibles).
+  const DAY_TABS = ['assigned', 'in_progress']
   if (mapMode || DAY_TABS.includes(status)) {
     query = query.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
   }
