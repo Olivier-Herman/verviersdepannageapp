@@ -38,6 +38,7 @@ interface Mission {
   external_id: string
   dossier_number: string | null
   source: string
+  is_rollable?: boolean | null
   mission_type: string | null
   incident_type: string | null
   client_name: string | null
@@ -143,6 +144,20 @@ function getTypeLabel(m: { mission_type?: string | null; incident_type?: string 
   if (m.incident_type === 'dpr')          return '📍 DPR'
   if (!m.mission_type) return '—'
   return TYPE_LABELS[m.mission_type] || m.mission_type
+}
+
+// Picto compact roulant / non roulant / non défini pour la liste À Relivrer.
+function RollableMini({ v }: { v: boolean | null | undefined }) {
+  if (v == null) return <span title="Non défini" className="text-lg opacity-40 grayscale">🚗</span>
+  if (v) return <span title="Roulant" className="text-lg">🚗</span>
+  return (
+    <span title="Non roulant" className="relative inline-flex items-center justify-center text-lg opacity-80">
+      🚗
+      <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <span className="block w-6 h-[2px] bg-red-600 rotate-45 rounded" />
+      </span>
+    </span>
+  )
 }
 
 const TABS = [
@@ -1506,9 +1521,10 @@ export default function DispatchClient({
                 <thead>
                   <tr className="border-b border text-ink-secondary text-xs uppercase tracking-wide">
                     <th className="px-4 py-3 text-left font-medium">Source</th>
+                    {activeTab === 'parked' && <th className="px-2 py-3 text-center font-medium">Roul.</th>}
                     <th className="px-4 py-3 text-left font-medium">Dossier</th>
                     <th className="px-4 py-3 text-left font-medium">Client</th>
-                    <th className="px-4 py-3 text-left font-medium">Délai</th>
+                    {activeTab !== 'parked' && <th className="px-4 py-3 text-left font-medium">Délai</th>}
                     <th className="px-4 py-3 text-left font-medium">Type</th>
                     <th className="px-4 py-3 text-left font-medium">Véhicule</th>
                     <th className="px-4 py-3 text-left font-medium">Lieu incident</th>
@@ -1545,6 +1561,9 @@ export default function DispatchClient({
                             {srcInfo.label}
                           </span>
                         </td>
+                        {activeTab === 'parked' && (
+                          <td className="px-2 py-3 text-center"><RollableMini v={m.is_rollable} /></td>
+                        )}
                         <td className="px-4 py-3">
                           <p className="text-ink font-mono text-xs">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</p>
                           {(m.dossier_number || (m.mission_number != null && m.external_id)) && (
@@ -1558,15 +1577,17 @@ export default function DispatchClient({
                               className="text-ink-secondary text-xs hover:text-brand">{m.client_phone}</a>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          {showDelai ? (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
-                              {delai.label}
-                            </span>
-                          ) : (
-                            <span className="text-ink-faint text-xs">—</span>
-                          )}
-                        </td>
+                        {activeTab !== 'parked' && (
+                          <td className="px-4 py-3">
+                            {showDelai ? (
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
+                                {delai.label}
+                              </span>
+                            ) : (
+                              <span className="text-ink-faint text-xs">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-ink-secondary text-xs">
                           {getTypeLabel(m)}
                         </td>
