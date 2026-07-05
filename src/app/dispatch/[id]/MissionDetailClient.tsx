@@ -30,6 +30,7 @@ import RestituerEtFacturerModal from '@/components/fourriere/RestituerEtFacturer
 import GererSncDepotModal from '@/components/restitution/GererSncDepotModal'
 import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
+import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 
 const sb = createClient(
@@ -2247,6 +2248,11 @@ export default function MissionDetailClient({
       headerExtra={
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`px-2 py-0.5 rounded-lg text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+          {form.mission_type && (
+            <span className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-surface-2 text-ink-secondary border">
+              {getMissionTypeLabel(form.mission_type, 'long')}
+            </span>
+          )}
           <span className={`text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
         </div>
       }

@@ -13,6 +13,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { FOURRIERE_ZONE_BY_ID } from '@/lib/fourriere'
 import { searchAllMailboxes, isGraphConfigured, SEARCH_MAILBOXES } from '@/lib/graph-mail-search'
 
@@ -167,7 +168,7 @@ export async function GET(req: Request) {
   if (wants('mission')) {
     const missionsQuery = sb
     .from('incoming_missions')
-    .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
+    .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, mission_type, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
     .or([
       ...(qNum != null ? [`mission_number.eq.${qNum}`] : []),
       `external_id.ilike.${qLike}`,
@@ -191,7 +192,7 @@ export async function GET(req: Request) {
   if (qPlate.length >= 2) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
+      .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, mission_type, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
       .not('vehicle_plate', 'is', null)
       .order('received_at', { ascending: false })
       .limit(200)
@@ -204,7 +205,7 @@ export async function GET(req: Request) {
   if (dateRange) {
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
+      .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, mission_type, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
       .gte('intervention_date', dateRange.from)
       .lte('intervention_date', dateRange.to)
       .order('intervention_date', { ascending: false })
@@ -225,7 +226,7 @@ export async function GET(req: Request) {
     if (remarkMissionIds.length > 0) {
       const { data } = await sb
         .from('incoming_missions')
-        .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
+        .select('id, mission_number, external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, incident_address, destination_address, source, status, mission_type, intervention_date, received_at, assigned_to, archived_at, no_charge_at, no_charge_reason, invoice_method, invoice_number')
         .in('id', remarkMissionIds)
       missionsByRemark = data || []
     }
@@ -262,12 +263,15 @@ export async function GET(req: Request) {
     else if (m.invoice_method === 'auto')    statusExtras.push('⚡ Autofacturée')
     else if (m.invoice_number)               statusExtras.push(`🧾 ${m.invoice_number}`)
     const extrasStr = statusExtras.length ? ' · ' + statusExtras.join(' · ') : ''
+    // Type d'intervention (ex. 🚛 Remorquage / 🔧 Dépannage / 🚚 Relivraison) pour
+    // identifier vite le type effectué sur la card de recherche.
+    const typeLbl = m.mission_type ? getMissionTypeLabel(m.mission_type, 'long') : ''
     out.push({
       category: 'mission',
       id:       m.id,
       title:    `${archivedPrefix}${m.mission_number != null ? `#${m.mission_number}` : (m.external_id || m.dossier_number || m.id.slice(0, 8))} · ${plate}`,
       subtitle: [m.client_name, veh, m.incident_address].filter(Boolean).join(' · '),
-      meta:     `${m.source || ''} · ${m.status}${extrasStr} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
+      meta:     `${m.source || ''}${typeLbl ? ' · ' + typeLbl : ''} · ${m.status}${extrasStr} · ${fmtDateShort(m.intervention_date || m.received_at)}`.trim(),
       href:     `/dispatch/${m.id}`,
     })
   }
