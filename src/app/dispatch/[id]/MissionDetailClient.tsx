@@ -2268,14 +2268,6 @@ export default function MissionDetailClient({
             </span>
           )}
           <span className={`text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
-          {/* Preview « Fiche dossier » — RÉSERVÉ SUPERADMIN (invisible pour tous les
-              autres users → leur écran ne change pas). Olivier 2026-07-05. */}
-          {userRole === 'superadmin' && (
-            <Link href={`/dispatch/dossier/${initialMission.id}`}
-              className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition">
-              🧪 Vue dossier
-            </Link>
-          )}
         </div>
       }
       userName={userName}
