@@ -1537,6 +1537,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
   // ── Mise en parc ──────────────────────────────────────────────────────────
   const doPark = async (vr: VrLoc) => {
+    // Roulant / non roulant OBLIGATOIRE (demande Axel 2026-07-05).
+    if (isRollable === null) { setErr('Indique si le véhicule est roulant ou non roulant.'); return }
     setLoading(true); setErr('')
     try {
       const newUrls = await uploadPhotos(photos)
@@ -1554,7 +1556,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           park_data: {
             stage_name:         vr.name,
             zone_key:           suggestedZoneKey || undefined,
-            is_rollable:        isPoliceAccident ? !!isRollable : undefined,
+            // Roulant/non roulant : désormais pour TOUTES les mises en parc.
+            is_rollable:        isRollable != null ? isRollable : undefined,
             is_right_direction: isPoliceAccident ? !!isRightDirection : undefined,
             key_location:       keyLocation || undefined,
           },
@@ -2169,6 +2172,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </div>
           )}
 
+          {/* Véhicule roulant / non roulant — OBLIGATOIRE (demande Axel 2026-07-05). */}
+          {closeType === 'park' && (
+            <div className="bg-surface border border-amber-500/30 rounded-2xl p-4">
+              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">🚗 État du véhicule *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setIsRollable(true)}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-medium text-sm transition active:scale-95 ${isRollable === true ? 'bg-green-500/20 border border-green-500/60 text-green-300' : 'bg-surface border border hover:border-zinc-600 text-ink'}`}>
+                  ✅ Roulant
+                </button>
+                <button onClick={() => setIsRollable(false)}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl font-medium text-sm transition active:scale-95 ${isRollable === false ? 'bg-red-500/20 border border-red-500/60 text-red-300' : 'bg-surface border border hover:border-zinc-600 text-ink'}`}>
+                  🚫 Non roulant
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Récap éditable — chaque ligne cliquable mène à l'écran correspondant */}
           <div className="bg-surface border border rounded-2xl divide-y divide-[#2a2a2a]">
             <div className="px-4 py-3">
@@ -2351,8 +2371,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {closeType === 'park' ? (
             <>
               {!keyLocation && <p className="text-amber-400 text-xs text-center mb-2">🔑 Indique où se trouve la clé avant de confirmer.</p>}
+              {isRollable === null && <p className="text-amber-400 text-xs text-center mb-2">🚗 Indique si le véhicule est roulant ou non roulant.</p>}
               <button onClick={() => parkDepot && doPark(parkDepot)}
-                disabled={loading || !parkDepot || totPh < 3 || !keyLocation}
+                disabled={loading || !parkDepot || totPh < 3 || !keyLocation || isRollable === null}
                 className="w-full py-4 bg-amber-500 disabled:opacity-40 text-ink font-semibold rounded-2xl">
                 {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
               </button>
@@ -3479,11 +3500,23 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               </div>
             )}
 
+            {/* Véhicule roulant / non roulant — OBLIGATOIRE avant de choisir le dépôt. */}
+            <div className="bg-surface border border-amber-500/30 rounded-2xl p-3">
+              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">🚗 État du véhicule *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setIsRollable(true)}
+                  className={`px-3 py-2.5 rounded-xl font-medium text-sm transition active:scale-95 ${isRollable === true ? 'bg-green-500/20 border border-green-500/60 text-green-300' : 'bg-surface border border hover:border-zinc-600 text-ink'}`}>✅ Roulant</button>
+                <button onClick={() => setIsRollable(false)}
+                  className={`px-3 py-2.5 rounded-xl font-medium text-sm transition active:scale-95 ${isRollable === false ? 'bg-red-500/20 border border-red-500/60 text-red-300' : 'bg-surface border border hover:border-zinc-600 text-ink'}`}>🚫 Non roulant</button>
+              </div>
+              {isRollable === null && <p className="text-amber-400/90 text-xs mt-2">Choisis l'état du véhicule, puis le dépôt.</p>}
+            </div>
+
             {vrLocs.length === 0
               ? <p className="text-ink-faint text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
               : vrLocs.map(vr => {
                 return (
-                  <button key={vr.id} onClick={() => doPark(vr)} disabled={loading}
+                  <button key={vr.id} onClick={() => doPark(vr)} disabled={loading || isRollable === null}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 bg-surface border rounded-2xl text-left hover:border-zinc-600 transition disabled:opacity-50 active:scale-95 ${
                       vr.is_default ? 'border-amber-500/40' : 'border'
                     }`}>

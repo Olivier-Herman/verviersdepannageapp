@@ -186,6 +186,31 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 // le dispatcher ouvre une mission REL, le Select doit afficher la valeur,
 // sinon le champ est vide et un re-save efface le type (= tarif faux).
 // Bug rapporte : "ca ne sélectionne rien dans la liste type de mission".
+// Picto « roulant » (voiture) / « non roulant » (voiture barrée) — à côté de
+// l'étiquette porte-clé dans le bandeau parc (demande Axel 2026-07-05).
+function RollableTag({ rollable }: { rollable: boolean | null | undefined }) {
+  if (rollable == null) return null
+  if (rollable) {
+    return (
+      <div className="flex flex-col items-center gap-0.5 flex-shrink-0" title="Véhicule roulant">
+        <div className="w-11 h-11 rounded-lg bg-green-500/15 border border-green-500/40 flex items-center justify-center text-2xl">🚗</div>
+        <span className="text-[10px] font-semibold text-green-600">Roulant</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col items-center gap-0.5 flex-shrink-0" title="Véhicule non roulant">
+      <div className="relative w-11 h-11 rounded-lg bg-red-500/15 border border-red-500/40 flex items-center justify-center text-2xl">
+        <span className="opacity-70">🚗</span>
+        <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="block w-9 h-[2px] bg-red-600 rotate-45 rounded" />
+        </span>
+      </div>
+      <span className="text-[10px] font-semibold text-red-600">Non roulant</span>
+    </div>
+  )
+}
+
 const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'relivraison', 'autre']
 const FUEL_TYPES    = ['Autre', 'Diesel', 'Électrique', 'Essence', 'GPL', 'Hybride']
 const GEARBOX_TYPES = ['Automatique', 'Manuelle', 'Semi-automatique']
@@ -2666,6 +2691,9 @@ export default function MissionDetailClient({
                     )}
                   </span>
                 </div>
+                {/* Roulant / non roulant (demande Axel 2026-07-05) — picto voiture /
+                    voiture barrée, à côté de l'étiquette porte-clé. */}
+                <RollableTag rollable={(initialMission as any).is_rollable} />
                 {/* Étiquette porte-clé (dessin) — n° crochet / IN / NO. */}
                 <KeyTag keyLocation={keyLoc} hook={keyHookSaved} />
                 {/* Olivier 2026-06-04 : bouton transfert (module fourriere uniquement) */}

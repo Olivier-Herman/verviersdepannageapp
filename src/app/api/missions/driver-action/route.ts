@@ -282,6 +282,8 @@ export async function POST(req: Request) {
     const parkZone = catalogZone || park_data?.zone_key || null
     if (parkZone) updatePayload.parc_zone_key = parkZone
     if (park_data?.key_location) updatePayload.key_location  = park_data.key_location
+    // Roulant / non roulant — obligatoire (demande Axel 2026-07-05).
+    if (park_data?.is_rollable != null) updatePayload.is_rollable = park_data.is_rollable
     // Note : la bascule destination<->relivraison + adresse du parc est faite
     // de maniere centralisee plus bas (cf bloc "mise en parc" avant la
     // conversion REM+REL), pour couvrir aussi le depot via complete_delivery.
