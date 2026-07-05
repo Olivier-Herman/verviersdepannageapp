@@ -3,7 +3,7 @@
 // Accordéon anté-chronologique : dernière action en haut (dépliée), les
 // précédentes repliées (dépliables). Fonds alternés par leg (A gris, B blanc…).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface Leg {
   letter:          string
@@ -17,7 +17,6 @@ interface Leg {
   driver_name:     string | null
   started_at:      string | null
   is_last:         boolean
-  is_card:         boolean
   details:         any
 }
 interface HistoryLine { letter: string; at: string | null; action: string | null; notes: string | null; actor: string | null }
@@ -79,8 +78,8 @@ export default function DossierClient({ id, isSuperadmin }: { id: string; isSupe
   if (error || !data) return <div className="p-8 text-critical text-sm">⚠ {error || 'Dossier introuvable'}</div>
 
   const veh = [data.vehicle.brand, data.vehicle.model].filter(Boolean).join(' ')
-  // Cartes = fiches réelles (REM, REL). Le parc est DANS la fiche du REM. Anté-chrono.
-  const legsDisplay = [...data.legs].filter(l => l.is_card).reverse()
+  // Anté-chrono : dernière action en haut.
+  const legsDisplay = [...data.legs].reverse()
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
@@ -132,9 +131,25 @@ export default function DossierClient({ id, isSuperadmin }: { id: string; isSupe
                 <span className="text-ink-muted text-sm flex-shrink-0">{isOpen ? '▲' : '▼'}</span>
               </button>
 
-              {/* Déplié = LA FICHE D'INTERVENTION ENTIÈRE embarquée (toutes sections
-                  + toutes les actions fonctionnelles), sans quitter le dossier. */}
-              {isOpen && <EmbeddedFiche missionId={leg.mission_id} />}
+              {/* Détail (déplié) */}
+              {isOpen && (
+                <div className="px-4 pb-4 pt-1 border-t space-y-1.5 text-sm">
+                  <Row label="Statut"    value={leg.status} />
+                  {leg.driver_name    && <Row label="Chauffeur" value={leg.driver_name} />}
+                  {leg.billed_to_name && <Row label="Facturé à" value={`${leg.billed_to_name}${leg.billed_inherited ? ' (hérité du remorquage)' : ''}`} />}
+                  {leg.details?.source              && <Row label="Source"        value={leg.details.source} />}
+                  {leg.details?.incident_address    && <Row label={leg.kind === 'rel' ? 'Départ (parc)' : 'Lieu incident'} value={leg.details.incident_address} />}
+                  {leg.details?.destination_address && <Row label={leg.kind === 'rel' ? 'Relivraison'   : 'Destination'}   value={leg.details.destination_address} />}
+                  {leg.details?.redelivery_address  && <Row label="Adresse de relivraison" value={leg.details.redelivery_address} />}
+                  {leg.kind === 'parc' && (
+                    <>
+                      {leg.details?.parc_zone_key && <Row label="Zone parc" value={leg.details.parc_zone_key} />}
+                      <Row label="Gardiennage" value={`${leg.details?.gardiennage_days ?? '—'} jour(s)${leg.details?.still_parked ? ' (en cours)' : ''}`} />
+                    </>
+                  )}
+                  <p className="text-ink-faint text-xs pt-2 italic">Actions de l'étape — à câbler (inline, sans quitter le dossier).</p>
+                </div>
+              )}
             </div>
           )
         })}
@@ -165,38 +180,24 @@ export default function DossierClient({ id, isSuperadmin }: { id: string; isSupe
   )
 }
 
-// Fiche d'intervention existante embarquée telle quelle (mode ?embed=1 = sans chrome).
-// Hauteur ajustée au contenu (same-origin) → pas de scroll interne.
-function EmbeddedFiche({ missionId }: { missionId: string }) {
-  const ref = useRef<HTMLIFrameElement>(null)
-  const [h, setH] = useState(700)
-  const onLoad = () => {
-    const f = ref.current
-    if (!f) return
-    try {
-      const doc = f.contentDocument
-      if (!doc) return
-      const measure = () => setH(Math.max(400, doc.documentElement.scrollHeight + 24))
-      measure()
-      const ro = new ResizeObserver(measure)
-      ro.observe(doc.documentElement)
-      ;(f as any).__ro = ro
-    } catch { /* same-origin attendu */ }
-  }
-  useEffect(() => () => { try { (ref.current as any)?.__ro?.disconnect() } catch { /* noop */ } }, [])
+function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-t bg-page">
-      <iframe ref={ref} src={`/dispatch/${missionId}?embed=1`} onLoad={onLoad}
-        title="Fiche d'intervention" className="w-full block" style={{ height: h }} />
+    <div className="flex gap-2">
+      <span className="text-ink-muted text-xs w-32 flex-shrink-0">{label}</span>
+      <span className="text-ink text-sm">{value}</span>
     </div>
   )
 }
 
 function collapsedSummary(leg: Leg): string {
   const bits: string[] = []
-  if (leg.details?.destination_address) bits.push(leg.details.destination_address)
-  if (leg.driver_name) bits.push(leg.driver_name)
-  if (leg.details?.gardiennage_days != null) bits.push(`🅿️ ${leg.details.gardiennage_days} j`)
+  if (leg.kind === 'parc') {
+    if (leg.details?.parc_zone_key) bits.push(`zone ${leg.details.parc_zone_key}`)
+    if (leg.details?.gardiennage_days != null) bits.push(`${leg.details.gardiennage_days} j`)
+  } else {
+    if (leg.details?.destination_address) bits.push(leg.details.destination_address)
+    if (leg.driver_name) bits.push(leg.driver_name)
+  }
   if (leg.billed_to_name) bits.push(leg.billed_to_name)
   bits.push(leg.status)
   return bits.filter(Boolean).join(' · ')
