@@ -1,0 +1,148 @@
+// src/app/api/dossier/[id]/route.ts
+//
+// LECTURE SEULE. Agrège la chaîne d'un dossier (REM parent + mise en parc + REL
+// enfant(s)) en "legs" lettrés -A/-B/-C… pour la vue dossier unifiée (preview).
+// Ne touche à AUCUN chemin d'écriture existant.
+//
+// Modèle : le n° dossier = la racine (le REM). Chaque leg réel/gardiennage reçoit
+// une lettre dans l'ordre chronologique. Le parc est un leg à part (gardiennage).
+
+import { NextResponse }      from 'next/server'
+import { getServerSession }  from 'next-auth'
+import { authOptions }       from '@/lib/auth'
+import { createAdminClient } from '@/lib/supabase'
+import { getMissionTypeLabel } from '@/lib/missions/mission-types'
+
+export const dynamic = 'force-dynamic'
+
+const COLS = `id, mission_number, external_id, dossier_number, source, status, mission_type,
+  parent_mission_id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin,
+  client_name, client_phone, billed_to_id, billed_to_name,
+  incident_address, destination_address, redelivery_address,
+  assigned_to, received_at, intervention_date, parked_at, loaded_at, delivering_at,
+  completed_at, parc_zone_key`
+
+const DAY_MS = 86_400_000
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const sb = createAdminClient()
+
+  const { data: m0 } = await sb.from('incoming_missions').select(COLS).eq('id', params.id).maybeSingle()
+  if (!m0) return NextResponse.json({ error: 'Dossier introuvable' }, { status: 404 })
+
+  // Racine = le REM sans parent (le point d'entrée peut être le REM ou la REL).
+  let root: any = m0
+  if ((m0 as any).parent_mission_id) {
+    const { data: p } = await sb.from('incoming_missions').select(COLS).eq('id', (m0 as any).parent_mission_id).maybeSingle()
+    if (p) root = p
+  }
+
+  // Enfants (REL…) non annulés/ignorés.
+  const { data: childrenRaw } = await sb.from('incoming_missions').select(COLS)
+    .eq('parent_mission_id', root.id)
+    .not('status', 'in', '("cancelled","ignored")')
+    .order('received_at', { ascending: true })
+  const children: any[] = childrenRaw || []
+
+  // Noms chauffeurs.
+  const driverIds = Array.from(new Set([root, ...children].map(x => x.assigned_to).filter(Boolean)))
+  const nameById: Record<string, string> = {}
+  if (driverIds.length) {
+    const { data: us } = await sb.from('users').select('id, name').in('id', driverIds)
+    for (const u of us || []) nameById[(u as any).id] = (u as any).name
+  }
+
+  const ts = (v: string | null | undefined) => (v ? new Date(v).getTime() : null)
+
+  // ── Construction des legs ────────────────────────────────────────────────
+  const legs: any[] = []
+
+  // Leg REM (toujours) — mappe la ligne racine.
+  legs.push({
+    kind:            'rem',
+    mission_id:      root.id,
+    mission_number:  root.mission_number,
+    status:          root.status,
+    title:           getMissionTypeLabel(root.mission_type, 'long'),
+    billed_to_name:  root.billed_to_name || null,
+    driver_name:     root.assigned_to ? (nameById[root.assigned_to] || null) : null,
+    started_at:      root.received_at || root.intervention_date || null,
+    details: {
+      incident_address:    root.incident_address || null,
+      destination_address: root.destination_address || null,
+      source:              root.source,
+    },
+  })
+
+  // Leg PARC / GARDIENNAGE (si le véhicule a été mis en parc) — leg à part pour
+  // le calcul des jours de gardiennage. Mappe aussi la ligne racine (état).
+  if (root.parked_at) {
+    const parkedMs = ts(root.parked_at)!
+    // Sortie du parc : chargement REL le plus tôt, sinon clôture, sinon maintenant.
+    const childLoaded = children.map(c => ts(c.loaded_at) || ts(c.delivering_at)).filter(Boolean) as number[]
+    const exitMs = childLoaded.length ? Math.min(...childLoaded)
+                 : ts(root.completed_at) || Date.now()
+    const days = Math.max(1, Math.ceil((exitMs - parkedMs) / DAY_MS))
+    legs.push({
+      kind:            'parc',
+      mission_id:      root.id,           // le parc est un état de la racine
+      mission_number:  root.mission_number,
+      status:          'parked',
+      title:           '🅿️ Mise en parc / gardiennage',
+      // Client parc = additif plus tard ; pour l'instant hérité du remorquage.
+      billed_to_name:  root.billed_to_name || null,
+      billed_inherited: true,
+      driver_name:     null,
+      started_at:      root.parked_at,
+      details: {
+        parc_zone_key:       root.parc_zone_key || null,
+        redelivery_address:  root.redelivery_address || null,
+        gardiennage_days:    days,
+        still_parked:        root.status === 'parked',
+      },
+    })
+  }
+
+  // Legs REL (enfants).
+  for (const c of children) {
+    legs.push({
+      kind:            'rel',
+      mission_id:      c.id,
+      mission_number:  c.mission_number,
+      status:          c.status,
+      title:           getMissionTypeLabel(c.mission_type, 'long'),
+      billed_to_name:  c.billed_to_name || null,
+      driver_name:     c.assigned_to ? (nameById[c.assigned_to] || null) : null,
+      started_at:      c.received_at || c.intervention_date || null,
+      details: {
+        incident_address:    c.incident_address || null,     // = parc (départ REL)
+        destination_address: c.destination_address || null,  // = adresse de relivraison
+        source:              c.source,
+      },
+    })
+  }
+
+  // Ordre chronologique → lettres A, B, C…
+  legs.sort((a, b) => (ts(a.started_at) || 0) - (ts(b.started_at) || 0))
+  const LETTERS = 'ABCDEFGHIJ'
+  legs.forEach((leg, i) => { leg.letter = LETTERS[i] || String(i + 1) })
+  // Leg le plus récent = déplié par défaut.
+  const lastIdx = legs.reduce((mx, leg, i, arr) => (ts(leg.started_at) || 0) >= (ts(arr[mx].started_at) || 0) ? i : mx, 0)
+  legs.forEach((leg, i) => { leg.is_last = i === lastIdx })
+
+  return NextResponse.json({
+    ok: true,
+    dossier: {
+      ref:        root.mission_number != null ? `#${root.mission_number}` : (root.dossier_number || root.external_id || root.id.slice(0, 8)),
+      root_id:    root.id,
+      dossier_number: root.dossier_number || null,
+      source:     root.source,
+      vehicle:    { plate: root.vehicle_plate, brand: root.vehicle_brand, model: root.vehicle_model, vin: root.vehicle_vin },
+      client:     { name: root.client_name, phone: root.client_phone },
+      legs,
+    },
+  })
+}
