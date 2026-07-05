@@ -1492,6 +1492,20 @@ export default function MissionDetailClient({
   const [loadingIMA,     setLoadingIMA]       = useState(false)
   const [imaSuccess,     setImaSuccess]       = useState(false)
   const [status,         setStatus]           = useState(initialMission.status)
+
+  // Arrivée avec ?assign=1 (ex. « Relivrer maintenant » du module Relivraison) →
+  // ouvre directement le sélecteur de chauffeur pour assigner dans la foulée.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('assign') === '1' && ['new', 'dispatching', 'assigned', 'accepted'].includes(initialMission.status)) {
+      setShowDriverModal(true)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('assign')
+      window.history.replaceState({}, '', url.toString())   // évite la ré-ouverture au refresh
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [parcZone,       setParcZone]         = useState<string | null>(initialMission.parc_zone_key || null)
   const [parcRow,        setParcRow]          = useState<number | null>(initialMission.parc_row_number ?? null)
   const [parcSlot,       setParcSlot]         = useState<number | null>(initialMission.parc_slot_index ?? null)

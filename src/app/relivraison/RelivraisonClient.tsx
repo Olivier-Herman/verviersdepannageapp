@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AddressField, { verifyAddressViaPlaces } from '@/components/AddressField'
@@ -31,6 +32,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
   userModules: string[]
   sources:     SourceDisplay[]
 }) {
+  const router = useRouter()
   const [zone,     setZone]     = useState('K')      // onglet actif (défaut K)
   const [zones,    setZones]    = useState<ZoneTab[]>([])
   const [missions, setMissions] = useState<Mission[]>([])
@@ -119,10 +121,16 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setMErr(j.error || 'Création de la relivraison échouée.'); return }
       setModal(null)
+      // « Maintenant » = intention immédiate : on ouvre direct la fiche REL avec
+      // le sélecteur de chauffeur (?assign=1) pour assigner dans la foulée.
+      if (j.mission_id) {
+        router.push(`/dispatch/${j.mission_id}?assign=1`)
+        return   // on garde mBusy pour éviter un double clic pendant la navigation
+      }
       await load(zoneRef.current, true)
     } catch { setMErr('Erreur réseau.') }
     finally { setMBusy(null) }
-  }, [modal, mAddr, mLat, mLng, saveAddress, load])
+  }, [modal, mAddr, mLat, mLng, saveAddress, load, router])
 
   useEffect(() => { load(zone) }, [zone, load])
   // Rafraîchissement léger périodique de l'onglet courant.
