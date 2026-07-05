@@ -1551,10 +1551,21 @@ export default function MissionDetailClient({
   // Roulant / non roulant — modifiable par le dispatch en cliquant le picto
   // (cycle Non défini → Roulant → Non roulant). Olivier 2026-07-05.
   const [rollable, setRollable] = useState<boolean | null>(((initialMission as any).is_rollable ?? null) as boolean | null)
-  const cycleRollable = () => {
+  // Re-synchronise l'état local si le serveur renvoie une nouvelle valeur
+  // (après refresh / navigation) — sinon la fiche gardait l'ancienne valeur.
+  useEffect(() => {
+    setRollable(((initialMission as any).is_rollable ?? null) as boolean | null)
+  }, [(initialMission as any).is_rollable])
+  const cycleRollable = async () => {
     const next = rollable === null ? true : rollable === true ? false : null
     setRollable(next)
-    silentPatch({ is_rollable: next })
+    try {
+      await fetch(`/api/missions/${initialMission.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_rollable: next }),
+      })
+    } catch { /* noop */ }
+    router.refresh()   // invalide le cache de route → la valeur tient au reload/nav
   }
   const saveKeyHook = () => {
     const val = keyHookInput.trim()
