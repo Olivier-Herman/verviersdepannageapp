@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // relivraison deja connue. Sans adresse, attente saisie.
     const { data: mRow } = await sb
       .from('incoming_missions')
-      .select('source, mission_type, snc_scenario, destination_address, redelivery_address')
+      .select('source, mission_type, snc_scenario, destination_address, redelivery_address, depot_depart_id')
       .eq('id', params.id)
       .maybeSingle()
     m = mRow
@@ -111,6 +111,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (m && hasAddr && isRemorquage(m.mission_type) && isRelEligibleSource(m.source, (m as any).snc_scenario)) {
       update.mission_type = 'REM+REL'
     }
+
+    // Olivier 2026-07-05 : appliquer la règle métier « véhicule en parc » comme le
+    // pointage chauffeur (driver-action) — que le forcing dispatch oubliait :
+    //   - destination = adresse du PARC (dépôt où le véhicule est déposé),
+    //   - l'ancienne destination (garage) devient l'adresse de RELIVRAISON
+    //     (sauf si une relivraison est déjà définie).
+    let parcAddress: string | null = null
+    const depotForAddr = update.depot_depart_id || (m as any)?.depot_depart_id || null
+    if (depotForAddr) {
+      const { data: d } = await sb.from('depots').select('address').eq('id', depotForAddr).maybeSingle()
+      parcAddress = (d?.address || '').trim() || null
+    }
+    if (!parcAddress) {
+      const { data: d } = await sb.from('depots').select('address').eq('is_default', true).eq('active', true).maybeSingle()
+      parcAddress = (d?.address || '').trim() || null
+    }
+    const plannedDest  = ((m as any)?.destination_address || '').trim() || null
+    const alreadyReliv = ((m as any)?.redelivery_address  || '').trim() || null
+    if (!alreadyReliv && plannedDest && (!parcAddress || plannedDest !== parcAddress)) {
+      update.redelivery_address = plannedDest
+    }
+    if (parcAddress) update.destination_address = parcAddress
   }
 
   const { error } = await sb.from('incoming_missions').update(update).eq('id', params.id)
