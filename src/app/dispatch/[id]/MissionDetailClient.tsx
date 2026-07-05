@@ -186,29 +186,33 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 // le dispatcher ouvre une mission REL, le Select doit afficher la valeur,
 // sinon le champ est vide et un re-save efface le type (= tarif faux).
 // Bug rapporte : "ca ne sélectionne rien dans la liste type de mission".
-// Picto « roulant » (voiture) / « non roulant » (voiture barrée) — à côté de
-// l'étiquette porte-clé dans le bandeau parc (demande Axel 2026-07-05).
-function RollableTag({ rollable }: { rollable: boolean | null | undefined }) {
-  if (rollable == null) return null
-  if (rollable) {
-    return (
-      <div className="flex flex-col items-center gap-0.5 flex-shrink-0" title="Véhicule roulant">
-        <div className="w-11 h-11 rounded-lg bg-green-500/15 border border-green-500/40 flex items-center justify-center text-2xl">🚗</div>
-        <span className="text-[10px] font-semibold text-green-600">Roulant</span>
+// Picto « roulant » (voiture) / « non roulant » (voiture barrée) / « non défini »
+// (voiture grisée) — à côté de l'étiquette porte-clé dans le bandeau parc.
+// Cliquable côté dispatch pour cycler Non défini → Roulant → Non roulant.
+// Demande Axel 2026-07-05.
+function RollableTag({ rollable, onClick }: { rollable: boolean | null | undefined; onClick?: () => void }) {
+  const spec = rollable == null
+    ? { box: 'bg-ink/5 border', text: 'text-ink-muted',   label: 'Non défini',  car: 'opacity-40 grayscale', barred: false }
+    : rollable
+      ? { box: 'bg-green-500/15 border-green-500/40', text: 'text-green-600', label: 'Roulant',     car: '',            barred: false }
+      : { box: 'bg-red-500/15 border-red-500/40',     text: 'text-red-600',   label: 'Non roulant', car: 'opacity-70',  barred: true }
+  const content = (
+    <div className="flex flex-col items-center gap-0.5 flex-shrink-0"
+      title={onClick ? 'Cliquer pour changer (Non défini → Roulant → Non roulant)' : spec.label}>
+      <div className={`relative w-11 h-11 rounded-lg border flex items-center justify-center text-2xl ${spec.box}`}>
+        <span className={spec.car}>🚗</span>
+        {spec.barred && (
+          <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="block w-9 h-[2px] bg-red-600 rotate-45 rounded" />
+          </span>
+        )}
       </div>
-    )
-  }
-  return (
-    <div className="flex flex-col items-center gap-0.5 flex-shrink-0" title="Véhicule non roulant">
-      <div className="relative w-11 h-11 rounded-lg bg-red-500/15 border border-red-500/40 flex items-center justify-center text-2xl">
-        <span className="opacity-70">🚗</span>
-        <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="block w-9 h-[2px] bg-red-600 rotate-45 rounded" />
-        </span>
-      </div>
-      <span className="text-[10px] font-semibold text-red-600">Non roulant</span>
+      <span className={`text-[10px] font-semibold ${spec.text}`}>{spec.label}</span>
     </div>
   )
+  return onClick
+    ? <button type="button" onClick={onClick} className="active:scale-95 transition">{content}</button>
+    : content
 }
 
 const MISSION_TYPES = ['remorquage', 'depannage', 'transport', 'trajet_vide', 'reparation_place', 'relivraison', 'autre']
@@ -1543,6 +1547,15 @@ export default function MissionDetailClient({
   const [keyHookInput,   setKeyHookInput]     = useState<string>((initialMission as any).saisie_key_hook || '')
   const [keyHookSaved,   setKeyHookSaved]     = useState<string>((initialMission as any).saisie_key_hook || '')
   const pickKeyLocation = (v: string) => { setKeyLoc(v); silentPatch({ key_location: v }) }
+
+  // Roulant / non roulant — modifiable par le dispatch en cliquant le picto
+  // (cycle Non défini → Roulant → Non roulant). Olivier 2026-07-05.
+  const [rollable, setRollable] = useState<boolean | null>(((initialMission as any).is_rollable ?? null) as boolean | null)
+  const cycleRollable = () => {
+    const next = rollable === null ? true : rollable === true ? false : null
+    setRollable(next)
+    silentPatch({ is_rollable: next })
+  }
   const saveKeyHook = () => {
     const val = keyHookInput.trim()
     if (val === keyHookSaved) return
@@ -2692,8 +2705,8 @@ export default function MissionDetailClient({
                   </span>
                 </div>
                 {/* Roulant / non roulant (demande Axel 2026-07-05) — picto voiture /
-                    voiture barrée, à côté de l'étiquette porte-clé. */}
-                <RollableTag rollable={(initialMission as any).is_rollable} />
+                    voiture barrée / grisée. Cliquable pour cycler côté dispatch. */}
+                <RollableTag rollable={rollable} onClick={cycleRollable} />
                 {/* Étiquette porte-clé (dessin) — n° crochet / IN / NO. */}
                 <KeyTag keyLocation={keyLoc} hook={keyHookSaved} />
                 {/* Olivier 2026-06-04 : bouton transfert (module fourriere uniquement) */}
