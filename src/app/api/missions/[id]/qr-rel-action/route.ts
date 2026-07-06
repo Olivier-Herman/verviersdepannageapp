@@ -194,8 +194,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       parkLng:            parent.incident_lng,
       redeliveryAddress: parent.redelivery_address || [parent.destination_address, parent.destination_city].filter(Boolean).join(', '),
     })
-    if (!result) {
-      return NextResponse.json({ ok: false, error: 'Echec creation REL' }, { status: 500 })
+    if (!result.id) {
+      return NextResponse.json({ ok: false, error: result.error || 'Echec creation REL' }, { status: 500 })
     }
     relMissionId = result.id
     // Assigner immediatement au targetDriver (scanneur OU chauffeur selectionne par dispatcher)

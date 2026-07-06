@@ -39,7 +39,7 @@ export interface RelivraisonInput {
   sourceOverride?: string | null
 }
 
-export async function createRelivraisonMission(input: RelivraisonInput): Promise<{ id: string } | null> {
+export async function createRelivraisonMission(input: RelivraisonInput): Promise<{ id?: string; error?: string }> {
   const sb = createAdminClient()
 
   // Lecture mission parente pour hériter des infos
@@ -50,7 +50,7 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
     .single()
   if (pErr || !parent) {
     console.error('[REL] Mission parent introuvable:', pErr?.message)
-    return null
+    return { error: `Mission parent introuvable${pErr?.message ? ` : ${pErr.message}` : ''}` }
   }
 
   const externalId = `REL-${parent.external_id || parent.id.slice(0, 8)}`
@@ -124,18 +124,24 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
       parse_confidence:      1.0,
       odoo_vehicle_id:       parent.odoo_vehicle_id,
       depot_depart_id:       parent.depot_depart_id,
-      // Olivier 2026-07-04 : hérite le job Kaze de la RELIVRAISON (rel_kaze_job_id,
-      // posé lors de la fusion d'une relivraison Kaze dans la fiche parc), sinon le
-      // job Kaze du parent. → la clôture Kaze de la relivraison se déclenche à la
-      // fin, sur le BON job (celui de la relivraison, pas celui du remorquage).
-      kaze_job_id:           (parent as any).rel_kaze_job_id ?? (parent as any).kaze_job_id ?? null,
+      // Olivier 2026-07-04 : hérite UNIQUEMENT le job Kaze de la RELIVRAISON
+      // (rel_kaze_job_id, posé lors de la fusion d'une relivraison Kaze dans la
+      // fiche parc). On NE reprend PAS le kaze_job_id du parent :
+      //   1. il appartient déjà au REM (index unique partiel sur kaze_job_id) →
+      //      le copier ferait échouer l'INSERT (doublon) ;
+      //   2. sémantiquement, le job REM se clôture à la facturation du REM ; une
+      //      REL issue d'un parc normal (sans job Kaze dédié) n'a pas de job à
+      //      clôturer → kaze_job_id = null.
+      // Correctif 2026-07-06 : le fallback `?? parent.kaze_job_id` bloquait la
+      // création de REL pour toute mission Kaze mise en parc normalement.
+      kaze_job_id:           (parent as any).rel_kaze_job_id ?? null,
     })
     .select('id')
     .single()
 
   if (insErr || !rel) {
     console.error('[REL] Insert mission échoué:', insErr?.message)
-    return null
+    return { error: insErr?.message || 'Insert REL échoué (raison inconnue)' }
   }
 
   console.log(`[REL] Mission REL créée: ${rel.id} (parent: ${input.parentMissionId})`)

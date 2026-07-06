@@ -75,8 +75,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     sourceOverride:    body.source_override || null,
   })
 
-  if (!result) {
-    return NextResponse.json({ error: 'Création REL échouée' }, { status: 500 })
+  if (!result.id) {
+    return NextResponse.json({ error: result.error || 'Création REL échouée' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, mission_id: result.id })
