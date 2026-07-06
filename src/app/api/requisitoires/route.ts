@@ -29,7 +29,9 @@ export async function GET(req: Request) {
   const sb = createAdminClient()
 
   let q = sb.from('requisitoire_intake').select('*').order('created_at', { ascending: false }).limit(100)
-  if (status !== 'all') q = q.eq('status', status)
+  // 'deleted' = supprimé (masqué) : jamais listé, même dans « Tous ».
+  if (status === 'all') q = q.neq('status', 'deleted')
+  else                  q = q.eq('status', status)
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

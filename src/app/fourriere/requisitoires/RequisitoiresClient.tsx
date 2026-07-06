@@ -112,6 +112,11 @@ export default function RequisitoiresClient(props: {
     else setMsg(`⚠ ${j.error || 'Échec de la requalification'}`)
   }
 
+  async function del(id: string) {
+    const res = await fetch(`/api/requisitoires/${id}/delete`, { method: 'POST' })
+    if (res.ok) { setMsg('🗑️ Supprimé'); await load(tab) }
+  }
+
   async function moveAttached() {
     setMsg('')
     setRunning(true)
@@ -183,7 +188,7 @@ export default function RequisitoiresClient(props: {
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} onRequalify={requalify} />)}
+              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} onRequalify={requalify} onDelete={del} />)}
             </div>
           )}
         </div>
@@ -209,6 +214,7 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify
   onIgnore: (id: string) => void
   onCreateFiche: (id: string) => void
   onRequalify: (id: string) => void
+  onDelete: (id: string) => void
 }) {
   const ex = item.extracted
   const isLevee = (item.doc_type || ex?.doc_type) === 'levee_saisie'
@@ -362,12 +368,17 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify
         </div>
       )}
 
-      {/* Ignoré : possibilité de le remettre en file (requalifier). */}
+      {/* Ignoré : le remettre en file (requalifier) ou le SUPPRIMER (masquer). */}
       {item.status === 'ignored' && (
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => onRequalify(item.id)}
             className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition">
             🔄 Requalifier en réquisitoire
+          </button>
+          <button onClick={() => onDelete(item.id)}
+            title="Masquer définitivement cet item de la liste"
+            className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition">
+            <X size={14} /> Supprimer
           </button>
         </div>
       )}
