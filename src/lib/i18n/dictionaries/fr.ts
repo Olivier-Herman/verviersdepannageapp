@@ -223,6 +223,12 @@ export const fr = {
     action_dpr:          'DPR',
     action_finish:       'Terminer',
     action_advance:      'Avance de fonds',
+    // etat vehicule au parc (roulant / non roulant) — obligatoire (Axel 2026-07-05)
+    vehicle_state:       '🚗 État du véhicule *',
+    rollable_yes:        '✅ Roulant',
+    rollable_no:         '🚫 Non roulant',
+    rollable_required:   'Indique si le véhicule est roulant ou non roulant.',
+    rollable_then_depot: 'Choisis l\'état du véhicule, puis le dépôt.',
   },
 
   encaissement: {

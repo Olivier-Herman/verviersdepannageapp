@@ -221,6 +221,12 @@ export const sq: Dictionary = {
     action_dpr:          'DPR',
     action_finish:       'Përfundo',
     action_advance:      'Paradhënie fondesh',
+    // gjendja e mjetit ne parking (ecen vete / nuk ecen) — e detyrueshme (Axel 2026-07-05)
+    vehicle_state:       '🚗 Gjendja e mjetit *',
+    rollable_yes:        '✅ Ecën vetë',
+    rollable_no:         '🚫 Nuk ecën',
+    rollable_required:   'Trego nëse mjeti ecën vetë apo jo.',
+    rollable_then_depot: 'Zgjidh gjendjen e mjetit, pastaj depon.',
   },
 
   encaissement: {
