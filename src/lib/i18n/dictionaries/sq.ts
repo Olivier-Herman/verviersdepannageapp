@@ -227,6 +227,7 @@ export const sq: Dictionary = {
     rollable_no:         '🚫 Nuk ecën',
     rollable_required:   'Trego nëse mjeti ecën vetë apo jo.',
     rollable_then_depot: 'Zgjidh gjendjen e mjetit, pastaj depon.',
+    view_source:         '📄 Shiko burimin e misionit',
   },
 
   encaissement: {

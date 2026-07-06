@@ -229,6 +229,7 @@ export const fr = {
     rollable_no:         '🚫 Non roulant',
     rollable_required:   'Indique si le véhicule est roulant ou non roulant.',
     rollable_then_depot: 'Choisis l\'état du véhicule, puis le dépôt.',
+    view_source:         '📄 Voir la source de la mission',
   },
 
   encaissement: {

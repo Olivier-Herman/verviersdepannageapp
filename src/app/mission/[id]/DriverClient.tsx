@@ -3107,6 +3107,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
+        {/* Source de la mission (email/API tel que parsé) — lecture + impression PDF.
+            Visible dès qu'on a conservé une source (pas les missions créées à la main). */}
+        {(M as any).raw_content && (
+          <a href={`/api/missions/${M.id}/source`} target="_blank" rel="noopener noreferrer"
+             className="flex items-center justify-between bg-surface border border rounded-2xl p-4 hover:border-zinc-600 transition active:scale-95">
+            <span className="text-ink-secondary text-sm font-medium"><T k="mission_detail.view_source" /></span>
+            <span className="text-blue-400 text-xs">↗</span>
+          </a>
+        )}
+
         {/* Avance de fonds : deplacee dans la grille "Autres actions" sur place
             (cf <button "Avance de fonds"> dans showGrid) — Olivier 2026-06-01.
             Avant : bouton visible sur la fiche, encombrait la vue meme avant arrivee.

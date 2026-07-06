@@ -3629,6 +3629,14 @@ export default function MissionDetailClient({
                     {initialMission.raw_content}
                   </pre>
                 )}
+                {showRawContent && initialMission.raw_content && (
+                  <div className="px-5 pb-3">
+                    <a href={`/api/missions/${initialMission.id}/source`} target="_blank" rel="noopener noreferrer"
+                       className="inline-flex items-center gap-1.5 text-info hover:underline text-xs font-semibold">
+                      🖨️ Version imprimable / PDF ↗
+                    </a>
+                  </div>
+                )}
                 {showRawContent && initialMission.raw_content
                   && (['admin', 'superadmin', 'dispatcher'].includes(userRole) || userModules.includes('fourriere')) && (
                   <ReparseButton missionId={initialMission.id} />
