@@ -58,6 +58,29 @@ function tokens(v: string | null | undefined): string[] {
   return stripAccents((v || '').toLowerCase()).split(/[^a-z0-9]+/).filter(t => t.length >= 3)
 }
 
+// Mots vides d'adresse (types de voie, articles) : présents dans presque toutes
+// les adresses → aucun pouvoir discriminant. À exclure du scoring.
+const ADDR_STOP = new Set([
+  'rue','av','ave','avenue','chaussee','chau','boulevard','bld','bd','place','pl',
+  'quai','chemin','clos','impasse','allee','all','route','rte','voie','sentier',
+  'de','du','des','la','le','les','saint','ste','sur','au','aux','en','residence','res',
+])
+
+/**
+ * Classe les tokens d'une adresse :
+ *  - distinctive : noms propres (rue « hodimont », localité « verviers »…) → fort
+ *  - cp          : codes postaux (numériques) → faible (toute la ville les partage)
+ */
+function classifyAddr(v: string | null | undefined): { distinctive: Set<string>; cp: Set<string> } {
+  const distinctive = new Set<string>()
+  const cp = new Set<string>()
+  for (const t of tokens(v)) {
+    if (/^\d+$/.test(t)) cp.add(t)
+    else if (!ADDR_STOP.has(t)) distinctive.add(t)
+  }
+  return { distinctive, cp }
+}
+
 /**
  * Charge un jeu de fiches candidates (fenêtre récente + ciblage plaque/VIN)
  * et les score. `sb` = client admin Supabase.
@@ -112,7 +135,7 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
 
   const exPlate = norm(ex.plaque)
   const exVinTail = vinTail
-  const exCityTokens = new Set<string>(tokens(ex.adresse))
+  const exAddr = classifyAddr(ex.adresse)
   const exBrand = (ex.marque || '').toLowerCase().trim()
   const exModel = (ex.modele || '').toLowerCase().trim()
 
@@ -127,20 +150,29 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
     if (exVinTail.length >= 5 && last5(r.vehicle_vin) === exVinTail) {
       score += 50; reasons.push('VIN (5 derniers) identiques')
     }
-    // adresse : recouvrement de tokens (ville / rue)
-    if (exCityTokens.size) {
-      const rowTokens = new Set<string>([...tokens(r.incident_address), ...tokens(r.incident_city)])
-      let overlap = 0
-      for (const t of exCityTokens) if (rowTokens.has(t)) overlap++
-      if (overlap >= 1) { score += Math.min(15, 5 + overlap * 5); reasons.push('Adresse concordante') }
+    // Adresse : un token DISTINCTIF partagé (nom de rue / localité, ex « hodimont »)
+    // vaut BEAUCOUP plus qu'un simple code postal (que toute la ville partage).
+    // Une RUE exacte doit primer sur « même ville + date proche ».
+    if (exAddr.distinctive.size || exAddr.cp.size) {
+      const rAddr = classifyAddr(`${r.incident_address || ''} ${r.incident_city || ''}`)
+      let distinct = 0
+      for (const t of exAddr.distinctive) if (rAddr.distinctive.has(t)) distinct++
+      let cp = 0
+      for (const t of exAddr.cp) if (rAddr.cp.has(t)) cp++
+      if (distinct > 0) { score += Math.min(24, distinct * 12); reasons.push(distinct >= 2 ? 'Adresse précise' : 'Adresse concordante') }
+      else if (cp > 0)  { score += 4; reasons.push('Même localité') }
     }
     // date : réquisitoire vs date d'intervention
     const dd = daysApart(ex.date_requisition, r.incident_at)
     if (dd != null && dd <= 3) { score += 15; reasons.push('Date proche') }
     else if (dd != null && dd <= 10) { score += 6; reasons.push('Date compatible') }
-    // marque / modèle
-    if (exBrand && (r.vehicle_brand || '').toLowerCase().includes(exBrand)) { score += 5; reasons.push('Marque') }
-    if (exModel && (r.vehicle_model || '').toLowerCase().includes(exModel)) { score += 5; reasons.push('Modèle') }
+    // marque / modèle : corroboration spécifique. Le duo marque+modèle est un
+    // signal fort (surtout couplé à une rue exacte) → bonus combiné.
+    const brandOk = !!exBrand && (r.vehicle_brand || '').toLowerCase().includes(exBrand)
+    const modelOk = !!exModel && (r.vehicle_model || '').toLowerCase().includes(exModel)
+    if (brandOk) { score += 8; reasons.push('Marque') }
+    if (modelOk) { score += 8; reasons.push('Modèle') }
+    if (brandOk && modelOk) { score += 6 }   // bonus duo marque+modèle
 
     if (score > 0) {
       candidates.push({
@@ -156,13 +188,16 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
 
   candidates.sort((a, b) => b.score - a.score)
 
-  // Confiance : un seul candidat "fort" (≥50 = signal plaque OU VIN) et nettement
-  // devant le 2e → high. Sinon low (si au moins un candidat) ou none.
+  // Confiance : 'high' (= candidat à l'auto-attache) UNIQUEMENT sur une clé forte
+  // d'identité (plaque OU VIN) nettement en tête. Marque + adresse, même parfaits,
+  // restent 'low' → proposés en tête mais rattachement MANUEL (on n'auto-attache
+  // jamais sans plaque/VIN). Olivier 2026-07-06.
   let confidence: MatchResult['confidence'] = 'none'
   if (candidates.length) {
     const top = candidates[0]
     const second = candidates[1]
-    const strongUnique = top.score >= 50 && (!second || top.score - second.score >= 20)
+    const hasStrongKey = top.reasons.some(r => r.startsWith('Plaque') || r.startsWith('VIN'))
+    const strongUnique = hasStrongKey && top.score >= 50 && (!second || top.score - second.score >= 20)
     confidence = strongUnique ? 'high' : 'low'
   }
 
