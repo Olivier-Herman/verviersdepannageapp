@@ -91,6 +91,19 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
       .is('archived_at', null).ilike('vehicle_plate', `%${inner}%`).limit(50)
     addRows(data)
   }
+  // 4. Ciblage ADRESSE (rue / code postal / ville) — attrape les fiches HORS de la
+  //    fenêtre récente quand le réquisitoire n'a NI plaque NI VIN présent sur la
+  //    fiche (cas fréquent : saisie ancienne, réquisitoire arrivé plus tard).
+  //    Olivier 2026-07-06 : sans ça, une fiche qui colle sur adresse+date+marque
+  //    n'était jamais proposée si elle sortait du top 800 récent.
+  const addrTargets = Array.from(new Set(tokens(ex.adresse).filter(t => t.length >= 4))).slice(0, 5)
+  for (const t of addrTargets) {
+    const { data } = await sb.from('incoming_missions').select(cols)
+      .is('archived_at', null)
+      .or(`incident_address.ilike.%${t}%,incident_city.ilike.%${t}%`)
+      .order('created_at', { ascending: false }).limit(60)
+    addRows(data)
+  }
 
   const exPlate = norm(ex.plaque)
   const exVinTail = vinTail
