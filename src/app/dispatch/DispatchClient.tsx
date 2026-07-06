@@ -1174,7 +1174,10 @@ export default function DispatchClient({
   const bandClass = (tone: 'validate' | 'wait' | null) =>
     tone === 'validate'
       ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30'
-      : 'bg-surface-2 text-ink-secondary border'
+      : tone === 'wait'
+        // « En attente d'assignation » mis en évidence (accent bleu = à assigner).
+        ? 'bg-blue-500/15 text-blue-800 dark:text-blue-200 border-blue-500/40'
+        : 'bg-surface-2 text-ink-secondary border'
 
   // ── Render ────────────────────────────────────────────────────────────────
 
