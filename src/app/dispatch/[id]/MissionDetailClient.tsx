@@ -3747,6 +3747,7 @@ export default function MissionDetailClient({
                   currentLat={(initialMission as any).redelivery_lat ?? null}
                   currentLng={(initialMission as any).redelivery_lng ?? null}
                   gmKey={googleMapsKey}
+                  parentSource={initialMission.source}
                   onDone={() => router.refresh()}
                   saisieWarning={
                     ['police_saisie', 'police_rodeo'].includes(initialMission.source)

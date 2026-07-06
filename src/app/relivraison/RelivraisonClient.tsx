@@ -45,6 +45,15 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
   const [mLng,   setMLng]   = useState<number | null>(null)
   const [mBusy,  setMBusy]  = useState<'save' | 'relivrer' | null>(null)
   const [mErr,   setMErr]   = useState('')
+  const [mSourceOverride, setMSourceOverride] = useState('')
+
+  // Bascule de source REL : une relivraison SIABIS (couvert/non couvert) doit être
+  // facturée à l'assistance qui reprend → choix obligatoire. Olivier 2026-07-06.
+  const mPs = (modal?.source || '').toLowerCase()
+  const mRequiresSource = mPs === 'sia_couvert' || mPs === 'police_snc'
+  const mAllowsSource   = mRequiresSource || mPs === 'prive' || mPs === 'police_accident'
+  const mNonAssist = new Set(['police_mg', 'police_rodeo', 'police_avp', 'police_saisie', 'police_snc', 'sia_couvert', 'unknown'])
+  const mAssistSources = sources.filter(s => { const k = (s.key || '').toLowerCase(); return k && k !== mPs && !mNonAssist.has(k) })
 
   const zoneRef = useRef(zone)
   useEffect(() => { zoneRef.current = zone }, [zone])
@@ -73,6 +82,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
     setMAddr(m.redelivery_address || '')
     setMLat(m.redelivery_lat)
     setMLng(m.redelivery_lng)
+    setMSourceOverride('')
     setMErr('')
   }, [])
 
@@ -109,6 +119,8 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
     if (!modal) return
     const addr = mAddr.trim()
     if (!addr) { setMErr('Adresse de relivraison requise.'); return }
+    const rs = ['sia_couvert', 'police_snc'].includes((modal.source || '').toLowerCase())
+    if (rs && !mSourceOverride) { setMErr('Choisis l\'assistance qui reprend la relivraison.'); return }
     setMBusy('relivrer'); setMErr('')
     try {
       const ok = await saveAddress(modal.id, addr, mLat, mLng)
@@ -116,7 +128,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
       const res = await fetch(`/api/missions/${modal.id}/relivrer`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({}),
+        body:    JSON.stringify({ source_override: mSourceOverride || null }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setMErr(j.error || 'Création de la relivraison échouée.'); return }
@@ -130,7 +142,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
       await load(zoneRef.current, true)
     } catch { setMErr('Erreur réseau.') }
     finally { setMBusy(null) }
-  }, [modal, mAddr, mLat, mLng, saveAddress, load, router])
+  }, [modal, mAddr, mLat, mLng, mSourceOverride, saveAddress, load, router])
 
   useEffect(() => { load(zone) }, [zone, load])
   // Rafraîchissement léger périodique de l'onglet courant.
@@ -282,13 +294,32 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
               />
             </div>
 
+            {mAllowsSource && (
+              <div>
+                <label className="block text-ink-secondary text-xs font-semibold mb-1.5">
+                  Assistance qui reprend la relivraison {mRequiresSource ? <span className="text-red-500">*</span> : <span className="text-ink-faint font-normal">(optionnel)</span>}
+                </label>
+                <select
+                  value={mSourceOverride}
+                  onChange={e => setMSourceOverride(e.target.value)}
+                  className={`w-full px-3 py-2.5 bg-surface border rounded-xl text-sm text-ink ${mRequiresSource && !mSourceOverride ? 'border-red-400' : ''}`}
+                >
+                  <option value="">{mRequiresSource ? '— Choisir l\'assistance —' : '— Garder la source d\'origine —'}</option>
+                  {mAssistSources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+                <p className="text-ink-faint text-xs mt-1">
+                  La REM garde sa source d&apos;origine ; seule la relivraison (REL) est facturée à cette assistance.
+                </p>
+              </div>
+            )}
+
             {mErr && <p className="text-red-400 text-sm">⚠ {mErr}</p>}
 
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={onRelivrerNow}
-                disabled={!!mBusy || !mAddr.trim()}
+                disabled={!!mBusy || !mAddr.trim() || (mRequiresSource && !mSourceOverride)}
                 className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-bold transition disabled:opacity-50"
               >
                 {mBusy === 'relivrer' ? 'Création…' : '🚚 Relivrer maintenant'}
