@@ -663,6 +663,27 @@ export async function fetchVabMissionDetail(
   const generalFields = extractFields(generalContainer)
   const vehicleFields = extractFields(vehicleContainer)
 
+  // Fallback robuste par ORDRE d'apparition dans le DOM : « Emplacement de »
+  // précède toujours « Emplacement à ». Quand l'extraction par panneau rate
+  // l'adresse de destination (cas NISSAN 2026-07-06 : Nom capté mais pas
+  // Rue/Code postal/Ville), on relit toutes les paires label→valeur dans l'ordre
+  // et on prend la 1re occurrence pour « from », la 2e pour « to ».
+  const orderedFields: Record<string, string[]> = {}
+  $('.SpacerBottom5').each((_idx: number, el: any) => {
+    const $el = $(el)
+    const $label = $el.find('label').first()
+    if (!$label.length) return
+    const key = $label.text().trim().replace(/\s+/g, ' ')
+    if (!key) return
+    const $clone = $el.clone()
+    $clone.find('label').first().remove()
+    const val = $clone.text().trim().replace(/\s+/g, ' ')
+    if (!val) return
+    if (!orderedFields[key]) orderedFields[key] = []
+    orderedFields[key].push(val)
+  })
+  const nth = (label: string, n: number): string | null => (orderedFields[label] && orderedFields[label][n]) || null
+
   // Fallback Telephone : la valeur peut etre dans <a href="tel:..."> au lieu
   // du .SpacerBottom5 du label (pattern OutSystems sur certains champs).
   function findPhoneIn(scope: any): string | null {
@@ -763,18 +784,18 @@ export async function fetchVabMissionDetail(
     taskType:       taskTypeRaw,
     codesDePanne,
 
-    fromName:       fromFields['Nom'] || fromFields['Nom contact'] || fromFields['Personne'] || null,
-    fromStreet:     fromFields['Rue'] || null,
-    fromZip:        fromFields['Code postal'] || null,
-    fromCity:       fromFields['Ville'] || null,
+    fromName:       fromFields['Nom'] || fromFields['Nom contact'] || fromFields['Personne'] || nth('Nom', 0),
+    fromStreet:     fromFields['Rue'] || nth('Rue', 0),
+    fromZip:        fromFields['Code postal'] || nth('Code postal', 0),
+    fromCity:       fromFields['Ville'] || nth('Ville', 0),
     fromPhone:      fromPhoneFinal,
     // Texte libre type "ENFACE N5" ou "E25 PARKING HARRE (OUEST) --> DIRECTION LIEGE"
     fromLocationFreeText: fromFields['Localisation du véhicule'] || fromFields['Localisation du vehicule'] || null,
 
-    toName:         toFields['Nom'] || toFields['Nom contact'] || null,
-    toStreet:       toFields['Rue'] || null,
-    toZip:          toFields['Code postal'] || null,
-    toCity:         toFields['Ville'] || null,
+    toName:         toFields['Nom'] || toFields['Nom contact'] || nth('Nom', 1),
+    toStreet:       toFields['Rue'] || nth('Rue', 1),
+    toZip:          toFields['Code postal'] || nth('Code postal', 1),
+    toCity:         toFields['Ville'] || nth('Ville', 1),
     toPhone:        toPhoneFinal,
 
     clientName:     generalFields['Nom du client'] || generalFields['Client'] || null,
