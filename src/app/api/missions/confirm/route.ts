@@ -201,8 +201,13 @@ export async function POST(req: Request) {
         }).then(() => {}, () => {})
 
         // 3. Neutraliser la fiche relivraison Kaze (pas de mission séparée).
+        //    On TRANSFÈRE le job Kaze : il est déjà copié dans rel_kaze_job_id du
+        //    parent (ci-dessus) → on le RETIRE de la fiche ignorée, sinon quand la
+        //    REL héritera de rel_kaze_job_id, l'INSERT collisionnera avec cette fiche
+        //    qui garde le même kaze_job_id (index unique partiel
+        //    uq_incoming_missions_kaze_job_id, insensible au statut). Correctif 2026-07-06.
         await supabase.from('incoming_missions')
-          .update({ status: 'ignored', updated_at: now }).eq('id', mission_id)
+          .update({ status: 'ignored', kaze_job_id: null, updated_at: now }).eq('id', mission_id)
         await supabase.from('mission_logs').insert({
           mission_id, actor_id: actor?.id || null, action: 'kaze_rel_merged',
           notes: `Relivraison Kaze fusionnée dans la fiche en parc (procédure « À relivrer » généralisée).`,
