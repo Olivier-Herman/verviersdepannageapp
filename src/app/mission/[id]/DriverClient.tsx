@@ -1638,11 +1638,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
   // Clôture labels (doit être avant les early returns)
   const closeLabels: Record<string, [string, string]> = {
-    dsp:  ['bg-green-600',  'DSP Réussi'],
-    rem:  ['bg-blue-600',   'REM Confirmé'],
-    rel:  ['bg-purple-600', 'REL Livrée'],
-    dpr:  ['bg-ink-faint',  'DPR — Déplacement pour rien'],
-    park: ['bg-amber-500',  '🅿️ Mise en parc'],
+    dsp:  ['bg-green-600',  t('close.label_dsp')],
+    rem:  ['bg-blue-600',   t('close.label_rem')],
+    rel:  ['bg-purple-600', t('close.label_rel')],
+    dpr:  ['bg-ink-faint',  t('close.label_dpr')],
+    park: ['bg-amber-500',  t('close.label_park')],
   }
   const [closeBg, closeLabel] = closeLabels[closeType] || ['bg-ink-faint', closeType.toUpperCase()]
 
@@ -2115,7 +2115,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
   // ── Clôture ───────────────────────────────────────────────────────────────
   if (screen === 'close') return (
-      <ScreenWrap title={closeType === 'park' ? 'Mise en parc' : 'Clôturer la mission'} sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
+      <ScreenWrap title={closeType === 'park' ? t('close.title_park') : t('close.title_close')} sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
           {/* Type de clôture — informatif, non modifiable ici */}
@@ -2126,10 +2126,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {/* Sélection dépôt — uniquement pour Mise en parc */}
           {closeType === 'park' && (
             <div className="bg-surface border border-amber-500/30 rounded-2xl p-4">
-              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">Dépôt de dépose</p>
+              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2"><T k="close.depot_label" /></p>
               <div className="space-y-2">
                 {vrLocs.length === 0
-                  ? <p className="text-ink-faint text-sm">Aucun dépôt configuré — vois /admin/depots</p>
+                  ? <p className="text-ink-faint text-sm"><T k="close.no_depot" /></p>
                   : vrLocs.map(vr => {
                       const selected = parkDepot?.id === vr.id
                       return (
@@ -2139,7 +2139,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                           }`}>
                           <span className="text-lg">{selected ? '🅿️' : '◯'}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-ink text-sm font-medium">{vr.name}{(vr as any).is_default ? ' (défaut)' : ''}</p>
+                            <p className="text-ink text-sm font-medium">{vr.name}{(vr as any).is_default ? ` ${t('close.default_paren')}` : ''}</p>
                             <p className="text-ink-muted text-xs truncate">{vr.address}</p>
                           </div>
                         </button>
@@ -2147,7 +2147,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     })}
               </div>
               {M.destination_address && (
-                <p className="text-blue-400/80 text-xs mt-3">📍 Adresse de relivraison à enregistrer : {M.destination_address}</p>
+                <p className="text-blue-400/80 text-xs mt-3">{t('close.redelivery_to_save')} : {M.destination_address}</p>
               )}
             </div>
           )}
@@ -2155,7 +2155,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {/* Emplacement de la clé — obligatoire à la mise en parc. Olivier 2026-06-18. */}
           {closeType === 'park' && (
             <div className="bg-surface border border-amber-500/30 rounded-2xl p-4">
-              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2">🔑 Où est la clé ?</p>
+              <p className="text-amber-400 text-xs uppercase tracking-widest font-semibold mb-2"><T k="close.key_where" /></p>
               <div className="grid grid-cols-2 gap-2">
                 {KEY_LOCATIONS.map(k => {
                   const selected = keyLocation === k.value
@@ -2165,7 +2165,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                         selected ? 'bg-amber-500/15 border border-amber-500/60' : 'bg-surface border border hover:border-zinc-600'
                       }`}>
                       <span className="text-lg flex-shrink-0">{k.icon}</span>
-                      <span className="text-ink text-xs font-medium leading-tight">{k.label}</span>
+                      <span className="text-ink text-xs font-medium leading-tight">{t(`key_loc.${k.value}`)}</span>
                     </button>
                   )
                 })}
@@ -2193,14 +2193,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {/* Récap éditable — chaque ligne cliquable mène à l'écran correspondant */}
           <div className="bg-surface border border rounded-2xl divide-y divide-[#2a2a2a]">
             <div className="px-4 py-3">
-              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Récapitulatif (cliquer pour modifier)</p>
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium"><T k="close.recap_title" /></p>
             </div>
 
             {/* Véhicule — éditable */}
             <button onClick={() => setShowVeh(true)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
               <div className="flex-1 min-w-0">
-                <p className="text-ink-muted text-xs">Véhicule</p>
+                <p className="text-ink-muted text-xs"><T k="close.vehicle" /></p>
                 <p className="text-ink text-sm font-medium truncate">
                   {[M.vehicle_brand, M.vehicle_model].filter(Boolean).join(' ') || '—'} · {plate(M.vehicle_plate)}
                 </p>
@@ -2210,7 +2210,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
             {/* Itinéraire complet : prise en charge → stops → destination (dernière) */}
             <div className="px-4 py-3 space-y-1.5">
-              <p className="text-ink-muted text-xs">📍 Itinéraire</p>
+              <p className="text-ink-muted text-xs"><T k="close.route" /></p>
               <p className="text-ink text-sm flex items-start gap-1.5">
                 <span className="text-amber-400 flex-shrink-0">⏺</span>
                 <span>{M.incident_address || '—'}{M.incident_city ? `, ${M.incident_city}` : ''}</span>
@@ -2223,7 +2223,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     <span>
                       {p.label && p.label !== p.address ? <span className="text-ink-secondary">{p.label} — </span> : null}
                       {p.address}
-                      {isLast && <span className="text-blue-400 text-xs ml-1">(destination)</span>}
+                      {isLast && <span className="text-blue-400 text-xs ml-1">{t('close.destination_paren')}</span>}
                     </span>
                   </p>
                 )
@@ -2233,10 +2233,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             {/* Photos */}
             <button onClick={() => goPhotos('close')}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
-              <span className="text-ink-secondary text-sm">📷 Photos</span>
+              <span className="text-ink-secondary text-sm"><T k="close.photos" /></span>
               <span className="flex items-center gap-2">
                 <span className={`text-sm font-medium ${totPh >= 3 ? 'text-green-400' : closeType === 'dpr' ? 'text-ink-muted' : 'text-red-400'}`}>
-                  {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? '(opt.)' : '/ 3 min.'}
+                  {totPh} {totPh >= 3 ? '✓' : closeType === 'dpr' ? t('close.photos_opt') : t('close.photos_min')}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
               </span>
@@ -2245,10 +2245,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             {/* Décharge */}
             <button onClick={() => { resetDischargeForm(); setDischFrom('close'); setScreen('decharge') }}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
-              <span className="text-ink-secondary text-sm">🛡️ Décharge{disch.length > 1 ? 's' : ''}</span>
+              <span className="text-ink-secondary text-sm">{disch.length > 1 ? t('close.discharge_plural') : t('close.discharge')}</span>
               <span className="flex items-center gap-2">
                 <span className={`text-sm font-medium ${disch.length > 0 ? 'text-amber-400' : 'text-ink-muted'}`}>
-                  {disch.length > 0 ? `✓ ${disch.length}` : '+ ajouter'}
+                  {disch.length > 0 ? `✓ ${disch.length}` : t('close.add_short')}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
               </span>
@@ -2260,7 +2260,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left"
             >
               <span className="text-ink-secondary text-sm">
-                ✍️ Signature client
+                <T k="close.sig_client" />
                 {M.source === 'kaze' && (
                   <span className="text-red-400 ml-1">*</span>
                 )}
@@ -2269,7 +2269,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 <span className={`text-sm font-medium ${
                   sig ? 'text-green-400' : (M.source === 'kaze' ? 'text-red-400' : 'text-ink-muted')
                 }`}>
-                  {sig ? '✓ Signée' : (M.source === 'kaze' ? '⚠️ Obligatoire' : '—')}
+                  {sig ? t('close.signed') : (M.source === 'kaze' ? t('close.sig_required_tag') : '—')}
                 </span>
                 <span className="text-blue-400 text-xs">→</span>
               </span>
@@ -2279,9 +2279,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             {closeType === 'rem' && (
               <div className="px-4 py-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-ink-secondary text-sm">✍️ Signature destinataire <span className="text-ink-faint text-xs">(opt.)</span></span>
+                  <span className="text-ink-secondary text-sm"><T k="close.sig_dest" /> <span className="text-ink-faint text-xs">{t('close.photos_opt')}</span></span>
                   <span className={`text-sm font-medium ${destSig ? 'text-green-400' : 'text-ink-muted'}`}>
-                    {destSig ? '✓ Signée' : '—'}
+                    {destSig ? t('close.signed') : '—'}
                   </span>
                 </div>
                 {destSig ? (
@@ -2289,7 +2289,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     <div className="flex-1 border border-green-500/30 rounded-xl overflow-hidden bg-surface">
                       <img src={destSig} className="w-full max-h-20 object-contain" />
                     </div>
-                    <button onClick={() => setDestSig('')} className="text-ink-muted text-xs">Refaire</button>
+                    <button onClick={() => setDestSig('')} className="text-ink-muted text-xs"><T k="close.redo" /></button>
                   </div>
                 ) : showDestSigPad ? (
                   <div className="mt-2">
@@ -2298,7 +2298,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 ) : (
                   <button onClick={() => setShowDestSigPad(true)}
                     className="w-full mt-2 py-2.5 border border-dashed border rounded-xl text-ink-secondary text-sm">
-                    ✍️ Faire signer le destinataire
+                    <T k="close.sig_dest_make" />
                   </button>
                 )}
               </div>
@@ -2308,11 +2308,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             {M.amount_to_collect != null && M.amount_to_collect > 0 && (
               <button onClick={() => setScreen('encaissement')}
                 className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition text-left">
-                <span className="text-ink-secondary text-sm">💶 Encaissement</span>
+                <span className="text-ink-secondary text-sm"><T k="close.encaissement" /></span>
                 <span className="flex items-center gap-2">
                   <span className={`text-sm font-medium ${paidEffective ? (isToInvoice ? 'text-amber-400' : 'text-green-400') : 'text-red-400'}`}>
                     {paidEffective
-                      ? (isToInvoice ? '📄 Facture à envoyer' : '✓ Payée')
+                      ? (isToInvoice ? t('close.invoice_to_send') : t('close.paid'))
                       : `${formatEur(M.amount_to_collect, { suffix: false })} ${M.amount_currency || 'EUR'}`}
                   </span>
                   <span className="text-blue-400 text-xs">→</span>
@@ -2329,8 +2329,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             }} className="w-full flex items-center gap-3 px-4 py-3.5 bg-surface border border-dashed border hover:border-zinc-600 rounded-2xl text-left transition">
             <span className="text-xl">🛡️</span>
             <div className="flex-1">
-              <p className="text-ink-secondary text-sm font-medium">+ Ajouter une décharge</p>
-              <p className="text-ink-faint text-xs">Sans dégâts ou motif personnalisé</p>
+              <p className="text-ink-secondary text-sm font-medium"><T k="close.add_discharge" /></p>
+              <p className="text-ink-faint text-xs"><T k="close.add_discharge_sub" /></p>
             </div>
           </button>
           {disch.map((d, i) => (
@@ -2338,7 +2338,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <span className="text-xl">{d.type_key && getDischarge(d.type_key)?.color === 'green' ? '✅' : '🛡️'}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-amber-400 text-sm font-medium">
-                  {d.type_key ? (getDischarge(d.type_key)?.label || 'Décharge') : `Décharge ${i + 1}`}
+                  {d.type_key ? (getDischarge(d.type_key)?.label || t('close.discharge_word')) : `${t('close.discharge_word')} ${i + 1}`}
                 </p>
                 {(d.motif || d.name) && (
                   <p className="text-ink-muted text-xs truncate">
@@ -2352,17 +2352,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
           {/* Remarques */}
           <div>
-            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2">Remarques <span className="text-ink-faint normal-case tracking-normal">(optionnel)</span></p>
+            <p className="text-ink-muted text-xs uppercase tracking-widest font-medium mb-2"><T k="close.remarks" /> <span className="text-ink-faint normal-case tracking-normal">{t('close.optional_paren')}</span></p>
             <textarea rows={3} value={closeNote} onChange={e => setCloseNote(e.target.value)}
-              placeholder="Observations, état du véhicule…"
+              placeholder={t('close.remarks_ph')}
               className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none" />
           </div>
 
           {closeType !== 'dpr' && totPh < 3 && (
             <button onClick={() => goPhotos('close')}
               className="w-full flex items-center justify-between bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl px-3 py-3 transition active:scale-95">
-              <span className="text-amber-400 text-sm font-medium">⚠️ {3 - totPh} photo(s) manquante(s)</span>
-              <span className="text-amber-300 text-xs">📷 Ajouter →</span>
+              <span className="text-amber-400 text-sm font-medium">{t('close.photos_missing', { n: 3 - totPh })}</span>
+              <span className="text-amber-300 text-xs"><T k="close.photos_add" /></span>
             </button>
           )}
           {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}</p>}
@@ -2371,12 +2371,12 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         <div className="px-4 py-4 border-t border">
           {closeType === 'park' ? (
             <>
-              {!keyLocation && <p className="text-amber-400 text-xs text-center mb-2">🔑 Indique où se trouve la clé avant de confirmer.</p>}
+              {!keyLocation && <p className="text-amber-400 text-xs text-center mb-2"><T k="close.key_before_confirm" /></p>}
               {isRollable === null && <p className="text-amber-400 text-xs text-center mb-2">🚗 <T k="mission_detail.rollable_required" /></p>}
               <button onClick={() => parkDepot && doPark(parkDepot)}
                 disabled={loading || !parkDepot || totPh < 3 || !keyLocation || isRollable === null}
                 className="w-full py-4 bg-amber-500 disabled:opacity-40 text-ink font-semibold rounded-2xl">
-                {loading ? '⏳ Envoi…' : `🅿️ Confirmer la mise en parc${parkDepot ? ` à ${parkDepot.name}` : ''}`}
+                {loading ? t('close.sending') : (parkDepot ? t('close.confirm_park_at', { name: parkDepot.name }) : t('close.confirm_park'))}
               </button>
             </>
           ) : (
@@ -2384,21 +2384,20 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               {/* Blocage cloture tant que paiement incomplet (sauf DPR : pas de prestation, pas d encaissement attendu) */}
               {closeType !== 'dpr' && !paymentComplete && (
                 <p className="text-amber-400 text-xs text-center mb-2 px-2">
-                  ⚠ Encaissement incomplet : {formatEur(M.payment_amount ?? 0, { suffix: false })} / {formatEur(requiredAmount, { suffix: false })} {M.amount_currency || 'EUR'}.
-                  La clôture est bloquée tant que le total prévu n'est pas atteint (ou utilisez "À facturer").
+                  {t('close.pay_incomplete', { paid: formatEur(M.payment_amount ?? 0, { suffix: false }), total: formatEur(requiredAmount, { suffix: false }), cur: M.amount_currency || 'EUR' })}
                 </p>
               )}
               {/* Blocage signature obligatoire pour les missions Kaze (IMA) */}
               {M.source === 'kaze' && !sig && (
                 <p className="text-red-400 text-xs text-center mb-2 px-2">
-                  ⚠ Signature client obligatoire pour les missions Kaze. Tape sur "✍️ Signature client" ci-dessus pour signer (faire une croix si le client refuse).
+                  {t('close.sig_kaze_required')}
                 </p>
               )}
               <button onClick={doClose} disabled={loading
                 || (closeType !== 'dpr' && (totPh < 3 || !paymentComplete))
                 || (M.source === 'kaze' && !sig)}
                 className="w-full py-4 bg-green-600 disabled:opacity-40 text-ink font-semibold rounded-2xl">
-                {loading ? '⏳ Envoi…' : '✅ Confirmer la clôture'}
+                {loading ? t('close.sending') : t('close.confirm_close')}
               </button>
             </>
           )}
@@ -3436,39 +3435,35 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
               <h2 className="text-ink font-semibold text-lg">
-                {destPrompt.kind === 'park' ? '🅿️ Confirmer la mise en parc' : '📍 Adresse de destination'}
+                {destPrompt.kind === 'park' ? t('close.park_confirm_title') : t('close.dest_title')}
               </h2>
               <button onClick={() => setDestPrompt(null)} className="text-ink-muted text-2xl">×</button>
             </div>
             <p className="text-ink-muted text-sm">
               {destPrompt.kind === 'park'
-                ? (M.destination_address
-                    ? 'Confirme (ou corrige) l\'adresse de relivraison — là où le véhicule repartira depuis le parc. Le véhicule est déposé au dépôt.'
-                    : 'Indique l\'adresse de relivraison, ou choisis « communiquée plus tard » si tu ne la connais pas encore.')
-                : (M.destination_address
-                    ? 'Confirme ou modifie l\'adresse de destination du remorquage.'
-                    : 'Indique l\'adresse de destination du remorquage.')}
+                ? (M.destination_address ? t('close.park_desc_edit') : t('close.park_desc_new'))
+                : (M.destination_address ? t('close.dest_desc_edit') : t('close.dest_desc_new'))}
             </p>
             <AddressField
               value={destAddr}
               onChange={setDestAddr}
               onSelect={(a, la, ln) => { setDestAddr(a); setDestLat(la); setDestLng(ln) }}
               gmKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
-              placeholder={destPrompt.kind === 'park' ? 'Adresse de relivraison' : 'Adresse de destination'}
+              placeholder={destPrompt.kind === 'park' ? t('close.ph_redelivery') : t('close.ph_destination')}
             />
             {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
             <button onClick={() => confirmDestPrompt(false)} disabled={loading || !destAddr.trim()}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition disabled:opacity-50">
-              {loading ? '⏳…' : (destPrompt.kind === 'park' ? 'Confirmer et déposer au parc' : 'Valider')}
+              {loading ? t('mission_detail.loading') : (destPrompt.kind === 'park' ? t('close.confirm_deposit') : t('close.validate'))}
             </button>
             {(destPrompt.kind === 'rem_depot' || destPrompt.kind === 'park') && (
               <button onClick={() => confirmDestPrompt(true)} disabled={loading}
                 className="w-full py-3 bg-surface-2 border text-ink rounded-2xl text-sm font-semibold transition disabled:opacity-50">
-                🕒 Adresse communiquée plus tard
+                <T k="close.addr_later" />
               </button>
             )}
             <button onClick={() => setDestPrompt(null)} disabled={loading}
-              className="w-full py-2 text-ink-muted text-sm disabled:opacity-50">Annuler</button>
+              className="w-full py-2 text-ink-muted text-sm disabled:opacity-50"><T k="close.cancel" /></button>
           </div>
         </div>
       )}
@@ -3478,7 +3473,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowPark(false)}>
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-              <h2 className="text-ink font-semibold text-lg">🅿️ Choisir le dépôt</h2>
+              <h2 className="text-ink font-semibold text-lg"><T k="close.choose_depot" /></h2>
               <button onClick={() => setShowPark(false)} className="text-ink-muted text-2xl">×</button>
             </div>
 
@@ -3486,16 +3481,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 source (Administration → Sources de mission). Olivier 2026-06-22. */}
             {suggestedZoneKey && (
               <div className="bg-blue-900/15 border border-blue-700/30 rounded-2xl p-3">
-                <p className="text-blue-300 text-xs font-medium">🅿️ Zone de parc</p>
+                <p className="text-blue-300 text-xs font-medium"><T k="close.park_zone" /></p>
                 <p className="text-ink-muted text-xs mt-1">
-                  Le véhicule va en zone <strong className="text-ink">{suggestedZoneKey}</strong> (définie pour cette source).
+                  {t('close.park_zone_desc', { zone: suggestedZoneKey })}
                 </p>
               </div>
             )}
 
             {M.destination_address && (
               <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl px-3 py-2.5">
-                <p className="text-blue-300 text-xs font-medium">📍 Adresse de relivraison à enregistrer</p>
+                <p className="text-blue-300 text-xs font-medium"><T k="close.redelivery_to_save" /></p>
                 <p className="text-ink text-sm">{M.destination_address}</p>
                 <HighwayInfo bk={M.destination_borne_km} sens={M.destination_sens} />
               </div>
@@ -3514,7 +3509,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </div>
 
             {vrLocs.length === 0
-              ? <p className="text-ink-faint text-sm text-center py-4">Aucun dépôt configuré — vois /admin/depots</p>
+              ? <p className="text-ink-faint text-sm text-center py-4"><T k="close.no_depot" /></p>
               : vrLocs.map(vr => {
                 return (
                   <button key={vr.id} onClick={() => doPark(vr)} disabled={loading || isRollable === null}
@@ -3525,7 +3520,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     <div className="flex-1 min-w-0">
                       <p className="text-ink font-medium text-sm flex items-center gap-2">
                         {vr.name}
-                        {vr.is_default && <span className="text-amber-400 text-xs font-normal">défaut</span>}
+                        {vr.is_default && <span className="text-amber-400 text-xs font-normal"><T k="close.default_tag" /></span>}
                       </p>
                       <p className="text-ink-muted text-xs truncate">{vr.address}</p>
                     </div>
