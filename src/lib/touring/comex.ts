@@ -9,8 +9,10 @@
 // Flux d'authentification (Java/Spring Security + Dojo) :
 //   1. GET  /Comex/web/welcome.do              → pose JSESSIONID
 //   2. POST /Comex/rest/auth/encryptPwd        → {content: passSHA (SHA-256)}
-//   3. POST /Comex/web/j_security_check        → 303, session authentifiée
-//   4. (verif) POST /Comex/web/secured/canIlog → "logged"
+//   3. POST /Comex/web/secured/canIlog         → PRÉ-appel obligatoire (amorce le
+//                                                "saved request" Spring)
+//   4. POST /Comex/web/j_security_check        → 303, session authentifiée
+//   5. (verif) POST /Comex/web/secured/canIlog → "logged"
 // Puis appels REST avec header Authorization: Basic base64(LOGIN:passSHA).
 //
 // Cf mémoire project_touring_comex_integration.
@@ -91,7 +93,22 @@ export async function loginComex(account: ComexAccount = 'dispatch'): Promise<Co
   const passSHA: string = encJson?.content || ''
   if (!passSHA) throw new Error(`[comex] encryptPwd sans content (success=${encJson?.success}) — identifiants invalides ?`)
 
-  // 3) j_security_check (form login Spring) → 303 + rotation session
+  // 3) PRÉ-canIlog OBLIGATOIRE : ce POST sur la ressource sécurisée amorce le
+  // "saved request" Spring — sans lui, le j_security_check qui suit n'authentifie
+  // PAS la session (testé : "not logged" sans, "logged" avec). Réponse attendue
+  // ici : "not loggedj_security_check".
+  const pre = await fetch(`${COMEX_BASE}/web/secured/canIlog`, {
+    method: 'POST',
+    headers: {
+      'User-Agent': REAL_UA, 'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': jar.toHeader(),
+    },
+    body: new URLSearchParams({ j_username: login, j_password: passSHA }).toString(),
+    redirect: 'manual',
+  })
+  jar.addFromResponse(pre)
+
+  // 4) j_security_check (form login Spring) → 303 + rotation session
   const form = new URLSearchParams({ j_username: login, j_password: passSHA })
   const auth = await fetch(`${COMEX_BASE}/web/j_security_check`, {
     method: 'POST',
@@ -104,7 +121,7 @@ export async function loginComex(account: ComexAccount = 'dispatch'): Promise<Co
   })
   jar.addFromResponse(auth)
 
-  // 4) vérif : canIlog doit renvoyer "logged"
+  // 5) vérif : canIlog doit renvoyer "logged"
   const check = await fetch(`${COMEX_BASE}/web/secured/canIlog`, {
     method: 'POST',
     headers: {
