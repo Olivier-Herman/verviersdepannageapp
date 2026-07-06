@@ -208,3 +208,45 @@ export async function getComexMissionDetail(
 ): Promise<any> {
   return comexRest(session, 'Mission/detail/get', keys)
 }
+
+// ── Actions (mutations) : changement de statut via detail/set + operType ──────
+// Le payload = la mission ré-échoée (union des captures onRoad/onSpot du 06/07)
+// + operType + operDate. On lit donc le détail puis on renvoie ces champs.
+const SET_ECHO_FIELDS = [
+  'COD_PANNE_CAUSE', 'COD_PANNE_RESULT', 'COD_PANNE_DESC', 'NUM_CHASSIS', 'D_MEC', 'MONT_KM',
+  'COD_FIN_MISSION', 'BON_AFFILIATION', 'BON_AFFIL_MOP', 'BON_AFFIL_PRD', 'COMM_FIN_MISSION',
+  'COD_NON_SAISIE_KM', 'FL_PLAINTE_CLIENT', 'LIB_PLAINTE_CLIENT',
+  'TO_COD_ADRESSE', 'TO_NOM', 'TO_RUE', 'TO_NUM_RUE', 'TO_CP', 'TO_LOC', 'ADR_DEPOT_CID_INTV',
+]
+
+export type ComexOperType = 'onRoad' | 'onSpot'
+
+/** Format COMEX pour operDate : "YYYY-MM-DDTHH:mm:ss.000" (heure locale, sans TZ). */
+export function comexOperDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.000`
+}
+
+/**
+ * Pousse un changement de statut Touring via rest/Mission/detail/set :
+ *   operType 'onRoad' = en route (05) · 'onSpot' = sur place (06).
+ * operDate peut être BACKDATÉ (respect des SLA). À appeler avec la session USER
+ * (compte patrouille D6826701), pas la session dispatch.
+ */
+export async function pushComexOperation(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  operType: ComexOperType,
+  operDate: string,
+): Promise<any> {
+  const dRes = await getComexMissionDetail(session, keys)
+  const d = (dRes?.content || dRes || {}) as Record<string, any>
+  const payload: Record<string, any> = { CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION, operType, operDate }
+  for (const f of SET_ECHO_FIELDS) {
+    const v = d[f]
+    payload[f] = (v === undefined || v === null)
+      ? (f === 'FL_PLAINTE_CLIENT' ? '0' : (f === 'MONT_KM' ? 0 : ''))
+      : v
+  }
+  return comexRest(session, 'Mission/detail/set', payload)
+}
