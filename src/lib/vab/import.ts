@@ -162,7 +162,7 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
         // to_invoice) ou annulée/ignorée doit créer une NOUVELLE fiche, pas être
         // avalée dans l'ancienne (sinon la mission n'arrive jamais dans le dispatch).
         const { data: existingRows } = await sb.from('incoming_missions')
-          .select('id, mission_type, destination_name, destination_address, status, assigned_to, mission_number, vab_assignment_ids')
+          .select('id, mission_type, destination_name, destination_address, redelivery_address, status, assigned_to, mission_number, vab_assignment_ids')
           .ilike('source', 'vab')
           .or(`dossier_number.ilike.${dossierBase}/%,dossier_number.eq.${dossierBase}`)
           .not('status', 'in', '("ignored","cancelled","completed","to_invoice")')
@@ -174,29 +174,43 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
           if (wasUpgrade) upd.mission_type = 'remorquage'
           if (detail.toName && !fiche.destination_name)    upd.destination_name    = detail.toName
           if (destAddr      && !fiche.destination_address)  upd.destination_address = destAddr
-          const destAdded = !!(upd.destination_name || upd.destination_address)
+
+          // Véhicule DÉJÀ en parc requalifié en remorquage : la destination VAB
+          // est l'adresse de RELIVRAISON (là où relivrer depuis le parc). C'est
+          // ce champ (redelivery_address) que lit la carte Relivraison — pas
+          // destination_address (= le parc une fois garé). Olivier 2026-07-06.
+          // À défaut d'adresse complète, on met au moins le nom du garage pour
+          // que le dispatcher ait un point de départ à compléter.
+          const relivTarget = destAddr || detail.toName || null
+          if (fiche.status === 'parked' && relivTarget && !(fiche as any).redelivery_address) {
+            upd.redelivery_address = relivTarget
+          }
+
+          const destAdded = !!(upd.destination_name || upd.destination_address || upd.redelivery_address)
           const realChange = wasUpgrade || destAdded
 
-          // TOUJOURS mémoriser l'AssignmentId de cette action sur la fiche trouvée
-          // → le prochain preview ne la reproposera plus (fin de la boucle), même
-          // si rien d'autre ne change (ex : relivraison déjà gérée via la fiche parc).
-          if (assignmentId) {
-            const curAids: string[] = Array.isArray((fiche as any).vab_assignment_ids) ? (fiche as any).vab_assignment_ids : []
-            if (!curAids.includes(assignmentId)) upd.vab_assignment_ids = [...curAids, assignmentId]
-          }
-
-          if (Object.keys(upd).length > 0) {
+          // On ne FUSIONNE (rattacher à la fiche existante sans créer de fiche) QUE
+          // si c'est une vraie escalation du MÊME dossier : dépannage→remorquage,
+          // complétion destination / adresse de relivraison. Sinon (rien à
+          // enrichir) c'est une action DISTINCTE du même n° de dossier (ex : 2e
+          // véhicule / action sans fiche) → elle mérite sa PROPRE fiche : on tombe
+          // dans l'INSERT ci-dessous au lieu de l'avaler en no-op. Olivier 2026-07-06.
+          if (realChange) {
+            if (assignmentId) {
+              const curAids: string[] = Array.isArray((fiche as any).vab_assignment_ids) ? (fiche as any).vab_assignment_ids : []
+              if (!curAids.includes(assignmentId)) upd.vab_assignment_ids = [...curAids, assignmentId]
+            }
             upd.updated_at = new Date().toISOString()
             await sb.from('incoming_missions').update(upd).eq('id', fiche.id)
-          }
-          if (realChange) {
-            const destTxt = upd.destination_address || upd.destination_name || fiche.destination_address || fiche.destination_name || ''
+
+            const relivTxt = upd.redelivery_address || ''
+            const destTxt  = upd.destination_address || upd.destination_name || fiche.destination_address || fiche.destination_name || relivTxt || ''
             await sb.from('mission_logs').insert({
               mission_id: fiche.id,
               action:     wasUpgrade ? 'mission_type_escalated_rem' : 'rem_destination_completed',
               notes:      wasUpgrade
-                ? `VAB : dépannage requalifié en REMORQUAGE (nouvelle action VAB).${destTxt ? ` Destination : ${destTxt}.` : ''}`
-                : `VAB : destination remorquage complétée (nouvelle action VAB).${destTxt ? ` Destination : ${destTxt}.` : ''}`,
+                ? `VAB : dépannage requalifié en REMORQUAGE (nouvelle action VAB).${destTxt ? ` Destination : ${destTxt}.` : ''}${relivTxt ? ` Adresse de relivraison : ${relivTxt}.` : ''}`
+                : `VAB : destination remorquage complétée (nouvelle action VAB).${destTxt ? ` Destination : ${destTxt}.` : ''}${relivTxt ? ` Adresse de relivraison : ${relivTxt}.` : ''}`,
               metadata:   { external_id: assignmentId, dossier_base: dossierBase, previous_type: fiche.mission_type, previous_status: fiche.status },
             })
             if (fiche.assigned_to) {
@@ -216,11 +230,13 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
               })
             }
             console.log(`[VAB] Dossier ${dossierBase} : fiche ${fiche.id} enrichie (${wasUpgrade ? 'REM' : 'destination'})`)
+
+            results.push({ missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: fiche.mission_number != null ? `#${fiche.mission_number}` : undefined })
+            merged++
+            continue
           }
-          // Fiche active existante → on n'insère JAMAIS de doublon (fusion).
-          results.push({ missionNumber: item.missionNumber, ok: true, action: 'merged', mergedInto: fiche.mission_number != null ? `#${fiche.mission_number}` : undefined })
-          merged++
-          continue
+          // Pas d'escalation réelle → on ne fusionne pas : on laisse l'INSERT créer
+          // une nouvelle fiche pour cette action distincte.
         }
       }
 
