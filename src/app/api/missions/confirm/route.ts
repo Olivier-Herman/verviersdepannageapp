@@ -50,6 +50,53 @@ async function acceptKazeProposalBg(
   catch { await run }
 }
 
+// Mission Touring COMEX : au « Valider », on ACCEPTE côté COMEX (session dispatch
+// D68267) → accept (03→04) + délai 60 min (setEta) + assign Verviers DE-001
+// (assignComex). Mémorise l'heure d'acceptation pour les SLA. Best-effort,
+// arrière-plan. GATÉ par TOURING_COMEX_MODE=import (pas d'accept réel tant que
+// l'intégration n'est pas activée). Olivier 2026-07-06.
+async function acceptTouringBg(
+  missionId: string,
+  source:    string | null,
+  actorId:   string | null,
+  supabase:  ReturnType<typeof createAdminClient>,
+) {
+  if (source !== 'touring') return
+  if (process.env.TOURING_COMEX_MODE !== 'import') return
+  const run = (async () => {
+    try {
+      const { data: m } = await supabase.from('incoming_missions')
+        .select('raw_content, source_format').eq('id', missionId).maybeSingle()
+      if (!m || (m as any).source_format !== 'comex' || !(m as any).raw_content) return
+      let cid: any
+      try { cid = JSON.parse((m as any).raw_content) } catch { return }
+      const CID_DOS = String(cid?.CID_DOS || '').trim()
+      const CID_SEQ_ACTION = String(cid?.CID_SEQ_ACTION || '').trim()
+      if (!CID_DOS || !CID_SEQ_ACTION) return
+
+      const { acceptTouringMission } = await import('@/lib/touring/comex')
+      const acceptedAt = new Date()
+      const r = await acceptTouringMission({ CID_DOS, CID_SEQ_ACTION }, { acceptedAt })
+      if (r.ok) {
+        await supabase.from('incoming_missions')
+          .update({ touring_accepted_at: acceptedAt.toISOString() }).eq('id', missionId)
+      }
+      await supabase.from('mission_logs').insert({
+        mission_id: missionId, actor_id: actorId,
+        action: r.ok ? 'touring_synced' : 'touring_sync_error',
+        notes:  r.ok
+          ? 'Touring COMEX ↗ accepté + délai 60 min + assigné Verviers DE-001'
+          : `Touring COMEX ↗ échec — ${r.error || 'inconnue'} (étapes ${JSON.stringify(r.steps)})`,
+        metadata: { CID_DOS, CID_SEQ_ACTION, steps: r.steps },
+      }).then(() => {}, () => {})
+    } catch (e: any) {
+      console.error('[Confirm] Touring COMEX accept:', e?.message)
+    }
+  })()
+  try { const { waitUntil } = await import('@vercel/functions'); waitUntil(run) }
+  catch { await run }
+}
+
 // Mission Allianz/mondial : accepter l'affectation dans Hexalite (API à token,
 // PUT status EDSRA). Best-effort en arrière-plan. Olivier 2026-06-19.
 async function acceptAllianzBg(
@@ -239,6 +286,9 @@ export async function POST(req: Request) {
 
     // Mission Kaze en proposition → accepter dans Kaze (appli web, arrière-plan).
     await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
+
+    // Mission Touring COMEX → accepter + délai 60 + assign DE-001 (arrière-plan, gaté).
+    await acceptTouringBg(mission_id, mission?.source || null, actor?.id || null, supabase)
 
     // Mission Allianz/mondial → accepter l'affectation dans Hexalite (API, arrière-plan).
     if (mission?.source === 'mondial') {

@@ -219,7 +219,7 @@ const SET_ECHO_FIELDS = [
   'TO_COD_ADRESSE', 'TO_NOM', 'TO_RUE', 'TO_NUM_RUE', 'TO_CP', 'TO_LOC', 'ADR_DEPOT_CID_INTV',
 ]
 
-export type ComexOperType = 'onRoad' | 'onSpot'
+export type ComexOperType = 'accept' | 'onRoad' | 'onSpot'
 
 /** Format COMEX pour operDate : "YYYY-MM-DDTHH:mm:ss.000" (heure locale, sans TZ). */
 export function comexOperDate(d: Date): string {
@@ -249,4 +249,49 @@ export async function pushComexOperation(
       : v
   }
   return comexRest(session, 'Mission/detail/set', payload)
+}
+
+/** Règle le délai (ETA « sur place ») en minutes : POST setEta { TPS_ONSPOT_EXT }. */
+export async function setComexEta(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  minutes: number,
+): Promise<any> {
+  return comexRest(session, 'Mission/detail/setEta', { ...keys, TPS_ONSPOT_EXT: minutes })
+}
+
+/** Assigne le camion (patrouille) : POST assignComex { REF_PATROL }. « 001 » = Verviers DE-001. */
+export async function assignComexPatrol(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  refPatrol: string,
+): Promise<any> {
+  return comexRest(session, 'Mission/detail/assignComex', { ...keys, REF_PATROL: refPatrol })
+}
+
+/** Code REF_PATROL du camion COMEX à assigner par défaut (Verviers DE-001). */
+export const DEFAULT_REF_PATROL = '001'
+
+/**
+ * Workflow d'acceptation Touring (session DISPATCH D68267), dans l'ordre capturé :
+ *   1. accept  (detail/set operType=accept)  → 03→04
+ *   2. setEta  (TPS_ONSPOT_EXT = etaMinutes)  → délai
+ *   3. assign  (assignComex REF_PATROL)       → Verviers DE-001
+ * Best-effort : on log chaque étape, on ne throw pas au milieu.
+ */
+export async function acceptTouringMission(
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  opts?: { etaMinutes?: number; refPatrol?: string; acceptedAt?: Date },
+): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string }> {
+  const steps: Record<string, boolean> = { accept: false, eta: false, assign: false }
+  try {
+    const session = await loginComex('dispatch')
+    const operDate = comexOperDate(opts?.acceptedAt || new Date())
+    await pushComexOperation(session, keys, 'accept', operDate);       steps.accept = true
+    await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
+    await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
+    return { ok: true, steps }
+  } catch (e: any) {
+    return { ok: false, steps, error: e?.message || 'erreur' }
+  }
 }
