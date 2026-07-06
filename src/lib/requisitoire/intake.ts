@@ -203,3 +203,40 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
 
   return summary
 }
+
+/**
+ * Re-évalue les candidats des réquisitoires EN ATTENTE (pending / to_verify, non
+ * encore attachés) avec la logique de matching COURANTE — sans re-extraire le PDF
+ * (on réutilise `extracted`). Utile quand on améliore l'algo (ex : ciblage adresse
+ * pour les réquisitoires sans plaque) : les anciens sont re-scorés et la bonne
+ * fiche est enfin proposée. Olivier 2026-07-06.
+ */
+export async function rematchPendingRequisitoires(): Promise<{ scanned: number; updated: number }> {
+  const sb = createAdminClient()
+  const { data: rows } = await sb.from('requisitoire_intake')
+    .select('id, extracted, status')
+    .in('status', ['pending', 'to_verify'])
+    .is('matched_mission_id', null)
+    .order('received_at', { ascending: false })
+    .limit(300)
+
+  let updated = 0
+  for (const row of (rows || [])) {
+    const ex = (row as any).extracted
+    if (!ex) continue
+    try {
+      const match = await findRequisitoireCandidates(sb, ex)
+      await sb.from('requisitoire_intake').update({
+        candidates:         match.candidates as any,
+        confidence:         match.confidence,
+        // On ne (ré)attache automatiquement que sur confidence 'high' (plaque/VIN) ;
+        // sinon le candidat est simplement PROPOSÉ dans la liste à vérifier.
+        matched_mission_id: match.confidence === 'high' ? (match.best?.mission_id ?? null) : null,
+      }).eq('id', (row as any).id)
+      updated++
+    } catch (e: any) {
+      console.error('[requisitoire rematch]', (row as any).id, e?.message)
+    }
+  }
+  return { scanned: rows?.length ?? 0, updated }
+}

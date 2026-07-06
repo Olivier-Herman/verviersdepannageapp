@@ -11,7 +11,7 @@
 import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
-import { pollRequisitoires } from '@/lib/requisitoire/intake'
+import { pollRequisitoires, rematchPendingRequisitoires } from '@/lib/requisitoire/intake'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -30,7 +30,11 @@ export async function POST(req: Request) {
 
   try {
     const summary = await pollRequisitoires({ top })
-    return NextResponse.json({ ok: true, ...summary })
+    // Re-score aussi les réquisitoires déjà en attente avec la logique courante
+    // (ex : nouveau ciblage adresse) → les anciens non résolus profitent des
+    // améliorations sans re-extraction.
+    const rematch = await rematchPendingRequisitoires()
+    return NextResponse.json({ ok: true, ...summary, rematch })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Erreur' }, { status: 500 })
   }
