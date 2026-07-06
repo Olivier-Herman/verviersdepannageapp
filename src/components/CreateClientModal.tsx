@@ -38,7 +38,7 @@ export default function CreateClientModal({ initialName, gmKey, onClose, onCreat
   // VIES (validation TVA Europe)
   const [viesLoading, setViesLoading] = useState(false)
   const [viesResult, setViesResult]   = useState<null | {
-    valid: boolean; name?: string; address?: string; error?: string
+    valid: boolean; unverified?: boolean; name?: string; address?: string; error?: string
   }>(null)
 
   async function checkVies() {
@@ -290,7 +290,9 @@ export default function CreateClientModal({ initialName, gmKey, onClose, onCreat
                 <div className={`mt-2 px-3 py-2 rounded-lg border text-xs ${
                   viesResult.valid
                     ? 'bg-success-soft border-success text-success'
-                    : 'bg-critical-soft border-critical text-critical'
+                    : viesResult.unverified
+                      ? 'bg-warning-soft border-warning text-warning'
+                      : 'bg-critical-soft border-critical text-critical'
                 }`}>
                   {viesResult.valid ? (
                     <>
@@ -298,6 +300,12 @@ export default function CreateClientModal({ initialName, gmKey, onClose, onCreat
                       {viesResult.name && <p className="text-ink">Entreprise : <strong>{viesResult.name}</strong></p>}
                       {viesResult.address && <p className="text-ink-secondary">{viesResult.address}</p>}
                       <p className="text-ink-muted italic mt-1">Nom + adresse écrasés avec les données officielles VIES.</p>
+                    </>
+                  ) : viesResult.unverified ? (
+                    <>
+                      <p className="font-semibold">⏳ Non confirmé pour l&apos;instant</p>
+                      <p>{viesResult.error || 'Service VIES momentanément indisponible.'}</p>
+                      <p className="text-ink-muted italic mt-1">Le numéro n&apos;est pas forcément faux — tu peux créer le client quand même.</p>
                     </>
                   ) : (
                     <p>⚠ {viesResult.error || 'TVA invalide'}</p>

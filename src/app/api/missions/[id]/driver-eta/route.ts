@@ -73,11 +73,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       .select('id, incident_lat, incident_lng')
       .eq('id', params.id)
       .single()
-    if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
-    if (mission.incident_lat == null || mission.incident_lng == null) {
-      return NextResponse.json({ error: 'Lieu d\'incident sans coordonnees' }, { status: 400 })
+    // Olivier 2026-07-06 : on NE bloque plus l'assignation quand l'ETA est
+    // incalculable (mission introuvable OU lieu sans coordonnees). Avant, on
+    // renvoyait une erreur qui masquait TOUTE la liste cote DriverPickerModal
+    // (« impossible de trouver un chauffeur »). Desormais : incident reste null,
+    // on liste tous les chauffeurs sans ETA, le dispatcher choisit a la main.
+    if (mission && mission.incident_lat != null && mission.incident_lng != null) {
+      incident = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
     }
-    incident = { lat: Number(mission.incident_lat), lng: Number(mission.incident_lng) }
   }
 
   // Chauffeurs disponibles pour assignation : users actifs avec role 'driver'
@@ -122,13 +125,21 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const onSchedule = (!!d.schedule_day && isInDaySchedule(nowDt)) || (!!d.schedule_night && isInNightSchedule(nowDt))
     return isFresh || onSchedule   // en service
   }
-  const available = drivers.filter(isAvailable)
-  const matrixEtas = await getDrivingMatrix(
-    available.map((d: any) => ({ lat: Number(d.last_location_lat), lng: Number(d.last_location_lng) })),
-    incident,
-  )
+  // ETA calculee uniquement si on a des coords incident ET des chauffeurs dispos.
+  // Si incident inconnu OU si ORS echoue, on continue sans ETA (liste complete).
+  const available = incident ? drivers.filter(isAvailable) : []
   const etaToIncidentByDriver = new Map<string, number>()
-  available.forEach((d: any, i: number) => { const r = matrixEtas[i]; if (r) etaToIncidentByDriver.set(d.id, truckCapMinutes(r)) })
+  if (incident && available.length > 0) {
+    try {
+      const matrixEtas = await getDrivingMatrix(
+        available.map((d: any) => ({ lat: Number(d.last_location_lat), lng: Number(d.last_location_lng) })),
+        incident,
+      )
+      available.forEach((d: any, i: number) => { const r = matrixEtas[i]; if (r) etaToIncidentByDriver.set(d.id, truckCapMinutes(r)) })
+    } catch (e: any) {
+      console.error('[driver-eta] matrice ORS echouee — liste sans ETA:', e?.message || e)
+    }
+  }
 
   const enriched = await Promise.all(drivers.map(async (d) => {
     const locAge = d.location_updated_at
