@@ -44,7 +44,7 @@
  <p>Il couvre 7 fonctions communes à tous + ~35 fonctions Dispatcher (vue globale, gestion missions, création, restitution).</p>
  <p>📱 Interface optimisée bureau (écran large) mais utilisable aussi en mobile.</p>
  <p>🆘 <strong>En cas de problème</strong> : contacte un admin ou Olivier directement.</p>
- <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 28/05/2026</p>
+ <p style="margin-top: 20pt; color: #9ca3af; font-size: 9pt;">Version du document : 06/07/2026</p>
  </div>
 </div>
 
@@ -104,6 +104,7 @@
  <tr><td>85</td><td><a href="#fn-85" style="color:inherit;text-decoration:none">Restituer un véhicule en parc (3 modes)</a></td><td>p. 18</td></tr>
  <tr><td>86</td><td><a href="#fn-86" style="color:inherit;text-decoration:none">Gérer une mission SNC en zone Transit</a></td><td>p. 19</td></tr>
  <tr><td>87</td><td><a href="#fn-87" style="color:inherit;text-decoration:none">Créer une relivraison (REL) depuis fiche dispatch</a></td><td>p. 19</td></tr>
+ <tr><td>87b</td><td><a href="#fn-87b" style="color:inherit;text-decoration:none">Véhicule roulant / non roulant en parc</a></td><td>p. 20</td></tr>
  <tr><td>88</td><td><a href="#fn-88" style="color:inherit;text-decoration:none">Voir les missions liées (REM parente / REL enfant)</a></td><td>p. 20</td></tr>
  </table>
 
@@ -256,18 +257,19 @@
 </div>
 
 <div class="function">
- <h3 id="fn-52"><span class="num">52</span>Filtrer par statut</h3>
- <p class="desc">Menu de gauche avec onglets pour naviguer dans les sous-statuts.</p>
+ <h3 id="fn-52"><span class="num">52</span>Filtrer par statut (onglets)</h3>
+ <p class="desc">Onglets en haut du dispatch pour naviguer dans les sous-statuts.</p>
  <p class="label">Onglets disponibles</p>
  <ul>
- <li><strong>En attente</strong> : missions à confirmer ou ignorer</li>
- <li><strong>En commande</strong> : missions confirmées en attente de chauffeur</li>
+ <li><strong>En commande</strong> : nouvelles commandes reçues, <strong>à valider</strong> (ou refuser)</li>
+ <li><strong>En attente</strong> <em>(onglet par défaut)</em> : commandes validées en attente d'assignation. Une bande <strong>« 🆕 À valider »</strong> en tête reprend aussi <strong>toutes les commandes à valider</strong> → tu valides <em>et</em> assignes depuis le même écran, sans changer d'onglet.</li>
+ <li><strong>📅 RDV</strong> : interventions <strong>planifiées à plus de 12h</strong> (rendez-vous programmés). Elles sortent des onglets du jour pour ne pas les polluer ; une fois validée, une commande future bascule ici.</li>
  <li><strong>Assignées</strong> : un chauffeur a été assigné</li>
  <li><strong>En cours</strong> : chauffeur en intervention</li>
- <li><strong>En parc</strong> : véhicules dans le parc en attente</li>
+ <li><strong>À Relivrer</strong> : véhicules en parc (zone K) à relivrer</li>
  <li><strong>À facturer</strong> : missions terminées</li>
  </ul>
- <div class="tip">💡 Compteurs sur chaque onglet pour avoir une vision rapide.</div>
+ <div class="tip">💡 Compteurs sur chaque onglet pour une vision rapide. Les commandes du jour restent visibles ; celles à +12h vont dans « RDV ».</div>
 </div>
 
 <div class="function">
@@ -610,6 +612,23 @@
 </div>
 
 <div class="function">
+ <h3 id="fn-87b"><span class="num">87b</span>Véhicule roulant / non roulant en parc</h3>
+ <p class="desc">À la mise en parc, le chauffeur indique obligatoirement si le véhicule est <strong>roulant</strong> ou <strong>non roulant</strong>. L'info est reportée visiblement pour toi, et tu peux la corriger.</p>
+ <p class="label">Où la voir / la modifier</p>
+ <ol>
+ <li>Sur la <strong>fiche</strong> d'un véhicule en parc, dans le bandeau « Position parc », à côté de l'étiquette porte-clé, un picto :
+ <ul>
+ <li>🚗 <strong>Roulant</strong> (vert)</li>
+ <li>🚗 barré <strong>Non roulant</strong> (rouge)</li>
+ <li>🚗 grisé <strong>Non défini</strong> (ancienne fiche ou mise en parc forcée par le dispatch)</li>
+ </ul>
+ </li>
+ <li>Un <strong>clic sur le picto</strong> le fait cycler : Non défini → Roulant → Non roulant. L'enregistrement est <strong>automatique</strong> (pas besoin de « Sauvegarder »).</li>
+ <li>Dans la liste <strong>« À Relivrer »</strong>, le picto apparaît entre <em>Source</em> et <em>Dossier</em> pour repérer d'un coup d'œil les véhicules non roulants.</li>
+ </ol>
+</div>
+
+<div class="function">
  <h3 id="fn-88"><span class="num">88</span>Voir les missions liées (REM ↔ REL)</h3>
  <p class="desc">Visualiser la chaîne complète d'une mission REM+REL.</p>
  <p class="label">Comment faire</p>
@@ -625,7 +644,7 @@
 <hr style="border: none; border-top: 1pt solid #d1d5db; margin: 24pt 0 12pt 0;">
 
 <div style="text-align: center; font-size: 9pt; color: #9ca3af; padding: 8pt;">
- <p style="margin: 0;">Mode d'emploi VD Soft — Profil Dispatcher · Version du 28/05/2026</p>
+ <p style="margin: 0;">Mode d'emploi VD Soft — Profil Dispatcher · Version du 06/07/2026</p>
  <p style="margin: 4pt 0 0 0;">En cas de bug ou suggestion, contacte un admin.</p>
 </div>
 
