@@ -20,9 +20,10 @@ import { sendPushToRole } from '@/lib/push'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-// Statuts déjà identifiés (Olivier 2026-07-06) : 04 acceptée, 06 sur place,
-// 07 terminée. Un code HORS de cette liste = candidat "à valider" (jaune).
-const KNOWN_STATUTS = new Set(['04', '06', '07'])
+// Statuts COMEX (confirmés Olivier 2026-07-06) : 03 = À VALIDER (carte noire +
+// décompte 7 min), 04 acceptée, 06 sur place, 07 terminée.
+const STATUT_A_VALIDER = '03'
+const KNOWN_STATUTS = new Set(['03', '04', '06', '07'])
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -42,25 +43,34 @@ export async function GET(req: Request) {
     const statuts: Record<string, number> = {}
     for (const m of missions) statuts[m.COD_STATUT_MTR] = (statuts[m.COD_STATUT_MTR] || 0) + 1
 
-    // Statuts inconnus (≠ 04/06/07) → très probablement le "à valider" jaune.
-    const unknown = missions.filter(m => !KNOWN_STATUTS.has(m.COD_STATUT_MTR))
+    // Missions à VALIDER (statut 03 = 7 min pour accepter) + tout statut vraiment
+    // inconnu (nouveau code éventuel).
+    const aValider = missions.filter(m => m.COD_STATUT_MTR === STATUT_A_VALIDER)
+    const unknown  = missions.filter(m => !KNOWN_STATUTS.has(m.COD_STATUT_MTR))
 
-    console.log(`[cron touring-comex] mode=${mode} total=${missions.length} statuts=${JSON.stringify(statuts)} unknown=${unknown.length}`)
+    console.log(`[cron touring-comex] mode=${mode} total=${missions.length} statuts=${JSON.stringify(statuts)} aValider=${aValider.length} unknown=${unknown.length}`)
 
     if (mode === 'observe') {
-      // On alerte le superadmin dès qu'un statut inconnu (à valider) apparaît,
-      // pour capturer le code ET réagir manuellement dans les 7 min.
+      // Alerte superadmin : mission(s) à valider (urgence 7 min) ou statut inconnu.
+      if (aValider.length > 0) {
+        const first = aValider[0]
+        await sendPushToRole(['superadmin'], {
+          title: `🟡 ${aValider.length} mission(s) Touring À VALIDER (7 min)`,
+          body:  `ex ${first.NUM_PLAQUE} ${first.LIB_GAR} ${first.LOC || ''} (dossier ${first.CID_DOS}).`,
+          url:   '/dispatch',
+        }).catch(() => {})
+      }
       if (unknown.length > 0) {
         const codes = Array.from(new Set(unknown.map(m => m.COD_STATUT_MTR))).join(', ')
-        const first = unknown[0]
         await sendPushToRole(['superadmin'], {
-          title: `🟡 Touring COMEX : statut inconnu ${codes}`,
-          body:  `${unknown.length} mission(s) — ex ${first.NUM_PLAQUE} ${first.LOC || ''} (dossier ${first.CID_DOS}). Code à confirmer = "à valider".`,
+          title: `❓ Touring COMEX : statut inconnu ${codes}`,
+          body:  `${unknown.length} mission(s) avec un code statut non répertorié.`,
           url:   '/api/touring/comex-debug',
         }).catch(() => {})
       }
       return NextResponse.json({
         ok: true, mode, total: missions.length, statuts,
+        aValider: aValider.length,
         unknownStatuts: Array.from(new Set(unknown.map(m => m.COD_STATUT_MTR))),
       })
     }
