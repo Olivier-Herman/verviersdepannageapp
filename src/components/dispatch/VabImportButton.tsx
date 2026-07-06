@@ -3,13 +3,14 @@
 // src/components/dispatch/VabImportButton.tsx
 //
 // Bouton "Import VAB" dans la sticky bar /dispatch. Au clic :
-// 1. Appel preview → modal affiche missions VAB visibles + flag existantes
-// 2. User clique "Déclencher l'envoi" → appel send → emails partent
-// 3. Les emails arrivent dans la boite -> parser existant -> nouvelles missions visibles dans /dispatch
+// 1. Appel preview → modal affiche missions VAB visibles + flag déjà importées
+// 2. User clique "Déclencher l'import" → appel send → INSERT direct dans
+//    incoming_missions (pas d'email intermédiaire). Chaque mission est reportée :
+//    créée / fusionnée dans une fiche existante / sautée / échec.
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react'
+import { X, RefreshCw, CheckCircle2 } from 'lucide-react'
 
 interface PreviewItem {
   missionNumber:   string
@@ -37,8 +38,11 @@ interface SendResponse {
   already:   number
   attempted: number
   success:   number
+  inserted?: number
+  merged?:   number
+  skipped?:  number
   failed:    number
-  results: Array<{ missionNumber: string; ok: boolean; error?: string }>
+  results: Array<{ missionNumber: string; ok: boolean; action?: 'inserted' | 'merged' | 'skipped' | 'failed'; mergedInto?: string; error?: string }>
 }
 
 interface Props {
@@ -244,29 +248,36 @@ export default function VabImportButton({ onImportDone }: Props) {
                 <>
                   <div className="bg-success-soft border-2 border-success/30 rounded-xl p-4 text-center">
                     <CheckCircle2 size={32} className="mx-auto text-success mb-2" />
-                    <p className="text-success font-bold">Envoi terminé</p>
+                    <p className="text-success font-bold">Import terminé</p>
                     <p className="text-ink-secondary text-sm mt-1">
-                      {send.success}/{send.attempted} mission{send.attempted > 1 ? 's' : ''} envoyée{send.success > 1 ? 's' : ''}
+                      <strong>{send.inserted ?? send.success}</strong> créée{(send.inserted ?? send.success) > 1 ? 's' : ''} dans le dispatch
+                      {(send.merged ?? 0) > 0 && <> · {send.merged} fusionnée{send.merged! > 1 ? 's' : ''}</>}
+                      {(send.skipped ?? 0) > 0 && <> · {send.skipped} sautée{send.skipped! > 1 ? 's' : ''}</>}
                     </p>
                     <p className="text-ink-faint text-xs mt-2">
-                      Les emails vont arriver dans la boîte et créeront automatiquement les missions dans /dispatch.
+                      Les missions créées sont directement visibles dans /dispatch (onglet « En attente »).
                     </p>
                   </div>
 
-                  {send.failed > 0 && (
-                    <div className="bg-critical-soft border border-critical/30 rounded-xl p-3">
-                      <p className="text-critical text-sm font-semibold mb-2 flex items-center gap-1.5">
-                        <AlertCircle size={14} /> {send.failed} échec{send.failed > 1 ? 's' : ''}
-                      </p>
-                      <div className="space-y-1 text-xs">
-                        {send.results.filter(r => !r.ok).map(r => (
-                          <p key={r.missionNumber} className="text-critical/80">
-                            <span className="font-mono">{r.missionNumber}</span> — {r.error}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Détail par mission — on montre TOUT (créée / fusionnée / sautée / échec)
+                      pour ne plus jamais avoir un « OK » opaque où rien n'arrive. */}
+                  <div className="space-y-1.5 text-xs">
+                    {send.results.map(r => {
+                      const meta = r.action === 'inserted' ? { icon: '✅', cls: 'text-success', txt: 'créée dans le dispatch' }
+                        : r.action === 'merged'   ? { icon: '🔗', cls: 'text-amber-600', txt: `fusionnée dans une fiche existante${r.mergedInto ? ` (${r.mergedInto})` : ''}` }
+                        : r.action === 'skipped'  ? { icon: '⏭️', cls: 'text-ink-muted', txt: r.error || 'sautée' }
+                        :                            { icon: '⚠️', cls: 'text-critical/80', txt: r.error || 'échec' }
+                      return (
+                        <div key={r.missionNumber} className="flex items-start gap-2 bg-surface-2 border rounded-lg px-2.5 py-1.5">
+                          <span>{meta.icon}</span>
+                          <span className="min-w-0">
+                            <span className="font-mono text-ink">{r.missionNumber}</span>
+                            <span className={`ml-1.5 ${meta.cls}`}>— {meta.txt}</span>
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </>
               )}
             </div>
