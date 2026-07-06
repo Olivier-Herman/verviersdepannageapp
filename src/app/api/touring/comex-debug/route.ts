@@ -56,9 +56,17 @@ export async function GET() {
     const statuts: Record<string, number> = {}
     for (const m of missions) statuts[m.COD_STATUT_MTR] = (statuts[m.COD_STATUT_MTR] || 0) + 1
 
+    // Missions à statut INCONNU (≠ 04/06/07) = "à valider" (carte noire + décompte
+    // 7 min d'après Matthieu). On dumpe le BRUT complet pour capturer d'un coup le
+    // code statut ET le champ du décompte (deadline / temps restant).
+    const KNOWN = new Set(['04', '06', '07'])
+    const unknownRaw = missions.filter(m => !KNOWN.has(m.COD_STATUT_MTR))
+
     return NextResponse.json({
       ok: true, login: comex.login, total: missions.length,
       statuts,                     // ex {"04":2,"06":1,"07":16} — un code inconnu = "à valider"
+      unknownStatuts: Array.from(new Set(unknownRaw.map(m => m.COD_STATUT_MTR))),
+      unknownRaw,                  // brut complet des missions "à valider" (si présentes)
       preview, dryRunFiche,        // dryRunFiche = fiche VD Soft mappée (non insérée)
     })
   } catch (e: any) {
