@@ -790,13 +790,18 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
         for (const d of dossiers)  { orParts.push(`dossier_number.eq.${d}`); orParts.push(`external_id.ilike.${d}%`) }
         for (const c of commandes) orParts.push(`external_id.eq.${c}`)
         const { data: dup } = await supabase.from('incoming_missions')
-          .select('id, mission_number')
+          .select('id, mission_number, mission_type')
           .ilike('source', 'touring')
           .or(orParts.join(','))
           .not('status', 'in', '("ignored","cancelled")')
           .limit(1)
-        if (dup && dup.length) {
-          console.log(`[Processor] Touring déjà géré (COMEX/email) dossier=${dossiers.join(',')||commandes.join(',')} → skip Claude (fiche #${dup[0].mission_number})`)
+        // On ne saute le parsing QUE si la fiche existante est déjà un REMORQUAGE :
+        // rien de neuf à appliquer → économie d'IA. Si elle est encore un dépannage,
+        // le 2e mail peut être une ESCALADE DSP→REM (Touring clôture le DSP en REM,
+        // qui côté COMEX apparaît directement en 04) : on laisse passer pour que la
+        // requalification (complète destination + type) tourne. Olivier 2026-07-06.
+        if (dup && dup.length && dup[0].mission_type === 'remorquage') {
+          console.log(`[Processor] Touring déjà géré (REM, COMEX/email) dossier=${dossiers.join(',')||commandes.join(',')} → skip Claude (fiche #${dup[0].mission_number})`)
           if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
           await markAsRead(token, messageId)
           return { status: 'skipped', reason: `Touring déjà importé (${dossiers[0] || commandes[0]}) — pas de parsing Claude` }
