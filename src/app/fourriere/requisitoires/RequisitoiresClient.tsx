@@ -208,7 +208,7 @@ function ConfidenceBadge({ c }: { c: string | null }) {
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[k] || map.none}`}>{label[k] || label.none}</span>
 }
 
-function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify }: {
+function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify, onDelete }: {
   item: Item
   onAttach: (id: string, opts: AttachOpts) => void
   onIgnore: (id: string) => void
