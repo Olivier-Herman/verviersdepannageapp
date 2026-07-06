@@ -339,6 +339,12 @@ export default function AmendesClient({ user, drivers = [] }: { user: any; drive
                 <p className="text-amber-700 text-xs mt-1">
                   Aucune mission VD avec cette dépanneuse autour de cette date. Vérifie la plaque saisie (doit être celle de la <strong>dépanneuse VD</strong>, pas du véhicule remorqué) ou choisis <strong>Indéterminé</strong> ci-dessous.
                 </p>
+                {(form.suggestion as any)?.debug && (
+                  <p className="text-amber-600 text-[10px] mt-2 font-mono break-words">
+                    diag: dépanneuse {(form.suggestion as any).debug.truck ? `« ${(form.suggestion as any).debug.truck.name} » trouvée` : 'INTROUVABLE (plaque ' + (form.suggestion as any).debug.plate + ' absente de /admin/trucks)'} · missions/truck {(form.suggestion as any).debug.byTruckCount} · missions/plaque {(form.suggestion as any).debug.byVehicleCount}
+                    {((form.suggestion as any).debug.truckErr || (form.suggestion as any).debug.byTruckErr || (form.suggestion as any).debug.byVehicleErr) ? ` · ERR: ${(form.suggestion as any).debug.truckErr || (form.suggestion as any).debug.byTruckErr || (form.suggestion as any).debug.byVehicleErr}` : ''}
+                  </p>
+                )}
                 <button onClick={() => setForm(f => ({ ...f, selectedDriverId: null, selectedMissionId: null, manualPick: false }))}
                   className={`mt-3 w-full p-3 rounded-xl border-2 transition ${
                     form.selectedDriverId === null ? 'border-amber-600 bg-amber-100' : 'border-amber-300 bg-white hover:bg-amber-100'

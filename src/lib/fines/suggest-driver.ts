@@ -33,6 +33,17 @@ export interface SuggestDriverResult {
   mission_id:   string | null
   confidence:   'high' | 'medium' | 'low' | 'none'
   candidates:   DriverCandidate[]
+  /** Diagnostic (pourquoi 0 candidat ?) : truck trouvé, comptes, erreurs SQL. */
+  debug?: {
+    plate: string
+    truck: { id: string; name: string } | null
+    truckErr: string | null
+    byTruckCount: number
+    byTruckErr: string | null
+    byVehicleCount: number
+    byVehicleErr: string | null
+    missionsWithDriver: number
+  }
 }
 
 /**
@@ -64,17 +75,20 @@ export async function suggestDriverForFine(
   const before = new Date(date.getTime() - sixHoursMs).toISOString()
   const after  = new Date(date.getTime() + sixHoursMs).toISOString()
 
+  const dbg = { truckErr: null as string | null, byTruckCount: 0, byTruckErr: null as string | null, byVehicleCount: 0, byVehicleErr: null as string | null }
+
   // 1) Lookup truck VD par plaque
-  const { data: truck } = await sb
+  const { data: truck, error: truckErr } = await sb
     .from('trucks')
     .select('id, name')
     .ilike('plate', normalizedPlate)
     .maybeSingle()
+  dbg.truckErr = truckErr?.message || null
 
   let missions: any[] = []
   if (truck) {
     // 2) Missions qui utilisaient ce truck autour de la date
-    const { data: byTruck } = await sb
+    const { data: byTruck, error: byTruckErr } = await sb
       .from('incoming_missions')
       .select(`
         id, mission_number, external_id, vehicle_plate, truck_id,
@@ -88,12 +102,14 @@ export async function suggestDriverForFine(
       .lte('received_at', after)
       .limit(20)
     missions = byTruck || []
+    dbg.byTruckErr = byTruckErr?.message || null
+    dbg.byTruckCount = missions.length
   }
 
   // 3) Fallback : essai sur vehicle_plate (cas saisie erronee — plaque du
   //    vehicule client au lieu de la depanneuse) si rien trouve via truck.
   if (missions.length === 0) {
-    const { data: byVehicle } = await sb
+    const { data: byVehicle, error: byVehicleErr } = await sb
       .from('incoming_missions')
       .select(`
         id, mission_number, external_id, vehicle_plate, truck_id,
@@ -107,6 +123,8 @@ export async function suggestDriverForFine(
       .lte('received_at', after)
       .limit(20)
     missions = byVehicle || []
+    dbg.byVehicleErr = byVehicleErr?.message || null
+    dbg.byVehicleCount = missions.length
   }
 
   const candidates: DriverCandidate[] = []
@@ -169,5 +187,15 @@ export async function suggestDriverForFine(
     mission_id:  best?.mission_id  || null,
     confidence,
     candidates,
+    debug: {
+      plate: normalizedPlate,
+      truck: truck ? { id: truck.id, name: truck.name } : null,
+      truckErr: dbg.truckErr,
+      byTruckCount: dbg.byTruckCount,
+      byTruckErr: dbg.byTruckErr,
+      byVehicleCount: dbg.byVehicleCount,
+      byVehicleErr: dbg.byVehicleErr,
+      missionsWithDriver: candidates.length,
+    },
   }
 }
