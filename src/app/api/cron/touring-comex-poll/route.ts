@@ -15,6 +15,7 @@
 
 import { NextResponse }  from 'next/server'
 import { loginComex, listComexMissions } from '@/lib/touring/comex'
+import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole } from '@/lib/push'
 
 export const dynamic     = 'force-dynamic'
@@ -24,6 +25,37 @@ export const maxDuration = 60
 // décompte 7 min), 04 acceptée, 05 en route, 06 sur place, 07 terminée.
 const STATUT_A_VALIDER = '03'
 const KNOWN_STATUTS = new Set(['03', '04', '05', '06', '07'])
+
+// SLA : si le chauffeur n'a pas pointé « sur place » 50 min après l'acceptation,
+// on force le onSpot dans COMEX (operDate = accept + rand(20..45min), backdaté).
+const SLA_ONSPOT_AFTER_MIN = 50
+// Statuts « morts » : on ne force PAS le sur place dessus (annulée, doublon, etc.).
+const DEAD_STATUSES = ['cancelled', 'rejected', 'deleted', 'ignored', 'duplicate', 'error', 'parse_error', 'not_requisitoire', 'not_created']
+
+// Auto-onSpot des missions Touring dont le SLA arrive à échéance (mode import).
+async function runTouringSlaSweep(): Promise<{ scanned: number; pushed: number }> {
+  const sb = createAdminClient()
+  const now = Date.now()
+  const cutoff = new Date(now - SLA_ONSPOT_AFTER_MIN * 60_000).toISOString()
+  const floor  = new Date(now - 6 * 60 * 60_000).toISOString()   // pas les rows anciennes (>6h)
+  const { data, error } = await sb.from('incoming_missions')
+    .select('id, status')
+    .eq('source', 'touring')
+    .not('touring_accepted_at', 'is', null)
+    .is('touring_onspot_at', null)
+    .lte('touring_accepted_at', cutoff)
+    .gte('touring_accepted_at', floor)
+    .not('status', 'in', `(${DEAD_STATUSES.join(',')})`)
+  if (error || !Array.isArray(data) || data.length === 0) return { scanned: 0, pushed: 0 }
+
+  const { syncTouringOnSpot } = await import('@/lib/touring/sync')
+  let pushed = 0
+  for (const m of data) {
+    try { if (await syncTouringOnSpot(sb, (m as any).id)) pushed++ }
+    catch (e: any) { console.warn('[cron touring-sla] onSpot', (m as any).id, e?.message) }
+  }
+  return { scanned: data.length, pushed }
+}
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -88,7 +120,13 @@ export async function GET(req: Request) {
         url:   '/dispatch',
       }).catch(() => {})
     }
-    return NextResponse.json(result)
+
+    // SLA : force le « sur place » des missions acceptées depuis ≥50 min sans
+    // pointage chauffeur (operDate backdaté ≤ accept+45min).
+    const sla = await runTouringSlaSweep().catch((e) => { console.warn('[cron touring-sla]', e?.message); return { scanned: 0, pushed: 0 } })
+    if (sla.pushed > 0) console.log(`[cron touring-sla] auto-onSpot poussé=${sla.pushed}/${sla.scanned}`)
+
+    return NextResponse.json({ ...result, sla })
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })

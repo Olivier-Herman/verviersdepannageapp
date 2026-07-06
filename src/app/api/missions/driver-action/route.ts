@@ -543,6 +543,27 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── Propagation Touring COMEX : en route / sur place (background, gaté) ────────
+  // on_way  → onRoad (05) · on_site → onSpot (06), avec l'HEURE RÉELLE du pointage.
+  // Idempotent + SLA gérés dans lib/touring/sync. Gaté par TOURING_COMEX_MODE=import
+  // (sinon no-op → on reste sur le mail/parse actuel). Olivier 2026-07-06.
+  if (mission.source === 'touring' && (action === 'on_way' || action === 'on_site')) {
+    const touringBackground = (async () => {
+      try {
+        const { syncTouringOnRoad, syncTouringOnSpot } = await import('@/lib/touring/sync')
+        const now = new Date()
+        if (action === 'on_way') await syncTouringOnRoad(supabase, mission_id, { at: now, actorId: actor.id })
+        else                     await syncTouringOnSpot(supabase, mission_id, { at: now, actorId: actor.id })
+      } catch (e: any) {
+        console.warn('[driver-action] touring sync exception:', e?.message)
+      }
+    })()
+    try {
+      const { waitUntil } = await import('@vercel/functions')
+      waitUntil(touringBackground)
+    } catch { await touringBackground }
+  }
+
   // ── Propagation Odoo : stage FSM + état véhicule (best effort, non bloquant) ──
   if (mission.odoo_task_id) {
     const stageName = ACTION_TO_FSM_STAGE[action]

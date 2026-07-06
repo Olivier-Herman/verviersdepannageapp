@@ -295,3 +295,40 @@ export async function acceptTouringMission(
     return { ok: false, steps, error: e?.message || 'erreur' }
   }
 }
+
+/**
+ * Pousse « en route » (onRoad, 05) côté COMEX via la session USER (patrouille
+ * D6826701). `at` optionnel = heure de l'action (peut être BACKDATÉE pour tenir
+ * le SLA : onRoad doit rester ≤ accept+10min et précéder le onSpot).
+ */
+export async function setTouringOnRoad(
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  opts?: { at?: Date },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = await loginComex('user')
+    await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()))
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'erreur' }
+  }
+}
+
+/**
+ * Pousse « sur place » (onSpot, 06) côté COMEX via la session USER. `at` optionnel
+ * = heure d'arrivée (vraie heure si le chauffeur pointe, sinon auto = accept +
+ * rand(20..45min) via le cron SLA). Doit être ≤ accept+45min.
+ * NB : COMEX exige que onRoad précède onSpot — l'appelant garantit l'ordre.
+ */
+export async function setTouringOnSpot(
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+  opts?: { at?: Date },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = await loginComex('user')
+    await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()))
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'erreur' }
+  }
+}
