@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AddressField from '@/components/AddressField'
 
 /**
@@ -29,6 +30,7 @@ export default function RelivraisonModalButton({
   /** Véhicule saisi sans levée de saisie confirmée → avertissement. */
   saisieWarning?: boolean
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [addr, setAddr] = useState(currentAddress || '')
   const [lat,  setLat]  = useState<number | null>(currentLat)
@@ -92,6 +94,13 @@ export default function RelivraisonModalButton({
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(j.error || 'Création de la relivraison échouée.'); return }
       setOpen(false)
+      // « Maintenant » = intention immédiate : on ouvre direct la fiche REL avec
+      // le sélecteur de chauffeur (?assign=1) pour assigner dans la foulée,
+      // au lieu de rester sur la fiche REM+REL parente.
+      if (j.mission_id) {
+        router.push(`/dispatch/${j.mission_id}?assign=1`)
+        return   // on garde busy pour éviter un double clic pendant la navigation
+      }
       onDone()
     } catch { setErr('Erreur réseau.') }
     finally { setBusy(null) }
