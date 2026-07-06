@@ -278,28 +278,36 @@ export default function AvanceFondsClient({ user }: { user: any }) {
   const handleSubmit = async () => {
     if (!form.photoFile) return
     setLoading(true); setError(null)
+    // Instrumentation : on préfixe l'erreur par l'étape qui casse pour pinpointer
+    // le « The string did not match the expected pattern » (source inconnue).
+    let stepLabel = 'init'
     try {
+      stepLabel = 'upload photo'
       const invoiceUrl = await uploadPhoto(form.photoFile)
+      stepLabel = 'préparation requête'
+      const payload = JSON.stringify({
+        plate:         normalizePlate(form.plate),
+        amountHtva:    form.amountHtva,
+        amountTvac:    form.amountTvac || undefined,
+        paymentMethod: form.paymentMethod,
+        invoiceUrl,
+        notes:         form.notes || undefined,
+        brandName:     form.brandName || undefined,
+        modelName:     form.modelName || undefined,
+        missionId:     missionId || undefined,
+      })
+      stepLabel = 'envoi serveur'
       const res = await fetch('/api/advances', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plate:         normalizePlate(form.plate),
-          amountHtva:    form.amountHtva,
-          amountTvac:    form.amountTvac || undefined,
-          paymentMethod: form.paymentMethod,
-          invoiceUrl,
-          notes:         form.notes || undefined,
-          brandName:     form.brandName || undefined,
-          modelName:     form.modelName || undefined,
-          missionId:     missionId || undefined,
-        }),
+        body:    payload,
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erreur')
       setStep('success')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue')
+    } catch (err: any) {
+      const raw = err?.message || String(err)
+      setError(`[${stepLabel}] ${err?.name ? err.name + ': ' : ''}${raw}`)
     } finally {
       setLoading(false)
     }
