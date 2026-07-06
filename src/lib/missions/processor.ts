@@ -774,6 +774,36 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       return { status: 'skipped', reason: 'Touring checklist annexé aux remarques (pas de fiche créée)' }
     }
 
+    // ── Garde-fou anti-doublon TOURING (COMEX = source principale, 0 IA) ──────
+    // L'acceptation COMEX déclenche l'envoi d'un mail Touring (« Assignation
+    // Email », parfois corps vide + PJ HTML nommée « 2026BE…_seq.html »). Si la
+    // fiche existe déjà (créée par COMEX ou un mail précédent du même dossier),
+    // on NE re-parse PAS avec Claude → économie d'IA. On ne parse (roue de
+    // secours) QUE si COMEX a raté la mission. Réfs : N° Dossier « 2026BE… » et
+    // N° Commande « …MA », cherchées dans sujet + corps + noms de PJ. Olivier 2026-07-06.
+    if (source === 'touring') {
+      const haystack = [subject, content.rawContent || '', ...attachments.map((a: any) => a?.name || '')].join(' ')
+      const dossiers = Array.from(new Set(Array.from(haystack.matchAll(/\b(20\d{2}BE\d{4,8})\b/gi)).map(m => m[1].toUpperCase())))
+      const commandes = Array.from(new Set(Array.from(haystack.matchAll(/\b(\d{8,12}MA)\b/gi)).map(m => m[1].toUpperCase())))
+      if (dossiers.length || commandes.length) {
+        const orParts: string[] = []
+        for (const d of dossiers)  { orParts.push(`dossier_number.eq.${d}`); orParts.push(`external_id.ilike.${d}%`) }
+        for (const c of commandes) orParts.push(`external_id.eq.${c}`)
+        const { data: dup } = await supabase.from('incoming_missions')
+          .select('id, mission_number')
+          .ilike('source', 'touring')
+          .or(orParts.join(','))
+          .not('status', 'in', '("ignored","cancelled")')
+          .limit(1)
+        if (dup && dup.length) {
+          console.log(`[Processor] Touring déjà géré (COMEX/email) dossier=${dossiers.join(',')||commandes.join(',')} → skip Claude (fiche #${dup[0].mission_number})`)
+          if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+          await markAsRead(token, messageId)
+          return { status: 'skipped', reason: `Touring déjà importé (${dossiers[0] || commandes[0]}) — pas de parsing Claude` }
+        }
+      }
+    }
+
     // Parser avec Claude
     console.log(`[Processor] step=parse_mission messageId=${msgIdShort} contentBytes=${content.pdfBase64?.length || content.textContent.length}`)
     let parsed
