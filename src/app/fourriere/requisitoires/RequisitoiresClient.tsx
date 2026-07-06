@@ -104,6 +104,14 @@ export default function RequisitoiresClient(props: {
     if (res.ok) { setMsg('Document écarté'); await load(tab) }
   }
 
+  async function requalify(id: string) {
+    setMsg('')
+    const res = await fetch(`/api/requisitoires/${id}/requalify`, { method: 'POST' })
+    const j = await res.json().catch(() => ({}))
+    if (res.ok) { setMsg(`✅ Requalifié en réquisitoire${j.candidates ? ` · ${j.candidates} fiche(s) proposée(s)` : ''}`); await load(tab) }
+    else setMsg(`⚠ ${j.error || 'Échec de la requalification'}`)
+  }
+
   async function moveAttached() {
     setMsg('')
     setRunning(true)
@@ -175,7 +183,7 @@ export default function RequisitoiresClient(props: {
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} />)}
+              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} onRequalify={requalify} />)}
             </div>
           )}
         </div>
@@ -195,11 +203,12 @@ function ConfidenceBadge({ c }: { c: string | null }) {
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[k] || map.none}`}>{label[k] || label.none}</span>
 }
 
-function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche }: {
+function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify }: {
   item: Item
   onAttach: (id: string, opts: AttachOpts) => void
   onIgnore: (id: string) => void
   onCreateFiche: (id: string) => void
+  onRequalify: (id: string) => void
 }) {
   const ex = item.extracted
   const isLevee = (item.doc_type || ex?.doc_type) === 'levee_saisie'
@@ -337,6 +346,30 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche }: {
 
       {item.status === 'attached' && item.matched_mission_id && (
         <div className="text-sm text-green-700 flex items-center gap-1"><Check size={14} /> Rattaché à une fiche</div>
+      )}
+
+      {/* Non-réquisitoire : requalifier (l'IA a mal classé) ou ignorer définitivement. */}
+      {item.status === 'not_requisitoire' && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => onRequalify(item.id)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition">
+            🔄 Requalifier en réquisitoire
+          </button>
+          <button onClick={() => onIgnore(item.id)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-sm font-semibold transition">
+            <X size={14} /> Ignorer
+          </button>
+        </div>
+      )}
+
+      {/* Ignoré : possibilité de le remettre en file (requalifier). */}
+      {item.status === 'ignored' && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => onRequalify(item.id)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition">
+            🔄 Requalifier en réquisitoire
+          </button>
+        </div>
       )}
     </div>
   )
