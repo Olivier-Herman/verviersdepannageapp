@@ -282,7 +282,12 @@ export default function NewMissionClient({
   const [assistedAddr,  setAssistedAddr]  = useState('')
 
   // ── Type + mission ────────────────────────────────────────────────────────
-  const [missionType,  setMissionType]  = useState('DSP')
+  // Olivier 2026-07-06 : aucun type pré-sélectionné. Avant, 'DSP' apparaissait
+  // sélectionné mais n'était pas "effectif" (userPickedType restait false tant
+  // qu'on ne cliquait pas) → confusion UI. L'user DOIT choisir le type.
+  // (Exception : sources Police pures → REM auto-piqué dans le useEffect ci-dessous,
+  //  car le type y est figé et l'auto-pick équivaut à un choix explicite.)
+  const [missionType,  setMissionType]  = useState('')
   // Affichage progressif des blocs (Olivier 2026-05-25 : "les bloc s affiche
   // au fur et a mesure de la completion"). Les flags latchent (passent a true
   // une fois la condition remplie et restent, meme si on revient en arriere
