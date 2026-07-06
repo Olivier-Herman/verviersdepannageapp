@@ -63,7 +63,12 @@ function tokens(v: string | null | undefined): string[] {
  * et les score. `sb` = client admin Supabase.
  */
 export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtract): Promise<MatchResult> {
-  const cols = 'id, mission_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, incident_address, incident_city, incident_at, status, dossier_number, created_at, archived_at'
+  const cols = 'id, mission_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, incident_address, incident_city, incident_at, status, dossier_number, source, created_at, archived_at'
+
+  // Un réquisitoire (saisie police) ne concerne QUE des fiches de source Police
+  // (saisie/accident/mal garée/SNC/AVP/rodéo…). On filtre là-dessus pour écarter
+  // le bruit (fiches assistance/privé à la même adresse ou date). Olivier 2026-07-06.
+  const POLICE = '%police%'
 
   const rowsById = new Map<string, any>()
   const addRows = (rows: any[] | null) => { for (const r of rows || []) if (r && !r.archived_at) rowsById.set(r.id, r) }
@@ -72,7 +77,7 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
   const since = new Date(Date.now() - 180 * 86_400_000).toISOString()
   {
     const { data } = await sb.from('incoming_missions').select(cols)
-      .is('archived_at', null).gte('created_at', since)
+      .is('archived_at', null).ilike('source', POLICE).gte('created_at', since)
       .order('created_at', { ascending: false }).limit(800)
     addRows(data)
   }
@@ -80,7 +85,7 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
   const vinTail = ex.vin ? last5(ex.vin) : ''
   if (vinTail.length >= 4) {
     const { data } = await sb.from('incoming_missions').select(cols)
-      .is('archived_at', null).ilike('vehicle_vin', `%${vinTail}`).limit(50)
+      .is('archived_at', null).ilike('source', POLICE).ilike('vehicle_vin', `%${vinTail}`).limit(50)
     addRows(data)
   }
   // 3. Ciblage plaque (contient) — best-effort, la normalisation fine se fait en JS.
@@ -88,7 +93,7 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
   if (plateCore.length >= 4) {
     const inner = plateCore.length > 2 ? plateCore.slice(1, -1) : plateCore
     const { data } = await sb.from('incoming_missions').select(cols)
-      .is('archived_at', null).ilike('vehicle_plate', `%${inner}%`).limit(50)
+      .is('archived_at', null).ilike('source', POLICE).ilike('vehicle_plate', `%${inner}%`).limit(50)
     addRows(data)
   }
   // 4. Ciblage ADRESSE (rue / code postal / ville) — attrape les fiches HORS de la
@@ -99,7 +104,7 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
   const addrTargets = Array.from(new Set(tokens(ex.adresse).filter(t => t.length >= 4))).slice(0, 5)
   for (const t of addrTargets) {
     const { data } = await sb.from('incoming_missions').select(cols)
-      .is('archived_at', null)
+      .is('archived_at', null).ilike('source', POLICE)
       .or(`incident_address.ilike.%${t}%,incident_city.ilike.%${t}%`)
       .order('created_at', { ascending: false }).limit(60)
     addRows(data)
