@@ -21,9 +21,9 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
 // Statuts COMEX (confirmés Olivier 2026-07-06) : 03 = À VALIDER (carte noire +
-// décompte 7 min), 04 acceptée, 06 sur place, 07 terminée.
+// décompte 7 min), 04 acceptée, 05 en route, 06 sur place, 07 terminée.
 const STATUT_A_VALIDER = '03'
-const KNOWN_STATUTS = new Set(['03', '04', '06', '07'])
+const KNOWN_STATUTS = new Set(['03', '04', '05', '06', '07'])
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -75,9 +75,20 @@ export async function GET(req: Request) {
       })
     }
 
-    // mode === 'import' : sera implémenté après confirmation du statut "à valider"
-    // (création des fiches actives, dédup sur NUM_COMMANDE vs email). Pas encore actif.
-    return NextResponse.json({ ok: true, mode, total: missions.length, statuts, note: 'import mode non implémenté' })
+    // mode === 'import' : crée les fiches VD Soft pour les missions À VALIDER (03),
+    // dédup NUM_COMMANDE vs email. (04/05/06 déjà gérées côté COMEX ; 07 exclue.)
+    const { runTouringImport } = await import('@/lib/touring/import')
+    const result = await runTouringImport({ mode: 'send' })
+    console.log(`[cron touring-comex] IMPORT total=${result.total} aValider=${result.aValider} created=${result.created} skipped=${result.skipped} failed=${result.failed}`)
+    // Notifie le dispatch quand de nouvelles fiches à valider sont créées.
+    if (result.created > 0) {
+      await sendPushToRole(['superadmin', 'admin', 'dispatcher'], {
+        title: `🟡 ${result.created} mission(s) Touring à valider`,
+        body:  `Importée(s) depuis COMEX (7 min pour valider). Onglet « En attente ».`,
+        url:   '/dispatch',
+      }).catch(() => {})
+    }
+    return NextResponse.json(result)
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })

@@ -58,7 +58,10 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
   const d = input.detail || {}
   const dossier = s(d.CID_DOS) || ''
   const seq     = s(d.CID_SEQ_ACTION) || ''
-  const externalId = seq ? `${dossier}/${seq}` : dossier
+  // external_id = NUM_COMMANDE (la même réf « …MA » que les mails Touring) pour
+  // dédoublonner COMEX ↔ email (roue de secours). Repli sur CID_DOS/SEQ.
+  const numCommande = s(d.NUM_COMMANDE)
+  const externalId = numCommande || (seq ? `${dossier}/${seq}` : dossier)
 
   const nowIso = new Date().toISOString()
 

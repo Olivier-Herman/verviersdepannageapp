@@ -11,6 +11,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { loginComex, listComexMissions, getComexMissionDetail } from '@/lib/touring/comex'
 import { mapComexToMission } from '@/lib/touring/map-mission'
+import { runTouringImport } from '@/lib/touring/import'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -62,12 +63,18 @@ export async function GET() {
     const KNOWN = new Set(['04', '06', '07'])
     const unknownRaw = missions.filter(m => !KNOWN.has(m.COD_STATUT_MTR))
 
+    // Dry-run de l'import (aucune écriture) : ce que l'import créerait pour les 03.
+    let importPreview: any = null
+    try { importPreview = await runTouringImport({ mode: 'preview' }) }
+    catch (e: any) { importPreview = { error: e.message } }
+
     return NextResponse.json({
       ok: true, login: comex.login, total: missions.length,
-      statuts,                     // ex {"04":2,"06":1,"07":16} — un code inconnu = "à valider"
+      statuts,                     // ex {"03":1,"04":3,"06":1,"07":16}
       unknownStatuts: Array.from(new Set(unknownRaw.map(m => m.COD_STATUT_MTR))),
       unknownRaw,                  // brut complet des missions "à valider" (si présentes)
       preview, dryRunFiche,        // dryRunFiche = fiche VD Soft mappée (non insérée)
+      importPreview,               // ce que le mode import CRÉERAIT (03 à valider, dédup) — aucune écriture
     })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
