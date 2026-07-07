@@ -42,7 +42,6 @@ interface Props {
 
 export default function BillingRemarks({ missionId, currentUserId, isSuperadmin, legacyRemark, onCountChange }: Props) {
   const legacy = (legacyRemark || '').trim()
-  const bump = useCallback((n: number) => onCountChange?.(n + (legacy ? 1 : 0)), [onCountChange, legacy])
   const [remarks, setRemarks] = useState<BillingRemark[]>([])
   const [loading, setLoading] = useState(true)
   const [newText, setNewText] = useState('')
@@ -50,18 +49,20 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
   const [error,   setError]   = useState<string | null>(null)
   const [editingId,   setEditingId]   = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
+  const [legacyHidden, setLegacyHidden] = useState(false)
+
+  // Rapporte le total (remarques + éventuelle remarque « initiale ») au parent.
+  useEffect(() => {
+    onCountChange?.(remarks.length + (legacy && !legacyHidden ? 1 : 0))
+  }, [remarks, legacy, legacyHidden, onCountChange])
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/missions/${missionId}/billing-remarks`)
       const j = await res.json()
-      if (res.ok) {
-        const list: BillingRemark[] = j.remarks || []
-        setRemarks(list)
-        bump(list.length)
-      }
+      if (res.ok) setRemarks(j.remarks || [])
     } catch { /* silencieux */ } finally { setLoading(false) }
-  }, [missionId, bump])
+  }, [missionId])
 
   useEffect(() => { load() }, [load])
 
@@ -78,9 +79,7 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
       setNewText('')
-      const list = [j.remark, ...remarks]
-      setRemarks(list)
-      bump(list.length)
+      setRemarks([j.remark, ...remarks])
     } catch (e: any) { setError(e.message || 'Erreur réseau') }
     finally { setSaving(false) }
   }
@@ -110,9 +109,24 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
       const res = await fetch(`/api/missions/billing-remarks/${id}`, { method: 'DELETE' })
       const j = await res.json()
       if (!res.ok) { setError(j.error || 'Erreur'); return }
-      const list = remarks.filter(r => r.id !== id)
-      setRemarks(list)
-      bump(list.length)
+      setRemarks(remarks.filter(r => r.id !== id))
+    } catch (e: any) { setError(e.message || 'Erreur réseau') }
+    finally { setSaving(false) }
+  }
+
+  // Suppression de l'ancienne remarque « initiale » (champ remarks_billing) : on
+  // vide la colonne via le PATCH mission. Olivier 2026-07-07.
+  async function removeLegacy() {
+    if (!confirm('Supprimer cette remarque de facturation ?')) return
+    setSaving(true); setError(null)
+    try {
+      const res = await fetch(`/api/missions/${missionId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ remarks_billing: '' }),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error || 'Erreur'); return }
+      setLegacyHidden(true)
     } catch (e: any) { setError(e.message || 'Erreur réseau') }
     finally { setSaving(false) }
   }
@@ -152,14 +166,18 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
       {/* Liste */}
       {loading ? (
         <p className="text-slate-400 text-xs">Chargement…</p>
-      ) : remarks.length === 0 && !legacy ? (
+      ) : remarks.length === 0 && !(legacy && !legacyHidden) ? (
         <p className="text-slate-500 text-xs italic">Aucune remarque de facturation.</p>
       ) : (
         <div className="space-y-2">
-          {/* Ancienne remarque (créée avant le système multi-remarques) — lecture seule. */}
-          {legacy && (
+          {/* Ancienne remarque (créée avant le système multi-remarques) — supprimable. */}
+          {legacy && !legacyHidden && (
             <div className="bg-slate-900 rounded-lg p-3 ring-1 ring-slate-700">
-              <p className="text-slate-400 text-[11px] mb-1 italic">Remarque initiale (à la création)</p>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-slate-400 text-[11px] italic">Remarque initiale (à la création)</p>
+                <button type="button" onClick={removeLegacy} disabled={saving}
+                  className="text-slate-400 hover:text-rose-400 text-xs px-1 disabled:opacity-40" title="Supprimer">🗑️</button>
+              </div>
               <p className="text-white text-sm font-medium whitespace-pre-line leading-snug">{legacy}</p>
             </div>
           )}
