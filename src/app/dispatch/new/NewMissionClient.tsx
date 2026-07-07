@@ -1453,9 +1453,11 @@ export default function NewMissionClient({
                       rows={3} className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
                   </div>
                   <div>
-                    <label className="block text-ink-muted text-xs mb-1.5">Remarques de facturation (visible bureau + facture)</label>
+                    <label className="block text-ink-muted text-xs mb-1.5">Remarque de facturation</label>
                     <textarea value={remarksBilling} onChange={e => setRemarksBilling(e.target.value)}
-                      rows={2} className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
+                      rows={2} placeholder="Note pour la facturation (ex. facturer 2 dépannages ensemble, bon de commande à joindre, tarif dérogatoire convenu…)"
+                      className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint" />
+                    <p className="text-ink-faint text-[11px] mt-1">Enregistrée comme 1ʳᵉ remarque (signée) ; rappelée et bloquée à la facturation.</p>
                   </div>
                 </div>
               </div>
