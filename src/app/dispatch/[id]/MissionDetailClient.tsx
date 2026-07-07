@@ -2899,20 +2899,6 @@ export default function MissionDetailClient({
           </div>
         )}
 
-        {/* Remarques de facturation — système multi-remarques signées + datées
-            (add/edit/delete), espace dédié au dispatch (blanc sur gris foncé),
-            toujours visible. Alerte en haut de fiche dès qu'il y en a une, et
-            blocage + affichage au moment de facturer. Olivier 2026-07-07. */}
-        <div className="px-4 lg:px-8 pt-4">
-          <BillingRemarks
-            missionId={initialMission.id}
-            currentUserId={userId}
-            isSuperadmin={userRole === 'superadmin'}
-            legacyRemark={initialMission.remarks_billing}
-            onCountChange={setBillingRemarkCount}
-          />
-        </div>
-
         <div className="flex-1 px-8 py-6">
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_288px] gap-6">
 
@@ -3704,6 +3690,16 @@ export default function MissionDetailClient({
                   <p className="text-ink text-sm whitespace-pre-wrap">{(initialMission as any).remarks_general}</p>
                 </div>
               )}
+
+              {/* Remarques de facturation — juste au-dessus des remarques de mission
+                  (multi, signées + datées, add/edit/delete). Olivier 2026-07-07. */}
+              <BillingRemarks
+                missionId={initialMission.id}
+                currentUserId={userId}
+                isSuperadmin={userRole === 'superadmin'}
+                legacyRemark={initialMission.remarks_billing}
+                onCountChange={setBillingRemarkCount}
+              />
 
               {/* Remarques dispatcher (notes + pièces jointes) */}
               <MissionRemarks missionId={initialMission.id} />
