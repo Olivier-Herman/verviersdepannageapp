@@ -448,6 +448,10 @@ export default function NewMissionClient({
   const [remarksGeneral,  setRemarksGeneral]  = useState('')
   const [remarksBilling,  setRemarksBilling]  = useState('')
   const [amountToCollect, setAmountToCollect] = useState('')
+  // Tarif spécial (forfait négocié) : écrase le tarif calculé. Saisi en HTVA ou
+  // TVAC ; on stocke toujours HTVA en base (special_tarif_htva). Olivier 2026-07-07.
+  const [specialTarif,    setSpecialTarif]    = useState('')
+  const [specialTarifVat, setSpecialTarifVat] = useState<'htva' | 'tvac'>('htva')
 
   // ── Soumission ────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false)
@@ -800,6 +804,12 @@ export default function NewMissionClient({
           destinations,
           warnings:        warningLabels,
           amount_to_collect: amountToCollect ? parseFloat(amountToCollect) : null,
+          // Tarif spécial : stocké en HTVA (÷1,21 si saisi en TVAC).
+          special_tarif_htva: specialTarif && !isNaN(parseFloat(specialTarif))
+            ? (specialTarifVat === 'tvac'
+                ? Math.round((parseFloat(specialTarif) / 1.21) * 100) / 100
+                : parseFloat(specialTarif))
+            : null,
           description:       description,         // -> incident_description en BDD
           remarks_general:   remarksGeneral,
           remarks_billing:   remarksBilling,
@@ -1397,6 +1407,37 @@ export default function NewMissionClient({
                   />
                   <span className="text-ink font-medium text-base">€</span>
                 </div>
+              </div>
+
+              {/* 8b. Tarif spécial (forfait négocié) — écrase le tarif calculé.
+                  Saisie HTVA ou TVAC ; stocké en HTVA. Olivier 2026-07-07. */}
+              <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
+                <h2 className="text-ink font-semibold text-sm mb-1 flex items-center gap-2">
+                  <span>🏷️</span> Tarif spécial <span className="text-ink-faint text-xs">(optionnel)</span>
+                </h2>
+                <p className="text-ink-muted text-xs mb-3">Forfait négocié qui <strong>remplace le tarif calculé automatiquement</strong>. Laisser vide pour le tarif normal.</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={specialTarif}
+                    onChange={e => setSpecialTarif(e.target.value)}
+                    placeholder="0.00"
+                    className="w-40 bg-surface border rounded-xl px-3 py-2.5 text-ink text-base font-semibold focus:outline-none focus:border-brand"
+                  />
+                  <span className="text-ink font-medium text-base">€</span>
+                  <div className="inline-flex rounded-xl overflow-hidden border">
+                    <button type="button" onClick={() => setSpecialTarifVat('htva')}
+                      className={`px-3 py-2 text-sm font-medium transition ${specialTarifVat === 'htva' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'}`}>HTVA</button>
+                    <button type="button" onClick={() => setSpecialTarifVat('tvac')}
+                      className={`px-3 py-2 text-sm font-medium transition ${specialTarifVat === 'tvac' ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink'}`}>TVAC</button>
+                  </div>
+                </div>
+                {specialTarif && specialTarifVat === 'tvac' && !isNaN(parseFloat(specialTarif)) && (
+                  <p className="text-ink-muted text-[11px] mt-2">
+                    Enregistré en HTVA : <strong>{(parseFloat(specialTarif) / 1.21).toFixed(2)} €</strong> (TVA 21%)
+                  </p>
+                )}
               </div>
 
               {/* 9. Remarques (avant Chauffeur assigne : reorganise 2026-05-26).

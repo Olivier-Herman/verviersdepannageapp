@@ -135,6 +135,10 @@ export async function POST(req: Request) {
       amount_to_collect:    body.amount_to_collect    != null
                               ? Number(body.amount_to_collect)
                               : null,
+      // Tarif spécial HTVA (forfait négocié) — écrase le calcul automatique.
+      special_tarif_htva:   body.special_tarif_htva   != null && body.special_tarif_htva !== ''
+                              ? Number(body.special_tarif_htva)
+                              : null,
       // Remarques (remarks_billing → table mission_billing_remarks ci-dessous)
       remarks_general:      body.remarks_general,
       // RDV
