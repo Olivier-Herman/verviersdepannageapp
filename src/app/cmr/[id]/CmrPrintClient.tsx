@@ -31,11 +31,11 @@ const BOXES: Array<{ key: keyof Fields | 'transporteur' | 'transporteurSig'; x: 
   { key: 'expediteur',    x: 15,  y: 42,  w: 88 },   // 1
   { key: 'transporteur',  x: 112, y: 42,  w: 90, value: TRANSPORTEUR },   // 5
   { key: 'destinataire',  x: 15,  y: 70,  w: 88 },   // 2
-  { key: 'priseEnCharge', x: 15,  y: 95,  w: 88 },   // 3
-  { key: 'livraison',     x: 15,  y: 113, w: 88 },   // 4
+  { key: 'priseEnCharge', x: 15,  y: 91,  w: 88 },   // 3 — remonté ~4mm
+  { key: 'livraison',     x: 15,  y: 106, w: 88 },   // 4 — remonté ~7mm
   { key: 'marchandises',  x: 15,  y: 168, w: 180 },  // 10
-  { key: 'lieuDate',      x: 15,  y: 250, w: 88 },   // 12
-  { key: 'transporteurSig', x: 78, y: 276, w: 60, value: 'VERVIERS DÉPANNAGE\nRue Lefin 12, 4860 Pepinster\n+32 (0)87/35.18.20' }, // 15
+  { key: 'lieuDate',      x: 15,  y: 255, w: 88 },   // 12 — descendu ~5mm
+  { key: 'transporteurSig', x: 78, y: 271, w: 60, value: 'VERVIERS DÉPANNAGE\nRue Lefin 12, 4860 Pepinster\n+32 (0)87/35.18.20' }, // 15 — remonté ~5mm
 ]
 
 export default function CmrPrintClient({ fields, label }: { fields: Fields; label: string }) {
