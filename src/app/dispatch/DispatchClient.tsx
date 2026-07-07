@@ -39,6 +39,7 @@ interface Mission {
   external_id: string
   dossier_number: string | null
   source: string
+  source_format?: string | null
   is_rollable?: boolean | null
   mission_type: string | null
   incident_type: string | null
@@ -728,6 +729,13 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+          {mission.source === 'touring' && (
+            mission.source_format === 'comex' ? (
+              <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-100 text-sky-800" title="Importée depuis la plateforme COMEX">🚗 COMEX</span>
+            ) : (
+              <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800" title="Parsée depuis un email Touring">📧 Mail</span>
+            )
+          )}
           {mission.mission_type && (
             <span className="px-2 py-0.5 rounded text-xs font-medium bg-surface-hover text-ink-secondary">
               {getTypeLabel(mission)}
@@ -1568,6 +1576,12 @@ export default function DispatchClient({
                           <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${srcInfo.color}`}>
                             {srcInfo.label}
                           </span>
+                          {m.source === 'touring' && (
+                            <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${m.source_format === 'comex' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}
+                              title={m.source_format === 'comex' ? 'Importée depuis COMEX' : 'Parsée depuis un email Touring'}>
+                              {m.source_format === 'comex' ? '🚗 COMEX' : '📧 Mail'}
+                            </span>
+                          )}
                         </td>
                         {activeTab === 'parked' && (
                           <td className="px-2 py-3 text-center"><RollableMini v={m.is_rollable} /></td>
