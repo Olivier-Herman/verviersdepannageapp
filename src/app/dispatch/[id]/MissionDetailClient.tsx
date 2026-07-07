@@ -1233,6 +1233,8 @@ export default function MissionDetailClient({
     mission_type:         initialMission.mission_type         || '',
     incident_type:        initialMission.incident_type        || '',
     incident_description: initialMission.incident_description || '',
+    // Olivier 2026-07-07 : « Remarque de facturation » éditable par le dispatch.
+    remarks_billing:      initialMission.remarks_billing      || '',
     billed_to_name:       initialMission.billed_to_name       || '',
     client_name:          initialMission.client_name          || '',
     client_phone:         initialMission.client_phone         || '',
@@ -2750,6 +2752,21 @@ export default function MissionDetailClient({
           />
         )}
 
+        {/* RAPPEL « Remarque de facturation » — en gros en haut de fiche (blanc sur
+            gris foncé), visible dès qu'une remarque est saisie. La saisie/édition
+            se fait dans l'encadré dédié plus bas. Olivier 2026-07-07. */}
+        {form.remarks_billing?.trim() && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="bg-slate-800 text-white rounded-xl p-4 flex items-start gap-3 shadow-lg ring-1 ring-slate-600">
+              <span className="text-2xl">📝</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-slate-300 text-xs font-bold uppercase tracking-widest mb-1">Remarque de facturation</p>
+                <p className="text-white text-base font-semibold whitespace-pre-line leading-snug">{form.remarks_billing}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Bandeau "Bloquee par la police" — visible si police_blocked=true
             (ou si mal_garee et module fourriere, pour pouvoir ajouter la coche
             apres-coup quand la demande police arrive en differé).
@@ -2836,8 +2853,7 @@ export default function MissionDetailClient({
         {/* Bandeau infos additionnelles (Olivier 2026-05-26) : agrege les
             infos utiles non editables ailleurs sur la fiche. */}
         {(initialMission.vehicle_class === 'moto' || initialMission.distance_km
-          || initialMission.snc_scenario || initialMission.snc_requires_balisage
-          || initialMission.remarks_billing) && (
+          || initialMission.snc_scenario || initialMission.snc_requires_balisage) && (
           <div className="px-4 lg:px-8 pt-4">
             <div className="bg-surface border rounded-xl p-4 space-y-2">
               <p className="text-ink-muted text-xs uppercase tracking-widest font-semibold">Infos mission</p>
@@ -2870,15 +2886,31 @@ export default function MissionDetailClient({
                   </div>
                 )}
               </div>
-              {initialMission.remarks_billing && (
-                <div className="pt-2 border-t border">
-                  <p className="text-ink-muted text-xs mb-1">📝 Remarques facturation</p>
-                  <p className="text-ink text-sm whitespace-pre-line">{initialMission.remarks_billing}</p>
-                </div>
-              )}
             </div>
           </div>
         )}
+
+        {/* Encadré éditable « Remarque de facturation » — espace dédié au dispatch
+            (blanc sur gris foncé), toujours visible sur toutes les fiches. Autosave
+            débouncée (900ms). Le rappel s'affiche en gros en haut de fiche dès qu'il
+            est rempli, et bloque à la facturation. Olivier 2026-07-07. */}
+        <div className="px-4 lg:px-8 pt-4">
+          <div className="bg-slate-800 rounded-xl p-4 shadow ring-1 ring-slate-600">
+            <label className="flex items-center gap-2 text-slate-300 text-xs font-bold uppercase tracking-widest mb-2">
+              <span>📝</span> Remarque de facturation
+            </label>
+            <textarea
+              value={form.remarks_billing}
+              onChange={e => setForm(prev => ({ ...prev, remarks_billing: e.target.value }))}
+              rows={2}
+              placeholder="Note pour la facturation (ex. facturer 2 dépannages ensemble, bon de commande à joindre, tarif dérogatoire convenu…)"
+              className="w-full bg-slate-900 text-white placeholder:text-slate-500 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-y whitespace-pre-line"
+            />
+            <p className="text-slate-400 text-[11px] mt-1.5">
+              Visible en haut de la fiche et rappelée (blocage) au moment de facturer.
+            </p>
+          </div>
+        </div>
 
         <div className="flex-1 px-8 py-6">
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_288px] gap-6">

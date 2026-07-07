@@ -32,6 +32,7 @@ interface BaseMission {
   odoo_quote_url?:   string | null
   billed_to_id?:     number | null
   billed_to_name?:   string | null
+  remarks_billing?:  string | null
 }
 
 interface PaymentRow {
@@ -922,6 +923,8 @@ export default function FacturerModal({
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [noChargePrompt, setNoChargePrompt] = useState<{ ids: string[]; label: string } | null>(null)
   const [noChargeReason, setNoChargeReason] = useState('')
+  // Blocage « Remarque de facturation » avant envoi.
+  const [remarkGate, setRemarkGate] = useState<{ method: 'manual' | 'auto'; ids: string[]; number?: string; remarks: Array<{ label: string; text: string }> } | null>(null)
   // Track des devis créés pendant la session (override les valeurs initiales)
   const [createdQuotes, setCreatedQuotes] = useState<Record<string, { id: number; url: string }>>({})
 
@@ -1020,7 +1023,24 @@ export default function FacturerModal({
   const readyIds = all.filter(m => m.status === 'to_invoice').map(m => m.id)
   const totalKmChainHint = ''  // optionnel : on pourrait sommer mais on a deja km par fiche
 
+  // Blocage « Remarque de facturation » : si une des fiches à facturer porte une
+  // remarque, on exige une confirmation qu'elle a bien été prise en compte AVANT
+  // d'envoyer la facturation. Olivier 2026-07-07.
   async function submit(method: 'manual' | 'auto', ids: string[], number?: string) {
+    const remarks = all
+      .filter(m => ids.includes(m.id) && (m.remarks_billing || '').trim())
+      .map(m => ({
+        label: m.dossier_number || m.external_id || m.id.slice(0, 8),
+        text:  (m.remarks_billing as string).trim(),
+      }))
+    if (remarks.length > 0) {
+      setRemarkGate({ method, ids, number, remarks })
+      return
+    }
+    await doInvoice(method, ids, number)
+  }
+
+  async function doInvoice(method: 'manual' | 'auto', ids: string[], number?: string) {
     setBusy(true); setError(null)
     try {
       const res = await fetch('/api/missions/invoice', {
@@ -1461,6 +1481,56 @@ export default function FacturerModal({
                 className="flex-1 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
               >
                 {busy ? '⏳…' : 'Valider'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blocage « Remarque de facturation » — confirmation obligatoire que la
+          remarque a été prise en compte avant d'envoyer la facturation. */}
+      {remarkGate && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4"
+             onClick={() => { if (!busy) setRemarkGate(null) }}>
+          <div onClick={e => e.stopPropagation()}
+               className="bg-surface w-full max-w-md rounded-2xl border-2 border-slate-500 p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">📝</span>
+              <h3 className="text-ink font-bold text-base">Remarque de facturation</h3>
+            </div>
+            <p className="text-ink-secondary text-sm">
+              {remarkGate.remarks.length > 1
+                ? 'Ces fiches ont une remarque de facturation. As-tu bien pris en compte :'
+                : 'Cette fiche a une remarque de facturation. As-tu bien pris en compte :'}
+            </p>
+            <div className="space-y-2">
+              {remarkGate.remarks.map((r, i) => (
+                <div key={i} className="bg-slate-800 text-white rounded-lg p-3">
+                  <p className="text-slate-300 text-[11px] font-mono mb-1">{r.label}</p>
+                  <p className="text-white text-sm font-semibold whitespace-pre-line leading-snug">{r.text}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setRemarkGate(null)}
+                className="flex-1 py-2.5 bg-surface-2 hover:bg-surface-hover disabled:opacity-50 border text-ink-secondary rounded-xl text-sm transition"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const g = remarkGate
+                  setRemarkGate(null)
+                  doInvoice(g.method, g.ids, g.number)
+                }}
+                className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+              >
+                {busy ? '⏳…' : 'Oui, pris en compte — facturer'}
               </button>
             </div>
           </div>

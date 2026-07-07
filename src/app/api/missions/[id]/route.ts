@@ -74,6 +74,9 @@ export async function PATCH(
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',
     'incident_at', 'intervention_date', 'remarks_general',
+    // Olivier 2026-07-07 : « Remarque de facturation » éditable par le dispatch,
+    // rappelée en haut de la fiche + blocage à la facturation.
+    'remarks_billing',
     'incident_info', 'destination_info', 'redelivery_info',
     // Olivier 2026-06-02 PM : dates parc modifiables (correction gardiennage post-coup).
     'parked_at', 'delivering_at',
