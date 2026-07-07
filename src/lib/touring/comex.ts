@@ -209,6 +209,51 @@ export async function getComexMissionDetail(
   return comexRest(session, 'Mission/detail/get', keys)
 }
 
+/**
+ * Adresses de la mission (GET rest/adresse/get?cidDos=..&cidSeqAction=..).
+ * Contient l'ID d'adresse dépôt (ADR_DEPOT_CID_INTV) requis par l'accept, absent
+ * du detail/get. Appelé quand on ouvre une mission dans l'UI COMEX.
+ */
+export async function getComexAddresses(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<any> {
+  const url = `${COMEX_BASE}/rest/adresse/get?cidDos=${encodeURIComponent(keys.CID_DOS)}&cidSeqAction=${encodeURIComponent(keys.CID_SEQ_ACTION)}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'User-Agent': REAL_UA, 'Accept': 'application/json', 'Content-Language': 'fr',
+      'Authorization': session.authToken, 'Cookie': session.cookieHeader,
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    redirect: 'manual',
+  })
+  const ct = res.headers.get('content-type') || ''
+  const buf = Buffer.from(await res.arrayBuffer())
+  const text = /iso-8859-1|latin-?1/i.test(ct) ? new TextDecoder('iso-8859-1').decode(buf) : buf.toString('utf-8')
+  try { return JSON.parse(text) } catch { return { _raw: text.slice(0, 500) } }
+}
+
+/**
+ * Résout l'ID d'adresse DÉPÔT (ADR_DEPOT_CID_INTV) requis par l'accept COMEX,
+ * depuis adresse/get. On cherche l'adresse de type dépôt/destination (GAR) et on
+ * retourne son CID_ADRESSE. Best-effort (retourne '' si introuvable).
+ */
+export async function resolveComexDepotCid(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<string> {
+  try {
+    const data = await getComexAddresses(session, keys)
+    const list: any[] = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : [])
+    // Champ CID de l'adresse : plusieurs noms possibles selon COMEX.
+    const cidOf = (a: any) => String(a?.CID_ADRESSE || a?.ADR_DEPOT_CID_INTV || a?.CID_ADR || a?.CID || '').trim()
+    // Priorité à l'adresse dépôt/destination (COD_ADRESSE = 'GAR'/'DEP'/'TO'…).
+    const dest = list.find(a => /GAR|DEP|TO|DEPOT|DEST/i.test(String(a?.COD_ADRESSE || a?.TYPE || a?.TYPE_ADRESSE || '')))
+    return cidOf(dest || list[0] || {})
+  } catch { return '' }
+}
+
 // ── Actions (mutations) : changement de statut via detail/set + operType ──────
 // Le payload = la mission ré-échoée (union des captures onRoad/onSpot du 06/07)
 // + operType + operDate. On lit donc le détail puis on renvoie ces champs.

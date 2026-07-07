@@ -11,7 +11,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { loginComex, listComexMissions, getComexMissionDetail } from '@/lib/touring/comex'
+import { loginComex, listComexMissions, getComexMissionDetail, getComexAddresses, resolveComexDepotCid } from '@/lib/touring/comex'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -96,6 +96,14 @@ export async function GET(req: Request) {
       }
     } catch (e: any) { echo = { error: e.message } }
 
+    // Adresses (adresse/get) — pour trouver ADR_DEPOT_CID_INTV requis par l'accept.
+    let addresses: any = null
+    let depotCid = ''
+    try {
+      addresses = await getComexAddresses(comex, { CID_DOS: match.CID_DOS, CID_SEQ_ACTION: match.CID_SEQ_ACTION })
+      depotCid  = await resolveComexDepotCid(comex, { CID_DOS: match.CID_DOS, CID_SEQ_ACTION: match.CID_SEQ_ACTION })
+    } catch (e: any) { addresses = { error: e.message } }
+
     const interpretation = match.COD_STATUT_MTR === '03'
       ? '❌ Toujours À VALIDER (03) → l\'accept n\'a PAS été pris en compte par COMEX'
       : match.COD_STATUT_MTR === '04' ? '✅ ACCEPTÉE (04) → l\'accept a fonctionné'
@@ -103,7 +111,7 @@ export async function GET(req: Request) {
       : match.COD_STATUT_MTR === '06' ? '✅ SUR PLACE (06)'
       : `statut ${match.COD_STATUT_MTR}`
 
-    return NextResponse.json({ ok: true, fiche: ficheInfo, listState, interpretation, echoFields: echo })
+    return NextResponse.json({ ok: true, fiche: ficheInfo, listState, interpretation, echoFields: echo, depotCid, addresses })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message, fiche: ficheInfo }, { status: 500 })
   }
