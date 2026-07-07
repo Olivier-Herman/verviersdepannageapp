@@ -67,6 +67,9 @@ export default function CmrPrintClient({ fields, label }: { fields: Fields; labe
         <label>Calage X (mm) : <input type="number" value={dx} step={0.5} onChange={e => saveCalibration(Number(e.target.value) || 0, dy)} style={{ width: 60 }} /></label>
         <label>Calage Y (mm) : <input type="number" value={dy} step={0.5} onChange={e => saveCalibration(dx, Number(e.target.value) || 0)} style={{ width: 60 }} /></label>
         <button onClick={() => window.print()} style={{ background: '#2563eb', color: '#fff', border: 0, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontWeight: 600 }}>🖨️ Imprimer</button>
+        <span style={{ fontSize: 13, background: '#b91c1c', padding: '4px 8px', borderRadius: 6, fontWeight: 600 }}>
+          ⚠️ Dans la boîte d'impression : Échelle = <u>100 %</u> (PAS « Ajuster »), Marges = <u>Aucune</u>. Sinon tout se décale vers le bas.
+        </span>
         <span style={{ fontSize: 12, opacity: 0.8 }}>Mets ta liasse CMR vierge dans l'imprimante. 1er essai : imprime 1 exemplaire, ajuste le calage, puis lance les {copies}.</span>
       </div>
 
@@ -74,7 +77,7 @@ export default function CmrPrintClient({ fields, label }: { fields: Fields; labe
         @page { size: A4 portrait; margin: 0; }
         @media print { .no-print { display: none !important; } }
         .cmr-page { position: relative; width: 210mm; height: 297mm; page-break-after: always; overflow: hidden; background: #fff; }
-        .cmr-field { position: absolute; font-family: Arial, sans-serif; font-size: 9pt; line-height: 1.25; color: #000; white-space: pre-line; }
+        .cmr-field { position: absolute; font-family: Arial, sans-serif; font-size: 8pt; line-height: 1.2; color: #000; white-space: pre-line; }
         /* Aide visuelle à l'écran (cadres) — invisible à l'impression */
         @media screen { .cmr-page { box-shadow: 0 0 0 1px #ccc; margin: 16px auto; } .cmr-field { outline: 1px dashed rgba(37,99,235,.25); } }
       `}</style>
