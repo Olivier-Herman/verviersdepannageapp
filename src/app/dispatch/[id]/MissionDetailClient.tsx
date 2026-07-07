@@ -2752,18 +2752,23 @@ export default function MissionDetailClient({
           />
         )}
 
-        {/* RAPPEL « Remarque de facturation » — en gros en haut de fiche (blanc sur
-            gris foncé), visible dès qu'une remarque est saisie. La saisie/édition
-            se fait dans l'encadré dédié plus bas. Olivier 2026-07-07. */}
+        {/* ALERTE « Remarque de facturation » en haut de fiche — courte et cliquable :
+            un clic fait défiler jusqu'à l'encadré d'édition. Le texte complet n'est
+            PAS répété ici (il est dans l'encadré). Olivier 2026-07-07. */}
         {form.remarks_billing?.trim() && (
           <div className="px-4 lg:px-8 pt-4">
-            <div className="bg-slate-800 text-white rounded-xl p-4 flex items-start gap-3 shadow-lg ring-1 ring-slate-600">
-              <span className="text-2xl">📝</span>
+            <button
+              type="button"
+              onClick={() => document.getElementById('billing-remark-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              className="w-full text-left bg-slate-800 hover:bg-slate-700 text-white rounded-xl p-4 flex items-center gap-3 shadow-lg ring-1 ring-slate-600 transition"
+            >
+              <span className="text-2xl">⚠️</span>
               <div className="flex-1 min-w-0">
-                <p className="text-slate-300 text-xs font-bold uppercase tracking-widest mb-1">Remarque de facturation</p>
-                <p className="text-white text-base font-semibold whitespace-pre-line leading-snug">{form.remarks_billing}</p>
+                <p className="text-white text-base font-bold">Attention — remarque de facturation</p>
+                <p className="text-slate-300 text-xs mt-0.5">Clique pour voir la remarque ↓</p>
               </div>
-            </div>
+              <span className="text-slate-400 text-xl flex-shrink-0">↓</span>
+            </button>
           </div>
         )}
 
@@ -2895,7 +2900,7 @@ export default function MissionDetailClient({
             débouncée (900ms). Le rappel s'affiche en gros en haut de fiche dès qu'il
             est rempli, et bloque à la facturation. Olivier 2026-07-07. */}
         <div className="px-4 lg:px-8 pt-4">
-          <div className="bg-slate-800 rounded-xl p-4 shadow ring-1 ring-slate-600">
+          <div id="billing-remark-card" className="bg-slate-800 rounded-xl p-4 shadow ring-1 ring-slate-600 scroll-mt-24">
             <label className="flex items-center gap-2 text-slate-300 text-xs font-bold uppercase tracking-widest mb-2">
               <span>📝</span> Remarque de facturation
             </label>

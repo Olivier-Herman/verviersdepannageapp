@@ -1155,6 +1155,24 @@ export default function FacturerModal({
         {/* Body scroll */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
+          {/* Remarque(s) de facturation — bien visible dans le module (une par fiche
+              du bundle qui en porte une). Rappelée en blocage au moment de facturer. */}
+          {all.some(m => (m.remarks_billing || '').trim()) && (
+            <div className="bg-slate-800 rounded-xl p-3 space-y-2 ring-1 ring-slate-600">
+              <p className="text-slate-300 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                <span>📝</span> Remarque de facturation
+              </p>
+              {all.filter(m => (m.remarks_billing || '').trim()).map(m => (
+                <div key={m.id} className="text-white">
+                  {all.filter(x => (x.remarks_billing || '').trim()).length > 1 && (
+                    <p className="text-slate-400 text-[11px] font-mono">{m.dossier_number || m.external_id || m.id.slice(0, 8)}</p>
+                  )}
+                  <p className="text-sm font-semibold whitespace-pre-line leading-snug">{(m.remarks_billing as string).trim()}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Infos communes */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
             <div>
