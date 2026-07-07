@@ -21,14 +21,21 @@ export async function GET(req: Request) {
   if (!roles.includes('superadmin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const key = (new URL(req.url).searchParams.get('tgr') || '').trim()
-  if (!key) return NextResponse.json({ error: 'tgr requis (?tgr=<id ou référence>)' }, { status: 400 })
 
   const sb = createAdminClient()
-  const isUuid = /-/.test(key)
-  const { data: mission } = isUuid
-    ? await sb.from('tgr_missions').select('*').eq('id', key).maybeSingle()
-    : await sb.from('tgr_missions').select('*').eq('reference', key).maybeSingle()
-  if (!mission) return NextResponse.json({ error: 'Demande TGR introuvable' }, { status: 404 })
+  // Sans paramètre (ou tgr=last) : on prend la DERNIÈRE demande TGR créée.
+  let mission: any = null
+  if (!key || key.toLowerCase() === 'last') {
+    const { data } = await sb.from('tgr_missions').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle()
+    mission = data
+  } else {
+    const isUuid = /-/.test(key)
+    const { data } = isUuid
+      ? await sb.from('tgr_missions').select('*').eq('id', key).maybeSingle()
+      : await sb.from('tgr_missions').select('*').eq('reference', key).maybeSingle()
+    mission = data
+  }
+  if (!mission) return NextResponse.json({ error: 'Demande TGR introuvable (aucune demande TGR en base ?)' }, { status: 404 })
 
   const m: any = mission
   const dateOnly = m.deadline_date ? String(m.deadline_date).slice(0, 10) : null
