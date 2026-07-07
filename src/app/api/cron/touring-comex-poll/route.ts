@@ -111,7 +111,7 @@ export async function GET(req: Request) {
     // dédup NUM_COMMANDE vs email. (04/05/06 déjà gérées côté COMEX ; 07 exclue.)
     const { runTouringImport } = await import('@/lib/touring/import')
     const result = await runTouringImport({ mode: 'send' })
-    console.log(`[cron touring-comex] IMPORT total=${result.total} aValider=${result.aValider} created=${result.created} skipped=${result.skipped} failed=${result.failed}`)
+    console.log(`[cron touring-comex] IMPORT total=${result.total} aValider=${result.aValider} created=${result.created} linked=${result.linked} skipped=${result.skipped} failed=${result.failed}`)
     // Notifie le dispatch quand de nouvelles fiches à valider sont créées.
     if (result.created > 0) {
       await sendPushToRole(['superadmin', 'admin', 'dispatcher'], {

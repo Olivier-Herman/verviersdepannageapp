@@ -18,15 +18,28 @@ export type TouringImportMode = 'preview' | 'send'
 
 const STATUT_A_VALIDER = '03'
 
+// Champs de CONTENU écrasés par COMEX (maître) quand on adopte une fiche mail
+// encore « à valider ». On EXCLUT tout l'opérationnel : id, status, mission_number,
+// assigned_to/at, accepted_at, received_at, intervention_date, dispatch_mode, parc…
+const COMEX_OVERWRITE_FIELDS = [
+  'dossier_number', 'mission_type', 'incident_type', 'incident_description',
+  'client_name', 'client_phone', 'client_email', 'assisted_name',
+  'vehicle_plate', 'vehicle_brand', 'vehicle_model', 'vehicle_vin', 'vehicle_fuel', 'vehicle_gearbox',
+  'incident_address', 'incident_city', 'incident_lat', 'incident_lng',
+  'destination_name', 'destination_address', 'destination_lat', 'destination_lng',
+  'billed_to_id', 'billed_to_name', 'parse_confidence',
+]
+
 export interface TouringImportResult {
   ok:        boolean
   mode:      TouringImportMode
   total:     number   // missions COMEX visibles
   aValider:  number   // statut 03
   created:   number
-  skipped:   number   // déjà en base (COMEX ou email)
+  linked:    number   // fiche mail existante ADOPTÉE (clés COMEX attachées)
+  skipped:   number   // déjà en base (déjà liée COMEX)
   failed:    number
-  results:   Array<{ dossier: string; plaque: string; action: 'created' | 'skipped' | 'would_create' | 'failed'; external_id?: string; reason?: string; error?: string }>
+  results:   Array<{ dossier: string; plaque: string; action: 'created' | 'linked' | 'would_create' | 'would_link' | 'skipped' | 'failed'; external_id?: string; reason?: string; error?: string }>
 }
 
 export async function runTouringImport(opts: { mode: TouringImportMode }): Promise<TouringImportResult> {
@@ -44,24 +57,57 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
   const billedToName = (cat as any)?.default_billed_to_name || null
 
   const results: TouringImportResult['results'] = []
-  let created = 0, skipped = 0, failed = 0
+  let created = 0, linked = 0, skipped = 0, failed = 0
 
   for (const m of toValidate) {
     try {
       const detailRes = await getComexMissionDetail(session, { CID_DOS: m.CID_DOS, CID_SEQ_ACTION: m.CID_SEQ_ACTION })
       const detail = (detailRes?.content || detailRes || {}) as Record<string, any>
+      // On garantit la présence des clés COMEX dans le payload stocké (raw_content)
+      // pour que la validation puisse déclencher l'accept (acceptTouringBg les lit).
+      const comexRaw = JSON.stringify({ ...detail, CID_DOS: m.CID_DOS, CID_SEQ_ACTION: m.CID_SEQ_ACTION })
 
       const numCommande = String(detail.NUM_COMMANDE || '').trim()
       const externalId  = numCommande || `${m.CID_DOS}/${m.CID_SEQ_ACTION}`
 
-      // Dédup : fiche déjà présente (COMEX précédent OU email) avec ce même ref.
+      // Dédup : fiche déjà présente (import COMEX précédent OU mail Touring).
       const { data: existing } = await sb.from('incoming_missions')
-        .select('id, status')
+        .select('id, status, source_format')
         .eq('external_id', externalId)
         .maybeSingle()
       if (existing) {
-        results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'skipped', external_id: externalId, reason: 'déjà en base' })
-        skipped++
+        // Déjà liée à COMEX → rien à faire.
+        if ((existing as any).source_format === 'comex') {
+          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'skipped', external_id: externalId, reason: 'déjà liée COMEX' })
+          skipped++
+          continue
+        }
+        // Fiche créée par le MAIL → COMEX EST MAÎTRE. On la lie à COMEX et, si elle
+        // est encore « à valider » (new/dispatching), on écrase ses champs de CONTENU
+        // par les données COMEX structurées (plus fiables que le parsing IA). Si elle
+        // est plus avancée (assignée/en cours), on n'attache QUE les clés COMEX
+        // (source_format + raw_content) pour ne pas perturber l'opérationnel.
+        if (mode === 'preview') {
+          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'would_link', external_id: externalId, reason: 'fiche mail → COMEX maître' })
+          continue
+        }
+        const earlyStatus = ['new', 'dispatching'].includes(String((existing as any).status))
+        const upd: Record<string, any> = { source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() }
+        if (earlyStatus) {
+          const mapped = mapComexToMission({ detail, status: 'new', billedToId, billedToName })
+          for (const f of COMEX_OVERWRITE_FIELDS) {
+            const v = (mapped as any)[f]
+            if (v !== undefined && v !== null && v !== '') upd[f] = v   // COMEX gagne là où il a une valeur
+          }
+        }
+        const { error: upErr } = await sb.from('incoming_missions').update(upd).eq('id', (existing as any).id)
+        if (upErr) {
+          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: upErr.message })
+          failed++
+        } else {
+          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: earlyStatus ? 'fiche mail pilotée par COMEX' : 'clés COMEX attachées' })
+          linked++
+        }
         continue
       }
 
@@ -73,6 +119,7 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
       const payload = mapComexToMission({ detail, status: 'new', billedToId, billedToName })
       payload.external_id  = externalId          // NUM_COMMANDE prioritaire (dédup email)
       payload.dispatch_mode = 'manual'
+      payload.raw_content   = comexRaw           // clés COMEX garanties pour l'accept
 
       const { error } = await sb.from('incoming_missions').insert(payload)
       if (error) {
@@ -88,5 +135,5 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
     }
   }
 
-  return { ok: true, mode, total: missions.length, aValider: toValidate.length, created, skipped, failed, results }
+  return { ok: true, mode, total: missions.length, aValider: toValidate.length, created, linked, skipped, failed, results }
 }

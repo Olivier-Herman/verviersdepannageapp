@@ -16,7 +16,7 @@ import { X, RefreshCw, CheckCircle2 } from 'lucide-react'
 interface ImportItem {
   dossier:      string
   plaque:       string
-  action:       'created' | 'skipped' | 'would_create' | 'failed'
+  action:       'created' | 'linked' | 'would_create' | 'would_link' | 'skipped' | 'failed'
   external_id?: string
   reason?:      string
   error?:       string
@@ -28,6 +28,7 @@ interface ImportResult {
   total:    number   // missions COMEX visibles
   aValider: number   // statut 03
   created:  number
+  linked:   number   // fiche mail adoptée (liée COMEX)
   skipped:  number
   failed:   number
   results:  ImportItem[]
@@ -91,7 +92,8 @@ export default function TouringImportButton({ onImportDone }: Props) {
     setError(null)
   }
 
-  const newMissions      = preview?.results.filter(i => i.action === 'would_create') || []
+  // « À traiter » = à créer (would_create) + fiches mail à lier à COMEX (would_link).
+  const newMissions      = preview?.results.filter(i => i.action === 'would_create' || i.action === 'would_link') || []
   const existingMissions = preview?.results.filter(i => i.action === 'skipped') || []
   const newCount = newMissions.length
 
@@ -164,7 +166,7 @@ export default function TouringImportButton({ onImportDone }: Props) {
                       <p className="text-ink text-2xl font-bold">{preview.aValider}</p>
                     </div>
                     <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3">
-                      <p className="text-sky-600 text-xs uppercase tracking-wider font-semibold">À importer</p>
+                      <p className="text-sky-600 text-xs uppercase tracking-wider font-semibold">À traiter</p>
                       <p className="text-sky-600 text-2xl font-bold">{newCount}</p>
                     </div>
                   </div>
@@ -182,7 +184,7 @@ export default function TouringImportButton({ onImportDone }: Props) {
                               </p>
                             </div>
                             <span className="text-xs px-2 py-0.5 rounded bg-sky-500/15 text-sky-600 flex-shrink-0">
-                              à valider
+                              {m.action === 'would_link' ? 'lier à COMEX' : 'à importer'}
                             </span>
                           </div>
                         ))}
@@ -230,8 +232,9 @@ export default function TouringImportButton({ onImportDone }: Props) {
                     <CheckCircle2 size={32} className="mx-auto text-success mb-2" />
                     <p className="text-success font-bold">Import terminé</p>
                     <p className="text-ink-secondary text-sm mt-1">
-                      <strong>{send.created}</strong> créée{send.created > 1 ? 's' : ''} dans le dispatch
-                      {send.skipped > 0 && <> · {send.skipped} déjà en base</>}
+                      <strong>{send.created}</strong> créée{send.created > 1 ? 's' : ''}
+                      {send.linked > 0 && <> · <strong>{send.linked}</strong> liée{send.linked > 1 ? 's' : ''} à COMEX</>}
+                      {send.skipped > 0 && <> · {send.skipped} déjà liée{send.skipped > 1 ? 's' : ''}</>}
                       {send.failed > 0 && <> · {send.failed} échec{send.failed > 1 ? 's' : ''}</>}
                     </p>
                     <p className="text-ink-faint text-xs mt-2">
@@ -242,6 +245,7 @@ export default function TouringImportButton({ onImportDone }: Props) {
                   <div className="space-y-1.5 text-xs">
                     {send.results.map(r => {
                       const meta = r.action === 'created' ? { icon: '✅', cls: 'text-success', txt: 'créée dans le dispatch' }
+                        : r.action === 'linked'  ? { icon: '🔗', cls: 'text-sky-600', txt: r.reason || 'liée à COMEX' }
                         : r.action === 'skipped' ? { icon: '⏭️', cls: 'text-ink-muted', txt: r.reason || 'déjà en base' }
                         :                           { icon: '⚠️', cls: 'text-critical/80', txt: r.error || 'échec' }
                       return (
@@ -270,7 +274,7 @@ export default function TouringImportButton({ onImportDone }: Props) {
                     onClick={triggerSend}
                     className="px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:opacity-90 text-white rounded-xl font-semibold text-sm transition"
                   >
-                    🚗 Déclencher l'import ({newCount})
+                    🚗 Importer / lier à COMEX ({newCount})
                   </button>
                 </>
               )}
