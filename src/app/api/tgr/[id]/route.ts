@@ -227,6 +227,65 @@ export async function POST(
       updated_at:       new Date().toISOString(),
     }).eq('id', missionId)
 
+    // ── Intégration au PLANNING du dispatch ───────────────────────────────────
+    // La demande TGR acceptée devient une mission VD Soft (source 'tgr', statut
+    // 'dispatching' = validée, en attente d'assignation) planifiée à la date/heure
+    // choisie par le dispatch (deadline_date + slot) → apparaît dans l'onglet RDV
+    // (si future) ou En attente. Idempotent via external_id. Olivier 2026-07-07.
+    try {
+      const dateOnly = plannedDateStr ? String(plannedDateStr).slice(0, 10) : null
+      const hour = plannedSlotStr === 'before_noon' ? 10 : plannedSlotStr === 'during_day' ? 14 : 9
+      const interventionDate = dateOnly
+        ? new Date(`${dateOnly}T${String(hour).padStart(2, '0')}:00:00`).toISOString()
+        : new Date().toISOString()
+
+      const extId = `tgr_${missionId}`
+      const payload: Record<string, any> = {
+        external_id:        extId,
+        source:             'tgr',
+        source_format:      'tgr',
+        status:             'dispatching',
+        dispatch_mode:      'manual',
+        mission_type:       'remorquage',
+        dossier_number:     mission.reference || null,
+        client_name:        mission.partner?.name || null,
+        billed_to_name:     mission.partner?.name || null,
+        vehicle_plate:      mission.plate || null,
+        vehicle_brand:      mission.brand || null,
+        vehicle_model:      mission.model || null,
+        is_rollable:        mission.is_rolling ?? null,
+        incident_address:   mission.pickup_address || null,
+        destination_address: mission.delivery_address || null,
+        remarks_general:    mission.remarks || null,
+        intervention_date:  interventionDate,
+        rdv_at:             interventionDate,
+        received_at:        new Date().toISOString(),
+        parse_confidence:   1.0,
+        distance_km:        mission.distance_km ?? null,
+      }
+
+      const { data: existing } = await supabase.from('incoming_missions')
+        .select('id').eq('external_id', extId).maybeSingle()
+      let dispatchMissionId: string | null = existing?.id || null
+      if (existing) {
+        await supabase.from('incoming_missions').update(payload).eq('id', existing.id)
+      } else {
+        const { data: ins } = await supabase.from('incoming_missions').insert(payload).select('id').single()
+        dispatchMissionId = ins?.id || null
+      }
+
+      if (dispatchMissionId) {
+        await supabase.from('tgr_missions').update({ dispatch_mission_id: dispatchMissionId }).eq('id', missionId)
+        await supabase.from('mission_logs').insert({
+          mission_id: dispatchMissionId, actor_id: me?.id || null, action: 'received',
+          notes: `Demande TGR Touring acceptée par ${me?.name || 'dispatcher'} — planifiée ${plannedLabel}`,
+          metadata: { tgr_mission_id: missionId, reference: mission.reference },
+        }).then(() => {}, () => {})
+      }
+    } catch (e: any) {
+      console.error('[TGR Accept → planning]', e?.message)
+    }
+
     // Push au partenaire
     await sendPushToUser(mission.partner.id, {
       title: `✅ Mission TGR acceptée — ${mission.plate}`,
