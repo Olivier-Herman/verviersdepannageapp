@@ -796,7 +796,14 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       if (process.env.TOURING_COMEX_MODE === 'import' && (dossiers.length || commandes.length)) {
         try {
           const { importComexByRefs } = await import('@/lib/touring/comex-lookup')
-          const r = await importComexByRefs({ supabase, dossiers, commandes, placeholderId })
+          // TIMEOUT DUR : COMEX (login + liste) ne doit JAMAIS bloquer le traitement
+          // du mail. Si > 8s (COMEX lent/KO), on abandonne et on retombe sur le
+          // parsing mail (roue de secours). Sinon la fonction Vercel meurt et laisse
+          // un placeholder « PROCESSING_ » bloqué (incident 2026-07-07). Olivier.
+          const r = await Promise.race([
+            importComexByRefs({ supabase, dossiers, commandes, placeholderId }),
+            new Promise<never>((_, rej) => setTimeout(() => rej(new Error('COMEX-first timeout 8s')), 8000)),
+          ])
           if (r.matched && r.missionId) {
             if (placeholderId && placeholderId !== r.missionId) {
               await supabase.from('incoming_missions').delete().eq('id', placeholderId)
