@@ -234,10 +234,14 @@ export async function getComexAddresses(
   try { return JSON.parse(text) } catch { return { _raw: text.slice(0, 500) } }
 }
 
+/** Dépôt COMEX par défaut = VERVIERS DÉPANNAGE principal (Rue de la Cité 22a). */
+export const DEFAULT_DEPOT_CID = '001072478'
+
 /**
- * Résout l'ID d'adresse DÉPÔT (ADR_DEPOT_CID_INTV) requis par l'accept COMEX,
- * depuis adresse/get. On cherche l'adresse de type dépôt/destination (GAR) et on
- * retourne son CID_ADRESSE. Best-effort (retourne '' si introuvable).
+ * Résout l'ID de DÉPÔT (ADR_DEPOT_CID_INTV) requis par l'accept COMEX, depuis
+ * adresse/get. Nos dépôts = entrées COD_ADRESSE='DEP', l'ID = champ CID_INTV.
+ * On prend le dépôt principal (VERVIERS DÉPANNAGE sans numéro) sinon le 1er DEP,
+ * repli sur la constante. Sans cet ID non vide, COMEX n'accepte pas la mission.
  */
 export async function resolveComexDepotCid(
   session: ComexSession,
@@ -245,13 +249,12 @@ export async function resolveComexDepotCid(
 ): Promise<string> {
   try {
     const data = await getComexAddresses(session, keys)
-    const list: any[] = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : [])
-    // Champ CID de l'adresse : plusieurs noms possibles selon COMEX.
-    const cidOf = (a: any) => String(a?.CID_ADRESSE || a?.ADR_DEPOT_CID_INTV || a?.CID_ADR || a?.CID || '').trim()
-    // Priorité à l'adresse dépôt/destination (COD_ADRESSE = 'GAR'/'DEP'/'TO'…).
-    const dest = list.find(a => /GAR|DEP|TO|DEPOT|DEST/i.test(String(a?.COD_ADRESSE || a?.TYPE || a?.TYPE_ADRESSE || '')))
-    return cidOf(dest || list[0] || {})
-  } catch { return '' }
+    const list: any[] = Array.isArray(data?.content) ? data.content : (Array.isArray(data) ? data : [])
+    const deps = list.filter(a => String(a?.COD_ADRESSE || '').toUpperCase() === 'DEP' && String(a?.CID_INTV || '').trim())
+    // Dépôt principal = "VERVIERS DÉPANNAGE" sans numéro (les autres sont "… 2/3/4").
+    const main = deps.find(a => /verviers\s+d[ée]pannage\s*$/i.test(String(a?.NOM || '').trim())) || deps[0]
+    return String(main?.CID_INTV || '').trim() || DEFAULT_DEPOT_CID
+  } catch { return DEFAULT_DEPOT_CID }
 }
 
 // ── Actions (mutations) : changement de statut via detail/set + operType ──────
@@ -292,6 +295,13 @@ export async function pushComexOperation(
     payload[f] = (v === undefined || v === null)
       ? (f === 'FL_PLAINTE_CLIENT' ? '0' : (f === 'MONT_KM' ? 0 : ''))
       : v
+  }
+  // ADR_DEPOT_CID_INTV : ABSENT du detail/get mais REQUIS (non vide) pour que
+  // COMEX bascule réellement le statut (accept/onRoad/onSpot). On le résout depuis
+  // adresse/get (id du dépôt intervenant). Sans lui, COMEX répond OK mais ne fait
+  // rien. Cause racine identifiée 2026-07-07.
+  if (!String(payload.ADR_DEPOT_CID_INTV || '').trim()) {
+    payload.ADR_DEPOT_CID_INTV = await resolveComexDepotCid(session, keys)
   }
   return comexRest(session, 'Mission/detail/set', payload)
 }
