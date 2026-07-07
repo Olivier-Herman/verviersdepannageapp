@@ -2324,6 +2324,19 @@ export default function MissionDetailClient({
             </span>
           )}
           <span className={`text-sm font-medium ${statusInfo.color}`}>• {statusInfo.label}</span>
+          {/* Bouton CMR (lettre de voiture) — transport / remorquage / relivraison.
+              Surimpression sur liasse pré-imprimée. Olivier 2026-07-07. */}
+          {(() => {
+            const t = (form.mission_type || '').toLowerCase()
+            const eligible = /remorqu|reliv|transport/.test(t) || ['rem', 'rel', 'rem+rel'].includes(t)
+              || initialMission.incident_type === 'relivraison'
+            return eligible ? (
+              <a href={`/cmr/${initialMission.id}`} target="_blank" rel="noreferrer"
+                className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 transition">
+                🚚 CMR
+              </a>
+            ) : null
+          })()}
           {userRole === 'superadmin' && (
             <Link href={`/dispatch/dossier/${initialMission.id}`}
               className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition">

@@ -282,17 +282,32 @@ export const DEFAULT_REF_PATROL = '001'
 export async function acceptTouringMission(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
   opts?: { etaMinutes?: number; refPatrol?: string; acceptedAt?: Date },
-): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string }> {
+): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string; statusBefore?: string | null; statusAfter?: string | null }> {
   const steps: Record<string, boolean> = { accept: false, eta: false, assign: false }
+  // Preuve indépendante : on relit le statut COMEX AVANT et APRÈS notre appel.
+  // Si accept 03→04 : c'est bien NOTRE appel. Si 03→03 : notre appel n'a rien fait.
+  const readStatus = async (session: ComexSession): Promise<string | null> => {
+    try {
+      const list = await listComexMissions(session)
+      const m = list.find(x => String(x.CID_DOS).toUpperCase() === keys.CID_DOS.toUpperCase()
+        && (!keys.CID_SEQ_ACTION || String(x.CID_SEQ_ACTION) === keys.CID_SEQ_ACTION))
+        || list.find(x => String(x.CID_DOS).toUpperCase() === keys.CID_DOS.toUpperCase())
+      return m?.COD_STATUT_MTR ?? null
+    } catch { return null }
+  }
+  let statusBefore: string | null = null
+  let statusAfter:  string | null = null
   try {
     const session = await loginComex('dispatch')
+    statusBefore = await readStatus(session)
     const operDate = comexOperDate(opts?.acceptedAt || new Date())
     await pushComexOperation(session, keys, 'accept', operDate);       steps.accept = true
     await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
     await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
-    return { ok: true, steps }
+    statusAfter = await readStatus(session)
+    return { ok: true, steps, statusBefore, statusAfter }
   } catch (e: any) {
-    return { ok: false, steps, error: e?.message || 'erreur' }
+    return { ok: false, steps, error: e?.message || 'erreur', statusBefore, statusAfter }
   }
 }
 

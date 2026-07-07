@@ -93,13 +93,18 @@ async function acceptTouringBg(
         await supabase.from('incoming_missions')
           .update({ touring_accepted_at: acceptedAt.toISOString() }).eq('id', missionId)
       }
+      // Preuve : le statut COMEX a-t-il RÉELLEMENT changé grâce à notre appel ?
+      const sb2 = r.statusBefore ?? '?'
+      const sa2 = r.statusAfter ?? '?'
+      const changed = r.statusBefore && r.statusAfter && r.statusBefore !== r.statusAfter
+      const proof = changed ? '✅' : '⚠️ statut INCHANGÉ (notre appel n\'a rien fait — voir payload)'
       await supabase.from('mission_logs').insert({
         mission_id: missionId, actor_id: actorId,
         action: r.ok ? 'touring_synced' : 'touring_sync_error',
         notes:  r.ok
-          ? 'Touring COMEX ↗ accepté + délai 60 min + assigné Verviers DE-001'
-          : `Touring COMEX ↗ échec — ${r.error || 'inconnue'} (étapes ${JSON.stringify(r.steps)})`,
-        metadata: { CID_DOS, CID_SEQ_ACTION, steps: r.steps },
+          ? `Touring COMEX ↗ accepté + délai 60 min + assigné DE-001 — COMEX ${sb2}→${sa2} ${proof}`
+          : `Touring COMEX ↗ échec — ${r.error || 'inconnue'} — COMEX ${sb2}→${sa2} (étapes ${JSON.stringify(r.steps)})`,
+        metadata: { CID_DOS, CID_SEQ_ACTION, steps: r.steps, statusBefore: r.statusBefore, statusAfter: r.statusAfter },
       }).then(() => {}, () => {})
     } catch (e: any) {
       console.error('[Confirm] Touring COMEX accept:', e?.message)
