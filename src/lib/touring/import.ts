@@ -91,23 +91,34 @@ export async function runTouringImport(opts: { mode: TouringImportMode }): Promi
           results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'would_link', external_id: externalId, reason: 'fiche mail → COMEX maître' })
           continue
         }
+        // 1) LIEN COMEX ESSENTIEL (isolé) : source_format + raw_content. C'est ce qui
+        //    permet à « Valider » de déclencher l'accept COMEX. On le fait en premier
+        //    et seul, pour qu'il persiste quoi qu'il arrive ensuite.
+        const { error: linkErr } = await sb.from('incoming_missions')
+          .update({ source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() })
+          .eq('id', (existing as any).id)
+        if (linkErr) {
+          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: linkErr.message })
+          failed++
+          continue
+        }
+        // 2) COMEX MAÎTRE (contenu) si encore à valider — best effort, n'empêche pas
+        //    le lien ci-dessus. Écrase les champs de contenu par les données COMEX.
         const earlyStatus = ['new', 'dispatching'].includes(String((existing as any).status))
-        const upd: Record<string, any> = { source_format: 'comex', raw_content: comexRaw, updated_at: new Date().toISOString() }
         if (earlyStatus) {
           const mapped = mapComexToMission({ detail, status: 'new', billedToId, billedToName })
+          const contentUpd: Record<string, any> = {}
           for (const f of COMEX_OVERWRITE_FIELDS) {
             const v = (mapped as any)[f]
-            if (v !== undefined && v !== null && v !== '') upd[f] = v   // COMEX gagne là où il a une valeur
+            if (v !== undefined && v !== null && v !== '') contentUpd[f] = v   // COMEX gagne là où il a une valeur
+          }
+          if (Object.keys(contentUpd).length > 0) {
+            const { error: cErr } = await sb.from('incoming_missions').update(contentUpd).eq('id', (existing as any).id)
+            if (cErr) console.warn('[touring import] overwrite contenu KO (lien COMEX OK):', cErr.message)
           }
         }
-        const { error: upErr } = await sb.from('incoming_missions').update(upd).eq('id', (existing as any).id)
-        if (upErr) {
-          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'failed', external_id: externalId, error: upErr.message })
-          failed++
-        } else {
-          results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: earlyStatus ? 'fiche mail pilotée par COMEX' : 'clés COMEX attachées' })
-          linked++
-        }
+        results.push({ dossier: m.CID_DOS, plaque: m.NUM_PLAQUE, action: 'linked', external_id: externalId, reason: earlyStatus ? 'fiche mail pilotée par COMEX' : 'clés COMEX attachées' })
+        linked++
         continue
       }
 
