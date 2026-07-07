@@ -67,9 +67,30 @@ export async function GET(req: Request) {
     ? await sb.from('users').select('id, name').in('id', driverIds)
     : { data: [] }
 
+  // Remarques de facturation (multi, signées) par fiche + filet legacy sur
+  // l'ancien champ remarks_billing (missions créées manuellement avant le
+  // système multi-remarques). Olivier 2026-07-07.
+  const { data: brRows } = await sb.from('mission_billing_remarks')
+    .select('id, mission_id, text, created_at, author:users!created_by(name, email)')
+    .in('mission_id', allIds)
+    .order('created_at', { ascending: false })
+  const brByMission: Record<string, any[]> = {}
+  for (const r of (brRows || []) as any[]) {
+    (brByMission[r.mission_id] ??= []).push({
+      id: r.id, text: r.text, created_at: r.created_at,
+      author_name: r.author?.name || r.author?.email || null,
+    })
+  }
+  const attachRemarks = (m: any) => {
+    const list = [...(brByMission[m.id] || [])]
+    const legacy = (m.remarks_billing || '').trim()
+    if (legacy) list.push({ id: `legacy-${m.id}`, text: legacy, created_at: null, author_name: null })
+    return { ...m, billing_remarks: list }
+  }
+
   return NextResponse.json({
-    mission,
-    siblings: siblings || [],
+    mission:  attachRemarks(mission),
+    siblings: (siblings || []).map(attachRemarks),
     payments: payments || [],
     drivers:  drivers || [],
   })

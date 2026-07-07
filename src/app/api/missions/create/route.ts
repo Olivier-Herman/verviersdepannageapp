@@ -135,9 +135,8 @@ export async function POST(req: Request) {
       amount_to_collect:    body.amount_to_collect    != null
                               ? Number(body.amount_to_collect)
                               : null,
-      // Remarques
+      // Remarques (remarks_billing → table mission_billing_remarks ci-dessous)
       remarks_general:      body.remarks_general,
-      remarks_billing:      body.remarks_billing,
       // RDV
       rdv_at:               body.rdv_at               || null,
       incident_at:          body.rdv_at               || now,
@@ -176,6 +175,16 @@ export async function POST(req: Request) {
     notes:      `Mission créée manuellement par ${actor?.name || 'dispatcher'}`,
     metadata:   { source: body.source, manual: true }
   })
+
+  // Remarque de facturation éventuelle → table dédiée (signée + datée), pour
+  // rejoindre le système multi-remarques de la fiche/facturation. Olivier 2026-07-07.
+  if (String(body.remarks_billing || '').trim()) {
+    await supabase.from('mission_billing_remarks').insert({
+      mission_id: mission.id,
+      text:       String(body.remarks_billing).trim(),
+      created_by: actor?.id || null,
+    }).then(() => {}, () => {})
+  }
 
   const typeLabel = body.mission_type === 'REM'       ? '🚛 Remorquage'
                   : body.mission_type === 'DSP'       ? '🔧 Dépannage'

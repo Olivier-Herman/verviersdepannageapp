@@ -33,6 +33,7 @@ interface BaseMission {
   billed_to_id?:     number | null
   billed_to_name?:   string | null
   remarks_billing?:  string | null
+  billing_remarks?:  Array<{ id: string; text: string; created_at: string | null; author_name: string | null }>
 }
 
 interface PaymentRow {
@@ -924,7 +925,7 @@ export default function FacturerModal({
   const [noChargePrompt, setNoChargePrompt] = useState<{ ids: string[]; label: string } | null>(null)
   const [noChargeReason, setNoChargeReason] = useState('')
   // Blocage « Remarque de facturation » avant envoi.
-  const [remarkGate, setRemarkGate] = useState<{ method: 'manual' | 'auto'; ids: string[]; number?: string; remarks: Array<{ label: string; text: string }> } | null>(null)
+  const [remarkGate, setRemarkGate] = useState<{ method: 'manual' | 'auto'; ids: string[]; number?: string; remarks: Array<{ label: string; text: string; author: string | null }> } | null>(null)
   // Track des devis créés pendant la session (override les valeurs initiales)
   const [createdQuotes, setCreatedQuotes] = useState<Record<string, { id: number; url: string }>>({})
 
@@ -1028,11 +1029,12 @@ export default function FacturerModal({
   // d'envoyer la facturation. Olivier 2026-07-07.
   async function submit(method: 'manual' | 'auto', ids: string[], number?: string) {
     const remarks = all
-      .filter(m => ids.includes(m.id) && (m.remarks_billing || '').trim())
-      .map(m => ({
-        label: m.dossier_number || m.external_id || m.id.slice(0, 8),
-        text:  (m.remarks_billing as string).trim(),
-      }))
+      .filter(m => ids.includes(m.id))
+      .flatMap(m => (m.billing_remarks || []).map(r => ({
+        label:  m.dossier_number || m.external_id || m.id.slice(0, 8),
+        text:   r.text,
+        author: r.author_name,
+      })))
     if (remarks.length > 0) {
       setRemarkGate({ method, ids, number, remarks })
       return
@@ -1155,19 +1157,23 @@ export default function FacturerModal({
         {/* Body scroll */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
-          {/* Remarque(s) de facturation — bien visible dans le module (une par fiche
-              du bundle qui en porte une). Rappelée en blocage au moment de facturer. */}
-          {all.some(m => (m.remarks_billing || '').trim()) && (
+          {/* Remarque(s) de facturation — bien visible dans le module (signées +
+              datées, une ou plusieurs par fiche). Rappelées en blocage au moment
+              de facturer. */}
+          {all.some(m => (m.billing_remarks || []).length > 0) && (
             <div className="bg-slate-800 rounded-xl p-3 space-y-2 ring-1 ring-slate-600">
               <p className="text-slate-300 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                <span>📝</span> Remarque de facturation
+                <span>📝</span> Remarque(s) de facturation
               </p>
-              {all.filter(m => (m.remarks_billing || '').trim()).map(m => (
-                <div key={m.id} className="text-white">
-                  {all.filter(x => (x.remarks_billing || '').trim()).length > 1 && (
-                    <p className="text-slate-400 text-[11px] font-mono">{m.dossier_number || m.external_id || m.id.slice(0, 8)}</p>
-                  )}
-                  <p className="text-sm font-semibold whitespace-pre-line leading-snug">{(m.remarks_billing as string).trim()}</p>
+              {all.flatMap(m => (m.billing_remarks || []).map(r => ({ m, r }))).map(({ m, r }) => (
+                <div key={r.id} className="bg-slate-900 rounded-lg p-2.5 text-white ring-1 ring-slate-700">
+                  <p className="text-slate-400 text-[11px]">
+                    {all.filter(x => (x.billing_remarks || []).length > 0).length > 1 && (
+                      <span className="font-mono">{m.dossier_number || m.external_id || m.id.slice(0, 8)} · </span>
+                    )}
+                    {r.author_name ? <span className="text-slate-300 font-semibold">{r.author_name}</span> : <span className="italic">initiale</span>}
+                  </p>
+                  <p className="text-sm font-semibold whitespace-pre-line leading-snug mt-0.5">{r.text}</p>
                 </div>
               ))}
             </div>
@@ -1524,7 +1530,10 @@ export default function FacturerModal({
             <div className="space-y-2">
               {remarkGate.remarks.map((r, i) => (
                 <div key={i} className="bg-slate-800 text-white rounded-lg p-3">
-                  <p className="text-slate-300 text-[11px] font-mono mb-1">{r.label}</p>
+                  <p className="text-slate-300 text-[11px] mb-1">
+                    <span className="font-mono">{r.label}</span>
+                    {r.author ? <span> · {r.author}</span> : null}
+                  </p>
                   <p className="text-white text-sm font-semibold whitespace-pre-line leading-snug">{r.text}</p>
                 </div>
               ))}

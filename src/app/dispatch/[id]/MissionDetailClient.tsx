@@ -9,6 +9,7 @@ import { Pencil } from 'lucide-react'
 import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
+import BillingRemarks from '@/components/missions/BillingRemarks'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
@@ -1233,8 +1234,6 @@ export default function MissionDetailClient({
     mission_type:         initialMission.mission_type         || '',
     incident_type:        initialMission.incident_type        || '',
     incident_description: initialMission.incident_description || '',
-    // Olivier 2026-07-07 : « Remarque de facturation » éditable par le dispatch.
-    remarks_billing:      initialMission.remarks_billing      || '',
     billed_to_name:       initialMission.billed_to_name       || '',
     client_name:          initialMission.client_name          || '',
     client_phone:         initialMission.client_phone         || '',
@@ -1284,6 +1283,9 @@ export default function MissionDetailClient({
       || (['parked', 'delivering', 'unlocated', 'awaiting_payment'].includes(initialMission.status) ? new Date().toISOString() : null)
     ),
   })
+
+  // Nombre de remarques de facturation (pour l'alerte en haut de fiche).
+  const [billingRemarkCount, setBillingRemarkCount] = useState(0)
 
   // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,
   // ou mot-clé "autoroute" / "highway".
@@ -2753,9 +2755,9 @@ export default function MissionDetailClient({
         )}
 
         {/* ALERTE « Remarque de facturation » en haut de fiche — courte et cliquable :
-            un clic fait défiler jusqu'à l'encadré d'édition. Le texte complet n'est
-            PAS répété ici (il est dans l'encadré). Olivier 2026-07-07. */}
-        {form.remarks_billing?.trim() && (
+            un clic fait défiler jusqu'à l'encadré des remarques. Le texte n'est PAS
+            répété ici (il est dans l'encadré, signé + daté). Olivier 2026-07-07. */}
+        {billingRemarkCount > 0 && (
           <div className="px-4 lg:px-8 pt-4">
             <button
               type="button"
@@ -2764,8 +2766,10 @@ export default function MissionDetailClient({
             >
               <span className="text-2xl">⚠️</span>
               <div className="flex-1 min-w-0">
-                <p className="text-white text-base font-bold">Attention — remarque de facturation</p>
-                <p className="text-slate-300 text-xs mt-0.5">Clique pour voir la remarque ↓</p>
+                <p className="text-white text-base font-bold">
+                  Attention — {billingRemarkCount > 1 ? `${billingRemarkCount} remarques de facturation` : 'remarque de facturation'}
+                </p>
+                <p className="text-slate-300 text-xs mt-0.5">Clique pour {billingRemarkCount > 1 ? 'les' : 'la'} voir ↓</p>
               </div>
               <span className="text-slate-400 text-xl flex-shrink-0">↓</span>
             </button>
@@ -2895,26 +2899,18 @@ export default function MissionDetailClient({
           </div>
         )}
 
-        {/* Encadré éditable « Remarque de facturation » — espace dédié au dispatch
-            (blanc sur gris foncé), toujours visible sur toutes les fiches. Autosave
-            débouncée (900ms). Le rappel s'affiche en gros en haut de fiche dès qu'il
-            est rempli, et bloque à la facturation. Olivier 2026-07-07. */}
+        {/* Remarques de facturation — système multi-remarques signées + datées
+            (add/edit/delete), espace dédié au dispatch (blanc sur gris foncé),
+            toujours visible. Alerte en haut de fiche dès qu'il y en a une, et
+            blocage + affichage au moment de facturer. Olivier 2026-07-07. */}
         <div className="px-4 lg:px-8 pt-4">
-          <div id="billing-remark-card" className="bg-slate-800 rounded-xl p-4 shadow ring-1 ring-slate-600 scroll-mt-24">
-            <label className="flex items-center gap-2 text-slate-300 text-xs font-bold uppercase tracking-widest mb-2">
-              <span>📝</span> Remarque de facturation
-            </label>
-            <textarea
-              value={form.remarks_billing}
-              onChange={e => setForm(prev => ({ ...prev, remarks_billing: e.target.value }))}
-              rows={2}
-              placeholder="Note pour la facturation (ex. facturer 2 dépannages ensemble, bon de commande à joindre, tarif dérogatoire convenu…)"
-              className="w-full bg-slate-900 text-white placeholder:text-slate-500 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-y whitespace-pre-line"
-            />
-            <p className="text-slate-400 text-[11px] mt-1.5">
-              Visible en haut de la fiche et rappelée (blocage) au moment de facturer.
-            </p>
-          </div>
+          <BillingRemarks
+            missionId={initialMission.id}
+            currentUserId={userId}
+            isSuperadmin={userRole === 'superadmin'}
+            legacyRemark={initialMission.remarks_billing}
+            onCountChange={setBillingRemarkCount}
+          />
         </div>
 
         <div className="flex-1 px-8 py-6">
