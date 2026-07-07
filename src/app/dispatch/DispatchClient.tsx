@@ -12,6 +12,7 @@ import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import MissionStamp from '@/components/missions/MissionStamp'
 import VabImportButton from '@/components/dispatch/VabImportButton'
+import TouringImportButton from '@/components/dispatch/TouringImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
@@ -1271,6 +1272,10 @@ export default function DispatchClient({
 
             {/* Import VAB — bouton dedie (orange ambre pour signal action externe) */}
             <VabImportButton onImportDone={() => load()} />
+
+            {/* Import Touring COMEX — superadmin only pendant la phase de validation
+                (l'import lit COMEX + crée les fiches, ne mute rien côté Touring). */}
+            {userRole === 'superadmin' && <TouringImportButton onImportDone={() => load()} />}
 
             {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"
