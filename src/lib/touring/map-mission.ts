@@ -79,7 +79,8 @@ export function mapComexToMission(input: ComexMapInput): Record<string, any> {
     // Client = personne à joindre sur place (intervenant), membre = assisté.
     client_name:        name(d.INT_PRENOM, d.INT_NOM) || name(d.MEM_PRENOM, d.MEM_NOM) || s(d.NOM),
     client_phone:       s(d.INT_NTEL) || s(d.NTEL),
-    client_email:       s(d.INT_EMAIL),
+    // NB : pas de colonne client_email sur incoming_missions → ne pas l'ajouter
+    // (échec insert PGRST204). Olivier 2026-07-07.
     assisted_name:      name(d.MEM_PRENOM, d.MEM_NOM),
 
     // Véhicule
