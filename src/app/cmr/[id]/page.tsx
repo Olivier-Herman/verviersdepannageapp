@@ -18,6 +18,26 @@ function joinNonEmpty(parts: (string | null | undefined)[], sep = ' '): string {
   return parts.map(p => (p || '').trim()).filter(Boolean).join(sep)
 }
 
+// Adresse complète du partenaire facturé depuis Odoo (case 1 Expéditeur).
+async function odooPartnerBlock(partnerId: number | null | undefined, fallbackName: string): Promise<string> {
+  if (!partnerId) return fallbackName
+  try {
+    const { odooRpc } = await import('@/lib/odoo')
+    const r = await odooRpc<any[]>('res.partner', 'read', [[partnerId], ['name', 'street', 'street2', 'zip', 'city', 'country_id']])
+    const p = r?.[0]
+    if (!p) return fallbackName
+    const country = Array.isArray(p.country_id) ? p.country_id[1] : ''
+    return joinNonEmpty([
+      p.name || fallbackName,
+      joinNonEmpty([p.street, p.street2], ', '),
+      joinNonEmpty([p.zip, p.city]),
+      country && !/belg/i.test(country) ? country : '',
+    ], '\n')
+  } catch {
+    return fallbackName
+  }
+}
+
 export default async function CmrPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
@@ -34,10 +54,12 @@ export default async function CmrPage({ params }: { params: { id: string } }) {
   if (!m) redirect('/dispatch')
 
   const mm: any = m
+  // Case 1 Expéditeur = client facturé, avec son adresse Odoo (billed_to_id).
+  const expediteur = await odooPartnerBlock(mm.billed_to_id, mm.billed_to_name || mm.client_name || '')
   // Mapping des cases CMR (validé Olivier 2026-07-07).
   const fields = {
-    // 1 · Expéditeur = client facturé
-    expediteur:    joinNonEmpty([mm.billed_to_name || mm.client_name], '\n'),
+    // 1 · Expéditeur = client facturé (nom + adresse Odoo)
+    expediteur,
     // 2 · Destinataire = adresse de destination
     destinataire:  joinNonEmpty([mm.destination_name, mm.destination_address || mm.redelivery_address], '\n'),
     // 3 · Prise en charge = adresse de chargement (lieu d'intervention)
