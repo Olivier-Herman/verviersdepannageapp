@@ -75,12 +75,18 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
       if (!res.ok) throw new Error(data.error)
       if (action === 'accept') {
         setOdooResult({ name: data.odooQuoteName, error: data.odooError })
-        // Rafraîchir après 2s pour laisser voir le résultat
+        // Diagnostic : si la mission au planning n'a pas pu être créée, on le signale.
+        if (data.dispatchError) {
+          setError(`Planning dispatch : mission NON créée — ${data.dispatchError}`)
+        } else if (!data.dispatchMissionId) {
+          setError('Planning dispatch : mission non créée (raison inconnue — voir logs)')
+        }
+        // Rafraîchir après un délai (plus long si erreur, pour laisser lire).
         setTimeout(() => {
           setShowAcceptModal(false)
           setSelected(null)
           window.location.reload()
-        }, 2500)
+        }, data.dispatchError ? 8000 : 2500)
       } else {
         setSelected(null)
         window.location.reload()

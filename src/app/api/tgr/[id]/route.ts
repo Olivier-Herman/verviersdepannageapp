@@ -232,6 +232,8 @@ export async function POST(
     // 'dispatching' = validée, en attente d'assignation) planifiée à la date/heure
     // choisie par le dispatch (deadline_date + slot) → apparaît dans l'onglet RDV
     // (si future) ou En attente. Idempotent via external_id. Olivier 2026-07-07.
+    let dispatchMissionId: string | null = null
+    let dispatchError: string | null = null
     try {
       const dateOnly = plannedDateStr ? String(plannedDateStr).slice(0, 10) : null
       const hour = plannedSlotStr === 'before_noon' ? 10 : plannedSlotStr === 'during_day' ? 14 : 9
@@ -266,11 +268,13 @@ export async function POST(
 
       const { data: existing } = await supabase.from('incoming_missions')
         .select('id').eq('external_id', extId).maybeSingle()
-      let dispatchMissionId: string | null = existing?.id || null
+      dispatchMissionId = existing?.id || null
       if (existing) {
-        await supabase.from('incoming_missions').update(payload).eq('id', existing.id)
+        const { error } = await supabase.from('incoming_missions').update(payload).eq('id', existing.id)
+        if (error) dispatchError = error.message
       } else {
-        const { data: ins } = await supabase.from('incoming_missions').insert(payload).select('id').single()
+        const { data: ins, error } = await supabase.from('incoming_missions').insert(payload).select('id').single()
+        if (error) dispatchError = error.message
         dispatchMissionId = ins?.id || null
       }
 
@@ -282,7 +286,9 @@ export async function POST(
           metadata: { tgr_mission_id: missionId, reference: mission.reference },
         }).then(() => {}, () => {})
       }
+      if (dispatchError) console.error('[TGR Accept → planning] insert KO:', dispatchError)
     } catch (e: any) {
+      dispatchError = e?.message || 'exception'
       console.error('[TGR Accept → planning]', e?.message)
     }
 
@@ -334,6 +340,8 @@ export async function POST(
       odooQuoteName,
       odooError,
       plannedLabel,
+      dispatchMissionId,
+      dispatchError,
     })
   }
 
