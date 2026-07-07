@@ -244,7 +244,7 @@ export async function POST(
       const extId = `tgr_${missionId}`
       const payload: Record<string, any> = {
         external_id:        extId,
-        source:             'tgr',
+        source:             'tgr_touring',   // clé du catalog (label « TGR Touring »)
         source_format:      'tgr',
         status:             'dispatching',
         dispatch_mode:      'manual',
