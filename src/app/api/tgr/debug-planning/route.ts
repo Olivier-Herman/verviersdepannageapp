@@ -66,7 +66,6 @@ export async function GET(req: Request) {
     rdv_at:             interventionDate,
     received_at:        new Date().toISOString(),
     parse_confidence:   1.0,
-    distance_km:        m.distance_km ?? null,
   }
 
   const { data: existing } = await sb.from('incoming_missions').select('id').eq('external_id', extId).maybeSingle()

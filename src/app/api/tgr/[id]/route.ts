@@ -263,7 +263,6 @@ export async function POST(
         rdv_at:             interventionDate,
         received_at:        new Date().toISOString(),
         parse_confidence:   1.0,
-        distance_km:        mission.distance_km ?? null,
       }
 
       const { data: existing } = await supabase.from('incoming_missions')
