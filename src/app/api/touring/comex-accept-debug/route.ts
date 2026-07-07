@@ -32,12 +32,15 @@ export async function GET(req: Request) {
   if (!roles.includes('superadmin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const missionId = (new URL(req.url).searchParams.get('mission') || '').trim()
-  if (!missionId) return NextResponse.json({ error: 'mission requis (?mission=<uuid>)' }, { status: 400 })
+  if (!missionId) return NextResponse.json({ error: 'mission requis (?mission=<uuid ou n° mission>)' }, { status: 400 })
 
   const sb = createAdminClient()
-  const { data: m } = await sb.from('incoming_missions')
-    .select('id, mission_number, source, source_format, raw_content, touring_accepted_at, touring_onroad_at, touring_onspot_at')
-    .eq('id', missionId).maybeSingle()
+  const COLS = 'id, mission_number, source, source_format, raw_content, touring_accepted_at, touring_onroad_at, touring_onspot_at'
+  // Accepte l'UUID OU le n° de mission (ex 10052003).
+  const isNumber = /^\d+$/.test(missionId)
+  const { data: m } = isNumber
+    ? await sb.from('incoming_missions').select(COLS).eq('mission_number', Number(missionId)).maybeSingle()
+    : await sb.from('incoming_missions').select(COLS).eq('id', missionId).maybeSingle()
   if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   let cid: any = null
