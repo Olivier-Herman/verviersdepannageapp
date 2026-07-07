@@ -785,6 +785,37 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
       const haystack = [subject, content.rawContent || '', ...attachments.map((a: any) => a?.name || '')].join(' ')
       const dossiers = Array.from(new Set(Array.from(haystack.matchAll(/\b(20\d{2}BE\d{4,8})\b/gi)).map(m => m[1].toUpperCase())))
       const commandes = Array.from(new Set(Array.from(haystack.matchAll(/\b(\d{8,12}MA)\b/gi)).map(m => m[1].toUpperCase())))
+
+      // ── COMEX D'ABORD (roue de secours = mail) ──────────────────────────────
+      // Si l'intégration COMEX est active, on cherche la mission sur COMEX. Si elle
+      // y est, on matérialise la fiche depuis les données COMEX STRUCTURÉES (0 IA)
+      // et on skippe Claude. La fiche est alors liée COMEX (source_format=comex) →
+      // « Valider » déclenchera l'accept. Si COMEX ne voit PAS la mission (pas
+      // encore dispatchée, ou COMEX KO), on retombe sur le parsing du mail.
+      // Olivier 2026-07-07.
+      if (process.env.TOURING_COMEX_MODE === 'import' && (dossiers.length || commandes.length)) {
+        try {
+          const { importComexByRefs } = await import('@/lib/touring/comex-lookup')
+          const r = await importComexByRefs({ supabase, dossiers, commandes, placeholderId })
+          if (r.matched && r.missionId) {
+            if (placeholderId && placeholderId !== r.missionId) {
+              await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+            }
+            await markAsRead(token, messageId)
+            await supabase.from('mission_logs').insert({
+              mission_id: r.missionId, action: 'note',
+              notes: `Touring : fiche ${r.action === 'linked' ? 'liée à' : 'créée depuis'} COMEX à la réception du mail (0 IA).`,
+              metadata: { source_email_id: messageId, external_id: r.externalId, comex_first: true },
+            }).then(() => {}, () => {})
+            console.log(`[Processor] Touring COMEX-first : mission ${r.action} (${r.externalId}) → skip Claude`)
+            return { status: 'inserted', missionId: r.missionId, externalId: r.externalId || '', source }
+          }
+          console.log('[Processor] Touring COMEX-first : mission absente de COMEX → parsing mail (roue de secours)')
+        } catch (e: any) {
+          console.warn('[Processor] Touring COMEX-first KO → fallback mail:', e?.message)
+        }
+      }
+
       if (dossiers.length || commandes.length) {
         const orParts: string[] = []
         for (const d of dossiers)  { orParts.push(`dossier_number.eq.${d}`); orParts.push(`external_id.ilike.${d}%`) }
