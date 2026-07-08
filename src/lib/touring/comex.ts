@@ -238,23 +238,45 @@ export async function getComexAddresses(
 export const DEFAULT_DEPOT_CID = '001072478'
 
 /**
- * Résout l'ID de DÉPÔT (ADR_DEPOT_CID_INTV) requis par l'accept COMEX, depuis
- * adresse/get. Nos dépôts = entrées COD_ADRESSE='DEP', l'ID = champ CID_INTV.
- * On prend le dépôt principal (VERVIERS DÉPANNAGE sans numéro) sinon le 1er DEP,
- * repli sur la constante. Sans cet ID non vide, COMEX n'accepte pas la mission.
+ * Liste des dépôts candidats (CID_INTV) pour l'accept COMEX, ORDONNÉS par
+ * pertinence GÉOGRAPHIQUE : COMEX exige le dépôt du SECTEUR de l'intervention
+ * (ex Aywaille → dépôt Aywaille, pas Verviers). On classe : même localité que
+ * l'intervention d'abord, puis même zone CP, puis dépôt principal, puis le reste.
+ * Nos dépôts = entrées COD_ADRESSE='DEP' de adresse/get, id = CID_INTV.
  */
-export async function resolveComexDepotCid(
+export async function getComexDepotCandidates(
   session: ComexSession,
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
-): Promise<string> {
+): Promise<string[]> {
   try {
     const data = await getComexAddresses(session, keys)
     const list: any[] = Array.isArray(data?.content) ? data.content : (Array.isArray(data) ? data : [])
     const deps = list.filter(a => String(a?.COD_ADRESSE || '').toUpperCase() === 'DEP' && String(a?.CID_INTV || '').trim())
-    // Dépôt principal = "VERVIERS DÉPANNAGE" sans numéro (les autres sont "… 2/3/4").
-    const main = deps.find(a => /verviers\s+d[ée]pannage\s*$/i.test(String(a?.NOM || '').trim())) || deps[0]
-    return String(main?.CID_INTV || '').trim() || DEFAULT_DEPOT_CID
-  } catch { return DEFAULT_DEPOT_CID }
+    // Adresse d'intervention (ROA / FL_ADR_SIN=1) pour le matching secteur.
+    const interv = list.find(a => String(a?.COD_ADRESSE || '').toUpperCase() === 'ROA' || String(a?.FL_ADR_SIN) === '1') || {}
+    const iLoc = String((interv as any).LOC || '').toUpperCase().trim()
+    const iCp  = String((interv as any).CP || '').trim()
+    const score = (a: any): number => {
+      const loc = String(a?.LOC || '').toUpperCase().trim()
+      const cp  = String(a?.CP || '').trim()
+      if (iLoc && loc === iLoc) return 0                                   // même localité
+      if (iCp && cp && cp.slice(0, 2) === iCp.slice(0, 2)) return 1        // même zone CP
+      if (String(a?.CID_INTV).trim() === DEFAULT_DEPOT_CID) return 2       // principal
+      return 3
+    }
+    const cids = [...deps].sort((a, b) => score(a) - score(b)).map(a => String(a.CID_INTV).trim()).filter(Boolean)
+    if (!cids.includes(DEFAULT_DEPOT_CID)) cids.push(DEFAULT_DEPOT_CID)
+    return cids.length ? cids : [DEFAULT_DEPOT_CID]
+  } catch { return [DEFAULT_DEPOT_CID] }
+}
+
+/** Meilleur dépôt (1er candidat géo). Utilisé par onRoad/onSpot (pas de retry). */
+export async function resolveComexDepotCid(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<string> {
+  const cands = await getComexDepotCandidates(session, keys)
+  return cands[0] || DEFAULT_DEPOT_CID
 }
 
 // ── Actions (mutations) : changement de statut via detail/set + operType ──────
@@ -356,19 +378,33 @@ export async function acceptTouringMission(
   let statusAfter:  string | null = null
   let sentDepotCid = ''
   let acceptResp: any = null
+  const triedDepots: string[] = []
   try {
     const session = await loginComex('dispatch')
     statusBefore = await readStatus(session)
-    // Résout le dépôt une fois (pour diagnostic + passage à l'accept).
-    const depotCid = await resolveComexDepotCid(session, keys)
-    sentDepotCid = depotCid
     const operDate = comexOperDate(opts?.acceptedAt || new Date())
-    const acc = await pushComexOperation(session, keys, 'accept', operDate, depotCid); steps.accept = true
-    acceptResp = acc?.response
-    await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
-    await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
-    statusAfter = await readStatus(session)
-    return { ok: true, steps, statusBefore, statusAfter, sentDepotCid, acceptResp }
+
+    // COMEX exige le dépôt du SECTEUR de l'intervention. On essaie les dépôts
+    // candidats (ordonnés par géo) et on s'arrête dès que le statut bascule
+    // (03 → 04). Un mauvais dépôt = accept no-op (statut inchangé). Olivier 2026-07-08.
+    const candidates = await getComexDepotCandidates(session, keys)
+    let accepted = false
+    for (const depot of candidates) {
+      triedDepots.push(depot)
+      sentDepotCid = depot
+      const acc = await pushComexOperation(session, keys, 'accept', operDate, depot)
+      acceptResp = acc?.response
+      const st = await readStatus(session)
+      if (st && st !== '03' && st !== statusBefore) { accepted = true; statusAfter = st; break }
+      statusAfter = st  // reste 03 → on tentera le dépôt suivant
+    }
+    steps.accept = accepted
+
+    if (accepted) {
+      await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
+      await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
+    }
+    return { ok: accepted, steps, statusBefore, statusAfter, sentDepotCid, acceptResp, error: accepted ? undefined : `aucun dépôt n'a fait basculer (essayés: ${triedDepots.join(',')})` }
   } catch (e: any) {
     return { ok: false, steps, error: e?.message || 'erreur', statusBefore, statusAfter, sentDepotCid, acceptResp }
   }
