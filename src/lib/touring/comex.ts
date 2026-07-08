@@ -393,10 +393,16 @@ export async function acceptTouringMission(
     const session = await loginComex('dispatch')
     statusBefore = await readStatus(session)
 
-    // Déjà acceptée (04) ou plus avancée (05/06/07) → rien à faire. Cas courant :
-    // la mission a été validée MANUELLEMENT dans COMEX (ex. le dispatch VD Soft a
-    // validé tard, au-delà des 7 min). Ce n'est PAS un échec. Olivier 2026-07-08.
+    // Déjà acceptée (04) ou plus avancée (05/06/07) → pas de ré-accept. Cas courant :
+    // validée MANUELLEMENT dans COMEX (dispatch VD Soft tardif). PAS un échec. Le
+    // pointage chauffeur (en route/sur place) continuera normalement via la fiche.
+    // Si juste 04 (pas encore démarrée), on COMPLÈTE quand même délai + assign DE-001
+    // (au cas où la validation manuelle ne l'aurait pas fait). Olivier 2026-07-08.
     if (statusBefore && statusBefore !== '03') {
+      if (statusBefore === '04') {
+        try { await setComexEta(session, keys, opts?.etaMinutes ?? 60); steps.eta = true } catch { /* best effort */ }
+        try { await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true } catch { /* best effort */ }
+      }
       return { ok: true, alreadyAccepted: true, steps, statusBefore, statusAfter: statusBefore, sentDepotCid: '' }
     }
 
