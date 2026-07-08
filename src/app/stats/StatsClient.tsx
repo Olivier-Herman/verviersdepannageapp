@@ -59,6 +59,26 @@ interface StatsResponse {
   drivers_list: { id: string; name: string }[]
 }
 
+interface RevenueResponse {
+  period: Period
+  odooOk: boolean
+  total_htva: number
+  invoiced_htva: number
+  estimated_htva: number
+  byDriver: {
+    driver_id: string
+    name: string
+    missions_count: number
+    invoiced_count: number
+    revenue_odoo: number
+    revenue_estimate: number
+    revenue_htva: number
+  }[]
+}
+
+const eur = (n: number) =>
+  new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR' }).format(n || 0)
+
 const PERIODS = [
   { key: 'today',   label: "Aujourd'hui" },
   { key: 'week',    label: 'Cette semaine' },
@@ -78,6 +98,7 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
   const [chauffeur, setChauffeur] = useState<string>('')
   const [type, setType] = useState<string>('')
   const [data, setData] = useState<StatsResponse | null>(null)
+  const [revenue, setRevenue] = useState<RevenueResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const drivers = data?.drivers_list || []
@@ -99,6 +120,17 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
       })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
+
+    // CA par chauffeur : endpoint séparé (touche Odoo, plus lent) — le type ne
+    // le concerne pas.
+    const rParams = new URLSearchParams({ period })
+    if (source)    rParams.set('source', source)
+    if (chauffeur) rParams.set('chauffeur', chauffeur)
+    setRevenue(null)
+    fetch('/api/stats/driver-revenue?' + rParams.toString())
+      .then(r => r.json())
+      .then(j => { if (!j.error) setRevenue(j) })
+      .catch(() => {})
   }, [period, source, chauffeur, type])
 
   const handleExportCsv = () => {
@@ -112,6 +144,14 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
     rows.push('Source,Missions,Temps moyen (min)')
     for (const s of data.bySource) {
       rows.push(`"${s.source}",${s.count},${s.avgInterventionMinutes ?? ''}`)
+    }
+    if (revenue) {
+      rows.push('')
+      rows.push('Chauffeur,Missions facturables,Facturées Odoo,CA facturé Odoo (HTVA),CA estimé (HTVA),CA total (HTVA)')
+      for (const d of revenue.byDriver) {
+        rows.push(`"${d.name}",${d.missions_count},${d.invoiced_count},${d.revenue_odoo.toFixed(2)},${d.revenue_estimate.toFixed(2)},${d.revenue_htva.toFixed(2)}`)
+      }
+      rows.push(`"TOTAL",,,${revenue.invoiced_htva.toFixed(2)},${revenue.estimated_htva.toFixed(2)},${revenue.total_htva.toFixed(2)}`)
     }
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -304,6 +344,96 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
                   </tbody>
                 </table>
               </div>
+            </ChartCard>
+
+            {/* ── Chiffre d'affaires par chauffeur (HTVA) ─────── */}
+            <ChartCard title="💶 Chiffre d'affaires par chauffeur (HTVA)">
+              {!revenue ? (
+                <div className="text-center text-ink-faint py-6 text-sm">Calcul du CA en cours…</div>
+              ) : revenue.byDriver.length === 0 ? (
+                <div className="text-center text-ink-faint py-6 text-sm">Aucune mission facturable sur la période.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-surface-hover p-3 rounded-lg">
+                      <div className="text-xs text-ink-faint uppercase tracking-wider mb-1">CA total HTVA</div>
+                      <div className="text-2xl font-display font-bold">{eur(revenue.total_htva)}</div>
+                    </div>
+                    <div className="bg-surface-hover p-3 rounded-lg">
+                      <div className="text-xs text-ink-faint uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <span>Facturé Odoo</span>
+                        <InfoIcon tooltip="Somme des factures Odoo postées (amount_untaxed, net des notes de crédit). Montant qui fait foi." />
+                      </div>
+                      <div className="text-xl font-bold text-green-500">{eur(revenue.invoiced_htva)}</div>
+                    </div>
+                    <div className="bg-surface-hover p-3 rounded-lg">
+                      <div className="text-xs text-ink-faint uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <span>Estimé (pas encore facturé)</span>
+                        <InfoIcon tooltip="Estimation HTVA quand aucune facture Odoo n'existe encore : tarif spécial HTVA, sinon montant à encaisser ou encaissé / 1,21." />
+                      </div>
+                      <div className="text-xl font-bold text-ink-faint">{eur(revenue.estimated_htva)}</div>
+                    </div>
+                  </div>
+
+                  {!revenue.odooOk && (
+                    <div className="bg-orange-500/10 text-orange-600 text-xs p-2 rounded mb-3">
+                      ⚠️ Odoo injoignable : tous les montants sont des estimations (aucune facture Odoo prise en compte).
+                    </div>
+                  )}
+
+                  <ResponsiveContainer width="100%" height={Math.max(180, revenue.byDriver.length * 34)}>
+                    <BarChart data={revenue.byDriver.slice(0, 15)} layout="vertical" margin={{ left: 60 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                      <XAxis type="number" tickFormatter={(v) => `${v} €`} />
+                      <YAxis type="category" dataKey="name" width={90} fontSize={12} />
+                      <Tooltip formatter={(v: any) => eur(Number(v))} />
+                      <Legend />
+                      <Bar dataKey="revenue_odoo"     stackId="ca" fill="#22c55e" name="Facturé Odoo" />
+                      <Bar dataKey="revenue_estimate" stackId="ca" fill="#94a3b8" name="Estimé" />
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  <div className="overflow-x-auto mt-3">
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-ink-faint uppercase tracking-wider">
+                        <tr>
+                          <th className="text-left py-2 px-3">Chauffeur</th>
+                          <th className="text-right py-2 px-3">Missions</th>
+                          <th className="text-right py-2 px-3">Facturé Odoo</th>
+                          <th className="text-right py-2 px-3">Estimé</th>
+                          <th className="text-right py-2 px-3">CA total HTVA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {revenue.byDriver.map(d => (
+                          <tr key={d.driver_id} className="border-t border-surface-hover">
+                            <td className="py-2 px-3 font-medium">{d.name}</td>
+                            <td className="py-2 px-3 text-right text-ink-faint">
+                              {d.missions_count}
+                              {d.invoiced_count > 0 && <span className="text-green-500"> ({d.invoiced_count} fact.)</span>}
+                            </td>
+                            <td className="py-2 px-3 text-right text-green-600">{eur(d.revenue_odoo)}</td>
+                            <td className="py-2 px-3 text-right text-ink-faint">{eur(d.revenue_estimate)}</td>
+                            <td className="py-2 px-3 text-right font-semibold">{eur(d.revenue_htva)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-surface-hover font-bold">
+                          <td className="py-2 px-3">TOTAL</td>
+                          <td className="py-2 px-3"></td>
+                          <td className="py-2 px-3 text-right text-green-600">{eur(revenue.invoiced_htva)}</td>
+                          <td className="py-2 px-3 text-right text-ink-faint">{eur(revenue.estimated_htva)}</td>
+                          <td className="py-2 px-3 text-right">{eur(revenue.total_htva)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <div className="text-xs text-ink-faint mt-2">
+                    Base : montant total HTVA de chaque mission ; si une facture Odoo existe, c'est son montant qui est pris en compte. Avances de fonds exclues.
+                  </div>
+                </>
+              )}
             </ChartCard>
 
             <div className="text-xs text-ink-faint text-center pt-4">
