@@ -228,6 +228,8 @@ export const sq: Dictionary = {
     rollable_required:   'Trego nëse mjeti ecën vetë apo jo.',
     rollable_then_depot: 'Zgjidh gjendjen e mjetit, pastaj depon.',
     view_source:         '📄 Shiko burimin e misionit',
+    stop_delete:         'Fshi këtë ndalesë',
+    stop_delete_confirm: 'Të fshihet kjo ndalesë?',
   },
 
   encaissement: {

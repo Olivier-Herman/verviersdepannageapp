@@ -1515,6 +1515,26 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     finally { setLoading(false) }
   }
 
+  // Suppression d'un stop (depuis l'écran d'édition). Retire le stop d'extra_addresses
+  // et re-numérote sort_order. Olivier 2026-07-08.
+  const deleteStop = async () => {
+    if (!editStopId) return
+    if (!confirm(t('mission_detail.stop_delete_confirm'))) return
+    const nextStops = stops.filter(s => s.id !== editStopId).map((s, i) => ({ ...s, sort_order: i }))
+    setLoading(true)
+    try {
+      const r = await fetch('/api/missions/driver-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: M.id, action: 'update_stops', stops: nextStops }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erreur')
+      setM(j.mission); setScreen('main')
+      setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null); setEditStopId(null)
+    } catch (e: any) { setErr(e.message || 'Erreur') }
+    finally { setLoading(false) }
+  }
+
   // Zone suggeree selon le scenario :
   //   - Police Accident : Y+Y -> 'A', sinon 'Transit' (Olivier 2026-05-24)
   //   - Police Saisie   : 'J' par defaut, le chauffeur peut basculer en
@@ -2085,11 +2105,19 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         </div>
         {err && <p className="text-red-400 text-sm">⚠️ {err}</p>}
       </div>
-      <div className="px-4 py-4 border-t border flex gap-3">
-        <button onClick={() => { setScreen('main'); setEditStopId(null); setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null) }} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
-        <button onClick={saveStop} disabled={!newStopAddr || loading} className="flex-1 py-3 bg-brand disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">
-          {loading ? '⏳…' : (editStopId ? '✓ Enregistrer' : '+ Ajouter')}
-        </button>
+      <div className="px-4 py-4 border-t border space-y-3">
+        {editStopId && (
+          <button onClick={deleteStop} disabled={loading}
+            className="w-full py-3 bg-red-500/10 text-red-600 border border-red-500/30 disabled:opacity-40 rounded-2xl text-sm font-medium">
+            🗑️ {t('mission_detail.stop_delete')}
+          </button>
+        )}
+        <div className="flex gap-3">
+          <button onClick={() => { setScreen('main'); setEditStopId(null); setNewStopAddr(''); setNewStopLabel(''); setNewStopLat(null); setNewStopLng(null) }} className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">Annuler</button>
+          <button onClick={saveStop} disabled={!newStopAddr || loading} className="flex-1 py-3 bg-brand disabled:opacity-40 text-ink font-semibold rounded-2xl text-sm">
+            {loading ? '⏳…' : (editStopId ? '✓ Enregistrer' : '+ Ajouter')}
+          </button>
+        </div>
       </div>
     </ScreenWrap>
   )

@@ -230,6 +230,8 @@ export const fr = {
     rollable_required:   'Indique si le véhicule est roulant ou non roulant.',
     rollable_then_depot: 'Choisis l\'état du véhicule, puis le dépôt.',
     view_source:         '📄 Voir la source de la mission',
+    stop_delete:         'Supprimer ce stop',
+    stop_delete_confirm: 'Supprimer ce stop ?',
   },
 
   encaissement: {
