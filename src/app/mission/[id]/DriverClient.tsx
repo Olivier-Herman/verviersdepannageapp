@@ -1263,7 +1263,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const openDestPrompt = (kind: 'rem' | 'rem_client' | 'rem_depot' | 'rem_direct' | 'arrival' | 'park') => {
     setShowGrid(false)
     setErr('')
-    setDestAddr(M.destination_address || '')
+    // Préremplit avec la destination de la mission (relivraison par défaut = destination).
+    // Robuste : combine nom + adresse (le garage est parfois dans destination_name).
+    const dName = (M.destination_name || '').trim()
+    const dAddr = (M.destination_address || '').trim()
+    const destDisplay = dName && dAddr && !dAddr.toLowerCase().includes(dName.toLowerCase())
+      ? `${dName}, ${dAddr}`
+      : (dAddr || dName || '')
+    setDestAddr(destDisplay)
     setDestLat(M.destination_lat ?? null)
     setDestLng(M.destination_lng ?? null)
     setDestPrompt({ kind })
