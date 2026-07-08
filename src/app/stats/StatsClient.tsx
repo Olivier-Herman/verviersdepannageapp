@@ -85,6 +85,7 @@ const PERIODS = [
   { key: 'month',   label: 'Ce mois-ci' },
   { key: 'quarter', label: 'Ce trimestre' },
   { key: 'year',    label: 'Cette année' },
+  { key: 'custom',  label: 'Période personnalisée…' },
 ]
 
 // SOURCE_COLORS retire : remplace par getSourceColorHex(key, catalog) qui
@@ -94,6 +95,8 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
 export default function StatsClient({ catalogSources, ...props }: StatsClientProps) {
   const [period, setPeriod] = useState<string>('month')
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo] = useState<string>('')
   const [source, setSource] = useState<string>('')
   const [chauffeur, setChauffeur] = useState<string>('')
   const [type, setType] = useState<string>('')
@@ -105,7 +108,20 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
 
   // Charger les stats à chaque changement de filtre
   useEffect(() => {
+    // Période perso : on attend que les deux dates soient renseignées.
+    if (period === 'custom' && (!dateFrom || !dateTo)) return
+
+    // dateTo inclusif : on passe le lendemain (le backend filtre avec `< to`).
+    const nextDay = (d: string) => {
+      const dt = new Date(d); dt.setDate(dt.getDate() + 1)
+      return dt.toISOString().slice(0, 10)
+    }
+    const applyDates = (pp: URLSearchParams) => {
+      if (period === 'custom') { pp.set('dateFrom', dateFrom); pp.set('dateTo', nextDay(dateTo)) }
+    }
+
     const params = new URLSearchParams({ period })
+    applyDates(params)
     if (source)    params.set('source', source)
     if (chauffeur) params.set('chauffeur', chauffeur)
     if (type)      params.set('type', type)
@@ -124,6 +140,7 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
     // CA par chauffeur : endpoint séparé (touche Odoo, plus lent) — le type ne
     // le concerne pas.
     const rParams = new URLSearchParams({ period })
+    applyDates(rParams)
     if (source)    rParams.set('source', source)
     if (chauffeur) rParams.set('chauffeur', chauffeur)
     setRevenue(null)
@@ -131,7 +148,7 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
       .then(r => r.json())
       .then(j => { if (!j.error) setRevenue(j) })
       .catch(() => {})
-  }, [period, source, chauffeur, type])
+  }, [period, dateFrom, dateTo, source, chauffeur, type])
 
   const handleExportCsv = () => {
     if (!data) return
@@ -185,6 +202,37 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
           <select value={period} onChange={e => setPeriod(e.target.value)} className="px-3 py-2 bg-surface-hover rounded text-sm">
             {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
+
+          {/* Choisir un mois précis → bascule en période perso sur ce mois */}
+          <input
+            type="month"
+            className="px-3 py-2 bg-surface-hover rounded text-sm"
+            title="Choisir un mois précis"
+            onChange={e => {
+              const v = e.target.value // 'YYYY-MM'
+              if (!v) return
+              const [y, m] = v.split('-').map(Number)
+              const first = new Date(y, m - 1, 1)
+              const last  = new Date(y, m, 0) // dernier jour du mois
+              const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+              setDateFrom(iso(first))
+              setDateTo(iso(last))
+              setPeriod('custom')
+            }}
+          />
+
+          {period === 'custom' && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-ink-faint">du</span>
+              <input type="date" value={dateFrom} max={dateTo || undefined}
+                onChange={e => setDateFrom(e.target.value)}
+                className="px-2 py-2 bg-surface-hover rounded text-sm" />
+              <span className="text-xs text-ink-faint">au</span>
+              <input type="date" value={dateTo} min={dateFrom || undefined}
+                onChange={e => setDateTo(e.target.value)}
+                className="px-2 py-2 bg-surface-hover rounded text-sm" />
+            </div>
+          )}
           <select value={source} onChange={e => setSource(e.target.value)} className="px-3 py-2 bg-surface-hover rounded text-sm">
             <option value="">Toutes sources</option>
             {sources.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
@@ -205,6 +253,11 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
         </div>
 
         {error && <div className="bg-red-500/10 text-red-500 p-3 rounded">{error}</div>}
+        {period === 'custom' && (!dateFrom || !dateTo) && (
+          <div className="bg-brand/10 text-brand p-3 rounded text-sm">
+            📅 Choisis une date de début et de fin (ou un mois) pour afficher les statistiques.
+          </div>
+        )}
         {loading && <div className="text-center text-ink-faint py-8">Chargement…</div>}
 
         {data && !loading && (
