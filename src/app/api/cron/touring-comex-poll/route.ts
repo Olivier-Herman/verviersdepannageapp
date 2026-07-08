@@ -98,6 +98,19 @@ export async function GET(req: Request) {
 
   const mode = process.env.TOURING_COMEX_MODE === 'import' ? 'import' : 'observe'
 
+  // Balayages SLA (import uniquement) — INDÉPENDANTS du login/import COMEX pour ne
+  // JAMAIS être bloqués si l'import/login échoue. Ils partent en PREMIER. Chacun
+  // gère son propre login COMEX (session user). Bug corrigé 2026-07-08 : avant, ils
+  // étaient dans le try de l'import → un login KO sautait tout l'auto-SLA.
+  let slaRoad = { scanned: 0, pushed: 0 }
+  let sla     = { scanned: 0, pushed: 0 }
+  if (mode === 'import') {
+    slaRoad = await runTouringOnRoadSweep().catch((e) => { console.warn('[cron touring-onroad]', e?.message); return { scanned: 0, pushed: 0 } })
+    if (slaRoad.pushed > 0) console.log(`[cron touring-onroad] auto-onRoad=${slaRoad.pushed}/${slaRoad.scanned}`)
+    sla = await runTouringSlaSweep().catch((e) => { console.warn('[cron touring-sla]', e?.message); return { scanned: 0, pushed: 0 } })
+    if (sla.pushed > 0) console.log(`[cron touring-sla] auto-onSpot=${sla.pushed}/${sla.scanned}`)
+  }
+
   try {
     const session  = await loginComex('dispatch')
     const missions = await listComexMissions(session)
@@ -151,19 +164,10 @@ export async function GET(req: Request) {
       }).catch(() => {})
     }
 
-    // SLA « démarré » : force le « en route » proactif des missions acceptées ≥10 min
-    // sans pointage (backdaté ≤ accept+10min).
-    const slaRoad = await runTouringOnRoadSweep().catch((e) => { console.warn('[cron touring-onroad]', e?.message); return { scanned: 0, pushed: 0 } })
-    if (slaRoad.pushed > 0) console.log(`[cron touring-onroad] auto-onRoad poussé=${slaRoad.pushed}/${slaRoad.scanned}`)
-
-    // SLA « sur place » : force le « sur place » des missions acceptées ≥50 min sans
-    // pointage chauffeur (operDate backdaté ≤ accept+45min).
-    const sla = await runTouringSlaSweep().catch((e) => { console.warn('[cron touring-sla]', e?.message); return { scanned: 0, pushed: 0 } })
-    if (sla.pushed > 0) console.log(`[cron touring-sla] auto-onSpot poussé=${sla.pushed}/${sla.scanned}`)
-
     return NextResponse.json({ ...result, slaRoad, sla })
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
+    // Les balayages SLA ont déjà tourné (en amont, indépendants) → on les renvoie.
+    return NextResponse.json({ ok: false, error: e.message, slaRoad, sla }, { status: 500 })
   }
 }
