@@ -39,6 +39,8 @@ interface Entry {
   driver:         { name: string; email: string }
   notes?:         string
   invoice_url?:   string
+  invoice_number?: string | null
+  mission_number?: number | null
   // Paiements Odoo (encaissements directs encodés au bureau, sync via cron)
   odoo_payment_id?: number
   odoo_status?:    'pending' | 'confirmed' | null
@@ -180,16 +182,17 @@ export default function EncaissementsClient({
                 <th className="text-left py-3 pr-4">Client / Notes</th>
                 <th className="text-left py-3 pr-4">Paiement</th>
                 <th className="text-left py-3 pr-4">Chauffeur</th>
+                <th className="text-left py-3 pr-4">Facture</th>
                 <th className="text-left py-3 pr-4">Date</th>
                 <th className="text-right py-3">Montant</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={7} className="text-ink-muted text-sm text-center py-8">Chargement…</td></tr>
+                <tr><td colSpan={8} className="text-ink-muted text-sm text-center py-8">Chargement…</td></tr>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={7} className="text-ink-faint text-sm text-center py-8">Aucun mouvement trouvé</td></tr>
+                <tr><td colSpan={8} className="text-ink-faint text-sm text-center py-8">Aucun mouvement trouvé</td></tr>
               )}
               {filtered.map(entry => (
                 <tr
@@ -238,6 +241,18 @@ export default function EncaissementsClient({
                     {PAYMENT_LABELS[entry.payment_mode] || entry.payment_mode}
                   </td>
                   <td className="py-3 pr-4 text-ink-muted text-xs">{entry.driver?.name}</td>
+                  <td className="py-3 pr-4 text-xs">
+                    {entry.invoice_number ? (
+                      entry.invoice_url ? (
+                        <a href={entry.invoice_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                          className="text-brand hover:underline font-mono">{entry.invoice_number}</a>
+                      ) : (
+                        <span className="text-ink font-mono">{entry.invoice_number}</span>
+                      )
+                    ) : (
+                      <span className="text-ink-faint">—</span>
+                    )}
+                  </td>
                   <td className="py-3 pr-4 text-ink-faint text-xs">
                     {new Date(entry.created_at).toLocaleDateString('fr-BE')}
                   </td>
@@ -366,6 +381,7 @@ export default function EncaissementsClient({
               ['Client',    selected.client_name],
               ['Adresse',   selected.client_address],
               ['Email',     selected.client_email],
+              ['N° facture', selected.invoice_number],
               ['Chauffeur', selected.driver?.name],
               ['Notes',     selected.type === 'odoo_payment' ? null : selected.notes],
               ['Date',      new Date(selected.created_at).toLocaleString('fr-BE')],

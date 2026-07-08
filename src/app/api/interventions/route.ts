@@ -364,25 +364,44 @@ export async function GET(req: NextRequest) {
 
   const { data: interventions } = await intQuery
 
-  const intEntries = (interventions || []).map((i: any) => ({
-    id:            i.id,
-    type:          'intervention',
-    reference:     i.reference,
-    created_at:    i.created_at,
-    plate:         i.plate,
-    brand_text:    i.brand_text,
-    model_text:    i.model_text,
-    motif_text:    i.motif_text,
-    amount:        i.amount || 0,
-    payment_mode:  i.payment_mode,
-    client_name:   i.client_name,
-    client_email:   i.client_email,
-    client_address: i.client_address,
-    synced_to_odoo: i.synced_to_odoo,
-    driver:        i.driver,
-    notes:         i.notes,
-    mission_id:    i.mission_id || null,   // lien vers la fiche mission (bouton détail)
-  }))
+  // N° de facture (+ n° mission) depuis les missions liées → colonne « Facture »
+  // du module Mouvements. Olivier 2026-07-08.
+  const intMissionIds = [...new Set((interventions || []).map((i: any) => i.mission_id).filter(Boolean))] as string[]
+  const missionInfo = new Map<string, { invoice_number: string | null; mission_number: number | null; invoice_url: string | null }>()
+  if (intMissionIds.length > 0) {
+    const { data: ms } = await supabase.from('incoming_missions')
+      .select('id, invoice_number, mission_number, invoice_url')
+      .in('id', intMissionIds)
+    for (const m of (ms || []) as any[]) {
+      missionInfo.set(m.id, { invoice_number: m.invoice_number ?? null, mission_number: m.mission_number ?? null, invoice_url: m.invoice_url ?? null })
+    }
+  }
+
+  const intEntries = (interventions || []).map((i: any) => {
+    const mi = i.mission_id ? missionInfo.get(i.mission_id) : null
+    return {
+      id:            i.id,
+      type:          'intervention',
+      reference:     i.reference,
+      created_at:    i.created_at,
+      plate:         i.plate,
+      brand_text:    i.brand_text,
+      model_text:    i.model_text,
+      motif_text:    i.motif_text,
+      amount:        i.amount || 0,
+      payment_mode:  i.payment_mode,
+      client_name:   i.client_name,
+      client_email:   i.client_email,
+      client_address: i.client_address,
+      synced_to_odoo: i.synced_to_odoo,
+      driver:        i.driver,
+      notes:         i.notes,
+      mission_id:    i.mission_id || null,   // lien vers la fiche mission (bouton détail)
+      invoice_number: mi?.invoice_number || null,
+      mission_number: mi?.mission_number ?? null,
+      invoice_url:    i.invoice_url || mi?.invoice_url || null,
+    }
+  })
 
   // ── Paiements Odoo espèces (cash_register avec odoo_payment_id) ─────────
   // Encaissements directs encodés au bureau, sync via cron sync-cash-payments.
