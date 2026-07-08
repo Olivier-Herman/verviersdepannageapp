@@ -99,13 +99,16 @@ async function acceptTouringBg(
       const changed = r.statusBefore && r.statusAfter && r.statusBefore !== r.statusAfter
       const proof = changed ? '✅' : `⚠️ statut INCHANGÉ (dépôt envoyé=${r.sentDepotCid || 'VIDE'} — voir payload)`
       const respSnippet = (() => { try { return JSON.stringify(r.acceptResp).slice(0, 200) } catch { return String(r.acceptResp).slice(0, 200) } })()
+      const notes = (r as any).alreadyAccepted
+        ? `Touring COMEX ↗ déjà acceptée sur COMEX (statut ${sa2}) — rien à faire (validée manuellement ou tardive).`
+        : r.ok
+          ? `Touring COMEX ↗ accepté + délai 60 min + assigné DE-001 — COMEX ${sb2}→${sa2} ${proof}`
+          : `Touring COMEX ↗ échec — ${r.error || 'inconnue'} — COMEX ${sb2}→${sa2} (étapes ${JSON.stringify(r.steps)})`
       await supabase.from('mission_logs').insert({
         mission_id: missionId, actor_id: actorId,
         action: r.ok ? 'touring_synced' : 'touring_sync_error',
-        notes:  r.ok
-          ? `Touring COMEX ↗ accepté + délai 60 min + assigné DE-001 — COMEX ${sb2}→${sa2} ${proof}`
-          : `Touring COMEX ↗ échec — ${r.error || 'inconnue'} — COMEX ${sb2}→${sa2} (étapes ${JSON.stringify(r.steps)})`,
-        metadata: { CID_DOS, CID_SEQ_ACTION, steps: r.steps, statusBefore: r.statusBefore, statusAfter: r.statusAfter, sentDepotCid: r.sentDepotCid, acceptResp: respSnippet },
+        notes,
+        metadata: { CID_DOS, CID_SEQ_ACTION, steps: r.steps, statusBefore: r.statusBefore, statusAfter: r.statusAfter, sentDepotCid: r.sentDepotCid, acceptResp: respSnippet, alreadyAccepted: (r as any).alreadyAccepted || false },
       }).then(() => {}, () => {})
     } catch (e: any) {
       console.error('[Confirm] Touring COMEX accept:', e?.message)

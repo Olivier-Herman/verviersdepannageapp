@@ -371,7 +371,7 @@ export const DEFAULT_REF_PATROL = '001'
 export async function acceptTouringMission(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
   opts?: { etaMinutes?: number; refPatrol?: string; acceptedAt?: Date },
-): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string; statusBefore?: string | null; statusAfter?: string | null; sentDepotCid?: string; acceptResp?: any }> {
+): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string; statusBefore?: string | null; statusAfter?: string | null; sentDepotCid?: string; acceptResp?: any; alreadyAccepted?: boolean }> {
   const steps: Record<string, boolean> = { accept: false, eta: false, assign: false }
   // Preuve indépendante : on relit le statut COMEX AVANT et APRÈS notre appel.
   // Si accept 03→04 : c'est bien NOTRE appel. Si 03→03 : notre appel n'a rien fait.
@@ -392,6 +392,14 @@ export async function acceptTouringMission(
   try {
     const session = await loginComex('dispatch')
     statusBefore = await readStatus(session)
+
+    // Déjà acceptée (04) ou plus avancée (05/06/07) → rien à faire. Cas courant :
+    // la mission a été validée MANUELLEMENT dans COMEX (ex. le dispatch VD Soft a
+    // validé tard, au-delà des 7 min). Ce n'est PAS un échec. Olivier 2026-07-08.
+    if (statusBefore && statusBefore !== '03') {
+      return { ok: true, alreadyAccepted: true, steps, statusBefore, statusAfter: statusBefore, sentDepotCid: '' }
+    }
+
     const operDate = comexOperDate(opts?.acceptedAt || new Date())
 
     // COMEX exige le dépôt du SECTEUR de l'intervention. On essaie les dépôts
