@@ -286,7 +286,8 @@ export async function pushComexOperation(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
   operType: ComexOperType,
   operDate: string,
-): Promise<any> {
+  depotCid?: string,
+): Promise<{ response: any; sentDepotCid: string; payload: Record<string, any> }> {
   const dRes = await getComexMissionDetail(session, keys)
   const d = (dRes?.content || dRes || {}) as Record<string, any>
   const payload: Record<string, any> = { CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: keys.CID_SEQ_ACTION, operType, operDate }
@@ -301,9 +302,10 @@ export async function pushComexOperation(
   // adresse/get (id du dépôt intervenant). Sans lui, COMEX répond OK mais ne fait
   // rien. Cause racine identifiée 2026-07-07.
   if (!String(payload.ADR_DEPOT_CID_INTV || '').trim()) {
-    payload.ADR_DEPOT_CID_INTV = await resolveComexDepotCid(session, keys)
+    payload.ADR_DEPOT_CID_INTV = depotCid || await resolveComexDepotCid(session, keys)
   }
-  return comexRest(session, 'Mission/detail/set', payload)
+  const response = await comexRest(session, 'Mission/detail/set', payload)
+  return { response, sentDepotCid: String(payload.ADR_DEPOT_CID_INTV || ''), payload }
 }
 
 /** Règle le délai (ETA « sur place ») en minutes : POST setEta { TPS_ONSPOT_EXT }. */
@@ -337,7 +339,7 @@ export const DEFAULT_REF_PATROL = '001'
 export async function acceptTouringMission(
   keys: { CID_DOS: string; CID_SEQ_ACTION: string },
   opts?: { etaMinutes?: number; refPatrol?: string; acceptedAt?: Date },
-): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string; statusBefore?: string | null; statusAfter?: string | null }> {
+): Promise<{ ok: boolean; steps: Record<string, boolean>; error?: string; statusBefore?: string | null; statusAfter?: string | null; sentDepotCid?: string; acceptResp?: any }> {
   const steps: Record<string, boolean> = { accept: false, eta: false, assign: false }
   // Preuve indépendante : on relit le statut COMEX AVANT et APRÈS notre appel.
   // Si accept 03→04 : c'est bien NOTRE appel. Si 03→03 : notre appel n'a rien fait.
@@ -352,17 +354,23 @@ export async function acceptTouringMission(
   }
   let statusBefore: string | null = null
   let statusAfter:  string | null = null
+  let sentDepotCid = ''
+  let acceptResp: any = null
   try {
     const session = await loginComex('dispatch')
     statusBefore = await readStatus(session)
+    // Résout le dépôt une fois (pour diagnostic + passage à l'accept).
+    const depotCid = await resolveComexDepotCid(session, keys)
+    sentDepotCid = depotCid
     const operDate = comexOperDate(opts?.acceptedAt || new Date())
-    await pushComexOperation(session, keys, 'accept', operDate);       steps.accept = true
+    const acc = await pushComexOperation(session, keys, 'accept', operDate, depotCid); steps.accept = true
+    acceptResp = acc?.response
     await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
     await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
     statusAfter = await readStatus(session)
-    return { ok: true, steps, statusBefore, statusAfter }
+    return { ok: true, steps, statusBefore, statusAfter, sentDepotCid, acceptResp }
   } catch (e: any) {
-    return { ok: false, steps, error: e?.message || 'erreur', statusBefore, statusAfter }
+    return { ok: false, steps, error: e?.message || 'erreur', statusBefore, statusAfter, sentDepotCid, acceptResp }
   }
 }
 
