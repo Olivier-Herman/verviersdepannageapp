@@ -24,9 +24,14 @@ import { odooRpc }           from '@/lib/odoo'
 
 export const dynamic = 'force-dynamic'
 
-// Statuts consideres comme facturables / realises pour le CA.
-// (on exclut new/dispatching/parked/cancelled : pas encore facturable.)
-const REVENUE_STATUSES = ['completed', 'to_invoice', 'invoiced']
+// On compte TOUTES les missions reellement traitees (pas seulement les
+// facturees). Exclut uniquement les non-missions / annulees :
+// 'new', 'dispatching', 'parse_error', 'ignored', 'cancelled'.
+// (memes statuts que les stats de volume /api/stats/dashboard + 'invoiced'.)
+const REVENUE_STATUSES = [
+  'assigned', 'accepted', 'in_progress', 'delivering',
+  'parked', 'completed', 'to_invoice', 'invoiced',
+]
 
 const VAT = 1.21
 const round2 = (n: number) => Math.round(n * 100) / 100

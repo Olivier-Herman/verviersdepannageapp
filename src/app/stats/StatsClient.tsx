@@ -164,7 +164,7 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
     }
     if (revenue) {
       rows.push('')
-      rows.push('Chauffeur,Missions facturables,Facturées Odoo,CA facturé Odoo (HTVA),CA estimé (HTVA),CA total (HTVA)')
+      rows.push('Chauffeur,Missions,Facturées Odoo,CA facturé Odoo (HTVA),CA estimé (HTVA),CA total (HTVA)')
       for (const d of revenue.byDriver) {
         rows.push(`"${d.name}",${d.missions_count},${d.invoiced_count},${d.revenue_odoo.toFixed(2)},${d.revenue_estimate.toFixed(2)},${d.revenue_htva.toFixed(2)}`)
       }
@@ -404,7 +404,7 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
               {!revenue ? (
                 <div className="text-center text-ink-faint py-6 text-sm">Calcul du CA en cours…</div>
               ) : revenue.byDriver.length === 0 ? (
-                <div className="text-center text-ink-faint py-6 text-sm">Aucune mission facturable sur la période.</div>
+                <div className="text-center text-ink-faint py-6 text-sm">Aucune mission sur la période.</div>
               ) : (
                 <>
                   <div className="grid grid-cols-3 gap-3 mb-4">
@@ -483,7 +483,7 @@ export default function StatsClient({ catalogSources, ...props }: StatsClientPro
                     </table>
                   </div>
                   <div className="text-xs text-ink-faint mt-2">
-                    Base : montant total HTVA de chaque mission ; si une facture Odoo existe, c'est son montant qui est pris en compte. Avances de fonds exclues.
+                    Toutes les missions (hors annulées) comptent. Base : montant total HTVA de chaque mission ; si une facture Odoo existe, c'est son montant qui est pris en compte. Avances de fonds exclues.
                   </div>
                 </>
               )}
