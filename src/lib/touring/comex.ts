@@ -291,10 +291,20 @@ const SET_ECHO_FIELDS = [
 
 export type ComexOperType = 'accept' | 'onRoad' | 'onSpot'
 
-/** Format COMEX pour operDate : "YYYY-MM-DDTHH:mm:ss.000" (heure locale, sans TZ). */
+/** Format COMEX pour operDate : "YYYY-MM-DDTHH:mm:ss.000" en **heure locale belge**
+ * (Europe/Brussels). CRITIQUE : le serveur Vercel tourne en UTC → getHours()
+ * donnerait l'heure UTC (2h de retard l'été) → SLA COMEX faussé. On formate donc
+ * explicitement dans le fuseau Europe/Brussels. Olivier 2026-07-08. */
 export function comexOperDate(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.000`
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Brussels',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(d)
+  const get = (t: string) => parts.find(p => p.type === t)?.value || '00'
+  let hh = get('hour')
+  if (hh === '24') hh = '00'   // certains runtimes renvoient 24 à minuit
+  return `${get('year')}-${get('month')}-${get('day')}T${hh}:${get('minute')}:${get('second')}.000`
 }
 
 /**
