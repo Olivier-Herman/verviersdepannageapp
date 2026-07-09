@@ -203,6 +203,7 @@ export const sq: Dictionary = {
     btn_refuse_dpr:      '❌ Refuzim / I pamundur — Konverto në DPR',
     btn_arrived_dest:    '📍 Mbërrita në destinacion',
     btn_park:            '🅿️ Vendos në parking',
+    btn_dest_refused:    '❌ Garazhi refuzoi / mbyllur → kthim në parking',
     btn_photos:          '📷 Fotot',
     btn_finish:          '🏁 Përfundo',
     snc_payment_required:'💳 Arkëto klientin para se të përfundosh (pagesë e detyrueshme).',

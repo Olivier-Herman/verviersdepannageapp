@@ -204,6 +204,7 @@ export const fr = {
     btn_refuse_dpr:      '❌ Refus / Impossible — Convertir en DPR',
     btn_arrived_dest:    '📍 Arrivé à destination',
     btn_park:            '🅿️ Mise en parc',
+    btn_dest_refused:    '❌ Garage refusé / fermé → retour parc',
     btn_photos:          '📷 Photos',
     btn_finish:          '🏁 Terminer',
     snc_payment_required:'💳 Encaisse le client avant de finaliser (paiement obligatoire).',

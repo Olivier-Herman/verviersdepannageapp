@@ -165,8 +165,14 @@ const DPR_MOTIFS = [
   { id: 'deja_deplace',      icon: '🚗', label: 'Véhicule déjà dépanné / déplacé' },
   { id: 'pas_de_panne',      icon: '✅', label: 'Pas de panne constatée' },
   { id: 'annulation_client', icon: '📞', label: 'Demande d\'annulation client' },
+  // Refus À DESTINATION (véhicule déjà chargé, revient en parc) — Olivier 2026-07-09
+  { id: 'garage_refuse',     icon: '🙅', label: 'Garage a refusé le véhicule' },
+  { id: 'garage_ferme',      icon: '🔒', label: 'Garage fermé' },
   { id: 'autre',             icon: '✍️', label: 'Autre' },
 ] as const
+
+// Motifs proposés quand le refus a lieu À DESTINATION (véhicule chargé → parc).
+const DEST_REFUSAL_MOTIF_IDS = ['garage_refuse', 'garage_ferme', 'autre']
 type DprMotifId = typeof DPR_MOTIFS[number]['id']
 
 // ─── Autoroute : BK + sens (saisis par le dispatcher, doivent etre TRES
@@ -864,6 +870,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [dprMotifAutre,   setDprMotifAutre]   = useState('')
   const [showDprMotif,    setShowDprMotif]    = useState(false)
   const [dprFromRem,      setDprFromRem]      = useState(false)  // true si conversion depuis refus REM
+  // true = refus À DESTINATION (véhicule chargé) → au lieu d'une clôture DPR,
+  // on met le véhicule EN PARC en conservant le motif de refus. Olivier 2026-07-09.
+  const [dprToPark,       setDprToPark]       = useState(false)
 
   // Signature destinataire (REM uniquement, optionnelle)
   const [destSig,         setDestSig]         = useState('')
@@ -1595,6 +1604,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             photo_urls: allUrls.length ? allUrls : undefined,
             signature: sig || undefined,
             discharge_data: disch.length > 0 ? disch : undefined,
+            // Refus à destination (véhicule chargé → retour parc) : on conserve
+            // le motif de refus. mission_type reste 'remorquage' (le chargé/tow a
+            // bien eu lieu) ; le dpr_motif signale la livraison refusée.
+            ...(dprToPark && dprMotif ? {
+              dpr_motif:              dprMotif,
+              dpr_motif_label:        dprMotif === 'autre'
+                ? dprMotifAutre.trim()
+                : DPR_MOTIFS.find(m => m.id === dprMotif)?.label,
+              dpr_converted_from_rem: true,
+            } : {}),
           },
           park_data: {
             stage_name:         vr.name,
@@ -3323,7 +3342,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 {loading ? <T k="mission_detail.loading" /> : <T k="mission_detail.btn_loaded_truck" />}
               </button>
               <button
-                onClick={() => { setDprFromRem(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+                onClick={() => { setDprFromRem(true); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 disabled={loading}
                 className="w-full py-3 bg-surface border border hover:border-red-500/60 text-ink-secondary hover:text-red-400 font-medium rounded-2xl text-sm">
                 <T k="mission_detail.btn_refuse_dpr" />
@@ -3380,6 +3399,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     }} disabled={loading}
                     className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
                     <T k="mission_detail.btn_park" />
+                  </button>
+                  {/* Refus À DESTINATION (garage refuse / fermé) : véhicule déjà
+                      chargé → retour parc, avec motif DPR conservé. Olivier 2026-07-09. */}
+                  <button
+                    onClick={() => { setDprFromRem(false); setDprToPark(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+                    disabled={loading}
+                    className="w-full py-3 bg-surface border border hover:border-red-500/60 text-ink-secondary hover:text-red-400 font-medium rounded-2xl text-sm">
+                    <T k="mission_detail.btn_dest_refused" />
                   </button>
                 </>
               )}
@@ -3522,7 +3549,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 </button>
               )}
               {/* DPR — ouvre la modal motif avant de basculer */}
-              <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+              <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprToPark(false); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
                 className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-surface border transition active:scale-95">
                 <span className="text-2xl">❌</span>
                 <span className="text-sm font-medium text-ink-secondary"><T k="mission_detail.action_dpr" /></span>
@@ -3648,14 +3675,21 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             <div className="px-5 pb-3 border-b border flex items-center justify-between">
               <div>
                 <h2 className="text-ink font-semibold text-lg">
-                  {dprFromRem ? '❌ Refus de prise en charge' : '❌ DPR — Déplacement pour rien'}
+                  {dprToPark ? '❌ Refus à destination — retour parc'
+                    : dprFromRem ? '❌ Refus de prise en charge'
+                    : '❌ DPR — Déplacement pour rien'}
                 </h2>
                 <p className="text-ink-muted text-xs">Sélectionne le motif</p>
               </div>
               <button onClick={() => setShowDprMotif(false)} className="text-ink-muted text-2xl">×</button>
             </div>
             <div className="px-4 py-3 space-y-2">
-              {DPR_MOTIFS.map(m => {
+              {/* Refus à destination : motifs garage refuse/fermé/autre.
+                  Sinon : la liste DPR standard (sans les motifs de destination). */}
+              {DPR_MOTIFS.filter(m => dprToPark
+                  ? DEST_REFUSAL_MOTIF_IDS.includes(m.id)
+                  : !['garage_refuse', 'garage_ferme'].includes(m.id)
+                ).map(m => {
                 const selected = dprMotif === m.id
                 return (
                   <button key={m.id} onClick={() => setDprMotif(m.id)}
@@ -3686,7 +3720,17 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   if (!dprMotif) return
                   if (dprMotif === 'autre' && !dprMotifAutre.trim()) return
                   setShowDprMotif(false)
-                  setCloseType('dpr')
+                  // Refus à destination (véhicule chargé) → mise en parc avec
+                  // motif conservé. Sinon → clôture DPR classique.
+                  if (dprToPark) {
+                    if (!parkDepot) {
+                      const def = vrLocs.find(v => (v as any).is_default) || vrLocs[0]
+                      if (def) setParkDepot(def)
+                    }
+                    setCloseType('park')
+                  } else {
+                    setCloseType('dpr')
+                  }
                   setScreen('close')
                 }}
                 disabled={!dprMotif || (dprMotif === 'autre' && !dprMotifAutre.trim())}
