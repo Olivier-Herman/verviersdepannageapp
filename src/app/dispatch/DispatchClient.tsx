@@ -16,6 +16,7 @@ import TouringImportButton from '@/components/dispatch/TouringImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
+import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -545,6 +546,8 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   // ouvrir la fiche, comme le bouton Confirmer de la fiche detail. Cree le
   // dossier Odoo cote serveur (best effort) et la fait passer en "En attente".
   const [confirmLoading, setConfirmLoading] = useState(false)
+  // Modal « autoroute → Siabis » proposé après validation (Olivier 2026-07-09).
+  const [siabisModal, setSiabisModal] = useState<{ highwayRef: string | null } | null>(null)
   const confirmMission = async () => {
     if (confirmLoading) return
     setConfirmLoading(true)
@@ -559,6 +562,11 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
         alert(`Echec validation : ${data?.error || `HTTP ${res.status}`}`)
         return
       }
+      // Adresse sur autoroute + source non Siabis/police → proposer le
+      // basculement. On garde le modal ouvert et on ne rafraîchit qu'à sa
+      // fermeture (sinon la card se remonte et le modal disparaît).
+      const { offer, highwayRef } = shouldOfferSiabis(mission.source, mission.incident_address)
+      if (offer) { setSiabisModal({ highwayRef }); return }
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] confirm reseau:', e?.message)
@@ -630,6 +638,13 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
   if (mission.status === 'new') {
     return (
       <div className="flex items-center gap-2">
+        {siabisModal && (
+          <HighwaySiabisModal
+            missionId={mission.id}
+            highwayRef={siabisModal.highwayRef}
+            onClose={() => { setSiabisModal(null); onRefresh() }}
+          />
+        )}
         <button type="button" onClick={confirmMission} disabled={confirmLoading || refuseLoading}
           title="Confirmer la mission et la passer en « En attente » sans ouvrir la fiche"
           className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition">

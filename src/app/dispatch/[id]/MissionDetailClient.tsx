@@ -23,6 +23,7 @@ import FicheFacturerButton from '@/components/facturation/FicheFacturerButton'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import AddressField, { verifyAddressViaPlaces, reverseGeocodeCity } from '@/components/AddressField'
 import { parseHighwayAddress } from '@/lib/highways/parse'
+import { HighwaySiabisModal, shouldOfferSiabis } from '../HighwaySiabisModal'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import ScanButton from '@/components/ScanButton'
 import CreateClientModal from '@/components/CreateClientModal'
@@ -1519,6 +1520,8 @@ export default function MissionDetailClient({
 
   const [showRawContent, setShowRawContent]   = useState(false)
   const [loadingConfirm, setLoadingConfirm]   = useState(false)
+  // Modal « autoroute → Siabis » proposé après validation (Olivier 2026-07-09).
+  const [siabisModal, setSiabisModal] = useState<{ highwayRef: string | null } | null>(null)
   const [loadingRefuse,  setLoadingRefuse]    = useState(false)
   const [loadingSave,    setLoadingSave]      = useState(false)
   const [brands,         setBrands]           = useState<{id:number;name:string}[]>([])
@@ -2245,6 +2248,11 @@ export default function MissionDetailClient({
     setLoadingConfirm(false)
     // Créer le dossier dans Odoo FSM (en arrière-plan, sans bloquer)
     createOdooFsmDossier().catch(console.error)
+    // Adresse sur autoroute + source non Siabis/police → proposer le
+    // basculement Siabis (Olivier 2026-07-09). Le refresh se fait à la
+    // fermeture du modal.
+    const { offer, highwayRef } = shouldOfferSiabis(initialMission.source, form.incident_address)
+    if (offer) { setSiabisModal({ highwayRef }); return }
     // On reste sur la fiche — reload pour avoir les boutons/champs adaptes
     // au nouveau statut (badge Odoo task_id, etc.). UX request Olivier 11/05.
     router.refresh()
@@ -2351,6 +2359,13 @@ export default function MissionDetailClient({
       userRole={userRole}
       userModules={userModules}
     >
+      {siabisModal && (
+        <HighwaySiabisModal
+          missionId={initialMission.id}
+          highwayRef={siabisModal.highwayRef}
+          onClose={() => { setSiabisModal(null); router.refresh() }}
+        />
+      )}
       <style>{`
         @keyframes md-fade-up {
           from { opacity: 0; transform: translateY(8px); }

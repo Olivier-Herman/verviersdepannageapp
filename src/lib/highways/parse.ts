@@ -92,3 +92,15 @@ export function parseHighwayAddress(input: string | null | undefined): ParsedHig
     direction,
   }
 }
+
+// Heuristique LARGE « cette adresse est-elle sur autoroute ? » — utilisée pour
+// PROPOSER (modal) un basculement en Siabis à la validation dispatch. Les faux
+// positifs sont acceptables : le dispatcher peut choisir « Laisser en normal ».
+// Détecte : une réf autoroute A-number (via parseHighwayAddress), ou les
+// mots-clés « autoroute » / « voie rapide », ou une réf E-number (E40, E42…).
+const HIGHWAY_HINT_RE = /\bautoroute\b|\bvoie\s+rapide\b|\bE\s?0*\d{1,3}\b/i
+export function isHighwayAddress(input: string | null | undefined): boolean {
+  if (!input) return false
+  if (parseHighwayAddress(input).highwayRef) return true
+  return HIGHWAY_HINT_RE.test(input)
+}
