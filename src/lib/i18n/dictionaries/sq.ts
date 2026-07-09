@@ -205,6 +205,7 @@ export const sq: Dictionary = {
     btn_park:            '🅿️ Vendos në parking',
     btn_photos:          '📷 Fotot',
     btn_finish:          '🏁 Përfundo',
+    snc_payment_required:'💳 Arkëto klientin para se të përfundosh (pagesë e detyrueshme).',
     btn_other_actions:   '☰ Veprime të tjera',
     parked_card_title:   '🅿️ Mjeti i dorëzuar në parking',
     parked_card_subtitle:'Misioni përfundoi për ty. Dispeçeri menaxhon vazhdimin.',

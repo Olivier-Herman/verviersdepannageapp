@@ -652,6 +652,21 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // Paiement partiel : au moins un encaissement mais total insuffisant
   const partiallyPaid   = hasAnyPayment && !paymentComplete
 
+  // Olivier 2026-07-09 : Siabis NON COUVERT en direct (DSP / REM client — le
+  // client paie sur place) → encaissement OBLIGATOIRE avant clôture directe.
+  // REM vers dépôt = facultatif (le client règle au bureau). On NE remet PAS
+  // awaiting_payment (sinon la mission repartirait sur SncMissionFiche) :
+  // on bloque seulement la clôture directe (Terminer / Arrivé à destination),
+  // pas la mise en parc. amount_to_collect n'est > 0 que pour le non couvert
+  // hors dépôt (couvert = null, dépôt = null), donc le garde-fou ne touche
+  // que les cas voulus.
+  const isSiabisMission = M.source === 'police_snc' || M.source === 'sia_couvert'
+  const sncPaymentDue =
+    isSiabisMission
+    && M.snc_scenario !== 'rem_depot'
+    && requiredAmount > 0
+    && !paymentComplete
+
   // ── Dérogation paiement (5-tap caché sur banderole rouge) ──────────────────
   // UX : pas de bouton visible (briefing vocal a l equipe). 5 taps rapides
   // (< 2s entre chaque) sur la banderole "A encaisser" → modal s ouvre.
@@ -3233,6 +3248,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       {!isReadOnly && !M.awaiting_payment && (
         <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] space-y-2 z-30">
 
+          {/* Siabis non couvert direct : rappel encaissement obligatoire avant
+              clôture directe (la mise en parc reste possible sans payer). */}
+          {sncPaymentDue && (
+            <div className="w-full py-2 px-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-center text-amber-700 dark:text-amber-300 text-xs font-semibold">
+              <T k="mission_detail.snc_payment_required" />
+            </div>
+          )}
+
           {M.status === 'assigned' && (
             <>
               <p className="text-ink-secondary text-xs text-center px-2">
@@ -3286,6 +3309,9 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {(rem || rel) && (M.status === 'delivering' || (loaded && M.status === 'in_progress')) && (
             <>
               <button onClick={() => {
+                  // Siabis non couvert direct : encaissement obligatoire avant
+                  // de livrer au client. On renvoie vers l'encaissement.
+                  if (sncPaymentDue) { setScreen('encaissement'); return }
                   // Olivier 2026-06-24 : REM sans adresse de destination → on
                   // demande de l'encoder à l'arrivée avant de clôturer.
                   if (rem && !rel && !M.destination_address) { openDestPrompt('arrival'); return }
@@ -3339,7 +3365,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 </button>
               )}
               {(M.mission_type === 'trajet_vide' || totPh >= 3) && (
-                <button onClick={() => { setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close') }}
+                <button onClick={() => {
+                    // Siabis non couvert direct : encaissement obligatoire avant clôture.
+                    if (sncPaymentDue) { setScreen('encaissement'); return }
+                    setCloseType(M.mission_type === 'trajet_vide' ? 'dpr' : 'dsp'); setScreen('close')
+                  }}
                   className="w-full py-4 bg-green-600 text-ink font-bold rounded-2xl text-base">
                   <T k="mission_detail.btn_finish" />
                 </button>

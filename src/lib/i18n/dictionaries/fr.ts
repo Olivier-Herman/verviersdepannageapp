@@ -206,6 +206,7 @@ export const fr = {
     btn_park:            '🅿️ Mise en parc',
     btn_photos:          '📷 Photos',
     btn_finish:          '🏁 Terminer',
+    snc_payment_required:'💳 Encaisse le client avant de finaliser (paiement obligatoire).',
     btn_other_actions:   '☰ Autres actions',
     parked_card_title:   '🅿️ Véhicule déposé au parc',
     parked_card_subtitle:'Mission terminée pour toi. Le dispatcher gère la suite.',
