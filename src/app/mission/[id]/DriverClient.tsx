@@ -3149,6 +3149,40 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           </div>
         )}
 
+        {/* Destination — accès direct Naviguer / Modifier dès que le chauffeur
+            est au minimum sur place (Olivier 2026-07-09). Avant : la destination
+            n'était modifiable qu'enfouie dans l'itinéraire (ressemblait à un stop)
+            → le chauffeur ajoutait des stops. Carte dédiée + visible ; « Définir »
+            si aucune destination encore renseignée. */}
+        {(onSite || loaded || rel) && (rem || rel || !!M.destination_address) && (
+          <button
+            onClick={() => {
+              if (M.destination_address) {
+                setAddrModal({
+                  title:   `Destination${M.destination_name ? ` · ${M.destination_name}` : ''}`,
+                  address: M.destination_address,
+                  lat:     M.destination_lat ?? undefined,
+                  lng:     M.destination_lng ?? undefined,
+                  field:   'destination',
+                })
+              } else {
+                // Pas encore de destination → édition directe (pas besoin d'un stop).
+                setModField('destination'); setModVal(''); setModLat(null); setModLng(null)
+                setScreen('modify-addr')
+              }
+            }}
+            className="w-full bg-surface border border rounded-2xl p-4 text-left hover:border-zinc-600 transition">
+            <div className="flex justify-between mb-1">
+              <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">🏁 Destination</p>
+              <span className="text-blue-400 text-xs">{M.destination_address ? '🗺️ Naviguer / ✏️ Modifier' : '✏️ Définir'}</span>
+            </div>
+            {M.destination_address
+              ? <p className="text-ink text-sm">{M.destination_address}</p>
+              : <p className="text-amber-500 text-sm">➕ Définir l'adresse de destination</p>}
+            {M.destination_address && <HighwayInfo bk={M.destination_borne_km} sens={M.destination_sens} />}
+          </button>
+        )}
+
         {/* Remarques */}
         {M.remarks_general && (
           <div className="bg-surface border border rounded-2xl p-4">
