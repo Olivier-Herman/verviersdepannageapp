@@ -37,7 +37,11 @@ export function touringSyncEnabled(): boolean {
 }
 
 function comexKeys(f: TouringFiche): { CID_DOS: string; CID_SEQ_ACTION: string } | null {
-  if (f.source !== 'touring' || f.source_format !== 'comex' || !f.raw_content) return null
+  // Lien COMEX = source_format 'comex' + clés CID dans raw_content. On ne gate
+  // PLUS sur source='touring' : une mission COMEX autoroute est auto-classée en
+  // Siabis (police_snc / sia_couvert) mais son pointage (en route / sur place)
+  // doit continuer à partir dans COMEX. Olivier 2026-07-09.
+  if (f.source_format !== 'comex' || !f.raw_content) return null
   let cid: any
   try { cid = JSON.parse(f.raw_content) } catch { return null }
   const CID_DOS = String(cid?.CID_DOS || '').trim()

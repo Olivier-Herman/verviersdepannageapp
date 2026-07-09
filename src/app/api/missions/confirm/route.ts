@@ -56,12 +56,18 @@ async function acceptKazeProposalBg(
 // arrière-plan. GATÉ par TOURING_COMEX_MODE=import (pas d'accept réel tant que
 // l'intégration n'est pas activée). Olivier 2026-07-06.
 async function acceptTouringBg(
-  missionId: string,
-  source:    string | null,
-  actorId:   string | null,
-  supabase:  ReturnType<typeof createAdminClient>,
+  missionId:    string,
+  source:       string | null,
+  sourceFormat: string | null,
+  actorId:      string | null,
+  supabase:     ReturnType<typeof createAdminClient>,
 ) {
-  if (source !== 'touring') return
+  // Gate sur le LIEN COMEX (source_format), PAS sur la source VD Soft. Une
+  // mission COMEX autoroute est auto-classée en Siabis (source=police_snc /
+  // sia_couvert) mais reste une mission COMEX à accepter. Avant : `source !==
+  // 'touring'` bloquait l'accept de ces fiches → il fallait accepter à la main
+  // dans COMEX. Olivier 2026-07-09 (mission 10054129, source police_snc).
+  if (sourceFormat !== 'comex') return
   // Diagnostic tracé dans l'historique de la fiche (pour comprendre pourquoi
   // l'accept ne part pas le cas échéant). Olivier 2026-07-07.
   const diag = (notes: string) => supabase.from('mission_logs').insert({
@@ -189,7 +195,7 @@ export async function POST(req: Request) {
     // Vérifier si un chauffeur est déjà assigné
     const { data: mission } = await supabase
       .from('incoming_missions')
-      .select('assigned_to, kaze_proposal_id, kaze_job_id, source, dossier_number, external_id, incident_type, parent_mission_id, vehicle_plate, destination_address, destination_lat, destination_lng')
+      .select('assigned_to, kaze_proposal_id, kaze_job_id, source, source_format, dossier_number, external_id, incident_type, parent_mission_id, vehicle_plate, destination_address, destination_lat, destination_lng')
       .eq('id', mission_id)
       .single()
 
@@ -309,7 +315,7 @@ export async function POST(req: Request) {
     await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
 
     // Mission Touring COMEX → accepter + délai 60 + assign DE-001 (arrière-plan, gaté).
-    await acceptTouringBg(mission_id, mission?.source || null, actor?.id || null, supabase)
+    await acceptTouringBg(mission_id, mission?.source || null, (mission as any)?.source_format || null, actor?.id || null, supabase)
 
     // Mission Allianz/mondial → accepter l'affectation dans Hexalite (API, arrière-plan).
     if (mission?.source === 'mondial') {
