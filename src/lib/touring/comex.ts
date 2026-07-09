@@ -296,6 +296,22 @@ export async function isComexHighwayMission(
   } catch { return false }
 }
 
+/**
+ * Pour une mission AUTOROUTE : l'intervenant lié `MEM_CID_INTV` du détail COMEX
+ * (ex "AA0005653210", format ≠ nos garages numériques) = ce que COMEX attend dans
+ * `ADR_DEPOT_CID_INTV` pour ces missions. '' si absent. Olivier 2026-07-09.
+ */
+export async function resolveComexHighwayDepot(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<string> {
+  try {
+    const dRes: any = await getComexMissionDetail(session, keys)
+    const dd = (dRes?.content || dRes || {}) as Record<string, any>
+    return String(dd?.MEM_CID_INTV || '').trim()
+  } catch { return '' }
+}
+
 // ── Actions (mutations) : changement de statut via detail/set + operType ──────
 // Le payload = la mission ré-échoée (union des captures onRoad/onSpot du 06/07)
 // + operType + operDate. On lit donc le détail puis on renvoie ces champs.
@@ -435,12 +451,20 @@ export async function acceptTouringMission(
     // (03 → 04). Un mauvais dépôt = accept no-op (statut inchangé). Olivier 2026-07-08.
     const candidates = await getComexDepotCandidates(session, keys)
     const highway = await isComexHighwayMission(session, keys)
-    // Missions autoroute/Siabis : on tente D'ABORD sans dépôt (COMEX refuse nos
-    // dépôts sur ces missions, cas 10054129 : les 5 dépôts en 03→03), puis les
-    // dépôts en repli. Missions normales : dépôts uniquement (dépôt requis).
+    // Missions autoroute/Siabis : COMEX refuse nos garages (cas 10054129 : les 5
+    // dépôts en 03→03). Théorie Olivier 2026-07-09 : un NON COUVERT ne lie AUCUN
+    // dépôt (pas de facturation chez Touring) → accept SANS dépôt. On tente donc
+    // « sans dépôt » EN PREMIER ; puis `MEM_CID_INTV` (intervenant lié du détail,
+    // ex "AA0005653210") et les garages en filet de sécurité (pour un couvert
+    // éventuel). Le log dira lequel fait basculer 03→04.
+    const memCid = highway ? await resolveComexHighwayDepot(session, keys) : ''
     type Attempt = { depot: string; noDepot: boolean; label: string }
     const attempts: Attempt[] = highway
-      ? [{ depot: '', noDepot: true, label: 'sans-dépôt' }, ...candidates.map(d => ({ depot: d, noDepot: false, label: d }))]
+      ? [
+          { depot: '', noDepot: true, label: 'sans-dépôt' },
+          ...(memCid ? [{ depot: memCid, noDepot: false, label: `MEM:${memCid}` }] : []),
+          ...candidates.map(d => ({ depot: d, noDepot: false, label: d })),
+        ]
       : candidates.map(d => ({ depot: d, noDepot: false, label: d }))
     let accepted = false
     for (const att of attempts) {
