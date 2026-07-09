@@ -1036,6 +1036,12 @@ export default function FacturerModal({
         author: r.author_name,
       })))
     if (remarks.length > 0) {
+      // IMPORTANT : certains appelants (ex. tryAutoNumber) ont déjà mis busy=true.
+      // Le gate ci-dessous a ses boutons disabled={busy} → si on ne relâche pas
+      // busy, la modale est figée (confirm ET annuler désactivés, clic extérieur
+      // bloqué). On remet busy=false : c'est une étape de confirmation utilisateur,
+      // aucune requête n'est en cours. Olivier 2026-07-09.
+      setBusy(false)
       setRemarkGate({ method, ids, number, remarks })
       return
     }
