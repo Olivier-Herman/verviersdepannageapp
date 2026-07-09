@@ -64,7 +64,14 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
     || mission.status === 'to_invoice'
     || hasPaidAndFinalized
   const forceLegacy = searchParams?.legacy === '1'
-  const isSncFiche  = isSncSource && !hasStartedDelivery
+  // Olivier 2026-07-09 : SncMissionFiche (parc/finaliser, SANS pointage) est la
+  // fiche « brouillon paiement immédiat » créée par le module chauffeur sur le
+  // terrain (route police/draft → seule à poser awaiting_payment=true). Une
+  // mission SNC/SC ENVOYÉE PAR LE DISPATCH (ou une mission d'assistance reclassée
+  // en Siabis non couvert) n'a PAS awaiting_payment → elle doit garder le flux
+  // normal DriverClient avec pointage (accepter → en route → sur place).
+  const isDriverDraft = mission.awaiting_payment === true
+  const isSncFiche    = isSncSource && isDriverDraft && !hasStartedDelivery
 
   if (isSncFiche && !forceLegacy) {
     return (
