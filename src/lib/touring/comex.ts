@@ -279,6 +279,23 @@ export async function resolveComexDepotCid(
   return cands[0] || DEFAULT_DEPOT_CID
 }
 
+/**
+ * true si la mission est sur AUTOROUTE / zone Siabis : l'adresse sinistre est
+ * la route (COD_ADRESSE='HIG' ou FL_ADR_SIN=1), sans CID_INTV. Pour ces missions
+ * COMEX refuse l'accept avec un de nos dépôts (03→03 sur tous les dépôts, cas
+ * mission 10054129) → on tente SANS dépôt. Olivier 2026-07-09.
+ */
+export async function isComexHighwayMission(
+  session: ComexSession,
+  keys: { CID_DOS: string; CID_SEQ_ACTION: string },
+): Promise<boolean> {
+  try {
+    const data = await getComexAddresses(session, keys)
+    const list: any[] = Array.isArray(data?.content) ? data.content : (Array.isArray(data) ? data : [])
+    return list.some(a => String(a?.COD_ADRESSE || '').toUpperCase() === 'HIG' || String(a?.FL_ADR_SIN) === '1')
+  } catch { return false }
+}
+
 // ── Actions (mutations) : changement de statut via detail/set + operType ──────
 // Le payload = la mission ré-échoée (union des captures onRoad/onSpot du 06/07)
 // + operType + operDate. On lit donc le détail puis on renvoie ces champs.
@@ -319,6 +336,7 @@ export async function pushComexOperation(
   operType: ComexOperType,
   operDate: string,
   depotCid?: string,
+  opts?: { noDepot?: boolean },
 ): Promise<{ response: any; sentDepotCid: string; payload: Record<string, any> }> {
   const dRes = await getComexMissionDetail(session, keys)
   const d = (dRes?.content || dRes || {}) as Record<string, any>
@@ -333,7 +351,11 @@ export async function pushComexOperation(
   // COMEX bascule réellement le statut (accept/onRoad/onSpot). On le résout depuis
   // adresse/get (id du dépôt intervenant). Sans lui, COMEX répond OK mais ne fait
   // rien. Cause racine identifiée 2026-07-07.
-  if (!String(payload.ADR_DEPOT_CID_INTV || '').trim()) {
+  // noDepot : essai explicite SANS dépôt (missions Siabis/autoroute — hypothèse
+  // Olivier 2026-07-09 : COMEX n'attend pas un de nos dépôts pour ces missions).
+  if (opts?.noDepot) {
+    payload.ADR_DEPOT_CID_INTV = ''
+  } else if (!String(payload.ADR_DEPOT_CID_INTV || '').trim()) {
     payload.ADR_DEPOT_CID_INTV = depotCid || await resolveComexDepotCid(session, keys)
   }
   const response = await comexRest(session, 'Mission/detail/set', payload)
@@ -412,15 +434,23 @@ export async function acceptTouringMission(
     // candidats (ordonnés par géo) et on s'arrête dès que le statut bascule
     // (03 → 04). Un mauvais dépôt = accept no-op (statut inchangé). Olivier 2026-07-08.
     const candidates = await getComexDepotCandidates(session, keys)
+    const highway = await isComexHighwayMission(session, keys)
+    // Missions autoroute/Siabis : on tente D'ABORD sans dépôt (COMEX refuse nos
+    // dépôts sur ces missions, cas 10054129 : les 5 dépôts en 03→03), puis les
+    // dépôts en repli. Missions normales : dépôts uniquement (dépôt requis).
+    type Attempt = { depot: string; noDepot: boolean; label: string }
+    const attempts: Attempt[] = highway
+      ? [{ depot: '', noDepot: true, label: 'sans-dépôt' }, ...candidates.map(d => ({ depot: d, noDepot: false, label: d }))]
+      : candidates.map(d => ({ depot: d, noDepot: false, label: d }))
     let accepted = false
-    for (const depot of candidates) {
-      triedDepots.push(depot)
-      sentDepotCid = depot
-      const acc = await pushComexOperation(session, keys, 'accept', operDate, depot)
+    for (const att of attempts) {
+      triedDepots.push(att.label)
+      sentDepotCid = att.noDepot ? '(sans dépôt)' : att.depot
+      const acc = await pushComexOperation(session, keys, 'accept', operDate, att.depot, { noDepot: att.noDepot })
       acceptResp = acc?.response
       const st = await readStatus(session)
       if (st && st !== '03' && st !== statusBefore) { accepted = true; statusAfter = st; break }
-      statusAfter = st  // reste 03 → on tentera le dépôt suivant
+      statusAfter = st  // reste 03 → on tentera l'essai suivant
     }
     steps.accept = accepted
 
@@ -445,7 +475,9 @@ export async function setTouringOnRoad(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const session = await loginComex('user')
-    await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()))
+    // Siabis/autoroute : sans dépôt (même règle que l'accept). Olivier 2026-07-09.
+    const noDepot = await isComexHighwayMission(session, keys)
+    await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()), undefined, { noDepot })
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
@@ -464,7 +496,9 @@ export async function setTouringOnSpot(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const session = await loginComex('user')
-    await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()))
+    // Siabis/autoroute : sans dépôt (même règle que l'accept). Olivier 2026-07-09.
+    const noDepot = await isComexHighwayMission(session, keys)
+    await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()), undefined, { noDepot })
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
