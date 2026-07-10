@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { getTgrSupervisionData } from '@/lib/tgr/supervision'
-import { sendEmail, emailLayout, button, infoRow } from '@/lib/emails'
+import { buildTgrReportEmail } from '@/lib/tgr/report-email'
+import { sendEmail } from '@/lib/emails'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -36,18 +37,7 @@ export async function GET(req: NextRequest) {
   const link = tok?.token ? `${APP_URL}/superv/tgr?token=${tok.token}` : null
 
   const monthLabel = from.toLocaleDateString('fr-BE', { month: 'long', year: 'numeric' })
-  const content = `
-    <h2 style="margin:0 0 16px">Bilan TGR — ${monthLabel}</h2>
-    ${infoRow('Commandes reçues', String(s.total))}
-    ${infoRow('Acceptées', String(s.accepted))}
-    ${infoRow('Refusées', String(s.refused))}
-    ${infoRow('Reprises', String(s.taken))}
-    ${infoRow('Réalisées', String(s.completed))}
-    ${infoRow("Délai moyen d'acceptation", s.avg_accept_hours != null ? `${s.avg_accept_hours} h` : '—')}
-    ${infoRow("Respect de l'échéance", s.on_time_rate != null ? `${s.on_time_rate} % (${s.on_time} à temps · ${s.late} en retard)` : '—')}
-    <p style="color:#64748b;font-size:13px;margin-top:16px">Détail commande par commande (délais, dates de clôture) sur la page de supervision :</p>
-    ${link ? button(link, '📊 Voir le détail en ligne') : '<p style="color:#b45309">Lien de supervision non configuré (voir /admin/tgr).</p>'}
-  `
-  await sendEmail(email, `Bilan TGR — ${monthLabel}`, emailLayout(content, 'Bilan TGR mensuel'))
+  const { subject, html } = buildTgrReportEmail(s, monthLabel, link)
+  await sendEmail(email, subject, html)
   return NextResponse.json({ ok: true, sent_to: email, month: monthLabel, stats: s })
 }

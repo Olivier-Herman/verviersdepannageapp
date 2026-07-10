@@ -125,7 +125,11 @@ export async function POST(
   // qu'elle disparaisse du planning. Olivier 2026-07-11.
   if (action === 'cancel') {
     const now = new Date().toISOString()
-    await supabase.from('tgr_missions').update({ status: 'cancelled', updated_at: now }).eq('id', missionId)
+    const { error: cErr } = await supabase.from('tgr_missions')
+      .update({ status: 'cancelled', updated_at: now }).eq('id', missionId)
+    if (cErr) {
+      return NextResponse.json({ error: `Annulation KO : ${cErr.message}` }, { status: 500 })
+    }
     if (mission.dispatch_mission_id) {
       await supabase.from('incoming_missions')
         .update({ status: 'cancelled', updated_at: now }).eq('id', mission.dispatch_mission_id)

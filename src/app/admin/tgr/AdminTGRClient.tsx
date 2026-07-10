@@ -25,9 +25,11 @@ function SupervisorPanel() {
       const j = await r.json()
       if (!r.ok) { setMsg(j.error || 'Erreur'); return }
       if ('link' in j) setLink(j.link)
-      if (action === 'set_email') setMsg('Email enregistré ✅')
-      if (action === 'regenerate') setMsg('Nouveau lien généré ✅')
-      if (action === 'revoke') setMsg('Accès révoqué')
+      if (action === 'set_email')   setMsg('Email enregistré ✅')
+      if (action === 'regenerate')  setMsg('Nouveau lien généré ✅')
+      if (action === 'revoke')      setMsg('Accès révoqué')
+      if (action === 'send_test')   setMsg(`Test envoyé à ${j.sent_to} ✅`)
+      if (action === 'send_welcome')setMsg(`Mail de bienvenue envoyé à ${j.sent_to} ✅`)
     } finally { setBusy(false) }
   }
 
@@ -62,7 +64,19 @@ function SupervisorPanel() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 pt-1">
+      {/* Envois manuels */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => post('send_welcome')} disabled={busy}
+          className="px-3 py-1.5 bg-brand/10 border border-brand/30 text-brand rounded-lg text-xs font-medium disabled:opacity-50">
+          👋 Mail de bienvenue
+        </button>
+        <button onClick={() => post('send_test')} disabled={busy}
+          className="px-3 py-1.5 bg-brand/10 border border-brand/30 text-brand rounded-lg text-xs font-medium disabled:opacity-50">
+          ✉️ Envoyer un bilan test
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-surface-hover mt-1">
         <button onClick={() => post('regenerate')} disabled={busy}
           className="px-3 py-1.5 bg-surface-2 border hover:border-brand/50 text-ink-secondary rounded-lg text-xs font-medium disabled:opacity-50">
           ♻️ Régénérer le lien

@@ -11,6 +11,9 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { getTgrSupervisionData } from '@/lib/tgr/supervision'
+import { buildTgrReportEmail, buildTgrWelcomeEmail } from '@/lib/tgr/report-email'
+import { sendEmail } from '@/lib/emails'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,5 +69,30 @@ export async function POST(req: Request) {
     await sb.from('tgr_supervisor_tokens').insert({ token, label: 'Responsable Touring' })
     return NextResponse.json({ ok: true, token, link: linkFor(token) })
   }
+
+  // Envoi manuel : test (bilan du mois en cours) ou mail de bienvenue.
+  if (action === 'send_test' || action === 'send_welcome') {
+    const email = await getEmail(sb)
+    if (!email) return NextResponse.json({ error: "Renseigne d'abord l'email du responsable." }, { status: 400 })
+    const link = linkFor(await activeToken(sb))
+    if (!link) return NextResponse.json({ error: "Aucun lien actif — régénère le lien d'abord." }, { status: 400 })
+    try {
+      if (action === 'send_welcome') {
+        const { subject, html } = buildTgrWelcomeEmail(link)
+        await sendEmail(email, subject, html)
+      } else {
+        const now = new Date()
+        const from = new Date(now.getFullYear(), now.getMonth(), 1)  // mois en cours
+        const data = await getTgrSupervisionData(sb, { from: from.toISOString() })
+        const monthLabel = from.toLocaleDateString('fr-BE', { month: 'long', year: 'numeric' }) + ' (test)'
+        const { subject, html } = buildTgrReportEmail(data.stats, monthLabel, link)
+        await sendEmail(email, subject, html)
+      }
+      return NextResponse.json({ ok: true, sent_to: email })
+    } catch (e: any) {
+      return NextResponse.json({ error: `Envoi KO : ${e?.message || e}` }, { status: 500 })
+    }
+  }
+
   return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
 }
