@@ -3742,16 +3742,9 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Remarques — ajout centralisé via un modal typé ; les 3 sections
-                  restent affichées en lecture (sans champ d'ajout). Olivier 2026-07-10. */}
-              <button
-                type="button"
-                onClick={() => { setRemarksModalType('general'); setRemarksModalOpen(true) }}
-                className="w-full py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-2"
-              >
-                ➕ Ajouter une remarque
-              </button>
-
+              {/* Remarques — ajout centralisé via le modal typé (bouton dans la
+                  colonne de droite sous Sauvegarder) ; les 3 sections restent
+                  affichées ici en lecture (sans champ d'ajout). Olivier 2026-07-10. */}
               <BillingRemarks
                 missionId={initialMission.id}
                 currentUserId={userId}
@@ -3818,6 +3811,18 @@ export default function MissionDetailClient({
                     {loadingSave ? '⏳ Sauvegarde…' : saveOk ? '✅ Enregistré' : '💾 Sauvegarder les modifications'}
                   </button>
                 </div>
+              )}
+
+              {/* Ajouter une remarque — sous Sauvegarder (Olivier 2026-07-10).
+                  Ouvre le modal typé (générale / facturation / instruction chauffeur). */}
+              {status !== 'ignored' && (
+                <button
+                  type="button"
+                  onClick={() => { setRemarksModalType('general'); setRemarksModalOpen(true) }}
+                  className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2"
+                >
+                  ➕ Ajouter une remarque
+                </button>
               )}
 
               {/* Relancer la complétion Hexalite (missions Allianz/Mondial). */}
@@ -4506,6 +4511,7 @@ function TransferParcModal({
   const [depots,      setDepots]      = useState<DepotWithZones[]>([])
   const [orphans,     setOrphans]     = useState<Array<{ key: string; label: string }>>([])
   const [loading,     setLoading]     = useState(true)
+  const [selectedDepot, setSelectedDepot] = useState<string>('')  // dépôt cible (défaut Pepinster)
   const [selectedZone, setSelectedZone] = useState<string>('')
   const [reason,       setReason]     = useState('')
   const [submitting,   setSubmitting] = useState(false)
@@ -4515,12 +4521,23 @@ function TransferParcModal({
     fetch('/api/fourriere/zones-by-depot')
       .then(r => r.json())
       .then(j => {
-        setDepots(j.depots || [])
+        const deps: DepotWithZones[] = j.depots || []
+        setDepots(deps)
         setOrphans(j.orphans || [])
+        // Défaut : Pepinster (parc par défaut, ou repli sur le nom). Olivier 2026-07-10.
+        const def = deps.find(d => d.is_default_parc)
+          || deps.find(d => /pepinster/i.test(d.name))
+          || deps[0]
+        if (def) setSelectedDepot(def.id)
       })
       .catch(e => setError(`Chargement KO : ${e?.message}`))
       .finally(() => setLoading(false))
   }, [])
+
+  // Zones du dépôt sélectionné (+ orphelines si « Sans dépôt » choisi).
+  const depotZones = selectedDepot === '__orphans__'
+    ? orphans
+    : (depots.find(d => d.id === selectedDepot)?.zones || [])
 
   async function submit() {
     if (!selectedZone) { setError('Sélectionne une zone'); return }
@@ -4560,6 +4577,25 @@ function TransferParcModal({
             <p className="text-ink-muted text-sm text-center py-6">Chargement...</p>
           ) : (
             <>
+              {/* Dépôt cible — Pepinster par défaut, modifiable. Olivier 2026-07-10. */}
+              <div>
+                <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2 block">
+                  Dépôt
+                </label>
+                <select
+                  value={selectedDepot}
+                  onChange={e => { setSelectedDepot(e.target.value); setSelectedZone('') }}
+                  className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
+                  autoFocus
+                >
+                  {depots.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}{d.is_default_parc ? ' ★' : ''}</option>
+                  ))}
+                  {orphans.length > 0 && <option value="__orphans__">Sans dépôt</option>}
+                </select>
+              </div>
+
+              {/* Zone du dépôt sélectionné */}
               <div>
                 <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2 block">
                   Nouvelle zone
@@ -4568,29 +4604,15 @@ function TransferParcModal({
                   value={selectedZone}
                   onChange={e => setSelectedZone(e.target.value)}
                   className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
-                  autoFocus
                 >
                   <option value="">— Choisir une zone —</option>
-                  {depots.map(d => (
-                    <optgroup key={d.id} label={`${d.name}${d.is_default_parc ? ' ★' : ''}`}>
-                      {d.zones.length === 0 ? (
-                        <option disabled>(aucune zone)</option>
-                      ) : d.zones.map(z => (
-                        <option key={z.key} value={z.key} disabled={z.key === currentZoneKey}>
-                          {z.label}{z.key === currentZoneKey ? ' (zone actuelle)' : ''}
-                        </option>
-                      ))}
-                    </optgroup>
+                  {depotZones.length === 0 ? (
+                    <option disabled>(aucune zone dans ce dépôt)</option>
+                  ) : depotZones.map(z => (
+                    <option key={z.key} value={z.key} disabled={z.key === currentZoneKey}>
+                      {z.label}{z.key === currentZoneKey ? ' (zone actuelle)' : ''}
+                    </option>
                   ))}
-                  {orphans.length > 0 && (
-                    <optgroup label="Sans dépôt">
-                      {orphans.map(z => (
-                        <option key={z.key} value={z.key} disabled={z.key === currentZoneKey}>
-                          {z.label}{z.key === currentZoneKey ? ' (zone actuelle)' : ''}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
                 </select>
               </div>
 
