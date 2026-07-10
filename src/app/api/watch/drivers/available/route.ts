@@ -52,18 +52,24 @@ export async function GET(req: Request) {
   // en JS car role/roles peut etre stocke a divers endroits selon historique.
   const { data: users } = await sb
     .from('users')
-    .select('id, name, role, roles, modules, suspended_at')
+    .select('id, name, role, roles, suspended_at')
     .is('suspended_at', null)
     .order('name', { ascending: true })
+
+  // ⚠️ `modules` n'est PAS une colonne de `users` (table user_modules). Le
+  // sélectionner cassait la requête → 0 chauffeur. On lit le module
+  // driver_missions depuis user_modules. Fix Olivier 2026-07-10.
+  const { data: dmMods } = await sb.from('user_modules')
+    .select('user_id').eq('module_id', 'driver_missions').eq('granted', true)
+  const driverModuleIds = new Set((dmMods || []).map(m => m.user_id))
 
   const drivers = (users || []).filter(u => {
     const roles = Array.isArray(u.roles) ? u.roles : [u.role].filter(Boolean)
     const normalized = roles.map((r: any) => String(r ?? '').trim().toLowerCase())
-    const modules = Array.isArray(u.modules) ? u.modules : []
     return normalized.includes('chauffeur')
         || normalized.includes('driver')
         || normalized.includes('superadmin')
-        || modules.includes('driver_missions')
+        || driverModuleIds.has(u.id)
   })
 
   if (drivers.length === 0) {

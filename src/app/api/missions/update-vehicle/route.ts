@@ -27,8 +27,12 @@ export async function POST(req: Request) {
   if (!missionId) return NextResponse.json({ error: 'mission_id requis' }, { status: 400 })
 
   const sb = createAdminClient()
+  // ⚠️ `modules` N'EST PAS une colonne de `users` (les modules sont dans la table
+  // user_modules). Le sélectionner faisait échouer le SELECT → actor null →
+  // « Utilisateur introuvable » quand le chauffeur ajoutait une plaque sur place.
+  // Fix Olivier 2026-07-10.
   const { data: actor } = await sb
-    .from('users').select('id, role, roles, modules').eq('email', session.user!.email!).single()
+    .from('users').select('id, role, roles').eq('email', session.user!.email!).single()
   if (!actor) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 })
 
   const { data: mission } = await sb
@@ -36,8 +40,14 @@ export async function POST(req: Request) {
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   const roles: string[] = [actor.role, ...(Array.isArray(actor.roles) ? actor.roles : [])].filter(Boolean)
-  const modules: string[] = Array.isArray((actor as any).modules) ? (actor as any).modules : []
-  const isStaff = roles.some(r => STAFF_ROLES.includes(r)) || modules.includes('fourriere')
+  let isStaff = roles.some(r => STAFF_ROLES.includes(r))
+  // Accès staff fourrière : lu depuis user_modules (pas une colonne users).
+  // Le chauffeur assigné passe de toute façon la garde ci-dessous.
+  if (!isStaff && mission.assigned_to !== actor.id) {
+    const { data: mods } = await sb.from('user_modules')
+      .select('module_id').eq('user_id', actor.id).eq('granted', true)
+    isStaff = (mods || []).some(m => m.module_id === 'fourriere')
+  }
   if (mission.assigned_to !== actor.id && !isStaff) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
