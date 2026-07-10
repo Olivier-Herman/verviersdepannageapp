@@ -116,6 +116,22 @@ async function acceptTouringBg(
         notes,
         metadata: { CID_DOS, CID_SEQ_ACTION, steps: r.steps, statusBefore: r.statusBefore, statusAfter: r.statusAfter, sentDepotCid: r.sentDepotCid, acceptResp: respSnippet, alreadyAccepted: (r as any).alreadyAccepted || false },
       }).then(() => {}, () => {})
+
+      // ⚠️ FILET DE SÉCURITÉ : l'auto-accept a ÉCHOUÉ (et pas « déjà acceptée »)
+      // → on prévient le dispatch IMMÉDIATEMENT pour qu'il accepte à la main dans
+      // COMEX avant les 7 min. Sans ça, l'échec restait invisible (juste un log).
+      // Olivier 2026-07-11.
+      if (!r.ok && !(r as any).alreadyAccepted) {
+        try {
+          const { sendPushToRole } = await import('@/lib/push')
+          await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+            title: '⚠️ Touring COMEX — à accepter À LA MAIN',
+            body:  `Dossier ${CID_DOS} : l'acceptation auto a échoué. Accepte-le MANUELLEMENT dans COMEX (7 min max).`,
+            url:   `/dispatch/${missionId}`,
+            tag:   `touring-accept-fail-${missionId}`,
+          })
+        } catch (e: any) { console.error('[Confirm] push accept-fail:', e?.message) }
+      }
     } catch (e: any) {
       console.error('[Confirm] Touring COMEX accept:', e?.message)
     }
