@@ -11,6 +11,7 @@ import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import BillingRemarks from '@/components/missions/BillingRemarks'
 import DriverInstructions from '@/components/missions/DriverInstructions'
+import RemarksAddModal from '@/components/missions/RemarksAddModal'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
@@ -1288,6 +1289,12 @@ export default function MissionDetailClient({
 
   // Nombre de remarques de facturation (pour l'alerte en haut de fiche).
   const [billingRemarkCount, setBillingRemarkCount] = useState(0)
+  // Remarques unifiées : compteurs par type + modal d'ajout typé. Olivier 2026-07-10.
+  const [generalRemarkCount, setGeneralRemarkCount] = useState(0)
+  const [driverInstrCount,   setDriverInstrCount]   = useState(0)
+  const [remarksModalOpen,   setRemarksModalOpen]   = useState(false)
+  const [remarksModalType,   setRemarksModalType]   = useState<'general' | 'billing' | 'driver'>('general')
+  const [remarksRefreshKey,  setRemarksRefreshKey]  = useState(0)
 
   // Détection autoroute belge/française : "A" suivi de 1-3 chiffres en début d'adresse,
   // ou mot-clé "autoroute" / "highway".
@@ -2367,6 +2374,14 @@ export default function MissionDetailClient({
           onClose={() => { setSiabisModal(null); router.refresh() }}
         />
       )}
+      {remarksModalOpen && (
+        <RemarksAddModal
+          missionId={initialMission.id}
+          defaultType={remarksModalType}
+          onClose={() => setRemarksModalOpen(false)}
+          onAdded={() => setRemarksRefreshKey(k => k + 1)}
+        />
+      )}
       <style>{`
         @keyframes md-fade-up {
           from { opacity: 0; transform: translateY(8px); }
@@ -2783,24 +2798,31 @@ export default function MissionDetailClient({
           />
         )}
 
-        {/* ALERTE « Remarque de facturation » en haut de fiche — courte et cliquable :
-            un clic fait défiler jusqu'à l'encadré des remarques. Le texte n'est PAS
-            répété ici (il est dans l'encadré, signé + daté). Olivier 2026-07-07. */}
-        {billingRemarkCount > 0 && (
+        {/* Bandeau REMARQUES unifié (compact, cliquable) en haut de fiche.
+            Résumé par type + badges ; clic → ouvre le modal d'ajout/gestion.
+            Le détail (texte signé/daté) reste dans les encadrés plus bas.
+            Remplace l'ancien bandeau billing seul. Olivier 2026-07-10. */}
+        {(billingRemarkCount + generalRemarkCount + driverInstrCount) > 0 && (
           <div className="px-4 lg:px-8 pt-4">
             <button
               type="button"
-              onClick={() => document.getElementById('billing-remark-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-              className="w-full text-left bg-slate-800 hover:bg-slate-700 text-white rounded-xl p-4 flex items-center gap-3 shadow-lg ring-1 ring-slate-600 transition"
+              onClick={() => { setRemarksModalType('general'); setRemarksModalOpen(true) }}
+              className="w-full text-left bg-slate-800 hover:bg-slate-700 text-white rounded-xl p-3.5 flex items-center gap-3 shadow-lg ring-1 ring-slate-600 transition"
             >
-              <span className="text-2xl">⚠️</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-base font-bold">
-                  Attention — {billingRemarkCount > 1 ? `${billingRemarkCount} remarques de facturation` : 'remarque de facturation'}
-                </p>
-                <p className="text-slate-300 text-xs mt-0.5">Clique pour {billingRemarkCount > 1 ? 'les' : 'la'} voir ↓</p>
+              <span className="text-2xl">📌</span>
+              <div className="flex-1 min-w-0 flex flex-wrap items-center gap-2">
+                <span className="text-white text-sm font-bold mr-1">Remarques :</span>
+                {billingRemarkCount > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 border border-amber-500/40 text-xs font-semibold">📝 Facturation · {billingRemarkCount}</span>
+                )}
+                {driverInstrCount > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-200 border border-sky-500/40 text-xs font-semibold">📋 Chauffeur · {driverInstrCount}</span>
+                )}
+                {generalRemarkCount > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-500/30 text-slate-200 border border-slate-400/40 text-xs font-semibold">💬 Générale · {generalRemarkCount}</span>
+                )}
               </div>
-              <span className="text-slate-400 text-xl flex-shrink-0">↓</span>
+              <span className="text-slate-400 text-lg flex-shrink-0">⌄</span>
             </button>
           </div>
         )}
@@ -3720,21 +3742,41 @@ export default function MissionDetailClient({
                 </div>
               )}
 
-              {/* Remarques de facturation — juste au-dessus des remarques de mission
-                  (multi, signées + datées, add/edit/delete). Olivier 2026-07-07. */}
+              {/* Remarques — ajout centralisé via un modal typé ; les 3 sections
+                  restent affichées en lecture (sans champ d'ajout). Olivier 2026-07-10. */}
+              <button
+                type="button"
+                onClick={() => { setRemarksModalType('general'); setRemarksModalOpen(true) }}
+                className="w-full py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-2"
+              >
+                ➕ Ajouter une remarque
+              </button>
+
               <BillingRemarks
                 missionId={initialMission.id}
                 currentUserId={userId}
                 isSuperadmin={userRole === 'superadmin'}
                 legacyRemark={initialMission.remarks_billing}
                 onCountChange={setBillingRemarkCount}
+                hideAdd
+                refreshKey={remarksRefreshKey}
               />
 
               {/* Instructions chauffeur — pop-up à l'acceptation. Olivier 2026-07-10. */}
-              <DriverInstructions missionId={initialMission.id} />
+              <DriverInstructions
+                missionId={initialMission.id}
+                onCountChange={setDriverInstrCount}
+                hideAdd
+                refreshKey={remarksRefreshKey}
+              />
 
               {/* Remarques dispatcher (notes + pièces jointes) */}
-              <MissionRemarks missionId={initialMission.id} />
+              <MissionRemarks
+                missionId={initialMission.id}
+                onCountChange={setGeneralRemarkCount}
+                hideAdd
+                refreshKey={remarksRefreshKey}
+              />
 
               {/* Historique — Olivier 2026-06-14 : placé sous les Remarques */}
               {logs.length > 0 && (

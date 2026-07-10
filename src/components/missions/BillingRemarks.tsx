@@ -38,9 +38,13 @@ interface Props {
   legacyRemark?: string | null
   /** Rappelé avec le nombre de remarques (pour le bandeau parent). */
   onCountChange?: (n: number) => void
+  /** Masque le formulaire d'ajout (l'ajout se fait via le modal Remarques). */
+  hideAdd?: boolean
+  /** Change → recharge la liste (après ajout via le modal). */
+  refreshKey?: number
 }
 
-export default function BillingRemarks({ missionId, currentUserId, isSuperadmin, legacyRemark, onCountChange }: Props) {
+export default function BillingRemarks({ missionId, currentUserId, isSuperadmin, legacyRemark, onCountChange, hideAdd, refreshKey }: Props) {
   const legacy = (legacyRemark || '').trim()
   const [remarks, setRemarks] = useState<BillingRemark[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,7 +68,7 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
     } catch { /* silencieux */ } finally { setLoading(false) }
   }, [missionId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   async function add() {
     const text = newText.trim()
@@ -142,7 +146,8 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
 
       {error && <p className="text-rose-300 text-xs mb-2">⚠ {error}</p>}
 
-      {/* Ajout */}
+      {/* Ajout (masqué quand l'ajout se fait via le modal Remarques) */}
+      {!hideAdd && (
       <div className="mb-3">
         <textarea
           value={newText}
@@ -162,6 +167,7 @@ export default function BillingRemarks({ missionId, currentUserId, isSuperadmin,
           </button>
         </div>
       </div>
+      )}
 
       {/* Liste */}
       {loading ? (

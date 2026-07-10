@@ -19,6 +19,10 @@ interface Instruction {
 interface Props {
   missionId: string
   onCountChange?: (n: number) => void
+  /** Masque le formulaire d'ajout (l'ajout se fait via le modal Remarques). */
+  hideAdd?: boolean
+  /** Change → recharge la liste (après ajout via le modal). */
+  refreshKey?: number
 }
 
 const fmt = (s: string | null) => {
@@ -30,7 +34,7 @@ const fmt = (s: string | null) => {
   } catch { return '' }
 }
 
-export default function DriverInstructions({ missionId, onCountChange }: Props) {
+export default function DriverInstructions({ missionId, onCountChange, hideAdd, refreshKey }: Props) {
   const [list, setList]       = useState<Instruction[]>([])
   const [text, setText]       = useState('')
   const [busy, setBusy]       = useState(false)
@@ -44,7 +48,7 @@ export default function DriverInstructions({ missionId, onCountChange }: Props) 
     } catch { /* silencieux */ }
   }, [missionId, onCountChange])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   const add = async () => {
     const t = text.trim()
@@ -79,22 +83,26 @@ export default function DriverInstructions({ missionId, onCountChange }: Props) 
         <span className="text-sky-400/70 text-xs">(pop-up à l'acceptation)</span>
       </div>
 
-      {/* Ajout */}
-      <div className="flex gap-2 mb-3">
-        <textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) add() }}
-          rows={2}
-          placeholder="Ex : appeler le client 10 min avant d'arriver · vérifier immatriculation + VIN…"
-          className="flex-1 bg-sky-950/60 border border-sky-700/50 focus:border-sky-500 rounded-lg px-3 py-2 text-sky-50 text-sm outline-none resize-none placeholder:text-sky-400/40"
-        />
-        <button onClick={add} disabled={busy || !text.trim()}
-          className="px-3 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white rounded-lg text-sm font-semibold self-stretch whitespace-nowrap">
-          Ajouter
-        </button>
-      </div>
-      {error && <p className="text-red-400 text-xs mb-2">⚠️ {error}</p>}
+      {/* Ajout (masqué quand l'ajout se fait via le modal Remarques) */}
+      {!hideAdd && (
+        <>
+          <div className="flex gap-2 mb-3">
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) add() }}
+              rows={2}
+              placeholder="Ex : appeler le client 10 min avant d'arriver · vérifier immatriculation + VIN…"
+              className="flex-1 bg-sky-950/60 border border-sky-700/50 focus:border-sky-500 rounded-lg px-3 py-2 text-sky-50 text-sm outline-none resize-none placeholder:text-sky-400/40"
+            />
+            <button onClick={add} disabled={busy || !text.trim()}
+              className="px-3 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white rounded-lg text-sm font-semibold self-stretch whitespace-nowrap">
+              Ajouter
+            </button>
+          </div>
+          {error && <p className="text-red-400 text-xs mb-2">⚠️ {error}</p>}
+        </>
+      )}
 
       {/* Liste */}
       {list.length === 0 ? (

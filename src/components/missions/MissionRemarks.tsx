@@ -29,6 +29,12 @@ interface Remark {
 
 interface Props {
   missionId: string
+  /** Masque le bouton d'ajout (l'ajout se fait via le modal Remarques). */
+  hideAdd?: boolean
+  /** Change → recharge la liste (après ajout via le modal). */
+  refreshKey?: number
+  /** Rappelé avec le nombre de remarques (pour le bandeau parent). */
+  onCountChange?: (n: number) => void
 }
 
 const fmtDate = (iso: string | null) => {
@@ -53,7 +59,7 @@ const fileIcon = (mime: string | null) => {
   return '📎'
 }
 
-export default function MissionRemarks({ missionId }: Props) {
+export default function MissionRemarks({ missionId, hideAdd, refreshKey, onCountChange }: Props) {
   const [remarks, setRemarks] = useState<Remark[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -67,7 +73,8 @@ export default function MissionRemarks({ missionId }: Props) {
       .catch(() => {})
       .finally(() => setLoading(false))
   }
-  useEffect(load, [missionId])
+  useEffect(load, [missionId, refreshKey])
+  useEffect(() => { onCountChange?.(remarks.length) }, [remarks, onCountChange])
 
   const handleDelete = async (remarkId: string) => {
     if (!confirm('Supprimer cette remarque et tous ses fichiers ?')) return
@@ -91,12 +98,14 @@ export default function MissionRemarks({ missionId }: Props) {
           Remarques
           {remarks.length > 0 && <span className="text-ink-faint text-xs font-normal">({remarks.length})</span>}
         </h2>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-medium transition"
-        >
-          + Ajouter une remarque
-        </button>
+        {!hideAdd && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-medium transition"
+          >
+            + Ajouter une remarque
+          </button>
+        )}
       </div>
 
       {loading && <div className="text-ink-faint text-sm">Chargement…</div>}
