@@ -373,13 +373,17 @@ export default function GlobalSearch() {
                 <button
                   onClick={() => {
                     const q = query.trim()
+                    // « Recherche plus » : bascule vers le module complet (30
+                    // résultats/catégorie au lieu de 8) sur la MÊME requête et les
+                    // mêmes catégories (toutes si aucune sélectionnée). Olivier 2026-07-10.
+                    const cats = activeCats.size > 0 ? Array.from(activeCats).join(',') : 'all'
                     setOpen(false)
-                    router.push(`/recherche?q=${encodeURIComponent(q)}`)
+                    router.push(`/recherche?q=${encodeURIComponent(q)}&cats=${encodeURIComponent(cats)}`)
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-brand/15 to-purple-500/15 hover:from-brand/30 hover:to-purple-500/30 text-brand font-semibold border border-brand/30 transition"
-                  title="Voir tous les résultats sur la page dédiée"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-brand/20 to-purple-500/20 hover:from-brand/35 hover:to-purple-500/35 text-brand font-bold border border-brand/40 transition"
+                  title="Pas le bon résultat ? Recherche approfondie (30 résultats/catégorie, archive, Odoo, emails…)"
                 >
-                  Page recherche →
+                  🔎 Recherche plus →
                 </button>
               )}
               {total > 0 && (

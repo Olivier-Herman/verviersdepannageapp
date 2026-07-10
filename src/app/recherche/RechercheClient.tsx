@@ -97,7 +97,18 @@ export default function RechercheClient({ initialQuery, userRole, userName, user
   // highlighted). L user clique sur les autres chips pour approfondir
   // (encaissements, factures, emails, vehicules...). Si l user deselectionne
   // mission, on retombe sur mission par defaut (jamais de Set vide).
-  const [activeCats,    setActiveCats]    = useState<Set<string>>(new Set(['mission']))
+  // Catégories initiales : depuis l'URL (?cats=all ou ?cats=a,b,c — posé par le
+  // bouton « Recherche plus » de la barre en-tête), sinon « mission » par défaut.
+  // Olivier 2026-07-10.
+  const [activeCats,    setActiveCats]    = useState<Set<string>>(() => {
+    const raw = (searchParams?.get('cats') || '').trim()
+    if (raw === 'all') return new Set(CATEGORY_ORDER)
+    if (raw) {
+      const picked = raw.split(',').map(c => c.trim()).filter(c => CATEGORY_ORDER.includes(c))
+      if (picked.length) return new Set(picked)
+    }
+    return new Set(['mission'])
+  })
   const [recent,        setRecent]        = useState<string[]>([])
   const debounceRef = useRef<any>(null)
   const abortRef    = useRef<AbortController | null>(null)
