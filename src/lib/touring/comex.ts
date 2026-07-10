@@ -280,10 +280,11 @@ export async function resolveComexDepotCid(
 }
 
 /**
- * true si la mission est sur AUTOROUTE / zone Siabis : l'adresse sinistre est
- * la route (COD_ADRESSE='HIG' ou FL_ADR_SIN=1), sans CID_INTV. Pour ces missions
- * COMEX refuse l'accept avec un de nos dépôts (03→03 sur tous les dépôts, cas
- * mission 10054129) → on tente SANS dépôt. Olivier 2026-07-09.
+ * true si la mission est sur AUTOROUTE : présence d'une adresse de type
+ * `COD_ADRESSE='HIG'`. ⚠️ NE PAS tester `FL_ADR_SIN='1'` : ce flag est présent
+ * sur l'adresse SINISTRE de TOUTES les missions (normales incluses) → le tester
+ * renvoyait `true` partout, et les missions normales (ex. Eupen) tentaient
+ * l'accept « sans dépôt » puis échouaient. Bug corrigé Olivier 2026-07-11.
  */
 export async function isComexHighwayMission(
   session: ComexSession,
@@ -292,7 +293,7 @@ export async function isComexHighwayMission(
   try {
     const data = await getComexAddresses(session, keys)
     const list: any[] = Array.isArray(data?.content) ? data.content : (Array.isArray(data) ? data : [])
-    return list.some(a => String(a?.COD_ADRESSE || '').toUpperCase() === 'HIG' || String(a?.FL_ADR_SIN) === '1')
+    return list.some(a => String(a?.COD_ADRESSE || '').toUpperCase() === 'HIG')
   } catch { return false }
 }
 
