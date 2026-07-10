@@ -884,6 +884,18 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [instrIdx,   setInstrIdx]   = useState(0)
   const [instrAcking, setInstrAcking] = useState(false)
 
+  // OCR plaque/VIN depuis les photos, à la clôture si un champ est vide. On lit
+  // via Claude serveur (iOS+Android), le chauffeur CONFIRME/corrige. Olivier 2026-07-10.
+  const [ocrModal, setOcrModal] = useState<null | {
+    plate?: { value: string; img: string }
+    vin?:   { value: string; img: string }
+    plateFromVin?: boolean
+  }>(null)
+  const [ocrTried,   setOcrTried]   = useState(false)
+  const [ocrPlateVal, setOcrPlateVal] = useState('')
+  const [ocrVinVal,   setOcrVinVal]   = useState('')
+  const [ocrSaving,  setOcrSaving]  = useState(false)
+
   // Monter côté client seulement
   useEffect(() => { setMounted(true) }, [])
 
@@ -923,6 +935,63 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       setInstrAcking(false)
       setInstrIdx(i => i + 1)  // >= length → plus de pop-up → on entre dans la mission
     }
+  }
+
+  // À la clôture : si plaque ou VIN vide et qu'on a des photos → on OCR (serveur
+  // Claude) et on propose au chauffeur de confirmer/corriger. Olivier 2026-07-10.
+  useEffect(() => {
+    if (screen !== 'close' || ocrTried || isReadOnly) return
+    const plateEmpty = !plate(M.vehicle_plate)
+    const vinEmpty   = !((M.vehicle_vin || '').trim())
+    if (!plateEmpty && !vinEmpty) return
+    const imgs = previews.filter(Boolean).slice(0, 6)
+    if (imgs.length === 0) return
+    setOcrTried(true)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/missions/${M.id}/ocr-vehicle`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ images: imgs }),
+        })
+        const j = await r.json()
+        if (cancelled || !j.ok) return
+        const cand: { plate?: any; vin?: any; plateFromVin?: boolean } = {}
+        if (vinEmpty && j.vin)     cand.vin   = { value: j.vin.value,   img: imgs[j.vin.image - 1]   || imgs[0] }
+        if (plateEmpty && j.plate) cand.plate = { value: j.plate.value, img: imgs[j.plate.image - 1] || imgs[0] }
+        // Repli : aucune plaque détectée + immat vide + VIN connu → 5 derniers du châssis.
+        const knownVin = j.vin?.value || (M.vehicle_vin || '').trim()
+        if (plateEmpty && !cand.plate && knownVin.length >= 5) {
+          cand.plate = { value: knownVin.slice(-5), img: cand.vin?.img || imgs[0] }
+          cand.plateFromVin = true
+        }
+        if (cand.plate || cand.vin) {
+          setOcrVinVal(cand.vin?.value || '')
+          setOcrPlateVal(cand.plate?.value || '')
+          setOcrModal(cand)
+        }
+      } catch { /* silencieux : le chauffeur saisit à la main comme avant */ }
+    })()
+    return () => { cancelled = true }
+  }, [screen, ocrTried, isReadOnly, M.id, M.vehicle_plate, M.vehicle_vin, previews])
+
+  const saveOcrVehicle = async () => {
+    if (ocrSaving) return
+    setOcrSaving(true)
+    try {
+      const payload: any = { mission_id: M.id }
+      if (ocrModal?.plate && ocrPlateVal.trim()) payload.vehicle_plate = ocrPlateVal.trim()
+      if (ocrModal?.vin   && ocrVinVal.trim())   payload.vehicle_vin   = ocrVinVal.trim()
+      if (payload.vehicle_plate || payload.vehicle_vin) {
+        const r = await fetch('/api/missions/update-vehicle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && j.mission) setM(prev => ({ ...prev, ...j.mission }))
+      }
+      setOcrModal(null)
+    } finally { setOcrSaving(false) }
   }
 
   // Charger le draft côté client — DB prioritaire sur localStorage
@@ -2228,6 +2297,47 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // ── Clôture ───────────────────────────────────────────────────────────────
   if (screen === 'close') return (
       <ScreenWrap title={closeType === 'park' ? t('close.title_park') : t('close.title_close')} sub={`${M.client_name || ''} · ${plate(M.vehicle_plate)}`} back={() => setScreen('main')}>
+        {/* Pop-up OCR : plaque/VIN lus sur les photos → confirmer/corriger */}
+        {ocrModal && (
+          <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-surface w-full max-w-sm rounded-3xl p-5 space-y-4 my-4">
+              <div className="text-center space-y-1">
+                <div className="text-3xl">🔎</div>
+                <h2 className="text-ink font-bold text-base"><T k="mission_detail.ocr_title" /></h2>
+                <p className="text-ink-faint text-xs"><T k="mission_detail.ocr_hint" /></p>
+              </div>
+              {ocrModal.vin && (
+                <div className="space-y-1.5">
+                  <img src={ocrModal.vin.img} alt="VIN" className="w-full h-32 object-cover rounded-xl border border" />
+                  <label className="text-ink-muted text-xs font-medium">VIN</label>
+                  <input value={ocrVinVal} onChange={e => setOcrVinVal(e.target.value.toUpperCase())}
+                    className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm font-mono uppercase tracking-wide outline-none focus:border-brand" />
+                </div>
+              )}
+              {ocrModal.plate && (
+                <div className="space-y-1.5">
+                  <img src={ocrModal.plate.img} alt="Plaque" className="w-full h-32 object-cover rounded-xl border border" />
+                  <label className="text-ink-muted text-xs font-medium flex items-center gap-1.5 flex-wrap">
+                    <T k="mission_detail.ocr_plate" />
+                    {ocrModal.plateFromVin && <span className="text-amber-500"><T k="mission_detail.ocr_ref_chassis" /></span>}
+                  </label>
+                  <input value={ocrPlateVal} onChange={e => setOcrPlateVal(e.target.value.toUpperCase())}
+                    className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm font-mono uppercase tracking-wide outline-none focus:border-brand" />
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setOcrModal(null)} disabled={ocrSaving}
+                  className="flex-1 py-3 bg-surface-hover text-ink-secondary rounded-2xl text-sm">
+                  <T k="mission_detail.ocr_ignore" />
+                </button>
+                <button onClick={saveOcrVehicle} disabled={ocrSaving}
+                  className="flex-1 py-3 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm">
+                  {ocrSaving ? '⏳…' : <T k="mission_detail.ocr_confirm" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
           {/* Type de clôture — informatif, non modifiable ici */}
