@@ -194,6 +194,8 @@ export const sq: Dictionary = {
     status_on_site:      'Në vend',
     status_on_way:       'Në rrugë',
     btn_accept:          '✅ Prano misionin',
+    instr_title:         'Udhëzim nga dispeçeri',
+    instr_ok:            '✅ OK, e kuptova',
     btn_accept_hint:     'Kontrollo të dhënat para se të pranosh. Pasi të pranohet, dispeçeri njoftohet.',
     btn_on_way:          '🚗 Në rrugë',
     btn_on_way_park:     '🚗 Në rrugë drejt parkingut',

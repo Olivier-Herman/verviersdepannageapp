@@ -195,6 +195,8 @@ export const fr = {
     status_on_way:       'En route',
     // boutons de pointage principaux (bas d écran)
     btn_accept:          '✅ Accepter la mission',
+    instr_title:         'Instruction du dispatch',
+    instr_ok:            '✅ OK, compris',
     btn_accept_hint:     'Vérifie les infos avant d\'accepter. Une fois acceptée, le dispatch est notifié.',
     btn_on_way:          '🚗 En route',
     btn_on_way_park:     '🚗 En route vers le parc',

@@ -55,6 +55,8 @@ export default function RelivraisonModalButton({
   const [printing, setPrinting] = useState(false)
   const [printMsg, setPrintMsg] = useState('')
   const [sourceOverride, setSourceOverride] = useState('')
+  // Instructions chauffeur (une par ligne) → pop-up à l'acceptation de la REL.
+  const [driverComments, setDriverComments] = useState('')
   const [sourcesList, setSourcesList] = useState<Array<{ key: string; label: string }>>([])
 
   // Charge la liste des assistances pour le sélecteur (sources actives, hors
@@ -126,7 +128,7 @@ export default function RelivraisonModalButton({
       const res = await fetch(`/api/missions/${missionId}/relivrer`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ source_override: sourceOverride || null }),
+        body:    JSON.stringify({ source_override: sourceOverride || null, driver_comments: driverComments || undefined }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(j.error || 'Création de la relivraison échouée.'); return }
@@ -216,6 +218,22 @@ export default function RelivraisonModalButton({
                 </p>
               </div>
             )}
+
+            {/* Instructions chauffeur : s'afficheront en pop-up quand le chauffeur
+                acceptera la mission REL (une par ligne). Olivier 2026-07-10. */}
+            <div>
+              <label className="block text-ink-secondary text-xs font-semibold mb-1.5">
+                📋 Instructions chauffeur <span className="text-ink-faint font-normal">(optionnel — une par ligne)</span>
+              </label>
+              <textarea
+                value={driverComments}
+                onChange={e => setDriverComments(e.target.value)}
+                rows={2}
+                placeholder="Ex : appeler le client 10 min avant · vérifier immatriculation + VIN"
+                className="w-full px-3 py-2.5 bg-surface border rounded-xl text-sm text-ink outline-none resize-none placeholder:text-ink-faint/50"
+              />
+              <p className="text-ink-faint text-xs mt-1">S&apos;affichera en pop-up à l&apos;acceptation de la relivraison.</p>
+            </div>
 
             {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
 

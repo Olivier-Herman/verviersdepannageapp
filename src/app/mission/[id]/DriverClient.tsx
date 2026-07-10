@@ -879,8 +879,51 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [showDestSigPad,  setShowDestSigPad]  = useState(false)
   const [mounted,   setMounted]   = useState(false)
 
+  // Instructions chauffeur (pop-up séquentiels à l'acceptation). Olivier 2026-07-10.
+  const [instrQueue, setInstrQueue] = useState<Array<{ id: string; text: string }>>([])
+  const [instrIdx,   setInstrIdx]   = useState(0)
+  const [instrAcking, setInstrAcking] = useState(false)
+
   // Monter côté client seulement
   useEffect(() => { setMounted(true) }, [])
+
+  // Charge les instructions chauffeur et, si la mission a été acceptée, affiche
+  // en pop-up celles NON encore accusées (acknowledged_at null). Le clic
+  // « Accepter » recharge la page → au montage suivant (accepted_at posé) les
+  // pop-ups apparaissent. Olivier 2026-07-10.
+  useEffect(() => {
+    if (isReadOnly || !M.accepted_at) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/missions/${M.id}/driver-instructions`)
+        const j = await r.json()
+        if (cancelled || !j.ok) return
+        const pending = (j.instructions || [])
+          .filter((it: any) => !it.acknowledged_at)
+          .map((it: any) => ({ id: it.id, text: it.text }))
+        if (pending.length > 0) { setInstrQueue(pending); setInstrIdx(0) }
+      } catch { /* silencieux */ }
+    })()
+    return () => { cancelled = true }
+  }, [M.id, M.accepted_at, isReadOnly])
+
+  // OK sur un pop-up : accuse (horodate) puis passe au suivant.
+  const ackInstruction = async () => {
+    const cur = instrQueue[instrIdx]
+    if (!cur || instrAcking) return
+    setInstrAcking(true)
+    try {
+      await fetch(`/api/missions/driver-instructions/${cur.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acknowledge: true }),
+      })
+    } catch { /* on avance quand même : l'accusé se retentera si besoin */ }
+    finally {
+      setInstrAcking(false)
+      setInstrIdx(i => i + 1)  // >= length → plus de pop-up → on entre dans la mission
+    }
+  }
 
   // Charger le draft côté client — DB prioritaire sur localStorage
   useEffect(() => {
@@ -3664,6 +3707,30 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   </button>
                 )
               })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pop-up Instructions chauffeur (à l'acceptation) ─────────────
+          Affiche les instructions du dispatch une à une ; OK = accusé daté +
+          suivant. Bloquant (pas de fermeture au clic extérieur). Olivier 2026-07-10. */}
+      {instrQueue.length > 0 && instrIdx < instrQueue.length && (
+        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-5">
+          <div className="bg-surface w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl border border">
+            <div className="text-center space-y-2">
+              <div className="text-4xl">📋</div>
+              <h2 className="text-ink font-bold text-lg"><T k="mission_detail.instr_title" /></h2>
+              {instrQueue.length > 1 && (
+                <p className="text-ink-faint text-xs">{instrIdx + 1} / {instrQueue.length}</p>
+              )}
+            </div>
+            <p className="text-ink text-base text-center whitespace-pre-line leading-relaxed bg-surface-2 rounded-2xl p-4">
+              {instrQueue[instrIdx].text}
+            </p>
+            <button onClick={ackInstruction} disabled={instrAcking}
+              className="w-full py-4 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl text-base">
+              {instrAcking ? <T k="mission_detail.loading" /> : <T k="mission_detail.instr_ok" />}
+            </button>
           </div>
         </div>
       )}

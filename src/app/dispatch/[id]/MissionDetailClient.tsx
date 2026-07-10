@@ -10,6 +10,7 @@ import { DriverTimeline } from '@/components/missions/DriverTimeline'
 import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import BillingRemarks from '@/components/missions/BillingRemarks'
+import DriverInstructions from '@/components/missions/DriverInstructions'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
@@ -3728,6 +3729,9 @@ export default function MissionDetailClient({
                 legacyRemark={initialMission.remarks_billing}
                 onCountChange={setBillingRemarkCount}
               />
+
+              {/* Instructions chauffeur — pop-up à l'acceptation. Olivier 2026-07-10. */}
+              <DriverInstructions missionId={initialMission.id} />
 
               {/* Remarques dispatcher (notes + pièces jointes) */}
               <MissionRemarks missionId={initialMission.id} />

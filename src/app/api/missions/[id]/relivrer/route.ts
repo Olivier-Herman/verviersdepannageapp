@@ -27,7 +27,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   //   - source_override    : source tarifaire de la REL (cas Appel Prive
   //                          repris par assistance : REM reste 'prive',
   //                          REL passe en 'touring'/'ethias'/etc.)
-  let body: { redelivery_address?: string; source_override?: string | null } = {}
+  //   - driver_comments    : instructions chauffeur (une par ligne) à semer sur
+  //                          la nouvelle fiche REL → pop-up à l'acceptation.
+  let body: { redelivery_address?: string; source_override?: string | null; driver_comments?: string } = {}
   try { body = await req.json() } catch {}
 
   const sb = createAdminClient()
@@ -77,6 +79,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   if (!result.id) {
     return NextResponse.json({ error: result.error || 'Création REL échouée' }, { status: 500 })
+  }
+
+  // Instructions chauffeur pour la REL : une par ligne non vide → pop-up à
+  // l'acceptation de la mission REL. Olivier 2026-07-10.
+  const lines = String(body.driver_comments || '')
+    .split('\n').map(l => l.trim()).filter(Boolean)
+  if (lines.length > 0) {
+    const { data: actor } = await sb.from('users').select('id').eq('email', session.user!.email!).maybeSingle()
+    await sb.from('mission_driver_instructions').insert(
+      lines.map(text => ({ mission_id: result.id, text, created_by: actor?.id ?? null })),
+    )
   }
 
   return NextResponse.json({ ok: true, mission_id: result.id })
