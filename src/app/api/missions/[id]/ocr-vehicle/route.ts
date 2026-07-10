@@ -12,13 +12,14 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import Anthropic            from '@anthropic-ai/sdk'
+import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 import { looksLikePlate, looksLikeVin, normalizeOcr } from '@/lib/ocr/vehicle'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-// Modèle éco pour de l'OCR ; overridable par env si besoin.
-const OCR_MODEL = process.env.ANTHROPIC_OCR_MODEL || 'claude-haiku-4-5'
+// Modèles éco (Haiko d'abord, repli sur le modèle actif de l'app si retiré).
+const OCR_MODELS = [process.env.ANTHROPIC_OCR_MODEL, ...ANTHROPIC_CHEAP_MODELS].filter(Boolean) as string[]
 const MAX_IMAGES = 6
 
 let cachedClient: Anthropic | null = null
@@ -75,14 +76,13 @@ export async function POST(req: Request, _ctx: { params: { id: string } }) {
     }))
     content.push({ type: 'text', text: `Voici ${images.length} photo(s). Extrais plaque + VIN. JSON strict uniquement.` })
 
-    const resp = await client.messages.create({
-      model:      OCR_MODEL,
+    const resp = await createWithModelFallback(client, OCR_MODELS, {
       max_tokens: 300,
       system:     SYSTEM_PROMPT,
       messages:   [{ role: 'user', content }],
     })
 
-    const text = resp.content.filter(c => c.type === 'text').map(c => (c as any).text).join('')
+    const text = resp.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
     const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
 
     let parsed: any

@@ -30,3 +30,33 @@ export const ANTHROPIC_MODELS: string[] = Array.from(new Set([
 
 // Modèle principal (1er de la liste).
 export const ANTHROPIC_MODEL = ANTHROPIC_MODELS[0]
+
+// Modèles pour les tâches ÉCO (OCR plaque/VIN, traduction) : Haiku d'abord (5×
+// moins cher, amplement suffisant pour lire une plaque / traduire une phrase),
+// puis repli sur la chaîne principale si Haiku est retiré → TOUJOURS à jour.
+// Olivier 2026-07-10.
+export const ANTHROPIC_CHEAP_MODELS: string[] = Array.from(new Set([
+  process.env.ANTHROPIC_CHEAP_MODEL?.trim(),
+  'claude-haiku-4-5',
+  ...ANTHROPIC_MODELS,
+].filter(Boolean) as string[]))
+
+// Appelle messages.create en essayant les modèles dans l'ordre ; si un modèle
+// est retiré (404 not_found), on passe au suivant. Toute autre erreur remonte.
+export async function createWithModelFallback(
+  client: { messages: { create: (p: any) => Promise<any> } },
+  models: string[],
+  params: Record<string, any>,
+): Promise<any> {
+  const list = Array.from(new Set(models.filter(Boolean)))
+  let lastErr: any
+  for (const model of list) {
+    try {
+      return await client.messages.create({ ...params, model })
+    } catch (e: any) {
+      lastErr = e
+      if (e?.status !== 404) throw e   // vraie erreur (rate limit, etc.) → on remonte
+    }
+  }
+  throw lastErr
+}

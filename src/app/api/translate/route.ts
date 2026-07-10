@@ -9,11 +9,12 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import Anthropic            from '@anthropic-ai/sdk'
+import { ANTHROPIC_CHEAP_MODELS, createWithModelFallback } from '@/lib/anthropic-model'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-const TRANSLATE_MODEL = process.env.ANTHROPIC_TRANSLATE_MODEL || 'claude-haiku-4-5'
+const TRANSLATE_MODELS = [process.env.ANTHROPIC_TRANSLATE_MODEL, ...ANTHROPIC_CHEAP_MODELS].filter(Boolean) as string[]
 
 let cachedClient: Anthropic | null = null
 function getClient(): Anthropic {
@@ -44,13 +45,12 @@ export async function POST(req: Request) {
 
   try {
     const client = getClient()
-    const resp = await client.messages.create({
-      model:      TRANSLATE_MODEL,
+    const resp = await createWithModelFallback(client, TRANSLATE_MODELS, {
       max_tokens: 1024,
       system:     SYSTEM_PROMPT,
       messages:   [{ role: 'user', content: text }],
     })
-    const out = resp.content.filter(c => c.type === 'text').map(c => (c as any).text).join('')
+    const out = resp.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
     const cleaned = out.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
 
     let parsed: { lang?: string; already_fr?: boolean; translation?: string }
