@@ -204,6 +204,7 @@ export const sq: Dictionary = {
     btn_arrived_dest:    '📍 Mbërrita në destinacion',
     btn_park:            '🅿️ Vendos në parking',
     btn_dest_refused:    '❌ Garazhi refuzoi / mbyllur → kthim në parking',
+    action_dest_refused: 'Garazhi refuzoi / mbyllur',
     btn_photos:          '📷 Fotot',
     btn_finish:          '🏁 Përfundo',
     snc_payment_required:'💳 Arkëto klientin para se të përfundosh (pagesë e detyrueshme).',

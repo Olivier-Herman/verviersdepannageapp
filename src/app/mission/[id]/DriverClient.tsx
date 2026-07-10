@@ -3400,14 +3400,6 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                     className="w-full py-4 bg-amber-500 disabled:opacity-50 text-ink font-bold rounded-2xl text-base">
                     <T k="mission_detail.btn_park" />
                   </button>
-                  {/* Refus À DESTINATION (garage refuse / fermé) : véhicule déjà
-                      chargé → retour parc, avec motif DPR conservé. Olivier 2026-07-09. */}
-                  <button
-                    onClick={() => { setDprFromRem(false); setDprToPark(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
-                    disabled={loading}
-                    className="w-full py-3 bg-surface border border hover:border-red-500/60 text-ink-secondary hover:text-red-400 font-medium rounded-2xl text-sm">
-                    <T k="mission_detail.btn_dest_refused" />
-                  </button>
                 </>
               )}
             </>
@@ -3546,6 +3538,15 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                   className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-amber-600/10 border-amber-600/30 transition active:scale-95">
                   <span className="text-2xl">🅿️</span>
                   <span className="text-sm font-medium text-amber-400"><T k="mission_detail.action_park" /></span>
+                </button>
+              )}
+              {/* Garage refusé / fermé → retour parc (véhicule chargé). Déplacé
+                  depuis l'écran principal vers cette grille. Olivier 2026-07-10. */}
+              {rem && !rel && loaded && (
+                <button onClick={() => { setShowGrid(false); setDprFromRem(false); setDprToPark(true); setDprMotif(''); setDprMotifAutre(''); setShowDprMotif(true) }}
+                  className="rounded-2xl py-5 flex flex-col items-center justify-center gap-2 border bg-red-600/10 border-red-600/30 transition active:scale-95">
+                  <span className="text-2xl">🔒</span>
+                  <span className="text-sm font-medium text-red-400 text-center leading-tight"><T k="mission_detail.action_dest_refused" /></span>
                 </button>
               )}
               {/* DPR — ouvre la modal motif avant de basculer */}
