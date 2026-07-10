@@ -119,6 +119,26 @@ export async function POST(
     .single()
 
   if (!mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+
+  // ── ANNULER (missions test / erronées) : possible QUEL QUE SOIT le statut,
+  // contrairement à accept/refuse. Annule aussi la mission dispatch liée pour
+  // qu'elle disparaisse du planning. Olivier 2026-07-11.
+  if (action === 'cancel') {
+    const now = new Date().toISOString()
+    await supabase.from('tgr_missions').update({ status: 'cancelled', updated_at: now }).eq('id', missionId)
+    if (mission.dispatch_mission_id) {
+      await supabase.from('incoming_missions')
+        .update({ status: 'cancelled', updated_at: now }).eq('id', mission.dispatch_mission_id)
+      await supabase.from('mission_logs').insert({
+        mission_id: mission.dispatch_mission_id,
+        action:     'tgr_cancelled',
+        notes:      `Demande TGR annulée par ${(session.user as any).name || session.user.email}`,
+        actor_id:   (session.user as any).id || null,
+      }).then(() => {}, () => {})
+    }
+    return NextResponse.json({ success: true })
+  }
+
   if (mission.status !== 'pending') {
     return NextResponse.json({ error: 'Mission déjà traitée' }, { status: 409 })
   }

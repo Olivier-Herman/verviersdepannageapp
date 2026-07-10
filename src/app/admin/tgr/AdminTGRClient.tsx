@@ -83,6 +83,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   refused:   { label: '❌ Refusée',     color: 'text-critical',    bg: 'bg-red-500/10 border-red-500/30'      },
   taken:     { label: '🤝 Reprise',     color: 'text-info',   bg: 'bg-blue-500/10 border-blue-500/30'    },
   completed: { label: '✔️ Terminée',    color: 'text-ink-muted',   bg: 'bg-zinc-500/10 border-zinc-500/30'    },
+  cancelled: { label: '🗑️ Annulée',     color: 'text-ink-faint',   bg: 'bg-zinc-500/10 border-zinc-500/20'    },
 }
 
 const PRIORITY_OPTIONS = [
@@ -132,7 +133,7 @@ export default function AdminTGRClient({ missions, canManage }: { missions: any[
   // Partenaires uniques
   const partners = [...new Set(missions.map(m => m.partner?.name).filter(Boolean))]
 
-  const doAction = async (action: 'accept' | 'refuse') => {
+  const doAction = async (action: 'accept' | 'refuse' | 'cancel') => {
     if (!selected) return
     setActing(true); setError(null); setOdooResult(null)
     try {
@@ -367,6 +368,18 @@ export default function AdminTGRClient({ missions, canManage }: { missions: any[
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* Annuler (missions test / erronées) — admin/superadmin, tout statut.
+                Passe la demande + la mission dispatch liée en « annulée » et la
+                retire de la supervision. Olivier 2026-07-11. */}
+            {canManage && selected.status !== 'cancelled' && (
+              <button
+                onClick={() => { if (confirm('Annuler cette mission TGR ? (elle passe en « annulée » et disparaît de la supervision)')) doAction('cancel') }}
+                disabled={acting}
+                className="w-full mt-3 py-2.5 bg-surface-2 border border-red-800/50 text-red-400 hover:bg-red-950/30 rounded-xl font-medium text-sm disabled:opacity-50">
+                {acting ? '…' : '🗑️ Annuler la mission (test)'}
+              </button>
             )}
           </div>
         </div>

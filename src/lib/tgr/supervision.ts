@@ -45,6 +45,7 @@ export async function getTgrSupervisionData(
 ): Promise<TgrSupervData> {
   let q = sb.from('tgr_missions')
     .select('id, reference, plate, brand, model, pickup_address, delivery_address, priority, deadline_date, status, created_at, accepted_at, refused_at, distance_km, dispatch_mission_id, partner:users!partner_id(name)')
+    .neq('status', 'cancelled')  // les missions annulées (test) n'apparaissent pas
     .order('created_at', { ascending: false })
     .limit(1000)
   if (opts.from) q = q.gte('created_at', opts.from)
