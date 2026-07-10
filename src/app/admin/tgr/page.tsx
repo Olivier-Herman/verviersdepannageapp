@@ -22,5 +22,6 @@ export default async function AdminTGRPage() {
     .order('created_at', { ascending: false })
     .limit(200)
 
-  return <AdminTGRClient missions={missions || []} />
+  const canManage = ['admin', 'superadmin'].includes((session.user as any).role)
+  return <AdminTGRClient missions={missions || []} canManage={canManage} />
 }

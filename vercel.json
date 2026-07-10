@@ -19,6 +19,7 @@
     { "path": "/api/cron/print-queue",               "schedule": "*/2 * * * *" },
     { "path": "/api/cron/accept-reminders",          "schedule": "*/2 * * * *" },
     { "path": "/api/cron/circuit-weekly-reminder",   "schedule": "0 12 * * 1"   },
-    { "path": "/api/cron/refresh-fines-odoo",        "schedule": "0 6 * * *"    }
+    { "path": "/api/cron/refresh-fines-odoo",        "schedule": "0 6 * * *"    },
+    { "path": "/api/cron/tgr-supervisor-report",     "schedule": "0 8 1 * *"    }
   ]
 }

@@ -1,7 +1,81 @@
 // src/app/admin/tgr/AdminTGRClient.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+// Panneau supervision Touring (admin/superadmin) : lien tokenisé lecture seule +
+// email du bilan mensuel + régénérer/révoquer. Olivier 2026-07-11.
+function SupervisorPanel() {
+  const [link, setLink]   = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [busy, setBusy]   = useState(false)
+  const [msg, setMsg]     = useState<string | null>(null)
+
+  const load = () => fetch('/api/admin/tgr-supervisor').then(r => r.json())
+    .then(j => { if (j.ok) { setLink(j.link); setEmail(j.email || '') } }).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  const post = async (action: string, extra: any = {}) => {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch('/api/admin/tgr-supervisor', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...extra }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setMsg(j.error || 'Erreur'); return }
+      if ('link' in j) setLink(j.link)
+      if (action === 'set_email') setMsg('Email enregistré ✅')
+      if (action === 'regenerate') setMsg('Nouveau lien généré ✅')
+      if (action === 'revoke') setMsg('Accès révoqué')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="bg-surface border rounded-2xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🔗</span>
+        <h3 className="text-ink font-semibold text-sm">Supervision responsable Touring</h3>
+        <span className="text-ink-faint text-xs">(lecture seule + bilan mensuel)</span>
+      </div>
+
+      <div>
+        <label className="text-ink-muted text-xs">Lien de supervision (à envoyer au responsable)</label>
+        <div className="flex gap-2 mt-1">
+          <input readOnly value={link || '— aucun lien actif —'}
+            className="flex-1 bg-surface-2 border rounded-lg px-3 py-2 text-ink text-xs font-mono" />
+          {link && (
+            <button onClick={() => { navigator.clipboard?.writeText(link); setMsg('Lien copié ✅') }}
+              className="px-3 py-2 bg-brand text-white rounded-lg text-xs font-semibold">Copier</button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-ink-muted text-xs">Email du bilan mensuel</label>
+        <div className="flex gap-2 mt-1">
+          <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+            placeholder="responsable@touring.be"
+            className="flex-1 bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm" />
+          <button onClick={() => post('set_email', { email })} disabled={busy}
+            className="px-3 py-2 bg-brand disabled:opacity-50 text-white rounded-lg text-xs font-semibold">Enregistrer</button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button onClick={() => post('regenerate')} disabled={busy}
+          className="px-3 py-1.5 bg-surface-2 border hover:border-brand/50 text-ink-secondary rounded-lg text-xs font-medium disabled:opacity-50">
+          ♻️ Régénérer le lien
+        </button>
+        <button onClick={() => { if (confirm('Révoquer l\'accès du responsable ?')) post('revoke') }} disabled={busy}
+          className="px-3 py-1.5 bg-red-600/10 border border-red-600/30 text-red-500 rounded-lg text-xs font-medium disabled:opacity-50">
+          🚫 Révoquer
+        </button>
+        {msg && <span className="text-xs text-ink-faint">{msg}</span>}
+      </div>
+    </div>
+  )
+}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   pending:   { label: '⏳ En attente',  color: 'text-warning', bg: 'bg-yellow-500/10 border-yellow-500/30' },
@@ -17,7 +91,7 @@ const PRIORITY_OPTIONS = [
   { value: 3, label: 'P3', color: 'text-success' },
 ]
 
-export default function AdminTGRClient({ missions }: { missions: any[] }) {
+export default function AdminTGRClient({ missions, canManage }: { missions: any[]; canManage?: boolean }) {
   const [filterStatus,  setFilterStatus]  = useState('')
   const [filterPartner, setFilterPartner] = useState('')
   const [filterPeriod,  setFilterPeriod]  = useState('all')
@@ -104,6 +178,9 @@ export default function AdminTGRClient({ missions }: { missions: any[] }) {
         <h1 className="text-ink font-bold text-2xl mb-1">TGR Touring</h1>
         <p className="text-ink-muted text-sm">{total} mission{total > 1 ? 's' : ''}</p>
       </div>
+
+      {/* Supervision responsable Touring (admin/superadmin) */}
+      {canManage && <div className="mb-6"><SupervisorPanel /></div>}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
