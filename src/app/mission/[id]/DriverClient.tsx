@@ -896,6 +896,25 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [ocrVinVal,   setOcrVinVal]   = useState('')
   const [ocrSaving,  setOcrSaving]  = useState(false)
 
+  // Traduction de la description d'incident (NL/EN/… → FR). Olivier 2026-07-10.
+  const [descTranslated,  setDescTranslated]  = useState<string | null>(null)
+  const [descTranslating, setDescTranslating] = useState(false)
+  const [descShowTrans,   setDescShowTrans]   = useState(false)
+  const translateDesc = async () => {
+    if (descTranslating) return
+    if (descTranslated) { setDescShowTrans(s => !s); return }  // déjà traduit → bascule
+    setDescTranslating(true)
+    try {
+      const r = await fetch('/api/translate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: M.incident_description }),
+      })
+      const j = await r.json()
+      if (j.ok) { setDescTranslated(j.translation || ''); setDescShowTrans(true) }
+    } catch { /* silencieux */ }
+    finally { setDescTranslating(false) }
+  }
+
   // Monter côté client seulement
   useEffect(() => { setMounted(true) }, [])
 
@@ -3202,11 +3221,22 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         {/* Description */}
         {M.incident_description && (
           <div className="bg-surface border border rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 gap-2">
               <p className="text-ink-muted text-xs uppercase tracking-widest font-medium">Description</p>
-              <TtsButton text={M.incident_description} size="sm" />
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={translateDesc} disabled={descTranslating}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/10 text-blue-500 border border-blue-600/30 text-xs font-medium disabled:opacity-50">
+                  {descTranslating ? '⏳' : '🌐'} {descShowTrans && descTranslated ? <T k="mission_detail.tr_original" /> : <T k="mission_detail.tr_translate" />}
+                </button>
+                <TtsButton text={descShowTrans && descTranslated ? descTranslated : M.incident_description} size="sm" />
+              </div>
             </div>
-            <p className="text-ink text-sm">{M.incident_description}</p>
+            <p className="text-ink text-sm whitespace-pre-line">
+              {descShowTrans && descTranslated ? descTranslated : M.incident_description}
+            </p>
+            {descShowTrans && descTranslated && (
+              <p className="text-ink-faint text-xs mt-1 italic">🌐 <T k="mission_detail.tr_auto" /></p>
+            )}
           </div>
         )}
 
