@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
+import QRScanner from '@/components/fourriere/QRScanner'
 import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
@@ -190,8 +191,6 @@ export default function EncaissementClient({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  // Message affiché avant la redirection vers la création de mission (plaque non trouvée).
-  const [redirectMsg, setRedirectMsg] = useState('')
   const TOTAL = 9
   // Banner contextuel pour restitution fourriere : visible sur toutes les pages
   // du wizard pour rappeler le contexte. Calcule la duree de garde.
@@ -547,10 +546,24 @@ export default function EncaissementClient({
       setError('Erreur de recherche, réessaie.')
       return
     }
-    // Aucune fiche liée → on informe le chauffeur puis on redirige vers la
-    // procédure COMPLÈTE de création de mission (plaque pré-remplie).
-    setRedirectMsg('Aucune mission trouvée avec cette plaque, redirection vers la procédure de création…')
-    setTimeout(() => { window.location.href = `/mission/police?plate=${encodeURIComponent(plate)}` }, 1600)
+    // Aucune fiche liée → modal : scanner le QR du véhicule si présent, sinon
+    // créer la mission (procédure complète). Olivier 2026-07-13.
+    setNoMissionModal(true)
+  }
+
+  // Modal "aucune mission" + scan QR + création.
+  const [noMissionModal, setNoMissionModal] = useState(false)
+  const [showQrScanner,  setShowQrScanner]  = useState(false)
+  const [qrError,        setQrError]        = useState('')
+  const onQrScan = (qrText: string) => {
+    const tx = (qrText || '').trim()
+    // Le QR étiquette véhicule pointe vers /qr/mission/[numéro] (hub VD Soft qui
+    // propose l'encaissement). On y navigue → réutilise toute la résolution.
+    if (/^https?:\/\//i.test(tx)) { window.location.href = tx; return }
+    const m = tx.match(/\/qr\/mission\/([^/?#]+)/i)
+    if (m) { window.location.href = `/qr/mission/${m[1]}`; return }
+    if (/^[\w-]+$/.test(tx)) { window.location.href = `/qr/mission/${tx}`; return }
+    setQrError('QR non reconnu')
   }
 
   /** Callback : un véhicule a été choisi (skip auto si 1 seul résultat exact). */
@@ -810,11 +823,8 @@ export default function EncaissementClient({
           <BigBtn
             label="Rechercher →"
             onClick={checkPlate}
-            disabled={plate.length < 3 || !!redirectMsg}
+            disabled={plate.length < 3}
           />
-        )}
-        {redirectMsg && (
-          <p className="text-info text-sm text-center mt-3 font-medium">{redirectMsg}</p>
         )}
         {error && <p className="text-critical text-sm text-center mt-3">{error}</p>}
       </div>
@@ -826,6 +836,51 @@ export default function EncaissementClient({
         onCreateNew={handleCreateNewVehicle}
         onCancel={() => setShowLookup(false)}
       />
+
+      {/* Modal "aucune mission trouvée" : scanner le QR du véhicule si présent,
+          sinon créer la mission (procédure complète). Olivier 2026-07-13. */}
+      {noMissionModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setNoMissionModal(false)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl">
+            <div>
+              <h3 className="text-ink font-bold text-lg">Aucune mission trouvée</h3>
+              <p className="text-ink-muted text-sm mt-1">
+                Aucune mission ouverte pour la plaque <span className="font-mono font-semibold">{plate}</span>.
+                Scanne le QR code s'il est présent sur le véhicule, sinon crée la mission.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => { setQrError(''); setShowQrScanner(true) }}
+              className="w-full py-3.5 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-bold transition flex items-center justify-center gap-2">
+              📷 Scanner le QR du véhicule
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { window.location.href = `/mission/police?plate=${encodeURIComponent(plate)}` }}
+              className="w-full py-3.5 bg-surface-2 hover:bg-surface-hover border text-ink rounded-2xl text-sm font-bold transition flex items-center justify-center gap-2">
+              ➕ Créer la mission
+            </button>
+
+            {qrError && <p className="text-critical text-sm text-center">{qrError}</p>}
+
+            <button
+              type="button"
+              onClick={() => setNoMissionModal(false)}
+              className="w-full py-2 text-ink-muted hover:text-ink text-sm transition">
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showQrScanner && (
+        <QRScanner onScan={onQrScan} onClose={() => setShowQrScanner(false)} />
+      )}
     </Shell>
   )
 
