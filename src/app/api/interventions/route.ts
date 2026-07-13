@@ -144,14 +144,15 @@ export async function POST(req: NextRequest) {
         payment_mode:         body.payment_mode || 'unpaid',
         payment_amount:       sum,
       }
-      // Auto-link client Odoo (si selectedClient.id remonte) — seulement si pas
-      // deja lie. body.client_id vient du selectedClient cote frontend.
-      if (body.client_id && !currentMission?.billed_to_id) {
-        updatePayload.billed_to_id = Number(body.client_id)
-      }
-      // Auto-link nom client (memorise meme sans id Odoo) — seulement si vide.
-      if (body.client_name && !currentMission?.billed_to_name) {
+      // Le client encodé au paiement DEVIENT le payeur (billed_to). Olivier
+      // 2026-07-13 : un client qui paie en direct REMPLACE un payeur source-défaut
+      // (ex. « Siabis ») — car c'est bien lui qui règle, pas l'assistance. On
+      // n'écrase QUE si un client est effectivement encodé (sinon on ne touche à rien).
+      const hasEncodedClient = !!(body.client_name && String(body.client_name).trim())
+      if (hasEncodedClient) {
         updatePayload.billed_to_name = String(body.client_name)
+        if (body.client_id) updatePayload.billed_to_id = Number(body.client_id)
+        else                updatePayload.billed_to_id = null   // recréé/relié via Odoo ci-dessous
       }
 
       // Olivier 2026-07-13 : reporter les COORDONNÉES du client encodé sur la fiche
@@ -165,11 +166,10 @@ export async function POST(req: NextRequest) {
       if (body.client_phone   && !currentMission?.client_phone)   updatePayload.client_phone   = String(body.client_phone)
       if (composedAddr        && !currentMission?.client_address) updatePayload.client_address = composedAddr
 
-      // Olivier 2026-06-03 : si on a un client_name mais pas de billed_to_id
-      // (le frontend ne nous a pas propage le partnerId), on auto-cree/lie le
-      // partner Odoo via findOrCreatePartner. Evite que le bouton 'Creer le
-      // devis Odoo' reste grise pour Mal Garee payee par le proprio.
-      if (!updatePayload.billed_to_id && !currentMission?.billed_to_id && body.client_name) {
+      // Si on a un client encodé mais pas d'id Odoo propagé par le frontend, on
+      // crée/lie le partner Odoo via findOrCreatePartner (le client encodé devient
+      // le payeur, y compris en remplacement d'un ancien billed_to). Olivier 2026-07-13.
+      if (hasEncodedClient && !updatePayload.billed_to_id) {
         try {
           const addr = parseAddressForOdoo(body.client_address)
           // Olivier 2026-06-05 : wrap dans withOdooActor (cle perso chauffeur)
