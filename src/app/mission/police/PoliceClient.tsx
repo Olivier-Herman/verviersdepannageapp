@@ -2,7 +2,7 @@
 // src/app/mission/police/PoliceClient.tsx
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
@@ -90,6 +90,13 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   const [time,           setTime]           = useState(initTime)
   const [plate,          setPlate]          = useState('')
   const [vin,            setVin]            = useState('')
+  // Pré-remplissage plaque quand on arrive depuis l'encaissement (aucune fiche
+  // trouvée pour la plaque → redirection ici). Olivier 2026-07-13.
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const p = searchParams.get('plate')
+    if (p) setPlate(normalizePlate(p))
+  }, [searchParams])
   const [brand,          setBrand]          = useState('')
   const [model,          setModel]          = useState('')
   const [location,       setLocation]       = useState('')

@@ -190,6 +190,8 @@ export default function EncaissementClient({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  // Message affiché avant la redirection vers la création de mission (plaque non trouvée).
+  const [redirectMsg, setRedirectMsg] = useState('')
   const TOTAL = 9
   // Banner contextuel pour restitution fourriere : visible sur toutes les pages
   // du wizard pour rappeler le contexte. Calcule la duree de garde.
@@ -533,21 +535,22 @@ export default function EncaissementClient({
   const checkPlate = async () => {
     if (plate.length < 3) { setError('Immatriculation trop courte'); return }
     setError('')
-    // Olivier 2026-05-27 (Fix F) : check synchrone "mission ouverte" AVANT
-    // d ouvrir la modal Lookup vehicule Odoo. Si trouvee, le bandeau vert
-    // s affiche et l user peut cliquer "Encaisser cette mission" sans passer
-    // par le lookup Odoo. Sinon, fallback flow standalone normal.
-    if (!prefill?.mission_id && !openMission) {
-      try {
-        const r = await fetch(`/api/missions/open-by-plate?plate=${encodeURIComponent(plate)}`)
-        const j = await r.json()
-        if (j.found && j.mission) {
-          setOpenMission(j.mission)
-          return  // bandeau vert affiche → user clique "Encaisser cette mission"
-        }
-      } catch (e) { /* silent : on continue vers le flow standalone */ }
+    // Nouveau déroulé (Olivier 2026-07-13) : on N'AUTORISE le paiement QUE si une
+    // fiche est trouvée pour la plaque. Le flow standalone (encaissement sans
+    // dossier) est supprimé → source de paiements orphelins / mauvais client.
+    if (openMission) return  // fiche déjà trouvée → l'utilisateur clique le bandeau vert
+    try {
+      const r = await fetch(`/api/missions/open-by-plate?plate=${encodeURIComponent(plate)}`)
+      const j = await r.json()
+      if (j.found && j.mission) { setOpenMission(j.mission); return }
+    } catch (e) {
+      setError('Erreur de recherche, réessaie.')
+      return
     }
-    setShowLookup(true)
+    // Aucune fiche liée → on informe le chauffeur puis on redirige vers la
+    // procédure COMPLÈTE de création de mission (plaque pré-remplie).
+    setRedirectMsg('Aucune mission trouvée avec cette plaque, redirection vers la procédure de création…')
+    setTimeout(() => { window.location.href = `/mission/police?plate=${encodeURIComponent(plate)}` }, 1600)
   }
 
   /** Callback : un véhicule a été choisi (skip auto si 1 seul résultat exact). */
@@ -800,17 +803,19 @@ export default function EncaissementClient({
             >
               💳 Encaisser cette mission →
             </button>
-            <p className="text-emerald-700 text-xs mt-2 text-center">
-              Ou continue ci-dessous pour un encaissement standalone (passage caisse classique).
-            </p>
           </div>
         )}
 
-        <BigBtn
-          label="Rechercher →"
-          onClick={checkPlate}
-          disabled={plate.length < 3}
-        />
+        {!openMission && (
+          <BigBtn
+            label="Rechercher →"
+            onClick={checkPlate}
+            disabled={plate.length < 3 || !!redirectMsg}
+          />
+        )}
+        {redirectMsg && (
+          <p className="text-info text-sm text-center mt-3 font-medium">{redirectMsg}</p>
+        )}
         {error && <p className="text-critical text-sm text-center mt-3">{error}</p>}
       </div>
       <VehiclePlateLookup
