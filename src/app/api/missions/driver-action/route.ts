@@ -146,7 +146,7 @@ export async function POST(req: Request) {
 
   const { data: mission, error: fetchError } = await supabase
     .from('incoming_missions')
-    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
+    .select('id, status, assigned_to, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, amount_to_collect, source, extra_addresses, driver_photos, odoo_task_id, odoo_vehicle_id, mission_type, photo_categories_covered, kaze_job_id, dossier_number, client_signature, snc_scenario, destination_address, redelivery_address, truck_id, intervention_date, received_at, completed_at, invoice_number, invoice_odoo_id, odoo_quote_id')
     .eq('id', mission_id).single()
 
   if (fetchError || !mission) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
@@ -453,6 +453,47 @@ export async function POST(req: Request) {
         mission_id, driver_id: actor.id, lat: body.lat, lng: body.lng, kind: action,
       })
     } catch { /* télémétrie non critique */ }
+  }
+
+  // ── Filet OCR VIN/plaque à la MISE EN PARC (background) ────────────────────
+  // Le chauffeur redirige aussitôt après la mise en parc : pas de moment de
+  // confirmation fiable. On OCR les photos côté serveur (Claude Haiku) et on
+  // COMPLÈTE uniquement les champs VIDES (jamais d'écrasement) → la fiche parc
+  // part complète pour l'inventaire. Repli plaque = 5 derniers du VIN si aucune
+  // plaque lisible. Olivier 2026-07-13.
+  if (action === 'park') {
+    const plateEmpty = !((mission.vehicle_plate || '').trim())
+    const vinEmpty   = !(((mission as any).vehicle_vin || '').trim())
+    const parkPhotos: string[] = (closing_data?.photo_urls?.length ? closing_data.photo_urls : mission.driver_photos) || []
+    if ((plateEmpty || vinEmpty) && parkPhotos.length > 0) {
+      const ocrBg = (async () => {
+        try {
+          const { detectVehicleFromImages } = await import('@/lib/ocr/vehicle-detect')
+          const { plate, vin } = await detectVehicleFromImages(parkPhotos.slice(0, 6))
+          const upd: Record<string, any> = {}
+          if (vinEmpty   && vin?.value)   upd.vehicle_vin   = vin.value
+          if (plateEmpty && plate?.value) upd.vehicle_plate = plate.value
+          // Repli : aucune plaque lisible mais VIN connu → 5 derniers du châssis.
+          if (plateEmpty && !upd.vehicle_plate) {
+            const knownVin = (vin?.value || (mission as any).vehicle_vin || '').trim()
+            if (knownVin.length >= 5) upd.vehicle_plate = knownVin.slice(-5)
+          }
+          if (Object.keys(upd).length > 0) {
+            upd.updated_at = new Date().toISOString()
+            await supabase.from('incoming_missions').update(upd).eq('id', mission_id)
+            await supabase.from('mission_logs').insert({
+              mission_id, actor_id: actor.id, action: 'vehicle_ocr_autofill',
+              notes: `VIN/plaque complété(s) auto depuis les photos à la mise en parc : ${Object.entries(upd).filter(([k]) => k !== 'updated_at').map(([k, v]) => `${k}=${v}`).join(', ')}`,
+              metadata: { source: 'park_ocr', filled: upd },
+            }).then(() => {}, () => {})
+          }
+        } catch (e: any) {
+          console.warn('[driver-action] park OCR exception:', e?.message)
+        }
+      })()
+      try { const { waitUntil } = await import('@vercel/functions'); waitUntil(ocrBg) }
+      catch { await ocrBg }
+    }
   }
 
   // ── Propagation Kaze : note + avancement workflow ─────────────────────────

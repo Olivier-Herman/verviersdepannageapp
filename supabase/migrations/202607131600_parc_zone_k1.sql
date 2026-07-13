@@ -3,14 +3,22 @@
 -- automatiquement comme onglet dans le module Relivraison (zone_type='relivraison').
 -- Olivier 2026-07-13.
 
+-- depot_id = MÊME dépôt que K (sinon la zone est « orpheline » et n'apparaît pas
+-- sous le dépôt dans le sélecteur « Transférer de parc » /api/fourriere/zones-by-depot).
 INSERT INTO parc_zones (
   key, label, active, zone_type, is_pool, driver_allowed,
-  sort_order, slot_direction, row_layout, strict_capacity, pos_x, pos_y, width, height
+  sort_order, slot_direction, row_layout, strict_capacity, pos_x, pos_y, width, height, depot_id
 )
 SELECT
   'K1', 'En attente d''adresse', true, 'relivraison', true, false,
   COALESCE((SELECT sort_order FROM parc_zones WHERE key = 'K'), 100) + 1,
-  'ltr', 'horizontal', false, 5, 5, 15, 10
+  'ltr', 'horizontal', false, 5, 5, 15, 10,
+  (SELECT depot_id FROM parc_zones WHERE key = 'K')
 WHERE NOT EXISTS (SELECT 1 FROM parc_zones WHERE key = 'K1');
+
+-- Rattrapage si K1 a déjà été créée sans dépôt (première version de la migration).
+UPDATE parc_zones
+SET depot_id = (SELECT depot_id FROM parc_zones WHERE key = 'K')
+WHERE key = 'K1' AND depot_id IS NULL;
 
 NOTIFY pgrst, 'reload schema';
