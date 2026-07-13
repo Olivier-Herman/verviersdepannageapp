@@ -890,6 +890,7 @@ export default function DispatchClient({
   const [activeTab,      setActiveTab]      = useState('dispatching')
   // Onglet À Relivrer : sous-zone affichée (K = relivraison, K1 = en attente d'adresse).
   const [relZone,        setRelZone]        = useState<'K' | 'K1'>('K')
+  const [relZoneCounts,  setRelZoneCounts]  = useState<{ K: number; K1: number }>({ K: 0, K1: 0 })
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
@@ -1028,6 +1029,7 @@ export default function DispatchClient({
 
       setMissions(mData.missions  || [])
       setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0 })
+      if (mData.relZoneCounts) setRelZoneCounts(mData.relZoneCounts)
       setDriverStatuses(sData.drivers || [])
       if (responses[2]) {
         const mapData = await responses[2].json()
@@ -1349,27 +1351,33 @@ export default function DispatchClient({
               on remplace le toggle date par un badge explicatif. */}
           <div className="mt-4">
             {activeTab === 'parked' ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Toggle sous-parc de relivraison : K (relivraison) / K1 (en attente d'adresse) */}
-                <div className="bg-surface-2 border rounded-lg p-1 inline-flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setRelZone('K')}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                      relZone === 'K' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
-                    }`}
-                  >
-                    🔁 Relivraison
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRelZone('K1')}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                      relZone === 'K1' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
-                    }`}
-                  >
-                    ⏳ En attente d&apos;adresse
-                  </button>
+              <div className="space-y-2">
+                {/* Toggle sous-parc de relivraison — encadré dédié bien visible :
+                    K (relivraison) / K1 (en attente d'adresse), avec compteurs. */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-ink-muted text-xs font-semibold uppercase tracking-wide">Sous-parc :</span>
+                  <div className="inline-flex rounded-xl border-2 border-strong overflow-hidden shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setRelZone('K')}
+                      className={`px-4 py-2 text-sm font-bold transition inline-flex items-center gap-2 ${
+                        relZone === 'K' ? 'bg-blue-600 text-white' : 'bg-surface text-ink-muted hover:bg-surface-hover'
+                      }`}
+                    >
+                      🔁 Relivraison
+                      <span className={`px-1.5 py-0.5 rounded-full text-xs ${relZone === 'K' ? 'bg-white/25' : 'bg-surface-2 text-ink-secondary'}`}>{relZoneCounts.K}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRelZone('K1')}
+                      className={`px-4 py-2 text-sm font-bold transition inline-flex items-center gap-2 border-l-2 border-strong ${
+                        relZone === 'K1' ? 'bg-amber-500 text-white' : 'bg-surface text-ink-muted hover:bg-surface-hover'
+                      }`}
+                    >
+                      ⏳ En attente d&apos;adresse
+                      <span className={`px-1.5 py-0.5 rounded-full text-xs ${relZone === 'K1' ? 'bg-white/25' : 'bg-amber-500/15 text-amber-600'}`}>{relZoneCounts.K1}</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 inline-flex items-center gap-2 text-emerald-300 text-sm font-medium">
                   🗺️ <span>Tri par tournée — adresses de relivraison proches regroupées</span>

@@ -323,5 +323,24 @@ export async function GET(req: Request) {
     errors:      cErrors.count    || 0,
   }
 
-  return NextResponse.json({ missions: visibleMissions, counters })
+  // Compteurs par sous-parc de relivraison (hint du toggle K / K1 de l'onglet À
+  // Relivrer). La zone active reprend le compte exact (parkedActiveCount) ; l'autre
+  // est un compte brut (léger sur-comptage possible si un parent a déjà une REL).
+  let relZoneCounts: { K: number; K1: number } | undefined
+  if (status === 'parked') {
+    const countZone = async (z: string) => {
+      const { count } = await supabase.from('incoming_missions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'parked').eq('parc_zone_key', z)
+        .not('external_id', 'like', 'PROCESSING_%').not('external_id', 'like', 'UNKNOWN_SENDER_%')
+        .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
+        .is('archived_at', null)
+      return count || 0
+    }
+    const [k, k1] = await Promise.all([countZone('K'), countZone('K1')])
+    relZoneCounts = { K: k, K1: k1 }
+    relZoneCounts[relZone] = parkedActiveCount   // zone active = compte exact
+  }
+
+  return NextResponse.json({ missions: visibleMissions, counters, relZoneCounts })
 }
