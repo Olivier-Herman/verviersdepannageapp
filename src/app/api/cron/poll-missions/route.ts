@@ -30,6 +30,10 @@ const TIME_BUDGET_MS = 110_000  // marge sous maxDuration (120 s) : on arrête d
 // categorie -> indempotent et resistant a la suppression manuelle des missions.
 const PROCESSED_CATEGORY = 'VD Soft - Mission traitée'
 
+// Dossier où l'on CLASSE les mails une fois la mission dans le dispatch, pour ne
+// pas polluer l'inbox du dispatch (Olivier 2026-07-13). Sous-dossier de l'inbox.
+const PROCESSED_FOLDER = process.env.MISSIONS_PROCESSED_FOLDER || 'Traité VD Soft'
+
 async function graphGet(token: string, path: string, extraHeaders?: Record<string, string>): Promise<any> {
   const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     headers: { Authorization: `Bearer ${token}`, ...(extraHeaders || {}) }
@@ -39,6 +43,44 @@ async function graphGet(token: string, path: string, extraHeaders?: Record<strin
     throw new Error(`Graph GET ${res.status} ${path.slice(0, 80)}: ${err.slice(0, 200)}`)
   }
   return res.json()
+}
+
+/**
+ * Résout (ou crée) le dossier « Traité VD Soft » sous l'inbox et renvoie son id.
+ * Best-effort : renvoie null si Graph refuse (on retombera sur le tag catégorie).
+ */
+async function resolveProcessedFolderId(token: string): Promise<string | null> {
+  try {
+    const enc = encodeURIComponent(`displayName eq '${PROCESSED_FOLDER.replace(/'/g, "''")}'`)
+    const found = await graphGet(token, `/users/${MISSIONS_EMAIL}/mailFolders/inbox/childFolders?$filter=${enc}&$select=id,displayName`)
+    if (found?.value?.[0]?.id) return found.value[0].id
+    // Absent → on le crée.
+    const res = await fetch(`https://graph.microsoft.com/v1.0/users/${MISSIONS_EMAIL}/mailFolders/inbox/childFolders`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ displayName: PROCESSED_FOLDER }),
+    })
+    if (res.ok) { const j = await res.json(); return j?.id || null }
+    console.warn('[PollMissions] création dossier Traité KO:', res.status)
+    return null
+  } catch (e: any) {
+    console.warn('[PollMissions] résolution dossier Traité KO:', e.message)
+    return null
+  }
+}
+
+/** Déplace le mail dans le dossier « Traité ». Best-effort → false si échec. */
+async function moveEmailToProcessed(token: string, messageId: string, folderId: string): Promise<boolean> {
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${MISSIONS_EMAIL}/messages/${messageId}/move`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ destinationId: folderId }),
+  })
+  if (!res.ok) {
+    console.warn(`[PollMissions] move email ${messageId.slice(-12)} fail:`, res.status)
+    return false
+  }
+  return true
 }
 
 /**
@@ -123,6 +165,7 @@ export async function GET(req: Request) {
 
   try {
     const token = await getGraphToken()
+    const processedFolderId = await resolveProcessedFolderId(token)
 
     const untagged = await collectUntagged(token)
     // FIFO : on traite du PLUS ANCIEN au plus récent → un mail livré en retard
@@ -143,11 +186,16 @@ export async function GET(req: Request) {
         results[result.status] = (results[result.status] || 0) + 1
         if (result.status === 'inserted') results.inserted++
 
-        // Tag "traité" si le processing a abouti (inserted / duplicate / skip
-        // définitif). En cas d'erreur : PAS de tag → retenté au prochain poll
-        // + par le cron reprocess-errors.
+        // Mission réellement dans le dispatch (inserted / duplicate d'une fiche
+        // existante / skip définitif) → on CLASSE le mail hors de l'inbox pour ne
+        // pas la polluer. En cas d'erreur (parse_error) : on NE touche à rien →
+        // le mail reste dans l'inbox, non taggé → repris au prochain poll (la
+        // pré-check du processor le reprend et re-parse). Olivier 2026-07-13.
         if (result.status === 'inserted' || result.status === 'duplicate' || result.status === 'skipped') {
-          await tagEmailAsProcessed(token, message.id, message.categories).catch(() => {})
+          let moved = false
+          if (processedFolderId) moved = await moveEmailToProcessed(token, message.id, processedFolderId)
+          // Repli si le déplacement échoue : au moins tagger (empêche le re-parse).
+          if (!moved) await tagEmailAsProcessed(token, message.id, message.categories).catch(() => {})
         }
       } catch (err: any) {
         console.error(`[PollMissions] Erreur:`, err.message)

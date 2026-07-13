@@ -524,49 +524,67 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
     // sur le meme message) reste geree par le catch 23505 plus bas — rare.
     const { data: existing } = await supabase
       .from('incoming_missions')
-      .select('id')
+      .select('id, external_id, status, received_at')
       .eq('source_email_id', messageId)
       .maybeSingle()
 
     if (existing?.id) {
-      console.log(`[Processor] Email deja traite (source_email_id=${msgIdShort}) — skip pre-INSERT`)
-      return { status: 'duplicate', externalId: 'already_processed', source: 'unknown' }
+      const ext = String((existing as any).external_id || '')
+      const st  = String((existing as any).status || '')
+      // Fiche COINCÉE = parse_error, OU placeholder PROCESSING_ d'un run précédent
+      // tué en plein parse et vieux de > 3 min (sinon un autre run est peut-être
+      // encore dessus). Dans ces cas on NE renvoie PAS « doublon » : sinon le poll
+      // classait le mail « traité » alors que la mission n'existe pas → retard/
+      // perte (cas 10061422, 3h30). On REPREND la fiche comme placeholder et on
+      // relance le parsing → auto-guérison au poll suivant. Olivier 2026-07-13.
+      const stuck =
+        st === 'parse_error' ||
+        (ext.startsWith('PROCESSING_') &&
+          Date.now() - new Date((existing as any).received_at || 0).getTime() > 3 * 60_000)
+      if (!stuck) {
+        console.log(`[Processor] Email deja traite (source_email_id=${msgIdShort}) — skip pre-INSERT`)
+        return { status: 'duplicate', externalId: 'already_processed', source: 'unknown' }
+      }
+      placeholderId = existing.id
+      console.log(`[Processor] Reprise fiche coincée (${st || 'placeholder périmé'}) messageId=${msgIdShort} id=${placeholderId}`)
     }
 
-    // Pas de doublon detecte → INSERT placeholder. received_at/intervention_date
+    // Pas de doublon ni de reprise → INSERT placeholder. received_at/intervention_date
     // = now() pour respecter NOT NULL ; remplaces par le vrai receivedDateTime
     // du message a l UPDATE final.
-    console.log(`[Processor] step=insert_placeholder messageId=${msgIdShort}`)
-    const placeholderTs = new Date().toISOString()
-    const { error: lockError } = await supabase
-      .from('incoming_missions')
-      .insert({
-        external_id:       `PROCESSING_${messageId.slice(-16)}`,
-        source:            'unknown',
-        source_format:     'unknown',
-        source_email_id:   messageId,
-        status:            'new',
-        received_at:       placeholderTs,
-        intervention_date: placeholderTs,
-      })
+    if (!placeholderId) {
+      console.log(`[Processor] step=insert_placeholder messageId=${msgIdShort}`)
+      const placeholderTs = new Date().toISOString()
+      const { error: lockError } = await supabase
+        .from('incoming_missions')
+        .insert({
+          external_id:       `PROCESSING_${messageId.slice(-16)}`,
+          source:            'unknown',
+          source_format:     'unknown',
+          source_email_id:   messageId,
+          status:            'new',
+          received_at:       placeholderTs,
+          intervention_date: placeholderTs,
+        })
 
-    if (lockError) {
-      if (lockError.code === '23505') {
-        // Race condition : un autre poll concurrent a insere entre notre SELECT
-        // et notre INSERT. Pas grave, on skip.
-        console.log(`[Processor] Doublon ignoré (race condition): ${msgIdShort}`)
-        return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
+      if (lockError) {
+        if (lockError.code === '23505') {
+          // Race condition : un autre poll concurrent a insere entre notre SELECT
+          // et notre INSERT. Pas grave, on skip.
+          console.log(`[Processor] Doublon ignoré (race condition): ${msgIdShort}`)
+          return { status: 'duplicate', externalId: 'already_processing', source: 'unknown' }
+        }
+        console.warn('[Processor] Lock warning:', lockError.message)
       }
-      console.warn('[Processor] Lock warning:', lockError.message)
+
+      const { data: placeholder } = await supabase
+        .from('incoming_missions')
+        .select('id')
+        .eq('source_email_id', messageId)
+        .maybeSingle()
+
+      placeholderId = placeholder?.id
     }
-
-    const { data: placeholder } = await supabase
-      .from('incoming_missions')
-      .select('id')
-      .eq('source_email_id', messageId)
-      .maybeSingle()
-
-    placeholderId = placeholder?.id
   } catch (outerErr: any) {
     console.error(`[Processor] step=insert_placeholder FAILED messageId=${msgIdShort}:`, outerErr.message)
     return { status: 'error', error: `INSERT placeholder: ${outerErr.message}` }
