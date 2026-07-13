@@ -229,6 +229,15 @@ async function enrichFromIMAPortal(
   source: string,
   parsedData: any
 ): Promise<Partial<typeof parsedData>> {
+  // Portail IMA (imamobile.ima.eu) DÉSACTIVÉ. Depuis l'activation de Kaze, IMA a
+  // coupé l'ancien portail → le lien redirige vers une page de login/erreur.
+  // Avant, on la récupérait quand même (fetch jusqu'à 15 s) PUIS on la re-parsait
+  // avec Claude (2e appel) → latence + risque d'ÉCRASER les bons champs avec du
+  // bruit + placeholders coincés (retard d'ingestion). Les données Kaze font
+  // désormais foi. Réactivable via IMA_PORTAL_ENRICH=1 si le portail revenait.
+  // Olivier 2026-07-13.
+  if (process.env.IMA_PORTAL_ENRICH !== '1') return {}
+
   const imaLinkMatch = rawContent.match(/https:\/\/imamobile\.ima\.eu\/[^\s"<>]+/)
   if (!imaLinkMatch) return {}
 
