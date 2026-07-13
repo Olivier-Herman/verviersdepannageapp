@@ -203,41 +203,54 @@ export async function PATCH(
     ;(data as any).mission_type = 'REM+REL'
   }
 
-  // Olivier 2026-06-22 : dès qu'une adresse de relivraison est ajoutée à une
-  // fiche en parc (quelle que soit la zone, hors K), le véhicule bascule
-  // automatiquement en zone K (file d'attente relivraison).
-  if (
-    'redelivery_address' in body
-    && !!(data as any).redelivery_address
-    && data.status === 'parked'
-    && (data as any).parc_zone_key
-    && (data as any).parc_zone_key !== 'K'
-  ) {
-    const fromZone = (data as any).parc_zone_key
-    await supabase
-      .from('incoming_missions')
-      .update({
-        parc_zone_key:   'K',
-        parc_row_number: null,
-        parc_slot_index: null,
-        updated_at:      new Date().toISOString(),
-      })
-      .eq('id', params.id)
-    ;(data as any).parc_zone_key = 'K'
-    await supabase.from('mission_logs').insert({
-      mission_id: params.id,
-      action:     'auto_transfer_zone_k',
-      notes:      `Bascule auto en zone K (relivraison) après saisie de l'adresse — depuis ${fromZone}`,
-      metadata:   { from_zone: fromZone, to_zone: 'K', trigger: 'redelivery_address_set' },
-    })
-    // Olivier 2026-06-30 : imprimer l'étiquette relivraison à la bascule en K
-    // (comme request-relivraison / transfer-parc le font). Avant, ce chemin
-    // PATCH transférait en K mais n'imprimait pas. Non bloquant.
-    try {
-      const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
-      await reprintLabelForMission({ kind: 'uuid', value: params.id })
-    } catch (e: any) {
-      console.warn(`[mission PATCH] impression étiquette relivraison KO mission=${params.id}:`, e?.message)
+  // Olivier 2026-06-22 / 2026-07-13 : quand l'adresse de relivraison change sur une
+  // fiche en parc, on route vers la BONNE zone de relivraison :
+  //   - K1 « En attente d'adresse » : pas d'adresse OU adresse = un de nos dépôts.
+  //   - K  : vraie destination connue.
+  // Se déclenche si la fiche est déjà en zone relivraison (K/K1 → recalcul) OU si
+  // une adresse non vide est saisie sur une fiche en parc (hors zones relivraison).
+  {
+    const REL_SET = new Set(['K', 'K1'])
+    const curZone = (data as any).parc_zone_key
+    const addrInBody = 'redelivery_address' in body
+    if (
+      addrInBody
+      && data.status === 'parked'
+      && curZone
+      && (REL_SET.has(curZone) || !!(data as any).redelivery_address)
+    ) {
+      const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
+      const target = await relivraisonZoneFor(supabase, (data as any).redelivery_address)
+      if (target !== curZone) {
+        await supabase
+          .from('incoming_missions')
+          .update({
+            parc_zone_key:   target,
+            parc_row_number: null,
+            parc_slot_index: null,
+            updated_at:      new Date().toISOString(),
+          })
+          .eq('id', params.id)
+        ;(data as any).parc_zone_key = target
+        await supabase.from('mission_logs').insert({
+          mission_id: params.id,
+          action:     'auto_transfer_zone_k',
+          notes:      target === 'K1'
+            ? `Bascule auto en K1 (en attente d'adresse) — depuis ${curZone}`
+            : `Bascule auto en zone K (relivraison) après saisie de l'adresse — depuis ${curZone}`,
+          metadata:   { from_zone: curZone, to_zone: target, trigger: 'redelivery_address_set' },
+        })
+        // Étiquette relivraison uniquement pour K (vraie destination). En K1 il n'y
+        // a pas encore d'adresse → pas d'étiquette REL. Non bloquant.
+        if (target === 'K') {
+          try {
+            const { reprintLabelForMission } = await import('@/lib/missions/reprint-label-helper')
+            await reprintLabelForMission({ kind: 'uuid', value: params.id })
+          } catch (e: any) {
+            console.warn(`[mission PATCH] impression étiquette relivraison KO mission=${params.id}:`, e?.message)
+          }
+        }
+      }
     }
   }
 

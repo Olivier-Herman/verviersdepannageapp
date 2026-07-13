@@ -99,8 +99,12 @@ export async function POST(req: Request) {
 
         // 2. Compléter la fiche parc parent + transfert du lien Kaze.
         const redelivery = (mission.destination_address || '').trim() || null
+        // K1 « en attente d'adresse » si la relivraison n'a pas de vraie destination
+        // (absente ou = un de nos dépôts), sinon K. Olivier 2026-07-13.
+        const { relivraisonZoneFor } = await import('@/lib/parc/relivraison-zone')
+        const relZone = await relivraisonZoneFor(supabase, redelivery)
         const updParent: Record<string, any> = {
-          parc_zone_key:    'K',
+          parc_zone_key:    relZone,
           parc_row_number:  null,
           parc_slot_index:  null,
           mission_type:     'REM+REL',
@@ -118,7 +122,7 @@ export async function POST(req: Request) {
         await supabase.from('incoming_missions').update(updParent).eq('id', parentId)
         await supabase.from('mission_logs').insert({
           mission_id: parentId, actor_id: actor?.id || null, action: 'request_relivraison',
-          notes: `Relivraison Kaze rattachée → zone K${redelivery ? ' · ' + redelivery : ''} (validée par ${actor?.name || 'dispatcher'})`,
+          notes: `Relivraison Kaze rattachée → zone ${relZone}${redelivery ? ' · ' + redelivery : ''} (validée par ${actor?.name || 'dispatcher'})`,
           metadata: { merged_from_kaze_rel: mission_id, redelivery_address: redelivery },
         }).then(() => {}, () => {})
 

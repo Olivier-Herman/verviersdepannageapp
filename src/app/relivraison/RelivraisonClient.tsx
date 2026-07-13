@@ -57,6 +57,7 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
 
   const zoneRef = useRef(zone)
   useEffect(() => { zoneRef.current = zone }, [zone])
+  const [moving, setMoving] = useState<string | null>(null)
 
   const load = useCallback(async (z: string, silent = false) => {
     if (!silent) setLoading(true)
@@ -75,6 +76,24 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
       setLoading(false)
     }
   }, [])
+
+  // Déplacement manuel d'un véhicule entre sous-parcs de relivraison (K ↔ K1).
+  const moveZone = useCallback(async (id: string, target: string) => {
+    setMoving(id)
+    try {
+      const res = await fetch('/api/relivraison/move', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: id, zone: target }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Erreur')
+      await load(zoneRef.current, true)
+    } catch (e: any) {
+      alert(e.message || 'Déplacement impossible')
+    } finally {
+      setMoving(null)
+    }
+  }, [load])
 
   // Ouvre le modal de relivraison (adresse pré-remplie si connue).
   const openModal = useCallback((m: Mission) => {
@@ -254,6 +273,17 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                     >
                       🔁 Relivraison
                     </button>
+                    {/* Déplacer entre K (relivraison) et K1 (en attente d'adresse) */}
+                    {(zone === 'K' || zone === 'K1') && (
+                      <button
+                        type="button"
+                        disabled={moving === m.id}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveZone(m.id, zone === 'K1' ? 'K' : 'K1') }}
+                        className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition disabled:opacity-50"
+                      >
+                        {moving === m.id ? '⏳' : zone === 'K1' ? '→ Relivraison' : '⏳ En attente'}
+                      </button>
+                    )}
                     {/* Sous le bouton : adresse de relivraison connue, ou "En attente d'adresse" */}
                     {m.redelivery_address ? (
                       <p className="text-ink-secondary text-xs text-right leading-snug">📍 {m.redelivery_address}</p>

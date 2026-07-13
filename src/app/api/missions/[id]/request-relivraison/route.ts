@@ -17,10 +17,9 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { reprintLabelForMission } from '@/lib/missions/reprint-label-helper'
+import { relivraisonZoneFor } from '@/lib/parc/relivraison-zone'
 
 export const dynamic = 'force-dynamic'
-
-const REL_ZONE = 'K'
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -44,7 +43,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: `Le véhicule doit être en parc (status=${mission.status}).` }, { status: 400 })
   }
 
-  // Zone K active ?
+  // K1 « en attente d'adresse » si la destination est un de nos dépôts, sinon K.
+  const REL_ZONE = await relivraisonZoneFor(sb, address)
+
+  // Zone cible active ?
   const { data: zone } = await sb.from('parc_zones').select('key, active').eq('key', REL_ZONE).maybeSingle()
   if (zone && zone.active === false) {
     return NextResponse.json({ error: `Zone ${REL_ZONE} inactive` }, { status: 400 })
