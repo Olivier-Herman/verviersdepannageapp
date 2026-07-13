@@ -888,6 +888,8 @@ export default function DispatchClient({
   // aussi les commandes à valider (new) en tête → validation + assignation dans
   // le même écran.
   const [activeTab,      setActiveTab]      = useState('dispatching')
+  // Onglet À Relivrer : sous-zone affichée (K = relivraison, K1 = en attente d'adresse).
+  const [relZone,        setRelZone]        = useState<'K' | 'K1'>('K')
   const [sourceFilter,   setSourceFilter]   = useState('')
   const [missions,       setMissions]       = useState<Mission[]>([])
   const [mapMissions,    setMapMissions]    = useState<Mission[]>([])
@@ -967,10 +969,12 @@ export default function DispatchClient({
   // SANS se ré-abonner à chaque changement (source de la course de refresh
   // "nouveau → ancien → nouveau"). Olivier 2026-06-18.
   const activeTabRef      = useRef(activeTab)
+  const relZoneRef        = useRef(relZone)
   const sourceFilterRef   = useRef(sourceFilter)
   const searchRef         = useRef(search)
   const modalOpenCountRef = useRef(modalOpenCount)
   useEffect(() => { activeTabRef.current = activeTab },            [activeTab])
+  useEffect(() => { relZoneRef.current = relZone },               [relZone])
   useEffect(() => { sourceFilterRef.current = sourceFilter },      [sourceFilter])
   useEffect(() => { searchRef.current = search },                  [search])
   useEffect(() => { modalOpenCountRef.current = modalOpenCount },  [modalOpenCount])
@@ -989,15 +993,17 @@ export default function DispatchClient({
     // déclenché par l'ANCIENNE souscription se termine après), on jette la
     // réponse périmée pour ne pas réafficher l'ancien contenu par-dessus le
     // nouveau. Olivier 2026-06-18 (fix "nouveau → ancien → nouveau").
-    const reqTab    = activeTab
-    const reqSource = sourceFilter
-    const reqSearch = search
+    const reqTab     = activeTab
+    const reqSource  = sourceFilter
+    const reqSearch  = search
+    const reqRelZone = relZone
     if (silent) setLiveSyncing(true)
     else setLoading(true)
     try {
       const params = new URLSearchParams({ status: reqTab, sort: sortMode })
       if (reqSource) params.set('source', reqSource)
       if (reqSearch) params.set('q', reqSearch)
+      if (reqTab === 'parked') params.set('relZone', reqRelZone)
 
       const requests: Promise<Response>[] = [
         fetch(`/api/missions/list?${params}`),
@@ -1014,9 +1020,10 @@ export default function DispatchClient({
       const sData = await responses[1].json()
 
       // Garde anti-périmé : la requête ne correspond plus à l'état courant.
-      const stale = reqTab    !== activeTabRef.current
-                 || reqSource !== sourceFilterRef.current
-                 || reqSearch !== searchRef.current
+      const stale = reqTab     !== activeTabRef.current
+                 || reqSource  !== sourceFilterRef.current
+                 || reqSearch  !== searchRef.current
+                 || reqRelZone !== relZoneRef.current
       if (stale) return
 
       setMissions(mData.missions  || [])
@@ -1032,7 +1039,7 @@ export default function DispatchClient({
       if (silent) setLiveSyncing(false)
       else setLoading(false)
     }
-  }, [activeTab, sourceFilter, search, viewMode, sortMode])
+  }, [activeTab, relZone, sourceFilter, search, viewMode, sortMode])
 
   useEffect(() => { load() }, [load])
 
@@ -1342,8 +1349,31 @@ export default function DispatchClient({
               on remplace le toggle date par un badge explicatif. */}
           <div className="mt-4">
             {activeTab === 'parked' ? (
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 inline-flex items-center gap-2 text-emerald-300 text-sm font-medium">
-                🗺️ <span>Tri par tournée — adresses de relivraison proches regroupées</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Toggle sous-parc de relivraison : K (relivraison) / K1 (en attente d'adresse) */}
+                <div className="bg-surface-2 border rounded-lg p-1 inline-flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setRelZone('K')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
+                      relZone === 'K' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                    }`}
+                  >
+                    🔁 Relivraison
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRelZone('K1')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
+                      relZone === 'K1' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                    }`}
+                  >
+                    ⏳ En attente d&apos;adresse
+                  </button>
+                </div>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 inline-flex items-center gap-2 text-emerald-300 text-sm font-medium">
+                  🗺️ <span>Tri par tournée — adresses de relivraison proches regroupées</span>
+                </div>
               </div>
             ) : (
               <div className="bg-surface-2 border rounded-lg p-1 inline-flex gap-1">

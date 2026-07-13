@@ -12,6 +12,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || 'new'
   const source = searchParams.get('source') || ''
+  // Onglet « À Relivrer » : sous-zone de relivraison à afficher (K = relivraison,
+  // K1 = en attente d'adresse). Défaut K. Olivier 2026-07-13.
+  const relZone = searchParams.get('relZone') === 'K1' ? 'K1' : 'K'
   // Mode carte : charge toutes les missions actives (new + dispatching + assigned +
   // in_progress + parked) indépendamment de l'onglet, avec une limite plus haute.
   const mapMode = searchParams.get('view') === 'map'
@@ -92,7 +95,7 @@ export async function GET(req: Request) {
     // pense a saisir l'adresse.)
     query = query
       .eq('status', 'parked')
-      .eq('parc_zone_key', 'K')
+      .eq('parc_zone_key', relZone)
   } else if (status === 'completed') {
     // Inclure aussi 'to_invoice' : ce sont des missions cloturees cote
     // chauffeur, en attente de validation employe facturation. Le tampon
@@ -132,7 +135,7 @@ export async function GET(req: Request) {
   const { data: parkedIdsRows } = await supabase
     .from('incoming_missions')
     .select('id')
-    .eq('status', 'parked').eq('parc_zone_key', 'K')
+    .eq('status', 'parked').eq('parc_zone_key', relZone)
     .not('external_id', 'like', 'PROCESSING_%').not('external_id', 'like', 'UNKNOWN_SENDER_%')
     .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
     .is('archived_at', null)
