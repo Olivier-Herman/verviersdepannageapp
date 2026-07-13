@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
       // Lire l etat actuel de la mission pour ne pas ecraser un billed_to existant
       const { data: currentMission } = await supabase
         .from('incoming_missions')
-        .select('billed_to_id, billed_to_name, client_name, client_phone, client_address, status, source, parc_zone_key')
+        .select('billed_to_id, billed_to_name, client_name, client_phone, client_address, driver_photos, status, source, parc_zone_key')
         .eq('id', body.mission_id)
         .single()
 
@@ -143,6 +143,14 @@ export async function POST(req: NextRequest) {
         payment_collected_at: new Date().toISOString(),
         payment_mode:         body.payment_mode || 'unpaid',
         payment_amount:       sum,
+      }
+      // Preuve virement QR (photo confirmation client) → ajoutée aux photos de la
+      // fiche (visible au dispatch). Olivier 2026-07-13.
+      if (body.payment_proof_url) {
+        const existing = Array.isArray(currentMission?.driver_photos) ? currentMission!.driver_photos : []
+        if (!existing.includes(body.payment_proof_url)) {
+          updatePayload.driver_photos = [...existing, body.payment_proof_url]
+        }
       }
       // Le client encodé au paiement DEVIENT le payeur (billed_to). Olivier
       // 2026-07-13 : un client qui paie en direct REMPLACE un payeur source-défaut

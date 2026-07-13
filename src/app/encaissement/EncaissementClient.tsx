@@ -12,6 +12,8 @@ import QRScanner from '@/components/fourriere/QRScanner'
 import { normalizePlate } from '@/lib/plate'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
+import QRCode from 'qrcode'
+import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
 import { useT } from '@/lib/i18n/I18nProvider'
 import { T }    from '@/lib/i18n/T'
 import type { VehicleMatch } from '@/types/vehicles'
@@ -326,6 +328,49 @@ export default function EncaissementClient({
   // Page 4
   const [amount, setAmount] = useState(prefill?.amount ? String(prefill.amount) : '')
   const [paymentMode, setPaymentMode] = useState('')
+
+  // ── Easter egg : QR virement bancaire (plan B quand SumUp est down) ──────────
+  // 3 tapotages sur le « € » de la page montant → affiche un QR EPC/SEPA vers
+  // notre compte, pré-rempli avec le montant. PAIEMENT VALIDÉ UNIQUEMENT après
+  // photo OBLIGATOIRE de l'écran de confirmation du client. Olivier 2026-07-13.
+  const bankTaps  = useRef(0)
+  const bankTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [bankQrOpen,   setBankQrOpen]   = useState(false)
+  const [bankQrImg,    setBankQrImg]    = useState('')
+  const [bankProofUrl, setBankProofUrl] = useState('')
+  const [bankUploading, setBankUploading] = useState(false)
+  const handleBankTap = async () => {
+    bankTaps.current += 1
+    if (bankTimer.current) clearTimeout(bankTimer.current)
+    bankTimer.current = setTimeout(() => { bankTaps.current = 0 }, 1500)
+    if (bankTaps.current < 3) return
+    bankTaps.current = 0
+    if (bankTimer.current) clearTimeout(bankTimer.current)
+    const amt = parseFloat(amount)
+    if (!amt || amt <= 0) { setError('Saisis d\'abord le montant.'); return }
+    const bank = bankConfigFromEnv()
+    if (!bank) { setError('IBAN non configuré (NEXT_PUBLIC_BANK_IBAN).'); return }
+    try {
+      const payload = buildEpcQrPayload({ name: bank.name, iban: bank.iban, bic: bank.bic, amount: amt, remittance: `${plate} - VD Soft` })
+      const img = await QRCode.toDataURL(payload, { width: 320, margin: 1 })
+      try { navigator.vibrate?.(30) } catch { /* pas de haptique */ }
+      setBankQrImg(img); setBankProofUrl(''); setBankQrOpen(true)
+    } catch (e: any) { setError('Génération QR impossible : ' + (e?.message || '')) }
+  }
+  const uploadBankProof = async (files: FileList | null) => {
+    const f = files?.[0]; if (!f) return
+    setBankUploading(true); setError('')
+    try {
+      const fd = new FormData()
+      fd.append('mission_id', prefill?.mission_id || openMission?.id || `enc-${plate || 'x'}`)
+      fd.append('files', f, 'virement-confirmation.jpg')
+      const r = await fetch('/api/missions/photos-upload', { method: 'POST', body: fd })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Upload KO')
+      setBankProofUrl(j.urls?.[0] || '')
+    } catch (e: any) { setError('Photo non enregistrée : ' + (e?.message || '')) }
+    finally { setBankUploading(false) }
+  }
 
   // Page 4 — état SumUp
   const [sumupLoading, setSumupLoading] = useState(false)
@@ -710,6 +755,8 @@ export default function EncaissementClient({
           location_address: location, amount,
           payment_mode: paymentMode || (sumupStatus === 'PAID' ? 'sumup' : 'unpaid'),
           payment_reference: sumupData?.sumupReference || undefined,
+          // Preuve du virement (photo de la confirmation client) → référence + notes.
+          payment_proof_url: paymentMode === 'virement_qr' ? (bankProofUrl || undefined) : undefined,
           // Olivier 2026-05-26 : si client Odoo selectionne, on le remonte pour
           // que l API auto-lie billed_to_id sur la mission (uniquement si la
           // mission n a pas encore de client liee).
@@ -1111,7 +1158,7 @@ export default function EncaissementClient({
             data-form-type="other"
             className={inputMontantCls}
           />
-          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-ink-muted text-xl">€</span>
+          <span onClick={handleBankTap} className="absolute right-5 top-1/2 -translate-y-1/2 text-ink-muted text-xl select-none cursor-default">€</span>
         </div>
 
         {/* Statut SumUp */}
@@ -1203,6 +1250,64 @@ export default function EncaissementClient({
         <BigBtn label="Continuer →" onClick={() => setPage(9)}
           disabled={!amount || (!paymentMode && !sumupStatus)} />
       </div>
+
+      {/* Easter egg : QR virement bancaire (plan B SumUp down). Photo de la
+          confirmation client OBLIGATOIRE avant validation. Portail = plein écran. */}
+      {portalReady && bankQrOpen && createPortal(
+        <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setBankQrOpen(false)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div>
+              <h3 className="text-ink font-bold text-lg">Virement bancaire</h3>
+              <p className="text-ink-muted text-sm mt-1">
+                Le client scanne ce QR avec son app bancaire et effectue le virement de{' '}
+                <span className="font-semibold text-ink">{formatEur(parseFloat(amount) || 0)}</span>.
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 text-center">
+              {bankQrImg && <img src={bankQrImg} alt="QR virement" className="mx-auto w-56 h-56" draggable={false} />}
+            </div>
+
+            {/* Photo OBLIGATOIRE de la confirmation client */}
+            <div className="border-2 border-dashed rounded-2xl p-3 text-center">
+              {bankProofUrl ? (
+                <div>
+                  <img src={bankProofUrl} alt="Confirmation" className="mx-auto max-h-40 rounded-lg mb-2" />
+                  <p className="text-success text-xs font-semibold">✓ Confirmation enregistrée</p>
+                  <label className="text-ink-muted text-xs underline cursor-pointer">
+                    Reprendre la photo
+                    <input type="file" accept="image/*" capture="environment" className="hidden"
+                      onChange={e => uploadBankProof(e.target.files)} />
+                  </label>
+                </div>
+              ) : (
+                <label className="block cursor-pointer py-3">
+                  <span className="block text-3xl mb-1">📷</span>
+                  <span className="text-ink text-sm font-semibold">{bankUploading ? '⏳ Envoi…' : 'Photo de la confirmation client'}</span>
+                  <span className="block text-ink-muted text-xs mt-0.5">Obligatoire — écran du client montrant le virement effectué</span>
+                  <input type="file" accept="image/*" capture="environment" className="hidden" disabled={bankUploading}
+                    onChange={e => uploadBankProof(e.target.files)} />
+                </label>
+              )}
+            </div>
+
+            <button
+              type="button"
+              disabled={!bankProofUrl}
+              onClick={() => { setPaymentMode('virement_qr'); setSumupData(null); setSumupStatus(null); setBankQrOpen(false) }}
+              className="w-full py-3.5 bg-brand hover:bg-brand-hover disabled:opacity-40 text-white rounded-2xl text-sm font-bold transition">
+              ✅ Virement confirmé
+            </button>
+            {!bankProofUrl && <p className="text-ink-muted text-xs text-center">Prends la photo de confirmation pour valider.</p>}
+
+            <button type="button" onClick={() => setBankQrOpen(false)}
+              className="w-full py-2 text-ink-muted hover:text-ink text-sm transition">Annuler</button>
+          </div>
+        </div>,
+        document.body,
+      )}
     </Shell>
   )
 
