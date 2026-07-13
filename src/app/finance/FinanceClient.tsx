@@ -1,11 +1,19 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import AmbientBackground from '@/components/AmbientBackground'
 
 export default function FinanceClient({ userModules }: { userModules: string[] }) {
   const isAdmin           = userModules.includes('admin')
-  const hasEncaissement   = userModules.includes('encaissement')  || isAdmin
+  // Easter egg : « Encaissement » est masqué tant que le geste (3 tapotages sur le
+  // logo du dashboard) n'a pas révélé le flag de session. Partagé avec la tuile
+  // du dashboard via sessionStorage. Olivier 2026-07-13.
+  const [cashRevealed, setCashRevealed] = useState(false)
+  useEffect(() => {
+    try { setCashRevealed(sessionStorage.getItem('ee_encaissement') === '1') } catch { /* SSR */ }
+  }, [])
+  const hasEncaissement   = (userModules.includes('encaissement') || isAdmin) && cashRevealed
   const hasEncaissements  = userModules.includes('encaissements') || isAdmin
   const hasCaisse         = userModules.includes('caisse')        || isAdmin
   const hasAvanceFonds    = userModules.includes('avance_fonds')  || isAdmin

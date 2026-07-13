@@ -107,11 +107,15 @@ export default function DashboardClient({
     }
   }, [searchParams, router])
 
-  // ── Easter egg : la tuile « Encaissement Chauffeur » est MASQUÉE par défaut.
-  // 3 tapotages sur le logo Verviers Dépannage (ci-dessous) la révèlent pour la
-  // session. Discrétion voulue (Olivier 2026-07-13). Ne persiste pas : chaque
-  // visite du dashboard repart masquée → le geste reste secret.
+  // ── Easter egg : « Encaissement Chauffeur » est MASQUÉ par défaut (tuile dashboard
+  // + entrée menu Finance). 3 tapotages sur le logo Verviers Dépannage le révèlent
+  // pour la SESSION (sessionStorage → partagé entre le dashboard et le menu Finance ;
+  // repart masqué à la fermeture de l'onglet/app). Olivier 2026-07-13.
+  const EE_KEY = 'ee_encaissement'
   const [cashRevealed, setCashRevealed] = useState(false)
+  useEffect(() => {
+    try { if (sessionStorage.getItem(EE_KEY) === '1') setCashRevealed(true) } catch { /* SSR */ }
+  }, [])
   const tapCount = useRef(0)
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleLogoTap = () => {
@@ -123,6 +127,7 @@ export default function DashboardClient({
       tapCount.current = 0
       if (tapTimer.current) clearTimeout(tapTimer.current)
       setCashRevealed(true)
+      try { sessionStorage.setItem(EE_KEY, '1') } catch { /* SSR */ }
       try { navigator.vibrate?.(30) } catch { /* pas de haptique */ }
     }
   }
