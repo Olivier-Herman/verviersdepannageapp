@@ -46,23 +46,41 @@ export async function detectVehicleFromImages(rawImages: (string | null | undefi
   const raw = (rawImages || []).map(s => String(s || '').trim()).filter(Boolean).slice(0, MAX_IMAGES)
   if (raw.length === 0) return { plate: null, vin: null }
 
-  const images: string[] = []
+  // Anthropic n'accepte que jpeg/png/gif/webp — envoyer un mauvais media_type
+  // (ex. jpeg codé en dur pour un PNG) casse le décodage → aucun OCR. On déduit
+  // donc le type de l'en-tête HTTP / de l'extension / du préfixe data-URL.
+  const SUPPORTED = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  const mediaFromExt = (url: string): string => {
+    const u = url.toLowerCase()
+    if (u.includes('.png')) return 'image/png'
+    if (u.includes('.webp')) return 'image/webp'
+    if (u.includes('.gif')) return 'image/gif'
+    return 'image/jpeg'
+  }
+  const norm = (m: string | null | undefined): string => {
+    const v = (m || '').toLowerCase().split(';')[0].trim()
+    return SUPPORTED.includes(v) ? v : 'image/jpeg'
+  }
+
+  const images: { data: string; media: string }[] = []
   for (const item of raw) {
     if (/^https?:\/\//i.test(item)) {
       try {
         const r = await fetch(item)
         if (!r.ok) continue
-        images.push(Buffer.from(await r.arrayBuffer()).toString('base64'))
+        const media = norm(r.headers.get('content-type')) || mediaFromExt(item)
+        images.push({ data: Buffer.from(await r.arrayBuffer()).toString('base64'), media })
       } catch { /* photo injoignable → ignorée */ }
     } else {
-      images.push(item.replace(/^data:[^,]+,/, ''))
+      const m = item.match(/^data:([^;,]+)[;,]/)
+      images.push({ data: item.replace(/^data:[^,]+,/, ''), media: norm(m?.[1]) })
     }
   }
   if (images.length === 0) return { plate: null, vin: null }
 
   const client = getClient()
-  const content: any[] = images.map(data => ({
-    type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data },
+  const content: any[] = images.map(({ data, media }) => ({
+    type: 'image', source: { type: 'base64', media_type: media, data },
   }))
   content.push({ type: 'text', text: `Voici ${images.length} photo(s). Extrais plaque + VIN. JSON strict uniquement.` })
 

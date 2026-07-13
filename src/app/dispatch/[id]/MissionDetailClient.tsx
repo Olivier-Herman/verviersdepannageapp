@@ -4141,6 +4141,10 @@ export default function MissionDetailClient({
                     📷 Photos chauffeur ({M.driver_photos.length})
                   </h3>
                   <PhotoGrid photos={M.driver_photos} />
+                  {/* OCR manuel : uniquement si VIN OU plaque manque (sinon rien à faire). */}
+                  {(!(M.vehicle_plate || '').trim() || !((M as any).vehicle_vin || '').trim()) && (
+                    <VehicleOcrFillButton missionId={M.id} onFilled={f => setM(prev => ({ ...prev, ...f } as any))} />
+                  )}
                 </div>
               )}
 
@@ -4483,6 +4487,44 @@ interface DepotWithZones {
   name:             string
   is_default_parc:  boolean
   zones:            Array<{ key: string; label: string }>
+}
+
+// Bouton OCR manuel : n'apparaît QUE si VIN ou plaque manque (voir gate à l'appel).
+// Complète les champs VIDES depuis les photos chauffeur. AUCUNE action de
+// facturation/Odoo — juste remplissage + log. Olivier 2026-07-13.
+function VehicleOcrFillButton({ missionId, onFilled }: {
+  missionId: string
+  onFilled:  (f: { vehicle_plate?: string; vehicle_vin?: string }) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [msg,  setMsg]  = useState<string | null>(null)
+  const run = async () => {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/ocr-vehicle-fill`, { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok) { setMsg(j.error || 'Échec'); return }
+      if (j.nothing) {
+        setMsg('Aucun VIN/plaque lisible sur les photos.')
+      } else {
+        onFilled(j.filled)
+        const parts: string[] = []
+        if (j.filled.vehicle_vin)   parts.push(`VIN ${j.filled.vehicle_vin}`)
+        if (j.filled.vehicle_plate) parts.push(`plaque ${j.filled.vehicle_plate}`)
+        setMsg(`✅ Complété : ${parts.join(' · ')}`)
+      }
+    } catch (e: any) { setMsg(e?.message || 'Erreur') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="mt-3">
+      <button type="button" onClick={run} disabled={busy}
+        className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition disabled:opacity-50">
+        {busy ? '⏳ Lecture des photos…' : '🔍 Extraire VIN / plaque des photos'}
+      </button>
+      {msg && <p className="text-ink-muted text-xs mt-1.5">{msg}</p>}
+    </div>
+  )
 }
 
 function TransferParcModal({
