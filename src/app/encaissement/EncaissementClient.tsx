@@ -560,6 +560,24 @@ export default function EncaissementClient({
   // confine le position:fixed du modal. Olivier 2026-07-13.
   const [portalReady, setPortalReady] = useState(false)
   useEffect(() => { setPortalReady(true) }, [])
+
+  // Easter egg : 3 tapotages sur le titre du modal « Aucune mission trouvée »
+  // → bypass vers un encaissement STANDALONE (sans dossier). Geste discret, réservé
+  // aux cas exceptionnels. Olivier 2026-07-13.
+  const bypassTaps  = useRef(0)
+  const bypassTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleBypassTap = () => {
+    bypassTaps.current += 1
+    if (bypassTimer.current) clearTimeout(bypassTimer.current)
+    bypassTimer.current = setTimeout(() => { bypassTaps.current = 0 }, 1500)
+    if (bypassTaps.current >= 3) {
+      bypassTaps.current = 0
+      if (bypassTimer.current) clearTimeout(bypassTimer.current)
+      try { navigator.vibrate?.(30) } catch { /* pas de haptique */ }
+      setNoMissionModal(false)
+      setShowLookup(true)   // ouvre le flow standalone (lookup véhicule → pages de saisie)
+    }
+  }
   const onQrScan = (qrText: string) => {
     const tx = (qrText || '').trim()
     // Le QR étiquette véhicule pointe vers /qr/mission/[numéro] (hub VD Soft qui
@@ -851,7 +869,7 @@ export default function EncaissementClient({
           <div onClick={e => e.stopPropagation()}
             className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl">
             <div>
-              <h3 className="text-ink font-bold text-lg">Aucune mission trouvée</h3>
+              <h3 className="text-ink font-bold text-lg select-none" onClick={handleBypassTap}>Aucune mission trouvée</h3>
               <p className="text-ink-muted text-sm mt-1">
                 Aucune mission ouverte pour la plaque <span className="font-mono font-semibold">{plate}</span>.
                 Scanne le QR code s'il est présent sur le véhicule, sinon crée la mission.
