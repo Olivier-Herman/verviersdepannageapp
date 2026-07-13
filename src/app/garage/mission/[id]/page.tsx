@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams }           from 'next/navigation'
 import Link                    from 'next/link'
+import { PhotoGrid }           from '@/components/ui/PhotoLightbox'
 
 interface Mission {
   id:                       string
@@ -157,14 +158,7 @@ export default function GarageMissionDetailPage() {
       {photos.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <p className="text-gray-500 text-xs uppercase font-semibold mb-3">Photos ({photos.length})</p>
-          <div className="grid grid-cols-3 gap-2">
-            {photos.map((url, i) => (
-              <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border border-gray-200" />
-              </a>
-            ))}
-          </div>
+          <PhotoGrid photos={photos} />
         </div>
       )}
 

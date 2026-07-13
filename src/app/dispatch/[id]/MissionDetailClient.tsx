@@ -14,6 +14,7 @@ import DriverInstructions from '@/components/missions/DriverInstructions'
 import RemarksAddModal from '@/components/missions/RemarksAddModal'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
+import { PhotoGrid } from '@/components/ui/PhotoLightbox'
 import DriverRouteCard from '@/components/dispatch/DriverRouteCard'
 import MergeMissionButton from '@/components/dispatch/MergeMissionButton'
 import CancelMissionButton from '@/components/missions/CancelMissionButton'
@@ -3595,13 +3596,7 @@ export default function MissionDetailClient({
                     {initialMission.driver_photos && initialMission.driver_photos.length > 0 && (
                       <div>
                         <p className="text-ink-muted text-xs mb-2">Photos ({initialMission.driver_photos.length})</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {initialMission.driver_photos.map((url: string, i: number) => (
-                            <a key={i} href={url} target="_blank" rel="noreferrer">
-                              <img src={url} alt={`Photo ${i+1}`} className="w-full aspect-square object-cover rounded-xl" />
-                            </a>
-                          ))}
-                        </div>
+                        <PhotoGrid photos={initialMission.driver_photos} />
                       </div>
                     )}
                     {/* Décharges */}
@@ -4145,14 +4140,7 @@ export default function MissionDetailClient({
                   <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">
                     📷 Photos chauffeur ({M.driver_photos.length})
                   </h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    {M.driver_photos.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="aspect-square rounded-xl overflow-hidden block">
-                        <img src={url} className="w-full h-full object-cover hover:opacity-80 transition" />
-                      </a>
-                    ))}
-                  </div>
+                  <PhotoGrid photos={M.driver_photos} />
                 </div>
               )}
 
