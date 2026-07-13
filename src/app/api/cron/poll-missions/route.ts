@@ -1,28 +1,42 @@
 // src/app/api/cron/poll-missions/route.ts
-// maxDuration 60s : poll boucle sur jusqu'à 25 messages, chacun pouvant prendre
-// 15-30s en parsing IA. Si fanout important, traite seulement N premiers.
-export const maxDuration = 60
+//
+// Poll des emails entrants (boîte MISSIONS_EMAIL) → création des fiches mission.
+//
+// FIABILITÉ (Olivier 2026-07-13) : avant, on lisait les 25 emails LES PLUS RÉCENTS
+// (dont les déjà-traités qui occupaient des slots) puis on parsait du + récent au
+// + ancien. Comme chaque parse prend 15-30 s et que la fonction est coupée, en
+// rafale — ou pour un mail LIVRÉ EN RETARD (receivedDateTime ancien → classé
+// profond) — la fiche était reléguée hors fenêtre et JAMAIS traitée (des IMA par
+// mail « n'arrivaient pas »). Correctif :
+//   1. On ne récupère QUE les emails NON TRAITÉS (filtre serveur sur l'absence de
+//      catégorie ; repli = scan paginé si Graph refuse le filtre avancé).
+//   2. On les traite du PLUS ANCIEN au plus récent (FIFO → plus de famine).
+//   3. Budget temps pour ne pas se faire couper au milieu d'un parse.
+export const maxDuration = 120
 export const dynamic    = 'force-dynamic'
 
 import { NextResponse }          from 'next/server'
 import { getGraphToken, processEmailMessage } from '@/lib/missions/processor'
 
 const MISSIONS_EMAIL = process.env.MISSIONS_EMAIL!
-const MAX_MESSAGES   = 25
+const PAGE_SIZE      = 50       // taille de page (métadonnées, peu coûteux)
+const MAX_SCAN_PAGES = 6        // repli : jusqu'à 300 mails scannés pour trouver les non-traités
+const MAX_UNTAGGED   = 60       // plafond d'emails non-traités collectés par run
+const MAX_PROCESS    = 20       // plafond de sécurité (le vrai frein reste le temps)
+const TIME_BUDGET_MS = 110_000  // marge sous maxDuration (120 s) : on arrête d'entamer un parse après
 
 // Categorie Outlook posee par le processor sur les emails traites (succes
-// ou skip definitif). Au prochain poll, on ignore les emails qui ont deja
-// cette categorie -> indempotent et resistant a la suppression manuelle
-// des missions en DB.
+// ou skip definitif). On ne collecte QUE les emails qui n'ont PAS cette
+// categorie -> indempotent et resistant a la suppression manuelle des missions.
 const PROCESSED_CATEGORY = 'VD Soft - Mission traitée'
 
-async function graphGet(token: string, path: string): Promise<any> {
+async function graphGet(token: string, path: string, extraHeaders?: Record<string, string>): Promise<any> {
   const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: { Authorization: `Bearer ${token}`, ...(extraHeaders || {}) }
   })
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Graph GET ${res.status} ${path}: ${err.slice(0, 200)}`)
+    throw new Error(`Graph GET ${res.status} ${path.slice(0, 80)}: ${err.slice(0, 200)}`)
   }
   return res.json()
 }
@@ -48,51 +62,92 @@ async function tagEmailAsProcessed(token: string, messageId: string, existingCat
   }
 }
 
+type Msg = { id: string; receivedDateTime: string; categories: string[] }
+
+/**
+ * Récupère les emails NON TRAITÉS de l'inbox (ceux sans la catégorie
+ * PROCESSED_CATEGORY), indépendamment de leur position temporelle — pour ne
+ * PAS rater un mail livré en retard (receivedDateTime ancien).
+ *   - Chemin principal : filtre serveur Graph (`not categories/any(...)`,
+ *     requête avancée → header ConsistencyLevel + $count).
+ *   - Repli : si Graph refuse le filtre avancé, scan paginé décroissant et
+ *     collecte côté code des mails non taggés.
+ */
+async function collectUntagged(token: string): Promise<Msg[]> {
+  const select = '$select=id,subject,receivedDateTime,isRead,categories'
+
+  // 1) Chemin principal — filtre serveur : uniquement les non-traités.
+  try {
+    const filter = encodeURIComponent(`not categories/any(c:c eq '${PROCESSED_CATEGORY}')`)
+    const data = await graphGet(
+      token,
+      `/users/${MISSIONS_EMAIL}/mailFolders/inbox/messages` +
+      `?$filter=${filter}&$count=true&$top=${MAX_UNTAGGED}&${select}` +
+      `&$orderby=receivedDateTime asc`,
+      { ConsistencyLevel: 'eventual' }
+    )
+    const rows: any[] = data.value || []
+    console.log(`[PollMissions] filtre serveur OK : ${rows.length} non-traité(s)`)
+    return rows.map(m => ({ id: m.id, receivedDateTime: m.receivedDateTime, categories: m.categories || [] }))
+  } catch (e: any) {
+    console.warn('[PollMissions] filtre serveur KO → repli scan paginé:', e.message)
+  }
+
+  // 2) Repli — scan paginé décroissant, collecte des non-taggés.
+  const untagged: Msg[] = []
+  let path: string | null =
+    `/users/${MISSIONS_EMAIL}/mailFolders/inbox/messages?$top=${PAGE_SIZE}&${select}&$orderby=receivedDateTime desc`
+  let pages = 0
+  while (path && pages < MAX_SCAN_PAGES && untagged.length < MAX_UNTAGGED) {
+    const data = await graphGet(token, path)
+    for (const m of (data.value || [])) {
+      if (Array.isArray(m.categories) && m.categories.includes(PROCESSED_CATEGORY)) continue
+      untagged.push({ id: m.id, receivedDateTime: m.receivedDateTime, categories: m.categories || [] })
+    }
+    const next: string | undefined = data['@odata.nextLink']
+    path = next ? next.replace(/^https:\/\/graph\.microsoft\.com\/v1\.0/, '') : null
+    pages++
+  }
+  console.log(`[PollMissions] repli scan : ${untagged.length} non-traité(s) sur ${pages} page(s)`)
+  return untagged
+}
+
 export async function GET(req: Request) {
   // Protection : seul Vercel cron (avec CRON_SECRET) peut declencher ce endpoint.
-  // Sinon n'importe quel service externe (ex: cron-job.org) peut le marteler.
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const results: Record<string, number> = { new: 0, duplicate: 0, skipped: 0, error: 0, inserted: 0 }
+  const results: Record<string, number> = { new: 0, duplicate: 0, skipped: 0, error: 0, inserted: 0, deferred: 0 }
 
   try {
     const token = await getGraphToken()
 
-    // Lire les derniers emails (lus OU non lus). Dedup principale via
-    // source_email_id en DB + dedup defensive via categorie Outlook
-    // (PROCESSED_CATEGORY) pour resister a la suppression manuelle
-    // des missions en DB.
-    const messagesData = await graphGet(
-      token,
-      `/users/${MISSIONS_EMAIL}/mailFolders/inbox/messages` +
-      `?$top=${MAX_MESSAGES}` +
-      `&$select=id,subject,receivedDateTime,isRead,categories` +
-      `&$orderby=receivedDateTime desc`
-    )
+    const untagged = await collectUntagged(token)
+    // FIFO : on traite du PLUS ANCIEN au plus récent → un mail livré en retard
+    // (donc plus ancien) passe AVANT les nouveaux, plus de famine.
+    untagged.sort((a, b) => new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime())
 
-    const messages: any[] = messagesData.value || []
-    console.log(`[PollMissions] ${messages.length} message(s) récupéré(s)`)
-
-    for (const message of messages) {
-      // Skip si l email a deja la categorie "traite" (defensive : empeche
-      // le re-parse meme si la mission a ete supprimee/cancelled en DB).
-      if (Array.isArray(message.categories) && message.categories.includes(PROCESSED_CATEGORY)) {
-        results.skipped++
+    const startedAt = Date.now()
+    let processed = 0
+    for (const message of untagged) {
+      // Budget temps : ne pas entamer un parse si on risque de se faire couper.
+      if (Date.now() - startedAt > TIME_BUDGET_MS || processed >= MAX_PROCESS) {
+        results.deferred++       // sera repris au prochain poll (toujours non taggé)
         continue
       }
+      processed++
       try {
         const result = await processEmailMessage(message.id)
         results[result.status] = (results[result.status] || 0) + 1
         if (result.status === 'inserted') results.inserted++
 
-        // Tag l email avec la categorie "traite" si le processing s est
-        // bien passe (inserted ou duplicate). Best-effort : si l ajout
-        // de categorie echoue, on ignore (la dedup DB prend le relais).
+        // Tag "traité" si le processing a abouti (inserted / duplicate / skip
+        // définitif). En cas d'erreur : PAS de tag → retenté au prochain poll
+        // + par le cron reprocess-errors.
         if (result.status === 'inserted' || result.status === 'duplicate' || result.status === 'skipped') {
-          await tagEmailAsProcessed(token, message.id, message.categories || []).catch(() => {})
+          await tagEmailAsProcessed(token, message.id, message.categories).catch(() => {})
         }
       } catch (err: any) {
         console.error(`[PollMissions] Erreur:`, err.message)
@@ -101,7 +156,7 @@ export async function GET(req: Request) {
     }
 
     results.new = results.inserted
-    return NextResponse.json({ ok: true, ...results })
+    return NextResponse.json({ ok: true, scanned: untagged.length, processed, ...results })
 
   } catch (err: any) {
     console.error('[PollMissions] Erreur fatale:', err.message)
