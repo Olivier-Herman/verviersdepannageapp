@@ -4496,16 +4496,21 @@ function VehicleOcrFillButton({ missionId, onFilled }: {
   missionId: string
   onFilled:  (f: { vehicle_plate?: string; vehicle_vin?: string }) => void
 }) {
-  const [busy, setBusy] = useState(false)
-  const [msg,  setMsg]  = useState<string | null>(null)
+  const [busy,  setBusy]  = useState(false)
+  const [msg,   setMsg]   = useState<string | null>(null)
+  // Anti-gaspillage IA : une tentative « rien trouvé » désactive le bouton pour
+  // cette fiche (recharger la page pour réessayer). Un succès fait disparaître le
+  // bouton (champ rempli). Olivier 2026-07-13.
+  const [tried, setTried] = useState(false)
   const run = async () => {
     setBusy(true); setMsg(null)
     try {
       const r = await fetch(`/api/missions/${missionId}/ocr-vehicle-fill`, { method: 'POST' })
       const j = await r.json()
-      if (!r.ok) { setMsg(j.error || 'Échec'); return }
+      if (!r.ok) { setMsg(j.error || 'Échec'); setTried(true); return }
       if (j.nothing) {
         setMsg('Aucun VIN/plaque lisible sur les photos.')
+        setTried(true)
       } else {
         onFilled(j.filled)
         const parts: string[] = []
@@ -4513,12 +4518,12 @@ function VehicleOcrFillButton({ missionId, onFilled }: {
         if (j.filled.vehicle_plate) parts.push(`plaque ${j.filled.vehicle_plate}`)
         setMsg(`✅ Complété : ${parts.join(' · ')}`)
       }
-    } catch (e: any) { setMsg(e?.message || 'Erreur') }
+    } catch (e: any) { setMsg(e?.message || 'Erreur'); setTried(true) }
     finally { setBusy(false) }
   }
   return (
     <div className="mt-3">
-      <button type="button" onClick={run} disabled={busy}
+      <button type="button" onClick={run} disabled={busy || tried}
         className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition disabled:opacity-50">
         {busy ? '⏳ Lecture des photos…' : '🔍 Extraire VIN / plaque des photos'}
       </button>
