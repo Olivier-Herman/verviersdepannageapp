@@ -11,12 +11,14 @@ interface Props {
   /** Pause externe pendant traitement asynchrone (re-ouvre apres). */
   paused?: boolean
   onClose: () => void
+  /** Titre affiché dans la barre haute. Défaut : contexte inventaire fourrière. */
+  title?:  string
 }
 
 const SCANNER_ID = 'qr-scanner-region'
 const DEDUP_MS   = 3500   // ignorer le meme QR scanné plusieurs fois en 3.5s
 
-export default function QRScanner({ onScan, paused, onClose }: Props) {
+export default function QRScanner({ onScan, paused, onClose, title = 'Scan QR — Inventaire' }: Props) {
   const [status, setStatus] = useState<'idle' | 'starting' | 'running' | 'paused' | 'error'>('idle')
   const [error, setError]   = useState<string | null>(null)
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([])
@@ -154,7 +156,7 @@ export default function QRScanner({ onScan, paused, onClose }: Props) {
         </button>
         <div className="text-sm font-medium flex items-center gap-2">
           <Camera size={16} />
-          Scan QR — Inventaire
+          {title}
         </div>
         {cameras.length > 1 ? (
           <button onClick={switchCamera} className="p-2 hover:bg-white/10 rounded-lg" title="Changer de caméra">

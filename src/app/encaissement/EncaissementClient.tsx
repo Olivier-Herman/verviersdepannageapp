@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
@@ -555,6 +556,10 @@ export default function EncaissementClient({
   const [noMissionModal, setNoMissionModal] = useState(false)
   const [showQrScanner,  setShowQrScanner]  = useState(false)
   const [qrError,        setQrError]        = useState('')
+  // Portail vers <body> : sinon un ancêtre avec transform (AmbientBackground)
+  // confine le position:fixed du modal. Olivier 2026-07-13.
+  const [portalReady, setPortalReady] = useState(false)
+  useEffect(() => { setPortalReady(true) }, [])
   const onQrScan = (qrText: string) => {
     const tx = (qrText || '').trim()
     // Le QR étiquette véhicule pointe vers /qr/mission/[numéro] (hub VD Soft qui
@@ -838,9 +843,10 @@ export default function EncaissementClient({
       />
 
       {/* Modal "aucune mission trouvée" : scanner le QR du véhicule si présent,
-          sinon créer la mission (procédure complète). Olivier 2026-07-13. */}
-      {noMissionModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          sinon créer la mission (procédure complète). Rendu via portail sur <body>
+          pour un vrai plein écran (ancêtre transformé). Olivier 2026-07-13. */}
+      {portalReady && noMissionModal && createPortal(
+        <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={() => setNoMissionModal(false)}>
           <div onClick={e => e.stopPropagation()}
             className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl">
@@ -854,7 +860,7 @@ export default function EncaissementClient({
 
             <button
               type="button"
-              onClick={() => { setQrError(''); setShowQrScanner(true) }}
+              onClick={() => { setQrError(''); setNoMissionModal(false); setShowQrScanner(true) }}
               className="w-full py-3.5 bg-brand hover:bg-brand-hover text-white rounded-2xl text-sm font-bold transition flex items-center justify-center gap-2">
               📷 Scanner le QR du véhicule
             </button>
@@ -875,11 +881,13 @@ export default function EncaissementClient({
               Annuler
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {showQrScanner && (
-        <QRScanner onScan={onQrScan} onClose={() => setShowQrScanner(false)} />
+      {portalReady && showQrScanner && createPortal(
+        <QRScanner title="Scan QR — Véhicule" onScan={onQrScan} onClose={() => setShowQrScanner(false)} />,
+        document.body,
       )}
     </Shell>
   )
