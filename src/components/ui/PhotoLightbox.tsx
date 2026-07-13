@@ -9,6 +9,7 @@
 // dans l'app dispatch ET dans l'app chauffeur bilingue, sans souci i18n.
 
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 /**
  * Grille de vignettes auto-contenue : au clic, ouvre le lightbox galerie sur la
@@ -59,6 +60,11 @@ export default function PhotoLightbox({
   onClose: () => void
 }) {
   const [cur, setCur] = useState(startIndex)
+  // Portail vers <body> : sinon un ancêtre avec `transform` (cartes animées
+  // md-card-enter/transition) capte le position:fixed et le modal s'ouvre confiné
+  // dans la colonne au lieu du plein écran. Olivier 2026-07-13.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   const n = photos.length
   const has = n > 1
 
@@ -86,10 +92,10 @@ export default function PhotoLightbox({
     setTouchX(null)
   }
 
-  if (n === 0) return null
+  if (n === 0 || !mounted) return null
   const url = photos[cur]
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 select-none"
       onClick={onClose}
@@ -157,6 +163,7 @@ export default function PhotoLightbox({
           ›
         </button>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
