@@ -11,6 +11,9 @@ import { isRelEligibleSource } from '@/lib/missions/rel-eligible'
 import { isRemorquage }        from '@/lib/missions/mission-types'
 import { KEY_LOCATION_LABELS }  from '@/lib/key-location'
 
+// Le PATCH peut calculer un tarif SNC (routing dépôt) → marge de temps.
+export const maxDuration = 30
+
 export async function GET(
   req: Request,
   { params }: { params: { id: string } }
@@ -96,7 +99,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (notamment la source avant change).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('source, snc_scenario')
+    .select('source, snc_scenario, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, snc_requires_balisage, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -132,6 +135,44 @@ export async function PATCH(
       // l ancienne assistance (Touring, IMA, etc.) n est plus le payeur.
       updates.billed_to_name = null
       updates.billed_to_id   = null
+    }
+  }
+
+  // GARANTIE ENCAISSEMENT SNC : dès que le scénario devient dsp/rem_client/rem_direct
+  // sur une fiche police_snc (non couvert), on CALCULE amount_to_collect côté SERVEUR
+  // (coords déjà en base). Plus de dépendance au double appel client fragile — qui,
+  // sur une mission convertie depuis Touring (véhicule déjà chargé → contourne
+  // SncMissionFiche), ne posait jamais le montant (cas 10062195). Marche donc
+  // aussi bien pour une fiche créée que convertie. Olivier 2026-07-13.
+  {
+    const finalSource    = ('source' in updates ? updates.source : before?.source) as string | null
+    const finalScenario  = ('snc_scenario' in updates ? updates.snc_scenario : before?.snc_scenario) as string | null
+    const isPayScenario  = ['dsp', 'rem_client', 'rem_direct'].includes(String(finalScenario || ''))
+    const amountExplicit = 'amount_to_collect' in body                    // ne pas écraser une saisie explicite
+    const scenarioTouched = 'snc_scenario' in body
+    const sourceBecameSnc = 'source' in updates && updates.source === 'police_snc' && before?.source !== 'police_snc'
+    if (finalSource === 'police_snc' && isPayScenario && !amountExplicit
+        && (scenarioTouched || (sourceBecameSnc && before?.amount_to_collect == null))) {
+      try {
+        const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
+        const pick = (k: string) => (k in updates ? (updates as any)[k] : (before as any)?.[k])
+        const amt = await computeSncAmountToCollect({
+          source:                finalSource,
+          incident_lat:          pick('incident_lat'),
+          incident_lng:          pick('incident_lng'),
+          destination_lat:       pick('destination_lat'),
+          destination_lng:       pick('destination_lng'),
+          snc_requires_balisage: pick('snc_requires_balisage'),
+          intervention_date:     before?.intervention_date,
+          received_at:           before?.received_at,
+          extra_addresses:       before?.extra_addresses,
+          billed_to_id:          before?.billed_to_id,
+          billed_to_name:        before?.billed_to_name,
+        }, finalScenario as any)
+        if (amt != null && amt > 0) updates.amount_to_collect = amt
+      } catch (e: any) {
+        console.warn('[mission PATCH] calcul montant SNC KO (non bloquant):', e?.message)
+      }
     }
   }
 
