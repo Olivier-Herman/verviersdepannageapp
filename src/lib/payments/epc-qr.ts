@@ -35,10 +35,13 @@ export function buildEpcQrPayload(o: EpcQrInput): string {
   ].join('\n')
 }
 
+// Coordonnées bancaires VD Soft (compte pro). Publiques (figurent sur les
+// factures) → valeurs par défaut en dur pour un plan B immédiat sans config
+// Vercel ; surchargées par NEXT_PUBLIC_BANK_* si présentes. Olivier 2026-07-13.
 export function bankConfigFromEnv(): { name: string; iban: string; bic: string } | null {
-  const iban = process.env.NEXT_PUBLIC_BANK_IBAN || ''
+  const iban = process.env.NEXT_PUBLIC_BANK_IBAN || 'BE26 3401 4658 5529'
   const name = process.env.NEXT_PUBLIC_BANK_NAME || 'Verviers Dépannage'
-  const bic  = process.env.NEXT_PUBLIC_BANK_BIC  || ''
+  const bic  = process.env.NEXT_PUBLIC_BANK_BIC  || 'BBRUBEBB'
   if (!iban.trim()) return null
   return { name, iban, bic }
 }
