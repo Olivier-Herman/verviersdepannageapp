@@ -12,6 +12,7 @@ import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }               from '@/lib/odoo'
 import { acceptTouringBg }             from '@/lib/touring/accept-bg'
+import { acceptKazeProposalBg, acceptAllianzBg } from '@/lib/missions/provider-accept-bg'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   // Récupérer les infos de la mission (incl. odoo_task_id pour update FSM)
   const { data: mission, error: mErr } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, source, source_format, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
+    .select('id, external_id, source, source_format, kaze_proposal_id, dossier_number, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
     .eq('id', mission_id)
     .single()
 
@@ -117,11 +118,15 @@ export async function POST(req: Request) {
         })
       }
 
-      // Mission Touring COMEX assignée DIRECTEMENT (sans passer par « Valider ») :
-      // l'assignation vaut confirmation → on l'accepte aussi côté COMEX. Sans ça,
-      // une mission `new` assignée direct n'était JAMAIS acceptée dans COMEX (il
-      // fallait le faire à la main). Olivier 2026-07-13.
+      // Assignation DIRECTE d'une mission `new` (sans passer par « Valider ») =
+      // confirmation implicite → on déclenche les MÊMES acceptations fournisseur
+      // que le bouton Valider. Sans ça, une mission assignée direct n'était jamais
+      // acceptée côté fournisseur (il fallait le faire à la main). Olivier 2026-07-13.
+      await acceptKazeProposalBg(mission_id, (mission as any).kaze_proposal_id, actor?.id || null, supabase)
       await acceptTouringBg(mission_id, mission.source || null, (mission as any).source_format || null, actor?.id || null, supabase)
+      if (mission.source === 'mondial') {
+        await acceptAllianzBg(mission_id, (mission as any).dossier_number || mission.external_id || null, actor?.id || null, supabase)
+      }
     }
 
     // Notifier le chauffeur (insensible casse + alias REM/DSP)
