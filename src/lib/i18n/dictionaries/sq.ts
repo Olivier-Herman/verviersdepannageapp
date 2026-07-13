@@ -219,6 +219,7 @@ export const sq: Dictionary = {
     btn_photos:          '📷 Fotot',
     btn_finish:          '🏁 Përfundo',
     snc_payment_required:'💳 Arkëto klientin para se të përfundosh (pagesë e detyrueshme).',
+    snc_amount_unresolved:'⚠️ Shuma për t\'u arkëtuar NUK është llogaritur (mungon vendndodhja e incidentit). Njofto dispeçerin për të caktuar shumën PARA se ta mbyllësh.',
     btn_other_actions:   '☰ Veprime të tjera',
     parked_card_title:   '🅿️ Mjeti i dorëzuar në parking',
     parked_card_subtitle:'Misioni përfundoi për ty. Dispeçeri menaxhon vazhdimin.',

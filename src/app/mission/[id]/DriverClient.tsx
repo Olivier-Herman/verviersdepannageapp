@@ -673,6 +673,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     && requiredAmount > 0
     && !paymentComplete
 
+  // Anomalie : SNC NON COUVERT (police_snc) avec un scénario à encaissement
+  // (dsp / rem_client / rem_direct) mais AUCUN montant calculé (coords incident
+  // manquantes, tarif KO…, typiquement une mission convertie depuis Touring).
+  // On l'affiche en PERMANENCE pour que le chauffeur n'aille pas clôturer impayé
+  // sans le savoir → il prévient le dispatch qui fixe le montant. Olivier 2026-07-13.
+  const sncAmountUnresolved =
+    M.source === 'police_snc'
+    && ['dsp', 'rem_client', 'rem_direct'].includes(M.snc_scenario || '')
+    && requiredAmount <= 0
+
   // ── Dérogation paiement (5-tap caché sur banderole rouge) ──────────────────
   // UX : pas de bouton visible (briefing vocal a l equipe). 5 taps rapides
   // (< 2s entre chaque) sur la banderole "A encaisser" → modal s ouvre.
@@ -1311,33 +1321,47 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       setM(prev => ({ ...prev, snc_scenario: scenario as any, mission_type: newType }))
 
       // 2) Calcul tarif SNC (sauf REM depot : pas d encaissement immediat)
-      if (scenario !== 'rem_depot' && M.incident_lat != null && M.incident_lng != null) {
+      if (scenario !== 'rem_depot') {
         const variant = M.source === 'sia_couvert' ? 'sc' : 'snc'
-        const pr = await fetch('/api/snc-preview-tarif', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            scenario,
-            variant,
-            requires_balisage: Boolean(M.snc_requires_balisage),
-            incident_lat:      M.incident_lat,
-            incident_lng:      M.incident_lng,
-            destination_lat:   dLat,
-            destination_lng:   dLng,
-            intervention_at:   M.intervention_date || (M as any).received_at || new Date().toISOString(),
-          }),
-        })
-        const pj = await pr.json().catch(() => null)
-        if (pr.ok && pj?.ok && typeof pj.total_tvac === 'number') {
-          // Pour SC (Siabis couvert) : facturation a l assistance, PAS
-          // d encaissement client (amount_to_collect reste null).
-          const amount = variant === 'sc' ? null : pj.total_tvac
-          await fetch(`/api/missions/${M.id}`, {
-            method:  'PATCH',
+        // Coords incident manquantes (FRÉQUENT sur une mission convertie depuis
+        // Touring : le sinistre n'a pas toujours été géocodé) → on ne peut pas
+        // calculer le tarif. AVANT : on sautait le calcul EN SILENCE → montant
+        // null → aucun encaissement demandé → clôture impayée invisible (cas
+        // 10062195). Désormais on PRÉVIENT le chauffeur. Olivier 2026-07-13.
+        if (M.incident_lat == null || M.incident_lng == null) {
+          if (variant === 'snc') {
+            setSncInfoMsg("⚠️ Montant à encaisser NON calculé : la position de l'incident manque. Préviens le dispatch pour fixer le montant AVANT de clôturer.")
+          }
+        } else {
+          const pr = await fetch('/api/snc-preview-tarif', {
+            method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ amount_to_collect: amount }),
+            body:    JSON.stringify({
+              scenario,
+              variant,
+              requires_balisage: Boolean(M.snc_requires_balisage),
+              incident_lat:      M.incident_lat,
+              incident_lng:      M.incident_lng,
+              destination_lat:   dLat,
+              destination_lng:   dLng,
+              intervention_at:   M.intervention_date || (M as any).received_at || new Date().toISOString(),
+            }),
           })
-          setM(prev => ({ ...prev, amount_to_collect: amount as any }))
+          const pj = await pr.json().catch(() => null)
+          if (pr.ok && pj?.ok && typeof pj.total_tvac === 'number') {
+            // Pour SC (Siabis couvert) : facturation a l assistance, PAS
+            // d encaissement client (amount_to_collect reste null).
+            const amount = variant === 'sc' ? null : pj.total_tvac
+            await fetch(`/api/missions/${M.id}`, {
+              method:  'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ amount_to_collect: amount }),
+            })
+            setM(prev => ({ ...prev, amount_to_collect: amount as any }))
+          } else if (variant === 'snc') {
+            // Tarif non calculable (API KO) → on prévient au lieu de rester muet.
+            setSncInfoMsg("⚠️ Le tarif n'a pas pu être calculé. Préviens le dispatch pour fixer le montant à encaisser avant clôture.")
+          }
         }
       } else if (scenario === 'rem_depot') {
         // REM depot : pas d encaissement immediat
@@ -3489,6 +3513,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {sncPaymentDue && (
             <div className="w-full py-2 px-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-center text-amber-700 dark:text-amber-300 text-xs font-semibold">
               <T k="mission_detail.snc_payment_required" />
+            </div>
+          )}
+
+          {/* Montant SNC non calculé (mission convertie sans coords incident) :
+              alerte persistante pour ne pas clôturer impayé sans le savoir. */}
+          {sncAmountUnresolved && (
+            <div className="w-full py-2 px-3 bg-red-500/15 border border-red-500/50 rounded-xl text-center text-red-700 dark:text-red-300 text-xs font-semibold">
+              <T k="mission_detail.snc_amount_unresolved" />
             </div>
           )}
 

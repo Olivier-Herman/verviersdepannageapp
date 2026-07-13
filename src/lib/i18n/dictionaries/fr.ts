@@ -220,6 +220,7 @@ export const fr = {
     btn_photos:          '📷 Photos',
     btn_finish:          '🏁 Terminer',
     snc_payment_required:'💳 Encaisse le client avant de finaliser (paiement obligatoire).',
+    snc_amount_unresolved:'⚠️ Montant à encaisser NON calculé (position incident manquante). Préviens le dispatch pour fixer le montant AVANT de clôturer.',
     btn_other_actions:   '☰ Autres actions',
     parked_card_title:   '🅿️ Véhicule déposé au parc',
     parked_card_subtitle:'Mission terminée pour toi. Le dispatcher gère la suite.',
