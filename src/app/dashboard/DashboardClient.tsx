@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { Session } from 'next-auth'
@@ -107,10 +107,32 @@ export default function DashboardClient({
     }
   }, [searchParams, router])
 
+  // ── Easter egg : la tuile « Encaissement Chauffeur » est MASQUÉE par défaut.
+  // 3 tapotages sur le logo Verviers Dépannage (ci-dessous) la révèlent pour la
+  // session. Discrétion voulue (Olivier 2026-07-13). Ne persiste pas : chaque
+  // visite du dashboard repart masquée → le geste reste secret.
+  const [cashRevealed, setCashRevealed] = useState(false)
+  const tapCount = useRef(0)
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleLogoTap = () => {
+    if (cashRevealed) return
+    tapCount.current += 1
+    if (tapTimer.current) clearTimeout(tapTimer.current)
+    tapTimer.current = setTimeout(() => { tapCount.current = 0 }, 1500)  // fenêtre de 1,5 s
+    if (tapCount.current >= 3) {
+      tapCount.current = 0
+      if (tapTimer.current) clearTimeout(tapTimer.current)
+      setCashRevealed(true)
+      try { navigator.vibrate?.(30) } catch { /* pas de haptique */ }
+    }
+  }
+
   // ── Filtrage selon les modules accordés ──
   const isVisible = (id: string): boolean => {
     if (id === 'police_mission') return hasTowsoft
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
+    // Tuile cachée : nécessite le module ET la révélation par 3 tapotages.
+    if (id === 'encaissement')   return userModules.includes('encaissement') && cashRevealed
     if (id === 'finance')        return userModules.includes('encaissements') || userModules.includes('caisse')
     // Olivier 2026-06-08 : module Circuit Spa accessible aux dispatchers + admins
     // sans avoir besoin d un toggle explicite dans /admin/users.
@@ -149,6 +171,18 @@ export default function DashboardClient({
     >
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-5 lg:py-8 max-w-5xl mx-auto">
+
+          {/* Logo Verviers Dépannage — zone tap easter egg (révèle Encaissement).
+              Bouton discret, aucun indice visuel du geste. */}
+          <button
+            type="button"
+            onClick={handleLogoTap}
+            aria-label="Verviers Dépannage"
+            className="flex items-center gap-2.5 mb-6 select-none focus:outline-none active:opacity-70 transition-opacity"
+          >
+            <img src="/logo.jpg" alt="Verviers Dépannage" className="h-9 w-auto object-contain rounded-lg" draggable={false} />
+            <span className="font-display font-bold text-ink text-base leading-tight">Verviers Dépannage</span>
+          </button>
 
           {/* Hero header — desktop visible, mobile garde le header sticky AppShell */}
           <div className="hidden lg:block mb-8 ambient-fade-up">
