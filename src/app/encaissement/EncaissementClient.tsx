@@ -651,8 +651,12 @@ export default function EncaissementClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_type: 'encaissement', plate,
-          // mission_id : lien vers la mission qui a declenche l'encaissement (si applicable)
-          mission_id: prefill?.mission_id || null,
+          // mission_id : lien vers la mission qui a declenche l'encaissement.
+          // Olivier 2026-07-13 : en mode standalone (saisie plaque), on lie AUSSI
+          // à la mission trouvée par plaque (openMission) — sinon le paiement était
+          // ORPHELIN : payment_amount jamais posé sur la fiche + client non mis à
+          // jour (la fiche restait sur le client d'origine « Siabis »).
+          mission_id: prefill?.mission_id || openMission?.id || null,
           // brand_id / model_id sur interventions sont legacy (FK vers tables
           // Supabase vehicle_brands/vehicle_models deprecated, alimentées par Odoo
           // via /api/vehicles → IDs Odoo absents côté Supabase = FK violation).

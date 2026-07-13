@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
       // Lire l etat actuel de la mission pour ne pas ecraser un billed_to existant
       const { data: currentMission } = await supabase
         .from('incoming_missions')
-        .select('billed_to_id, billed_to_name, status, source, parc_zone_key')
+        .select('billed_to_id, billed_to_name, client_name, client_phone, client_address, status, source, parc_zone_key')
         .eq('id', body.mission_id)
         .single()
 
@@ -153,6 +153,17 @@ export async function POST(req: NextRequest) {
       if (body.client_name && !currentMission?.billed_to_name) {
         updatePayload.billed_to_name = String(body.client_name)
       }
+
+      // Olivier 2026-07-13 : reporter les COORDONNÉES du client encodé sur la fiche
+      // (nom/téléphone/adresse) — avant, seul billed_to_name/id était posé, donc le
+      // dispatch ne voyait pas les coords saisies au paiement. Remplissage des
+      // champs VIDES uniquement (jamais d'écrasement d'une info existante).
+      const composedAddr = String(body.client_address
+        || [body.client_street, [body.client_zip, body.client_city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+        || '').trim()
+      if (body.client_name    && !currentMission?.client_name)    updatePayload.client_name    = String(body.client_name)
+      if (body.client_phone   && !currentMission?.client_phone)   updatePayload.client_phone   = String(body.client_phone)
+      if (composedAddr        && !currentMission?.client_address) updatePayload.client_address = composedAddr
 
       // Olivier 2026-06-03 : si on a un client_name mais pas de billed_to_id
       // (le frontend ne nous a pas propage le partnerId), on auto-cree/lie le
