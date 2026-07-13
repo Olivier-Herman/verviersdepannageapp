@@ -351,7 +351,11 @@ export default function EncaissementClient({
     const bank = bankConfigFromEnv()
     if (!bank) { setError('IBAN non configuré (NEXT_PUBLIC_BANK_IBAN).'); return }
     try {
-      const payload = buildEpcQrPayload({ name: bank.name, iban: bank.iban, bic: bank.bic, amount: amt, remittance: `${plate} - VD Soft` })
+      // Communication = plaque (bien visible) + réf VD Soft. Défensif : plaque
+      // reprise du state OU du prefill, en majuscules.
+      const commPlate = String(plate || prefill?.plate || '').toUpperCase().trim()
+      const remittance = commPlate ? `Plaque ${commPlate} - VD Soft` : 'VD Soft'
+      const payload = buildEpcQrPayload({ name: bank.name, iban: bank.iban, bic: bank.bic, amount: amt, remittance })
       const img = await QRCode.toDataURL(payload, { width: 320, margin: 1 })
       try { navigator.vibrate?.(30) } catch { /* pas de haptique */ }
       setBankQrImg(img); setBankProofUrl(''); setBankQrOpen(true)
