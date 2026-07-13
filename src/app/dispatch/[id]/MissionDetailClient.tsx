@@ -4141,9 +4141,15 @@ export default function MissionDetailClient({
                     📷 Photos chauffeur ({M.driver_photos.length})
                   </h3>
                   <PhotoGrid photos={M.driver_photos} />
-                  {/* OCR manuel : uniquement si VIN OU plaque manque (sinon rien à faire). */}
-                  {(!(M.vehicle_plate || '').trim() || !((M as any).vehicle_vin || '').trim()) && (
-                    <VehicleOcrFillButton missionId={M.id} onFilled={f => setM(prev => ({ ...prev, ...f } as any))} />
+                  {/* OCR manuel : uniquement si VIN OU plaque manque, ET pas déjà tenté
+                      (une seule tentative par fiche — le superadmin peut outrepasser). */}
+                  {(!(M.vehicle_plate || '').trim() || !((M as any).vehicle_vin || '').trim())
+                    && (!(M as any).vehicle_ocr_attempted_at || userRole === 'superadmin') && (
+                    <VehicleOcrFillButton
+                      missionId={M.id}
+                      canBypass={userRole === 'superadmin'}
+                      onFilled={f => setM(prev => ({ ...prev, ...f } as any))}
+                    />
                   )}
                 </div>
               )}
@@ -4492,25 +4498,26 @@ interface DepotWithZones {
 // Bouton OCR manuel : n'apparaît QUE si VIN ou plaque manque (voir gate à l'appel).
 // Complète les champs VIDES depuis les photos chauffeur. AUCUNE action de
 // facturation/Odoo — juste remplissage + log. Olivier 2026-07-13.
-function VehicleOcrFillButton({ missionId, onFilled }: {
+function VehicleOcrFillButton({ missionId, onFilled, canBypass = false }: {
   missionId: string
   onFilled:  (f: { vehicle_plate?: string; vehicle_vin?: string }) => void
+  canBypass?: boolean   // superadmin : peut relancer sans limite (assume le coût)
 }) {
   const [busy,  setBusy]  = useState(false)
   const [msg,   setMsg]   = useState<string | null>(null)
   // Anti-gaspillage IA : une tentative « rien trouvé » désactive le bouton pour
-  // cette fiche (recharger la page pour réessayer). Un succès fait disparaître le
-  // bouton (champ rempli). Olivier 2026-07-13.
+  // cette fiche. Le superadmin (canBypass) peut relancer. Le serveur borne aussi
+  // à une tentative par fiche (marqueur persistant), sauf superadmin. Olivier 2026-07-13.
   const [tried, setTried] = useState(false)
   const run = async () => {
     setBusy(true); setMsg(null)
     try {
       const r = await fetch(`/api/missions/${missionId}/ocr-vehicle-fill`, { method: 'POST' })
       const j = await r.json()
-      if (!r.ok) { setMsg(j.error || 'Échec'); setTried(true); return }
+      if (!r.ok) { setMsg(j.error || 'Échec'); if (!canBypass) setTried(true); return }
       if (j.nothing) {
         setMsg('Aucun VIN/plaque lisible sur les photos.')
-        setTried(true)
+        if (!canBypass) setTried(true)
       } else {
         onFilled(j.filled)
         const parts: string[] = []
@@ -4523,7 +4530,7 @@ function VehicleOcrFillButton({ missionId, onFilled }: {
   }
   return (
     <div className="mt-3">
-      <button type="button" onClick={run} disabled={busy || tried}
+      <button type="button" onClick={run} disabled={busy || (tried && !canBypass)}
         className="px-3 py-1.5 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs font-medium transition disabled:opacity-50">
         {busy ? '⏳ Lecture des photos…' : '🔍 Extraire VIN / plaque des photos'}
       </button>
