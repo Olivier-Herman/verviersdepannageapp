@@ -11,6 +11,7 @@ import { sendNotification }          from '@/lib/notifications/send'
 import { rpcFsm, getFsmStageId, FSM_FIELDS } from '@/lib/odoo-fsm'
 import { createOdooDossierForMission } from '@/lib/missions/odoo-dossier'
 import { withOdooActor }               from '@/lib/odoo'
+import { acceptTouringBg }             from '@/lib/touring/accept-bg'
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
   // Récupérer les infos de la mission (incl. odoo_task_id pour update FSM)
   const { data: mission, error: mErr } = await supabase
     .from('incoming_missions')
-    .select('id, external_id, source, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
+    .select('id, external_id, source, source_format, mission_type, vehicle_brand, vehicle_model, vehicle_plate, incident_address, incident_city, odoo_task_id, status')
     .eq('id', mission_id)
     .single()
 
@@ -115,6 +116,12 @@ export async function POST(req: Request) {
           notes:    `Creation Odoo echouee : ${e.message}. Reessayer via "Creer dossier Odoo".`,
         })
       }
+
+      // Mission Touring COMEX assignée DIRECTEMENT (sans passer par « Valider ») :
+      // l'assignation vaut confirmation → on l'accepte aussi côté COMEX. Sans ça,
+      // une mission `new` assignée direct n'était JAMAIS acceptée dans COMEX (il
+      // fallait le faire à la main). Olivier 2026-07-13.
+      await acceptTouringBg(mission_id, mission.source || null, (mission as any).source_format || null, actor?.id || null, supabase)
     }
 
     // Notifier le chauffeur (insensible casse + alias REM/DSP)

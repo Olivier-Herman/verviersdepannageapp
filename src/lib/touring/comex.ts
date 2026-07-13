@@ -450,32 +450,24 @@ export async function acceptTouringMission(
     // COMEX exige le dépôt du SECTEUR de l'intervention. On essaie les dépôts
     // candidats (ordonnés par géo) et on s'arrête dès que le statut bascule
     // (03 → 04). Un mauvais dépôt = accept no-op (statut inchangé). Olivier 2026-07-08.
+    // DIAGNOSTIC (Olivier 2026-07-13) : on capture la RÉPONSE COMEX de CHAQUE
+    // essai dans le log (visible dans l'historique) → plus besoin de capture temps
+    // réel pour comprendre un échec. L'expérience « autoroute/sans-dépôt/MEM » est
+    // RETIRÉE : elle n'a jamais fonctionné et multipliait les essais (5-7 au lieu
+    // de 2), ce qui pouvait faire échouer même les missions normales.
     const candidates = await getComexDepotCandidates(session, keys)
-    const highway = await isComexHighwayMission(session, keys)
-    // Missions autoroute/Siabis : COMEX refuse nos garages (cas 10054129 : les 5
-    // dépôts en 03→03). Théorie Olivier 2026-07-09 : un NON COUVERT ne lie AUCUN
-    // dépôt (pas de facturation chez Touring) → accept SANS dépôt. On tente donc
-    // « sans dépôt » EN PREMIER ; puis `MEM_CID_INTV` (intervenant lié du détail,
-    // ex "AA0005653210") et les garages en filet de sécurité (pour un couvert
-    // éventuel). Le log dira lequel fait basculer 03→04.
-    const memCid = highway ? await resolveComexHighwayDepot(session, keys) : ''
-    type Attempt = { depot: string; noDepot: boolean; label: string }
-    const attempts: Attempt[] = highway
-      ? [
-          { depot: '', noDepot: true, label: 'sans-dépôt' },
-          ...(memCid ? [{ depot: memCid, noDepot: false, label: `MEM:${memCid}` }] : []),
-          ...candidates.map(d => ({ depot: d, noDepot: false, label: d })),
-        ]
-      : candidates.map(d => ({ depot: d, noDepot: false, label: d }))
+    const attemptLog: string[] = []
     let accepted = false
-    for (const att of attempts) {
-      triedDepots.push(att.label)
-      sentDepotCid = att.noDepot ? '(sans dépôt)' : att.depot
-      const acc = await pushComexOperation(session, keys, 'accept', operDate, att.depot, { noDepot: att.noDepot })
+    for (const depot of candidates) {
+      triedDepots.push(depot)
+      sentDepotCid = depot
+      const acc = await pushComexOperation(session, keys, 'accept', operDate, depot)
       acceptResp = acc?.response
       const st = await readStatus(session)
+      const snip = (() => { try { return JSON.stringify(acc?.response).slice(0, 90) } catch { return String(acc?.response).slice(0, 90) } })()
+      attemptLog.push(`${depot}→${st ?? '?'} ${snip}`)
       if (st && st !== '03' && st !== statusBefore) { accepted = true; statusAfter = st; break }
-      statusAfter = st  // reste 03 → on tentera l'essai suivant
+      statusAfter = st  // reste 03 → on tentera le dépôt suivant
     }
     steps.accept = accepted
 
@@ -483,7 +475,7 @@ export async function acceptTouringMission(
       await setComexEta(session, keys, opts?.etaMinutes ?? 60);          steps.eta = true
       await assignComexPatrol(session, keys, opts?.refPatrol ?? DEFAULT_REF_PATROL); steps.assign = true
     }
-    return { ok: accepted, steps, statusBefore, statusAfter, sentDepotCid, acceptResp, error: accepted ? undefined : `aucun dépôt n'a fait basculer (essayés: ${triedDepots.join(',')})` }
+    return { ok: accepted, steps, statusBefore, statusAfter, sentDepotCid, acceptResp, error: accepted ? undefined : `aucun dépôt n'a fait basculer — ${attemptLog.join(' · ')}` }
   } catch (e: any) {
     return { ok: false, steps, error: e?.message || 'erreur', statusBefore, statusAfter, sentDepotCid, acceptResp }
   }
@@ -500,9 +492,7 @@ export async function setTouringOnRoad(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const session = await loginComex('user')
-    // Siabis/autoroute : sans dépôt (même règle que l'accept). Olivier 2026-07-09.
-    const noDepot = await isComexHighwayMission(session, keys)
-    await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()), undefined, { noDepot })
+    await pushComexOperation(session, keys, 'onRoad', comexOperDate(opts?.at || new Date()))
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
@@ -521,9 +511,7 @@ export async function setTouringOnSpot(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const session = await loginComex('user')
-    // Siabis/autoroute : sans dépôt (même règle que l'accept). Olivier 2026-07-09.
-    const noDepot = await isComexHighwayMission(session, keys)
-    await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()), undefined, { noDepot })
+    await pushComexOperation(session, keys, 'onSpot', comexOperDate(opts?.at || new Date()))
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'erreur' }
