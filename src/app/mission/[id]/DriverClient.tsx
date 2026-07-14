@@ -3661,6 +3661,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               <T k="mission_detail.btn_other_actions" />
             </button>
           )}
+
+          {/* Mission TERMINÉE (completed/to_invoice) : accès direct aux photos pour
+              en supprimer/corriger une (ex. mauvaise photo). Le serveur autorise
+              save_photos quel que soit le statut. Olivier 2026-07-14. */}
+          {(M.status === 'completed' || M.status === 'to_invoice') && M.mission_type !== 'trajet_vide' && (
+            <button onClick={() => goPhotos('main')}
+              className="w-full py-3 bg-surface border border hover:border-zinc-600 text-ink-secondary hover:text-ink font-medium rounded-2xl text-sm flex items-center justify-center gap-2">
+              📷 <T k="mission_detail.action_photos" />
+            </button>
+          )}
         </div>
       )}
 

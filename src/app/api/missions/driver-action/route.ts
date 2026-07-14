@@ -213,7 +213,9 @@ export async function POST(req: Request) {
   }
 
   // ── Sauvegarder photos en DB ────────────────────────────────────────────
-  if (action === 'save_photos' && body.photo_urls?.length) {
+  // Array.isArray (et pas .length) : une liste VIDE doit persister aussi, sinon
+  // supprimer la DERNIÈRE photo ne l'enlevait pas de la fiche. Olivier 2026-07-14.
+  if (action === 'save_photos' && Array.isArray(body.photo_urls)) {
     updatePayload.driver_photos = body.photo_urls
   }
 
