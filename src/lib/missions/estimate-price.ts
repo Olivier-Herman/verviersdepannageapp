@@ -299,7 +299,7 @@ function canonicalType(t: string | null): string | null {
   return normalizeType(t)
 }
 
-export async function estimateMissionPrice(mission: MissionLike): Promise<PriceEstimate> {
+export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRelShortcut?: boolean }): Promise<PriceEstimate> {
   const source = (mission.source || '').toLowerCase().trim()
   const missionType = canonicalType(mission.mission_type)
 
@@ -313,7 +313,7 @@ export async function estimateMissionPrice(mission: MissionLike): Promise<PriceE
   // charge, pas de treuil. Le tarif km est lu en priorite depuis la grille
   // source_tariff_lines (kind=SERV-KM) configuree pour cette source (memes
   // valeurs que pour la REM). Fallback : source_tariffs.km_extra_price.
-  if (missionType === 'relivraison') {
+  if (missionType === 'relivraison' && !opts?.skipRelShortcut) {
     return await estimateRelivraisonPrice(mission, source)
   }
 
@@ -1047,6 +1047,25 @@ async function estimateRelivraisonPrice(
 ): Promise<PriceEstimate> {
   const sb = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
+
+  // ── Tarif RELIVRAISON explicite (Olivier 2026-07-14) ─────────────────────
+  // Si un tarif source_tariffs de type 'relivraison' est configuré pour cette
+  // source (dans /admin/tarifs), il PRIME : on utilise la logique standard
+  // (forfait + km inclus + km extra + surcharges) avec ce tarif, au lieu du
+  // km pur / tarif remorquage par défaut. Cas Ethias Relivraison (10063880).
+  {
+    const { data: relTariffs } = await sb
+      .from('source_tariffs')
+      .select('id, effective_to')
+      .eq('source', source)
+      .eq('mission_type', 'relivraison')
+      .lte('effective_from', today)
+      .order('effective_from', { ascending: false })
+    const hasRel = (relTariffs || []).some(t => !t.effective_to || t.effective_to >= today)
+    if (hasRel) {
+      return await estimateMissionPrice(mission, { skipRelShortcut: true })
+    }
+  }
 
   // ── Règles de tarif REL par source (Olivier 2026-06-18) ──────────────────
   //   • AXA, Ardenne, Allianz(mondial) → la relivraison se facture au tarif
