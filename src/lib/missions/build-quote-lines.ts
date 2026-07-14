@@ -19,7 +19,16 @@ import { isDsp, isTrajetVide } from '@/lib/missions/mission-types'
  *   - adresse de destination (uniquement si remorquage / déplacement véhicule)
  * Olivier 2026-06-29.
  */
+// Mention en tête de facture selon la source (Olivier 2026-07-14).
+//   • police_snc (Siabis NON couvert) → « Appel Siabis »
+//   • police_accident                 → « Appel Police »
+const SOURCE_INVOICE_MENTION: Record<string, string> = {
+  police_snc:      'Appel Siabis',
+  police_accident: 'Appel Police',
+}
+
 export function buildInterventionDescription(mission: {
+  source?:              string | null
   mission_type?:        string | null
   intervention_date?:   string | null
   received_at?:         string | null
@@ -28,6 +37,9 @@ export function buildInterventionDescription(mission: {
   redelivery_address?:  string | null
 }): string {
   const out: string[] = []
+  // Mention source en tout premier (visible en tête du devis/facture).
+  const mention = SOURCE_INVOICE_MENTION[String(mission.source || '').toLowerCase().trim()]
+  if (mention) out.push(mention)
   const dt = mission.intervention_date || mission.received_at
   if (dt) {
     const d = new Date(dt)
