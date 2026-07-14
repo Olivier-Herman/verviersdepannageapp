@@ -197,6 +197,10 @@ export default async function AdminPage() {
           <Card href="/admin/logs" icon={FileText} label="Logs serveur"
             desc="Erreurs serveur applicatives (errors, warns, infos) avec filtres par route/niveau/période. Superadmin uniquement." />
         )}
+        {user.role === 'superadmin' && (
+          <Card href="/admin/activity" icon={Radio} label="Journal d'activité"
+            desc="Mouchard : toutes les actions (qui / quoi / quand / quelle mission) en flux temps réel, filtrable par utilisateur, action, période. Superadmin uniquement." />
+        )}
       </Group>
     </div>
   )
