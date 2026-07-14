@@ -460,21 +460,23 @@ export async function POST(req: Request) {
     } catch { /* télémétrie non critique */ }
   }
 
-  // ── Filet OCR VIN/plaque à la MISE EN PARC (background) ────────────────────
-  // Le chauffeur redirige aussitôt après la mise en parc : pas de moment de
-  // confirmation fiable. On OCR les photos côté serveur (Claude Haiku) et on
-  // COMPLÈTE uniquement les champs VIDES (jamais d'écrasement) → la fiche parc
-  // part complète pour l'inventaire. Repli plaque = 5 derniers du VIN si aucune
-  // plaque lisible. Olivier 2026-07-13.
-  if (action === 'park') {
+  // ── Filet OCR VIN/plaque à la MISE EN PARC **et à la CLÔTURE** (background) ──
+  // Le chauffeur redirige aussitôt : pas de moment de confirmation fiable (le
+  // modal OCR client est facile à rater). On OCR les photos côté serveur (Claude
+  // Haiku) et on COMPLÈTE uniquement les champs VIDES (jamais d'écrasement) → la
+  // fiche part complète (inventaire + facturation). Repli plaque = 5 derniers du
+  // VIN si aucune plaque lisible. Olivier 2026-07-13 / clôture 2026-07-14 (cas
+  // 10064044 : clôturée sans VIN alors que le VIN est sur les photos).
+  if (['park', 'completed', 'complete_delivery'].includes(action)) {
     const plateEmpty = !((mission.vehicle_plate || '').trim())
     const vinEmpty   = !(((mission as any).vehicle_vin || '').trim())
-    const parkPhotos: string[] = (closing_data?.photo_urls?.length ? closing_data.photo_urls : mission.driver_photos) || []
-    if ((plateEmpty || vinEmpty) && parkPhotos.length > 0) {
+    const ocrPhotos: string[] = (closing_data?.photo_urls?.length ? closing_data.photo_urls : mission.driver_photos) || []
+    if ((plateEmpty || vinEmpty) && ocrPhotos.length > 0) {
+      const ctx = action === 'park' ? 'mise en parc' : 'clôture'
       const ocrBg = (async () => {
         try {
           const { detectVehicleFromImages } = await import('@/lib/ocr/vehicle-detect')
-          const { plate, vin } = await detectVehicleFromImages(parkPhotos.slice(0, 6))
+          const { plate, vin } = await detectVehicleFromImages(ocrPhotos.slice(0, 6))
           const upd: Record<string, any> = {}
           if (vinEmpty   && vin?.value)   upd.vehicle_vin   = vin.value
           if (plateEmpty && plate?.value) upd.vehicle_plate = plate.value
@@ -488,12 +490,12 @@ export async function POST(req: Request) {
             await supabase.from('incoming_missions').update(upd).eq('id', mission_id)
             await supabase.from('mission_logs').insert({
               mission_id, actor_id: actor.id, action: 'vehicle_ocr_autofill',
-              notes: `VIN/plaque complété(s) auto depuis les photos à la mise en parc : ${Object.entries(upd).filter(([k]) => k !== 'updated_at').map(([k, v]) => `${k}=${v}`).join(', ')}`,
-              metadata: { source: 'park_ocr', filled: upd },
+              notes: `VIN/plaque complété(s) auto depuis les photos (${ctx}) : ${Object.entries(upd).filter(([k]) => k !== 'updated_at').map(([k, v]) => `${k}=${v}`).join(', ')}`,
+              metadata: { source: `${action}_ocr`, filled: upd },
             }).then(() => {}, () => {})
           }
         } catch (e: any) {
-          console.warn('[driver-action] park OCR exception:', e?.message)
+          console.warn('[driver-action] OCR exception:', e?.message)
         }
       })()
       try { const { waitUntil } = await import('@vercel/functions'); waitUntil(ocrBg) }
