@@ -1494,6 +1494,9 @@ export default function MissionDetailClient({
   const [incidentInfo, setIncidentInfo]       = useState<string>((initialMission as any).incident_info || '')
   const [destinationInfo, setDestinationInfo] = useState<string>((initialMission as any).destination_info || '')
   const [redeliveryInfo, setRedeliveryInfo]   = useState<string>((initialMission as any).redelivery_info || '')
+  // Date de réouverture d'un garage fermé (saisie chauffeur ou dispatch).
+  const [garageReopen, setGarageReopen]       = useState<string>((initialMission as any).garage_reopen_date || '')
+  useEffect(() => { setGarageReopen((initialMission as any).garage_reopen_date || '') }, [(initialMission as any).garage_reopen_date])
   // Stops intermédiaires : liste de {id, label, address, lat, lng, sort_order}
   // Le dernier stop = destination dans le calcul KM. Sauvegarde en extra_addresses (JSONB).
   const [stops, setStops]                     = useState<Stop[]>(() => {
@@ -3431,6 +3434,24 @@ export default function MissionDetailClient({
                       onBlur={() => silentPatch({ redelivery_info: redeliveryInfo.trim() || null })}
                       rows={2} placeholder="ℹ️ Info complémentaire relivraison (visible chauffeur)…"
                       className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
+                  </div>
+                )}
+                {/* Garage fermé : date de réouverture (info + rappel dispatch le jour J).
+                    Visible si un motif garage fermé OU une date déjà saisie OU en parc.
+                    Éditable dispatch. Olivier 2026-07-14. */}
+                {((initialMission as any).dpr_motif === 'garage_ferme' || garageReopen || status === 'parked') && (
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-1.5">🔒 Réouverture garage</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input type="date" value={garageReopen}
+                        onChange={e => { setGarageReopen(e.target.value); silentPatch({ garage_reopen_date: e.target.value || null }) }}
+                        className="bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
+                      {garageReopen && (
+                        <button type="button" onClick={() => { setGarageReopen(''); silentPatch({ garage_reopen_date: null }) }}
+                          className="text-ink-muted hover:text-ink text-xs underline">Effacer</button>
+                      )}
+                    </div>
+                    <p className="text-ink-faint text-xs mt-1">Le dispatch recevra un rappel ce jour-là pour relivrer le véhicule.</p>
                   </div>
                 )}
                 {/* Kilométrage estimé — intégré au bloc Lieu/Destination (Olivier 2026-06-14) */}

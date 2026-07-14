@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 const SELECT = `id, mission_number, external_id, source, mission_type, incident_type,
   client_name, vehicle_plate, vehicle_brand, vehicle_model,
   redelivery_address, redelivery_lat, redelivery_lng,
-  parc_zone_key, received_at, intervention_date, status`
+  parc_zone_key, received_at, intervention_date, status, garage_reopen_date`
 
 const DEPOT = { lat: 50.5703357, lng: 5.8216501 } // Pepinster (dépôt par défaut)
 

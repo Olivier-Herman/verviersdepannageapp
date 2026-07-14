@@ -92,6 +92,8 @@ export async function PATCH(
     'police_zone', 'officer_name', 'officer_partner_id',
     // Olivier 2026-06-18 : clés (emplacement chauffeur + crochet boîte saisie bureau).
     'key_location', 'saisie_key_hook',
+    // Olivier 2026-07-14 : date de réouverture d'un garage fermé (éditable dispatch).
+    'garage_reopen_date',
     // Olivier 2026-07-05 : roulant / non roulant modifiable depuis la fiche (picto).
     'is_rollable',
   ]

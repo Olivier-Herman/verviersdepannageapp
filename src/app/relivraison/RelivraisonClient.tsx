@@ -21,6 +21,7 @@ interface Mission {
   redelivery_address: string | null
   redelivery_lat:     number | null
   redelivery_lng:     number | null
+  garage_reopen_date?: string | null
 }
 
 interface ZoneTab { key: string; label: string; count: number }
@@ -261,6 +262,16 @@ export default function RelivraisonClient({ userRole, userName, userEmail, userM
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase text-white ${getSourceColor(m.source, sources)}`}>
                         {getSourceLabel(m.source, sources)}
                       </span>
+                      {m.garage_reopen_date && (() => {
+                        const d = new Date(m.garage_reopen_date + 'T00:00:00')
+                        const today = new Date(); today.setHours(0, 0, 0, 0)
+                        const due = d <= today
+                        return (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${due ? 'bg-red-500/20 text-red-600 border border-red-500/40' : 'bg-amber-500/15 text-amber-600 border border-amber-500/30'}`}>
+                            🔒 {due ? 'ROUVERT' : `rouvre ${d.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}`}
+                          </span>
+                        )
+                      })()}
                     </div>
                     <p className="text-ink-muted text-xs mt-0.5">{m.client_name || '—'}</p>
                     <span className="text-ink-faint text-xs mt-1 inline-block">VOIR la fiche →</span>

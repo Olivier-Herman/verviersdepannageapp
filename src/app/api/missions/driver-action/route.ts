@@ -110,6 +110,7 @@ export async function POST(req: Request) {
       dpr_motif?:             string         // DPR : id du motif typé
       dpr_motif_label?:       string         // DPR : libellé human-readable (ou texte libre si "autre")
       dpr_converted_from_rem?: boolean       // DPR issu d un refus REM (avant chargement)
+      garage_reopen_date?:    string         // Garage fermé : date de réouverture (YYYY-MM-DD)
     }
     park_data?: {
       stage_id?:   number
@@ -302,6 +303,8 @@ export async function POST(req: Request) {
       if (closing_data.discharge_sig)      updatePayload.discharge_sig   = closing_data.discharge_sig
       if (closing_data.dpr_motif)          updatePayload.dpr_motif       = closing_data.dpr_motif
       if (closing_data.dpr_motif_label)    updatePayload.dpr_motif_label = closing_data.dpr_motif_label
+      // Garage fermé → date de réouverture (info + rappel dispatch le jour J).
+      if (closing_data.garage_reopen_date) updatePayload.garage_reopen_date = closing_data.garage_reopen_date
       if (closing_data.dpr_converted_from_rem) updatePayload.dpr_converted_from_rem = closing_data.dpr_converted_from_rem
     }
   }

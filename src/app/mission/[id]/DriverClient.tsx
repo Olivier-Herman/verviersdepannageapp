@@ -878,6 +878,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // Motif DPR (Deplacement Pour Rien)
   const [dprMotif,        setDprMotif]        = useState<DprMotifId | ''>('')
   const [dprMotifAutre,   setDprMotifAutre]   = useState('')
+  const [garageReopenDate, setGarageReopenDate] = useState('')   // garage fermé → réouverture
   const [showDprMotif,    setShowDprMotif]    = useState(false)
   const [dprFromRem,      setDprFromRem]      = useState(false)  // true si conversion depuis refus REM
   // true = refus À DESTINATION (véhicule chargé) → au lieu d'une clôture DPR,
@@ -1768,6 +1769,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 ? dprMotifAutre.trim()
                 : DPR_MOTIFS.find(m => m.id === dprMotif)?.label,
               dpr_converted_from_rem: true,
+              // Garage fermé : date de réouverture (rappel dispatch le jour J).
+              ...(dprMotif === 'garage_ferme' && garageReopenDate ? { garage_reopen_date: garageReopenDate } : {}),
             } : {}),
           },
           park_data: {
@@ -3958,6 +3961,15 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
                 <textarea rows={3} value={dprMotifAutre} onChange={e => setDprMotifAutre(e.target.value.slice(0, 500))}
                   placeholder="Précise le motif…" autoFocus
                   className="w-full bg-surface border border focus:border-brand rounded-xl px-3 py-3 text-ink text-sm outline-none resize-none mt-2" />
+              )}
+              {/* Garage fermé : date de réouverture (facultatif) → rappel dispatch le jour J. */}
+              {dprMotif === 'garage_ferme' && (
+                <div className="mt-2 bg-surface border rounded-xl px-3 py-3">
+                  <label className="block text-ink-secondary text-xs font-medium mb-1.5">📅 Date de réouverture du garage (si indiquée)</label>
+                  <input type="date" value={garageReopenDate} onChange={e => setGarageReopenDate(e.target.value)}
+                    className="w-full bg-surface-2 border focus:border-brand rounded-lg px-3 py-2 text-ink text-sm outline-none" />
+                  <p className="text-ink-faint text-xs mt-1">Facultatif — le dispatch sera rappelé ce jour-là pour relivrer.</p>
+                </div>
               )}
             </div>
             <div className="px-4 pt-2 pb-4 flex gap-3">
