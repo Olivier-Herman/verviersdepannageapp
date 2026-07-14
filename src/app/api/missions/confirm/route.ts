@@ -60,19 +60,55 @@ export async function POST(req: Request) {
     const isKazeRel = mission?.source === 'kaze'
       && (mission?.incident_type === 'relivraison' || !!mission?.parent_mission_id)
     if (isKazeRel) {
-      // Rapprochement : lien parent AA/AB d'abord, sinon même plaque en parc.
+      // Rapprochement : lien parent AA/AB d'abord, sinon même plaque. On accepte
+      // un parent EN PARC (→ relivraison) OU EN COURS (→ destination). Olivier 2026-07-14.
+      const ACTIVE_PARENT = ['assigned', 'accepted', 'in_progress', 'delivering']
       let parentId: string | null = null
+      let parentStatus: string | null = null
       if (mission.parent_mission_id) {
         const { data } = await supabase.from('incoming_missions')
           .select('id, status').eq('id', mission.parent_mission_id).maybeSingle()
-        if (data?.status === 'parked') parentId = data.id
+        if (data && (data.status === 'parked' || ACTIVE_PARENT.includes(data.status))) { parentId = data.id; parentStatus = data.status }
       }
       if (!parentId && mission.vehicle_plate) {
         const { data } = await supabase.from('incoming_missions')
-          .select('id').eq('vehicle_plate', mission.vehicle_plate)
-          .eq('status', 'parked').neq('id', mission_id)
-          .order('parked_at', { ascending: false }).limit(1).maybeSingle()
-        if (data) parentId = data.id
+          .select('id, status').eq('vehicle_plate', mission.vehicle_plate)
+          .in('status', ['parked', ...ACTIVE_PARENT]).neq('id', mission_id)
+          .order('received_at', { ascending: false }).limit(1).maybeSingle()
+        if (data) { parentId = data.id; parentStatus = data.status }
+      }
+
+      // ── Parent EN COURS (pas encore en parc) : la REM/relivraison qui arrive
+      // pendant que le chauffeur est encore sur la 1ère mission (DSP en cours) va
+      // dans la DESTINATION de la fiche EN COURS (le chauffeur enchaîne le
+      // remorquage), PAS dans Relivraison. Olivier 2026-07-14.
+      if (parentId && parentStatus !== 'parked') {
+        await acceptKazeProposalBg(mission_id, mission?.kaze_proposal_id, actor?.id || null, supabase)
+        const dest = (mission.destination_address || '').trim() || null
+        const updParent: Record<string, any> = {
+          mission_type:    'remorquage',                 // le DSP enchaîne sur un remorquage
+          rel_kaze_job_id: mission.kaze_job_id || null,  // 2e job Kaze → clôture couplée
+          updated_at:      now,
+        }
+        if (dest)                            updParent.destination_address = dest
+        if (mission.destination_lat != null) updParent.destination_lat     = mission.destination_lat
+        if (mission.destination_lng != null) updParent.destination_lng     = mission.destination_lng
+        await supabase.from('incoming_missions').update(updParent).eq('id', parentId)
+        // Neutraliser la fiche Kaze REM (transfert du job → retirer kaze_job_id
+        // pour éviter la collision d'index unique).
+        await supabase.from('incoming_missions')
+          .update({ status: 'ignored', kaze_job_id: null, updated_at: now }).eq('id', mission_id)
+        await supabase.from('mission_logs').insert({
+          mission_id: parentId, actor_id: actor?.id || null, action: 'dispatched',
+          notes: `REM Kaze rattaché à la mission EN COURS → destination${dest ? ' · ' + dest : ''} (validé par ${actor?.name || 'dispatcher'})`,
+          metadata: { merged_from_kaze_rel: mission_id, destination_address: dest, parent_status: parentStatus },
+        }).then(() => {}, () => {})
+        await supabase.from('mission_logs').insert({
+          mission_id, actor_id: actor?.id || null, action: 'kaze_rel_merged',
+          notes: `Fusionné dans la fiche EN COURS (adresse REM → destination).`,
+          metadata: { parent_mission_id: parentId },
+        }).then(() => {}, () => {})
+        return NextResponse.json({ ok: true, merged_into: parentId, into: 'destination' })
       }
 
       if (parentId) {
