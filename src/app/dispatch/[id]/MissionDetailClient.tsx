@@ -1556,6 +1556,12 @@ export default function MissionDetailClient({
   const [parcZone,       setParcZone]         = useState<string | null>(initialMission.parc_zone_key || null)
   const [parcRow,        setParcRow]          = useState<number | null>(initialMission.parc_row_number ?? null)
   const [parcSlot,       setParcSlot]         = useState<number | null>(initialMission.parc_slot_index ?? null)
+  // Sync sur la prop après un router.refresh() (ex. bascule auto K1→K côté serveur
+  // après saisie de l'adresse de relivraison) : le state client ne se réinitialise
+  // pas seul au refresh → le badge de zone restait figé. Olivier 2026-07-14.
+  useEffect(() => { setParcZone(initialMission.parc_zone_key || null) }, [initialMission.parc_zone_key])
+  useEffect(() => { setParcRow(initialMission.parc_row_number ?? null) }, [initialMission.parc_row_number])
+  useEffect(() => { setParcSlot(initialMission.parc_slot_index ?? null) }, [initialMission.parc_slot_index])
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   // Clés (Olivier 2026-06-18) : état partagé entre le fob (bandeau parc) et les
   // contrôles (bloc au-dessus des Remarques).
