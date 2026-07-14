@@ -2033,7 +2033,9 @@ export default function MissionDetailClient({
     const norm = v === '' || v == null ? null : Number(v)
     const orig = (initialMission as any).amount_to_collect != null ? Number((initialMission as any).amount_to_collect) : null
     if (norm === orig) return
-    const t = setTimeout(() => silentPatch({ amount_to_collect: norm }), 700)
+    // Édition MANUELLE du dispatcher → flag amount_to_collect_manual : gèle
+    // l'auto-calcul SNC côté serveur. Olivier 2026-07-14.
+    const t = setTimeout(() => silentPatch({ amount_to_collect: norm, amount_to_collect_manual: true }), 700)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.amount_to_collect])

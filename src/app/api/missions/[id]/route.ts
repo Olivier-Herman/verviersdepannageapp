@@ -99,7 +99,7 @@ export async function PATCH(
   // On charge l etat actuel pour comparer (notamment la source avant change).
   const { data: before } = await supabase
     .from('incoming_missions')
-    .select('source, snc_scenario, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, snc_requires_balisage, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
+    .select('source, snc_scenario, mission_type, amount_to_collect, amount_to_collect_manual, incident_lat, incident_lng, destination_lat, destination_lng, snc_requires_balisage, intervention_date, received_at, extra_addresses, billed_to_id, billed_to_name')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -138,40 +138,59 @@ export async function PATCH(
     }
   }
 
-  // GARANTIE ENCAISSEMENT SNC : dès que le scénario devient dsp/rem_client/rem_direct
-  // sur une fiche police_snc (non couvert), on CALCULE amount_to_collect côté SERVEUR
-  // (coords déjà en base). Plus de dépendance au double appel client fragile — qui,
-  // sur une mission convertie depuis Touring (véhicule déjà chargé → contourne
-  // SncMissionFiche), ne posait jamais le montant (cas 10062195). Marche donc
-  // aussi bien pour une fiche créée que convertie. Olivier 2026-07-13.
+  // AUTO-FILL « Réclamer le paiement au client » pour un Siabis NON COUVERT
+  // (police_snc). Dès que la source est police_snc, on remplit amount_to_collect
+  // avec le montant TVAC de la fiche (tarif SNC), et on le RECALCULE à chaque
+  // changement impactant le prix (type, scénario, adresses, balisage…). Ainsi le
+  // champ est > 0 → le bandeau de paiement apparaît tout seul, y compris pour une
+  // mission convertie depuis une assistance (cas 10062195 & suivant).
+  // Exceptions :
+  //   - rem_depot (passage par le dépôt) → paiement au bureau → montant NUL.
+  //   - saisie MANUELLE du dispatcher (amount_to_collect_manual) → gèle l'auto.
+  // Olivier 2026-07-14.
   {
-    const finalSource    = ('source' in updates ? updates.source : before?.source) as string | null
-    const finalScenario  = ('snc_scenario' in updates ? updates.snc_scenario : before?.snc_scenario) as string | null
-    const isPayScenario  = ['dsp', 'rem_client', 'rem_direct'].includes(String(finalScenario || ''))
-    const amountExplicit = 'amount_to_collect' in body                    // ne pas écraser une saisie explicite
-    const scenarioTouched = 'snc_scenario' in body
+    // Le dispatcher a édité le champ à la main → override permanent.
+    if (body.amount_to_collect_manual === true) updates.amount_to_collect_manual = true
+
+    const finalSource   = ('source' in updates ? updates.source : before?.source) as string | null
+    const finalScenario = ('snc_scenario' in updates ? updates.snc_scenario : before?.snc_scenario) as string | null
+    const finalType     = ('mission_type' in updates ? updates.mission_type : before?.mission_type) as string | null
+    const lockedManual  = updates.amount_to_collect_manual === true || before?.amount_to_collect_manual === true
+
+    const PRICING_FIELDS = ['source', 'snc_scenario', 'mission_type', 'incident_lat', 'incident_lng', 'destination_lat', 'destination_lng', 'snc_requires_balisage']
+    const pricingTouched  = PRICING_FIELDS.some(f => f in updates)
     const sourceBecameSnc = 'source' in updates && updates.source === 'police_snc' && before?.source !== 'police_snc'
-    if (finalSource === 'police_snc' && isPayScenario && !amountExplicit
-        && (scenarioTouched || (sourceBecameSnc && before?.amount_to_collect == null))) {
-      try {
-        const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
-        const pick = (k: string) => (k in updates ? (updates as any)[k] : (before as any)?.[k])
-        const amt = await computeSncAmountToCollect({
-          source:                finalSource,
-          incident_lat:          pick('incident_lat'),
-          incident_lng:          pick('incident_lng'),
-          destination_lat:       pick('destination_lat'),
-          destination_lng:       pick('destination_lng'),
-          snc_requires_balisage: pick('snc_requires_balisage'),
-          intervention_date:     before?.intervention_date,
-          received_at:           before?.received_at,
-          extra_addresses:       before?.extra_addresses,
-          billed_to_id:          before?.billed_to_id,
-          billed_to_name:        before?.billed_to_name,
-        }, finalScenario as any)
-        if (amt != null && amt > 0) updates.amount_to_collect = amt
-      } catch (e: any) {
-        console.warn('[mission PATCH] calcul montant SNC KO (non bloquant):', e?.message)
+
+    if (finalSource === 'police_snc' && !lockedManual && (pricingTouched || sourceBecameSnc)) {
+      if (finalScenario === 'rem_depot') {
+        // Passage par le dépôt → pas d'encaissement immédiat (réglé au bureau).
+        updates.amount_to_collect = null
+      } else {
+        try {
+          const { computeSncAmountToCollect } = await import('@/lib/snc/amount')
+          const pick = (k: string) => (k in updates ? (updates as any)[k] : (before as any)?.[k])
+          // Scénario : réel s'il est choisi, sinon inféré du type (dépannage → dsp,
+          // sinon remorquage → rem_direct) pour pouvoir chiffrer dès la conversion.
+          const scenario = ['dsp', 'rem_client', 'rem_direct'].includes(String(finalScenario || ''))
+            ? (finalScenario as any)
+            : (['depannage', 'dsp', 'reparation_place'].includes(String(finalType || '').toLowerCase()) ? 'dsp' : 'rem_direct')
+          const amt = await computeSncAmountToCollect({
+            source:                'police_snc',
+            incident_lat:          pick('incident_lat'),
+            incident_lng:          pick('incident_lng'),
+            destination_lat:       pick('destination_lat'),
+            destination_lng:       pick('destination_lng'),
+            snc_requires_balisage: pick('snc_requires_balisage'),
+            intervention_date:     before?.intervention_date,
+            received_at:           before?.received_at,
+            extra_addresses:       before?.extra_addresses,
+            billed_to_id:          before?.billed_to_id,
+            billed_to_name:        before?.billed_to_name,
+          }, scenario)
+          if (amt != null && amt > 0) updates.amount_to_collect = amt
+        } catch (e: any) {
+          console.warn('[mission PATCH] auto-calcul montant SNC KO (non bloquant):', e?.message)
+        }
       }
     }
   }
