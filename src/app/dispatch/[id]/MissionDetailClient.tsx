@@ -4142,6 +4142,11 @@ export default function MissionDetailClient({
                 </div>
               )}
 
+              {/* ── Dupliquer la mission (superadmin uniquement) ────────────── */}
+              {userRole === 'superadmin' && (
+                <DuplicateMissionButton missionId={initialMission.id} />
+              )}
+
               {/* ── Suivi chauffeur (P6) ─────────────────────────────── */}
               {['assigned', 'accepted', 'in_progress', 'completed'].includes(status) && (
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
@@ -4564,6 +4569,38 @@ function VehicleOcrFillButton({ missionId, onFilled, canBypass = false }: {
         {busy ? '⏳ Lecture des photos…' : '🔍 Extraire VIN / plaque des photos'}
       </button>
       {msg && <p className="text-ink-muted text-xs mt-1.5">{msg}</p>}
+    </div>
+  )
+}
+
+// Bouton superadmin : duplique la mission (nouvelle fiche, cycle de vie remis à
+// zéro) puis ouvre la copie. Olivier 2026-07-14.
+function DuplicateMissionButton({ missionId }: { missionId: string }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    if (busy) return
+    if (!confirm('Dupliquer cette mission ? Une nouvelle fiche sera créée (contenu copié, statut/pointages/paiement remis à zéro).')) return
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/duplicate`, { method: 'POST' })
+      const j = await r.json()
+      if (!r.ok) { alert(j.error || 'Duplication impossible'); return }
+      router.push(`/dispatch/${j.id}`)
+    } catch (e: any) { alert('Erreur : ' + (e?.message || e)) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="bg-surface border border-purple-500/30 rounded-2xl p-5 md-card-enter">
+      <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">🧬 Superadmin</h3>
+      <button type="button" onClick={run} disabled={busy}
+        className="w-full flex items-center gap-3 px-4 py-3 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl text-left transition disabled:opacity-50">
+        <span className="text-xl flex-shrink-0">🧬</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-purple-400 text-sm font-semibold">{busy ? 'Duplication…' : 'Dupliquer la mission'}</p>
+          <p className="text-ink-muted text-xs">Crée une nouvelle fiche identique (statut/pointages/paiement remis à zéro)</p>
+        </div>
+      </button>
     </div>
   )
 }
