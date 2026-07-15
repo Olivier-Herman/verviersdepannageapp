@@ -8,6 +8,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
+import { isVhuSource }       from '@/lib/missions/vhu'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,11 +110,14 @@ export async function POST(req: Request) {
     : nowIso
   const isFutureRdv = new Date(interventionIso).getTime() > Date.now() + 30 * 60 * 1000
 
+  // VHU « Car Parts & Recycling » : pas de validation nécessaire → créée
+  // directement en 'dispatching' (arrive dans l'onglet VHU, prête à assigner).
+  const vhu = isVhuSource(partner.source_key)
   const { data: m, error } = await sb.from('incoming_missions').insert({
     external_id:             externalId,
     source:                  partner.source_key,  // ex: 'garage_abc123' (canonique catalog)
     mission_type:            type === 'DSP' ? 'depannage' : 'remorquage',
-    status:                  'new',
+    status:                  vhu ? 'dispatching' : 'new',
     vehicle_plate:           plate,
     vehicle_brand:           body.vehicle_brand || null,
     vehicle_model:           body.vehicle_model || null,

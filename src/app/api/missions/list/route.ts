@@ -4,6 +4,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { VHU_SOURCE }        from '@/lib/missions/vhu'
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -65,9 +66,6 @@ export async function GET(req: Request) {
 
   // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.
   const RDV_THRESHOLD = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
-  // Source VHU « Car Parts & Recycling » : onglet dédié, retirée de En attente + RDV.
-  // Olivier 2026-07-15.
-  const VHU_SOURCE = 'garage_j7772c'
 
   if (mapMode) {
     // Vue carte : missions actives à partir de "En attente" (les "En commande"
@@ -75,7 +73,7 @@ export async function GET(req: Request) {
     // fiche — donc affichage carte non pertinent à ce stade).
     query = query.in('status', ['dispatching', 'assigned', 'accepted', 'in_progress', 'parked', 'delivering'])
   } else if (status === 'new') {
-    query = query.eq('status', 'new')
+    query = query.eq('status', 'new').neq('source', VHU_SOURCE)   // VHU → onglet dédié
   } else if (status === 'dispatching') {
     // Olivier 2026-07-03/05 : l'onglet « En attente » regroupe les commandes à
     // valider (new) ET les missions validées en attente d'assignation (dispatching).
@@ -312,7 +310,7 @@ export async function GET(req: Request) {
   // 'new' compte TOUTES les commandes (y compris futures, restées en « En commande »).
   const exclFuture = (q: any) => q.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
   const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors, cRdv, cVhu] = await Promise.all([
-    countBy(q => q.eq('status', 'new')),
+    countBy(q => q.eq('status', 'new').neq('source', VHU_SOURCE)),
     countBy(q => exclFuture(q.eq('status', 'dispatching')).neq('source', VHU_SOURCE)),
     countBy(q => exclFuture(q.in('status', ['assigned', 'accepted']))),
     countBy(q => exclFuture(q.in('status', ['in_progress', 'delivering']))),
