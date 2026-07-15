@@ -45,7 +45,16 @@ export async function GET() {
   if (!partnerId) return NextResponse.json({ missions: [] })
 
   const sb = createAdminClient()
-  const { data, error } = await sb
+
+  // Olivier 2026-07-15 : le garage voit TOUTES les interventions de SA source
+  // (pas seulement ses propres demandes). Filtre par la source attribuée au
+  // partner (source_key), + repli sur requested_by_garage_id pour les fiches
+  // sans source dédiée.
+  const { data: partner } = await sb
+    .from('garage_partners').select('source_key').eq('id', partnerId).maybeSingle()
+  const sourceKey = (partner?.source_key || '').trim()
+
+  let q = sb
     .from('incoming_missions')
     .select(`
       id, mission_number, status, mission_type,
@@ -54,9 +63,13 @@ export async function GET() {
       received_at, accepted_at, completed_at,
       remarks_general
     `)
-    .eq('requested_by_garage_id', partnerId)
     .order('received_at', { ascending: false })
-    .limit(100)
+    .limit(200)
+  q = sourceKey
+    ? q.or(`source.eq.${sourceKey},requested_by_garage_id.eq.${partnerId}`)
+    : q.eq('requested_by_garage_id', partnerId)
+
+  const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ missions: data || [], partner_id: partnerId })
@@ -122,6 +135,8 @@ export async function POST(req: Request) {
     vehicle_brand:           body.vehicle_brand || null,
     vehicle_model:           body.vehicle_model || null,
     incident_address:        address,
+    incident_lat:            body.incident_lat != null && Number.isFinite(Number(body.incident_lat)) ? Number(body.incident_lat) : null,
+    incident_lng:            body.incident_lng != null && Number.isFinite(Number(body.incident_lng)) ? Number(body.incident_lng) : null,
     client_name:             partner.name,
     client_phone:            body.contact_phone || null,
     billed_to_id:            partner.odoo_partner_id || null,

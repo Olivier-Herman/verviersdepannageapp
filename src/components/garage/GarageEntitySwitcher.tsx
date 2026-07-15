@@ -44,7 +44,11 @@ export function GarageEntitySwitcher({ onSwitch }: Props) {
       })
       setCurrent(p)
       setOpen(false)
-      onSwitch?.()
+      // Le switch d'entité change TOUT le contexte (missions filtrées par source).
+      // Sans re-fetch, la liste restait sur l'ancienne entité → l'utilisateur devait
+      // rafraîchir. On recharge (sauf si le parent gère lui-même). Olivier 2026-07-15.
+      if (onSwitch) onSwitch()
+      else window.location.reload()
     } finally { setBusy(false) }
   }
 

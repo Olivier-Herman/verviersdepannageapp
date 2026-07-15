@@ -3,6 +3,9 @@
 import { useState }  from 'react'
 import { useRouter } from 'next/navigation'
 import Link          from 'next/link'
+import AddressField  from '@/components/AddressField'
+
+const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
 
 // Date/heure locale (navigateur) au format d'un input datetime-local.
 function nowLocalInput(): string {
@@ -18,6 +21,8 @@ export default function GarageDemandePage() {
   const [brand, setBrand]               = useState('')
   const [model, setModel]               = useState('')
   const [address, setAddress]           = useState('')
+  const [addrLat, setAddrLat]           = useState<number | null>(null)
+  const [addrLng, setAddrLng]           = useState<number | null>(null)
   const [contactPhone, setContactPhone] = useState('')
   const [remarks, setRemarks]           = useState('')
   const [rdv, setRdv]                   = useState(nowLocalInput())   // défaut : maintenant, modifiable
@@ -36,6 +41,8 @@ export default function GarageDemandePage() {
           vehicle_brand:    brand,
           vehicle_model:    model,
           incident_address: address,
+          incident_lat:     addrLat,
+          incident_lng:     addrLng,
           contact_phone:    contactPhone,
           remarks,
           // Date/heure d'intervention souhaitée (défaut = maintenant). ISO UTC.
@@ -111,7 +118,11 @@ export default function GarageDemandePage() {
 
         <div>
           <label className="block text-gray-700 text-sm font-semibold mb-1.5">Adresse d&apos;intervention *</label>
-          <input type="text" value={address} onChange={e => setAddress(e.target.value)}
+          <AddressField
+            value={address}
+            onChange={v => { setAddress(v); setAddrLat(null); setAddrLng(null) }}
+            onSelect={(addr, lat, lng) => { setAddress(addr); setAddrLat(lat); setAddrLng(lng) }}
+            gmKey={GM_KEY}
             placeholder="Rue, code postal, ville"
             className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
         </div>
