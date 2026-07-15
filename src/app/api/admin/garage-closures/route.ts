@@ -14,12 +14,14 @@ import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+// « Garage Info » : gérable par tous les internes SAUF chauffeurs et garages
+// externes. Olivier 2026-07-15.
 async function requireAdmin() {
   const session = await getServerSession(authOptions)
   if (!session) return null
   const u = session.user as any
-  const roles: string[] = [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean)
-  return roles.some(r => ['admin', 'superadmin'].includes(r)) ? createAdminClient() : null
+  if (u.role === 'driver' || u.role === 'garage') return null
+  return createAdminClient()
 }
 
 const FIELDS = ['name', 'match_keywords', 'date_from', 'date_to', 'message', 'active']

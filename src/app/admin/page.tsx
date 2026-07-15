@@ -125,8 +125,6 @@ export default async function AdminPage() {
           desc="Users avec rôle garage. Création + liaison avec 1+ garages partenaires. Envoi email de bienvenue avec magic link." />
         <Card href="/admin/garage-cancellations" icon={AlertTriangle} label="Annulations garage"
           desc="Demandes d'annulation des garages après acceptation. Choix : annulation totale (sans frais), facturation DPR, ou refus." />
-        <Card href="/admin/garage-closures" icon={AlertTriangle} label="Fermetures de garage"
-          desc="Alertes temporaires (congés, travaux…) : quand une destination/relivraison matche les mots-clés, un bandeau s'affiche sur les fiches dispatch + chauffeur pendant la période." />
         <Card href="/admin/users" icon={Users} label="Utilisateurs"
           desc="Dispatchers, chauffeurs, admins. Rôles, planning, priorité."
           count={usersActive} />

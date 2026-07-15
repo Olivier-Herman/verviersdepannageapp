@@ -1,5 +1,5 @@
 'use client'
-// src/app/admin/garage-closures/GarageClosuresClient.tsx
+// src/app/admin/garage-closures/GarageInfoClient.tsx
 // CRUD des fermetures de garage : quand une adresse de destination/relivraison
 // contient les mots-clés, un bandeau s'affiche sur les fiches (dispatch + chauffeur)
 // pendant la période. Olivier 2026-07-15.
@@ -21,7 +21,7 @@ interface Props { userRole: string; userName: string; userEmail?: string | null;
 
 const EMPTY: Closure = { name: '', match_keywords: '', date_from: '', date_to: '', message: '', active: true }
 
-export default function GarageClosuresClient({ userRole, userName, userEmail, userModules }: Props) {
+export default function GarageInfoClient({ userRole, userName, userEmail, userModules }: Props) {
   const [items, setItems]     = useState<Closure[]>([])
   const [loading, setLoading] = useState(true)
   const [draft, setDraft]     = useState<Closure>(EMPTY)
@@ -63,7 +63,7 @@ export default function GarageClosuresClient({ userRole, userName, userEmail, us
   const inputCls = 'bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand w-full'
 
   return (
-    <AppShell title="Fermetures de garage" backHref="/admin" userRole={userRole} userName={userName} userEmail={userEmail ?? undefined} userModules={userModules}>
+    <AppShell title="Garage Info" backHref="/dashboard" userRole={userRole} userName={userName} userEmail={userEmail ?? undefined} userModules={userModules}>
       <div className="px-4 lg:px-8 py-5 max-w-4xl mx-auto space-y-6">
         <p className="text-ink-muted text-sm">
           Quand l'adresse de destination ou de relivraison contient <strong>tous</strong> les mots-clés,

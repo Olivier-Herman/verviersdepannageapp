@@ -13,7 +13,7 @@ export interface NavItem {
   i18nKey?: string             // Cle dans le dictionnaire i18n (cf src/lib/i18n/dictionaries) pour affichage bilingue en mode sq
   icon:     string
   moduleId: string | null
-  role?:    'dispatcher_or_admin' | 'superadmin'
+  role?:    'dispatcher_or_admin' | 'superadmin' | 'non_driver'
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -38,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/francofolies',  label: 'Francofolies',     icon: '🎪', moduleId: 'francofolies' },
   { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: 'check_vehicle' },
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
+  { href: '/garage-info',   label: 'Garage Info',      icon: 'ℹ️', moduleId: null, role: 'non_driver' },
   { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
   { href: '/aide',          label: 'Aide',             i18nKey: 'nav.help',          icon: '📖', moduleId: null },
   { href: '/assistant',     label: 'Assistant IA',     icon: '🤖', moduleId: null, role: 'superadmin' },
@@ -67,6 +68,7 @@ export function filterNavItems(opts: {
   const visible = NAV_ITEMS.filter(item => {
     if (item.role === 'superadmin')          return isSuperadmin
     if (item.role === 'dispatcher_or_admin') return isDispatcher
+    if (item.role === 'non_driver')          return userRole !== 'driver' && userRole !== 'garage'
     if (item.moduleId === null) return true
     if (item.moduleId === 'admin') return isAdmin
     if (item.moduleId === 'finance') {
