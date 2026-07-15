@@ -33,6 +33,7 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/garage-partners',  label: 'Garages',          icon: Users },
       { href: '/admin/garage-users',     label: 'Comptes garages',  icon: Users },
       { href: '/admin/garage-cancellations', label: 'Annulations garage', icon: ShieldCheck },
+      { href: '/admin/garage-closures',  label: 'Fermetures garage', icon: ShieldCheck },
       { href: '/admin/users',            label: 'Utilisateurs',     icon: Users },
       { href: '/admin/vr-locations',     label: 'Lieux VR',         icon: Car },
     ],

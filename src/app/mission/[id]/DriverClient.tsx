@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
-import { garageClosureNotice } from '@/lib/garage-closures'
+import { useGarageClosure } from '@/lib/useGarageClosures'
 import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
@@ -605,6 +605,8 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   // meme si on venait de 'close'.
   const [photosFrom, setPhotosFrom] = useState<Screen>('main')
   const goPhotos = (from: Screen = 'main') => { setPhotosFrom(from); setScreen('photos') }
+  // Alertes fermeture garage (règles dynamiques depuis /admin/garage-closures).
+  const garageNotice = useGarageClosure()
   const [loading, setLoading]   = useState(false)
   const [err, setErr]           = useState('')
   const [navApp, setNavApp]     = useState<NavApp>(initNav || 'gmaps')
@@ -3381,7 +3383,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
         {/* Alerte garage fermé temporaire (redirection repreneur). */}
         {(() => {
-          const notice = garageClosureNotice(M.destination_address) || garageClosureNotice(M.redelivery_address)
+          const notice = garageNotice(M.destination_address) || garageNotice(M.redelivery_address)
           return notice ? (
             <div className="w-full px-3 py-2.5 bg-red-500/15 border border-red-500/50 rounded-2xl text-red-700 dark:text-red-300 text-xs font-semibold flex items-start gap-2">
               <span className="text-base leading-none">🔒</span><span>{notice}</span>

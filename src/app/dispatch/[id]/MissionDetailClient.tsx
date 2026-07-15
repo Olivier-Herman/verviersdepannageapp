@@ -37,7 +37,7 @@ import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
-import { garageClosureNotice } from '@/lib/garage-closures'
+import { useGarageClosure } from '@/lib/useGarageClosures'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1495,6 +1495,8 @@ export default function MissionDetailClient({
   const [incidentInfo, setIncidentInfo]       = useState<string>((initialMission as any).incident_info || '')
   const [destinationInfo, setDestinationInfo] = useState<string>((initialMission as any).destination_info || '')
   const [redeliveryInfo, setRedeliveryInfo]   = useState<string>((initialMission as any).redelivery_info || '')
+  // Alertes fermeture garage (règles dynamiques depuis /admin/garage-closures).
+  const garageNotice = useGarageClosure()
   // Date de réouverture d'un garage fermé (saisie chauffeur ou dispatch).
   const [garageReopen, setGarageReopen]       = useState<string>((initialMission as any).garage_reopen_date || '')
   useEffect(() => { setGarageReopen((initialMission as any).garage_reopen_date || '') }, [(initialMission as any).garage_reopen_date])
@@ -3337,7 +3339,7 @@ export default function MissionDetailClient({
                   <span>📍</span> {noDestination ? 'Lieu d\'intervention' : 'Lieu d\'intervention / Destination'}
                 </h2>
                 {(() => {
-                  const notice = garageClosureNotice(form.destination_address) || garageClosureNotice((initialMission as any).redelivery_address)
+                  const notice = garageNotice(form.destination_address) || garageNotice((initialMission as any).redelivery_address)
                   return notice ? (
                     <div className="mb-4 px-3 py-2.5 bg-red-500/15 border border-red-500/50 rounded-xl text-red-700 dark:text-red-300 text-xs font-semibold flex items-start gap-2">
                       <span className="text-base leading-none">🔒</span><span>{notice}</span>
