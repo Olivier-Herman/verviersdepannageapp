@@ -65,6 +65,9 @@ export async function GET(req: Request) {
 
   // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.
   const RDV_THRESHOLD = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+  // Source VHU « Car Parts & Recycling » : onglet dédié, retirée de En attente + RDV.
+  // Olivier 2026-07-15.
+  const VHU_SOURCE = 'garage_j7772c'
 
   if (mapMode) {
     // Vue carte : missions actives à partir de "En attente" (les "En commande"
@@ -83,6 +86,11 @@ export async function GET(req: Request) {
     //   dans l'onglet RDV). Filtre appliqué INLINE ici (et 'dispatching' retiré de
     //   DAY_TABS plus bas) pour ne PAS filtrer les 'new' futures.
     query = query.or(`status.eq.new,and(status.eq.dispatching,or(intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}))`)
+      .neq('source', VHU_SOURCE)   // VHU → onglet dédié, pas dans « En attente »
+  } else if (status === 'vhu') {
+    // Onglet VHU : missions Car Parts & Recycling en attente de dispatch (new +
+    // dispatching, jour ET futures), regroupées ici (retirées de En attente + RDV).
+    query = query.eq('source', VHU_SOURCE).in('status', ['new', 'dispatching'])
   } else if (status === 'assigned') {
     query = query.in('status', ['assigned', 'accepted'])
   } else if (status === 'in_progress') {
@@ -107,6 +115,7 @@ export async function GET(req: Request) {
     // (avec sa date de RDV) jusqu'à ce que le dispatch la valide.
     query = query.gt('intervention_date', RDV_THRESHOLD)
       .not('status', 'in', '("new","completed","to_invoice","cancelled","ignored","parse_error")')
+      .neq('source', VHU_SOURCE)   // VHU → onglet dédié, pas dans « RDV »
   } else if (status === 'all') {
     query = query.not('status', 'in', '("parse_error","ignored")')
   }
@@ -302,14 +311,15 @@ export async function GET(req: Request) {
   // Onglets du jour (hors 'new') : excluent les missions validées planifiées à +12h.
   // 'new' compte TOUTES les commandes (y compris futures, restées en « En commande »).
   const exclFuture = (q: any) => q.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
-  const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors, cRdv] = await Promise.all([
+  const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors, cRdv, cVhu] = await Promise.all([
     countBy(q => q.eq('status', 'new')),
-    countBy(q => exclFuture(q.eq('status', 'dispatching'))),
+    countBy(q => exclFuture(q.eq('status', 'dispatching')).neq('source', VHU_SOURCE)),
     countBy(q => exclFuture(q.in('status', ['assigned', 'accepted']))),
     countBy(q => exclFuture(q.in('status', ['in_progress', 'delivering']))),
     countBy(q => q.in('status', ['completed', 'to_invoice'])),
     countBy(q => q.eq('status', 'parse_error')),
-    countBy(q => q.gt('intervention_date', RDV_THRESHOLD).not('status', 'in', '("new","completed","to_invoice","cancelled","ignored","parse_error")')),
+    countBy(q => q.gt('intervention_date', RDV_THRESHOLD).not('status', 'in', '("new","completed","to_invoice","cancelled","ignored","parse_error")').neq('source', VHU_SOURCE)),
+    countBy(q => q.eq('source', VHU_SOURCE).in('status', ['new', 'dispatching'])),
   ])
 
   const counters = {
@@ -321,6 +331,7 @@ export async function GET(req: Request) {
     completed:   cCompleted.count || 0,
     rdv:         cRdv.count       || 0,
     errors:      cErrors.count    || 0,
+    vhu:         cVhu.count       || 0,
   }
 
   // Compteurs par sous-parc de relivraison (hint du toggle K / K1 de l'onglet À

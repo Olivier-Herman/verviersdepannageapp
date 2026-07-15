@@ -109,6 +109,7 @@ interface Counters {
   completed: number
   rdv: number
   errors: number
+  vhu: number
 }
 
 type ViewMode = 'list' | 'card' | 'map'
@@ -166,6 +167,7 @@ function RollableMini({ v }: { v: boolean | null | undefined }) {
 const TABS = [
   { key: 'new',         label: 'En commande', countKey: 'new'         as const },
   { key: 'dispatching', label: 'En attente',  countKey: 'dispatching' as const },
+  { key: 'vhu',         label: '♻️ VHU',      countKey: 'vhu'         as const },
   { key: 'rdv',         label: '📅 RDV',      countKey: 'rdv'         as const },
   { key: 'assigned',    label: 'Assignées',   countKey: 'assigned'    as const },
   { key: 'in_progress', label: 'En cours',    countKey: 'in_progress' as const },
@@ -904,7 +906,7 @@ export default function DispatchClient({
   const onModalChange = useCallback((open: boolean) => {
     setModalOpenCount(c => Math.max(0, c + (open ? 1 : -1)))
   }, [])
-  const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0 })
+  const [counters,       setCounters]       = useState<Counters>({ new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0, vhu: 0 })
   const [loading,        setLoading]        = useState(true)
   // Indicateur subtil "mise a jour temps reel" affiche pendant les
   // refresh silencieux (realtime + polling). Olivier 2026-05-28.
@@ -1028,7 +1030,7 @@ export default function DispatchClient({
       if (stale) return
 
       setMissions(mData.missions  || [])
-      setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0 })
+      setCounters(mData.counters  || { new: 0, dispatching: 0, assigned: 0, in_progress: 0, parked: 0, completed: 0, rdv: 0, errors: 0, vhu: 0 })
       if (mData.relZoneCounts) setRelZoneCounts(mData.relZoneCounts)
       setDriverStatuses(sData.drivers || [])
       if (responses[2]) {
