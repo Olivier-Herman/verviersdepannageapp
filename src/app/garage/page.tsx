@@ -100,8 +100,8 @@ function MissionCard({ m }: { m: Mission }) {
   const cfg = STATUS_LABEL[m.status] || { label: m.status, color: 'bg-gray-100 text-gray-700' }
   const hasDocs = !!(m.invoice || m.credit_note)
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-red-300 hover:shadow-sm transition">
-      <Link href={`/garage/mission/${m.id}`} className="block p-4">
+    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div className="p-4">
         <div className="flex items-start justify-between gap-3 mb-1">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -125,7 +125,7 @@ function MissionCard({ m }: { m: Mission }) {
           Reçue le {fmtDate(m.received_at)}
           {m.mission_number && <span className="ml-2 text-gray-300 font-mono">#{m.mission_number}</span>}
         </p>
-      </Link>
+      </div>
 
       {hasDocs && (
         <div className="flex flex-wrap gap-2 px-4 pb-3 pt-3 border-t border-gray-100">
