@@ -6,6 +6,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
+import { sendGarageActivationConfirmedEmail } from '@/lib/emails-garage'
 import bcrypt                from 'bcryptjs'
 
 export const dynamic = 'force-dynamic'
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
   const sb = createAdminClient()
   // Verif must_change_password (ne permet pas de set initial sans raison legitime)
   const { data: u } = await sb.from('users')
-    .select('id, role, must_change_password')
+    .select('id, role, must_change_password, email, name')
     .eq('id', userId)
     .maybeSingle()
   if (!u || u.role !== 'garage') {
@@ -46,6 +47,21 @@ export async function POST(req: Request) {
     .update({ password_hash: hash, must_change_password: false })
     .eq('id', userId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Confirmation d'activation : lien de connexion directe + mode d'emploi rapide.
+  // Best-effort — ne bloque pas l'activation si l'email échoue.
+  if (u.email) {
+    try {
+      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com').replace(/\/+$/, '')
+      await sendGarageActivationConfirmedEmail({
+        userEmail: u.email,
+        userName:  u.name || u.email,
+        loginUrl:  `${baseUrl}/garage`,
+      })
+    } catch (e: any) {
+      console.error('[garage/set-initial-password] email confirmation KO (non bloquant):', e?.message)
+    }
+  }
 
   return NextResponse.json({ ok: true })
 }
