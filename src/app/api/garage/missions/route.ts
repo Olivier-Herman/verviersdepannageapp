@@ -9,8 +9,10 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
 import { isVhuSource }       from '@/lib/missions/vhu'
+import { resolveMissionDocsBatch } from '@/lib/garage/mission-documents'
 
-export const dynamic = 'force-dynamic'
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 20
 
 async function getCurrentPartnerId(userId: string): Promise<string | null> {
   const sb = createAdminClient()
@@ -61,7 +63,8 @@ export async function GET() {
       vehicle_plate, vehicle_brand, vehicle_model,
       incident_address, incident_city,
       received_at, accepted_at, completed_at,
-      remarks_general
+      remarks_general,
+      requested_by_user_id, odoo_quote_id, invoice_odoo_id, invoice_number
     `)
     .order('received_at', { ascending: false })
     .limit(200)
@@ -72,7 +75,35 @@ export async function GET() {
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ missions: data || [], partner_id: partnerId })
+  const missions = data || []
+
+  // « Commandé par » : nom du user garage à l'origine de la demande (si connu).
+  const userIds = [...new Set(missions.map((m: any) => m.requested_by_user_id).filter(Boolean))]
+  const nameById = new Map<string, string>()
+  if (userIds.length) {
+    const { data: users } = await sb.from('users').select('id, name').in('id', userIds)
+    for (const u of (users || [])) nameById.set(u.id, u.name || '')
+  }
+
+  // Facture + note de crédit Odoo (résolues via la clé API partagée, best-effort).
+  const billable = missions.filter((m: any) => m.odoo_quote_id || m.invoice_odoo_id)
+  const docsById = billable.length ? await resolveMissionDocsBatch(billable) : new Map()
+
+  const out = missions.map((m: any) => {
+    const docs = docsById.get(m.id)
+    return {
+      id: m.id, mission_number: m.mission_number, status: m.status, mission_type: m.mission_type,
+      vehicle_plate: m.vehicle_plate, vehicle_brand: m.vehicle_brand, vehicle_model: m.vehicle_model,
+      incident_address: m.incident_address, incident_city: m.incident_city,
+      received_at: m.received_at, accepted_at: m.accepted_at, completed_at: m.completed_at,
+      remarks_general: m.remarks_general,
+      commanded_by: (m.requested_by_user_id && nameById.get(m.requested_by_user_id)) || null,
+      invoice:      docs?.invoice     ? { number: docs.invoice.number }     : null,
+      credit_note:  docs?.creditNote  ? { number: docs.creditNote.number }  : null,
+    }
+  })
+
+  return NextResponse.json({ missions: out, partner_id: partnerId })
 }
 
 /**
@@ -144,6 +175,7 @@ export async function POST(req: Request) {
     amount_to_collect:       null,  // pas d encaissement chauffeur
     remarks_general:         body.remarks || null,
     requested_by_garage_id:  partnerId,
+    requested_by_user_id:    userId,  // « Commandé par » côté espace garage
     photos_visible_to_garage:false,  // dispatch decide d activer
     received_at:             nowIso,
     intervention_date:       interventionIso,

@@ -17,6 +17,9 @@ interface Mission {
   accepted_at:       string | null
   completed_at:      string | null
   remarks_general:   string | null
+  commanded_by:      string | null
+  invoice:           { number: string | null } | null
+  credit_note:       { number: string | null } | null
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -95,29 +98,51 @@ export default function GarageDashboardPage() {
 
 function MissionCard({ m }: { m: Mission }) {
   const cfg = STATUS_LABEL[m.status] || { label: m.status, color: 'bg-gray-100 text-gray-700' }
+  const hasDocs = !!(m.invoice || m.credit_note)
   return (
-    <Link href={`/garage/mission/${m.id}`}
-      className="block bg-white border border-gray-200 rounded-2xl p-4 hover:border-red-300 hover:shadow-sm transition">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>
-            {m.mission_type === 'depannage'  && <span className="text-xs text-gray-500 font-semibold">🔧 DSP</span>}
-            {m.mission_type === 'remorquage' && <span className="text-xs text-gray-500 font-semibold">🚛 REM</span>}
+    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-red-300 hover:shadow-sm transition">
+      <Link href={`/garage/mission/${m.id}`} className="block p-4">
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>
+              {m.mission_type === 'depannage'  && <span className="text-xs text-gray-500 font-semibold">🔧 DSP</span>}
+              {m.mission_type === 'remorquage' && <span className="text-xs text-gray-500 font-semibold">🚛 REM</span>}
+            </div>
+            <p className="text-gray-900 font-bold">
+              {m.vehicle_plate && <span className="font-mono">{m.vehicle_plate}</span>}
+              {(m.vehicle_brand || m.vehicle_model) && <span className="text-gray-600 font-normal"> · {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>}
+            </p>
+            {m.incident_address && (
+              <p className="text-gray-500 text-sm mt-0.5 truncate">📍 {m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
+            )}
+            {m.commanded_by && (
+              <p className="text-gray-500 text-sm mt-0.5">👤 Commandé par&nbsp;: <span className="text-gray-700 font-medium">{m.commanded_by}</span></p>
+            )}
           </div>
-          <p className="text-gray-900 font-bold">
-            {m.vehicle_plate && <span className="font-mono">{m.vehicle_plate}</span>}
-            {(m.vehicle_brand || m.vehicle_model) && <span className="text-gray-600 font-normal"> · {[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')}</span>}
-          </p>
-          {m.incident_address && (
-            <p className="text-gray-500 text-sm mt-0.5 truncate">📍 {m.incident_address}{m.incident_city ? `, ${m.incident_city}` : ''}</p>
+        </div>
+        <p className="text-gray-400 text-xs">
+          Reçue le {fmtDate(m.received_at)}
+          {m.mission_number && <span className="ml-2 text-gray-300 font-mono">#{m.mission_number}</span>}
+        </p>
+      </Link>
+
+      {hasDocs && (
+        <div className="flex flex-wrap gap-2 px-4 pb-3 pt-3 border-t border-gray-100">
+          {m.invoice && (
+            <a href={`/api/garage/missions/${m.id}/document-pdf?type=invoice`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2.5 py-1.5 transition">
+              📄 Facture{m.invoice.number ? ` ${m.invoice.number}` : ''}
+            </a>
+          )}
+          {m.credit_note && (
+            <a href={`/api/garage/missions/${m.id}/document-pdf?type=credit_note`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1.5 transition">
+              📄 Note de crédit{m.credit_note.number ? ` ${m.credit_note.number}` : ''}
+            </a>
           )}
         </div>
-      </div>
-      <p className="text-gray-400 text-xs">
-        Reçue le {fmtDate(m.received_at)}
-        {m.mission_number && <span className="ml-2 text-gray-300 font-mono">#{m.mission_number}</span>}
-      </p>
-    </Link>
+      )}
+    </div>
   )
 }
