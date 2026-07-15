@@ -3341,7 +3341,7 @@ export default function MissionDetailClient({
                 {(() => {
                   const notice = garageNotice(form.destination_address) || garageNotice((initialMission as any).redelivery_address)
                   return notice ? (
-                    <div className="mb-4 px-3 py-2.5 bg-red-500/15 border border-red-500/50 rounded-xl text-red-700 dark:text-red-300 text-xs font-semibold flex items-start gap-2">
+                    <div className="vd-blink mb-4 px-3 py-2.5 bg-red-500/20 border border-red-500/60 rounded-xl text-red-700 dark:text-red-300 text-xs font-semibold flex items-start gap-2">
                       <span className="text-base leading-none">🔒</span><span>{notice}</span>
                     </div>
                   ) : null

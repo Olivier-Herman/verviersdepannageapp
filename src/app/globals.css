@@ -167,6 +167,12 @@ body {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%      { opacity: 0.6; transform: scale(0.92); }
 }
+/* Clignotement d'alerte (ex. bandeau garage fermé). Olivier 2026-07-15. */
+@keyframes vd-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.vd-blink { animation: vd-blink 0.9s ease-in-out infinite; }
 .ambient-fade-up { animation: ambient-fade-up 320ms ease-out both; }
 .ambient-pulse   { animation: ambient-pulse-glow 2s ease-in-out infinite; }
 .ambient-sparkle { animation: ambient-sparkle 1.6s ease-in-out infinite; }
