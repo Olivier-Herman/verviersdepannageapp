@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
+import { garageClosureNotice } from '@/lib/garage-closures'
 import AmbientBackground from '@/components/AmbientBackground'
 import { DISCHARGE_TYPES, getDischarge as getDischargeFallback, type DischargeEntry, type DischargeType } from '@/lib/decharges'
 import DamageSchemaPad, { type DamageSchemaUrls } from '@/components/decharges/DamageSchemaPad'
@@ -3377,6 +3378,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
             </div>{/* end scrollable stops */}
           </div>
         )}
+
+        {/* Alerte garage fermé temporaire (redirection repreneur). */}
+        {(() => {
+          const notice = garageClosureNotice(M.destination_address) || garageClosureNotice(M.redelivery_address)
+          return notice ? (
+            <div className="w-full px-3 py-2.5 bg-red-500/15 border border-red-500/50 rounded-2xl text-red-700 dark:text-red-300 text-xs font-semibold flex items-start gap-2">
+              <span className="text-base leading-none">🔒</span><span>{notice}</span>
+            </div>
+          ) : null
+        })()}
 
         {/* Destination — accès direct Naviguer / Modifier dès que le chauffeur
             est au minimum sur place (Olivier 2026-07-09). Avant : la destination

@@ -37,6 +37,7 @@ import AppShell from '@/components/layout/AppShell'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
 import { getMissionTypeLabel } from '@/lib/missions/mission-types'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
+import { garageClosureNotice } from '@/lib/garage-closures'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -3335,6 +3336,14 @@ export default function MissionDetailClient({
                 <h2 className="text-ink font-semibold text-sm mb-4 flex items-center gap-2">
                   <span>📍</span> {noDestination ? 'Lieu d\'intervention' : 'Lieu d\'intervention / Destination'}
                 </h2>
+                {(() => {
+                  const notice = garageClosureNotice(form.destination_address) || garageClosureNotice((initialMission as any).redelivery_address)
+                  return notice ? (
+                    <div className="mb-4 px-3 py-2.5 bg-red-500/15 border border-red-500/50 rounded-xl text-red-700 dark:text-red-300 text-xs font-semibold flex items-start gap-2">
+                      <span className="text-base leading-none">🔒</span><span>{notice}</span>
+                    </div>
+                  ) : null
+                })()}
                 <div className={noDestination ? '' : 'grid grid-cols-2 gap-6'}>
                   <div className="space-y-3">
                     {!noDestination && <p className="text-ink-muted text-xs font-medium uppercase tracking-wide">Lieu d'incident</p>}
