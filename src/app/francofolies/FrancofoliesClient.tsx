@@ -751,6 +751,11 @@ export default function FrancofoliesClient({
       label === 'Payé'      ? 'bg-emerald-100 text-emerald-800'
       : label === 'Pas payé' ? 'bg-red-100 text-red-800'
       :                        'bg-gray-100 text-gray-700'   // Sans frais
+    const PAY_MODE_LABEL: Record<string, string> = {
+      cash: '💵 Espèces', bancontact: '💳 Bancontact', sumup: '📲 Sumup',
+      qr_transfer: '📷 QR virement', unpaid: 'À facturer',
+    }
+    const payModeLabel = (m: string | null) => (m && PAY_MODE_LABEL[m]) || (m || '')
     return shell(
       <main className="p-4 max-w-6xl mx-auto space-y-4">
         <button onClick={() => setScreen('home')} className="text-ink-muted text-sm">← Accueil</button>
@@ -824,6 +829,7 @@ export default function FrancofoliesClient({
                   <th className="px-3 py-2 whitespace-nowrap">N° TVA</th>
                   <th className="px-3 py-2 whitespace-nowrap text-right">Montant</th>
                   <th className="px-3 py-2 whitespace-nowrap">Paiement</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Mode</th>
                 </tr>
               </thead>
               <tbody>
@@ -846,9 +852,12 @@ export default function FrancofoliesClient({
                       {v.gardiennage_days > 0 && <span className="block text-ink-faint text-[10px] font-normal">dont {v.gardiennage_days}j gard.</span>}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${payBadge(v.payment_label)}`} title={v.payment_method || ''}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${payBadge(v.payment_label)}`}>
                         {v.payment_label}
                       </span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
+                      {v.payment_label === 'Sans frais' ? '—' : (payModeLabel(v.payment_method) || '—')}
                     </td>
                   </tr>
                 ))}

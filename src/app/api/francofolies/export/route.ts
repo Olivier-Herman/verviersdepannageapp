@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   const { data, error } = await sb
     .from('incoming_missions')
     .select(`mission_number, status, vehicle_plate, vehicle_brand, vehicle_model,
-             client_name, client_address, client_city, client_phone, client_email,
+             client_name, client_address, client_city, client_phone, client_email, client_vat,
              payment_method, no_charge_at, amount_to_collect, completed_at, parked_at`)
     .eq('source', 'francofolies')
     .in('status', PICKED)
@@ -62,26 +62,31 @@ export async function GET(req: Request) {
     })
     .sort((a: any, b: any) => String(a._ref).localeCompare(String(b._ref)))
 
-  const header = ['Date', 'Heure', 'Marque', 'Modèle', 'Immatriculation', 'Nom', 'Adresse', 'Ville', 'Téléphone', 'Email', 'Montant (€)', 'Paiement']
+  const PAY_MODE_LABEL: Record<string, string> = {
+    cash: 'Espèces', bancontact: 'Bancontact', sumup: 'Sumup',
+    qr_transfer: 'QR virement', unpaid: 'À facturer',
+  }
+  const header = ['Date reprise', 'Heure reprise', 'Marque', 'Modèle', 'Immatriculation', 'Nom', 'Adresse', 'Ville', 'Téléphone', 'Email', 'N° TVA', 'Montant (€)', 'Paiement', 'Mode']
   const aoa: any[][] = [header]
   for (const m of rows) {
     const { date, time } = fmtLocal(m._ref)
     const paiement = m.no_charge_at ? 'Sans frais'
       : m.payment_method === 'unpaid' ? 'PAS PAYÉ'
       : 'Payé'
+    const mode = m.no_charge_at ? '' : (PAY_MODE_LABEL[m.payment_method] || m.payment_method || '')
     aoa.push([
       date, time, m.vehicle_brand || '', m.vehicle_model || '', m.vehicle_plate || '',
       m.client_name || '', m.client_address || '', m.client_city || '',
-      m.client_phone || '', m.client_email || '',
+      m.client_phone || '', m.client_email || '', m.client_vat || '',
       m.amount_to_collect != null ? Number(m.amount_to_collect) : '',
-      paiement,
+      paiement, mode,
     ])
   }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa)
   ws['!cols'] = [
-    { wch: 11 }, { wch: 7 }, { wch: 14 }, { wch: 14 }, { wch: 13 },
-    { wch: 22 }, { wch: 28 }, { wch: 16 }, { wch: 15 }, { wch: 26 }, { wch: 11 }, { wch: 11 },
+    { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 13 },
+    { wch: 22 }, { wch: 28 }, { wch: 16 }, { wch: 15 }, { wch: 26 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 13 },
   ]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Enlèvements')
