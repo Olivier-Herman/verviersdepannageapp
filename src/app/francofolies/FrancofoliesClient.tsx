@@ -29,7 +29,7 @@ interface Driver { id: string; name: string }
 interface Row {
   id: string; mission_number: number | null
   vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null
-  status: string; amount_to_collect: number | null; parked_at: string | null
+  status: string; amount_to_collect: number | null; parked_at: string | null; completed_at?: string | null
   police_blocked?: boolean | null
   assigned_user?: { id: string; name: string } | null
 }
@@ -192,15 +192,17 @@ export default function FrancofoliesClient({
     } catch {}
   }, [])
   useEffect(() => { if (screen === 'home') loadPendingCount() }, [screen, loadPendingCount])
+  // Filtre liste : 'pending' = encore en parc (non rendus), 'all' = tout (rendus inclus).
+  const [listScope, setListScope] = useState<'pending' | 'all'>('pending')
   const loadList = useCallback(async (query = '') => {
     setLoadingList(true)
     try {
-      const r = await fetch(`/api/francofolies/list?scope=pending&q=${encodeURIComponent(query)}`)
+      const r = await fetch(`/api/francofolies/list?scope=${listScope}&q=${encodeURIComponent(query)}`)
       const j = await r.json()
       setRows(j.rows || [])
     } catch {} finally { setLoadingList(false) }
-  }, [])
-  useEffect(() => { if (screen === 'list') loadList(q) }, [screen]) // eslint-disable-line
+  }, [listScope])
+  useEffect(() => { if (screen === 'list') loadList(q) }, [screen, listScope]) // eslint-disable-line
   useEffect(() => {
     if (screen !== 'list') return
     const t = setTimeout(() => loadList(q), 250)
@@ -874,34 +876,67 @@ export default function FrancofoliesClient({
   return shell(
     <main className="p-4 max-w-2xl mx-auto space-y-3">
       <button onClick={() => setScreen('home')} className="text-ink-muted text-sm">← Accueil</button>
-      <h1 className="text-ink text-lg font-bold">Véhicules en attente d'enlèvement</h1>
+      <h1 className="text-ink text-lg font-bold">
+        {listScope === 'pending' ? "Véhicules en attente d'enlèvement" : 'Tous les véhicules Francofolies'}
+      </h1>
+
+      {/* Filtre : non rendus (en parc) / tous (rendus inclus) */}
+      <div className="flex gap-2">
+        {([['pending', '🅿️ En attente'], ['all', '📋 Tous']] as const).map(([val, lbl]) => (
+          <button key={val} onClick={() => setListScope(val)}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition ${
+              listScope === val ? 'bg-brand text-white border-brand' : 'bg-surface text-ink-secondary hover:border-brand/40'
+            }`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Rechercher (plaque / marque)…"
         className="w-full bg-surface border rounded-xl px-3 py-3 text-ink focus:outline-none focus:border-brand" />
       {loadingList ? (
         <p className="text-ink-muted py-6 text-center">Chargement…</p>
       ) : rows.length === 0 ? (
-        <p className="text-ink-muted py-10 text-center">Aucun véhicule en attente {q && '(pour cette recherche)'}.</p>
+        <p className="text-ink-muted py-10 text-center">
+          {listScope === 'pending' ? 'Aucun véhicule en attente' : 'Aucun véhicule'} {q && '(pour cette recherche)'}.
+        </p>
       ) : (
         <div className="space-y-2">
-          {rows.map(m => (
-            <button key={m.id} onClick={() => openPickup(m)}
-              className="w-full text-left bg-surface border rounded-xl p-3 hover:border-brand/40 transition">
+          {rows.map(m => {
+            const rendu = m.status !== 'parked'
+            const inner = (
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-ink font-bold font-mono">
                     {m.vehicle_plate || '—'}
                     {m.police_blocked && <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold align-middle">🚔 BLOCAGE</span>}
+                    {rendu && <span className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 text-[10px] rounded font-bold align-middle">✅ RENDU</span>}
                   </p>
                   <p className="text-ink-secondary text-sm">{[m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
                   {m.assigned_user?.name && <p className="text-ink-faint text-xs mt-0.5">🚚 {m.assigned_user.name}</p>}
                 </div>
                 <div className="text-right">
-                  <span className="text-ink-faint text-xs block">{m.parked_at ? new Date(m.parked_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                  <span className="text-emerald-600 text-xs font-semibold">Enlèvement →</span>
+                  {rendu ? (
+                    <>
+                      <span className="text-ink-faint text-xs block">Enlevé le {m.completed_at ? new Date(m.completed_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                      <span className="text-ink-muted text-xs font-semibold">Rendu</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-ink-faint text-xs block">{m.parked_at ? new Date(m.parked_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                      <span className="text-emerald-600 text-xs font-semibold">Enlèvement →</span>
+                    </>
+                  )}
                 </div>
               </div>
-            </button>
-          ))}
+            )
+            return rendu ? (
+              <div key={m.id} className="w-full text-left bg-surface-2 border rounded-xl p-3 opacity-90">{inner}</div>
+            ) : (
+              <button key={m.id} onClick={() => openPickup(m)}
+                className="w-full text-left bg-surface border rounded-xl p-3 hover:border-brand/40 transition">{inner}</button>
+            )
+          })}
         </div>
       )}
     </main>

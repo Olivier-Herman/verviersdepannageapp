@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   let query = sb
     .from('incoming_missions')
     .select(`id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, status,
-             amount_to_collect, parked_at, received_at, remarks_general, assigned_to,
+             amount_to_collect, parked_at, received_at, completed_at, remarks_general, assigned_to,
              police_blocked,
              assigned_user:users!assigned_to(id, name)`)
     .eq('source', 'francofolies')
