@@ -51,7 +51,7 @@ export default function FrancofoliesClient({
   currentUserId: string; isDriverOnly: boolean; drivers: Driver[]
   price: number; gardiennagePrice: number
 }) {
-  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup' | 'stats'>('home')
+  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup' | 'stats' | 'registre'>('home')
 
   // ── Encodage arrivée (rapide) ──────────────────────────────────────────────
   const [plate,      setPlate]      = useState('')
@@ -264,6 +264,30 @@ export default function FrancofoliesClient({
   const [expTo,   setExpTo]   = useState('')
   useEffect(() => { if (screen === 'stats') loadStats() }, [screen, loadStats])
 
+  // Registre consultable à l'écran (superadmin) : véhicules enlevés + coordonnées + paiement.
+  interface PickedRow {
+    id: string; mission_number: number | null; picked_at: string | null
+    plate: string; brand: string; model: string
+    client_name: string; client_address: string; client_city: string
+    client_phone: string; client_email: string; client_vat: string
+    amount: number | null; payment_method: string | null; payment_label: string
+    gardiennage_days: number; no_charge_reason: string | null
+  }
+  const [registre, setRegistre] = useState<{ vehicles: PickedRow[]; count: number; collected: number } | null>(null)
+  const [loadingReg, setLoadingReg] = useState(false)
+  const loadRegistre = useCallback(async () => {
+    setLoadingReg(true)
+    try {
+      const qs = new URLSearchParams()
+      if (expFrom) qs.set('from', expFrom)
+      if (expTo)   qs.set('to', expTo)
+      const r = await fetch(`/api/francofolies/picked?${qs.toString()}`)
+      const j = await r.json()
+      if (r.ok) setRegistre({ vehicles: j.vehicles || [], count: j.count || 0, collected: j.collected || 0 })
+    } catch {} finally { setLoadingReg(false) }
+  }, [expFrom, expTo])
+  useEffect(() => { if (screen === 'registre') loadRegistre() }, [screen, loadRegistre])
+
   const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
   // price = prix réquisition TVAC (220 par défaut) ; gardiennagePrice = HTVA/jour (20).
   const baseTvac = Math.round(price * 100) / 100
@@ -353,6 +377,12 @@ export default function FrancofoliesClient({
           <button onClick={() => setScreen('stats')}
             className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
             📊 Statistiques chauffeurs
+          </button>
+        )}
+        {userRole === 'superadmin' && (
+          <button onClick={() => setScreen('registre')}
+            className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
+            📋 Registre des véhicules enlevés
           </button>
         )}
       </div>
@@ -708,6 +738,128 @@ export default function FrancofoliesClient({
       )}
     </main>, 'Statistiques',
   )
+
+  // ── REGISTRE DES ENLEVÉS (superadmin uniquement) ────────────────────────────
+  if (screen === 'registre' && userRole === 'superadmin') {
+    const fmtPicked = (ts: string | null) => {
+      if (!ts) return '—'
+      const d = new Date(ts)
+      if (isNaN(d.getTime())) return '—'
+      return d.toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+    }
+    const payBadge = (label: string) =>
+      label === 'Payé'      ? 'bg-emerald-100 text-emerald-800'
+      : label === 'Pas payé' ? 'bg-red-100 text-red-800'
+      :                        'bg-gray-100 text-gray-700'   // Sans frais
+    return shell(
+      <main className="p-4 max-w-6xl mx-auto space-y-4">
+        <button onClick={() => setScreen('home')} className="text-ink-muted text-sm">← Accueil</button>
+        <h1 className="text-ink text-lg font-bold">📋 Registre des véhicules enlevés</h1>
+
+        {/* Filtre période (optionnel) + export Excel */}
+        <div className="bg-surface border rounded-2xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-ink-muted text-xs mb-1">Du (optionnel)</label>
+              <input type="date" value={expFrom} onChange={e => setExpFrom(e.target.value)}
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
+            </div>
+            <div>
+              <label className="block text-ink-muted text-xs mb-1">Au (optionnel)</label>
+              <input type="date" value={expTo} onChange={e => setExpTo(e.target.value)}
+                className="w-full bg-surface-2 border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={loadRegistre}
+              className="flex-1 min-w-[130px] py-2.5 bg-brand hover:opacity-90 text-white rounded-xl font-semibold text-sm transition">
+              🔄 Actualiser
+            </button>
+            <button type="button" onClick={() => { setExpFrom(''); setExpTo('') }}
+              className="py-2.5 px-4 bg-surface-2 border text-ink-secondary rounded-xl font-semibold text-sm transition">
+              Tout
+            </button>
+            <button type="button"
+              onClick={() => {
+                const qs = new URLSearchParams()
+                if (expFrom) qs.set('from', expFrom); if (expTo) qs.set('to', expTo)
+                window.location.href = `/api/francofolies/export?${qs.toString()}`
+              }}
+              className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm transition">
+              ⬇️ Excel
+            </button>
+          </div>
+        </div>
+
+        {/* Totaux */}
+        {registre && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-surface border rounded-xl p-3 text-center">
+              <p className="text-ink text-2xl font-bold">{registre.count}</p>
+              <p className="text-ink-muted text-xs">Véhicules enlevés</p>
+            </div>
+            <div className="bg-surface border rounded-xl p-3 text-center">
+              <p className="text-ink text-2xl font-bold">{registre.collected.toFixed(2)} €</p>
+              <p className="text-ink-muted text-xs">Encaissé (payés)</p>
+            </div>
+          </div>
+        )}
+
+        {loadingReg ? (
+          <p className="text-ink-muted py-8 text-center">Chargement…</p>
+        ) : !registre || registre.vehicles.length === 0 ? (
+          <p className="text-ink-muted py-10 text-center">Aucun véhicule enlevé sur la période.</p>
+        ) : (
+          <div className="bg-surface border rounded-2xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-ink-muted text-xs uppercase border-b">
+                  <th className="px-3 py-2 whitespace-nowrap">Enlevé le</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Véhicule</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Plaque</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Propriétaire</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Adresse</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Téléphone</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Email</th>
+                  <th className="px-3 py-2 whitespace-nowrap">N° TVA</th>
+                  <th className="px-3 py-2 whitespace-nowrap text-right">Montant</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Paiement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {registre.vehicles.map(v => (
+                  <tr key={v.id} className="border-b last:border-0 align-top">
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{fmtPicked(v.picked_at)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink">{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap font-mono font-semibold text-ink">{v.plate || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink">{v.client_name || '—'}</td>
+                    <td className="px-3 py-2 text-ink-secondary">{[v.client_address, v.client_city].filter(Boolean).join(', ') || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
+                      {v.client_phone ? <a href={`tel:${v.client_phone}`} className="text-brand hover:underline">{v.client_phone}</a> : '—'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
+                      {v.client_email ? <a href={`mailto:${v.client_email}`} className="text-brand hover:underline">{v.client_email}</a> : '—'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{v.client_vat || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-semibold text-ink">
+                      {v.amount != null ? `${v.amount.toFixed(2)} €` : '—'}
+                      {v.gardiennage_days > 0 && <span className="block text-ink-faint text-[10px] font-normal">dont {v.gardiennage_days}j gard.</span>}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${payBadge(v.payment_label)}`} title={v.payment_method || ''}>
+                        {v.payment_label}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-ink-faint text-[11px] text-center">Tableau en lecture seule — coordonnées propriétaire, montant TVAC et mode de paiement de chaque enlèvement.</p>
+      </main>, 'Registre',
+    )
+  }
 
   // ── LISTE / RECHERCHE ──────────────────────────────────────────────────────
   return shell(
