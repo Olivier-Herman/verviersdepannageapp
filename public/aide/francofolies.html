@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comment ça fonctionne ? — Module Francofolies (mal garée) — VD Soft</title>
+<style>
+ @page { size: A4; margin: 14mm 12mm; }
+ * { box-sizing: border-box; }
+ body {
+   font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+   font-size: 11pt; line-height: 1.55; color: #1a1a1a; margin: 0;
+   background: #f3f4f6;
+ }
+ .page { max-width: 210mm; margin: 0 auto; background: #fff; padding: 14mm 12mm; }
+
+ /* Bouton imprimer (écran seulement) */
+ .print-bar { position: sticky; top: 0; background: #b91c1c; color: #fff; text-align: center; padding: 10px; z-index: 50; }
+ .print-bar button { background: #fff; color: #b91c1c; border: none; border-radius: 8px; padding: 8px 18px; font-weight: 700; font-size: 12pt; cursor: pointer; }
+ @media print { .print-bar { display: none; } body { background: #fff; } .page { max-width: none; padding: 0; } }
+
+ h1.cover { font-size: 26pt; color: #b91c1c; margin: 0 0 4pt; }
+ .cover-sub { font-size: 13pt; color: #6b7280; margin: 0 0 14pt; }
+ .cover-badge { display: inline-block; background: #fee2e2; color: #991b1b; padding: 5pt 13pt; border-radius: 22pt; font-size: 10pt; font-weight: 700; }
+ .intro { background: #fef2f2; border-left: 4px solid #b91c1c; border-radius: 8px; padding: 12pt 16pt; margin: 14pt 0 20pt; font-size: 10.5pt; color: #374151; }
+
+ h2.part { font-size: 17pt; color: #b91c1c; margin: 26pt 0 4pt; border-bottom: 2pt solid #b91c1c; padding-bottom: 5pt; }
+ .part-goal { color: #6b7280; font-size: 10.5pt; margin: 0 0 14pt; }
+
+ /* Étape : mockup à gauche, texte à droite */
+ .step { display: flex; gap: 16pt; align-items: flex-start; margin: 0 0 18pt; page-break-inside: avoid; }
+ .step-txt { flex: 1; }
+ .step-num { display: inline-flex; align-items: center; justify-content: center; width: 24pt; height: 24pt; background: #b91c1c; color: #fff; border-radius: 50%; font-weight: 700; font-size: 11pt; margin-right: 6pt; vertical-align: middle; }
+ .step-title { font-weight: 700; font-size: 12pt; display: inline; }
+ .step p { margin: 6pt 0 0; font-size: 10.5pt; color: #374151; }
+ .tip { background: #ecfdf5; border-left: 4px solid #10b981; border-radius: 6px; padding: 8pt 12pt; margin: 8pt 0 0; font-size: 9.5pt; color: #065f46; }
+ .warn { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 8pt 12pt; margin: 8pt 0 0; font-size: 9.5pt; color: #92400e; }
+
+ /* ── « Screenshot » : cadre téléphone reproduisant l'écran ── */
+ .phone { width: 190pt; flex-shrink: 0; border: 2pt solid #d1d5db; border-radius: 18pt; overflow: hidden; background: #f7f7f8; box-shadow: 0 4pt 14pt rgba(0,0,0,.10); }
+ .ph-head { background: linear-gradient(135deg,#b91c1c,#7f1d1d); padding: 7pt 0; text-align: center; }
+ .ph-logo { color: #fff; font-weight: 800; font-size: 10pt; letter-spacing: .5pt; }
+ .ph-logo small { display: block; color: #fecaca; font-size: 5.5pt; font-weight: 600; letter-spacing: 1pt; }
+ .ph-body { padding: 9pt; }
+ .ph-h1 { font-size: 9pt; font-weight: 700; color: #1a1a1a; margin: 0 0 7pt; }
+ .ph-back { font-size: 7pt; color: #9ca3af; margin: 0 0 6pt; }
+
+ .btn { display: block; width: 100%; text-align: center; border-radius: 10pt; font-weight: 700; padding: 9pt 0; margin: 0 0 6pt; font-size: 8.5pt; }
+ .btn-red { background: #dc2626; color: #fff; }
+ .btn-green { background: #059669; color: #fff; }
+ .btn-ghost { background: #fff; border: 1pt solid #e5e7eb; color: #6b7280; padding: 7pt 0; }
+ .btn-brand { background: #b91c1c; color: #fff; }
+
+ .field-lbl { font-size: 6.5pt; font-weight: 700; color: #6b7280; margin: 5pt 0 2pt; }
+ .field { background: #fff; border: 1pt solid #d1d5db; border-radius: 7pt; padding: 6pt 7pt; font-size: 8pt; color: #1a1a1a; }
+ .field.ph { color: #9ca3af; }
+ .row2 { display: flex; gap: 5pt; }
+ .row2 > * { flex: 1; }
+
+ .countbox { background: #ecfdf5; border: 1.5pt solid #a7f3d0; border-radius: 12pt; padding: 8pt; text-align: center; margin-bottom: 8pt; }
+ .countbox b { color: #047857; font-size: 17pt; }
+ .countbox span { color: #065f46; font-size: 6.5pt; font-weight: 600; }
+
+ .paygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5pt; margin: 4pt 0; }
+ .paycell { border: 1pt solid #e5e7eb; border-radius: 8pt; padding: 7pt 0; text-align: center; font-size: 7.5pt; font-weight: 600; background: #fff; }
+ .paycell.sel { border: 1.5pt solid #dc2626; background: #fef2f2; color: #991b1b; }
+ .vies { display: flex; gap: 4pt; align-items: flex-end; }
+ .vies .field { flex: 1; }
+ .vies .viesbtn { border: 1pt solid #e5e7eb; border-radius: 7pt; padding: 6pt 8pt; font-size: 7.5pt; font-weight: 700; color: #374151; background: #fff; white-space: nowrap; }
+ .totrow { display: flex; justify-content: space-between; border-top: 1pt solid #e5e7eb; margin-top: 6pt; padding-top: 5pt; font-size: 8pt; }
+ .totrow.big { font-weight: 800; font-size: 9.5pt; }
+ .listcard { background: #fff; border: 1pt solid #e5e7eb; border-radius: 9pt; padding: 7pt; margin-bottom: 5pt; display: flex; justify-content: space-between; align-items: center; }
+ .listcard .plate { font-family: ui-monospace, monospace; font-weight: 800; font-size: 8.5pt; }
+ .listcard .arrow { color: #059669; font-size: 7pt; font-weight: 700; }
+ .badge-red { background: #fee2e2; color: #b91c1c; font-size: 5.5pt; font-weight: 700; border-radius: 4pt; padding: 1pt 4pt; }
+ .toggle { display: flex; gap: 4pt; margin-bottom: 6pt; }
+ .toggle .t { flex: 1; text-align: center; border: 1pt solid #e5e7eb; border-radius: 8pt; padding: 5pt 0; font-size: 7pt; font-weight: 700; color: #6b7280; }
+ .toggle .t.on { background: #b91c1c; color: #fff; border-color: #b91c1c; }
+
+ .footer { margin-top: 22pt; border-top: 1pt solid #e5e7eb; padding-top: 8pt; color: #9ca3af; font-size: 8.5pt; text-align: center; }
+ .kbd { background: #f3f4f6; border: 1pt solid #e5e7eb; border-radius: 4pt; padding: 1pt 5pt; font-size: 8.5pt; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="print-bar"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button></div>
+
+<div class="page">
+
+  <!-- Couverture -->
+  <span class="cover-badge">MODULE FRANCOFOLIES — VÉHICULES MAL GARÉS</span>
+  <h1 class="cover">Comment ça fonctionne&nbsp;?</h1>
+  <p class="cover-sub">Encoder un véhicule à l'arrivée &amp; renseigner un paiement à l'enlèvement</p>
+
+  <div class="intro">
+    Ce module gère les véhicules <b>mal garés enlevés pendant les Francofolies de Spa</b>.
+    Le fonctionnement tient en deux temps&nbsp;: <b>①</b> on <b>encode le véhicule à son arrivée</b> au parc (rapide, sur le téléphone),
+    puis <b>②</b> quand le propriétaire vient le récupérer, on <b>renseigne le paiement et on l'enlève</b>.
+    Suivez les écrans ci-dessous&nbsp;: ils sont identiques à ce que vous voyez dans l'application.
+  </div>
+
+  <!-- ══════════════ PARTIE 1 ══════════════ -->
+  <h2 class="part">① Encoder un véhicule mal garé (à l'arrivée)</h2>
+  <p class="part-goal">Dès qu'un véhicule est amené au parc, on l'enregistre en quelques secondes.</p>
+
+  <!-- Étape 1 : accueil -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="countbox"><b>7</b><br><span>véhicules en attente d'enlèvement</span></div>
+        <div class="btn btn-red">📷 Nouveau véhicule (arrivée)</div>
+        <div class="btn btn-green">🔍 Liste / Enlèvement</div>
+        <div class="btn btn-ghost">❓ Comment ça fonctionne&nbsp;?</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">1</span><span class="step-title">Ouvrir « Nouveau véhicule (arrivée) »</span>
+      <p>Sur l'écran d'accueil du module, appuyez sur le grand bouton rouge <b>📷 Nouveau véhicule (arrivée)</b>.</p>
+      <p>Le compteur vert du haut indique en permanence combien de véhicules sont <b>encore en parc</b> (pas encore récupérés).</p>
+    </div>
+  </div>
+
+  <!-- Étape 2 : plaque -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="ph-back">← Accueil</div>
+        <div class="ph-h1">Nouveau véhicule</div>
+        <div class="btn btn-brand">📷 Scanner la plaque</div>
+        <div class="field-lbl">IMMATRICULATION *</div>
+        <div class="field">1ABC234</div>
+        <div style="font-size:6.5pt;color:#059669;margin-top:3pt;">✅ Véhicule trouvé — marque/modèle pré-remplis</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">2</span><span class="step-title">Saisir la plaque</span>
+      <p>Tapez l'immatriculation, ou appuyez sur <b>📷 Scanner la plaque</b> pour la lire avec l'appareil photo.</p>
+      <div class="tip">💡 Si la plaque est connue, la <b>marque et le modèle se pré-remplissent</b> tout seuls. Sinon, sélectionnez-les à la main juste en dessous.</div>
+    </div>
+  </div>
+
+  <!-- Étape 3 : marque/modèle/chauffeur/blocage -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="field-lbl">MARQUE *</div>
+        <div class="field">BMW</div>
+        <div class="field-lbl">MODÈLE *</div>
+        <div class="field">Série 3</div>
+        <div class="field-lbl">CHAUFFEUR (QUI A RAMENÉ)</div>
+        <div class="field">Fred Palm</div>
+        <div class="btn btn-ghost" style="margin-top:7pt;">🚔 Blocage police&nbsp;: NON</div>
+        <div class="btn btn-ghost">📷 Ajouter une photo</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">3</span><span class="step-title">Compléter marque, modèle, chauffeur</span>
+      <p>Vérifiez la <b>marque</b> et le <b>modèle</b>, indiquez le <b>chauffeur</b> qui a ramené le véhicule, et ajoutez éventuellement une <b>photo</b>.</p>
+      <div class="warn">🚔 <b>Blocage police&nbsp;:</b> si le véhicule est sous réquisition, activez ce bouton. Le propriétaire devra alors passer au commissariat <b>avant</b> de pouvoir le récupérer.</div>
+    </div>
+  </div>
+
+  <!-- Étape 4 : enregistrer -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="btn btn-red" style="padding:11pt 0;">💾 Enregistrer le véhicule</div>
+        <div style="font-size:6.5pt;color:#059669;text-align:center;margin-top:4pt;">✅ Véhicule enregistré</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">4</span><span class="step-title">Enregistrer</span>
+      <p>Appuyez sur <b>💾 Enregistrer le véhicule</b>. Il rejoint aussitôt la liste des véhicules en attente, et le compteur vert de l'accueil augmente de 1.</p>
+      <div class="tip">✅ C'est tout&nbsp;! L'encodage à l'arrivée est terminé. Aucune coordonnée client n'est demandée à ce stade — elles seront saisies à l'enlèvement.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════ PARTIE 2 ══════════════ -->
+  <h2 class="part">② Renseigner un paiement &amp; enlever le véhicule</h2>
+  <p class="part-goal">Quand le propriétaire vient récupérer son véhicule&nbsp;: on l'encaisse et on clôture.</p>
+
+  <!-- Étape 1 : ouvrir la liste + trouver -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="ph-back">← Accueil</div>
+        <div class="ph-h1">Véhicules en attente d'enlèvement</div>
+        <div class="toggle"><div class="t on">🅿️ En attente</div><div class="t">📋 Tous</div></div>
+        <div class="field ph">🔍 Rechercher (plaque / marque)…</div>
+        <div style="height:5pt;"></div>
+        <div class="listcard">
+          <div><div class="plate">1ABC234 <span class="badge-red">🚔 BLOCAGE</span></div><div style="font-size:7pt;color:#6b7280;">BMW Série 3</div></div>
+          <div style="text-align:right;"><div style="font-size:6pt;color:#9ca3af;">20/07 14:05</div><div class="arrow">Enlèvement →</div></div>
+        </div>
+        <div class="listcard">
+          <div><div class="plate">2FET823</div><div style="font-size:7pt;color:#6b7280;">VW Golf</div></div>
+          <div style="text-align:right;"><div style="font-size:6pt;color:#9ca3af;">20/07 13:40</div><div class="arrow">Enlèvement →</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">1</span><span class="step-title">Ouvrir la liste et trouver le véhicule</span>
+      <p>Depuis l'accueil, appuyez sur <b>🔍 Liste / Enlèvement</b>. Cherchez le véhicule par <b>plaque</b> ou <b>marque</b>, puis appuyez sur sa ligne (<b>Enlèvement →</b>).</p>
+      <div class="tip">💡 Le filtre <span class="kbd">📋 Tous</span> affiche aussi les véhicules <b>déjà rendus</b> (badge « ✅ RENDU »), pour retrouver un enlèvement passé.</div>
+    </div>
+  </div>
+
+  <!-- Étape 2 : coordonnées + VIES -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="ph-back">← Liste</div>
+        <div class="ph-h1">Enlèvement — 1ABC234</div>
+        <div class="field-lbl">NOM DU CLIENT *</div>
+        <div class="field ph">Nom / société</div>
+        <div class="row2">
+          <div><div class="field-lbl">CODE POSTAL</div><div class="field">4800</div></div>
+          <div><div class="field-lbl">VILLE</div><div class="field">Verviers</div></div>
+        </div>
+        <div class="field-lbl">N° TVA (optionnel)</div>
+        <div class="vies"><div class="field ph">BE0123456789</div><div class="viesbtn">🔍 VIES</div></div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">2</span><span class="step-title">Saisir les coordonnées du propriétaire</span>
+      <p>Renseignez le <b>nom</b>, l'<b>adresse</b>, le <b>téléphone</b> et l'<b>email</b> (l'email permet d'envoyer un reçu automatiquement).</p>
+      <div class="tip">🔍 <b>Bouton VIES&nbsp;:</b> pour un professionnel, tapez le n° de TVA et appuyez sur <b>VIES</b> — le nom et l'adresse se <b>remplissent automatiquement</b> depuis la base officielle européenne.</div>
+    </div>
+  </div>
+
+  <!-- Étape 3 : mode de paiement -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="ph-h1">Mode de paiement</div>
+        <div class="paygrid">
+          <div class="paycell sel">💵 Espèces</div>
+          <div class="paycell">💳 Bancontact</div>
+          <div class="paycell">📲 Sumup</div>
+          <div class="paycell">📷 QR virement</div>
+        </div>
+        <div class="btn" style="background:#f59e0b;color:#fff;margin-top:4pt;">🧾 À facturer</div>
+        <div style="font-size:6pt;color:#92400e;margin-top:3pt;">Le client recevra une confirmation « non payée »&nbsp;; le montant reste à facturer.</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">3</span><span class="step-title">Choisir comment le client paie</span>
+      <p>Sélectionnez le <b>mode de paiement</b> encaissé sur place&nbsp;: <b>Espèces</b>, <b>Bancontact</b>, <b>Sumup</b> ou <b>QR virement</b>.</p>
+      <div class="warn">🧾 <b>« À facturer »&nbsp;:</b> à n'utiliser que si le client <b>ne paie pas maintenant</b>. Le véhicule est quand même rendu, mais le montant reste dû et partira en facturation.</div>
+    </div>
+  </div>
+
+  <!-- Étape 4 : gardiennage (option) -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="btn btn-ghost">➕ Ajouter le gardiennage</div>
+        <div class="totrow"><span>Réquisition mal garée</span><span>220,00 €</span></div>
+        <div class="totrow"><span>Gardiennage&nbsp;: 1 j × 20 €</span><span>24,20 €</span></div>
+        <div class="totrow big"><span>Total TVAC</span><span>244,20 €</span></div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">4</span><span class="step-title">Ajouter le gardiennage (si &gt; 24 h)</span>
+      <p>Les <b>premières 24 h sont offertes</b>. Au-delà, chaque jour entamé peut être ajouté&nbsp;: le total se met à jour automatiquement.</p>
+      <div class="tip">💡 Le module ne vous laisse pas facturer plus de jours que le temps réellement passé au parc.</div>
+    </div>
+  </div>
+
+  <!-- Étape 5 : enlever -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="totrow big"><span>Total TVAC</span><span>244,20 €</span></div>
+        <div style="height:5pt;"></div>
+        <div class="btn btn-green" style="padding:11pt 0;">🧾 Enlever (244,20 € encaissés)</div>
+        <div style="font-size:6.5pt;color:#059669;text-align:center;margin-top:4pt;">✅ Véhicule enlevé — reçu envoyé</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">5</span><span class="step-title">Valider l'enlèvement</span>
+      <p>Appuyez sur le grand bouton <b>Enlever</b> en bas. Le véhicule passe en <b>« rendu »</b>, le paiement est enregistré, et un <b>reçu</b> est envoyé au client si un email a été saisi.</p>
+      <div class="warn">🚔 Si le véhicule était en <b>blocage police</b>, le module demande d'abord de confirmer que le propriétaire est <b>passé au commissariat</b>.</div>
+    </div>
+  </div>
+
+  <!-- Restitution sans frais -->
+  <div class="step">
+    <div class="phone">
+      <div class="ph-head"><div class="ph-logo">VERVIERS DÉPANNAGE<small>MODULE FRANCOFOLIES</small></div></div>
+      <div class="ph-body">
+        <div class="btn btn-ghost">🆓 Restitution sans frais</div>
+        <div class="field-lbl">MOTIF (OBLIGATOIRE)</div>
+        <div class="field ph">Ex&nbsp;: erreur d'enlèvement…</div>
+        <div class="btn btn-green" style="margin-top:6pt;">Confirmer sans frais</div>
+      </div>
+    </div>
+    <div class="step-txt">
+      <span class="step-num">✓</span><span class="step-title">Cas particulier&nbsp;: rendre sans frais</span>
+      <p>Si le véhicule doit être rendu <b>gratuitement</b> (erreur, geste commercial…), activez <b>« Restitution sans frais »</b> en haut de l'écran d'enlèvement, indiquez un <b>motif obligatoire</b>, puis confirmez. Aucun paiement n'est demandé.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    Verviers Dépannage — Module Francofolies · Mode d'emploi mis à jour le 20/07/2026 ·
+    Une question&nbsp;? <b>+32 87 60 08 35</b>
+  </div>
+
+</div>
+</body>
+</html>

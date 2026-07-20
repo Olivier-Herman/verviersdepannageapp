@@ -387,6 +387,10 @@ export default function FrancofoliesClient({
             📋 Registre des véhicules enlevés
           </button>
         )}
+        <a href="/aide/francofolies.html" target="_blank" rel="noopener noreferrer"
+          className="block w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition text-center">
+          ❓ Comment ça fonctionne&nbsp;?
+        </a>
       </div>
       <p className="text-ink-faint text-xs text-center mt-6">Tarif : {price} € · gardiennage {gardiennagePrice} €/jour au-delà de 24h</p>
     </main>
