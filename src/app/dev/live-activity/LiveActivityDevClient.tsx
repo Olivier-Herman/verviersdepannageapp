@@ -48,6 +48,13 @@ export default function LiveActivityDevClient() {
     try {
       const core = await import('@capacitor/core')
       const LA: any = (core as any).registerPlugin('LiveActivity')
+      // Récupère + pose le token d'action (pour que les boutons Sur place/Chargé marchent).
+      try {
+        const tr = await fetch('/api/missions/live-token', { method: 'POST' })
+        const tj = await tr.json()
+        if (tj?.token) { await LA.setActionToken({ token: tj.token }); add('🔑 token action posé (App Group)') }
+        else add(`⚠️ pas de token (${tr.status})`)
+      } catch (e: any) { add(`⚠️ token: ${e?.message || e}`) }
       const payload = { ...DEMO, state: STATES[1].state }
       add('→ LA.start(...) envoyé')
       const res = await withTimeout(LA.start(payload), 8000, 'LA.start')
