@@ -685,6 +685,20 @@ export async function processEmailMessage(messageId: string): Promise<ProcessRes
 
     // Source inconnue → stocker + notifier
     if (source === 'unknown') {
+      // Expéditeurs à IGNORER en silence : services déjà traités via webhook/API
+      // (Kaze, IMA-via-Kaze). Leurs emails de notification sont des DOUBLONS — la
+      // mission arrive par le webhook — donc ils ne créent aucune fiche et ne
+      // doivent PAS spammer le superadmin avec « Expéditeur inconnu ».
+      // Olivier 2026-07-25.
+      const IGNORED_SENDER_DOMAINS = ['kaze.so', 'ima.eu']
+      const senderDomain = String(fromEmail || '').toLowerCase().split('@').pop() || ''
+      const ignored = IGNORED_SENDER_DOMAINS.some(d => senderDomain === d || senderDomain.endsWith('.' + d))
+      if (ignored) {
+        console.log(`[Processor] Expéditeur ignoré (déjà traité via webhook): ${fromEmail}`)
+        if (placeholderId) await supabase.from('incoming_missions').delete().eq('id', placeholderId)
+        await markAsRead(token, messageId)
+        return { status: 'skipped', reason: `Expéditeur ignoré (webhook): ${fromEmail}` }
+      }
       console.warn(`[Processor] Source inconnue: ${fromEmail}`)
       if (placeholderId) {
         await supabase.from('incoming_missions').update({
