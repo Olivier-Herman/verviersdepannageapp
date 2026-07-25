@@ -2120,15 +2120,16 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
           {err && <p className="text-red-400 text-sm mt-3">⚠️ {err}</p>}
         </div>
         <div className="px-4 py-4 border-t border space-y-2">
+          {/* Plus de bouton « Enregistrer » : les photos partent automatiquement
+              après chaque prise (autosave + retries). On informe juste si un envoi
+              est encore en cours, sans bloquer. Olivier 2026-07-25. */}
           {photos.length > 0 && (
-            <button onClick={savePhotos} disabled={loading}
-              className="w-full py-3.5 bg-green-600 disabled:opacity-50 text-ink font-bold rounded-2xl">
-              {loading ? '⏳ Sauvegarde…' : `💾 Enregistrer ${photos.length} nouvelle${photos.length > 1 ? 's' : ''}`}
-            </button>
+            <p className="text-center text-amber-500 text-sm font-medium">⏳ {photos.length} photo{photos.length > 1 ? 's' : ''} en cours d&apos;envoi… (automatique)</p>
           )}
-          {photos.length === 0 && (
-            <button onClick={() => setScreen(photosFrom)} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-semibold rounded-2xl">← Retour</button>
+          {photos.length === 0 && previews.length > 0 && (
+            <p className="text-center text-emerald-500 text-sm font-medium">✓ Toutes les photos sont enregistrées</p>
           )}
+          <button onClick={() => setScreen(photosFrom)} className="w-full py-3.5 bg-surface-hover text-ink-secondary font-semibold rounded-2xl">← Retour</button>
         </div>
       </ScreenWrap>
     )
