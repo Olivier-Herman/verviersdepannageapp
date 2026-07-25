@@ -626,6 +626,14 @@ export default function ProfileClient({ user }: { user: any }) {
           )}
         </div>
 
+        {/* Test Live Activity (superadmin) */}
+        {user?.role === 'superadmin' && (
+          <a href="/dev/live-activity"
+            className="block w-full text-center bg-surface border border-strong text-ink-secondary font-medium rounded-2xl py-4 transition-all">
+            🧪 Test Live Activity
+          </a>
+        )}
+
         {/* Déconnexion */}
         <button onClick={() => signOut({ callbackUrl: '/login' })}
           className="w-full bg-surface border border-strong text-red-400 font-medium rounded-2xl py-4 transition-all">
