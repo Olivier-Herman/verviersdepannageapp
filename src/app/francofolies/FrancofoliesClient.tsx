@@ -315,6 +315,23 @@ export default function FrancofoliesClient({
   }, [expFrom, expTo])
   useEffect(() => { if (screen === 'registre') loadRegistre() }, [screen, loadRegistre])
 
+  // Correction du mode de paiement d'une ligne (superadmin) — MAJ optimiste.
+  const [payBusy, setPayBusy] = useState<string | null>(null)
+  async function changePaymentMode(missionId: string, mode: string) {
+    setPayBusy(missionId)
+    setRegistre(prev => prev ? { ...prev, vehicles: prev.vehicles.map(v => v.id === missionId ? { ...v, payment_method: mode, payment_label: mode === 'unpaid' ? 'Pas payé' : 'Payé' } : v) } : prev)
+    try {
+      const r = await fetch('/api/francofolies/set-payment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId, payment_mode: mode }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); await loadRegistre() }
+      else showToast('✅ Mode de paiement modifié')
+    } catch { showToast('⚠ Erreur réseau'); await loadRegistre() }
+    finally { setPayBusy(null) }
+  }
+
   // Rapprochement encaissements (superadmin) : fiches 'parked' + encaissement chauffeur correspondant.
   interface RecEnc { id: string; amount: number | null; payment_mode: string | null; driver_name: string | null; created_at: string | null; linked_to_this: boolean; client_name: string | null }
   interface RecRow {
@@ -930,7 +947,21 @@ export default function FrancofoliesClient({
                       </span>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
-                      {v.payment_label === 'Sans frais' ? '—' : (payModeLabel(v.payment_method) || '—')}
+                      {v.payment_label === 'Sans frais' ? '—'
+                        : userRole === 'superadmin' ? (
+                          <select
+                            value={v.payment_method || 'cash'}
+                            disabled={payBusy === v.id}
+                            onChange={e => changePaymentMode(v.id, e.target.value)}
+                            className="bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50"
+                          >
+                            <option value="cash">💵 Espèces</option>
+                            <option value="bancontact">💳 Bancontact</option>
+                            <option value="sumup">📲 Sumup</option>
+                            <option value="qr_transfer">📷 QR virement</option>
+                            <option value="unpaid">🧾 À facturer</option>
+                          </select>
+                        ) : (payModeLabel(v.payment_method) || '—')}
                     </td>
                   </tr>
                 ))}
