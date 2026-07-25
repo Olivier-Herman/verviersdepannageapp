@@ -1,10 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import {
-  startForMission, updateForMission, endForMission,
-  type MissionLAState, type MissionLAInfo,
-} from '@/lib/native/liveActivity'
+import type { MissionLAState, MissionLAInfo } from '@/lib/native/liveActivity'
 
 const DEMO: MissionLAInfo = {
   missionId: 'demo-mission', missionNumber: '10088844',
@@ -45,18 +42,34 @@ export default function LiveActivityDevClient() {
   }
   useEffect(() => { diagnose() }, [])
 
+  // Appel DIRECT du plugin (bypass le pont) avec timeout + log à chaque étape.
   async function start() {
-    add('start…')
-    try { await startForMission(DEMO, STATES[1].state); setActive(true); add('start renvoyé (En route)') }
-    catch (e: any) { add(`❌ start: ${e?.message || e}`) }
+    add('start… (appel direct plugin)')
+    try {
+      const core = await import('@capacitor/core')
+      const LA: any = (core as any).registerPlugin('LiveActivity')
+      const payload = { ...DEMO, state: STATES[1].state }
+      add('→ LA.start(...) envoyé')
+      const res = await withTimeout(LA.start(payload), 8000, 'LA.start')
+      add(`✅ LA.start → ${JSON.stringify(res)}`)
+      setActive(true)
+    } catch (e: any) { add(`❌ ${e?.message || e}`) }
   }
   async function update(s: typeof STATES[number]) {
-    try { await updateForMission(DEMO.missionId, s.state); add(`update → ${s.key}`) }
-    catch (e: any) { add(`❌ update: ${e?.message || e}`) }
+    try {
+      const core = await import('@capacitor/core')
+      const LA: any = (core as any).registerPlugin('LiveActivity')
+      const res = await withTimeout(LA.update({ missionId: DEMO.missionId, state: s.state }), 8000, 'LA.update')
+      add(`update → ${s.key} ${JSON.stringify(res || '')}`)
+    } catch (e: any) { add(`❌ update: ${e?.message || e}`) }
   }
   async function end() {
-    try { await endForMission(DEMO.missionId, STATES[3].state); setActive(false); add('end') }
-    catch (e: any) { add(`❌ end: ${e?.message || e}`) }
+    try {
+      const core = await import('@capacitor/core')
+      const LA: any = (core as any).registerPlugin('LiveActivity')
+      await withTimeout(LA.end({ missionId: DEMO.missionId, state: STATES[3].state }), 8000, 'LA.end')
+      setActive(false); add('end')
+    } catch (e: any) { add(`❌ end: ${e?.message || e}`) }
   }
 
   return (

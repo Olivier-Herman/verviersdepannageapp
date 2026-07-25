@@ -88,7 +88,9 @@ export async function startForMission(info: MissionLAInfo, state: MissionLAState
   const p = await plugin(); if (!p) return
   try {
     if (!(await p.isSupported()).supported) return
-    await ensureActionToken(p)
+    // IMPORTANT : ne PAS attendre le token (fetch qui peut bloquer via CapacitorHttp).
+    // On démarre l'activité tout de suite ; le token part en arrière-plan.
+    void ensureActionToken(p)
     await p.start({ ...info, state })
   } catch (e) { console.warn('[liveActivity] start KO', e) }
 }
