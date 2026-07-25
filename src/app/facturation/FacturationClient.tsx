@@ -111,6 +111,22 @@ function fmtSource(s: string | null): string {
   return SOURCE_LABEL[s.toLowerCase()] || s
 }
 
+// Groupes de sources pour la facturation semi-automatique (Olivier 2026-07-25).
+// Étape 1 : isoler les missions par groupe assureur. Les clés correspondent aux
+// valeurs `source` stockées sur incoming_missions (catalog).
+// NB : « Mondial (hors Hexalite) » = les missions source 'mondial' de la liste
+// générale ; les clôtures Hexalite/Allianz ont leur page dédiée /facturation/allianz.
+interface SourceGroup { key: string; label: string; sources: string[] | null }
+const SOURCE_GROUPS: SourceGroup[] = [
+  { key: 'all',     label: 'Toutes',                    sources: null },
+  { key: 'vab',     label: 'VAB',                       sources: ['vab'] },
+  { key: 'kaze',    label: 'Kaze · Ethias · P&V · IMA', sources: ['kaze', 'ethias', 'pv', 'pv_assistance', 'ima'] },
+  { key: 'mondial', label: 'Mondial (hors Hexalite)',   sources: ['mondial'] },
+  { key: 'axa',     label: 'AXA',                       sources: ['axa'] },
+]
+const missionInGroup = (source: string | null, g: SourceGroup): boolean =>
+  g.sources === null ? true : !!source && g.sources.includes(source.toLowerCase())
+
 function fmtDate(d: string | null): string {
   if (!d) return '—'
   const date = new Date(d)
@@ -175,6 +191,8 @@ export default function FacturationClient({
   const initialQ = searchParams?.get('q') || ''
   const [search, setSearch]     = useState(initialQ)
   const [sourceFilter, setSrc]  = useState<string>('all')
+  const [groupFilter, setGroup] = useState<string>('all')   // groupe assureur (VAB / Kaze… / Mondial / AXA)
+  const activeGroup = SOURCE_GROUPS.find(g => g.key === groupFilter) || SOURCE_GROUPS[0]
   const [selected, setSelected] = useState<MissionRow | null>(null)
   const [data, setData]         = useState(missions)
 
@@ -316,13 +334,21 @@ export default function FacturationClient({
 
   const sources = useMemo(() => {
     const set = new Set<string>()
-    data.forEach(m => m.source && set.add(m.source))
+    data.forEach(m => { if (m.source && missionInGroup(m.source, activeGroup)) set.add(m.source) })
     return [...set].sort()
+  }, [data, activeGroup])
+
+  // Compteurs par groupe (sur toutes les missions chargées) pour les pastilles.
+  const groupCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const g of SOURCE_GROUPS) counts[g.key] = data.filter(m => missionInGroup(m.source, g)).length
+    return counts
   }, [data])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return data.filter(m => {
+      if (!missionInGroup(m.source, activeGroup)) return false
       if (sourceFilter !== 'all' && m.source !== sourceFilter) return false
       if (!q) return true
       const hay = [
@@ -332,7 +358,7 @@ export default function FacturationClient({
       ].filter(Boolean).join(' ').toLowerCase()
       return hay.includes(q)
     })
-  }, [data, search, sourceFilter])
+  }, [data, search, sourceFilter, activeGroup])
 
   // Olivier 2026-06-29 : missions liées (chaîne REM+REL) affichées l'une à la
   // suite de l'autre et encadrées ensemble. On regroupe les fiches visibles par
@@ -410,6 +436,23 @@ export default function FacturationClient({
 
         {/* Filtres */}
         <div className="bg-surface border rounded-2xl p-4 space-y-3 ambient-fade-up ambient-stagger-1">
+          {/* Groupes de sources (isolation par assureur — facturation semi-auto) */}
+          {!isTouring && (
+            <div className="flex flex-wrap gap-2">
+              {SOURCE_GROUPS.map(g => (
+                <button key={g.key} type="button"
+                  onClick={() => { setGroup(g.key); setSrc('all') }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                    groupFilter === g.key ? 'bg-brand text-white border-brand' : 'bg-surface-2 text-ink-secondary border hover:text-ink'
+                  }`}>
+                  {g.label}
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
+                    groupFilter === g.key ? 'bg-white/25' : 'bg-black/10 text-ink-muted'
+                  }`}>{groupCounts[g.key] ?? 0}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <input
               value={search}
