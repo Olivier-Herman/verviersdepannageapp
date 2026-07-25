@@ -291,7 +291,7 @@ export default function FrancofoliesClient({
   useEffect(() => { if (screen === 'registre') loadRegistre() }, [screen, loadRegistre])
 
   // Rapprochement encaissements (superadmin) : fiches 'parked' + encaissement chauffeur correspondant.
-  interface RecEnc { id: string; amount: number | null; payment_mode: string | null; driver_name: string | null; created_at: string | null; linked_to_this: boolean }
+  interface RecEnc { id: string; amount: number | null; payment_mode: string | null; driver_name: string | null; created_at: string | null; linked_to_this: boolean; client_name: string | null }
   interface RecRow {
     id: string; mission_number: number | null; plate: string; brand: string; model: string
     parked_at: string | null; amount_to_collect: number | null; police_blocked: boolean
@@ -962,6 +962,7 @@ export default function FrancofoliesClient({
                     {r.matches.map(e => (
                       <p key={e.id} className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1.5">
                         ✅ {e.amount ?? '?'} € {e.payment_mode || '?'} · {e.driver_name || '?'} · {fmt(e.created_at)}
+                        {e.client_name ? ` · 👤 ${e.client_name}` : ''}
                         {e.linked_to_this ? ' · sur cette fiche' : ' · (autre fiche)'}
                       </p>
                     ))}

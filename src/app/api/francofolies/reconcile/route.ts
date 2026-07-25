@@ -39,15 +39,18 @@ interface Encaissement {
   driver_id: string | null; driver_name: string | null
   service_type: string | null; created_at: string | null
   linked_to_this: boolean
+  client_name: string | null; client_address: string | null
+  client_phone: string | null; client_email: string | null; client_vat: string | null
 }
+const INTER_COLS = 'id, mission_id, plate, amount, payment_mode, driver_id, service_type, created_at, client_name, client_address, client_phone, client_email, client_vat'
 
 /** Trouve les encaissements (interventions) correspondant aux fiches parked. */
 async function loadEncaissements(sb: any, parked: any[]) {
   const ids    = parked.map(m => m.id)
   const plates = parked.map(m => m.vehicle_plate).filter(Boolean)
   const [{ data: byMission }, { data: byPlate }] = await Promise.all([
-    ids.length    ? sb.from('interventions').select('id, mission_id, plate, amount, payment_mode, driver_id, service_type, created_at').in('mission_id', ids) : Promise.resolve({ data: [] }),
-    plates.length ? sb.from('interventions').select('id, mission_id, plate, amount, payment_mode, driver_id, service_type, created_at').in('plate', plates) : Promise.resolve({ data: [] }),
+    ids.length    ? sb.from('interventions').select(INTER_COLS).in('mission_id', ids) : Promise.resolve({ data: [] }),
+    plates.length ? sb.from('interventions').select(INTER_COLS).in('plate', plates) : Promise.resolve({ data: [] }),
   ])
   const map = new Map<string, any>()
   for (const r of [...(byMission || []), ...(byPlate || [])]) map.set(r.id, r)
@@ -70,6 +73,8 @@ function matchFor(mission: any, inters: any[], nameById: Map<string, string>): E
       driver_name: (i.driver_id && nameById.get(i.driver_id)) || null,
       service_type: i.service_type, created_at: i.created_at,
       linked_to_this: i.mission_id === mission.id,
+      client_name: i.client_name || null, client_address: i.client_address || null,
+      client_phone: i.client_phone || null, client_email: i.client_email || null, client_vat: i.client_vat || null,
     }))
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 }
@@ -141,8 +146,34 @@ export async function POST(req: Request) {
     const enc = matches[0]   // le plus récent
     update.payment_method  = enc.payment_mode || 'reconcilie'
     update.amount_collected = enc.amount ?? null
+
+    // Récupérer les coordonnées client pour compléter le tableau du registre :
+    // priorité à la mission LIÉE à l'encaissement (souvent plus complète : ville,
+    // billed_to), repli sur les champs saisis dans l'encaissement lui-même.
+    let mClient: any = null
+    if (enc.mission_id && enc.mission_id !== missionId) {
+      const { data } = await sb.from('incoming_missions')
+        .select('client_name, client_phone, client_email, client_address, client_city, client_vat, billed_to_id, billed_to_name')
+        .eq('id', enc.mission_id).maybeSingle()
+      mClient = data
+    }
+    const pick = (a: any, b: any) => (a != null && a !== '') ? a : ((b != null && b !== '') ? b : null)
+    const cName = pick(mClient?.client_name, enc.client_name)
+    const cli: Record<string, any> = {
+      client_name:    cName,
+      client_phone:   pick(mClient?.client_phone,   enc.client_phone),
+      client_email:   pick(mClient?.client_email,   enc.client_email),
+      client_address: pick(mClient?.client_address, enc.client_address),
+      client_city:    pick(mClient?.client_city,    null),
+      client_vat:     pick(mClient?.client_vat,     enc.client_vat),
+      billed_to_id:   pick(mClient?.billed_to_id,   null),
+      billed_to_name: pick(mClient?.billed_to_name, cName),
+    }
+    // N'écrase pas avec des valeurs vides.
+    for (const [k, v] of Object.entries(cli)) if (v != null && v !== '') update[k] = v
+
     const encTxt = `${enc.amount ?? '?'}€ ${enc.payment_mode || '?'} · ${enc.driver_name || enc.driver_id || '?'} · ${(enc.created_at || '').slice(0, 16)}`
-    logNote = `Clôturé par rapprochement — encaissement chauffeur déjà réalisé (${encTxt}). Aucune facture Francofolies créée (évite le doublon).`
+    logNote = `Clôturé par rapprochement — encaissement chauffeur déjà réalisé (${encTxt})${cName ? ` · client ${cName}` : ''}. Aucune facture Francofolies créée (évite le doublon).`
     update.remarks_general = [m.remarks_general, `[Rapprochement] ${encTxt}`].filter(Boolean).join(' · ')
   } else {
     // isolate : parti mais encaissement non identifié → à trancher à la clôture.
