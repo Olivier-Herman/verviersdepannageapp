@@ -20,6 +20,10 @@ import { openNavigation } from '@/lib/open-navigation'
 import AddressField from '@/components/AddressField'
 import { T }    from '@/lib/i18n/T'
 import { useT } from '@/lib/i18n/I18nProvider'
+import {
+  startForMission, updateForMission, endForMission,
+  missionToLAState, isActiveMissionStatus,
+} from '@/lib/native/liveActivity'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -1324,6 +1328,47 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       setM(j.mission)
     } catch (e: any) { setErr(e.message || 'Erreur') }
   }
+
+  // ── Live Activity iOS : mission active → Dynamic Island / écran verrouillé ──
+  // Démarre l'activité quand la mission est active, la met à jour à chaque
+  // changement d'étape, la termine à la clôture. No-op hors iOS natif.
+  const laStartedRef = useRef(false)
+  useEffect(() => {
+    const laState = missionToLAState({
+      status: M.status, on_site_at: M.on_site_at, loaded_at: M.loaded_at,
+      mission_type: M.mission_type, incident_address: M.incident_address,
+      destination_address: M.destination_address, driver_eta_minutes: null,
+    })
+    if (isActiveMissionStatus(M.status)) {
+      if (!laStartedRef.current) {
+        laStartedRef.current = true
+        startForMission({
+          missionId:     M.id,
+          missionNumber: String((M as any).mission_number || (M as any).external_id || ''),
+          vehicle:       [M.vehicle_brand, M.vehicle_model, M.vehicle_plate].filter(Boolean).join(' '),
+          clientName:    M.client_name || '',
+          clientPhone:   (M.client_phone || '').replace(/[^\d+]/g, ''),
+          isRem:         rem,
+        }, laState)
+      } else {
+        updateForMission(M.id, laState)
+      }
+    } else if (laStartedRef.current) {
+      laStartedRef.current = false
+      endForMission(M.id, laState)
+    }
+  }, [M.status, M.on_site_at, M.loaded_at]) // eslint-disable-line
+
+  // Repli iOS 16 : un bouton de la Live Activity ouvre l'app avec ?la=<action> →
+  // on exécute l'action automatiquement puis on nettoie l'URL.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const la = new URLSearchParams(window.location.search).get('la')
+    if (!la || !['accept', 'on_site', 'load_vehicle'].includes(la)) return
+    const url = new URL(window.location.href); url.searchParams.delete('la')
+    window.history.replaceState({}, '', url.toString())
+    api(la)
+  }, []) // eslint-disable-line
 
   // Olivier 2026-06-02 PM : choix du scenario SNC depuis la fiche chauffeur.
   // Quand le dispatch reclassifie une mission en Siabis non couvert / couvert
