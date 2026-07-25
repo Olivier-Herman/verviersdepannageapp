@@ -2658,6 +2658,23 @@ export default function MissionDetailClient({
               {/* Assignation chauffeur */}
               <div>
                 <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-1.5">Assigner à un chauffeur</p>
+                {/* ETA live du chauffeur assigné (ORS + GPS, gratuit) — rempli par le cron driver-etas */}
+                {(() => {
+                  const etaMin = (M as any).driver_eta_minutes ?? (initialMission as any).driver_eta_minutes
+                  const etaAt  = (M as any).driver_eta_at ?? (initialMission as any).driver_eta_at
+                  const fresh  = etaAt && (Date.now() - new Date(etaAt).getTime() < 4 * 60 * 1000)
+                  const enRoute = ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering'].includes(status)
+                  if (!fresh || etaMin == null || !enRoute) return null
+                  return (
+                    <div className="mb-2 flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+                      <span className="text-3xl leading-none">🚚</span>
+                      <div>
+                        <p className="text-emerald-800 font-extrabold text-2xl leading-none">~{etaMin} min</p>
+                        <p className="text-emerald-700 text-[11px] mt-0.5">Arrivée estimée du chauffeur (live)</p>
+                      </div>
+                    </div>
+                  )
+                })()}
                 {['completed', 'ignored', 'cancelled'].includes(status) ? (
                   <div className="bg-surface-2 border rounded-lg px-3 py-2 text-ink-secondary text-sm">
                     {initialMission.assigned_user?.name || '— Non assigné —'}

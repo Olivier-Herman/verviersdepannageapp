@@ -75,6 +75,8 @@ interface Mission {
   auto_dispatch_driver_name?: string | null
   has_pending_derogation?: boolean
   invoice_number?: string | null
+  driver_eta_minutes?: number | null        // ETA chauffeur (ORS) rempli par le cron driver-etas
+  driver_eta_at?: string | null
   requested_by_garage_id?: string | null   // commande passée via l'espace client garage
   kaze_cancelled_after_accept?: boolean     // Kaze a annulé après acceptation → trajet à vide
 }
@@ -769,11 +771,22 @@ function MissionCard({ mission, drivers, driverStatuses, sources, onRefresh, onM
             </span>
           )}
         </div>
-        {showDelai && (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
-            {delai.label}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {(() => {
+            const etaFresh = mission.driver_eta_at != null && (Date.now() - new Date(mission.driver_eta_at).getTime() < 4 * 60 * 1000)
+            if (!etaFresh || mission.driver_eta_minutes == null || !mission.assigned_to) return null
+            return (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800" title="Temps d'arrivée estimé du chauffeur (live)">
+                🚚 {mission.driver_eta_minutes} min
+              </span>
+            )
+          })()}
+          {showDelai && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${delai.bgColor} ${delai.color} ${delai.pulse ? 'animate-pulse' : ''}`}>
+              {delai.label}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Client : fallback assisté si pas de client (cas VAB pre-acceptation) */}

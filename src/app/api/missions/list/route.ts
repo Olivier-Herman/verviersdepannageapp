@@ -46,6 +46,7 @@ export async function GET(req: Request) {
       requested_by_garage_id,
       kaze_cancelled_after_accept,
       is_rollable,
+      driver_eta_minutes, driver_eta_at,
       assigned_user:users!assigned_to(id, name, avatar_url)
     `)
     .order(sortField, { ascending: false, nullsFirst: false })
