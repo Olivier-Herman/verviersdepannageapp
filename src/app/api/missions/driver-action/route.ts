@@ -75,8 +75,15 @@ interface Stop {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth INTERNE (Live Activity → /api/missions/live-action) : header secret +
+  // id chauffeur, au lieu du cookie de session. Réutilise toute la logique ci-dessous.
+  const internalSecret = req.headers.get('x-internal-secret')
+  const internalActor  = req.headers.get('x-internal-actor')
+  const isInternal = !!internalSecret && !!internalActor
+    && !!process.env.NEXTAUTH_SECRET && internalSecret === process.env.NEXTAUTH_SECRET
+
+  const session = isInternal ? null : await getServerSession(authOptions)
+  if (!isInternal && !session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json() as {
     mission_id:    string
@@ -141,8 +148,9 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient()
 
-  const { data: actor } = await supabase
-    .from('users').select('id, name, current_truck_id').eq('email', session.user.email!).single()
+  const { data: actor } = isInternal
+    ? await supabase.from('users').select('id, name, current_truck_id').eq('id', internalActor!).single()
+    : await supabase.from('users').select('id, name, current_truck_id').eq('email', session!.user.email!).single()
   if (!actor) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 })
 
   const { data: mission, error: fetchError } = await supabase
