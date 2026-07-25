@@ -19,10 +19,18 @@ export async function POST(req: Request) {
   const token     = String(body?.token || '')
   if (!missionId || !token) return NextResponse.json({ error: 'mission_id + token requis' }, { status: 400 })
 
-  // Ignore la mission de démo (pas une vraie fiche).
-  if (missionId === 'demo-mission') return NextResponse.json({ ok: true, demo: true })
-
   const sb = createAdminClient()
+
+  // Mission de démo : on stocke le token dans app_settings pour pouvoir pousser
+  // une MAJ de test (prouve le push temps réel bout en bout).
+  if (missionId === 'demo-mission') {
+    await sb.from('app_settings').upsert(
+      { key: 'live_activity_demo_token', value: { token, at: new Date().toISOString() } },
+      { onConflict: 'key' },
+    ).then(() => {}, () => {})
+    return NextResponse.json({ ok: true, demo: true })
+  }
+
   await sb.from('incoming_missions').update({ live_activity_push_token: token }).eq('id', missionId).then(() => {}, () => {})
   return NextResponse.json({ ok: true })
 }

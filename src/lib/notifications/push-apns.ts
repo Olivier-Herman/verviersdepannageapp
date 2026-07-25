@@ -21,7 +21,7 @@ import http2 from 'node:http2'
 let cachedJwt:        string | null = null
 let cachedJwtExpiry:  number        = 0
 
-async function getApnsJwt(): Promise<string> {
+export async function getApnsJwt(): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   if (cachedJwt && cachedJwtExpiry > now + 60) return cachedJwt
 

@@ -55,6 +55,19 @@ export default function LiveActivityDevClient() {
         if (tj?.token) { await LA.setActionToken({ token: tj.token }); add('🔑 token action posé (App Group)') }
         else add(`⚠️ pas de token (${tr.status})`)
       } catch (e: any) { add(`⚠️ token: ${e?.message || e}`) }
+      // Écoute le push token de l'activité → l'enregistre serveur (pour tester
+      // le push temps réel v2 : tap bouton écran verrouillé → bannière change).
+      try {
+        await LA.addListener('pushToken', async ({ token }: any) => {
+          try {
+            await fetch('/api/missions/live-activity-token', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mission_id: 'demo-mission', token }),
+            })
+            add('📡 push token enregistré (v2)')
+          } catch { /* best-effort */ }
+        })
+      } catch { /* ignore */ }
       const payload = { ...DEMO, state: STATES[1].state }
       add('→ LA.start(...) envoyé')
       const res = await withTimeout(LA.start(payload), 8000, 'LA.start')
