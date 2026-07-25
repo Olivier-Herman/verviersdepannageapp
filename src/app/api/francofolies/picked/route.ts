@@ -56,6 +56,7 @@ export async function GET(req: Request) {
     .sort((a: any, b: any) => String(b._ref).localeCompare(String(a._ref)))   // plus récent en premier
     .map((m: any) => {
       const paymentLabel = m.no_charge_at ? 'Sans frais'
+        : m.payment_method === 'a_verifier' ? 'À vérifier'
         : m.payment_method === 'unpaid' ? 'Pas payé'
         : 'Payé'
       return {

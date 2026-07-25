@@ -51,7 +51,7 @@ export default function FrancofoliesClient({
   currentUserId: string; isDriverOnly: boolean; drivers: Driver[]
   price: number; gardiennagePrice: number
 }) {
-  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup' | 'stats' | 'registre'>('home')
+  const [screen, setScreen] = useState<'home' | 'arrival' | 'list' | 'pickup' | 'stats' | 'registre' | 'reconcile'>('home')
 
   // ── Encodage arrivée (rapide) ──────────────────────────────────────────────
   const [plate,      setPlate]      = useState('')
@@ -290,6 +290,40 @@ export default function FrancofoliesClient({
   }, [expFrom, expTo])
   useEffect(() => { if (screen === 'registre') loadRegistre() }, [screen, loadRegistre])
 
+  // Rapprochement encaissements (superadmin) : fiches 'parked' + encaissement chauffeur correspondant.
+  interface RecEnc { id: string; amount: number | null; payment_mode: string | null; driver_name: string | null; created_at: string | null; linked_to_this: boolean }
+  interface RecRow {
+    id: string; mission_number: number | null; plate: string; brand: string; model: string
+    parked_at: string | null; amount_to_collect: number | null; police_blocked: boolean
+    matches: RecEnc[]; matched: boolean
+  }
+  const [recData, setRecData] = useState<{ rows: RecRow[]; summary: { total: number; matched: number; unmatched: number } } | null>(null)
+  const [loadingRec, setLoadingRec] = useState(false)
+  const [recBusy, setRecBusy] = useState<string | null>(null)
+  const loadReconcile = useCallback(async () => {
+    setLoadingRec(true)
+    try {
+      const r = await fetch('/api/francofolies/reconcile')
+      const j = await r.json()
+      if (r.ok) setRecData(j)
+    } catch {} finally { setLoadingRec(false) }
+  }, [])
+  useEffect(() => { if (screen === 'reconcile') loadReconcile() }, [screen, loadReconcile])
+  async function runReconcile(missionId: string, action: 'close_reconciled' | 'isolate', label: string) {
+    if (!confirm(`Confirmer : ${label} ?`)) return
+    setRecBusy(missionId)
+    try {
+      const r = await fetch('/api/francofolies/reconcile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId, action }),
+      })
+      const j = await r.json()
+      if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      showToast('✅ Fiche traitée')
+      await loadReconcile()
+    } catch { showToast('⚠ Erreur réseau') } finally { setRecBusy(null) }
+  }
+
   const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
   // price = prix réquisition TVAC (220 par défaut) ; gardiennagePrice = HTVA/jour (20).
   const baseTvac = Math.round(price * 100) / 100
@@ -385,6 +419,12 @@ export default function FrancofoliesClient({
           <button onClick={() => setScreen('registre')}
             className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
             📋 Registre des véhicules enlevés
+          </button>
+        )}
+        {userRole === 'superadmin' && (
+          <button onClick={() => setScreen('reconcile')}
+            className="w-full py-4 bg-surface border text-ink-secondary hover:border-brand/40 rounded-2xl font-semibold transition">
+            🔗 Rapprochement encaissements
           </button>
         )}
         <a href="/aide/francofolies.html" target="_blank" rel="noopener noreferrer"
@@ -754,12 +794,14 @@ export default function FrancofoliesClient({
       return d.toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
     }
     const payBadge = (label: string) =>
-      label === 'Payé'      ? 'bg-emerald-100 text-emerald-800'
-      : label === 'Pas payé' ? 'bg-red-100 text-red-800'
-      :                        'bg-gray-100 text-gray-700'   // Sans frais
+      label === 'Payé'       ? 'bg-emerald-100 text-emerald-800'
+      : label === 'Pas payé'  ? 'bg-red-100 text-red-800'
+      : label === 'À vérifier' ? 'bg-amber-100 text-amber-800'
+      :                         'bg-gray-100 text-gray-700'   // Sans frais
     const PAY_MODE_LABEL: Record<string, string> = {
       cash: '💵 Espèces', bancontact: '💳 Bancontact', sumup: '📲 Sumup',
-      qr_transfer: '📷 QR virement', unpaid: 'À facturer',
+      sumup_manual: '📲 Sumup', qr_transfer: '📷 QR virement', unpaid: 'À facturer',
+      a_verifier: '⚠️ À vérifier', reconcilie: '🔗 Rapproché',
     }
     const payModeLabel = (m: string | null) => (m && PAY_MODE_LABEL[m]) || (m || '')
     return shell(
@@ -873,6 +915,86 @@ export default function FrancofoliesClient({
         )}
         <p className="text-ink-faint text-[11px] text-center">Tableau en lecture seule — coordonnées propriétaire, montant TVAC et mode de paiement de chaque enlèvement.</p>
       </main>, 'Registre',
+    )
+  }
+
+  // ── RAPPROCHEMENT ENCAISSEMENTS (superadmin) ────────────────────────────────
+  if (screen === 'reconcile' && userRole === 'superadmin') {
+    const fmt = (ts: string | null) => ts ? new Date(ts).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+    return shell(
+      <main className="p-4 max-w-3xl mx-auto space-y-4">
+        <button onClick={() => setScreen('home')} className="text-ink-muted text-sm">← Accueil</button>
+        <h1 className="text-ink text-lg font-bold">🔗 Rapprochement encaissements</h1>
+        <p className="text-ink-muted text-sm">
+          Fiches encore « en attente » alors que le véhicule a été rendu via un <b>encaissement chauffeur</b>.
+          Clôture-les <b>sans créer de facture</b> (la facture existe déjà), ou isole celles sans paiement identifié.
+        </p>
+
+        {recData && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-surface border rounded-xl p-3 text-center"><p className="text-ink text-2xl font-bold">{recData.summary.total}</p><p className="text-ink-muted text-xs">En attente</p></div>
+            <div className="bg-surface border rounded-xl p-3 text-center"><p className="text-emerald-600 text-2xl font-bold">{recData.summary.matched}</p><p className="text-ink-muted text-xs">Encaissement trouvé</p></div>
+            <div className="bg-surface border rounded-xl p-3 text-center"><p className="text-amber-600 text-2xl font-bold">{recData.summary.unmatched}</p><p className="text-ink-muted text-xs">Sans encaissement</p></div>
+          </div>
+        )}
+
+        {loadingRec ? (
+          <p className="text-ink-muted py-8 text-center">Chargement…</p>
+        ) : !recData || recData.rows.length === 0 ? (
+          <p className="text-ink-muted py-10 text-center">Aucune fiche en attente à rapprocher 🎉</p>
+        ) : (
+          <div className="space-y-2">
+            {recData.rows.map(r => (
+              <div key={r.id} className={`bg-surface border rounded-xl p-3 ${r.matched ? 'border-emerald-200' : 'border-amber-200'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-ink font-bold font-mono">
+                      {r.plate || '—'}
+                      {r.police_blocked && <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold align-middle">🚔</span>}
+                    </p>
+                    <p className="text-ink-secondary text-sm">{[r.brand, r.model].filter(Boolean).join(' ') || '—'} · #{r.mission_number}</p>
+                    <p className="text-ink-faint text-xs">En parc depuis {fmt(r.parked_at)} · {r.amount_to_collect ?? '—'} €</p>
+                  </div>
+                </div>
+
+                {r.matches.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {r.matches.map(e => (
+                      <p key={e.id} className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1.5">
+                        ✅ {e.amount ?? '?'} € {e.payment_mode || '?'} · {e.driver_name || '?'} · {fmt(e.created_at)}
+                        {e.linked_to_this ? ' · sur cette fiche' : ' · (autre fiche)'}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+                    ❌ Aucun encaissement trouvé pour cette plaque.
+                  </p>
+                )}
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {r.matched && (
+                    <button disabled={recBusy === r.id}
+                      onClick={() => runReconcile(r.id, 'close_reconciled', `Clôturer ${r.plate} (déjà encaissé, sans facture)`)}
+                      className="flex-1 min-w-[150px] py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition">
+                      ✅ Clôturer (déjà encaissé)
+                    </button>
+                  )}
+                  <button disabled={recBusy === r.id}
+                    onClick={() => runReconcile(r.id, 'isolate', `Isoler ${r.plate} (paiement à vérifier)`)}
+                    className="flex-1 min-w-[150px] py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition">
+                    ⚠️ Isoler (à vérifier)
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-ink-faint text-[11px] text-center">
+          « Clôturer » passe la fiche en <b>terminé</b> et recopie le paiement — <b>aucune facture Odoo</b> n'est créée.
+          « Isoler » la sort de l'attente mais la garde flaggée « à vérifier » dans le registre.
+        </p>
+      </main>, 'Rapprochement',
     )
   }
 
