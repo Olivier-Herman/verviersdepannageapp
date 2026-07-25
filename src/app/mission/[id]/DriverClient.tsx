@@ -132,6 +132,14 @@ async function captureGeo(): Promise<{ lat: number; lng: number } | null> {
   } catch { return null }
 }
 
+/** Distance en mètres entre deux points GPS (haversine). */
+function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000, toRad = (d: number) => d * Math.PI / 180
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng)
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)))
+}
+
 // Actions de pointage pour lesquelles on enregistre le lieu GPS.
 const GEO_POINTAGE_ACTIONS = new Set([
   'accept', 'on_way', 'on_site', 'load_vehicle', 'park', 'completed',
@@ -1110,6 +1118,37 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const rel      = isRELMission(M)         // REL = relivraison depuis le parc
   const onSite   = !!M.on_site_at
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
+
+  // ── Geofence « Sur place ? » ───────────────────────────────────────────────
+  // Suggère automatiquement de pointer « Sur place » quand le chauffeur est à
+  // ~200 m de l'incident ET à l'arrêt depuis > 4 min. 100 % GPS (gratuit), non
+  // bloquant (il confirme d'un tap). Olivier 2026-07-28.
+  const [geoSuggest, setGeoSuggest] = useState(false)
+  const geoAnchorRef    = useRef<{ lat: number; lng: number; since: number } | null>(null)
+  const geoSuggestedRef = useRef(false)
+  useEffect(() => {
+    // Cible = incident. Actif seulement en route vers l'incident, pas encore sur place.
+    const target = (M.incident_lat != null && M.incident_lng != null)
+      ? { lat: Number(M.incident_lat), lng: Number(M.incident_lng) } : null
+    const heading = !onSite && ['assigned', 'accepted', 'on_way', 'in_progress'].includes(M.status || '')
+    if (!target || !heading || geoSuggestedRef.current) return
+    let cancelled = false
+    const tick = async () => {
+      const pos = await captureGeo()
+      if (cancelled || !pos) return
+      if (distanceMeters(pos, target) > 200) { geoAnchorRef.current = null; return }
+      const a = geoAnchorRef.current
+      if (!a || distanceMeters(pos, a) > 30) {
+        geoAnchorRef.current = { ...pos, since: Date.now() }   // (re)ancre : encore en mouvement
+      } else if (Date.now() - a.since > 4 * 60 * 1000) {
+        geoSuggestedRef.current = true                         // à l'arrêt > 4 min dans les 200 m
+        setGeoSuggest(true)
+      }
+    }
+    const iv = setInterval(tick, 30000)
+    tick()
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [M.status, M.incident_lat, M.incident_lng, onSite])
   // Olivier 2026-06-03 : logging temporaire pour diagnostiquer la boucle.
   // JSON.stringify pour que les valeurs soient visibles en texte (sinon
   // la console affiche juste "Object" qu il faut cliquer pour expand).
@@ -2792,6 +2831,25 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
         {/* Stepper visuel : étapes du workflow chauffeur */}
         <Stepper status={M.status} onSite={onSite} loaded={loaded} isRem={rem} isRel={rel} />
       </div>
+
+      {/* Geofence : suggestion « Sur place ? » quand arrivé + à l'arrêt > 4 min */}
+      {geoSuggest && !onSite && (
+        <div className="mx-4 mt-3 bg-emerald-500/10 border-2 border-emerald-400 rounded-2xl p-4 flex items-center gap-3">
+          <span className="text-3xl">📍</span>
+          <div className="flex-1">
+            <p className="text-emerald-300 font-bold text-sm">Vous semblez arrivé sur place</p>
+            <p className="text-emerald-200/70 text-xs">Confirmer le pointage « Sur place » ?</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <button onClick={() => { setGeoSuggest(false); api('on_site') }} disabled={loading}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold whitespace-nowrap">
+              ✅ Sur place
+            </button>
+            <button onClick={() => setGeoSuggest(false)}
+              className="px-4 py-1 text-emerald-200/60 text-xs">Pas encore</button>
+          </div>
+        </div>
+      )}
 
       {/* Banderole rouge : montant à encaisser (rien encore OU partiel) */}
       {/* 5 taps caches sur la banderole → modal derogation (briefing vocal) */}
