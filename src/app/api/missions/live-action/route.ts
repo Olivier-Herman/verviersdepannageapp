@@ -8,6 +8,7 @@
 
 import { NextResponse }      from 'next/server'
 import { verifyLiveToken }   from '@/lib/native/liveToken'
+import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -24,6 +25,18 @@ export async function POST(req: Request) {
   const claims = verifyLiveToken(token)
   if (!claims) return NextResponse.json({ error: 'Token invalide' }, { status: 401 })
   if (!missionId || !ALLOWED.has(action)) return NextResponse.json({ error: 'Requête invalide' }, { status: 400 })
+
+  // Mission de démo : on ne touche à aucune vraie fiche, on écrit juste une trace
+  // (prouve que App Intent + token App Group + live-action fonctionnent bout en bout).
+  if (missionId === 'demo-mission') {
+    try {
+      await createAdminClient().from('app_settings').upsert(
+        { key: 'live_action_demo_last', value: { at: new Date().toISOString(), action, uid: claims.uid } },
+        { onConflict: 'key' },
+      )
+    } catch { /* best-effort */ }
+    return NextResponse.json({ ok: true, demo: true })
+  }
 
   // Appel interne à driver-action, authentifié comme le chauffeur du token.
   const secret = process.env.NEXTAUTH_SECRET || ''
