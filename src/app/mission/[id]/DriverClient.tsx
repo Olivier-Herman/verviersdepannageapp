@@ -1,7 +1,7 @@
 'use client'
 // DriverClient v4 — spec figée — DSP/REM, stops, mise en parc, realtime
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
@@ -633,6 +633,11 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const [photos, setPhotos]       = useState<File[]>([])
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const [previews, setPreviews]   = useState<string[]>([])
+  // Refs pour l'upload photo « offline-first » (voir bgFlush) — évite les
+  // closures périmées dans les timers/retries. Olivier 2026-07-25.
+  const photosRef    = useRef<File[]>([]);   photosRef.current    = photos
+  const photoUrlsRef = useRef<string[]>([]); photoUrlsRef.current = photoUrls
+  const bgBusyRef    = useRef(false)
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<DischargeEntry[]>([])
   const [paid, setPaid]           = useState(false)
@@ -1028,19 +1033,33 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   }
 
   // Charger le draft côté client — DB prioritaire sur localStorage
+  const hydratedRef = useRef(false)
   useEffect(() => {
     // driver_photos vient de la DB (source of truth)
     const dbPhotos: string[] = Array.isArray((M as any).driver_photos) ? (M as any).driver_photos : []
-    if (dbPhotos.length) {
-      setPhotoUrls(dbPhotos); setPreviews(dbPhotos)
-    } else {
-      const d = getDraft()
-      if (d.photoUrls?.length) { setPhotoUrls(d.photoUrls); setPreviews(d.photoUrls) }
-    }
     const d = getDraft()
+    const uploaded = dbPhotos.length ? dbPhotos : (Array.isArray(d.photoUrls) ? d.photoUrls : [])
+    // Photos capturées mais PAS encore envoyées (persistées en base64) : elles
+    // survivent au kill/reboot de l'app + à un réseau coupé. On les restaure et
+    // l'auto-upload (bgFlush) les enverra dès que possible. Olivier 2026-07-25.
+    const pending: string[] = Array.isArray(d.pendingB64) ? d.pendingB64 : []
+    if (uploaded.length || pending.length) {
+      setPhotoUrls(uploaded)
+      setPreviews([...uploaded, ...pending])
+      if (pending.length) setPhotos(pending.map((b64, i) => dataUrlToFile(b64, `restored-${Date.now()}-${i}.jpg`)))
+    }
     if (d.sig)   setSig(d.sig)
     if (d.disch) setDisch(Array.isArray(d.disch) ? d.disch : d.disch ? [d.disch] : [])
+    hydratedRef.current = true
   }, [])
+
+  // Persiste en continu les photos NON envoyées (base64) dans le brouillon, pour
+  // qu'elles ne soient jamais perdues (app tuée en arrière-plan pendant le trajet).
+  // Garde : ne pas écrire avant la ré-hydratation (sinon on écraserait le draft).
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    saveDraft({ pendingB64: previews.slice(photoUrls.length) })
+  }, [previews, photoUrls]) // eslint-disable-line
 
   // Décharge — flow type → champs dynamiques → signature
   const [dTypeKey, setDTypeKey] = useState<string>('')  // '' = ecran de selection
@@ -1557,6 +1576,51 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     return j.urls as string[]
   }
 
+  // ── Auto-upload « offline-first » ──────────────────────────────────────────
+  // Envoie en tâche de fond les photos capturées (dès la prise + retries auto au
+  // retour du réseau), pour ne plus dépendre d'un « Enregistrer » manuel qui peut
+  // échouer/être perdu si l'app est tuée pendant le trajet. Best-effort, silencieux.
+  const bgFlush = useCallback(async () => {
+    if (bgBusyRef.current) return
+    const batch = photosRef.current
+    if (!batch.length) return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    bgBusyRef.current = true
+    try {
+      const baseUrls = photoUrlsRef.current
+      const newUrls = await uploadPhotos(batch)
+      if (newUrls.length) {
+        const allUrls = [...baseUrls, ...newUrls]
+        const r = await fetch('/api/missions/driver-action', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mission_id: M.id, action: 'save_photos', photo_urls: allUrls }),
+        })
+        if (r.ok) {
+          setPhotoUrls(allUrls)
+          // Retire uniquement le lot envoyé ; garde ce qui a été capturé pendant l'upload.
+          setPhotos(prev => prev.slice(batch.length))
+          setPreviews(prev => [...allUrls, ...prev.slice(baseUrls.length + batch.length)])
+          saveDraft({ photoUrls: allUrls })
+        }
+      }
+    } catch { /* réseau KO → on garde, retry auto */ }
+    finally { bgBusyRef.current = false }
+  }, [M.id]) // eslint-disable-line
+
+  // Déclencheurs : après chaque capture (debounce), au retour du réseau, et un
+  // filet toutes les 20 s tant qu'il reste des photos non envoyées.
+  useEffect(() => {
+    if (photos.length === 0) return
+    const t = setTimeout(bgFlush, 1200)
+    return () => clearTimeout(t)
+  }, [photos, bgFlush])
+  useEffect(() => {
+    const onOnline = () => bgFlush()
+    window.addEventListener('online', onOnline)
+    const iv = setInterval(() => { if (photosRef.current.length) bgFlush() }, 20000)
+    return () => { window.removeEventListener('online', onOnline); clearInterval(iv) }
+  }, [bgFlush])
+
   const addPhotos = async (files: FileList | null) => {
     if (!files) return
     const newFiles = Array.from(files)
@@ -1752,7 +1816,10 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
     if (isRollable === null) { setErr(t('mission_detail.rollable_required')); return }
     setLoading(true); setErr('')
     try {
-      const newUrls = await uploadPhotos(photos)
+      // Best-effort : si le réseau est KO pile à la mise en parc, on ne bloque
+      // pas — les photos restantes sont conservées (brouillon) et repartent seules.
+      let newUrls: string[] = []
+      try { newUrls = await uploadPhotos(photos) } catch { newUrls = [] }
       const allUrls = [...photoUrls, ...newUrls]
       const r = await fetch('/api/missions/driver-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1792,7 +1859,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      clearDraft()
+      if (!photosRef.current.length) clearDraft()   // garde le brouillon si des photos restent à envoyer
       // Mission terminée pour le chauffeur (le dispatcher reprend la main pour la REL).
       // On redirige vers la liste des missions plutôt que de recharger la fiche.
       window.location.href = '/mission'
@@ -1804,9 +1871,14 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const doClose = async () => {
     setLoading(true); setErr('')
     try {
-      const newUrls = await uploadPhotos(photos)
+      // Best-effort : ne bloque pas la clôture si le réseau échoue pile maintenant.
+      // Les photos non envoyées restent dans le brouillon et repartent seules.
+      let newUrls: string[] = []
+      try { newUrls = await uploadPhotos(photos) } catch { newUrls = [] }
       const allUrls = [...photoUrls, ...newUrls]
-      if (closeType !== 'dpr' && allUrls.length < 1) { setErr('Ajoutez au moins une photo'); setLoading(false); return }
+      // Garde-fou : au moins UNE photo prise (envoyée ou encore en file d'envoi).
+      const capturedCount = photoUrls.length + photos.length
+      if (closeType !== 'dpr' && capturedCount < 1) { setErr('Ajoutez au moins une photo'); setLoading(false); return }
       // DPR exige toujours un motif (modal ouverte avant le passage en closeType='dpr').
       if (closeType === 'dpr' && !dprMotif) {
         setErr('Motif DPR requis'); setLoading(false); return
@@ -1845,7 +1917,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erreur')
-      clearDraft()
+      if (!photosRef.current.length) clearDraft()   // garde le brouillon si des photos restent à envoyer
       {
         const __url = new URL(window.location.href)
         __url.searchParams.set('t', String(Date.now()))
@@ -1973,7 +2045,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
               {previews.slice(photoUrls.length).map((src, i) => (
                 <div key={`f${i}`} className="relative aspect-square rounded-xl overflow-hidden">
                   <img src={src} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-ink text-xs text-center">non sauv.</div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-amber-500/70 text-ink text-xs text-center">⏳ envoi…</div>
                   <button onClick={() => { setPhotos(p => p.filter((_, j) => j !== i)); setPreviews(p => p.filter((_, j) => j !== i + photoUrls.length)) }}
                     className="absolute top-1 right-1 w-5 h-5 bg-black/70 rounded-full text-ink text-xs flex items-center justify-center">✕</button>
                 </div>
