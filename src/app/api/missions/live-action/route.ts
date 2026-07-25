@@ -40,12 +40,6 @@ export async function POST(req: Request) {
   // pousse une MAJ de la Live Activity (prouve le push temps réel bout en bout).
   if (missionId === 'demo-mission') {
     const sb = createAdminClient()
-    try {
-      await sb.from('app_settings').upsert(
-        { key: 'live_action_demo_last', value: { at: new Date().toISOString(), action, uid: claims.uid } },
-        { onConflict: 'key' },
-      )
-    } catch { /* best-effort */ }
 
     // Push la nouvelle bannière (l'état dépend de l'action tapée).
     let pushed: any = { ok: false, reason: 'no demo token' }
@@ -54,6 +48,13 @@ export async function POST(req: Request) {
       const token = (data?.value as any)?.token as string | undefined
       if (token) pushed = await sendLiveActivityApns(token, { event: 'update', contentState: DEMO_STATE[action], staleSeconds: 3600 })
     } catch (e: any) { pushed = { ok: false, reason: e?.message || 'err' } }
+
+    try {
+      await sb.from('app_settings').upsert(
+        { key: 'live_action_demo_last', value: { at: new Date().toISOString(), action, uid: claims.uid, pushed } },
+        { onConflict: 'key' },
+      )
+    } catch { /* best-effort */ }
 
     return NextResponse.json({ ok: true, demo: true, pushed })
   }
