@@ -1,11 +1,18 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import AppShell from '@/components/layout/AppShell'
 import OcrScanModal from '@/components/OcrScanModal'
 import VehiclePlateLookup from '@/components/vehicles/VehiclePlateLookup'
 import type { VehicleMatch } from '@/types/vehicles'
 import { COMPANY } from '@/config/company'
+
+// Client browser (anon) pour le realtime de la liste des véhicules à rendre.
+const sbRealtime = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
 /**
  * Construit le payload d'un QR EPC (EPC069-12, virement SEPA). Scanné par les
@@ -208,6 +215,24 @@ export default function FrancofoliesClient({
     const t = setTimeout(() => loadList(q), 250)
     return () => clearTimeout(t)
   }, [q, screen, loadList])
+
+  // ── Realtime : la liste + le compteur se mettent à jour en direct ──────────
+  // Dès qu'un véhicule est ajouté (arrivée) ou enlevé, la ligne apparaît/disparaît
+  // sans refresh, pour tous ceux qui ont l'écran ouvert. Olivier 2026-07-25.
+  const qRef = useRef(q); qRef.current = q
+  const screenRef = useRef(screen); screenRef.current = screen
+  useEffect(() => {
+    const channel = sbRealtime.channel('francofolies-list')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'incoming_missions', filter: 'source=eq.francofolies' },
+        () => {
+          // Re-fetch (toujours cohérent avec le filtre En attente / Tous + recherche).
+          loadPendingCount()
+          if (screenRef.current === 'list') loadList(qRef.current)
+        })
+      .subscribe()
+    return () => { sbRealtime.removeChannel(channel) }
+  }, [loadList, loadPendingCount])
 
   // ── Enlèvement (Phase 2) ─────────────────────────────────────────────────
   const [picked,    setPicked]    = useState<Row | null>(null)
