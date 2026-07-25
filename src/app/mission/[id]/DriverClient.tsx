@@ -1119,36 +1119,31 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
   const onSite   = !!M.on_site_at
   const loaded   = !!M.loaded_at || M.status === 'delivering' || M.status === 'parked'
 
-  // ── Geofence « Sur place ? » ───────────────────────────────────────────────
-  // Suggère automatiquement de pointer « Sur place » quand le chauffeur est à
-  // ~200 m de l'incident ET à l'arrêt depuis > 4 min. 100 % GPS (gratuit), non
-  // bloquant (il confirme d'un tap). Olivier 2026-07-28.
+  // ── Geofence « Sur place ? » (suggestion) ──────────────────────────────────
+  // Suggère de pointer « Sur place » dès que le chauffeur est à ~200 m de
+  // l'incident. Non bloquant (il confirme d'un tap) → pas besoin d'attendre un
+  // arrêt : le risque de faux positif est nul. 100 % GPS (gratuit). Olivier 2026-07-28.
   const [geoSuggest, setGeoSuggest] = useState(false)
-  const geoAnchorRef    = useRef<{ lat: number; lng: number; since: number } | null>(null)
   const geoSuggestedRef = useRef(false)
   useEffect(() => {
-    // Cible = incident. Actif seulement en route vers l'incident, pas encore sur place.
+    // Cible = incident. Uniquement dans l'état où « Sur place » est valide.
     const target = (M.incident_lat != null && M.incident_lng != null)
       ? { lat: Number(M.incident_lat), lng: Number(M.incident_lng) } : null
-    const heading = !onSite && ['assigned', 'accepted', 'on_way', 'in_progress'].includes(M.status || '')
-    if (!target || !heading || geoSuggestedRef.current) return
+    const canSuggest = M.status === 'in_progress' && !onSite && !rel
+    if (!target || !canSuggest || geoSuggestedRef.current) return
     let cancelled = false
     const tick = async () => {
       const pos = await captureGeo()
-      if (cancelled || !pos) return
-      if (distanceMeters(pos, target) > 200) { geoAnchorRef.current = null; return }
-      const a = geoAnchorRef.current
-      if (!a || distanceMeters(pos, a) > 30) {
-        geoAnchorRef.current = { ...pos, since: Date.now() }   // (re)ancre : encore en mouvement
-      } else if (Date.now() - a.since > 4 * 60 * 1000) {
-        geoSuggestedRef.current = true                         // à l'arrêt > 4 min dans les 200 m
+      if (cancelled || !pos || geoSuggestedRef.current) return
+      if (distanceMeters(pos, target) <= 200) {   // dans les 200 m → on propose
+        geoSuggestedRef.current = true
         setGeoSuggest(true)
       }
     }
-    const iv = setInterval(tick, 30000)
+    const iv = setInterval(tick, 20000)
     tick()
     return () => { cancelled = true; clearInterval(iv) }
-  }, [M.status, M.incident_lat, M.incident_lng, onSite])
+  }, [M.status, M.incident_lat, M.incident_lng, onSite, rel])
   // Olivier 2026-06-03 : logging temporaire pour diagnostiquer la boucle.
   // JSON.stringify pour que les valeurs soient visibles en texte (sinon
   // la console affiche juste "Object" qu il faut cliquer pour expand).
