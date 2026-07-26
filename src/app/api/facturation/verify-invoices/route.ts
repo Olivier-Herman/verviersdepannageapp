@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
   // Fiches à facturer ayant une facture liée (directe ou via devis).
   let q = sb.from('incoming_missions')
-    .select('id, external_id, status, invoice_odoo_id, odoo_quote_id')
+    .select('id, external_id, vehicle_plate, status, invoice_odoo_id, odoo_quote_id')
     .eq('status', 'to_invoice')
     .or('invoice_odoo_id.not.is.null,odoo_quote_id.not.is.null')
   if (onlyIds) q = q.in('id', onlyIds)
@@ -111,17 +111,17 @@ export async function POST(req: Request) {
         invoiced_at:     now,
         invoiced_by:     user.id,
       }).eq('id', m.id)
-      if (updErr) { none.push({ id: m.id, ref: m.external_id, reason: updErr.message }); continue }
+      if (updErr) { none.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, reason: updErr.message }); continue }
       try { await releaseParcAndShift(sb, m.id) } catch (e: any) { console.error('[verify-invoices] release parc KO:', e.message) }
       await sb.from('mission_logs').insert({
         mission_id: m.id, actor_id: user.id, action: 'invoiced',
         notes: `Facturée n° ${posted.name} (vérification Odoo groupée)`,
       }).then(() => {}, () => {})
-      completed.push({ id: m.id, ref: m.external_id, number: posted.name })
+      completed.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, number: posted.name })
     } else if (moves.some(mv => mv.state === 'draft')) {
-      draft.push({ id: m.id, ref: m.external_id })
+      draft.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate })
     } else {
-      none.push({ id: m.id, ref: m.external_id })
+      none.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate })
     }
   }
 

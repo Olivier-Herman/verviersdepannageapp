@@ -40,6 +40,8 @@ interface MissionRow {
   payment_method: string | null
   special_tarif_htva: number | null
   assigned_to: string | null
+  odoo_quote_id: number | null
+  invoice_odoo_id: number | null
   invoice_method: string | null
   invoice_number: string | null
   invoice_url: string | null
@@ -256,7 +258,11 @@ export default function FacturationClient({
         setData(d => d.filter(m => !done.has(m.id)))
         setSelectedIds(prev => { const n = new Set(prev); done.forEach(id => n.delete(id)); return n })
       }
-      setBatchReport(`✅ ${j.summary.completed} facturée(s) · ⏳ ${j.summary.draft} en brouillon (à confirmer dans Odoo) · 📄 ${j.summary.none} devis pas encore facturé dans Odoo`)
+      const plaques = (arr: any[]) => arr.map(x => x.plate || x.ref || '?').join(', ')
+      let rep = `✅ ${j.summary.completed} facturée(s)`
+      if (j.summary.draft) rep += ` · ⏳ ${j.summary.draft} en brouillon à confirmer dans Odoo (${plaques(j.draft)})`
+      if (j.summary.none)  rep += ` · 📄 ${j.summary.none} sans facture émise — devis non facturé ou annulé (${plaques(j.none)})`
+      setBatchReport(rep)
     } catch { setBatchReport('⚠ Erreur réseau') } finally { setBatchBusy(null) }
   }
 
@@ -685,6 +691,12 @@ export default function FacturationClient({
           {batchReport && (
             <p className="w-full text-ink-secondary text-xs mt-1 border-t pt-2">{batchReport}</p>
           )}
+
+          {/* Légende code couleur état Odoo */}
+          <div className="w-full flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted border-t pt-2">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-500 inline-block" /> Devis créé (pas encore facturé)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500 inline-block" /> Facture créée (à confirmer dans Odoo)</span>
+          </div>
         </div>
 
         {/* Liste */}
@@ -711,17 +723,21 @@ export default function FacturationClient({
               const hasAdv       = advs.length > 0
               const advTotal     = advs.reduce((s, a) => s + Number(a.amount_htva || 0), 0)
               const hasSpecial   = m.special_tarif_htva != null && Number(m.special_tarif_htva) > 0
+              // Code couleur état Odoo (prioritaire) : facture directe créée = vert,
+              // devis créé pas encore facturé = bleu. Olivier 2026-07-26.
+              const hasInvoice   = m.invoice_odoo_id != null
+              const hasQuote     = m.odoo_quote_id != null && !hasInvoice
+              const cardBg =
+                hasInvoice ? 'bg-emerald-50 border-2 border-emerald-500 hover:bg-emerald-100 hover:border-emerald-600'
+                : hasQuote ? 'bg-blue-50 border-2 border-blue-500 hover:bg-blue-100 hover:border-blue-600'
+                : hasSpecial ? 'bg-amber-50 border-2 border-amber-500 hover:bg-amber-100 hover:border-amber-600'
+                : hasAdv ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
+                : 'bg-surface border hover:bg-surface-hover'
 
               return (
                   <Link
                     href={`/dispatch/${m.id}`}
-                    className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${
-                      hasSpecial
-                        ? 'bg-amber-50 border-2 border-amber-500 hover:bg-amber-100 hover:border-amber-600'
-                        : hasAdv
-                          ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
-                          : 'bg-surface border hover:bg-surface-hover'
-                    }`}
+                    className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${cardBg}`}
                   >
                     {/* Ruban "Avance" en coin haut-gauche — Olivier 2026-06-01 */}
                     {hasAdv && (
