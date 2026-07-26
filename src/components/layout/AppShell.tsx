@@ -20,6 +20,7 @@ import CobrowseUserBridge, { CobrowseUserBanner } from '@/components/cobrowse/Co
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
 import { useMissionGpsTracking } from '@/hooks/useMissionGpsTracking'
+import FacturationButtonAnnounce from '@/components/facturation/FacturationButtonAnnounce'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
 
@@ -85,6 +86,7 @@ export default function AppShell({
    <NotificationsProvider userId={userId || null}>
     <WatchPairingBridge />
     <CobrowseUserBanner />
+    <FacturationButtonAnnounce userRole={userRole} userModules={userModules} />
     <div className="min-h-screen flex">
 
       {/* ── SIDEBAR DESKTOP ─────────────────────────────── */}

@@ -691,3 +691,26 @@ export async function attachFileToOrder(
     attachment_ids: [[4, attachmentId]],
   })
 }
+
+/** Idem attachFileToOrder mais pour une facture (account.move). Olivier 2026-07-26. */
+export async function attachFileToInvoice(
+  moveId:     number,
+  base64Data: string,
+  filename:   string,
+  mimeType:   string
+): Promise<void> {
+  const attachmentId = await rpc<number>('ir.attachment', 'create', [{
+    name:      filename,
+    type:      'binary',
+    datas:     base64Data,
+    res_model: 'account.move',
+    res_id:    moveId,
+    mimetype:  mimeType,
+  }])
+  await rpc('account.move', 'message_post', [[moveId]], {
+    body:           'Facture avance de fonds',
+    message_type:   'comment',
+    subtype_id:     2,
+    attachment_ids: [[4, attachmentId]],
+  })
+}

@@ -268,6 +268,7 @@ function MissionBlock({
     notes?:         string | null
   }>>([])
   const [quoteBusy, setQuoteBusy] = useState(false)
+  const [invoiceBusy, setInvoiceBusy] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatusData | null>(null)
   const [quoteStatusLoading, setQuoteStatusLoading] = useState(true)
@@ -371,34 +372,40 @@ function MissionBlock({
     } finally { setQuoteStatusLoading(false) }
   }
 
-  async function pushQuoteOdoo() {
-    setQuoteBusy(true); setQuoteError(null)
+  // mode 'quote' → devis (sale.order) ; mode 'invoice' → facture directe
+  // (account.move brouillon, sans devis). Même calcul de lignes dans les 2 cas.
+  async function pushQuoteOdoo(mode: 'quote' | 'invoice' = 'quote') {
+    if (mode === 'invoice') setInvoiceBusy(true); else setQuoteBusy(true)
+    setQuoteError(null)
     try {
       // Si l employe a personnalise les lignes, on les envoie. Sinon, calcul auto.
-      const body = customLines && customLines.length > 0
-        ? JSON.stringify({ lines: customLines })
-        : undefined
+      const payload: any = { mode }
+      if (customLines && customLines.length > 0) payload.lines = customLines
       const res = await fetch(`/api/missions/${m.id}/quote`, {
         method:  'POST',
-        ...(body ? { headers: { 'Content-Type': 'application/json' }, body } : {}),
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
       })
       const j = await res.json()
       if (!res.ok || !j.ok) {
         setQuoteError(j.error || `Erreur ${res.status}`)
         return
       }
-      // Ouvre direct le devis Odoo dans nouvel onglet
-      if (j.quote?.url) window.open(j.quote.url, '_blank')
-      onQuoteCreated(m.id, j.quote.id, j.quote.url)
-      // Reset le mode edition (le devis a ete pousse) + cleanup le draft
+      const obj = j.invoice || j.quote   // facture directe OU devis
+      // Ouvre direct l'objet Odoo dans un nouvel onglet
+      if (obj?.url) window.open(obj.url, '_blank')
+      // onQuoteCreated est spécifique au devis ; pour la facture directe, la fiche
+      // reste « à facturer » et le n° se récupère au « Facturation OK ».
+      if (obj && mode === 'quote') onQuoteCreated(m.id, obj.id, obj.url)
+      // Reset le mode edition (poussé) + cleanup le draft
       setCustomLines(null)
       if (hasDraft) await clearDraft()
-      // Recharge le statut pour reflet immediat (status devrait passer en 'draft')
+      // Recharge le statut pour reflet immediat
       await refreshQuoteStatus()
     } catch (e: any) {
       setQuoteError(e.message || 'Erreur réseau')
     } finally {
-      setQuoteBusy(false)
+      setQuoteBusy(false); setInvoiceBusy(false)
     }
   }
 
@@ -856,17 +863,30 @@ function MissionBlock({
               <>
                 <button
                   type="button"
-                  disabled={quoteBusy || !m.billed_to_id}
-                  onClick={pushQuoteOdoo}
+                  disabled={quoteBusy || invoiceBusy || !m.billed_to_id}
+                  onClick={() => pushQuoteOdoo('quote')}
                   className="flex-1 py-2 bg-info hover:bg-info/90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition"
                 >
                   {quoteBusy ? '⏳…' : (
                     quoteStatus?.status === 'draft' ? '🔄 Recréer / Mettre à jour le devis' :
-                    quoteStatus?.status === 'cancelled' ? '✨ Re-créer le devis (l\'ancien était annulé)' :
-                    quoteStatus?.status === 'deleted' ? '✨ Re-créer le devis (l\'ancien a été supprimé)' :
-                    '✨ Créer le devis Odoo'
+                    quoteStatus?.status === 'cancelled' ? '📄 Re-créer le devis (l\'ancien était annulé)' :
+                    quoteStatus?.status === 'deleted' ? '📄 Re-créer le devis (l\'ancien a été supprimé)' :
+                    '📄 Créer le devis'
                   )}
                 </button>
+                {/* Facture directe : crée un account.move brouillon dans Odoo, sans
+                    passer par le devis. Le n° se récupère au « Facturation OK ». */}
+                {(!quoteStatus?.status || quoteStatus.status === 'not_created') && (
+                  <button
+                    type="button"
+                    disabled={quoteBusy || invoiceBusy || !m.billed_to_id}
+                    onClick={() => pushQuoteOdoo('invoice')}
+                    title="Crée directement la facture en brouillon dans Odoo (sans devis)"
+                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition"
+                  >
+                    {invoiceBusy ? '⏳…' : '🧾 Facturer'}
+                  </button>
+                )}
                 {quoteStatus?.status === 'draft' && quoteStatus.url && (
                   <a href={quoteStatus.url} target="_blank" rel="noreferrer"
                     className="px-2.5 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-lg text-xs transition"

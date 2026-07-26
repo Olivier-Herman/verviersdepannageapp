@@ -15,8 +15,8 @@ import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
-import { createSaleOrder, updateSaleOrder, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
-import { attachFileToOrder, withOdooActor } from '@/lib/odoo'
+import { createSaleOrder, updateSaleOrder, createDraftInvoice, buildInvoiceMoveUrl, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { attachFileToOrder, attachFileToInvoice, withOdooActor } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -42,9 +42,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
   }
 
-  // Body optionnel : { lines: [{ kind, name, qty, price_unit }] }
-  // Si fourni, on saute le calcul auto et on pousse ces lignes telles quelles.
+  // Body optionnel : { lines: [{ kind, name, qty, price_unit }], mode }
+  // mode 'quote' (défaut) → sale.order brouillon (devis) ; mode 'invoice' →
+  // account.move out_invoice brouillon (facture directe, sans devis).
   const body = await req.json().catch(() => ({}))
+  const mode: 'quote' | 'invoice' = body.mode === 'invoice' ? 'invoice' : 'quote'
   let customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
     ? body.lines.map((l: any): QuoteLine => ({
         kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
@@ -88,7 +90,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, extra_addresses,
-      odoo_quote_id, odoo_quote_url
+      odoo_quote_id, odoo_quote_url, invoice_odoo_id
     `)
     .eq('id', params.id)
     .single()
@@ -218,6 +220,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
   // wrap dans withOdooActor pour tracer au user connecte (cle perso).
+  // Mode facture directe : si une facture existe déjà, on ne recrée pas de
+  // doublon — l'employé la gère dans Odoo. On renvoie l'existante.
+  if (mode === 'invoice' && (mission as any).invoice_odoo_id) {
+    return NextResponse.json({
+      ok: true, mode,
+      invoice: { id: (mission as any).invoice_odoo_id, url: buildInvoiceMoveUrl((mission as any).invoice_odoo_id) },
+      already_exists: true,
+    })
+  }
+
   let result: { id: number; url: string }
   try {
     result = await withOdooActor(user?.id, async () => {
@@ -234,6 +246,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         sections,
         description:      buildInterventionDescription(mission as any),
       }
+      // Facture directe (account.move brouillon) — véhicule + réf inclus.
+      if (mode === 'invoice') {
+        return await createDraftInvoice(commonInput)
+      }
+      // Devis (sale.order) — création/mise à jour idempotente.
       if (mission.odoo_quote_id) {
         try {
           return await updateSaleOrder(mission.odoo_quote_id, commonInput)
@@ -248,23 +265,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return await createSaleOrder(commonInput)
     })
   } catch (e: any) {
-    console.error('[quote] Odoo push failed:', e.message)
+    console.error(`[quote] Odoo push failed (mode=${mode}):`, e.message)
     return NextResponse.json({ error: `Erreur Odoo : ${e.message}` }, { status: 500 })
   }
 
-  // 5) Persiste la trace cote VD Soft
-  const { error: updErr } = await sb
-    .from('incoming_missions')
-    .update({
-      odoo_quote_id:  result.id,
-      odoo_quote_url: result.url,
-      odoo_quoted_at: new Date().toISOString(),
-    })
-    .eq('id', mission.id)
+  // 5) Persiste la trace cote VD Soft (selon le mode).
+  const traceUpd = mode === 'invoice'
+    ? { invoice_odoo_id: result.id }   // lu par /invoices → récup auto du n° au « Facturation OK »
+    : { odoo_quote_id: result.id, odoo_quote_url: result.url, odoo_quoted_at: new Date().toISOString() }
+  const { error: updErr } = await sb.from('incoming_missions').update(traceUpd).eq('id', mission.id)
 
   if (updErr) {
-    console.error('[quote] update mission failed:', updErr.message)
-    // On a deja cree/maj le devis Odoo, on retourne quand meme l info
+    console.error(`[quote] update mission failed (mode=${mode}):`, updErr.message)
+    // On a deja cree l'objet Odoo, on retourne quand meme l info
   }
 
   // 6) Attach les PDF des avances de fonds liees au devis Odoo.
@@ -294,7 +307,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
         const ext         = contentType.includes('pdf') ? 'pdf' : 'jpg'
         const filename    = `avance-${adv.plate}-${Number(adv.amount_htva).toFixed(2)}.${ext}`
-        await withOdooActor(user?.id, () => attachFileToOrder(result.id, base64, filename, contentType))
+        await withOdooActor(user?.id, () => mode === 'invoice'
+          ? attachFileToInvoice(result.id, base64, filename, contentType)
+          : attachFileToOrder(result.id, base64, filename, contentType))
         advancesAttached++
         advanceAttachIds.push(adv.id)
       } catch (attachErr: any) {
@@ -324,7 +339,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return NextResponse.json({
     ok:    true,
-    quote: { id: result.id, url: result.url },
+    mode,
+    // 'quote' → devis ; 'invoice' → facture directe (mêmes champs id/url).
+    ...(mode === 'invoice'
+      ? { invoice: { id: result.id, url: result.url } }
+      : { quote:   { id: result.id, url: result.url } }),
     summary: {
       mission_ref:        missionRef,
       partner_id:         mission.billed_to_id,

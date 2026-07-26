@@ -165,6 +165,68 @@ export async function createSaleOrder(input: CreateQuoteInput): Promise<{ id: nu
   return { id, url: buildQuoteUrl(id) }
 }
 
+// ── Facture directe (account.move) — sans passer par le devis ────────────────
+// Champs Studio account.move (découverts via ir.model.fields) :
+//   - véhicule  : x_studio_plaque       (many2one → fleet.vehicle)
+//   - référence : x_studio_reference    (char) + standards invoice_origin / ref
+const INVOICE_VEHICLE_FIELD = 'x_studio_plaque'
+const INVOICE_REF_FIELD     = 'x_studio_reference'
+
+/** URL web Odoo d'une facture (account.move). */
+export function buildInvoiceMoveUrl(moveId: number): string {
+  return `${ODOO_URL}/web#id=${moveId}&model=account.move&view_type=form`
+}
+
+/** Lignes de facture (account.move.line) : idem devis mais `quantity` au lieu de `product_uom_qty`. */
+async function buildInvoiceLines(sections: QuoteSection[], description?: string): Promise<any[]> {
+  const productIds = await getProductIds()
+  const lines: any[] = []
+  const showSections = sections.length > 1 || sections.some(s => s.section_label)
+
+  if (description && description.trim()) {
+    lines.push([0, 0, { display_type: 'line_note', name: description.trim() }])
+  }
+  for (const section of sections) {
+    if (showSections && section.section_label) {
+      lines.push([0, 0, { display_type: 'line_section', name: section.section_label }])
+    }
+    for (const ln of section.lines) {
+      const productId = productIds.get(ln.kind)
+      if (!productId) {
+        throw new Error(`Produit Odoo "${ln.kind}" introuvable (default_code).`)
+      }
+      lines.push([0, 0, {
+        product_id: productId,
+        name:       ln.name,
+        quantity:   ln.qty,
+        price_unit: ln.price_unit,
+      }])
+    }
+  }
+  return lines
+}
+
+/**
+ * Crée directement une FACTURE CLIENT (account.move `out_invoice`) en BROUILLON,
+ * sans devis. Porte le véhicule (x_studio_plaque) + la référence (invoice_origin
+ * + ref + x_studio_reference), comme le devis. L'employé la poste ensuite dans
+ * Odoo (numéro définitif + paiement/caisse → hors app). Olivier 2026-07-26.
+ */
+export async function createDraftInvoice(input: CreateQuoteInput): Promise<{ id: number; url: string }> {
+  const invoiceLines = await buildInvoiceLines(input.sections, input.description)
+  const vals: any = {
+    move_type:        'out_invoice',
+    partner_id:       input.partner_id,
+    invoice_origin:   input.origin,
+    ref:              input.client_order_ref || input.origin || false,
+    invoice_line_ids: invoiceLines,
+  }
+  if (input.origin) vals[INVOICE_REF_FIELD] = input.origin
+  if (input.fleet_vehicle_id) vals[INVOICE_VEHICLE_FIELD] = input.fleet_vehicle_id
+  const id = await rpc<number>('account.move', 'create', [vals])
+  return { id, url: buildInvoiceMoveUrl(id) }
+}
+
 /** Erreur jetee si le devis cible n existe plus (supprime cote Odoo). */
 export class QuoteNotFoundError extends Error {
   constructor(quoteId: number) {
