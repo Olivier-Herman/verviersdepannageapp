@@ -42,10 +42,13 @@ export async function POST(req: Request) {
     const sb = createAdminClient()
 
     // Push la nouvelle bannière (l'état dépend de l'action tapée).
+    // app_settings.value = TEXTE JSON → parser avant de lire .token.
     let pushed: any = { ok: false, reason: 'no demo token' }
     try {
       const { data } = await sb.from('app_settings').select('value').eq('key', 'live_activity_demo_token').maybeSingle()
-      const token = (data?.value as any)?.token as string | undefined
+      const raw = data?.value
+      const val = typeof raw === 'string' ? JSON.parse(raw) : raw
+      const token = (val as any)?.token as string | undefined
       if (token) pushed = await sendLiveActivityApns(token, { event: 'update', contentState: DEMO_STATE[action], staleSeconds: 3600 })
     } catch (e: any) { pushed = { ok: false, reason: e?.message || 'err' } }
 

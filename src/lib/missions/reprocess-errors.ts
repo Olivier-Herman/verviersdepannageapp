@@ -110,7 +110,10 @@ export async function reprocessErrorMissions(opts: { onlyId?: string | null; bat
   if (!onlyId) {
     try {
       const { data: fm } = await sb.from('app_settings').select('value').eq('key', FAILMAP_KEY).maybeSingle()
-      if (fm?.value && typeof fm.value === 'object') failMap = { ...(fm.value as any) }
+      // app_settings.value = TEXTE JSON → parser avant usage.
+      const raw = fm?.value
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+      if (parsed && typeof parsed === 'object') failMap = { ...(parsed as any) }
     } catch { /* best-effort */ }
   }
   let failMapDirty = false

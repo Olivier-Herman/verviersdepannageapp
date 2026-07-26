@@ -112,7 +112,10 @@ export async function GET(req: Request) {
     try {
       const { data: last } = await supabase.from('app_settings').select('value')
         .eq('key', 'webhook_crash_alert_last').maybeSingle()
-      const lastAt = Date.parse((last?.value as any)?.at || '') || 0
+      // app_settings.value = TEXTE JSON → parser avant de lire .at.
+      const lastRaw = last?.value
+      const lastVal = typeof lastRaw === 'string' ? JSON.parse(lastRaw) : lastRaw
+      const lastAt = Date.parse((lastVal as any)?.at || '') || 0
       if (Date.now() - lastAt > ALERT_COOLDOWN_MS) {
         await sendPushToRole(['admin', 'superadmin'], {
           title: '⚠️ Webhook crashe',
