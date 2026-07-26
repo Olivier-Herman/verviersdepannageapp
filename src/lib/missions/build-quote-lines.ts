@@ -123,37 +123,24 @@ export function buildOverrideLines(mission: MissionLike): QuoteLine[] | null {
     }]
   }
 
-  // 2. Olivier 2026-06-04 : montant garanti + montant a reclamer client.
-  // Si l un OU l autre OU les 2 sont definis, on genere 1 ou 2 lignes
-  // (une par montant). Total = somme. Ecrase egalement le calcul auto.
-  const guaranteed = mission.amount_guaranteed != null && Number(mission.amount_guaranteed) > 0
-    ? Number(mission.amount_guaranteed) : 0
+  // 2. Montant à réclamer au client (amount_to_collect) → 1 ligne qui écrase le
+  // calcul auto. NB (Olivier 2026-07-26) : le MONTANT GARANTI (amount_guaranteed)
+  // ne force PLUS le tarif — c'est un simple PLAFOND facturable indicatif. On
+  // facture donc le tarif CALCULÉ ; si celui-ci dépasse le garanti, un warning
+  // est affiché (cf route /quote → summary.guaranteed_warning). Le garanti reste
+  // indiqué sur la fiche, mais ne génère aucune ligne obligatoire.
   const toCollect = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
     ? Number(mission.amount_to_collect) : 0
-  if (guaranteed > 0 || toCollect > 0) {
-    const lines: QuoteLine[] = []
-    if (guaranteed > 0) {
-      lines.push({
-        kind:       'SERV-DIV',
-        name:       `Montant garanti — ${missionRef}`,
-        qty:        1,
-        price_unit: guaranteed,
-      })
-    }
-    if (toCollect > 0) {
-      // BUG fix Olivier 2026-06-17 : amount_to_collect est un montant TVAC
-      // (convention app + cf estimate-price.ts). Le price_unit Odoo attend du
-      // HTVA → on convertit (÷1,21, 4 décimales pour que HTVA×1,21 = TVAC exact).
-      // Avant : le TVAC TowSoft était mis tel quel en HTVA → TVA comptée 2×.
-      const toCollectHt = Math.round((toCollect / 1.21) * 10000) / 10000
-      lines.push({
-        kind:       'SERV-DIV',
-        name:       `Paiement à réclamer au client — ${missionRef}`,
-        qty:        1,
-        price_unit: toCollectHt,
-      })
-    }
-    return lines
+  if (toCollect > 0) {
+    // amount_to_collect est un montant TVAC → conversion HTVA (÷1,21, 4 déc.)
+    // pour que HTVA×1,21 = TVAC exact (sinon TVA comptée 2×).
+    const toCollectHt = Math.round((toCollect / 1.21) * 10000) / 10000
+    return [{
+      kind:       'SERV-DIV',
+      name:       `Paiement à réclamer au client — ${missionRef}`,
+      qty:        1,
+      price_unit: toCollectHt,
+    }]
   }
 
   return null

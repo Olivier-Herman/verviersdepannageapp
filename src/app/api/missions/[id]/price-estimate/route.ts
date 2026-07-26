@@ -101,8 +101,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     })
   }
 
-  // Olivier 2026-06-04 : amount_guaranteed + amount_to_collect -> 2 lignes,
-  // total = somme. Ecrase egalement le calcul auto (forfait/km/surcharges).
+  // Montant GARANTI = plafond facturable INDICATIF (ne force plus le tarif —
+  // Olivier 2026-07-26). On le garde pour comparer au tarif calculé et lever un
+  // warning si dépassé (cf plus bas). Seul amount_to_collect force encore.
   const guaranteed = (mission as any).amount_guaranteed != null && Number((mission as any).amount_guaranteed) > 0
     ? Number((mission as any).amount_guaranteed) : 0
   // amount_to_collect est un montant TVAC → on l'exprime en HTVA pour rester
@@ -111,27 +112,25 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const toCollectTvac = mission.amount_to_collect != null && Number(mission.amount_to_collect) > 0
     ? Number(mission.amount_to_collect) : 0
   const toCollect = toCollectTvac > 0 ? Math.round((toCollectTvac / 1.21) * 10000) / 10000 : 0
-  if (guaranteed > 0 || toCollect > 0) {
-    const total = guaranteed + toCollect
-    const breakdown: Array<{ label: string; amount: number; note?: string }> = []
-    if (guaranteed > 0) breakdown.push({ label: 'Montant garanti', amount: guaranteed })
-    if (toCollect > 0) breakdown.push({ label: 'Paiement à réclamer au client', amount: toCollect, note: `${toCollectTvac.toFixed(2)} € TVAC` })
+  if (toCollect > 0) {
     return NextResponse.json({
       ok:            true,
       source:        mission.source,
       mission_type:  mission.mission_type || 'autre',
       pricing_mode:  'forced_amounts',
-      forfait:       total,
+      forfait:       toCollect,
       km_charged:    0, km_inclus: 0, km_extra: 0, km_extra_eur: 0,
       parc_jours:    0, parc_eur: 0,
-      subtotal_eur:  total,
+      subtotal_eur:  toCollect,
       surcharge_pct: 0, surcharge_eur: 0,
-      total_eur:     total,
+      total_eur:     toCollect,
       is_autofac:    false,
       tariff_id:     'forced_amounts',
       tariff_doc_path: null, tariff_doc_name: null,
       special_tarif: true,  // utilise par UI pour styler en amber
-      breakdown,
+      guaranteed_eur:      guaranteed || undefined,
+      guaranteed_exceeded: guaranteed > 0 && toCollect > guaranteed,
+      breakdown: [{ label: 'Paiement à réclamer au client', amount: toCollect, note: `${toCollectTvac.toFixed(2)} € TVAC` }],
     })
   }
 
@@ -359,5 +358,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 
   const estimate = await estimateMissionPrice(mission as any)
-  return NextResponse.json(estimate)
+  // Montant garanti = plafond indicatif : on n'écrase PAS le tarif calculé, mais
+  // on signale s'il le dépasse (warning UI). Olivier 2026-07-26.
+  const estTotal = Number((estimate as any).total_eur ?? 0)
+  return NextResponse.json({
+    ...estimate,
+    guaranteed_eur:      guaranteed || undefined,
+    guaranteed_exceeded: guaranteed > 0 && (estimate as any).ok !== false && estTotal > guaranteed,
+  })
 }

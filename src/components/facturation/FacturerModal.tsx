@@ -157,6 +157,8 @@ interface PriceEstimateData {
   surcharge_eur: number
   subtotal_eur:  number
   total_eur:     number
+  guaranteed_eur?:      number
+  guaranteed_exceeded?: boolean
   template_lines?: TemplateLineData[]
 }
 
@@ -650,6 +652,15 @@ function MissionBlock({
               <span className="text-warning text-xs" title={estimate?.reason || ''}>⚠ Tarif introuvable</span>
             )}
           </div>
+
+          {/* Warning : tarif calculé > montant garanti (plafond indicatif) */}
+          {estimate?.guaranteed_exceeded && estimate.guaranteed_eur ? (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 text-amber-800 text-xs mb-3">
+              ⚠ <b>Tarif calculé supérieur au montant garanti.</b> Calculé : {estimate.total_eur.toFixed(2).replace('.', ',')} € HTVA · Garanti (plafond indicatif) : {estimate.guaranteed_eur.toFixed(2).replace('.', ',')} € HTVA. Le montant garanti n'est pas un tarif imposé — vérifie avant de facturer.
+            </div>
+          ) : estimate?.guaranteed_eur ? (
+            <p className="text-ink-muted text-xs mb-3">Montant garanti (plafond indicatif) : {estimate.guaranteed_eur.toFixed(2).replace('.', ',')} € HTVA</p>
+          ) : null}
 
           {/* Mode preview (lecture seule) */}
           {!customLines && estimate?.ok && (

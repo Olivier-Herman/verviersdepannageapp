@@ -23,6 +23,8 @@ interface PriceEstimate {
   tariff_doc_path: string | null
   tariff_doc_name: string | null
   special_tarif?: boolean   // Olivier 2026-06-02 PM : true si special_tarif_htva applique
+  guaranteed_eur?:      number   // montant garanti (plafond indicatif)
+  guaranteed_exceeded?: boolean  // tarif calculé > garanti
   breakdown:     { label: string; amount: number | null; note?: string }[]
 }
 
@@ -133,6 +135,11 @@ export default function PriceEstimateCard({ missionId, overrides }: Props) {
             </div>
             <div className="text-xl font-display font-bold">{fmt(data.total_eur)} <span className="text-xs text-ink-faint font-normal">HTVA</span></div>
             <div className="text-xs text-ink-muted">{fmt(toTvac(data.total_eur))} TVAC</div>
+            {data.guaranteed_exceeded && data.guaranteed_eur ? (
+              <div className="text-[11px] text-amber-700 font-semibold mt-0.5">⚠ Dépasse le montant garanti ({fmt(data.guaranteed_eur)} HTVA, plafond indicatif)</div>
+            ) : data.guaranteed_eur ? (
+              <div className="text-[11px] text-ink-faint mt-0.5">Montant garanti (plafond) : {fmt(data.guaranteed_eur)} HTVA</div>
+            ) : null}
           </div>
         </div>
         <div className="flex items-center gap-2">
