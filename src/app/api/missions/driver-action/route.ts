@@ -463,11 +463,13 @@ export async function POST(req: Request) {
   const ACTIVE   = ['assigned', 'accepted', 'on_way', 'on_site', 'in_progress', 'delivering']
   try {
     const { pushMissionLiveActivity } = await import('@/lib/native/pushLiveActivity')
+    // Borné à 6s : le push LA ne doit JAMAIS ralentir/bloquer l'action chauffeur.
+    const bounded = <T,>(p: Promise<T>) => Promise.race([p, new Promise<null>(r => setTimeout(() => r(null), 6000))])
     if (TERMINAL.includes(finalStatus)) {
-      await pushMissionLiveActivity(mission_id, { event: 'end' })
+      await bounded(pushMissionLiveActivity(mission_id, { event: 'end' }))
       await supabase.from('incoming_missions').update({ live_activity_push_token: null }).eq('id', mission_id).then(() => {}, () => {})
     } else if (ACTIVE.includes(finalStatus)) {
-      await pushMissionLiveActivity(mission_id)   // event auto → 'update'
+      await bounded(pushMissionLiveActivity(mission_id))   // event auto → 'update'
     }
   } catch (e: any) { console.error('[driver-action] LA sync KO:', e?.message) }
 
