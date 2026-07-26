@@ -217,6 +217,7 @@ export default function FacturationClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchBusy, setBatchBusy]     = useState<null | 'facturer' | 'verify'>(null)
   const [batchReport, setBatchReport] = useState<string | null>(null)
+  const [batchLinks, setBatchLinks]   = useState<{ label: string; url: string }[]>([])
   const toggleSel = (id: string) => setSelectedIds(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
   })
@@ -230,10 +231,12 @@ export default function FacturationClient({
     // clic) — un window.open après un await serait bloqué par le navigateur. On
     // y charge l'URL de la facture dès qu'elle est créée ; on ferme si échec.
     const tabs = ids.map(() => window.open('', '_blank'))
-    setBatchBusy('facturer'); setBatchReport('🧾 Création des brouillons…')
+    setBatchBusy('facturer'); setBatchReport('🧾 Création des brouillons…'); setBatchLinks([])
     let ok = 0, fail = 0
+    const links: { label: string; url: string }[] = []
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i]; const tab = tabs[i]
+      const label = data.find(d => d.id === id)?.vehicle_plate || id.slice(0, 8)
       try {
         const r = await fetch(`/api/missions/${id}/quote`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -241,13 +244,14 @@ export default function FacturationClient({
         })
         const j = await r.json().catch(() => ({}))
         const url = j?.invoice?.url
-        if (r.ok && j.ok && url) { ok++; if (tab) tab.location.href = url }
+        if (r.ok && j.ok && url) { ok++; links.push({ label, url }); if (tab) tab.location.href = url }
         else { fail++; if (tab) try { tab.close() } catch { /* ignore */ } }
       } catch { fail++; if (tab) try { tab.close() } catch { /* ignore */ } }
       setBatchReport(`🧾 ${ok + fail}/${ids.length} traité(s)…`)
     }
     setBatchBusy(null)
-    setBatchReport(`🧾 ${ok} brouillon(s) créé(s) et ouvert(s)${fail ? ` · ⚠ ${fail} échec(s)` : ''}. Poste-les dans Odoo, puis clique « Vérification facturation Odoo ».`)
+    setBatchLinks(links)
+    setBatchReport(`🧾 ${ok} brouillon(s) créé(s)${fail ? ` · ⚠ ${fail} échec(s)` : ''}. ${links.length > 1 ? 'Si un seul onglet s\'est ouvert, utilise les liens ci-dessous (le navigateur bloque l\'ouverture multiple). ' : ''}Poste-les dans Odoo, puis « Vérification facturation Odoo ».`)
   }
 
   // Vérification Odoo : complète les fiches dont la facture liée est postée.
@@ -698,6 +702,17 @@ export default function FacturationClient({
 
           {batchReport && (
             <p className="w-full text-ink-secondary text-xs mt-1 border-t pt-2">{batchReport}</p>
+          )}
+
+          {batchLinks.length > 0 && (
+            <div className="w-full flex flex-wrap gap-2">
+              {batchLinks.map(l => (
+                <a key={l.url} href={l.url} target="_blank" rel="noreferrer"
+                  className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold transition">
+                  🧾 {l.label} ↗
+                </a>
+              ))}
+            </div>
           )}
 
           {/* Légende code couleur état Odoo */}
