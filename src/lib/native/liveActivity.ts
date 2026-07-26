@@ -84,35 +84,50 @@ async function ensureActionToken(p: LiveActivityPlugin): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-// Traceur temporaire (diagnostic device chauffeur). Best-effort, jamais bloquant.
-function laDebug(stage: string, missionId: string | null, data?: any) {
+// Traceur temporaire (diagnostic device chauffeur). sendBeacon = fiable + non
+// intercepté par CapacitorHttp. On poste la séquence CUMULÉE à chaque étape :
+// la dernière trace persistée montre jusqu'où on est allé.
+function laBeacon(missionId: string, trace: string[]) {
   try {
-    fetch('/api/missions/live-activity-debug', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage, missionId, data }),
-    }).catch(() => {})
+    const payload = JSON.stringify({ stage: trace.join(' → '), missionId })
+    const blob = new Blob([payload], { type: 'application/json' })
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/missions/live-activity-debug', blob)
+    } else {
+      fetch('/api/missions/live-activity-debug', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {})
+    }
   } catch { /* ignore */ }
 }
 
+// Résout une promesse avec un marqueur TIMEOUT si elle traîne (pour isoler un hang).
+function withTO<T>(p: Promise<T>, ms: number): Promise<T | 'TIMEOUT'> {
+  return Promise.race([p, new Promise<'TIMEOUT'>(r => setTimeout(() => r('TIMEOUT'), ms))])
+}
+
 export async function startForMission(info: MissionLAInfo, state: MissionLAState): Promise<void> {
+  const trace: string[] = []
+  const step = (s: string) => { trace.push(s); laBeacon(info.missionId, trace) }
+
   let plat = 'unknown'
   try {
     const { Capacitor } = await import('@capacitor/core')
-    plat = `native=${Capacitor.isNativePlatform()} platform=${Capacitor.getPlatform()}`
-  } catch { /* ignore */ }
-  laDebug('entry', info.missionId, plat)
+    plat = `native=${Capacitor.isNativePlatform()},platform=${Capacitor.getPlatform()}`
+  } catch (e: any) { plat = `import-err:${e?.message}` }
+  step(`entry(${plat})`)
 
-  const p = await plugin()
-  if (!p) { laDebug('no-plugin', info.missionId, plat); return }
+  const p = await withTO(plugin(), 5000)
+  step(`plugin=${p === 'TIMEOUT' ? 'TIMEOUT' : !!p}`)
+  if (p === 'TIMEOUT' || !p) return
+
   try {
-    const sup = (await p.isSupported()).supported
-    laDebug('supported', info.missionId, sup)
-    if (!sup) return
+    const sup = await withTO(p.isSupported(), 5000)
+    step(`isSupported=${JSON.stringify(sup)}`)
+    if (sup === 'TIMEOUT' || !sup.supported) return
     void ensureActionToken(p)
-    const res = await p.start({ ...info, state })
-    laDebug('started', info.missionId, res as any)
+    const res = await withTO(p.start({ ...info, state }), 8000)
+    step(`start=${JSON.stringify(res)}`)
   } catch (e: any) {
-    laDebug('start-error', info.missionId, e?.message || String(e))
+    step(`ERROR:${e?.message || String(e)}`)
     console.warn('[liveActivity] start KO', e)
   }
 }
