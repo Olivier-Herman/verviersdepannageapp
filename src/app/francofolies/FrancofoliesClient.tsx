@@ -332,6 +332,40 @@ export default function FrancofoliesClient({
     finally { setPayBusy(null) }
   }
 
+  // Édition email (superadmin) : brouillon local, sauvegarde au blur/Enter si changé.
+  const [emailDraft, setEmailDraft] = useState<Record<string, string>>({})
+  const [emailBusy, setEmailBusy]   = useState<string | null>(null)
+  async function saveEmail(missionId: string, current: string | null) {
+    const next = (emailDraft[missionId] ?? '').trim()
+    if (next === (current || '').trim()) return           // rien changé
+    setEmailBusy(missionId)
+    try {
+      const r = await fetch('/api/francofolies/registre-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId, action: 'set_email', email: next }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      setRegistre(prev => prev ? { ...prev, vehicles: prev.vehicles.map(v => v.id === missionId ? { ...v, client_email: next } : v) } : prev)
+      showToast('✅ Email mis à jour')
+    } catch { showToast('⚠ Erreur réseau') } finally { setEmailBusy(null) }
+  }
+
+  // Renvoyer le reçu (superadmin) à l'email courant de la fiche.
+  const [receiptBusy, setReceiptBusy] = useState<string | null>(null)
+  async function resendReceipt(missionId: string) {
+    setReceiptBusy(missionId)
+    try {
+      const r = await fetch('/api/francofolies/registre-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId, action: 'resend_receipt' }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      showToast(`✅ Reçu renvoyé à ${j.sent_to}`)
+    } catch { showToast('⚠ Erreur réseau') } finally { setReceiptBusy(null) }
+  }
+
   // Rapprochement encaissements (superadmin) : fiches 'parked' + encaissement chauffeur correspondant.
   interface RecEnc { id: string; amount: number | null; payment_mode: string | null; driver_name: string | null; created_at: string | null; linked_to_this: boolean; client_name: string | null }
   interface RecRow {
@@ -920,6 +954,7 @@ export default function FrancofoliesClient({
                   <th className="px-3 py-2 whitespace-nowrap text-right">Montant</th>
                   <th className="px-3 py-2 whitespace-nowrap">Paiement</th>
                   <th className="px-3 py-2 whitespace-nowrap">Mode</th>
+                  {userRole === 'superadmin' && <th className="px-3 py-2 whitespace-nowrap">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -934,7 +969,18 @@ export default function FrancofoliesClient({
                       {v.client_phone ? <a href={`tel:${v.client_phone}`} className="text-brand hover:underline">{v.client_phone}</a> : '—'}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
-                      {v.client_email ? <a href={`mailto:${v.client_email}`} className="text-brand hover:underline">{v.client_email}</a> : '—'}
+                      {userRole === 'superadmin' ? (
+                        <input
+                          type="email"
+                          defaultValue={v.client_email || ''}
+                          placeholder="ajouter un email…"
+                          disabled={emailBusy === v.id}
+                          onChange={e => setEmailDraft(d => ({ ...d, [v.id]: e.target.value }))}
+                          onBlur={() => saveEmail(v.id, v.client_email)}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          className="w-44 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50"
+                        />
+                      ) : v.client_email ? <a href={`mailto:${v.client_email}`} className="text-brand hover:underline">{v.client_email}</a> : '—'}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{v.client_vat || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-right font-semibold text-ink">
@@ -963,6 +1009,21 @@ export default function FrancofoliesClient({
                           </select>
                         ) : (payModeLabel(v.payment_method) || '—')}
                     </td>
+                    {userRole === 'superadmin' && (
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {v.payment_label === 'Sans frais' ? '—' : (
+                          <button
+                            type="button"
+                            onClick={() => resendReceipt(v.id)}
+                            disabled={receiptBusy === v.id || !v.client_email}
+                            title={v.client_email ? `Renvoyer le reçu à ${v.client_email}` : 'Aucun email sur la fiche'}
+                            className="px-2.5 py-1 bg-brand hover:opacity-90 text-white rounded-lg text-xs font-semibold transition disabled:opacity-40"
+                          >
+                            {receiptBusy === v.id ? '…' : '📧 Renvoyer le reçu'}
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
