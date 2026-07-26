@@ -96,6 +96,7 @@ interface Props {
   payments:    PaymentRow[]
   drivers:     DriverRow[]
   advances?:   AdvanceRow[]
+  billingRemarks?: Record<string, { text: string; author_name: string | null; created_at: string | null }[]>
   sourceLabels?: Record<string, string>
   userRole:    string
   userName:    string
@@ -161,7 +162,7 @@ const KIND_COLOR: Record<string, string> = {
 }
 
 export default function FacturationClient({
-  missions, siblings, payments, drivers, advances = [], sourceLabels = {},
+  missions, siblings, payments, drivers, advances = [], billingRemarks = {}, sourceLabels = {},
   userRole, userName, userEmail, userModules, variant = 'general',
 }: Props) {
   const isTouring = variant === 'touring'
@@ -756,8 +757,16 @@ export default function FacturationClient({
                 : hasSpecial ? 'bg-amber-50 border-2 border-amber-500 hover:bg-amber-100 hover:border-amber-600'
                 : hasAdv ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
                 : 'bg-surface border hover:bg-surface-hover'
+              const remarks = billingRemarks[m.id] || []
 
               return (
+                <>
+                  {remarks.length > 0 && (
+                    <div className="mb-1 bg-amber-100 border border-amber-400 rounded-xl px-3 py-2 text-amber-900 text-xs">
+                      <span className="font-bold">📝 Remarque facturation{remarks.length > 1 ? `s (${remarks.length})` : ''} :</span>{' '}
+                      {remarks.map(r => r.text).filter(Boolean).join('  ·  ')}
+                    </div>
+                  )}
                   <Link
                     href={`/dispatch/${m.id}`}
                     className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${cardBg}`}
@@ -847,6 +856,7 @@ export default function FacturationClient({
                       Facturer →
                     </button>
                   </Link>
+                </>
               )
               } // fin renderCard
 

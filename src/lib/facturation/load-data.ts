@@ -18,7 +18,7 @@ const MISSION_COLS = `
   invoice_method, invoice_number, invoice_url,
   no_charge_at, no_charge_reason,
   odoo_quote_id, odoo_quote_url, odoo_quoted_at, invoice_odoo_id,
-  billed_to_id, billed_to_name
+  billed_to_id, billed_to_name, remarks_billing
 `
 
 export async function loadFacturationData(
@@ -81,6 +81,27 @@ export async function loadFacturationData(
         .in('mission_id', [...allIds])
     : { data: [] }
 
+  // Remarques de facturation (multi, signées) — pour les afficher dans la liste
+  // et pouvoir vérifier le tarif AVANT de facturer (surtout en lot). Olivier 2026-07-26.
+  const { data: brRows } = allIds.size > 0
+    ? await supabase.from('mission_billing_remarks')
+        .select('mission_id, text, created_at, author:users!created_by(name, email)')
+        .in('mission_id', [...allIds])
+        .order('created_at', { ascending: false })
+    : { data: [] }
+  const billingRemarks: Record<string, { text: string; author_name: string | null; created_at: string | null }[]> = {}
+  for (const r of (brRows || []) as any[]) {
+    (billingRemarks[r.mission_id] ??= []).push({
+      text: r.text, created_at: r.created_at,
+      author_name: r.author?.name || r.author?.email || null,
+    })
+  }
+  // Filet legacy : ancien champ remarks_billing sur la fiche.
+  for (const m of (missions || []) as any[]) {
+    const legacy = (m.remarks_billing || '').trim()
+    if (legacy) (billingRemarks[m.id] ??= []).push({ text: legacy, created_at: null, author_name: null })
+  }
+
   // Libellés des sources (catalog = source de vérité) → affichage de la
   // dénomination (ex. garage_14528a → « Centracar ») au lieu de la clé brute.
   const { data: catalog } = await supabase
@@ -94,6 +115,7 @@ export async function loadFacturationData(
     payments: payments || [],
     drivers:  drivers || [],
     advances: advances || [],
+    billingRemarks,
     sourceLabels,
   }
 }

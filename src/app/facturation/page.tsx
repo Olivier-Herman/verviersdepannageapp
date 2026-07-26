@@ -29,7 +29,7 @@ export default async function FacturationPage() {
   const supabase = createAdminClient()
   // Olivier 2026-06-24 : les missions Touring n'apparaissent PAS dans la liste
   // générale — uniquement sur la page dédiée /facturation/touring.
-  const { missions, siblings, payments, drivers, advances, sourceLabels } =
+  const { missions, siblings, payments, drivers, advances, billingRemarks, sourceLabels } =
     await loadFacturationData(supabase, { excludeSource: 'touring' })
 
   return (
@@ -39,6 +39,7 @@ export default async function FacturationPage() {
       payments={payments}
       drivers={drivers}
       advances={advances}
+      billingRemarks={billingRemarks}
       sourceLabels={sourceLabels}
       userRole={role}
       userName={user.name || ''}
