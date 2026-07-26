@@ -166,11 +166,11 @@ export async function createSaleOrder(input: CreateQuoteInput): Promise<{ id: nu
 }
 
 // ── Facture directe (account.move) — sans passer par le devis ────────────────
-// Champs Studio account.move (découverts via ir.model.fields) :
-//   - véhicule  : x_studio_plaque       (many2one → fleet.vehicle)
-//   - référence : x_studio_reference    (char) + standards invoice_origin / ref
+// Champs account.move :
+//   - véhicule  : x_studio_plaque (many2one → fleet.vehicle) — écriture OK, vérifié
+//   - référence : standards `invoice_origin` + `ref` (le custom x_studio_reference
+//     est related/lecture seule → écriture ignorée, on ne l'utilise pas)
 const INVOICE_VEHICLE_FIELD = 'x_studio_plaque'
-const INVOICE_REF_FIELD     = 'x_studio_reference'
 
 /** URL web Odoo d'une facture (account.move). */
 export function buildInvoiceMoveUrl(moveId: number): string {
@@ -221,7 +221,6 @@ export async function createDraftInvoice(input: CreateQuoteInput): Promise<{ id:
     ref:              input.client_order_ref || input.origin || false,
     invoice_line_ids: invoiceLines,
   }
-  if (input.origin) vals[INVOICE_REF_FIELD] = input.origin
   if (input.fleet_vehicle_id) vals[INVOICE_VEHICLE_FIELD] = input.fleet_vehicle_id
   const id = await rpc<number>('account.move', 'create', [vals])
   return { id, url: buildInvoiceMoveUrl(id) }
