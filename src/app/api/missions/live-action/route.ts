@@ -9,7 +9,7 @@
 import { NextResponse }         from 'next/server'
 import { verifyLiveToken }      from '@/lib/native/liveToken'
 import { createAdminClient }    from '@/lib/supabase'
-import { sendLiveActivityApns, pushMissionLiveActivity } from '@/lib/native/pushLiveActivity'
+import { sendLiveActivityApns } from '@/lib/native/pushLiveActivity'
 import type { MissionLAState }  from '@/lib/native/liveActivity'
 
 export const dynamic     = 'force-dynamic'
@@ -75,9 +75,6 @@ export async function POST(req: Request) {
     body: JSON.stringify({ mission_id: missionId, action }),
   })
   const j = await r.json().catch(() => ({}))
-
-  // MAJ temps réel de la bannière (l'app est en veille sur l'écran verrouillé).
-  if (r.ok) { try { await pushMissionLiveActivity(missionId) } catch { /* best-effort */ } }
-
+  // La MAJ de la bannière est faite par driver-action (synchro à chaque transition).
   return NextResponse.json({ ok: r.ok, ...j }, { status: r.ok ? 200 : (r.status || 500) })
 }
