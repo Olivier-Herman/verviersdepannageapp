@@ -41,14 +41,6 @@ interface Row {
   assigned_user?: { id: string; name: string } | null
 }
 
-/** Jours de gardiennage facturables : "jour entamé au-delà de 24h". */
-function gardiennageDaysSince(parkedAt: string | null): number {
-  if (!parkedAt) return 0
-  const over = (Date.now() - new Date(parkedAt).getTime()) - 24 * 3600 * 1000
-  if (over <= 0) return 0
-  return Math.ceil(over / (24 * 3600 * 1000))
-}
-
 const LAST_DRIVER_KEY = 'ff_last_driver'
 
 export default function FrancofoliesClient({
@@ -244,7 +236,6 @@ export default function FrancofoliesClient({
   const [cEmail,    setCEmail]    = useState('')
   const [cVat,      setCVat]      = useState('')
   const [payMode,   setPayMode]   = useState<'cash' | 'bancontact' | 'sumup' | 'qr_transfer' | 'unpaid'>('cash')
-  const [chargeGard, setChargeGard] = useState(true)
   const [policeOk,  setPoliceOk]  = useState(false)
   const [pickupSaving, setPickupSaving] = useState(false)
   const [noChargeMode, setNoChargeMode] = useState(false)
@@ -400,16 +391,15 @@ export default function FrancofoliesClient({
     } catch { showToast('⚠ Erreur réseau') } finally { setRecBusy(null) }
   }
 
-  const gardDays = picked ? gardiennageDaysSince(picked.parked_at) : 0
-  // price = prix réquisition TVAC (220 par défaut) ; gardiennagePrice = HTVA/jour (20).
+  // price = prix réquisition TVAC (220 par défaut). Gardiennage jamais facturé
+  // (décision Axel 2026-07-26).
   const baseTvac = Math.round(price * 100) / 100
-  const gardTvac = Math.round(gardiennagePrice * 1.21 * (chargeGard ? gardDays : 0) * 100) / 100
-  const totalTvac = Math.round((baseTvac + gardTvac) * 100) / 100
+  const totalTvac = baseTvac
 
   function openPickup(row: Row) {
     setPicked(row)
     setCName(''); setCAddress(''); setCZip(''); setCCity(''); setCPhone(''); setCEmail(''); setCVat('')
-    setPayMode('cash'); setChargeGard(true); setPoliceOk(false)
+    setPayMode('cash'); setPoliceOk(false)
     setNoChargeMode(false); setNoChargeReason(''); setViesResult(null)
     setScreen('pickup')
   }
@@ -432,7 +422,6 @@ export default function FrancofoliesClient({
           mission_id: picked.id, mode: 'invoice',
           client: { name: cName.trim(), address: cAddress.trim(), zip: cZip.trim(), city: cCity.trim(), phone: cPhone.trim(), email: cEmail.trim(), vat: cVat.trim() },
           payment_mode: payMode,
-          gardiennage_days: chargeGard ? gardDays : 0,
           police_verified: policeOk,
         }),
       })
@@ -508,7 +497,7 @@ export default function FrancofoliesClient({
           ❓ Comment ça fonctionne&nbsp;?
         </a>
       </div>
-      <p className="text-ink-faint text-xs text-center mt-6">Tarif : {price} € · gardiennage {gardiennagePrice} €/jour au-delà de 24h</p>
+      <p className="text-ink-faint text-xs text-center mt-6">Tarif : {price} € (forfait unique)</p>
     </main>
   )
 
@@ -684,22 +673,6 @@ export default function FrancofoliesClient({
             </div>
           </div>
 
-          {/* Gardiennage */}
-          {gardDays > 0 && (
-            <button type="button" onClick={() => setChargeGard(v => !v)}
-              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl border-2 text-left transition ${
-                chargeGard ? 'bg-emerald-50 border-emerald-500' : 'bg-surface border'
-              }`}>
-              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-sm flex-shrink-0 ${chargeGard ? 'bg-emerald-600' : 'bg-ink-faint'}`}>
-                {chargeGard ? '✓' : ''}
-              </span>
-              <span className="text-sm">
-                <span className="block text-ink font-semibold">Il y a {gardDays} jour{gardDays > 1 ? 's' : ''} de gardiennage</span>
-                <span className="block text-ink-muted text-xs">Les comptabiliser ({gardiennagePrice} € HTVA/jour) ?</span>
-              </span>
-            </button>
-          )}
-
           {/* Paiement */}
           <div>
             <label className="block text-ink-secondary text-xs font-semibold mb-1">Mode de paiement</label>
@@ -746,11 +719,6 @@ export default function FrancofoliesClient({
             <div className="flex justify-between text-sm text-ink-secondary">
               <span>Réquisition mal garée</span><span>{baseTvac.toFixed(2)} €</span>
             </div>
-            {chargeGard && gardDays > 0 && (
-              <div className="flex justify-between text-sm text-ink-secondary">
-                <span>Gardiennage ({gardDays} j)</span><span>{gardTvac.toFixed(2)} €</span>
-              </div>
-            )}
             <div className="flex justify-between text-ink font-bold text-lg pt-1 border-t">
               <span>Total TVAC</span><span>{totalTvac.toFixed(2)} €</span>
             </div>
