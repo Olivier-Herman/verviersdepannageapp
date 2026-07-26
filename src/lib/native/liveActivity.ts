@@ -39,6 +39,8 @@ interface LiveActivityPlugin {
   update(o: { missionId: string; state: MissionLAState }): Promise<void>
   end(o: { missionId: string; state: MissionLAState }): Promise<void>
   setActionToken(o: { token: string }): Promise<void>
+  /** Démarre l'observation du push-to-start token (iOS 17.2+). Optionnel (build ≥21). */
+  enablePushToStart?(): Promise<void>
   addListener(ev: 'pushToken', cb: (d: { missionId: string; token: string }) => void): Promise<{ remove: () => void }>
   addListener(ev: 'pushToStartToken', cb: (d: { token: string }) => void): Promise<{ remove: () => void }>
 }
@@ -81,6 +83,10 @@ async function ensurePlugin(): Promise<void> {
           })
         } catch { /* best-effort */ }
       }).catch(() => {})
+      // Le listener est attaché → on demande AU NATIF de démarrer l'observation
+      // du push-to-start token (build ≥21). Ainsi le token n'est pas émis avant
+      // que le listener existe (course qui le faisait perdre). Optionnel.
+      try { _plugin.enablePushToStart?.().catch(() => {}) } catch { /* build < 21 */ }
     }
   } catch { _plugin = null }
 }
