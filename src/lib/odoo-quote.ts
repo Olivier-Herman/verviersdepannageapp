@@ -167,10 +167,13 @@ export async function createSaleOrder(input: CreateQuoteInput): Promise<{ id: nu
 
 // ── Facture directe (account.move) — sans passer par le devis ────────────────
 // Champs account.move :
-//   - véhicule  : x_studio_plaque (many2one → fleet.vehicle) — écriture OK, vérifié
-//   - référence : standards `invoice_origin` + `ref` (le custom x_studio_reference
-//     est related/lecture seule → écriture ignorée, on ne l'utilise pas)
-const INVOICE_VEHICLE_FIELD = 'x_studio_plaque'
+//   - véhicule  : x_studio_plaque_1 (many2one → fleet.vehicle) — c'est CE champ que
+//     les vraies factures utilisent (5150 factures ; x_studio_plaque = 0). Même
+//     véhicule que le devis (findFleetVehicleByPlate). x_studio_related_field_51p
+//     le reflète en lecture seule.
+//   - référence : standards `invoice_origin` + `ref` (x_studio_reference est
+//     related/lecture seule → il répercute `ref` automatiquement)
+const INVOICE_VEHICLE_FIELD = 'x_studio_plaque_1'
 
 /** URL web Odoo d'une facture (account.move). */
 export function buildInvoiceMoveUrl(moveId: number): string {
