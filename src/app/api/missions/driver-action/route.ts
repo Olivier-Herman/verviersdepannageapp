@@ -454,6 +454,19 @@ export async function POST(req: Request) {
     metadata: { action, status: mapping.status || mission.status },
   })
 
+  // ── Live Activity : fin en statut terminal ────────────────────────────────
+  // La mission n'est plus active → on TERMINE la Live Activity côté serveur.
+  // Indispensable car le endForMission client ne part pas toujours (l'app a
+  // navigué/fermé après « Terminer »). Best-effort. Olivier 2026-07-26.
+  const finalStatus = (updated as any)?.status || updatePayload.status
+  if (['to_invoice', 'completed', 'invoiced', 'parked', 'cancelled', 'no_charge'].includes(finalStatus)) {
+    try {
+      const { pushMissionLiveActivity } = await import('@/lib/native/pushLiveActivity')
+      await pushMissionLiveActivity(mission_id, { event: 'end' })
+      await supabase.from('incoming_missions').update({ live_activity_push_token: null }).eq('id', mission_id).then(() => {}, () => {})
+    } catch (e: any) { console.error('[driver-action] end LA KO:', e?.message) }
+  }
+
   // ── Lieu de pointage GPS ──────────────────────────────────────────────────
   // Olivier 2026-06-16 : si le chauffeur a transmis sa position au moment du
   // pointage, on l'enregistre comme marqueur sur la carte trajet (kind=action).
