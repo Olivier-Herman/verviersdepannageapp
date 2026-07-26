@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOutCascade } from '@/lib/auth-signout'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import FinesMonthlyRecap  from '@/components/FinesMonthlyRecap'
@@ -71,6 +71,8 @@ export default function AppShell({
   // GPS piloté par les attributions (économie batterie) — monté UNE seule fois
   // ici (global), pas dans MobileNavDrawer, pour éviter tout double watcher.
   useMissionGpsTracking(userId)
+  // Attache tôt les listeners Live Activity (dont le push-to-start token) — no-op hors iOS.
+  useEffect(() => { import('@/lib/native/liveActivity').then(m => m.initLiveActivity()).catch(() => {}) }, [])
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
 
   // Mode embarqué (groupe de la vue dossier) : uniquement le contenu, sans chrome.

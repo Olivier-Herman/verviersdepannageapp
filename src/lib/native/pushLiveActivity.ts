@@ -30,19 +30,8 @@ export interface LiveActivityPushResult {
  * Envoi bas niveau d'un push Live Activity vers un token d'activité.
  * `contentState` doit correspondre exactement à ContentState (MissionState) Swift.
  */
-export async function sendLiveActivityApns(
-  pushToken: string,
-  opts: {
-    event: 'update' | 'end'
-    contentState: MissionLAState
-    /** Fraîcheur : secondes avant que iOS grise l'activité (défaut 8 h). */
-    staleSeconds?: number
-    /** Pour event:'end' — secondes avant retrait auto de l'écran (défaut immédiat). */
-    dismissSeconds?: number
-    /** Alerte optionnelle (bandeau + son) accompagnant la MAJ. */
-    alert?: { title: string; body: string }
-  },
-): Promise<LiveActivityPushResult> {
+// ── Transport bas niveau : envoie un `aps` liveactivity vers un token APNs ────
+async function postApnsLiveActivity(pushToken: string, aps: Record<string, any>): Promise<LiveActivityPushResult> {
   const bundleId = process.env.APNS_BUNDLE_ID
   const sandbox  = process.env.APNS_USE_SANDBOX === 'true'
   if (!bundleId) return { ok: false, status: 0, reason: 'APNS_BUNDLE_ID manquant' }
@@ -51,16 +40,6 @@ export async function sendLiveActivityApns(
   let jwt: string
   try { jwt = await getApnsJwt() }
   catch (e: any) { return { ok: false, status: 0, reason: e?.message || 'JWT error' } }
-
-  const nowSec = Math.floor(Date.now() / 1000)
-  const aps: Record<string, any> = {
-    timestamp: nowSec,
-    event: opts.event,
-    'content-state': opts.contentState,
-  }
-  if (opts.staleSeconds) aps['stale-date'] = nowSec + opts.staleSeconds
-  if (opts.event === 'end') aps['dismissal-date'] = nowSec + (opts.dismissSeconds ?? 0)
-  if (opts.alert) aps.alert = { title: opts.alert.title, body: opts.alert.body }
 
   const bodyBuf = Buffer.from(JSON.stringify({ aps }))
   const host = sandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'
@@ -111,6 +90,58 @@ export async function sendLiveActivityApns(
 }
 
 /**
+ * Push de MISE À JOUR / FIN vers un token d'activité existant.
+ * `contentState` doit correspondre exactement à ContentState (MissionState) Swift.
+ */
+export async function sendLiveActivityApns(
+  pushToken: string,
+  opts: {
+    event: 'update' | 'end'
+    contentState: MissionLAState
+    staleSeconds?: number
+    dismissSeconds?: number
+    alert?: { title: string; body: string }
+  },
+): Promise<LiveActivityPushResult> {
+  const nowSec = Math.floor(Date.now() / 1000)
+  const aps: Record<string, any> = { timestamp: nowSec, event: opts.event, 'content-state': opts.contentState }
+  if (opts.staleSeconds) aps['stale-date'] = nowSec + opts.staleSeconds
+  if (opts.event === 'end') aps['dismissal-date'] = nowSec + (opts.dismissSeconds ?? 0)
+  if (opts.alert) aps.alert = { title: opts.alert.title, body: opts.alert.body }
+  return postApnsLiveActivity(pushToken, aps)
+}
+
+/**
+ * Push de DÉMARRAGE (« push-to-start », iOS 17.2+) : crée la Live Activity à
+ * distance, app fermée. `attributesType` = nom EXACT du struct Swift
+ * (MissionActivityAttributes) ; `attributes` = champs statiques ; `contentState`
+ * = état initial. Envoyé au push-to-start token du device (pas d'une activité).
+ * Olivier 2026-07-26.
+ */
+export async function sendLiveActivityStartApns(
+  pushToken: string,
+  opts: {
+    attributesType: string
+    attributes: Record<string, any>
+    contentState: MissionLAState
+    staleSeconds?: number
+    alert?: { title: string; body: string }
+  },
+): Promise<LiveActivityPushResult> {
+  const nowSec = Math.floor(Date.now() / 1000)
+  const aps: Record<string, any> = {
+    timestamp:         nowSec,
+    event:             'start',
+    'attributes-type': opts.attributesType,
+    attributes:        opts.attributes,
+    'content-state':   opts.contentState,
+  }
+  if (opts.staleSeconds) aps['stale-date'] = nowSec + opts.staleSeconds
+  if (opts.alert) aps.alert = { title: opts.alert.title, body: opts.alert.body }
+  return postApnsLiveActivity(pushToken, aps)
+}
+
+/**
  * Push l'état COURANT d'une vraie mission vers sa Live Activity (best-effort).
  * À appeler après tout changement d'état (action chauffeur, dispatch, annulation…).
  */
@@ -138,6 +169,54 @@ export async function pushMissionLiveActivity(
     // Token périmé → on le nettoie pour ne pas repush indéfiniment.
     if (res.invalid_token) {
       await sb.from('incoming_missions').update({ live_activity_push_token: null }).eq('id', missionId).then(() => {}, () => {})
+    }
+    return res
+  } catch (e: any) {
+    return { ok: false, status: 0, reason: e?.message || 'error' }
+  }
+}
+
+/**
+ * DÉMARRE à distance la Live Activity d'une mission ATTRIBUÉE sur le device du
+ * chauffeur (push-to-start), pour qu'il puisse l'ACCEPTER sans ouvrir l'app.
+ * Utilise users.la_push_to_start_token (enregistré par le natif). Best-effort.
+ * Olivier 2026-07-26.
+ */
+export async function pushStartLiveActivity(missionId: string): Promise<LiveActivityPushResult> {
+  try {
+    const sb = createAdminClient()
+    const { data: m } = await sb
+      .from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_brand, vehicle_model, vehicle_plate, client_name, client_phone, mission_type, status, on_site_at, loaded_at, incident_address, destination_address, assigned_to')
+      .eq('id', missionId)
+      .maybeSingle()
+    if (!m || !(m as any).assigned_to) return { ok: false, status: 0, reason: 'no driver' }
+
+    const { data: u } = await sb.from('users').select('la_push_to_start_token').eq('id', (m as any).assigned_to).maybeSingle()
+    const token = (u as any)?.la_push_to_start_token as string | undefined
+    if (!token) return { ok: false, status: 0, reason: 'no push-to-start token' }
+
+    const mm: any = m
+    const isRem = /remorq|rapatri|transport|\brem\b/i.test(String(mm.mission_type || '')) || !mm.mission_type
+    const attributes = {
+      missionId:     mm.id,
+      missionNumber: String(mm.mission_number || mm.external_id || ''),
+      vehicle:       [mm.vehicle_brand, mm.vehicle_model, mm.vehicle_plate].filter(Boolean).join(' '),
+      clientName:    mm.client_name || '',
+      clientPhone:   (mm.client_phone || '').replace(/[^\d+]/g, ''),
+      isRem,
+    }
+    const contentState = missionToLAState({ ...mm, driver_eta_minutes: null })
+
+    const res = await sendLiveActivityStartApns(token, {
+      attributesType: 'MissionActivityAttributes',
+      attributes,
+      contentState,
+      staleSeconds: 8 * 3600,
+      alert: { title: 'Nouvelle mission', body: `${attributes.vehicle || 'Véhicule'} — ${mm.incident_address || ''}`.trim() },
+    })
+    if (res.invalid_token) {
+      await sb.from('users').update({ la_push_to_start_token: null }).eq('id', (m as any).assigned_to).then(() => {}, () => {})
     }
     return res
   } catch (e: any) {

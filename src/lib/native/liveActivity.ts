@@ -40,6 +40,7 @@ interface LiveActivityPlugin {
   end(o: { missionId: string; state: MissionLAState }): Promise<void>
   setActionToken(o: { token: string }): Promise<void>
   addListener(ev: 'pushToken', cb: (d: { missionId: string; token: string }) => void): Promise<{ remove: () => void }>
+  addListener(ev: 'pushToStartToken', cb: (d: { token: string }) => void): Promise<{ remove: () => void }>
 }
 
 let _plugin: LiveActivityPlugin | null = null
@@ -70,6 +71,16 @@ async function ensurePlugin(): Promise<void> {
           })
         } catch { /* best-effort */ }
       }).catch(() => {})
+      // Push-to-start token (iOS 17.2+) : permet au serveur de DÉMARRER la Live
+      // Activity à distance dès l'attribution (accepter sans ouvrir l'app).
+      _plugin.addListener('pushToStartToken', async ({ token }) => {
+        try {
+          await fetch('/api/missions/live-activity-start-token', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+          })
+        } catch { /* best-effort */ }
+      }).catch(() => {})
     }
   } catch { _plugin = null }
 }
@@ -77,6 +88,15 @@ async function ensurePlugin(): Promise<void> {
 export async function liveActivitySupported(): Promise<boolean> {
   await ensurePlugin(); const p = _plugin; if (!p) return false
   try { return (await p.isSupported()).supported } catch { return false }
+}
+
+/**
+ * À appeler tôt (ouverture de l'app) pour attacher les listeners natifs —
+ * notamment le push-to-start token, qui doit être enregistré AVANT la 1re
+ * attribution pour pouvoir démarrer la Live Activity à distance. No-op hors iOS.
+ */
+export async function initLiveActivity(): Promise<void> {
+  await ensurePlugin()
 }
 
 /** Récupère + pousse au natif le token d'action (pour les App Intents). Best-effort. */

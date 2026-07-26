@@ -84,6 +84,14 @@ export async function POST(req: Request) {
       metadata:  { driver_id, driver_name: driver?.name }
     })
 
+    // Live Activity « push-to-start » : fait apparaître la mission sur le device
+    // du chauffeur (Dynamic Island + écran verrouillé) dès l'attribution, pour
+    // qu'il l'ACCEPTE sans ouvrir l'app. Best-effort. Olivier 2026-07-26.
+    try {
+      const { pushStartLiveActivity } = await import('@/lib/native/pushLiveActivity')
+      await pushStartLiveActivity(mission_id)
+    } catch (e: any) { console.error('[assign] push-to-start LA KO:', e?.message) }
+
     // Olivier 2026-06-02 : si mission demandee par un garage, notifier le garage
     // que la mission est acceptee (best-effort, log silencieux).
     try {
