@@ -19,6 +19,7 @@ import DispatchAlertBadge from '@/components/notifications/DispatchAlertBadge'
 import CobrowseUserBridge, { CobrowseUserBanner } from '@/components/cobrowse/CobrowseUserBridge'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { useOnDutyPing } from '@/hooks/useOnDutyPing'
+import { useMissionGpsTracking } from '@/hooks/useMissionGpsTracking'
 import { useSidebarCollapsed } from './useSidebarCollapsed'
 import { Avatar } from '@/components/ui/Avatar'
 
@@ -66,6 +67,9 @@ export default function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
+  // GPS piloté par les attributions (économie batterie) — monté UNE seule fois
+  // ici (global), pas dans MobileNavDrawer, pour éviter tout double watcher.
+  useMissionGpsTracking(userId)
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
 
   // Mode embarqué (groupe de la vue dossier) : uniquement le contenu, sans chrome.

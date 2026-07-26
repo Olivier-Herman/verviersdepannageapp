@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { isInDaySchedule, isInNightSchedule } from '@/lib/schedule'
 
-const PING_INTERVAL_MS    = 30_000
 const SCHEDULE_CHECK_MS   = 60_000  // Re-evaluer l'horaire toutes les minutes
 const STORAGE_KEY         = 'on-duty'
 
@@ -55,86 +54,11 @@ export function useOnDutyPing() {
     return () => clearInterval(id)
   }, [scheduleInfo.day, scheduleInfo.night, onDuty])
 
-  // Boucle de ping GPS
-  // Web : navigator.geolocation.getCurrentPosition + setInterval (s arrete en
-  //       background sur iOS Safari, mais c est le web behavior attendu).
-  // Capacitor iOS : @capacitor/geolocation.watchPosition + Background Modes
-  //                 location → continue a recevoir des positions meme app fermee.
-  //                 Throttle pour ne POST qu une fois toutes les 30s.
-  useEffect(() => {
-    if (!onDuty) return
-
-    let cancelled = false
-    let lastPostMs = 0
-    let webIntervalId: any = null
-    let capWatchId: string | null = null
-
-    const postPing = async (lat: number, lng: number) => {
-      const now = Date.now()
-      if (now - lastPostMs < PING_INTERVAL_MS - 1000) return  // throttle 30s
-      lastPostMs = now
-      try {
-        await fetch('/api/users/ping-location', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ lat, lng }),
-        })
-        if (!cancelled) { setLastPing(new Date()); setError(null) }
-      } catch {
-        if (!cancelled) setError('Erreur reseau lors du ping')
-      }
-    }
-
-    ;(async () => {
-      // Capacitor (mobile native) : watchPosition continue en background
-      try {
-        const { Capacitor } = await import('@capacitor/core')
-        if (Capacitor.isNativePlatform()) {
-          const { Geolocation } = await import('@capacitor/geolocation')
-          // Permission Always pour background ; iOS demandera quand meme
-          // l autorisation systeme la premiere fois
-          await Geolocation.requestPermissions().catch(() => {})
-          capWatchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: false, timeout: 10_000 },
-            (pos, err) => {
-              if (cancelled) return
-              if (err) { setError(err.message || 'Erreur GPS'); return }
-              if (!pos) return
-              postPing(pos.coords.latitude, pos.coords.longitude)
-            }
-          )
-          return
-        }
-      } catch {
-        // pas capacitor → fallback web ci-dessous
-      }
-
-      // Web (browser) : getCurrentPosition + setInterval
-      if (!navigator.geolocation) {
-        setError('Geolocalisation non disponible')
-        return
-      }
-      const sendPingWeb = () => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => { if (!cancelled) postPing(pos.coords.latitude, pos.coords.longitude) },
-          (err) => { if (!cancelled) setError(err.message || 'Permission GPS refusee') },
-          { enableHighAccuracy: false, maximumAge: 15_000, timeout: 10_000 }
-        )
-      }
-      sendPingWeb()
-      webIntervalId = setInterval(sendPingWeb, PING_INTERVAL_MS)
-    })()
-
-    return () => {
-      cancelled = true
-      if (webIntervalId) clearInterval(webIntervalId)
-      if (capWatchId) {
-        import('@capacitor/geolocation')
-          .then(({ Geolocation }) => Geolocation.clearWatch({ id: capWatchId! }))
-          .catch(() => {})
-      }
-    }
-  }, [onDuty])
+  // ⚠️ Le GPS n'est PLUS piloté ici. Décision Olivier 2026-07-26 : le GPS ne
+  // s'active QUE lorsqu'une mission est attribuée au chauffeur (cf.
+  // useMissionGpsTracking, monté dans AppShell) — fini le GPS toute la vacation
+  // qui vidait la batterie. Ce toggle « En service » ne sert donc plus qu'à
+  // l'affichage présence / planning ; il ne déclenche aucun ping GPS.
 
   const setOnDuty = (value: boolean) => {
     if (isLockedByDuty && !value) return  // Verrouille off pendant les heures planifiées
