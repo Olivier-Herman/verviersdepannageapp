@@ -211,6 +211,55 @@ export default function FacturationClient({
   const [selected, setSelected] = useState<MissionRow | null>(null)
   const [data, setData]         = useState(missions)
 
+  // ── Facturation par lot + vérification Odoo (Olivier 2026-07-26) ──────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [batchBusy, setBatchBusy]     = useState<null | 'facturer' | 'verify'>(null)
+  const [batchReport, setBatchReport] = useState<string | null>(null)
+  const toggleSel = (id: string) => setSelectedIds(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+
+  // Facturer le lot : crée un brouillon de facture Odoo pour chaque fiche cochée.
+  async function batchFacturer() {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    setBatchBusy('facturer'); setBatchReport('🧾 Création des brouillons…')
+    let ok = 0, fail = 0
+    for (const id of ids) {
+      try {
+        const r = await fetch(`/api/missions/${id}/quote`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'invoice' }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && j.ok) ok++; else fail++
+      } catch { fail++ }
+      setBatchReport(`🧾 ${ok + fail}/${ids.length} traité(s)…`)
+    }
+    setBatchBusy(null)
+    setBatchReport(`🧾 ${ok} brouillon(s) créé(s)${fail ? ` · ⚠ ${fail} échec(s)` : ''}. Poste-les dans Odoo, puis clique « Vérification facturation Odoo ».`)
+  }
+
+  // Vérification Odoo : complète les fiches dont la facture liée est postée.
+  async function verifyInvoices() {
+    setBatchBusy('verify'); setBatchReport('🔎 Vérification dans Odoo…')
+    try {
+      const ids = selectedIds.size ? [...selectedIds] : undefined
+      const r = await fetch('/api/facturation/verify-invoices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ids ? { mission_ids: ids } : {}),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.ok) { setBatchReport(`⚠ ${j.error || 'Échec'}`); return }
+      if (j.completed?.length) {
+        const done = new Set<string>(j.completed.map((c: any) => c.id))
+        setData(d => d.filter(m => !done.has(m.id)))
+        setSelectedIds(prev => { const n = new Set(prev); done.forEach(id => n.delete(id)); return n })
+      }
+      setBatchReport(`✅ ${j.summary.completed} facturée(s) · ⏳ ${j.summary.draft} en brouillon (à confirmer dans Odoo) · — ${j.summary.none} sans facture liée`)
+    } catch { setBatchReport('⚠ Erreur réseau') } finally { setBatchBusy(null) }
+  }
+
   // ── Realtime : la liste se met à jour en direct (sans refresh) ───────────
   // Quand une fiche est facturée/validée ou annulée (status ≠ to_invoice), elle
   // disparaît de l'écran ; quand une nouvelle passe en to_invoice, elle apparaît.
@@ -597,6 +646,47 @@ export default function FacturationClient({
           )}
         </div>
 
+        {/* Barre facturation par lot + vérification Odoo */}
+        <div className="bg-surface border rounded-2xl p-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={verifyInvoices}
+            disabled={batchBusy !== null}
+            title="Vérifie dans Odoo quelles fiches ont une facture postée et les complète automatiquement"
+            className="py-2 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition"
+          >
+            {batchBusy === 'verify' ? '🔎 Vérification…' : '🔎 Vérification facturation Odoo'}
+          </button>
+
+          {selectedIds.size > 0 ? (
+            <>
+              <span className="text-ink-secondary text-sm font-medium">{selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}</span>
+              <button
+                type="button"
+                onClick={batchFacturer}
+                disabled={batchBusy !== null}
+                className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition"
+              >
+                {batchBusy === 'facturer' ? '🧾 Création…' : `🧾 Facturer le lot (${selectedIds.size})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                disabled={batchBusy !== null}
+                className="py-2 px-3 bg-surface-2 border text-ink-secondary hover:text-ink rounded-lg text-sm transition"
+              >
+                Désélectionner
+              </button>
+            </>
+          ) : (
+            <span className="text-ink-faint text-xs">Coche des fiches pour les facturer en lot, puis « Vérification » une fois postées dans Odoo.</span>
+          )}
+
+          {batchReport && (
+            <p className="w-full text-ink-secondary text-xs mt-1 border-t pt-2">{batchReport}</p>
+          )}
+        </div>
+
         {/* Liste */}
         {filtered.length === 0 ? (
           <div className="bg-surface border rounded-2xl p-10 text-center">
@@ -700,6 +790,16 @@ export default function FacturationClient({
                       </span>
                     )}
 
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleSel(m.id) }}
+                      title="Sélectionner pour la facturation par lot"
+                      className={`w-7 h-7 rounded-md border-2 flex items-center justify-center flex-shrink-0 text-sm font-bold transition ${
+                        selectedIds.has(m.id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-surface border-ink-faint text-transparent hover:border-emerald-500'
+                      }`}
+                    >
+                      ✓
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected(m) }}
