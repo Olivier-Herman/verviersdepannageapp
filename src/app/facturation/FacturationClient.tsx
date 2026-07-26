@@ -221,25 +221,33 @@ export default function FacturationClient({
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
   })
 
-  // Facturer le lot : crée un brouillon de facture Odoo pour chaque fiche cochée.
+  // Facturer le lot : crée un brouillon de facture Odoo pour chaque fiche cochée
+  // et ouvre chacune dans son propre onglet.
   async function batchFacturer() {
     const ids = [...selectedIds]
     if (!ids.length) return
+    // IMPORTANT : on pré-ouvre un onglet par fiche MAINTENANT (dans le geste du
+    // clic) — un window.open après un await serait bloqué par le navigateur. On
+    // y charge l'URL de la facture dès qu'elle est créée ; on ferme si échec.
+    const tabs = ids.map(() => window.open('', '_blank'))
     setBatchBusy('facturer'); setBatchReport('🧾 Création des brouillons…')
     let ok = 0, fail = 0
-    for (const id of ids) {
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i]; const tab = tabs[i]
       try {
         const r = await fetch(`/api/missions/${id}/quote`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: 'invoice' }),
         })
         const j = await r.json().catch(() => ({}))
-        if (r.ok && j.ok) ok++; else fail++
-      } catch { fail++ }
+        const url = j?.invoice?.url
+        if (r.ok && j.ok && url) { ok++; if (tab) tab.location.href = url }
+        else { fail++; if (tab) try { tab.close() } catch { /* ignore */ } }
+      } catch { fail++; if (tab) try { tab.close() } catch { /* ignore */ } }
       setBatchReport(`🧾 ${ok + fail}/${ids.length} traité(s)…`)
     }
     setBatchBusy(null)
-    setBatchReport(`🧾 ${ok} brouillon(s) créé(s)${fail ? ` · ⚠ ${fail} échec(s)` : ''}. Poste-les dans Odoo, puis clique « Vérification facturation Odoo ».`)
+    setBatchReport(`🧾 ${ok} brouillon(s) créé(s) et ouvert(s)${fail ? ` · ⚠ ${fail} échec(s)` : ''}. Poste-les dans Odoo, puis clique « Vérification facturation Odoo ».`)
   }
 
   // Vérification Odoo : complète les fiches dont la facture liée est postée.
