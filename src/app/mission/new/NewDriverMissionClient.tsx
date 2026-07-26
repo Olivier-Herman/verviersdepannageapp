@@ -84,6 +84,8 @@ function AddressInput({ value, onChange, onSelect, onBlur, mapsReady }: {
       onBlur={onBlur}
       placeholder="Adresse, ou 'A27 BK22.3 dir. Luxembourg'"
       autoFocus
+      autoCorrect="off"
+      spellCheck={false}
       className="w-full bg-surface border border rounded-xl px-4 py-4 text-ink text-base focus:outline-none focus:border-brand placeholder:text-ink-faint"
     />
   )

@@ -641,14 +641,14 @@ export default function FrancofoliesClient({
           {/* Client */}
           <div className="space-y-2">
             <label className="block text-ink-secondary text-xs font-semibold">Client</label>
-            <input value={cName} onChange={e => setCName(e.target.value)} placeholder="Nom / Société *"
+            <input value={cName} onChange={e => setCName(e.target.value)} placeholder="Nom / Société *" autoCorrect="off" spellCheck={false}
               className="w-full bg-surface border rounded-xl px-3 py-3 text-ink text-base focus:outline-none focus:border-brand" />
-            <input value={cAddress} onChange={e => setCAddress(e.target.value)} placeholder="Adresse (rue + n°)"
+            <input value={cAddress} onChange={e => setCAddress(e.target.value)} placeholder="Adresse (rue + n°)" autoCorrect="off" spellCheck={false}
               className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
             <div className="grid grid-cols-3 gap-2">
-              <input value={cZip} onChange={e => setCZip(e.target.value)} placeholder="CP"
+              <input value={cZip} onChange={e => setCZip(e.target.value)} placeholder="CP" autoCorrect="off" spellCheck={false}
                 className="bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
-              <input value={cCity} onChange={e => setCCity(e.target.value)} placeholder="Ville"
+              <input value={cCity} onChange={e => setCCity(e.target.value)} placeholder="Ville" autoCorrect="off" spellCheck={false}
                 className="col-span-2 bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
             </div>
             <input value={cPhone} onChange={e => setCPhone(e.target.value)} placeholder="Téléphone" inputMode="tel"

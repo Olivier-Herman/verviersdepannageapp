@@ -1204,7 +1204,7 @@ export default function NewMissionClient({
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">Nom complet</label>
                     <input value={assistedName} onChange={e => setAssistedName(e.target.value)}
-                      placeholder="Prénom Nom"
+                      placeholder="Prénom Nom" autoCorrect="off" spellCheck={false}
                       className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
                   </div>
                   <div>

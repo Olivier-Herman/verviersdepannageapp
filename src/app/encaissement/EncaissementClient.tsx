@@ -1437,6 +1437,8 @@ export default function EncaissementClient({
           onChange={e => setClientName(e.target.value)}
           placeholder="Nom et prénom ou société"
           autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           autoFocus
           className={`${inputCls} text-base font-semibold mb-8`}
         />
@@ -1508,6 +1510,8 @@ export default function EncaissementClient({
             value={clientAddress}
             onChange={e => setClientAddress(e.target.value)}
             placeholder="Rue, numéro, code postal, ville"
+            autoCorrect="off"
+            spellCheck={false}
             className={inputCls}
           />
         </div>
