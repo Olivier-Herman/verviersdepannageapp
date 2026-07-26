@@ -32,5 +32,14 @@ export async function POST(req: Request) {
   }
 
   await sb.from('incoming_missions').update({ live_activity_push_token: token }).eq('id', missionId).then(() => {}, () => {})
+
+  // Le token d'activité vient d'arriver → on SYNCHRONISE la bannière avec l'état
+  // COURANT. Couvre le cas push-to-start où le chauffeur a accepté AVANT que le
+  // token ne soit enregistré : la MAJ d'alors s'était perdue faute de token.
+  try {
+    const { pushMissionLiveActivity } = await import('@/lib/native/pushLiveActivity')
+    await pushMissionLiveActivity(missionId)
+  } catch { /* best-effort */ }
+
   return NextResponse.json({ ok: true })
 }
