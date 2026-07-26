@@ -193,6 +193,21 @@ export default function FacturationClient({
   const [sourceFilter, setSrc]  = useState<string>('all')
   const [groupFilter, setGroup] = useState<string>('all')   // groupe assureur (VAB / Kaze… / Mondial / AXA)
   const activeGroup = SOURCE_GROUPS.find(g => g.key === groupFilter) || SOURCE_GROUPS[0]
+
+  // Persiste le filtre choisi (groupe + source) : il reste sélectionné après une
+  // validation « Facturation OK » ou un rechargement, au lieu de repasser à
+  // « Tous » à chaque fois. Olivier 2026-07-26.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const g = localStorage.getItem('fact_group_filter');  if (g) setGroup(g)
+    const s = localStorage.getItem('fact_source_filter'); if (s) setSrc(s)
+  }, [])
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem('fact_group_filter', groupFilter)
+  }, [groupFilter])
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem('fact_source_filter', sourceFilter)
+  }, [sourceFilter])
   const [selected, setSelected] = useState<MissionRow | null>(null)
   const [data, setData]         = useState(missions)
 
