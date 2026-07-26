@@ -357,6 +357,38 @@ export default function FrancofoliesClient({
     } catch { showToast('⚠ Erreur réseau') } finally { setReceiptBusy(null) }
   }
 
+  // Édition générique d'un champ du registre (superadmin) — save au blur si changé.
+  const [fieldBusy, setFieldBusy] = useState<string | null>(null)
+  async function saveField(missionId: string, field: string, next: string, current: string) {
+    if (next.trim() === (current ?? '').trim()) return
+    const key = `${missionId}:${field}`
+    setFieldBusy(key)
+    try {
+      const r = await fetch('/api/francofolies/registre-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId, action: 'set_field', field, value: next }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      setRegistre(prev => prev ? { ...prev, vehicles: prev.vehicles.map(v => v.id === missionId ? { ...v, [field]: j.value } : v) } : prev)
+      showToast('✅ Modifié')
+    } catch { showToast('⚠ Erreur réseau') } finally { setFieldBusy(null) }
+  }
+  // Rend une cellule éditable (input non contrôlé, save au blur/Enter).
+  const editCell = (id: string, field: string, val: string | number | null, opts?: { cls?: string; numeric?: boolean }) => (
+    <input
+      key={`${id}:${field}`}
+      defaultValue={val == null ? '' : String(val)}
+      inputMode={opts?.numeric ? 'decimal' : undefined}
+      disabled={fieldBusy === `${id}:${field}`}
+      autoCorrect="off"
+      spellCheck={false}
+      onBlur={e => saveField(id, field, e.target.value, val == null ? '' : String(val))}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      className={opts?.cls || 'w-32 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50'}
+    />
+  )
+
   // Rapprochement encaissements (superadmin) : fiches 'parked' + encaissement chauffeur correspondant.
   interface RecEnc { id: string; amount: number | null; payment_mode: string | null; driver_name: string | null; created_at: string | null; linked_to_this: boolean; client_name: string | null }
   interface RecRow {
@@ -929,12 +961,25 @@ export default function FrancofoliesClient({
                 {registre.vehicles.map(v => (
                   <tr key={v.id} className="border-b last:border-0 align-top">
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{fmtPicked(v.picked_at)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-ink">{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono font-semibold text-ink">{v.plate || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-ink">{v.client_name || '—'}</td>
-                    <td className="px-3 py-2 text-ink-secondary">{[v.client_address, v.client_city].filter(Boolean).join(', ') || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink">
+                      {userRole === 'superadmin'
+                        ? <span className="flex gap-1">{editCell(v.id, 'brand', v.brand, { cls: 'w-24 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}{editCell(v.id, 'model', v.model, { cls: 'w-24 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}</span>
+                        : ([v.brand, v.model].filter(Boolean).join(' ') || '—')}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-mono font-semibold text-ink">
+                      {userRole === 'superadmin' ? editCell(v.id, 'plate', v.plate, { cls: 'w-28 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs font-mono uppercase focus:outline-none focus:border-brand disabled:opacity-50' }) : (v.plate || '—')}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink">
+                      {userRole === 'superadmin' ? editCell(v.id, 'client_name', v.client_name, { cls: 'w-40 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' }) : (v.client_name || '—')}
+                    </td>
+                    <td className="px-3 py-2 text-ink-secondary">
+                      {userRole === 'superadmin'
+                        ? <span className="flex gap-1">{editCell(v.id, 'client_address', v.client_address, { cls: 'w-44 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}{editCell(v.id, 'client_city', v.client_city, { cls: 'w-28 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}</span>
+                        : ([v.client_address, v.client_city].filter(Boolean).join(', ') || '—')}
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
-                      {v.client_phone ? <a href={`tel:${v.client_phone}`} className="text-brand hover:underline">{v.client_phone}</a> : '—'}
+                      {userRole === 'superadmin' ? editCell(v.id, 'client_phone', v.client_phone, { cls: 'w-32 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })
+                        : v.client_phone ? <a href={`tel:${v.client_phone}`} className="text-brand hover:underline">{v.client_phone}</a> : '—'}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
                       {userRole === 'superadmin' ? (
@@ -953,9 +998,13 @@ export default function FrancofoliesClient({
                         />
                       ) : v.client_email ? <a href={`mailto:${v.client_email}`} className="text-brand hover:underline">{v.client_email}</a> : '—'}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{v.client_vat || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">
+                      {userRole === 'superadmin' ? editCell(v.id, 'client_vat', v.client_vat, { cls: 'w-32 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' }) : (v.client_vat || '—')}
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap text-right font-semibold text-ink">
-                      {v.amount != null ? `${v.amount.toFixed(2)} €` : '—'}
+                      {userRole === 'superadmin'
+                        ? editCell(v.id, 'amount', v.amount, { numeric: true, cls: 'w-20 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs text-right focus:outline-none focus:border-brand disabled:opacity-50' })
+                        : (v.amount != null ? `${v.amount.toFixed(2)} €` : '—')}
                       {v.gardiennage_days > 0 && <span className="block text-ink-faint text-[10px] font-normal">dont {v.gardiennage_days}j gard.</span>}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">

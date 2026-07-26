@@ -31,6 +31,57 @@ export async function POST(req: Request) {
 
   const sb = createAdminClient()
 
+  // ── Modifier un champ quelconque (superadmin) ─────────────────────────────
+  // Whitelist : clé UI → colonne incoming_missions (+ colonne intervention à
+  // synchroniser pour garder l'encaissement cohérent). Olivier 2026-07-26.
+  const FIELD_MAP: Record<string, { col: string; interCol?: string; alsoCol?: string; type?: 'number' }> = {
+    plate:          { col: 'vehicle_plate',   interCol: 'plate' },
+    brand:          { col: 'vehicle_brand',   interCol: 'brand_text' },
+    model:          { col: 'vehicle_model',   interCol: 'model_text' },
+    client_name:    { col: 'client_name',     interCol: 'client_name', alsoCol: 'billed_to_name' },
+    client_address: { col: 'client_address',  interCol: 'client_address' },
+    client_city:    { col: 'client_city' },
+    client_phone:   { col: 'client_phone',    interCol: 'client_phone' },
+    client_vat:     { col: 'client_vat',      interCol: 'client_vat' },
+    amount:         { col: 'amount_to_collect', type: 'number' },
+  }
+  if (action === 'set_field') {
+    const field = String(body?.field || '')
+    const map = FIELD_MAP[field]
+    if (!map) return NextResponse.json({ error: 'Champ non modifiable' }, { status: 400 })
+
+    let val: any = String(body?.value ?? '').trim()
+    if (map.type === 'number') {
+      const n = Number(String(val).replace(',', '.'))
+      val = Number.isFinite(n) && val !== '' ? Math.round(n * 100) / 100 : null
+    } else {
+      val = val || null
+    }
+
+    const upd: Record<string, any> = { [map.col]: val }
+    if (map.alsoCol) upd[map.alsoCol] = val
+    // Montant : garder amount_collected cohérent (si déjà payé) + l'encaissement.
+    if (field === 'amount') upd.amount_collected = val
+
+    const { error } = await sb.from('incoming_missions').update(upd).eq('id', missionId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Sync encaissement lié (best-effort).
+    const interUpd: Record<string, any> = {}
+    if (map.interCol) interUpd[map.interCol] = val
+    if (field === 'amount') interUpd.amount = val
+    if (Object.keys(interUpd).length) {
+      await sb.from('interventions').update(interUpd)
+        .eq('mission_id', missionId).eq('service_type', 'encaissement').then(() => {}, () => {})
+    }
+
+    await sb.from('mission_logs').insert({
+      mission_id: missionId, action: 'francofolies_field_changed',
+      metadata: { field, to: val, by: (session.user as any)?.email || null },
+    }).then(() => {}, () => {})
+    return NextResponse.json({ ok: true, field, value: val })
+  }
+
   // ── Corriger l'email ──────────────────────────────────────────────────────
   if (action === 'set_email') {
     const email = String(body?.email || '').trim()
