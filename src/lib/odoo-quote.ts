@@ -180,6 +180,18 @@ export function buildInvoiceMoveUrl(moveId: number): string {
   return `${ODOO_URL}/web#id=${moveId}&model=account.move&view_type=form`
 }
 
+/**
+ * Retourne l'état d'une facture (account.move) ou `null` si elle n'existe plus
+ * (supprimée côté Odoo). Utilise search_read (pas read) pour ne PAS lever
+ * d'erreur sur un id disparu. Olivier 2026-07-26.
+ */
+export async function getInvoiceMove(moveId: number): Promise<{ id: number; state: string; url: string } | null> {
+  const rows = await rpc<any[]>('account.move', 'search_read',
+    [[['id', '=', moveId]]], { fields: ['id', 'state'], limit: 1 })
+  if (!rows || rows.length === 0) return null
+  return { id: moveId, state: rows[0].state, url: buildInvoiceMoveUrl(moveId) }
+}
+
 /** Lignes de facture (account.move.line) : idem devis mais `quantity` au lieu de `product_uom_qty`. */
 async function buildInvoiceLines(sections: QuoteSection[], description?: string): Promise<any[]> {
   const productIds = await getProductIds()

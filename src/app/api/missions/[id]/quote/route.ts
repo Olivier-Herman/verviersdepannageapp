@@ -15,7 +15,7 @@ import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
-import { createSaleOrder, updateSaleOrder, createDraftInvoice, buildInvoiceMoveUrl, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { createSaleOrder, updateSaleOrder, createDraftInvoice, getInvoiceMove, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { attachFileToOrder, attachFileToInvoice, withOdooActor } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
@@ -220,14 +220,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
   // wrap dans withOdooActor pour tracer au user connecte (cle perso).
-  // Mode facture directe : si une facture existe déjà, on ne recrée pas de
-  // doublon — l'employé la gère dans Odoo. On renvoie l'existante.
+  // Mode facture directe : si une facture existe DÉJÀ *et* est toujours présente
+  // dans Odoo, on ne recrée pas de doublon → on renvoie l'existante. Si elle a
+  // été SUPPRIMÉE côté Odoo (brouillon effacé), on nettoie la référence morte et
+  // on laisse le flux en recréer une neuve. Olivier 2026-07-26.
   if (mode === 'invoice' && (mission as any).invoice_odoo_id) {
-    return NextResponse.json({
-      ok: true, mode,
-      invoice: { id: (mission as any).invoice_odoo_id, url: buildInvoiceMoveUrl((mission as any).invoice_odoo_id) },
-      already_exists: true,
-    })
+    const existing = await withOdooActor(user?.id, () => getInvoiceMove((mission as any).invoice_odoo_id)).catch(() => null)
+    if (existing) {
+      return NextResponse.json({ ok: true, mode, invoice: existing, already_exists: true })
+    }
+    // Facture disparue → on efface la référence morte et on recrée plus bas.
+    await sb.from('incoming_missions').update({ invoice_odoo_id: null }).eq('id', mission.id)
+    console.log(`[quote] invoice_odoo_id ${(mission as any).invoice_odoo_id} introuvable (supprimée) → recréation`)
   }
 
   let result: { id: number; url: string }
