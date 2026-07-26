@@ -370,7 +370,11 @@ export default function FrancofoliesClient({
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      // MAJ locale du registre (clés = plate/brand/…) ET de la liste en attente
+      // (clés = vehicle_plate/…). L'un des deux est monté selon l'écran.
       setRegistre(prev => prev ? { ...prev, vehicles: prev.vehicles.map(v => v.id === missionId ? { ...v, [field]: j.value } : v) } : prev)
+      const rowKey = ({ plate: 'vehicle_plate', brand: 'vehicle_brand', model: 'vehicle_model', amount: 'amount_to_collect' } as Record<string, string>)[field] || field
+      setRows(prev => prev.map(r => r.id === missionId ? { ...r, [rowKey]: j.value } as Row : r))
       showToast('✅ Modifié')
     } catch { showToast('⚠ Erreur réseau') } finally { setFieldBusy(null) }
   }
@@ -1194,6 +1198,32 @@ export default function FrancofoliesClient({
                 </div>
               </div>
             )
+            // Superadmin sur un véhicule EN ATTENTE : plaque/marque/modèle
+            // éditables inline + bouton Enlèvement séparé (un input ne peut pas
+            // vivre dans un <button>). Olivier 2026-07-26.
+            if (userRole === 'superadmin' && !rendu) {
+              return (
+                <div key={m.id} className="w-full bg-surface border rounded-xl p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        {editCell(m.id, 'plate', m.vehicle_plate, { cls: 'w-28 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-sm font-mono font-bold uppercase focus:outline-none focus:border-brand disabled:opacity-50' })}
+                        {m.police_blocked && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold">🚔 BLOCAGE</span>}
+                      </div>
+                      <span className="flex gap-1">
+                        {editCell(m.id, 'brand', m.vehicle_brand, { cls: 'w-24 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}
+                        {editCell(m.id, 'model', m.vehicle_model, { cls: 'w-24 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}
+                      </span>
+                      {m.assigned_user?.name && <p className="text-ink-faint text-xs">🚚 {m.assigned_user.name}</p>}
+                    </div>
+                    <button onClick={() => openPickup(m)}
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold whitespace-nowrap flex-shrink-0 transition">
+                      Enlèvement →
+                    </button>
+                  </div>
+                </div>
+              )
+            }
             return rendu ? (
               <div key={m.id} className="w-full text-left bg-surface-2 border rounded-xl p-3 opacity-90">{inner}</div>
             ) : (
