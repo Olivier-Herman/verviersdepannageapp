@@ -84,15 +84,37 @@ async function ensureActionToken(p: LiveActivityPlugin): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-export async function startForMission(info: MissionLAInfo, state: MissionLAState): Promise<void> {
-  const p = await plugin(); if (!p) return
+// Traceur temporaire (diagnostic device chauffeur). Best-effort, jamais bloquant.
+function laDebug(stage: string, missionId: string | null, data?: any) {
   try {
-    if (!(await p.isSupported()).supported) return
-    // IMPORTANT : ne PAS attendre le token (fetch qui peut bloquer via CapacitorHttp).
-    // On démarre l'activité tout de suite ; le token part en arrière-plan.
+    fetch('/api/missions/live-activity-debug', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage, missionId, data }),
+    }).catch(() => {})
+  } catch { /* ignore */ }
+}
+
+export async function startForMission(info: MissionLAInfo, state: MissionLAState): Promise<void> {
+  let plat = 'unknown'
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    plat = `native=${Capacitor.isNativePlatform()} platform=${Capacitor.getPlatform()}`
+  } catch { /* ignore */ }
+  laDebug('entry', info.missionId, plat)
+
+  const p = await plugin()
+  if (!p) { laDebug('no-plugin', info.missionId, plat); return }
+  try {
+    const sup = (await p.isSupported()).supported
+    laDebug('supported', info.missionId, sup)
+    if (!sup) return
     void ensureActionToken(p)
-    await p.start({ ...info, state })
-  } catch (e) { console.warn('[liveActivity] start KO', e) }
+    const res = await p.start({ ...info, state })
+    laDebug('started', info.missionId, res as any)
+  } catch (e: any) {
+    laDebug('start-error', info.missionId, e?.message || String(e))
+    console.warn('[liveActivity] start KO', e)
+  }
 }
 
 export async function updateForMission(missionId: string, state: MissionLAState): Promise<void> {
