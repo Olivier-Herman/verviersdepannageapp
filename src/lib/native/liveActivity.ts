@@ -103,6 +103,10 @@ export async function liveActivitySupported(): Promise<boolean> {
  */
 export async function initLiveActivity(): Promise<void> {
   await ensurePlugin()
+  // Écrit le token d'action dans l'App Group DÈS l'ouverture de l'app, pour que
+  // les boutons (Accepter/Sur place…) marchent même sur une Live Activity
+  // démarrée par PUSH (push-to-start) où startForMission n'a jamais tourné.
+  if (_plugin) void ensureActionToken(_plugin)
 }
 
 /** Récupère + pousse au natif le token d'action (pour les App Intents). Best-effort. */
