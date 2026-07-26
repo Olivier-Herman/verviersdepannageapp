@@ -46,15 +46,20 @@ let _plugin: LiveActivityPlugin | null = null
 let _init = false
 let _listenerAttached = false
 
-async function plugin(): Promise<LiveActivityPlugin | null> {
-  if (_init) return _plugin
+// ⚠️ NE JAMAIS renvoyer le proxy Capacitor depuis une async fn qu'on `await` :
+// registerPlugin(...) répond à N'IMPORTE quelle propriété (dont `.then`), donc
+// `await plugin()` le prend pour un thenable → `proxy.then()` → HANG éternel
+// (incident Franck 2026-07-26). On initialise ici (retour void) et les appelants
+// lisent `_plugin` en SYNCHRONE.
+async function ensurePlugin(): Promise<void> {
+  if (_init) return
   _init = true
   try {
-    const { Capacitor } = await import('@capacitor/core')
-    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') return (_plugin = null)
-    const { registerPlugin } = await import('@capacitor/core')
+    const { Capacitor, registerPlugin } = await import('@capacitor/core')
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') { _plugin = null; return }
     _plugin = registerPlugin<LiveActivityPlugin>('LiveActivity')
-    // Enregistre le push token dès qu'il arrive (une seule fois).
+    // Enregistre le push token dès qu'il arrive (une seule fois). On APPELLE une
+    // méthode du proxy (OK), on ne l'`await` jamais en tant que valeur.
     if (!_listenerAttached && _plugin) {
       _listenerAttached = true
       _plugin.addListener('pushToken', async ({ missionId, token }) => {
@@ -67,11 +72,10 @@ async function plugin(): Promise<LiveActivityPlugin | null> {
       }).catch(() => {})
     }
   } catch { _plugin = null }
-  return _plugin
 }
 
 export async function liveActivitySupported(): Promise<boolean> {
-  const p = await plugin(); if (!p) return false
+  await ensurePlugin(); const p = _plugin; if (!p) return false
   try { return (await p.isSupported()).supported } catch { return false }
 }
 
@@ -115,9 +119,10 @@ export async function startForMission(info: MissionLAInfo, state: MissionLAState
   } catch (e: any) { plat = `import-err:${e?.message}` }
   step(`entry(${plat})`)
 
-  const p = await withTO(plugin(), 5000)
-  step(`plugin=${p === 'TIMEOUT' ? 'TIMEOUT' : !!p}`)
-  if (p === 'TIMEOUT' || !p) return
+  await withTO(ensurePlugin(), 5000)
+  const p = _plugin
+  step(`plugin=${!!p}`)
+  if (!p) return
 
   try {
     const sup = await withTO(p.isSupported(), 5000)
@@ -133,12 +138,12 @@ export async function startForMission(info: MissionLAInfo, state: MissionLAState
 }
 
 export async function updateForMission(missionId: string, state: MissionLAState): Promise<void> {
-  const p = await plugin(); if (!p) return
+  await ensurePlugin(); const p = _plugin; if (!p) return
   try { await p.update({ missionId, state }) } catch { /* silencieux */ }
 }
 
 export async function endForMission(missionId: string, state: MissionLAState): Promise<void> {
-  const p = await plugin(); if (!p) return
+  await ensurePlugin(); const p = _plugin; if (!p) return
   try { await p.end({ missionId, state }) } catch { /* silencieux */ }
 }
 
