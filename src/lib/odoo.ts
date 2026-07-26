@@ -692,6 +692,15 @@ export async function attachFileToOrder(
   })
 }
 
+/** Poste une note dans le chatter d'un objet Odoo (sale.order, account.move…). */
+export async function postChatterMessage(model: string, resId: number, htmlBody: string): Promise<void> {
+  await rpc(model, 'message_post', [[resId]], {
+    body:         htmlBody,
+    message_type: 'comment',
+    subtype_id:   2,
+  })
+}
+
 /** Idem attachFileToOrder mais pour une facture (account.move). Olivier 2026-07-26. */
 export async function attachFileToInvoice(
   moveId:     number,

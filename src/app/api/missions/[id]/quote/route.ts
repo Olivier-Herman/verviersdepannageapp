@@ -16,7 +16,7 @@ import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, createDraftInvoice, getInvoiceMove, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
-import { attachFileToOrder, attachFileToInvoice, withOdooActor } from '@/lib/odoo'
+import { attachFileToOrder, attachFileToInvoice, postChatterMessage, withOdooActor } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -85,7 +85,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       incident_address, destination_address, redelivery_address,
       parked_at, intervention_date, received_at, incident_type, parent_mission_id,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
-      billed_to_id, billed_to_name,
+      billed_to_id, billed_to_name, payment_method,
       amount_to_collect, special_tarif_htva, amount_guaranteed,
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
@@ -282,6 +282,44 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (updErr) {
     console.error(`[quote] update mission failed (mode=${mode}):`, updErr.message)
     // On a deja cree l'objet Odoo, on retourne quand meme l info
+  }
+
+  // 5b) Chatter Odoo : mode de paiement + date + user qui a encaissé (VD Soft).
+  //     Depuis interventions (encaissement chauffeur) ; fallback payment_method.
+  try {
+    const { data: encs } = await sb.from('interventions')
+      .select('payment_mode, amount, driver_id, created_at')
+      .eq('mission_id', mission.id)
+      .order('created_at', { ascending: true })
+    const drvIds = [...new Set((encs || []).map((e: any) => e.driver_id).filter(Boolean))]
+    const { data: us } = drvIds.length
+      ? await sb.from('users').select('id, name').in('id', drvIds)
+      : { data: [] as any[] }
+    const nameById = new Map((us || []).map((u: any) => [u.id, u.name]))
+    const PM: Record<string, string> = {
+      cash: 'Espèces', bancontact: 'Bancontact', sumup: 'Sumup', terminal: 'Sumup Terminal',
+      qr: 'QR Code', qr_transfer: 'QR virement', tap: 'Tap to Pay', sumup_manual: 'Sumup',
+      email: 'Lien email', unpaid: 'Non payé', a_verifier: 'À vérifier',
+    }
+    const fmtDT = (iso: string | null) => {
+      if (!iso) return '—'
+      try { return new Date(iso).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
+      catch { return String(iso).slice(0, 16) }
+    }
+    let body: string
+    if (encs && encs.length) {
+      const items = encs.map((e: any) =>
+        `<li><b>${PM[e.payment_mode] || e.payment_mode || '—'}</b> — ${Number(e.amount || 0).toFixed(2)} € · ${fmtDT(e.created_at)}${e.driver_id ? ` · encaissé par ${nameById.get(e.driver_id) || '—'}` : ''}</li>`
+      ).join('')
+      body = `<p>💳 <b>Paiement (VD Soft)</b></p><ul>${items}</ul>`
+    } else {
+      const pmLabel = (mission as any).payment_method ? (PM[(mission as any).payment_method] || (mission as any).payment_method) : '—'
+      body = `<p>💳 <b>Paiement (VD Soft)</b> : ${pmLabel}${(mission as any).payment_method === 'unpaid' ? ' — à facturer' : ''}</p>`
+    }
+    const chatterModel = mode === 'invoice' ? 'account.move' : 'sale.order'
+    await withOdooActor(user?.id, () => postChatterMessage(chatterModel, result.id, body))
+  } catch (e: any) {
+    console.error('[quote] chatter paiement KO:', e?.message)
   }
 
   // 6) Attach les PDF des avances de fonds liees au devis Odoo.

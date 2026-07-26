@@ -256,7 +256,7 @@ export default function FacturationClient({
         setData(d => d.filter(m => !done.has(m.id)))
         setSelectedIds(prev => { const n = new Set(prev); done.forEach(id => n.delete(id)); return n })
       }
-      setBatchReport(`✅ ${j.summary.completed} facturée(s) · ⏳ ${j.summary.draft} en brouillon (à confirmer dans Odoo) · — ${j.summary.none} sans facture liée`)
+      setBatchReport(`✅ ${j.summary.completed} facturée(s) · ⏳ ${j.summary.draft} en brouillon (à confirmer dans Odoo) · 📄 ${j.summary.none} devis pas encore facturé dans Odoo`)
     } catch { setBatchReport('⚠ Erreur réseau') } finally { setBatchBusy(null) }
   }
 
