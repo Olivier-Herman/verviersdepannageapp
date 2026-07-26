@@ -378,6 +378,20 @@ export default function FrancofoliesClient({
       showToast('✅ Modifié')
     } catch { showToast('⚠ Erreur réseau') } finally { setFieldBusy(null) }
   }
+  // Bascule le blocage police (superadmin).
+  async function togglePolice(missionId: string, current: boolean) {
+    setFieldBusy(`${missionId}:police_blocked`)
+    try {
+      const r = await fetch('/api/francofolies/registre-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: missionId, action: 'set_field', field: 'police_blocked', value: !current }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { showToast(`⚠ ${j.error || 'Échec'}`); return }
+      setRows(prev => prev.map(r2 => r2.id === missionId ? { ...r2, police_blocked: j.value } : r2))
+      showToast(j.value ? '🚔 Blocage police activé' : 'Blocage police retiré')
+    } catch { showToast('⚠ Erreur réseau') } finally { setFieldBusy(null) }
+  }
   // Rend une cellule éditable (input non contrôlé, save au blur/Enter).
   const editCell = (id: string, field: string, val: string | number | null, opts?: { cls?: string; numeric?: boolean }) => (
     <input
@@ -1208,7 +1222,11 @@ export default function FrancofoliesClient({
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
                         {editCell(m.id, 'plate', m.vehicle_plate, { cls: 'w-28 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-sm font-mono font-bold uppercase focus:outline-none focus:border-brand disabled:opacity-50' })}
-                        {m.police_blocked && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold">🚔 BLOCAGE</span>}
+                        <button type="button" onClick={() => togglePolice(m.id, !!m.police_blocked)} disabled={fieldBusy === `${m.id}:police_blocked`}
+                          title={m.police_blocked ? 'Blocage police actif — cliquer pour retirer' : 'Cliquer pour activer le blocage police'}
+                          className={`px-1.5 py-0.5 text-[10px] rounded font-bold transition disabled:opacity-50 ${m.police_blocked ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-surface-2 border text-ink-muted hover:text-ink'}`}>
+                          {m.police_blocked ? '🚔 BLOCAGE' : '🚔 Bloquer ?'}
+                        </button>
                       </div>
                       <span className="flex gap-1">
                         {editCell(m.id, 'brand', m.vehicle_brand, { cls: 'w-24 bg-surface-2 border rounded-lg px-2 py-1 text-ink text-xs focus:outline-none focus:border-brand disabled:opacity-50' })}

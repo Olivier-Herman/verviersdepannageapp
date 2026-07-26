@@ -34,7 +34,8 @@ export async function POST(req: Request) {
   // ── Modifier un champ quelconque (superadmin) ─────────────────────────────
   // Whitelist : clé UI → colonne incoming_missions (+ colonne intervention à
   // synchroniser pour garder l'encaissement cohérent). Olivier 2026-07-26.
-  const FIELD_MAP: Record<string, { col: string; interCol?: string; alsoCol?: string; type?: 'number' }> = {
+  const FIELD_MAP: Record<string, { col: string; interCol?: string; alsoCol?: string; type?: 'number' | 'bool' }> = {
+    police_blocked: { col: 'police_blocked', type: 'bool' },
     plate:          { col: 'vehicle_plate',   interCol: 'plate' },
     brand:          { col: 'vehicle_brand',   interCol: 'brand_text' },
     model:          { col: 'vehicle_model',   interCol: 'model_text' },
@@ -50,12 +51,15 @@ export async function POST(req: Request) {
     const map = FIELD_MAP[field]
     if (!map) return NextResponse.json({ error: 'Champ non modifiable' }, { status: 400 })
 
-    let val: any = String(body?.value ?? '').trim()
-    if (map.type === 'number') {
-      const n = Number(String(val).replace(',', '.'))
-      val = Number.isFinite(n) && val !== '' ? Math.round(n * 100) / 100 : null
+    let val: any
+    if (map.type === 'bool') {
+      val = body?.value === true || body?.value === 'true' || body?.value === 1 || body?.value === '1'
+    } else if (map.type === 'number') {
+      const s = String(body?.value ?? '').trim()
+      const n = Number(s.replace(',', '.'))
+      val = Number.isFinite(n) && s !== '' ? Math.round(n * 100) / 100 : null
     } else {
-      val = val || null
+      val = String(body?.value ?? '').trim() || null
     }
 
     const upd: Record<string, any> = { [map.col]: val }
