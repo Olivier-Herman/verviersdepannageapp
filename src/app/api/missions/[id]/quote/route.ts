@@ -15,7 +15,7 @@ import { authOptions }           from '@/lib/auth'
 import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
-import { createSaleOrder, updateSaleOrder, createDraftInvoice, getInvoiceMove, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
+import { createSaleOrder, updateSaleOrder, createDraftInvoice, updateDraftInvoice, getInvoiceMove, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
 import { attachFileToOrder, attachFileToInvoice, postChatterMessage, withOdooActor } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
@@ -220,18 +220,24 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
   // wrap dans withOdooActor pour tracer au user connecte (cle perso).
-  // Mode facture directe : si une facture existe DÉJÀ *et* est toujours présente
-  // dans Odoo, on ne recrée pas de doublon → on renvoie l'existante. Si elle a
-  // été SUPPRIMÉE côté Odoo (brouillon effacé), on nettoie la référence morte et
-  // on laisse le flux en recréer une neuve. Olivier 2026-07-26.
+  // Mode facture directe : gère la facture existante selon son état Odoo.
+  //   - BROUILLON  → on MET À JOUR ses lignes (recliquer Facturer = recalcul).
+  //   - POSTÉE/annulée → non modifiable, on renvoie l'existante (verrouillée).
+  //   - SUPPRIMÉE  → on nettoie la réf morte et on recrée plus bas.
+  // Olivier 2026-07-26.
+  let invoiceUpdateId: number | null = null
   if (mode === 'invoice' && (mission as any).invoice_odoo_id) {
     const existing = await withOdooActor(user?.id, () => getInvoiceMove((mission as any).invoice_odoo_id)).catch(() => null)
     if (existing) {
-      return NextResponse.json({ ok: true, mode, invoice: existing, already_exists: true })
+      if (existing.state === 'draft') {
+        invoiceUpdateId = existing.id   // brouillon → mise à jour des lignes plus bas
+      } else {
+        return NextResponse.json({ ok: true, mode, invoice: existing, already_exists: true, locked: existing.state })
+      }
+    } else {
+      await sb.from('incoming_missions').update({ invoice_odoo_id: null }).eq('id', mission.id)
+      console.log(`[quote] invoice_odoo_id ${(mission as any).invoice_odoo_id} introuvable (supprimée) → recréation`)
     }
-    // Facture disparue → on efface la référence morte et on recrée plus bas.
-    await sb.from('incoming_missions').update({ invoice_odoo_id: null }).eq('id', mission.id)
-    console.log(`[quote] invoice_odoo_id ${(mission as any).invoice_odoo_id} introuvable (supprimée) → recréation`)
   }
 
   let result: { id: number; url: string }
@@ -251,8 +257,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         description:      buildInterventionDescription(mission as any),
       }
       // Facture directe (account.move brouillon) — véhicule + réf inclus.
+      // Brouillon existant → on remplace ses lignes ; sinon on en crée une.
       if (mode === 'invoice') {
-        return await createDraftInvoice(commonInput)
+        return invoiceUpdateId
+          ? await updateDraftInvoice(invoiceUpdateId, commonInput)
+          : await createDraftInvoice(commonInput)
       }
       // Devis (sale.order) — création/mise à jour idempotente.
       if (mission.odoo_quote_id) {

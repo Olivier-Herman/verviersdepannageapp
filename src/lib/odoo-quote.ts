@@ -241,6 +241,24 @@ export async function createDraftInvoice(input: CreateQuoteInput): Promise<{ id:
   return { id, url: buildInvoiceMoveUrl(id) }
 }
 
+/**
+ * Met à jour une facture BROUILLON existante : remplace toutes les lignes
+ * ([5,0,0] = vide tout, puis recrée) + réf + véhicule. À n'appeler que si la
+ * facture est en `draft` (une facture postée n'est plus modifiable). Olivier 2026-07-26.
+ */
+export async function updateDraftInvoice(moveId: number, input: CreateQuoteInput): Promise<{ id: number; url: string }> {
+  const invoiceLines = await buildInvoiceLines(input.sections, input.description)
+  const vals: any = {
+    invoice_origin:   input.origin,
+    ref:              input.client_order_ref || input.origin || false,
+    invoice_line_ids: [[5, 0, 0], ...invoiceLines],   // 5,0,0 = supprime les lignes existantes
+  }
+  if (input.partner_id) vals.partner_id = input.partner_id
+  if (input.fleet_vehicle_id) vals[INVOICE_VEHICLE_FIELD] = input.fleet_vehicle_id
+  await rpc<boolean>('account.move', 'write', [[moveId], vals])
+  return { id: moveId, url: buildInvoiceMoveUrl(moveId) }
+}
+
 /** Erreur jetee si le devis cible n existe plus (supprime cote Odoo). */
 export class QuoteNotFoundError extends Error {
   constructor(quoteId: number) {
