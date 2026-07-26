@@ -103,14 +103,33 @@ export async function GET(req: Request) {
     console.error('[CleanupStalePlaceholders] purge KO:', e?.message)
   }
 
-  // Alerte admin si crashes répétés détectés
+  // Alerte admin si crashes répétés détectés — MAIS avec un cooldown 6h pour ne
+  // pas spammer : un lot d'emails non-traitables peut boucler (reprocess) et
+  // regénérer des orphelins à chaque passe (toutes les 15 min). Une alerte
+  // toutes les 6h suffit à signaler l'incident sans harceler. Olivier 2026-07-26.
+  const ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000
   if (cleaned > ALERT_THRESHOLD) {
-    await sendPushToRole(['admin', 'superadmin'], {
-      title: '⚠️ Webhook crashe',
-      body:  `${cleaned} placeholders orphelins nettoyés en 15min — vérifier Vercel logs`,
-      url:   '/dispatch',
-      tag:   'webhook-crash-alert',
-    }).catch(() => {})
+    try {
+      const { data: last } = await supabase.from('app_settings').select('value')
+        .eq('key', 'webhook_crash_alert_last').maybeSingle()
+      const lastAt = Date.parse((last?.value as any)?.at || '') || 0
+      if (Date.now() - lastAt > ALERT_COOLDOWN_MS) {
+        await sendPushToRole(['admin', 'superadmin'], {
+          title: '⚠️ Webhook crashe',
+          body:  `${cleaned} emails non traités (timeout). Souvent un lot d'emails arrivé d'un coup — vérifier Vercel logs si ça persiste.`,
+          url:   '/dispatch',
+          tag:   'webhook-crash-alert',
+        }).catch(() => {})
+        await supabase.from('app_settings').upsert(
+          { key: 'webhook_crash_alert_last', value: { at: new Date().toISOString(), cleaned } },
+          { onConflict: 'key' },
+        ).then(() => {}, () => {})
+      } else {
+        console.log(`[CleanupStalePlaceholders] alerte supprimée (cooldown 6h, dernière il y a ${Math.round((Date.now()-lastAt)/60000)} min)`)
+      }
+    } catch (e: any) {
+      console.error('[CleanupStalePlaceholders] cooldown check KO:', e?.message)
+    }
   }
 
   return NextResponse.json({ ok: true, cleaned, purged, threshold_ms: STALE_THRESHOLD_MS })
