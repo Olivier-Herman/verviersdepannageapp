@@ -653,7 +653,7 @@ export default function FrancofoliesClient({
             </div>
             <input value={cPhone} onChange={e => setCPhone(e.target.value)} placeholder="Téléphone" inputMode="tel"
               className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
-            <input value={cEmail} onChange={e => setCEmail(e.target.value)} placeholder="Email (reçu envoyé)" inputMode="email" autoCapitalize="none"
+            <input value={cEmail} onChange={e => setCEmail(e.target.value)} placeholder="Email (reçu envoyé)" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
               className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-base focus:outline-none focus:border-brand" />
             <div>
               <div className="flex gap-2">
@@ -942,6 +942,9 @@ export default function FrancofoliesClient({
                           type="email"
                           defaultValue={v.client_email || ''}
                           placeholder="ajouter un email…"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           disabled={emailBusy === v.id}
                           onChange={e => setEmailDraft(d => ({ ...d, [v.id]: e.target.value }))}
                           onBlur={() => saveEmail(v.id, v.client_email)}

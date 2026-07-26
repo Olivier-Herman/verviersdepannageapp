@@ -230,7 +230,7 @@ export default function CreateClientModal({ initialName, gmKey, onClose, onCreat
           <div>
             <label className="block text-ink-muted text-xs mb-1.5">Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="contact@exemple.be"
+              placeholder="contact@exemple.be" autoCapitalize="none" autoCorrect="off" spellCheck={false}
               className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
           </div>
 

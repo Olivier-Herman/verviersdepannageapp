@@ -481,7 +481,7 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
                     <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1 block">
                       Email <span className="text-ink-faint">(opt)</span>
                     </label>
-                    <input value={createEmail} onChange={e => setCreateEmail(e.target.value)} type="email"
+                    <input value={createEmail} onChange={e => setCreateEmail(e.target.value)} type="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                       placeholder="client@email.com"
                       className="w-full bg-surface-2 border rounded-lg px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
                   </div>

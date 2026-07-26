@@ -1532,6 +1532,9 @@ export default function EncaissementClient({
             onChange={e => setClientEmail(e.target.value)}
             type="email" placeholder="client@email.com"
             autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             className={inputCls}
           />
         </div>

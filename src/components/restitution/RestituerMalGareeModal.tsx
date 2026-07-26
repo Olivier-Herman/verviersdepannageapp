@@ -450,7 +450,7 @@ export default function RestituerMalGareeModal({ mission, userHasOdooAccess, onC
                         <input value={newPartnerName} onChange={e => setNewPartnerName(e.target.value)}
                           placeholder="Nom Prénom *" className="w-full px-3 py-2 bg-surface border rounded-lg text-sm text-ink focus:outline-none focus:border-brand" />
                         <div className="grid grid-cols-2 gap-2">
-                          <input value={newPartnerEmail} onChange={e => setNewPartnerEmail(e.target.value)} type="email"
+                          <input value={newPartnerEmail} onChange={e => setNewPartnerEmail(e.target.value)} type="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                             placeholder="Email" className="px-3 py-2 bg-surface border rounded-lg text-sm text-ink focus:outline-none focus:border-brand" />
                           <input value={newPartnerPhone} onChange={e => setNewPartnerPhone(e.target.value)} type="tel"
                             placeholder="Téléphone" className="px-3 py-2 bg-surface border rounded-lg text-sm text-ink focus:outline-none focus:border-brand" />
