@@ -600,6 +600,13 @@ export default function FacturationClient({
                 className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition">
                 🟦 Clôture Allianz
               </Link>
+              {isSuperadmin && (
+                <Link href="/touring-comex"
+                  className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm font-semibold transition"
+                  title="Rapprochement auto-facturation Touring COMEX BKO (superadmin)">
+                  🅣 Touring COMEX
+                </Link>
+              )}
             </div>
           )}
         </div>
