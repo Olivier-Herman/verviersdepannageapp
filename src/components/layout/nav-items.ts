@@ -28,6 +28,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/services/tgr',  label: 'TGR Touring',      i18nKey: 'nav.services_tgr',  icon: '🛡️', moduleId: 'tgr' },
   { href: '/admin/tgr',     label: 'TGR Gestion',      icon: '📋', moduleId: 'admin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
+  // Olivier 2026-07-27 : rapprochement auto-facturation Touring COMEX BKO,
+  // superadmin uniquement (phase de test).
+  { href: '/touring-comex',     label: 'Touring COMEX',       icon: '🅣', moduleId: null, role: 'superadmin' },
   { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
   { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
   // Olivier 2026-06-02 : Dépanneuses retirée de la sidebar globale (fonction
