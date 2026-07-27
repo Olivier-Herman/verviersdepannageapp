@@ -21,7 +21,11 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendPushToRole }    from '@/lib/push'
 
 const STALE_THRESHOLD_MS = 5 * 60 * 1000         // 5 min
-const ALERT_THRESHOLD    = 3                       // > 3 nettoyés en 1 passe → push admin
+// Seuil d'alerte : la boîte partagée reçoit des LOTS d'emails (Touring/AXA/IMA/
+// Allianz) qui dépassent parfois le budget 60s → quelques orphelins transitoires
+// que le reprocess récupère (normal). On n'alerte que sur un vrai blocage massif,
+// sinon c'était du spam. Olivier 2026-07-27.
+const ALERT_THRESHOLD    = 25
 
 // Purge des fiches MORTES (Olivier 2026-06-29) : au-delà de 72h, une fiche en
 // erreur n'est ni récupérable par le reprocess (fenêtre 72h) ni actionnable
@@ -107,7 +111,7 @@ export async function GET(req: Request) {
   // pas spammer : un lot d'emails non-traitables peut boucler (reprocess) et
   // regénérer des orphelins à chaque passe (toutes les 15 min). Une alerte
   // toutes les 6h suffit à signaler l'incident sans harceler. Olivier 2026-07-26.
-  const ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000
+  const ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000
   if (cleaned > ALERT_THRESHOLD) {
     try {
       const { data: last } = await supabase.from('app_settings').select('value')
