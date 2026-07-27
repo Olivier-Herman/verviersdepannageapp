@@ -527,7 +527,6 @@ export default function FacturationClient({
                     ⏳ {autoElig.waiting} en attente ({autoElig.delayHours}h)
                   </span>
                 )}
-                <span className="text-ink-faint">· superadmin</span>
               </div>
             )}
           </div>
