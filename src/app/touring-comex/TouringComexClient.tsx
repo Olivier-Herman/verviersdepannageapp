@@ -34,13 +34,9 @@ export default function TouringComexClient(props: {
       if (!j.error) { setRows(j.rows || []); setCounts(j.counts || {}); setLast(j.lastSync || null) }
     } finally { if (!silent) setLoading(false) }
   }
-  // Chargement initial + auto-rafraîchissement silencieux toutes les 45 s
-  // (le cron */3 rafraîchit la base en arrière-plan → plus besoin de cliquer).
-  useEffect(() => {
-    load()
-    const iv = setInterval(() => load(true), 45_000)
-    return () => clearInterval(iv)
-  }, [])
+  // À l'ouverture de la page : synchro automatique (login BKO + refresh) puis
+  // affichage. Plus besoin de cliquer « Synchroniser ». Olivier 2026-07-28.
+  useEffect(() => { sync() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   async function sync() {
     setBusy('sync')
@@ -48,9 +44,10 @@ export default function TouringComexClient(props: {
       const j = await fetch('/api/touring/comex-bko/list', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync' }),
       }).then(r => r.json())
-      if (j.ok) { flash(`🔄 Synchro : ${j.comex} dossier(s), ${j.matched} rapproché(s)`); await load() }
+      if (j.ok) flash(`🔄 Synchro : ${j.comex} dossier(s), ${j.matched} rapproché(s)`)
       else flash(`⚠ ${j.error || 'échec synchro'}`)
-    } catch { flash('⚠ Erreur réseau') } finally { setBusy(null) }
+    } catch { flash('⚠ Erreur réseau') }
+    finally { setBusy(null); await load() }   // toujours afficher la table (à jour via cron)
   }
 
   const toggle = (id: string) => setSel(prev => {
