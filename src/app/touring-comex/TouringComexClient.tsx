@@ -27,14 +27,20 @@ export default function TouringComexClient(props: {
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500) }
 
-  async function load() {
-    setLoading(true)
+  async function load(silent = false) {
+    if (!silent) setLoading(true)
     try {
       const j = await fetch('/api/touring/comex-bko/list').then(r => r.json())
       if (!j.error) { setRows(j.rows || []); setCounts(j.counts || {}); setLast(j.lastSync || null) }
-    } finally { setLoading(false) }
+    } finally { if (!silent) setLoading(false) }
   }
-  useEffect(() => { load() }, [])
+  // Chargement initial + auto-rafraîchissement silencieux toutes les 45 s
+  // (le cron */3 rafraîchit la base en arrière-plan → plus besoin de cliquer).
+  useEffect(() => {
+    load()
+    const iv = setInterval(() => load(true), 45_000)
+    return () => clearInterval(iv)
+  }, [])
 
   async function sync() {
     setBusy('sync')
