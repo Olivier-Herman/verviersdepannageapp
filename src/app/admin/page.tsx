@@ -143,6 +143,10 @@ export default async function AdminPage() {
           <Card href="/admin/francofolies" icon={DollarSign} label="Francofolies"
             desc="Prix réquisition mal garée + gardiennage/jour pour l'évènement Francofolies de Spa." />
         )}
+        {user.role === 'superadmin' && (
+          <Card href="/admin/facturation-auto" icon={Receipt} label="Facturation automatique"
+            desc="Active la facturation auto (brouillon Odoo) par source × DSP/REM, à la clôture + délai. Missions sèches, vrai tarif requis." />
+        )}
       </Group>
 
       <Group title="Workflow & Communication">

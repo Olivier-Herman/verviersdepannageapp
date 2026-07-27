@@ -472,6 +472,8 @@ export async function POST(req: Request) {
       await bounded(pushMissionLiveActivity(mission_id))   // event auto → 'update'
     }
   } catch (e: any) { console.error('[driver-action] LA sync KO:', e?.message) }
+  // NB : la facturation AUTOMATIQUE se fait par le cron /api/cron/auto-invoice
+  // (délai roulant après clôture), pas ici. Olivier 2026-07-27.
 
   // ── Lieu de pointage GPS ──────────────────────────────────────────────────
   // Olivier 2026-06-16 : si le chauffeur a transmis sa position au moment du

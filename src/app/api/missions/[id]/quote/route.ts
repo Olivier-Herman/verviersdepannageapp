@@ -26,27 +26,30 @@ function fmtEur(n: number): string {
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const user = session.user as any
-  const role: string = user.role || ''
-  const modules: string[] = Array.isArray(user.modules) ? user.modules : []
-  // Olivier 2026-06-03 : autorise aussi le chauffeur qui finalise un
-  // deplacement_paye / DSP a creer le devis Odoo automatiquement. Le code
-  // est appele en interne via /api/missions/[id]/finalize avec son cookie.
-  // Le module 'driver_missions' (toute personne qui execute des missions)
-  // OU encaissement (qui peut deja finaliser) sont autorises a cote des
-  // facturation/admin.
-  const isDriverFlow = modules.includes('driver_missions') || modules.includes('encaissement')
-  if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation') && !isDriverFlow) {
-    return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
+  // Auth INTERNE (facturation auto depuis driver-action) : header secret, pas de
+  // session. Sinon auth session classique. Olivier 2026-07-27.
+  const isInternal = req.headers.get('x-internal-secret') === (process.env.NEXTAUTH_SECRET || '__none__')
+  const session = isInternal ? null : await getServerSession(authOptions)
+  if (!isInternal) {
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const u = session.user as any
+    const role: string = u.role || ''
+    const modules: string[] = Array.isArray(u.modules) ? u.modules : []
+    const isDriverFlow = modules.includes('driver_missions') || modules.includes('encaissement')
+    if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation') && !isDriverFlow) {
+      return NextResponse.json({ error: 'Accès réservé à la facturation.' }, { status: 403 })
+    }
   }
+  const user = (session?.user as any) || {}
 
   // Body optionnel : { lines: [{ kind, name, qty, price_unit }], mode }
   // mode 'quote' (défaut) → sale.order brouillon (devis) ; mode 'invoice' →
   // account.move out_invoice brouillon (facture directe, sans devis).
   const body = await req.json().catch(() => ({}))
   const mode: 'quote' | 'invoice' = body.mode === 'invoice' ? 'invoice' : 'quote'
+  // requireTariff : pour la facturation AUTO — on ne crée RIEN si aucun vrai
+  // tarif n'est calculé (pas de facture « coquille vide »). Olivier 2026-07-27.
+  const requireTariff = !!body.requireTariff
   let customLines: QuoteLine[] | null = Array.isArray(body.lines) && body.lines.length > 0
     ? body.lines.map((l: any): QuoteLine => ({
         kind:       (['SERV-PEC', 'SERV-KM', 'SERV-PARC', 'SERV-MAJ', 'SERV-DIV'].includes(l.kind) ? l.kind : 'SERV-DIV') as any,
@@ -218,6 +221,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Note : on accepte de pousser un devis VIDE (lines=[]) si pas de tarif et
   // pas de customLines. L employe completera dans Odoo (cf Olivier 2026-05-20).
 
+  // Facturation AUTO : si aucun vrai tarif calculé, on N'ÉMET RIEN (pas de
+  // coquille vide) et on laisse la fiche en facturation manuelle.
+  if (requireTariff && (lines.length === 0 || totalForResponse <= 0)) {
+    return NextResponse.json({ ok: false, reason: 'no_tariff', skipped: true })
+  }
+
   // 3+4) Lookup fleet.vehicle + Push Odoo (create/update). Olivier 2026-06-04 :
   // wrap dans withOdooActor pour tracer au user connecte (cle perso).
   // Mode facture directe : gère la facture existante selon son état Odoo.
@@ -283,9 +292,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // 5) Persiste la trace cote VD Soft (selon le mode).
-  const traceUpd = mode === 'invoice'
+  const nowIso = new Date().toISOString()
+  const traceUpd: Record<string, any> = mode === 'invoice'
     ? { invoice_odoo_id: result.id }   // lu par /invoices → récup auto du n° au « Facturation OK »
-    : { odoo_quote_id: result.id, odoo_quote_url: result.url, odoo_quoted_at: new Date().toISOString() }
+    : { odoo_quote_id: result.id, odoo_quote_url: result.url, odoo_quoted_at: nowIso }
+  // Attribution (stats couverture) : cron = auto ; humain = user (Jona…).
+  traceUpd.invoice_created_at = nowIso
+  if (isInternal) traceUpd.auto_invoiced = true
+  else { traceUpd.auto_invoiced = false; traceUpd.invoice_created_by = (user as any)?.id || null }
   const { error: updErr } = await sb.from('incoming_missions').update(traceUpd).eq('id', mission.id)
 
   if (updErr) {
