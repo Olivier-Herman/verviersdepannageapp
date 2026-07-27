@@ -458,21 +458,26 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
   let touringDepotNote = ''
   if (source === 'touring' && mission.id) {
     const { data: c } = await sb.from('incoming_missions')
-      .select('incident_lat, incident_lng, destination_lat, destination_lng, parked_at, mission_type')
+      .select('incident_lat, incident_lng, destination_lat, destination_lng, extra_addresses, mission_type')
       .eq('id', mission.id).maybeSingle()
     if (c?.incident_lat != null && c?.incident_lng != null) {
       const inc: Coord = { lat: Number(c.incident_lat), lng: Number(c.incident_lng) }
       const t = String(c.mission_type || mission.mission_type || '').toLowerCase()
-      const onSite = isDsp(t) || isTrajetVide(t)
-      // Olivier 2026-07-27 : une RELIVRAISON sort du parc (parked_at renseigné)
-      // mais son trajet facturable est Dépôt → intervention → CLIENT → Dépôt.
-      // Le raccourci « parked → aller-retour dépôt » (mise en parc) ne doit PAS
-      // s'y appliquer, sinon la destination client est ignorée → 0 km.
-      const isRel  = isRelivraison(t)
-      const parked = !isRel && (c.parked_at != null || mission.parked_at != null)
       const dest: Coord | null = c.destination_lat != null && c.destination_lng != null
         ? { lat: Number(c.destination_lat), lng: Number(c.destination_lng) } : null
-      const waypoints: Coord[] = (onSite || parked || !dest) ? [inc] : [inc, dest]
+      // Arrêts supplémentaires (extra_addresses) dans l'ordre.
+      const stops: Coord[] = (Array.isArray(c.extra_addresses) ? c.extra_addresses : [])
+        .slice().sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .filter((s: any) => s.lat != null && s.lng != null)
+        .map((s: any) => ({ lat: Number(s.lat), lng: Number(s.lng) }))
+      // Règles trajet facturable (Olivier 2026-07-27) :
+      //   DSP / sur place / trajet à vide : Dépôt → intervention → Dépôt
+      //   REM : Dépôt → intervention → arrêt(s) → destination → Dépôt
+      //   REL : Dépôt → pick-up → arrêt(s) → destination → Dépôt
+      const onSite = isDsp(t) || isTrajetVide(t)
+      const waypoints: Coord[] = onSite
+        ? [inc]
+        : [inc, ...stops, ...(dest ? [dest] : [])]
       const rt = await touringRouteFromNearestDepot(sb, inc, waypoints)
       if (rt) { kmBase = Math.round(rt.km * 10) / 10; touringDepotNote = rt.depotName }
     }
