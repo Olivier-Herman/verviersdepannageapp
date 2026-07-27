@@ -161,6 +161,29 @@ const KIND_COLOR: Record<string, string> = {
   AUTRE: 'bg-ink-faint',
 }
 
+type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
+
+// Badge de statut auto-facturation par card (SUPERADMIN uniquement).
+// waiting → décompte live avant bascule auto · eligible → « Éligible » ·
+// hexalite → « Clôture Allianz ».
+function AutoFactBadge({ info, now }: { info?: AutoInfo; now: number }) {
+  if (!info) return null
+  const base = 'px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide whitespace-nowrap'
+  if (info.status === 'eligible')
+    return <span className={`${base} bg-emerald-500 text-white`} title="Sera auto-facturée au prochain cron.">🎯 Éligible</span>
+  if (info.status === 'hexalite')
+    return <span className={`${base} bg-blue-600 text-white`} title="Dans Hexalite → à facturer via Clôture Allianz (pas d'auto-facturation).">🟦 Clôture Allianz</span>
+  if (info.status === 'waiting' && info.eligibleAt) {
+    const ms = new Date(info.eligibleAt).getTime() - now
+    if (ms <= 0) return <span className={`${base} bg-emerald-500 text-white`} title="Délai écoulé — éligible.">🎯 Éligible</span>
+    const t = Math.floor(ms / 1000)
+    const h = Math.floor(t / 3600), mn = Math.floor((t % 3600) / 60), s = t % 60
+    const label = h > 0 ? `${h}h${String(mn).padStart(2, '0')}` : `${mn}:${String(s).padStart(2, '0')}`
+    return <span className={`${base} bg-amber-500 text-white`} title={`Auto-facturation dans ${label} (fenêtre de correction manuelle).`}>⏳ Auto dans {label}</span>
+  }
+  return null
+}
+
 export default function FacturationClient({
   missions, siblings, payments, drivers, advances = [], billingRemarks = {}, sourceLabels = {},
   userRole, userName, userEmail, userModules, variant = 'general',
@@ -326,18 +349,32 @@ export default function FacturationClient({
   // chaque changement de la liste (realtime). Olivier 2026-07-27.
   const isSuperadmin = userRole === 'superadmin'
   const [autoElig, setAutoElig] = useState<{ eligible: number; waiting: number; hexalite?: number; delayHours: number } | null>(null)
+  const [autoByMission, setAutoByMission] = useState<Record<string, AutoInfo>>({})
   useEffect(() => {
     if (!isSuperadmin || isTouring) { eligFetchRef.current = () => {}; return }
     let alive = true
     const fetchElig = () => fetch('/api/facturation/auto-eligible')
       .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (alive && j && !j.error) setAutoElig(j) })
+      .then(j => { if (alive && j && !j.error) { setAutoElig(j); setAutoByMission(j.byMission || {}) } })
       .catch(() => {})
     eligFetchRef.current = fetchElig
     fetchElig()
     const iv = setInterval(fetchElig, 30_000)
     return () => { alive = false; clearInterval(iv) }
   }, [isSuperadmin, isTouring])
+
+  // Ticker 1s pour les décomptes « Auto dans … » (uniquement s'il y a des
+  // missions en attente affichées, superadmin).
+  const hasWaitingAuto = useMemo(
+    () => Object.values(autoByMission).some(v => v?.status === 'waiting'),
+    [autoByMission],
+  )
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  useEffect(() => {
+    if (!isSuperadmin || !hasWaitingAuto) return
+    const iv = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(iv)
+  }, [isSuperadmin, hasWaitingAuto])
 
   // ── Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) ──────────
   const [advType, setAdvType]       = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
@@ -855,6 +892,7 @@ export default function FacturationClient({
                             ⚠ Relivraison en cours
                           </span>
                         )}
+                        {isSuperadmin && <AutoFactBadge info={autoByMission[m.id]} now={nowTick} />}
                       </div>
                       <p className="text-ink-secondary text-sm mt-0.5 truncate">
                         {m.vehicle_plate ? <span className="font-mono">{m.vehicle_plate}</span> : '—'}

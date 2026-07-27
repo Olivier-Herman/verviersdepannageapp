@@ -73,12 +73,17 @@ export async function GET(req: Request) {
 
   let eligible = 0, waiting = 0, hexalite = 0
   const items: any[] = []
+  // Statut auto PAR mission (pour badger chaque card côté superadmin).
+  //   { [missionId]: { status, eligibleAt? } }
+  //   status : 'eligible' | 'waiting' | 'hexalite' | 'blocked'
+  const byMission: Record<string, { status: string; eligibleAt?: string; reason?: string }> = {}
 
   for (const m of (rows || [])) {
     const type = autoInvoiceType(m.mission_type)
     const check = checkAutoInvoiceEligible(m as any, rules)
     let reason: string | null = null
-    let ok = false
+    let status = 'blocked'
+    let eligibleAt: string | undefined
 
     const isHexSource = HEXALITE_SOURCES.has(String(m.source || ''))
     const inHexalite  = isHexSource && !hexaliteUnavailable && !!hexaliteNumbers && hexaliteNumbers.has(assignNo(m.external_id))
@@ -88,6 +93,7 @@ export async function GET(req: Request) {
     } else if (inHexalite) {
       // Dans Hexalite → Clôture Allianz IMMÉDIATEMENT, sans attendre le délai.
       reason = 'dans Hexalite (→ Clôture Allianz)'
+      status = 'hexalite'
       hexalite++
     } else if (isHexSource && hexaliteUnavailable) {
       reason = 'Hexalite injoignable (reporté)'
@@ -96,6 +102,8 @@ export async function GET(req: Request) {
       const compMs = m.completed_at ? new Date(m.completed_at).getTime() : null
       if (compMs == null || compMs >= nowMs - delayH * 3600_000) {
         reason = 'en attente du délai'
+        status = 'waiting'
+        if (compMs != null) eligibleAt = new Date(compMs + delayH * 3600_000).toISOString()
         waiting++
       } else {
         // Mission sèche (pas d'enfant relivraison).
@@ -110,20 +118,21 @@ export async function GET(req: Request) {
           if (!est || !est.ok || !(Number(est.total_eur) > 0)) {
             reason = 'pas de tarif'
           } else {
-            ok = true
+            status = 'eligible'
             eligible++
           }
         }
       }
     }
+    byMission[m.id] = { status, ...(eligibleAt ? { eligibleAt } : {}), ...(reason ? { reason } : {}) }
     if (verbose) items.push({
       mission_number: m.mission_number, source: m.source, mission_type: m.mission_type,
-      type, eligible: ok, reason,
+      type, status, eligibleAt, reason,
     })
   }
 
   return NextResponse.json({
-    eligible, waiting, hexalite, delayHours: delayH,
+    eligible, waiting, hexalite, delayHours: delayH, byMission,
     ...(verbose ? { activeSources, hexaliteUnavailable, total_scanned: (rows || []).length, items } : {}),
   })
 }
