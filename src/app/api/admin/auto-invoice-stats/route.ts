@@ -20,17 +20,22 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - days * 86400_000).toISOString()
 
   const sb = createAdminClient()
+  // On prend l'ÉVÉNEMENT de facturation : soit la création (invoice_created_at,
+  // nouveau), soit la validation « Facturation OK » (invoiced_at, historique) →
+  // attribution par invoice_created_by OU invoiced_by (historique inclus).
   const { data: rows } = await sb.from('incoming_missions')
-    .select('auto_invoiced, invoice_created_by, source, mission_type')
-    .gte('invoice_created_at', since)
-    .not('invoice_created_at', 'is', null)
+    .select('auto_invoiced, invoice_created_by, invoiced_by, invoiced_at, invoice_created_at, source, mission_type')
+    .or(`invoiced_at.gte.${since},invoice_created_at.gte.${since}`)
     .limit(20000)
 
   let auto = 0
   const manualByUser = new Map<string, number>()
   for (const r of (rows || []) as any[]) {
-    if (r.auto_invoiced) auto++
-    else manualByUser.set(r.invoice_created_by || 'inconnu', (manualByUser.get(r.invoice_created_by || 'inconnu') || 0) + 1)
+    const evt = r.auto_invoiced ? r.invoice_created_at : (r.invoiced_at || r.invoice_created_at)
+    if (!evt || evt < since) continue
+    if (r.auto_invoiced) { auto++; continue }
+    const uid = r.invoiced_by || r.invoice_created_by || 'inconnu'
+    manualByUser.set(uid, (manualByUser.get(uid) || 0) + 1)
   }
   const userIds = [...manualByUser.keys()].filter(id => id !== 'inconnu')
   const { data: users } = userIds.length

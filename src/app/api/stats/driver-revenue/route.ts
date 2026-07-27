@@ -82,14 +82,18 @@ interface RevMission {
   special_tarif_htva: number | null
   amount_to_collect: number | null
   payment_amount: number | null
+  estimated_htva: number | null
   odoo_quote_id: number | null
   invoice_odoo_id: number | null
 }
 
 // Estimation HTVA quand pas de facture Odoo postee.
+//   special_tarif > montant à encaisser (TVAC→HTVA) > CA calculé figé (tarif
+//   source : couvre les auto-facturées Touring/Mondial) > paiement.
 function estimateHtva(m: RevMission): number {
   if (m.special_tarif_htva && Number(m.special_tarif_htva) > 0) return round2(Number(m.special_tarif_htva))
   if (m.amount_to_collect  && Number(m.amount_to_collect)  > 0) return round2(Number(m.amount_to_collect) / VAT)
+  if (m.estimated_htva     && Number(m.estimated_htva)     > 0) return round2(Number(m.estimated_htva))
   if (m.payment_amount     && Number(m.payment_amount)     > 0) return round2(Number(m.payment_amount) / VAT)
   return 0
 }
@@ -123,7 +127,7 @@ export async function GET(req: Request) {
 
   // Missions facturables de la periode, attribuees a un chauffeur.
   let q = sb.from('incoming_missions')
-    .select('id, assigned_to, source, status, special_tarif_htva, amount_to_collect, payment_amount, odoo_quote_id, invoice_odoo_id')
+    .select('id, assigned_to, source, status, special_tarif_htva, amount_to_collect, payment_amount, estimated_htva, odoo_quote_id, invoice_odoo_id')
     .gte('intervention_date', p.from)
     .lt('intervention_date', p.to)
     .in('status', REVENUE_STATUSES)
