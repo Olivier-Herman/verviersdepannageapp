@@ -38,12 +38,16 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
     // On rapproche les fiches touring de TOUT statut (sauf annulées/neutralisées)
     // pour AFFICHER le statut VD Soft dans l'onglet. Seules les `to_invoice`
     // sont facturables (bouton Accepter) ; les autres affichent leur statut.
+    // On inclut AUSSI les fiches 'sia_couvert' (Siabis couvert) FACTURÉES À
+    // TOURING (billed_to_name ~ 'touring'). Olivier 2026-07-28.
     const { data: missions } = await sb.from('incoming_missions')
-      .select('id, mission_number, dossier_number, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id')
+      .select('id, mission_number, dossier_number, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name')
       .in('dossier_number', expanded)
-      .eq('source', 'touring')
+      .in('source', ['touring', 'sia_couvert'])
       .not('status', 'in', '(cancelled,ignored)')
     for (const m of (missions || [])) {
+      // Siabis couvert : uniquement si le client de facturation est Touring.
+      if (m.source === 'sia_couvert' && !/touring/i.test(String(m.billed_to_name || ''))) continue
       const k = dossierKey(m.dossier_number)
       const list = byDossier.get(k) || []
       list.push(m)
