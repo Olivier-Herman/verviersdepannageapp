@@ -179,7 +179,7 @@ function AutoFactBadge({ info, now }: { info?: AutoInfo; now: number }) {
     const t = Math.floor(ms / 1000)
     const h = Math.floor(t / 3600), mn = Math.floor((t % 3600) / 60), s = t % 60
     const label = h > 0 ? `${h}h${String(mn).padStart(2, '0')}` : `${mn}:${String(s).padStart(2, '0')}`
-    return <span className={`${base} bg-amber-500 text-white`} title={`Auto-facturation dans ${label} (fenêtre de correction manuelle).`}>⏳ Auto dans {label}</span>
+    return <span className={`${base} bg-amber-500 text-white`} title={`Auto-facturation dans ${label} (fenêtre de correction manuelle).`}>⏳ {label}</span>
   }
   return null
 }
