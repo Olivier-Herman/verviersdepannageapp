@@ -309,6 +309,24 @@ export default function FacturationClient({
     return () => { sbRealtime.removeChannel(channel) }
   }, [isTouring])
 
+  // ── Compteur « Éligible auto » (superadmin uniquement) ───────────────────
+  // Nombre de missions qui seront auto-facturées au prochain cron (mêmes portes
+  // que /api/cron/auto-invoice, lecture seule). Rafraîchi toutes les 30 s et à
+  // chaque changement de la liste (realtime). Olivier 2026-07-27.
+  const isSuperadmin = userRole === 'superadmin'
+  const [autoElig, setAutoElig] = useState<{ eligible: number; waiting: number; delayHours: number } | null>(null)
+  useEffect(() => {
+    if (!isSuperadmin || isTouring) return
+    let alive = true
+    const fetchElig = () => fetch('/api/facturation/auto-eligible')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (alive && j && !j.error) setAutoElig(j) })
+      .catch(() => {})
+    fetchElig()
+    const iv = setInterval(fetchElig, 30_000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [isSuperadmin, isTouring, data.length])
+
   // ── Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) ──────────
   const [advType, setAdvType]       = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
   const [advKey, setAdvKey]         = useState('')
@@ -497,6 +515,21 @@ export default function FacturationClient({
           <div className="flex-1">
             <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">{isTouring ? 'Facturation Touring' : 'Facturation'}</h1>
             <p className="text-ink-muted text-sm mt-1">{filtered.length} mission{filtered.length > 1 ? 's' : ''} à facturer{isTouring ? ' (Touring)' : ''}.</p>
+            {isSuperadmin && !isTouring && autoElig && (
+              <div className="mt-2 inline-flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-400 text-emerald-800 font-semibold"
+                  title="Missions qui seront auto-facturées au prochain passage du cron (règle source+type active, sèche, tarif présent, hors Hexalite, délai écoulé).">
+                  🎯 Éligible auto : {autoElig.eligible}
+                </span>
+                {autoElig.waiting > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 font-medium"
+                    title={`Éligibles mais en attente du délai de ${autoElig.delayHours}h après clôture.`}>
+                    ⏳ {autoElig.waiting} en attente ({autoElig.delayHours}h)
+                  </span>
+                )}
+                <span className="text-ink-faint">· superadmin</span>
+              </div>
+            )}
           </div>
           {isTouring ? (
             <Link href="/facturation"

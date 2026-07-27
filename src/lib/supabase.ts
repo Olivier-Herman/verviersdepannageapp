@@ -40,6 +40,14 @@ export function createAdminClient() {
   return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+      // IMPORTANT : Next.js patche global fetch et MET EN CACHE les GET (Data
+      // Cache). Sans `no-store`, les lectures service_role (app_settings,
+      // réglages, règles de facturation auto…) restent FIGÉES sur un ancien
+      // état → bugs silencieux (ex. cron auto-facturation lisant des règles
+      // périmées). On force donc toutes les requêtes admin à ne jamais cacher.
+      global: { fetch: (input: any, init?: any) => fetch(input, { ...init, cache: 'no-store' }) },
+    }
   )
 }
