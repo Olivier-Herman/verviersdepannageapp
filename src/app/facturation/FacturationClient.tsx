@@ -325,7 +325,7 @@ export default function FacturationClient({
   // que /api/cron/auto-invoice, lecture seule). Rafraîchi toutes les 30 s et à
   // chaque changement de la liste (realtime). Olivier 2026-07-27.
   const isSuperadmin = userRole === 'superadmin'
-  const [autoElig, setAutoElig] = useState<{ eligible: number; waiting: number; delayHours: number } | null>(null)
+  const [autoElig, setAutoElig] = useState<{ eligible: number; waiting: number; hexalite?: number; delayHours: number } | null>(null)
   useEffect(() => {
     if (!isSuperadmin || isTouring) { eligFetchRef.current = () => {}; return }
     let alive = true
@@ -537,6 +537,12 @@ export default function FacturationClient({
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 font-medium"
                     title={`Éligibles mais en attente du délai de ${autoElig.delayHours}h après clôture.`}>
                     ⏳ {autoElig.waiting} en attente ({autoElig.delayHours}h)
+                  </span>
+                )}
+                {!!autoElig.hexalite && autoElig.hexalite > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-100 border border-blue-300 text-blue-800 font-medium"
+                    title="Missions Allianz/Mondial présentes dans Hexalite : facturées via « Clôture Allianz », pas par l'auto-facturation.">
+                    🟦 {autoElig.hexalite} → Clôture Allianz
                   </span>
                 )}
               </div>

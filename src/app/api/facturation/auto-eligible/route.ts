@@ -71,7 +71,7 @@ export async function GET(req: Request) {
     } catch { hexaliteUnavailable = true }
   }
 
-  let eligible = 0, waiting = 0
+  let eligible = 0, waiting = 0, hexalite = 0
   const items: any[] = []
 
   for (const m of (rows || [])) {
@@ -80,17 +80,23 @@ export async function GET(req: Request) {
     let reason: string | null = null
     let ok = false
 
+    const isHexSource = HEXALITE_SOURCES.has(String(m.source || ''))
+    const inHexalite  = isHexSource && !hexaliteUnavailable && !!hexaliteNumbers && hexaliteNumbers.has(assignNo(m.external_id))
+
     if (!check.eligible) {
       reason = check.reason || 'non éligible'
+    } else if (inHexalite) {
+      // Dans Hexalite → Clôture Allianz IMMÉDIATEMENT, sans attendre le délai.
+      reason = 'dans Hexalite (→ Clôture Allianz)'
+      hexalite++
+    } else if (isHexSource && hexaliteUnavailable) {
+      reason = 'Hexalite injoignable (reporté)'
     } else {
-      // Délai après clôture.
+      // Délai après clôture (fenêtre de correction manuelle).
       const compMs = m.completed_at ? new Date(m.completed_at).getTime() : null
       if (compMs == null || compMs >= nowMs - delayH * 3600_000) {
         reason = 'en attente du délai'
         waiting++
-      } else if (HEXALITE_SOURCES.has(String(m.source || '')) &&
-                 (hexaliteUnavailable || (hexaliteNumbers && hexaliteNumbers.has(assignNo(m.external_id))))) {
-        reason = hexaliteUnavailable ? 'Hexalite injoignable (reporté)' : 'dans Hexalite (→ Clôture Allianz)'
       } else {
         // Mission sèche (pas d'enfant relivraison).
         const { count: childCount } = await sb.from('incoming_missions')
@@ -117,7 +123,7 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    eligible, waiting, delayHours: delayH,
+    eligible, waiting, hexalite, delayHours: delayH,
     ...(verbose ? { activeSources, hexaliteUnavailable, total_scanned: (rows || []).length, items } : {}),
   })
 }
