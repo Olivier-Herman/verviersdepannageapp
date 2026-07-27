@@ -21,8 +21,11 @@ async function requireSuperadmin() {
 export async function GET() {
   if (!(await requireSuperadmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
+  // On n'affiche QUE les dossiers rapprochés à une fiche to_invoice
+  // (verdict ok/verify). Les « non rapproché » (fiche completed/déjà facturée,
+  // parked, ou absente) ne doivent pas apparaître. Olivier 2026-07-27.
   const { data: rows } = await sb.from('touring_comex_dossiers')
-    .select('*').eq('in_comex', true).order('file_date', { ascending: true })
+    .select('*').eq('in_comex', true).in('verdict', ['ok', 'verify']).order('file_date', { ascending: true })
   const { data: lastSync } = await sb.from('app_settings').select('value').eq('key', 'comex_bko_last_sync').maybeSingle()
   const ls = typeof lastSync?.value === 'string' ? JSON.parse(lastSync.value) : lastSync?.value
   const counts = { total: (rows || []).length, ok: 0, verify: 0, noMatch: 0 }
