@@ -41,7 +41,7 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
     // On inclut AUSSI les fiches 'sia_couvert' (Siabis couvert) FACTURÉES À
     // TOURING (billed_to_name ~ 'touring'). Olivier 2026-07-28.
     const { data: missions } = await sb.from('incoming_missions')
-      .select('id, mission_number, dossier_number, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name')
+      .select('id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, intervention_date, received_at, extra_addresses')
       .in('dossier_number', expanded)
       .in('source', ['touring', 'sia_couvert'])
       .not('status', 'in', '(cancelled,ignored)')
@@ -60,6 +60,31 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
     if (m.special_tarif_htva && Number(m.special_tarif_htva) > 0) return Number(m.special_tarif_htva)
     if (m.estimated_htva && Number(m.estimated_htva) > 0) return Number(m.estimated_htva)
     if (m.amount_to_collect && Number(m.amount_to_collect) > 0) return Number(m.amount_to_collect) / 1.21
+    // Siabis couvert / SNC : le tarif n'est pas dans estimateMissionPrice (lib) —
+    // il faut le calcul dédié (computeSncMetrics + buildSncQuoteLines), comme la
+    // fiche. On renvoie le total dépannage HTVA. Olivier 2026-07-28.
+    if ((m.source === 'sia_couvert' || m.source === 'police_snc') && m.snc_scenario) {
+      try {
+        const { computeSncMetrics, buildSncQuoteLines } = await import('@/lib/snc/pricing')
+        const variant = m.source === 'sia_couvert' ? 'sc' : 'snc'
+        const stops = (Array.isArray(m.extra_addresses) ? m.extra_addresses : [])
+          .slice().sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+          .map((s: any) => ({ lat: s.lat, lng: s.lng, label: s.label || s.address }))
+        const metrics = await computeSncMetrics({
+          scenario: m.snc_scenario, requiresBalisage: Boolean(m.snc_requires_balisage),
+          interventionLat: m.incident_lat, interventionLng: m.incident_lng,
+          destinationLat: m.destination_lat, destinationLng: m.destination_lng,
+          interventionAt: m.intervention_date || m.received_at, variant,
+          billedToId: m.billed_to_id, billedToName: m.billed_to_name, stops,
+        } as any)
+        if (metrics) {
+          const missionRef = m.external_id || m.dossier_number || String(m.id).slice(0, 8)
+          const lines = buildSncQuoteLines({ metrics, requiresBalisage: Boolean(m.snc_requires_balisage), missionRef, variant } as any)
+          const total = (lines || []).reduce((s: number, l: any) => s + l.qty * l.price_unit, 0)
+          if (total > 0) return Math.round(total * 100) / 100
+        }
+      } catch { /* ignore */ }
+    }
     try { const est = await estimateMissionPrice(m as any); if (est?.ok && Number(est.total_eur) > 0) return Number(est.total_eur) } catch { /* ignore */ }
     return null
   }
