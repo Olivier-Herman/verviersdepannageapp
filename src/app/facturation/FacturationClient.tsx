@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
@@ -279,6 +279,16 @@ export default function FacturationClient({
     } catch { setBatchReport('⚠ Erreur réseau') } finally { setBatchBusy(null) }
   }
 
+  // Rafraîchissement du compteur « Éligible auto » déclenché par le realtime
+  // (facturer crée un brouillon → la fiche reste to_invoice mais n'est plus
+  // candidate → il faut recompter). Debounce pour regrouper les rafales.
+  const eligFetchRef = useRef<() => void>(() => {})
+  const eligTimerRef = useRef<any>(null)
+  const scheduleEligRefresh = () => {
+    if (eligTimerRef.current) clearTimeout(eligTimerRef.current)
+    eligTimerRef.current = setTimeout(() => eligFetchRef.current(), 900)
+  }
+
   // ── Realtime : la liste se met à jour en direct (sans refresh) ───────────
   // Quand une fiche est facturée/validée ou annulée (status ≠ to_invoice), elle
   // disparaît de l'écran ; quand une nouvelle passe en to_invoice, elle apparaît.
@@ -291,6 +301,7 @@ export default function FacturationClient({
         (payload: any) => {
           const row = payload.new || payload.old
           if (!row?.id) return
+          scheduleEligRefresh()   // recompte le compteur « Éligible auto »
           const isToInvoice = payload.eventType !== 'DELETE'
             && payload.new?.status === 'to_invoice'
             && inScope(payload.new)
@@ -316,16 +327,17 @@ export default function FacturationClient({
   const isSuperadmin = userRole === 'superadmin'
   const [autoElig, setAutoElig] = useState<{ eligible: number; waiting: number; delayHours: number } | null>(null)
   useEffect(() => {
-    if (!isSuperadmin || isTouring) return
+    if (!isSuperadmin || isTouring) { eligFetchRef.current = () => {}; return }
     let alive = true
     const fetchElig = () => fetch('/api/facturation/auto-eligible')
       .then(r => (r.ok ? r.json() : null))
       .then(j => { if (alive && j && !j.error) setAutoElig(j) })
       .catch(() => {})
+    eligFetchRef.current = fetchElig
     fetchElig()
     const iv = setInterval(fetchElig, 30_000)
     return () => { alive = false; clearInterval(iv) }
-  }, [isSuperadmin, isTouring, data.length])
+  }, [isSuperadmin, isTouring])
 
   // ── Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) ──────────
   const [advType, setAdvType]       = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')

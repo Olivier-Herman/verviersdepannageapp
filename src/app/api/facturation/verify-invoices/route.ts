@@ -28,13 +28,18 @@ const ODOO_URL = process.env.ODOO_URL || ''
 const invoiceUrl = (id: number) => `${ODOO_URL}/web#id=${id}&model=account.move&view_type=form`
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const user = session.user as any
-  const role: string = user.role || ''
-  const modules: string[] = user.modules || []
-  if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Appel serveur-à-serveur (cron de réconciliation) via secret interne, sinon session.
+  const isInternal = req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET && !!process.env.NEXTAUTH_SECRET
+  let user: any = {}
+  if (!isInternal) {
+    const session = await getServerSession(authOptions)
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    user = session.user as any
+    const role: string = user.role || ''
+    const modules: string[] = user.modules || []
+    if (!['admin', 'superadmin'].includes(role) && !modules.includes('facturation')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   const body = await req.json().catch(() => ({}))
@@ -109,12 +114,12 @@ export async function POST(req: Request) {
         invoice_odoo_id: posted.id,
         invoice_url:     invoiceUrl(posted.id),
         invoiced_at:     now,
-        invoiced_by:     user.id,
+        invoiced_by:     user.id || null,
       }).eq('id', m.id)
       if (updErr) { none.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, reason: updErr.message }); continue }
       try { await releaseParcAndShift(sb, m.id) } catch (e: any) { console.error('[verify-invoices] release parc KO:', e.message) }
       await sb.from('mission_logs').insert({
-        mission_id: m.id, actor_id: user.id, action: 'invoiced',
+        mission_id: m.id, actor_id: user.id || null, action: 'invoiced',
         notes: `Facturée n° ${posted.name} (vérification Odoo groupée)`,
       }).then(() => {}, () => {})
       completed.push({ id: m.id, ref: m.external_id, plate: m.vehicle_plate, number: posted.name })
