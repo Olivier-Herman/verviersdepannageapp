@@ -167,10 +167,19 @@ export default function TouringComexClient(props: {
                       </td>
                       <td className="p-2 text-center"><Badge v={r.verdict} /></td>
                       <td className="p-2 text-right">
-                        <button onClick={() => accept([r.id])} disabled={busy === 'accept'}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40 ${r.verdict === 'ok' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-surface-2 border text-ink-secondary hover:text-ink'}`}>
-                          Accepter
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          {r.mission_id && (
+                            <a href={`/dispatch/${r.mission_id}`} target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-2 border text-ink-secondary hover:text-ink transition whitespace-nowrap"
+                              title="Ouvrir la fiche VD Soft dans un nouvel onglet">
+                              👁 Aperçu dossier VD Soft
+                            </a>
+                          )}
+                          <button onClick={() => accept([r.id])} disabled={busy === 'accept'}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40 ${r.verdict === 'ok' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-surface-2 border text-ink-secondary hover:text-ink'}`}>
+                            Accepter
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
