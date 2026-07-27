@@ -35,11 +35,13 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
   const dossierKey = (dn: string) => String(dn || '').split('-')[0]
   const byDossier = new Map<string, any[]>()   // clé dossier → fiches[]
   if (expanded.length) {
+    // UNIQUEMENT les fiches à facturer (to_invoice). On exclut les fiches encore
+    // en cours (parked, delivering…), annulées ou déjà facturées. Olivier 2026-07-27.
     const { data: missions } = await sb.from('incoming_missions')
       .select('id, mission_number, dossier_number, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id')
       .in('dossier_number', expanded)
       .eq('source', 'touring')
-      .neq('status', 'cancelled')
+      .eq('status', 'to_invoice')
     for (const m of (missions || [])) {
       const k = dossierKey(m.dossier_number)
       const list = byDossier.get(k) || []
