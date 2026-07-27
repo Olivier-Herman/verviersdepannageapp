@@ -464,7 +464,12 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
       const inc: Coord = { lat: Number(c.incident_lat), lng: Number(c.incident_lng) }
       const t = String(c.mission_type || mission.mission_type || '').toLowerCase()
       const onSite = isDsp(t) || isTrajetVide(t)
-      const parked = c.parked_at != null || mission.parked_at != null
+      // Olivier 2026-07-27 : une RELIVRAISON sort du parc (parked_at renseigné)
+      // mais son trajet facturable est Dépôt → intervention → CLIENT → Dépôt.
+      // Le raccourci « parked → aller-retour dépôt » (mise en parc) ne doit PAS
+      // s'y appliquer, sinon la destination client est ignorée → 0 km.
+      const isRel  = isRelivraison(t)
+      const parked = !isRel && (c.parked_at != null || mission.parked_at != null)
       const dest: Coord | null = c.destination_lat != null && c.destination_lng != null
         ? { lat: Number(c.destination_lat), lng: Number(c.destination_lng) } : null
       const waypoints: Coord[] = (onSite || parked || !dest) ? [inc] : [inc, dest]
