@@ -8,7 +8,7 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { getAutoInvoiceRules, setAutoInvoiceRules, getAutoInvoiceDelayHours, setAutoInvoiceDelayHours } from '@/lib/facturation/auto-invoice'
+import { getAutoInvoiceRules, setAutoInvoiceRules, getAutoInvoiceDelayHours, setAutoInvoiceDelayHours, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +48,9 @@ export async function POST(req: Request) {
   }
 
   const source  = String(body?.source || '')
-  const type    = body?.type === 'rem' ? 'rem' : body?.type === 'dsp' ? 'dsp' : null
+  const type    = AUTO_INVOICE_TYPES.some(t => t.key === body?.type) ? body.type : null
   const enabled = !!body?.enabled
-  if (!source || !type) return NextResponse.json({ error: 'source + type (dsp|rem) requis' }, { status: 400 })
+  if (!source || !type) return NextResponse.json({ error: 'source + type valide requis' }, { status: 400 })
 
   const rules = await getAutoInvoiceRules(sb)
   rules[source] = { ...(rules[source] || {}), [type]: enabled }

@@ -14,8 +14,16 @@
 
 import { isDsp, isRemorquage, isTrajetVide, isTransport, isRelivraison, isRemRel } from '@/lib/missions/mission-types'
 
-export type AutoInvoiceType = 'dsp' | 'rem'
-export type AutoInvoiceRules = Record<string, { dsp?: boolean; rem?: boolean }>
+// Types activables individuellement par source (Olivier 2026-07-27).
+export type AutoInvoiceType = 'dsp' | 'rem' | 'trajet_vide' | 'transport' | 'relivraison'
+export const AUTO_INVOICE_TYPES: { key: AutoInvoiceType; label: string }[] = [
+  { key: 'dsp',         label: 'DSP' },
+  { key: 'rem',         label: 'REM' },
+  { key: 'trajet_vide', label: 'Trajet vide' },
+  { key: 'transport',   label: 'Transport' },
+  { key: 'relivraison', label: 'Relivraison' },
+]
+export type AutoInvoiceRules = Record<string, Partial<Record<AutoInvoiceType, boolean>>>
 
 const RULES_KEY = 'auto_invoice_rules'
 
@@ -49,11 +57,15 @@ export async function setAutoInvoiceDelayHours(sb: any, hours: number): Promise<
   await sb.from('app_settings').upsert({ key: DELAY_KEY, value: hours }, { onConflict: 'key' })
 }
 
-/** Type canonique DSP/REM d'une mission, ou null si hors périmètre (TVD, transport, REL…). */
+/** Type canonique activable d'une mission, ou null si hors périmètre.
+ *  On exclut UNIQUEMENT le type combiné REM+REL (qui n'est pas une mission sèche). */
 export function autoInvoiceType(missionType: string | null | undefined): AutoInvoiceType | null {
-  if (isTrajetVide(missionType) || isTransport(missionType) || isRelivraison(missionType) || isRemRel(missionType)) return null
-  if (isDsp(missionType)) return 'dsp'
+  if (isRemRel(missionType))     return null
+  if (isDsp(missionType))        return 'dsp'
   if (isRemorquage(missionType)) return 'rem'
+  if (isTrajetVide(missionType)) return 'trajet_vide'
+  if (isTransport(missionType))  return 'transport'
+  if (isRelivraison(missionType))return 'relivraison'
   return null
 }
 

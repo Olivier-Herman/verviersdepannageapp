@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
+import { AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
 
-type Rules = Record<string, { dsp?: boolean; rem?: boolean }>
+type Rules = Record<string, Record<string, boolean>>
 interface Source { key: string; label: string }
 
 export default function FacturationAutoClient(props: {
@@ -42,7 +43,7 @@ export default function FacturationAutoClient(props: {
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2000) }
 
-  async function toggle(source: string, type: 'dsp' | 'rem', enabled: boolean) {
+  async function toggle(source: string, type: string, enabled: boolean) {
     const key = `${source}:${type}`
     setBusy(key)
     // MAJ optimiste
@@ -60,7 +61,7 @@ export default function FacturationAutoClient(props: {
 
   const visible = sources.filter(s =>
     !q.trim() || `${s.label} ${s.key}`.toLowerCase().includes(q.toLowerCase()))
-  const activeCount = Object.values(rules).reduce((n, r) => n + (r.dsp ? 1 : 0) + (r.rem ? 1 : 0), 0)
+  const activeCount = Object.values(rules).reduce((n, r) => n + Object.values(r || {}).filter(Boolean).length, 0)
 
   const Switch = ({ on, disabled, onClick }: { on: boolean; disabled: boolean; onClick: () => void }) => (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={on}
@@ -83,8 +84,9 @@ export default function FacturationAutoClient(props: {
         </div>
 
         <div className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-amber-800 text-xs">
-          ⚠ S'applique <b>uniquement</b> aux missions <b>sèches</b> (une seule fiche, pas de relivraison) et
-          <b> uniquement si un vrai tarif est présent</b> sur la fiche. Jamais pour trajet à vide, transport ou missions combinées.
+          ⚠ Active le type que tu veux, par source. S'applique <b>uniquement</b> aux missions <b>sèches</b>
+          (une seule fiche, pas de relivraison liée) et <b>uniquement si un vrai tarif est présent</b> sur la fiche.
+          Les missions <b>combinées (REM+REL)</b> sont toujours exclues.
         </div>
 
         {/* Délai après clôture */}
@@ -141,24 +143,30 @@ export default function FacturationAutoClient(props: {
         {loading ? (
           <p className="text-ink-muted py-8 text-center">Chargement…</p>
         ) : (
-          <div className="bg-surface border rounded-2xl overflow-hidden">
-            <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-2 border-b text-ink-muted text-xs uppercase tracking-wide">
-              <span>Source</span><span className="w-16 text-center">DSP</span><span className="w-16 text-center">REM</span>
-            </div>
-            {visible.map(s => {
-              const r = rules[s.key] || {}
-              return (
-                <div key={s.key} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-3 border-b last:border-0">
-                  <div className="min-w-0">
-                    <p className="text-ink text-sm font-medium truncate">{s.label}</p>
-                    <p className="text-ink-faint text-[11px] font-mono truncate">{s.key}</p>
+          <div className="bg-surface border rounded-2xl overflow-x-auto">
+            <div className="min-w-[560px]">
+              <div className="flex items-center gap-3 px-4 py-2 border-b text-ink-muted text-xs uppercase tracking-wide">
+                <span className="flex-1">Source</span>
+                {AUTO_INVOICE_TYPES.map(t => <span key={t.key} className="w-16 text-center">{t.label}</span>)}
+              </div>
+              {visible.map(s => {
+                const r = rules[s.key] || {}
+                return (
+                  <div key={s.key} className="flex items-center gap-3 px-4 py-3 border-b last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-ink text-sm font-medium truncate">{s.label}</p>
+                      <p className="text-ink-faint text-[11px] font-mono truncate">{s.key}</p>
+                    </div>
+                    {AUTO_INVOICE_TYPES.map(t => (
+                      <div key={t.key} className="w-16 flex justify-center">
+                        <Switch on={!!r[t.key]} disabled={busy === `${s.key}:${t.key}`} onClick={() => toggle(s.key, t.key, !r[t.key])} />
+                      </div>
+                    ))}
                   </div>
-                  <div className="w-16 flex justify-center"><Switch on={!!r.dsp} disabled={busy === `${s.key}:dsp`} onClick={() => toggle(s.key, 'dsp', !r.dsp)} /></div>
-                  <div className="w-16 flex justify-center"><Switch on={!!r.rem} disabled={busy === `${s.key}:rem`} onClick={() => toggle(s.key, 'rem', !r.rem)} /></div>
-                </div>
-              )
-            })}
-            {visible.length === 0 && <p className="text-ink-muted text-sm text-center py-6">Aucune source.</p>}
+                )
+              })}
+              {visible.length === 0 && <p className="text-ink-muted text-sm text-center py-6">Aucune source.</p>}
+            </div>
           </div>
         )}
 
