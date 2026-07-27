@@ -113,6 +113,9 @@ export async function listComexBkoDossiers(cookie: string, accountLabel = ''): P
     const c = line.split(';')
     const dossier = (c[15] || '').trim()
     if (!dossier) continue
+    // Colonne [0] : 0 = onglet « View Validate » (à valider), 1 = « View InWait »
+    // (déjà validé). On ne garde QUE les dossiers à valider. Olivier 2026-07-28.
+    if ((c[0] || '').trim() !== '0') continue
     out.push({
       account: accountLabel,
       dossier,
