@@ -349,6 +349,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         tariff_id:     `snc-${variant}`,
         tariff_doc_path: null,
         tariff_doc_name: null,
+        // Postes dépannage sélectionnables (facture partielle) — mêmes lignes
+        // que la facturation SNC complète. Olivier 2026-07-28.
+        template_lines: sncLines.map(l => ({ kind: l.kind, name: l.name, default_qty: l.qty, default_price: l.price_unit })),
         breakdown,
       })
     } catch (e: any) {
