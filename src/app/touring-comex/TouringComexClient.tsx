@@ -72,10 +72,19 @@ export default function TouringComexClient(props: {
 
   const selectableOk = useMemo(() => rows.filter(r => r.verdict === 'ok').map(r => r.id), [rows])
 
-  const Badge = ({ v }: { v: string }) =>
-    v === 'ok'    ? <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-white">🟢 OK</span>
-  : v === 'verify'? <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500 text-white">🔴 Vérifier</span>
-  :                 <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-ink-faint text-white">⚪ Non rapproché</span>
+  const VD_STATUS: Record<string, string> = {
+    new: '🆕 Nouvelle', dispatching: '📡 Dispatch', assigned: '🚚 Assignée', accepted: '✅ Acceptée',
+    in_progress: '🔧 En cours', delivering: '🚚 Livraison', parked: '🅿️ En parc',
+    completed: '✔️ Terminée', invoiced: '🧾 Facturée', to_invoice: '💰 À facturer',
+  }
+  // Facturable = rapprochée à une (ou des) fiche(s) to_invoice.
+  const facturable = (r: Row) => r.verdict === 'ok' || r.verdict === 'verify'
+
+  const Badge = ({ r }: { r: Row }) =>
+    r.verdict === 'ok'     ? <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-white">🟢 OK</span>
+  : r.verdict === 'verify' ? <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500 text-white">🔴 Vérifier</span>
+  : r.verdict === 'status' ? <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-surface-2 border text-ink-secondary">{VD_STATUS[r.mission_status || ''] || r.mission_status || '—'}</span>
+  :                          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-ink-faint text-white">⚪ Pas dans VD Soft</span>
 
   return (
     <AppShell title="Touring COMEX" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userModules={props.userModules}>
@@ -147,8 +156,10 @@ export default function TouringComexClient(props: {
                   return (
                     <tr key={r.id} className="border-b last:border-0 hover:bg-surface-hover">
                       <td className="p-2 text-center">
-                        <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)}
-                          className="w-4 h-4 accent-emerald-600" />
+                        {facturable(r) && (
+                          <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)}
+                            className="w-4 h-4 accent-emerald-600" />
+                        )}
                       </td>
                       <td className="p-2">
                         <div className="font-mono text-ink font-semibold">{r.dossier}</div>
@@ -171,7 +182,7 @@ export default function TouringComexClient(props: {
                       <td className={`p-2 text-right tabular-nums font-medium ${delta == null ? 'text-ink-faint' : delta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                         {delta == null ? '—' : `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`}
                       </td>
-                      <td className="p-2 text-center"><Badge v={r.verdict} /></td>
+                      <td className="p-2 text-center"><Badge r={r} /></td>
                       <td className="p-2 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {r.mission_id && (
@@ -181,10 +192,16 @@ export default function TouringComexClient(props: {
                               👁 Aperçu dossier VD Soft
                             </a>
                           )}
-                          <button onClick={() => accept([r.id])} disabled={busy === 'accept'}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40 ${r.verdict === 'ok' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-surface-2 border text-ink-secondary hover:text-ink'}`}>
-                            Accepter
-                          </button>
+                          {facturable(r) ? (
+                            <button onClick={() => accept([r.id])} disabled={busy === 'accept'}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-40 ${r.verdict === 'ok' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-surface-2 border text-ink-secondary hover:text-ink'}`}>
+                              Accepter
+                            </button>
+                          ) : (
+                            <span className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-2 border text-ink-faint whitespace-nowrap">
+                              {r.verdict === 'status' ? (VD_STATUS[r.mission_status || ''] || r.mission_status || '—') : 'non rapproché'}
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -164,6 +164,15 @@ export async function GET(req: Request) {
       }).catch(() => {})
     }
 
+    // Garde-fou anti-doublon : neutralise les fiches `new` dont le n° de dossier
+    // a déjà une fiche avancée (ré-affectation Touring). Risque nul.
+    try {
+      const { neutralizeTouringDuplicates } = await import('@/lib/touring/neutralize-duplicates')
+      const dedup = await neutralizeTouringDuplicates(createAdminClient())
+      if (dedup.ignored > 0) console.log(`[cron touring-comex] doublons neutralisés: ${dedup.ignored} (${dedup.refs.join(',')})`)
+      ;(result as any).duplicatesIgnored = dedup.ignored
+    } catch (e: any) { console.warn('[cron touring-comex] neutralize KO:', e?.message) }
+
     return NextResponse.json({ ...result, slaRoad, sla })
   } catch (e: any) {
     console.error('[cron touring-comex]', e.message)

@@ -35,13 +35,14 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
   const dossierKey = (dn: string) => String(dn || '').split('-')[0]
   const byDossier = new Map<string, any[]>()   // clé dossier → fiches[]
   if (expanded.length) {
-    // UNIQUEMENT les fiches à facturer (to_invoice). On exclut les fiches encore
-    // en cours (parked, delivering…), annulées ou déjà facturées. Olivier 2026-07-27.
+    // On rapproche les fiches touring de TOUT statut (sauf annulées/neutralisées)
+    // pour AFFICHER le statut VD Soft dans l'onglet. Seules les `to_invoice`
+    // sont facturables (bouton Accepter) ; les autres affichent leur statut.
     const { data: missions } = await sb.from('incoming_missions')
       .select('id, mission_number, dossier_number, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id')
       .in('dossier_number', expanded)
       .eq('source', 'touring')
-      .eq('status', 'to_invoice')
+      .not('status', 'in', '(cancelled,ignored)')
     for (const m of (missions || [])) {
       const k = dossierKey(m.dossier_number)
       const list = byDossier.get(k) || []
@@ -63,32 +64,41 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
   let matched = 0, ok = 0, verify = 0, noMatch = 0
   const seenKeys: { account: string; dossier: string; cid: string }[] = []
 
-  const rank = (s: string) => (s === 'to_invoice' ? 3 : s === 'completed' ? 2 : 1)
+    // Ordre de « pertinence » de la fiche principale à afficher.
+    const SR: Record<string, number> = { to_invoice: 9, completed: 8, invoiced: 7, delivering: 6, parked: 5, in_progress: 4, accepted: 3, assigned: 2, dispatching: 1, new: 0 }
+    const rank = (s: string) => SR[s] ?? 0
+    const pickPrimary = (list: any[]) => [...list].sort((a, b) =>
+      (rank(b.status) - rank(a.status)) ||
+      ((a.mission_type === 'relivraison' ? 1 : 0) - (b.mission_type === 'relivraison' ? 1 : 0))
+    )[0]
+
   for (const d of dossiers) {
-    const fiches = byDossier.get(d.dossier) || []
+    const all   = byDossier.get(d.dossier) || []
+    const toInv = all.filter(f => f.status === 'to_invoice')
     let vd: number | null = null
     let verdict = 'no_match'
     let missionIds: string[] = []
     let fichesDetail: any[] = []
     let primary: any = null
-    if (fiches.length) {
+
+    if (toInv.length) {
+      // Facturable : somme des fiches to_invoice de la chaîne.
       matched++
-      // Somme des montants de toutes les fiches de la chaîne.
       let sum = 0
-      for (const f of fiches) {
+      for (const f of toInv) {
         const t = await vdTariff(f)
         sum += Number(t || 0)
         fichesDetail.push({ number: f.mission_number, type: f.mission_type, montant: t })
       }
       vd = fichesDetail.some(x => x.montant != null) ? Math.round(sum * 100) / 100 : null
-      missionIds = fiches.map(f => f.id)
-      // Fiche « principale » pour l'affichage/aperçu : priorité to_invoice, puis
-      // la fiche remorquage/combinée (pas la relivraison enfant).
-      primary = [...fiches].sort((a, b) =>
-        (rank(b.status) - rank(a.status)) ||
-        ((a.mission_type === 'relivraison' ? 1 : 0) - (b.mission_type === 'relivraison' ? 1 : 0))
-      )[0]
-      verdict = tariffVerdict(d.montant, vd)
+      missionIds = toInv.map(f => f.id)
+      primary = pickPrimary(toInv)
+      verdict = tariffVerdict(d.montant, vd)      // 'ok' | 'verify'
+    } else if (all.length) {
+      // Rapprochée mais PAS to_invoice → on affiche le statut, pas de bouton.
+      primary = pickPrimary(all)
+      verdict = 'status'
+      fichesDetail = all.map(f => ({ number: f.mission_number, type: f.mission_type, montant: null }))
     }
     if (verdict === 'ok') ok++; else if (verdict === 'verify') verify++; else noMatch++
 
@@ -99,7 +109,7 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
       insurer: d.insurer, file_date: d.fileDate,
       mission_id: primary?.id || null, mission_number: primary?.mission_number || null,
       mission_status: primary?.status || null, mission_type: primary?.mission_type || null,
-      mission_ids: missionIds, fiches: fichesDetail, fiche_count: fiches.length,
+      mission_ids: missionIds, fiches: fichesDetail, fiche_count: (toInv.length || all.length),
       vd_montant: vd, verdict,
       in_comex: true, last_seen_at: now,
     }
