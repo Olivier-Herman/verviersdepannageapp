@@ -101,31 +101,36 @@ export default function FacturationAutoClient(props: {
           <span className="text-ink-faint text-[11px]">fenêtre de correction avant facturation auto</span>
         </div>
 
-        {/* Statistiques de couverture (30 j) */}
+        {/* Statistiques de couverture (30 j) — détail par facturier */}
         {stats && (
-          <div className="bg-surface border rounded-2xl p-4 space-y-2">
-            <p className="text-ink text-sm font-semibold">📊 Couverture facturation (30 jours)</p>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
-                <p className="text-emerald-700 text-xl font-bold">{stats.auto}</p>
-                <p className="text-emerald-800 text-[11px]">🤖 Système (auto)</p>
-              </div>
-              <div className="bg-surface-2 border rounded-xl p-2">
-                <p className="text-ink text-xl font-bold">{stats.manualTotal}</p>
-                <p className="text-ink-muted text-[11px]">👤 Manuel</p>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-2">
-                <p className="text-blue-700 text-xl font-bold">{stats.auto_pct}%</p>
-                <p className="text-blue-800 text-[11px]">auto / total</p>
-              </div>
+          <div className="bg-surface border rounded-2xl p-4 space-y-3">
+            <div className="flex items-baseline justify-between">
+              <p className="text-ink text-sm font-semibold">📊 Qui facture ? (30 jours)</p>
+              <p className="text-ink-muted text-xs">{stats.total} facture{stats.total > 1 ? 's' : ''} · {stats.auto_pct}% auto</p>
             </div>
-            {stats.manual?.length > 0 && (
-              <div className="text-ink-secondary text-xs pt-1 border-t">
-                Manuel par personne : {stats.manual.map((m: any) => `${m.name} (${m.count})`).join(' · ')}
-              </div>
-            )}
+            {(() => {
+              const rows = [
+                { key: 'auto', name: '🤖 Système (auto)', count: stats.auto, hi: true },
+                ...(stats.manual || []).map((m: any) => ({ key: m.user_id, name: `👤 ${m.name}`, count: m.count, hi: false })),
+              ].filter(r => r.count > 0)
+              const max = Math.max(1, ...rows.map(r => r.count))
+              return (
+                <div className="space-y-1.5">
+                  {rows.map(r => (
+                    <div key={r.key} className="flex items-center gap-2">
+                      <span className="w-40 text-sm text-ink truncate">{r.name}</span>
+                      <div className="flex-1 h-5 bg-surface-2 rounded-md overflow-hidden">
+                        <div className={`h-full rounded-md ${r.hi ? 'bg-emerald-500' : 'bg-brand'}`} style={{ width: `${Math.round((r.count / max) * 100)}%` }} />
+                      </div>
+                      <span className="w-10 text-right text-sm font-bold text-ink tabular-nums">{r.count}</span>
+                    </div>
+                  ))}
+                  {rows.length === 0 && <p className="text-ink-muted text-sm">Aucune facture sur la période.</p>}
+                </div>
+              )
+            })()}
             {stats.lastRun && (
-              <p className="text-ink-faint text-[11px]">Dernière passe auto : {stats.lastRun.invoiced} facturée(s) · {stats.lastRun.noTariff || 0} sans tarif · {stats.lastRun.combined || 0} combinée(s)</p>
+              <p className="text-ink-faint text-[11px] border-t pt-2">Dernière passe auto : {stats.lastRun.invoiced} facturée(s) · {stats.lastRun.noTariff || 0} sans tarif · {stats.lastRun.combined || 0} combinée(s)</p>
             )}
           </div>
         )}
