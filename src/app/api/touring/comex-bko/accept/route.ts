@@ -52,25 +52,28 @@ export async function POST(req: Request) {
     })
     if (!acc.ok) { results.push({ id: r.id, ref: label, ok: false, reason: `COMEX: ${acc.error}` }); continue }
 
-    // 2) Auto-facturation VD Soft (si fiche rapprochée et pas déjà facturée).
-    let vdFactured = false
-    if (r.mission_id) {
-      const { data: m } = await sb.from('incoming_missions').select('id, status, invoice_method').eq('id', r.mission_id).maybeSingle()
+    // 2) Auto-facturation VD Soft — TOUTES les fiches de la chaîne (REM + REL).
+    const missionIds: string[] = Array.isArray(r.mission_ids) && r.mission_ids.length
+      ? r.mission_ids
+      : (r.mission_id ? [r.mission_id] : [])
+    let vdFactured = 0
+    for (const mid of missionIds) {
+      const { data: m } = await sb.from('incoming_missions').select('id, status, invoice_method').eq('id', mid).maybeSingle()
       if (m && m.status === 'to_invoice' && m.invoice_method !== 'auto') {
         const { error: updErr } = await sb.from('incoming_missions').update({
           status: 'completed', invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id || null, updated_at: now,
-        }).eq('id', r.mission_id)
+        }).eq('id', mid)
         if (!updErr) {
-          vdFactured = true
-          try { await releaseParcAndShift(sb, r.mission_id) } catch { /* hors parc : ok */ }
+          vdFactured++
+          try { await releaseParcAndShift(sb, mid) } catch { /* hors parc : ok */ }
           await sb.from('mission_logs').insert({
-            mission_id: r.mission_id, actor_id: user.id || null, action: 'invoiced',
+            mission_id: mid, actor_id: user.id || null, action: 'invoiced',
             notes: `Auto-facturation (validation Touring COMEX BKO — ${r.account})`,
             metadata: { method: 'auto', comex_bko: true, dossier: r.dossier, commande: r.commande },
           }).then(() => {}, () => {})
         }
       } else if (m && (m.invoice_method === 'auto' || m.status === 'completed')) {
-        vdFactured = true   // déjà facturée
+        vdFactured++   // déjà facturée
       }
     }
 

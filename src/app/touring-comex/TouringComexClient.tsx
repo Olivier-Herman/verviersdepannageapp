@@ -8,6 +8,7 @@ interface Row {
   plaque: string; km: number; montant: number; insurer: string; brand: string; model: string
   mission_id: string | null; mission_number: number | null; mission_status: string | null
   vd_montant: number | null; verdict: string
+  fiche_count?: number; fiches?: { number: number; type: string; montant: number | null }[]
 }
 
 const eur = (n: number | null | undefined) =>
@@ -151,8 +152,13 @@ export default function TouringComexClient(props: {
                       </td>
                       <td className="p-2">
                         <div className="font-mono text-ink font-semibold">{r.dossier}</div>
-                        <div className="text-ink-faint text-[11px]">{r.commande} · {r.prestation}
-                          {r.mission_number ? ` · VD #${r.mission_number}` : ''}</div>
+                        <div className="text-ink-faint text-[11px]">{r.commande} · {r.prestation}</div>
+                        {r.fiches && r.fiches.length > 0 ? (
+                          <div className="text-[11px] mt-0.5">
+                            {(r.fiche_count || 0) > 1 && <span className="px-1.5 py-0.5 rounded bg-purple-600/15 text-purple-500 font-semibold mr-1">🔗 {r.fiche_count} fiches</span>}
+                            <span className="text-ink-secondary">{r.fiches.map(f => `#${f.number}${f.montant != null ? ` (${Number(f.montant).toFixed(0)}€)` : ''}`).join(' + ')}</span>
+                          </div>
+                        ) : r.mission_number ? <div className="text-ink-faint text-[11px]">VD #{r.mission_number}</div> : null}
                       </td>
                       <td className="p-2">
                         <div className="font-mono text-ink-secondary">{r.plaque || '—'}</div>
