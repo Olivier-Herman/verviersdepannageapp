@@ -758,18 +758,19 @@ export default function FacturationClient({
                 : hasAdv ? 'bg-indigo-50 border-2 border-indigo-400 hover:bg-indigo-100 hover:border-indigo-500'
                 : 'bg-surface border hover:bg-surface-hover'
               const remarks = billingRemarks[m.id] || []
+              const hasRemark = remarks.length > 0
 
               return (
                 <>
-                  {remarks.length > 0 && (
-                    <div className="mb-1 bg-amber-100 border border-amber-400 rounded-xl px-3 py-2 text-amber-900 text-xs">
+                  {hasRemark && (
+                    <div className="bg-amber-200 border-2 border-amber-500 border-b-0 rounded-t-2xl px-3 py-1.5 text-amber-900 text-xs shadow-sm">
                       <span className="font-bold">📝 Remarque facturation{remarks.length > 1 ? `s (${remarks.length})` : ''} :</span>{' '}
                       {remarks.map(r => r.text).filter(Boolean).join('  ·  ')}
                     </div>
                   )}
                   <Link
                     href={`/dispatch/${m.id}`}
-                    className={`block rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${cardBg}`}
+                    className={`block ${hasRemark ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${cardBg}`}
                   >
                     {/* Ruban "Avance" en coin haut-gauche — Olivier 2026-06-01 */}
                     {hasAdv && (
