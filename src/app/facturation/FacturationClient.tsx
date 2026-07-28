@@ -7,6 +7,7 @@ import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import AmbientBackground from '@/components/AmbientBackground'
 import FacturerModal from '@/components/facturation/FacturerModal'
+import PushToScreenButton from '@/components/caisse/PushToScreenButton'
 
 // Client browser (anon) pour le realtime de la liste facturation.
 const sbRealtime = createClient(
@@ -944,6 +945,19 @@ export default function FacturationClient({
                     >
                       ✓
                     </button>
+                    {(m.amount_to_collect || 0) > 0 && (
+                      <span onClick={(e) => { e.preventDefault(); e.stopPropagation() }} className="flex-shrink-0">
+                        <PushToScreenButton
+                          compact
+                          amount={m.amount_to_collect || 0}
+                          client={m.client_name}
+                          plate={m.vehicle_plate}
+                          brand={m.vehicle_brand}
+                          model={m.vehicle_model}
+                          reference={m.mission_number != null ? String(m.mission_number) : (m.dossier_number || null)}
+                        />
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected(m) }}

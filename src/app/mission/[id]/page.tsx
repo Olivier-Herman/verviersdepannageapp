@@ -5,6 +5,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DriverClient          from './DriverClient'
 import SncMissionFiche       from './SncMissionFiche'
+import PushToScreenButton    from '@/components/caisse/PushToScreenButton'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
 
 // Olivier 2026-06-03 : force-dynamic obligatoire — sinon Next.js peut cacher
@@ -73,14 +74,33 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   const isDriverDraft = mission.awaiting_payment === true
   const isSncFiche    = isSncSource && isDriverDraft && !hasStartedDelivery
 
+  // Aperçu bureau : bouton flottant « Afficher au client » (écran comptoir),
+  // réservé au staff (le chauffeur ne l'a pas). Olivier 2026-07-28.
+  const officePush = isStaff ? (
+    <div className="fixed top-3 right-3 z-[60]">
+      <PushToScreenButton
+        compact
+        amount={Number(mission.amount_to_collect || 0)}
+        client={mission.client_name}
+        plate={mission.vehicle_plate}
+        brand={mission.vehicle_brand}
+        model={mission.vehicle_model}
+        reference={mission.mission_number != null ? String(mission.mission_number) : (mission.dossier_number || null)}
+      />
+    </div>
+  ) : null
+
   if (isSncFiche && !forceLegacy) {
     return (
-      <SncMissionFiche
-        mission={mission}
-        currentUserId={currentUser.id}
-        isReadOnly={isStaff && !isDriverOfMission}
-        navApp={currentUser.nav_app || 'gmaps'}
-      />
+      <>
+        {officePush}
+        <SncMissionFiche
+          mission={mission}
+          currentUserId={currentUser.id}
+          isReadOnly={isStaff && !isDriverOfMission}
+          navApp={currentUser.nav_app || 'gmaps'}
+        />
+      </>
     )
   }
 
@@ -89,12 +109,15 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
   const defaultParcZone = await getDefaultParcZone(mission.source, supabase)
 
   return (
-    <DriverClient
-      mission={mission}
-      currentUserId={currentUser.id}
-      isReadOnly={isStaff && !isDriverOfMission}
-      navApp={currentUser.nav_app || 'gmaps'}
-      defaultParcZone={defaultParcZone}
-    />
+    <>
+      {officePush}
+      <DriverClient
+        mission={mission}
+        currentUserId={currentUser.id}
+        isReadOnly={isStaff && !isDriverOfMission}
+        navApp={currentUser.nav_app || 'gmaps'}
+        defaultParcZone={defaultParcZone}
+      />
+    </>
   )
 }
