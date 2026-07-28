@@ -7,7 +7,8 @@
 import { useState } from 'react'
 
 export interface PushToScreenParams {
-  amount: number
+  amount?: number
+  missionId?: string           // si fourni : montant + lignes résolus côté serveur
   client?: string | null
   plate?: string | null
   brand?: string | null
@@ -25,16 +26,16 @@ export default function PushToScreenButton({
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle')
   const [err, setErr] = useState('')
 
-  const amt = Number(params.amount)
-  const disabled = state === 'busy' || !amt || amt <= 0
+  const amt = Number(params.amount || 0)
+  // Avec missionId, le serveur résout le montant → le bouton reste actif.
+  const disabled = state === 'busy' || (!params.missionId && (!amt || amt <= 0))
 
   const push = async (force = false) => {
-    if (!amt || amt <= 0) { setErr('Montant à payer indisponible sur cette fiche.'); return }
     setState('busy'); setErr('')
     try {
       const res = await fetch('/api/caisse/ecran', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'push', key: screenKey, force, ...params, amount: amt }),
+        body: JSON.stringify({ action: 'push', key: screenKey, force, ...params, mission_id: params.missionId, amount: amt }),
       })
       if (res.status === 409) {
         const j = await res.json().catch(() => ({}))

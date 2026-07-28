@@ -80,7 +80,7 @@ export default async function MissionDriverPage({ params, searchParams }: Props)
     <div className="fixed top-3 right-3 z-[60]">
       <PushToScreenButton
         compact
-        amount={Number(mission.amount_to_collect || 0)}
+        missionId={mission.id}
         client={mission.client_name}
         plate={mission.vehicle_plate}
         brand={mission.vehicle_brand}

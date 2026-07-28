@@ -106,9 +106,10 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
           <div style={S.tvac}>TVAC</div>
           {payload.lines && payload.lines.length > 0 && (
             <div style={S.lines}>
-              {payload.lines.map((l, i) => (
-                <div key={i} style={S.line}><span>{l.label}</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>{eur(l.amount)}</span></div>
+              {payload.lines.slice(0, 8).map((l, i) => (
+                <div key={i} style={S.line}><span style={S.lineLabel}>{l.label}</span><span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{eur(l.amount)}</span></div>
               ))}
+              {payload.lines.length > 8 && <div style={{ ...S.line, color: '#94a3b8' }}>+ {payload.lines.length - 8} ligne(s)…</div>}
             </div>
           )}
         </div>
@@ -226,8 +227,9 @@ const S: Record<string, React.CSSProperties> = {
   amountLabel: { fontSize: '1.8vw', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em' },
   amount: { fontSize: '11vw', fontWeight: 800, lineHeight: 1, color: '#0b1120' },
   tvac: { fontSize: '1.6vw', color: '#94a3b8', marginTop: '.5vh' },
-  lines: { marginTop: '2.5vh', display: 'inline-flex', flexDirection: 'column', gap: '.6vh', minWidth: '30vw', color: '#475569', fontSize: '1.5vw' },
-  line: { display: 'flex', justifyContent: 'space-between', gap: '3vw', borderTop: '1px solid #e5e7eb', paddingTop: '.6vh' },
+  lines: { marginTop: '2.5vh', display: 'inline-flex', flexDirection: 'column', gap: '.4vh', width: 'min(46vw, 620px)', color: '#64748b', fontSize: '1.1vw' },
+  line: { display: 'flex', justifyContent: 'space-between', gap: '2vw', borderTop: '1px solid #eef1f5', paddingTop: '.5vh', textAlign: 'left' },
+  lineLabel: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   qrRow: { display: 'flex', gap: '4vw', flexWrap: 'wrap', justifyContent: 'center' },
   qrCard: { background: '#ffffff', color: '#0b1120', borderRadius: '20px', padding: '2vh 2vw', textAlign: 'center', border: '1px solid #e5e7eb', boxShadow: '0 12px 40px rgba(15,23,42,.10)' },
   qrTitle: { fontSize: '1.7vw', fontWeight: 800, marginBottom: '1vh' },
