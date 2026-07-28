@@ -22,6 +22,10 @@ function normPlate(p: string | null | undefined): string {
   return String(p || '').toUpperCase().replace(/[\s-]/g, '').trim()
 }
 
+// Fiches mortes/requalifiées : exclues de la détection (duplicatas Touring
+// neutralisés, annulations…). Sinon 128 faux « à lier » au lieu de ~14.
+const DEAD_STATUSES = new Set(['cancelled', 'canceled', 'ignored'])
+
 export interface DossierKey { source: string; prefix: string }
 
 // vehicle_mismatch : même dossier, véhicules différents → erreur d'encodage.
@@ -60,13 +64,14 @@ export async function findDossierConflicts(
     const ors = slice.map(p => `dossier_number.like.${p}/*,dossier_number.eq.${p}`).join(',')
     const { data } = await sb
       .from('incoming_missions')
-      .select('id, mission_number, dossier_number, vehicle_plate, source, parent_mission_id')
+      .select('id, mission_number, dossier_number, vehicle_plate, source, parent_mission_id, status')
       .or(ors)
     if (data) rows.push(...data)
   }
 
   const byKey = new Map<string, { id: string; mission_number: number | null; plate: string | null; parent: string | null }[]>()
   for (const m of rows) {
+    if (DEAD_STATUSES.has(String(m.status || '').toLowerCase())) continue  // fiches annulées/ignorées exclues
     const pre = dossierPrefix(m.dossier_number)
     if (!pre) continue
     const key = `${(m.source || '').toLowerCase()}::${pre}`
