@@ -116,17 +116,18 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
 
         <div style={S.qrRow}>
           {payload.sumupQrUrl && (
-            <div style={S.qrCard}>
-              <div style={S.qrTitle}>💳 Payer par carte</div>
-              <img src={payload.sumupQrUrl} alt="QR carte" style={S.qrImg} />
+            <div style={S.qrCardPrimary}>
+              <div style={S.qrBadge}>Payez ici</div>
+              <div style={S.qrTitle}>💳 Carte &amp; Bancontact</div>
+              <img src={payload.sumupQrUrl} alt="QR carte" style={S.qrImgPrimary} />
               <div style={S.qrSub}>Visa · Mastercard · Maestro · Bancontact · Apple&nbsp;Pay · Google&nbsp;Pay</div>
             </div>
           )}
           {epcImg && (
-            <div style={S.qrCard}>
-              <div style={S.qrTitle}>🏦 Payer par virement</div>
-              <img src={epcImg} alt="QR virement" style={S.qrImg} />
-              <div style={S.qrSub}>Scannez avec votre application bancaire</div>
+            <div style={S.qrCardSecondary}>
+              <div style={S.qrTitleSec}>🏦 Ou par virement</div>
+              <img src={epcImg} alt="QR virement" style={S.qrImgSecondary} />
+              <div style={S.qrSubSec}>Application bancaire</div>
             </div>
           )}
         </div>
@@ -230,10 +231,17 @@ const S: Record<string, React.CSSProperties> = {
   lines: { marginTop: '2.5vh', display: 'inline-flex', flexDirection: 'column', gap: '.4vh', width: 'min(46vw, 620px)', color: '#64748b', fontSize: '1.1vw' },
   line: { display: 'flex', justifyContent: 'space-between', gap: '2vw', borderTop: '1px solid #eef1f5', paddingTop: '.5vh', textAlign: 'left' },
   lineLabel: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  qrRow: { display: 'flex', gap: '4vw', flexWrap: 'wrap', justifyContent: 'center' },
-  qrCard: { background: '#ffffff', color: '#0b1120', borderRadius: '20px', padding: '2vh 2vw', textAlign: 'center', border: '1px solid #e5e7eb', boxShadow: '0 12px 40px rgba(15,23,42,.10)' },
-  qrTitle: { fontSize: '1.7vw', fontWeight: 800, marginBottom: '1vh' },
-  qrImg: { width: '20vw', maxWidth: '340px', height: 'auto', display: 'block', margin: '0 auto' },
-  qrSub: { fontSize: '1vw', color: '#64748b', marginTop: '1vh', maxWidth: '22vw' },
+  qrRow: { display: 'flex', gap: '3.5vw', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
+  // Principal (SumUp = seul canal auto-confirmé) : grand, mis en avant.
+  qrCardPrimary: { position: 'relative', background: '#ffffff', color: '#0b1120', borderRadius: '24px', padding: '3vh 2.4vw 2.4vh', textAlign: 'center', border: '2px solid #16a34a', boxShadow: '0 22px 60px rgba(22,163,74,.18)' },
+  qrBadge: { position: 'absolute', top: '-1.6vh', left: '50%', transform: 'translateX(-50%)', background: '#16a34a', color: '#fff', fontSize: '1.1vw', fontWeight: 800, padding: '.5vh 1.4vw', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' },
+  qrTitle: { fontSize: '1.8vw', fontWeight: 800, marginBottom: '1.2vh' },
+  qrImgPrimary: { width: '25vw', maxWidth: '420px', height: 'auto', display: 'block', margin: '0 auto' },
+  qrSub: { fontSize: '1vw', color: '#64748b', marginTop: '1.2vh', maxWidth: '25vw', marginLeft: 'auto', marginRight: 'auto' },
+  // Secondaire (virement, sans confirmation) : plus discret.
+  qrCardSecondary: { background: '#f8fafc', color: '#334155', borderRadius: '18px', padding: '2vh 1.6vw', textAlign: 'center', border: '1px solid #e5e7eb', opacity: .92 },
+  qrTitleSec: { fontSize: '1.2vw', fontWeight: 700, color: '#64748b', marginBottom: '1vh' },
+  qrImgSecondary: { width: '13vw', maxWidth: '220px', height: 'auto', display: 'block', margin: '0 auto' },
+  qrSubSec: { fontSize: '.85vw', color: '#94a3b8', marginTop: '1vh' },
   badges: { display: 'flex', gap: '1.6vw', flexWrap: 'wrap', justifyContent: 'center' },
 }
