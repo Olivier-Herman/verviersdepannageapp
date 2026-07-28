@@ -134,18 +134,16 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
   }
 
   // ── ÉCRAN AU REPOS (logo + moyens de paiement) ────────────────────────────
+  const METHODS = ['visa', 'mastercard', 'maestro', 'bancontact', 'applepay', 'googlepay']
   return (
     <div style={S.wrap}>
-      <div style={{ textAlign: 'center' }}>
+      <div style={S.idleInner}>
         <img src="/logo.jpg" alt="Verviers Dépannage" style={S.logo} />
-        <div style={{ fontSize: '1.5vw', color: '#64748b', marginTop: '3vh', marginBottom: '5vh', textTransform: 'uppercase', letterSpacing: '.12em' }}>Moyens de paiement acceptés</div>
-        <div style={S.badges}>
-          <div style={S.tile}><PayLogo name="visa" /></div>
-          <div style={S.tile}><PayLogo name="mastercard" /></div>
-          <div style={S.tile}><PayLogo name="maestro" /></div>
-          <div style={S.tile}><PayLogo name="bancontact" /></div>
-          <div style={S.tile}><PayLogo name="applepay" /></div>
-          <div style={S.tile}><PayLogo name="googlepay" /></div>
+        <div style={S.idleSub}>Moyens de paiement acceptés</div>
+        <div style={S.grid}>
+          {METHODS.map((m) => (
+            <div key={m} style={S.tile}><PayLogo name={m} /></div>
+          ))}
         </div>
       </div>
     </div>
@@ -177,12 +175,12 @@ function PayLogo({ name }: { name: string }) {
 
   if (name === 'bancontact')
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '.5vw' }}>
-        <svg viewBox="0 0 48 32" style={{ height: '3.4vh' }}>
-          <polygon points="8,14 30,14 22,30 0,30" fill="#FFD800" />
-          <polygon points="18,2 40,2 32,18 10,18" fill="#004E9E" />
+      <span style={{ display: 'flex', alignItems: 'center', gap: '.6vw' }}>
+        <svg viewBox="0 0 46 26" style={{ height: '3.1vh' }}>
+          <polygon points="4,2 24,2 17,12 -3,12" fill="#FFDD00" />
+          <polygon points="13,14 33,14 26,24 6,24" fill="#004E9E" />
         </svg>
-        <span style={{ color: '#004E9E', fontWeight: 800, fontSize: '2.7vh', letterSpacing: '-.01em' }}>Bancontact</span>
+        <span style={{ color: '#004E9E', fontWeight: 800, fontSize: '2.9vh', letterSpacing: '-.02em' }}>Bancontact</span>
       </span>
     )
 
@@ -214,9 +212,12 @@ const S: Record<string, React.CSSProperties> = {
   wrap: { position: 'fixed', inset: 0, background: '#ffffff',
     color: '#0b1120', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3vh', padding: '4vh 4vw', overflow: 'hidden' },
-  logo: { height: '16vh', width: 'auto', maxWidth: '60vw', objectFit: 'contain', margin: '0 auto', display: 'block' },
-  tile: { background: '#fff', borderRadius: '16px', padding: '1.4vh 2vw', minWidth: '12vw', minHeight: '9vh',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e8ebf0', boxShadow: '0 6px 20px rgba(15,23,42,.06)' },
+  idleInner: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0' },
+  logo: { height: '20vh', width: 'auto', maxWidth: '60vw', objectFit: 'contain', display: 'block' },
+  idleSub: { fontSize: '1.3vw', color: '#94a3b8', marginTop: '4vh', marginBottom: '4vh', textTransform: 'uppercase', letterSpacing: '.22em', fontWeight: 600 },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2vh 2vw', width: 'min(72vw, 900px)' },
+  tile: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '12vh', background: '#fff',
+    borderRadius: '18px', border: '1px solid #eef1f5', boxShadow: '0 10px 30px rgba(15,23,42,.06)' },
   head: { display: 'flex', gap: '1.4vw', alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'center' },
   veh: { fontSize: '2.6vw', fontWeight: 700 },
   plate: { fontSize: '2.2vw', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', background: '#0b1120', color: '#fff', padding: '.3vh 1.2vw', borderRadius: '10px', fontWeight: 700 },
