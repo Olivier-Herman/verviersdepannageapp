@@ -92,6 +92,12 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
 
   // ── ÉCRAN ACTIF (facture) ─────────────────────────────────────────────────
   if (active && payload) {
+    // Auto-ajustement : plus il y a de lignes, plus le montant + le détail
+    // rétrécissent, pour que tout tienne sans déborder de l'écran.
+    const nLines     = Math.min(payload.lines?.length || 0, 10)
+    const amountFont = nLines >= 8 ? '5.4vw' : nLines >= 5 ? '6.4vw' : nLines >= 2 ? '7.6vw' : '9vw'
+    const lineFont   = nLines >= 8 ? '.82vw' : nLines >= 5 ? '.95vw' : '1.05vw'
+    const lineGap    = nLines >= 8 ? '.15vh' : '.35vh'
     return (
       <div style={S.wrap}>
         <div style={S.head}>
@@ -102,14 +108,14 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
 
         <div style={S.amountBox}>
           <div style={S.amountLabel}>Montant à payer</div>
-          <div style={S.amount}>{eur(payload.amount)}</div>
+          <div style={{ ...S.amount, fontSize: amountFont }}>{eur(payload.amount)}</div>
           <div style={S.tvac}>TVAC</div>
           {payload.lines && payload.lines.length > 0 && (
-            <div style={S.lines}>
-              {payload.lines.slice(0, 8).map((l, i) => (
-                <div key={i} style={S.line}><span style={S.lineLabel}>{l.label}</span><span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{eur(l.amount)}</span></div>
+            <div style={{ ...S.lines, fontSize: lineFont, gap: lineGap }}>
+              {payload.lines.slice(0, 10).map((l, i) => (
+                <div key={i} style={S.line}><span style={S.lineLabel}>{l.label}</span><span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', paddingLeft: '1vw' }}>{eur(l.amount)}</span></div>
               ))}
-              {payload.lines.length > 8 && <div style={{ ...S.line, color: '#94a3b8' }}>+ {payload.lines.length - 8} ligne(s)…</div>}
+              {payload.lines.length > 10 && <div style={{ ...S.line, color: '#94a3b8' }}>+ {payload.lines.length - 10} ligne(s)…</div>}
             </div>
           )}
         </div>
@@ -213,7 +219,7 @@ function PayLogo({ name }: { name: string }) {
 const S: Record<string, React.CSSProperties> = {
   wrap: { position: 'fixed', inset: 0, background: '#ffffff',
     color: '#0b1120', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3vh', padding: '4vh 4vw', overflow: 'hidden' },
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.6vh', padding: '2.5vh 4vw', overflow: 'hidden' },
   idleInner: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0' },
   logo: { height: '20vh', width: 'auto', maxWidth: '60vw', objectFit: 'contain', display: 'block' },
   idleSub: { fontSize: '1.3vw', color: '#94a3b8', marginTop: '4vh', marginBottom: '4vh', textTransform: 'uppercase', letterSpacing: '.22em', fontWeight: 600 },
@@ -221,27 +227,27 @@ const S: Record<string, React.CSSProperties> = {
   tile: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '12vh', background: '#fff',
     borderRadius: '18px', border: '1px solid #eef1f5', boxShadow: '0 10px 30px rgba(15,23,42,.06)' },
   head: { display: 'flex', gap: '1.4vw', alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'center' },
-  veh: { fontSize: '2.6vw', fontWeight: 700 },
-  plate: { fontSize: '2.2vw', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', background: '#0b1120', color: '#fff', padding: '.3vh 1.2vw', borderRadius: '10px', fontWeight: 700 },
-  client: { fontSize: '2.2vw', color: '#64748b' },
-  amountBox: { textAlign: 'center' },
-  amountLabel: { fontSize: '1.8vw', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em' },
-  amount: { fontSize: '11vw', fontWeight: 800, lineHeight: 1, color: '#0b1120' },
-  tvac: { fontSize: '1.6vw', color: '#94a3b8', marginTop: '.5vh' },
-  lines: { marginTop: '2.5vh', display: 'inline-flex', flexDirection: 'column', gap: '.4vh', width: 'min(46vw, 620px)', color: '#64748b', fontSize: '1.1vw' },
-  line: { display: 'flex', justifyContent: 'space-between', gap: '2vw', borderTop: '1px solid #eef1f5', paddingTop: '.5vh', textAlign: 'left' },
+  veh: { fontSize: '2vw', fontWeight: 700 },
+  plate: { fontSize: '1.7vw', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', background: '#0b1120', color: '#fff', padding: '.3vh 1.2vw', borderRadius: '10px', fontWeight: 700 },
+  client: { fontSize: '1.7vw', color: '#64748b' },
+  amountBox: { textAlign: 'center', maxWidth: '92vw' },
+  amountLabel: { fontSize: '1.3vw', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em' },
+  amount: { fontWeight: 800, lineHeight: 1, color: '#0b1120' },
+  tvac: { fontSize: '1.1vw', color: '#94a3b8', marginTop: '.4vh' },
+  lines: { marginTop: '1.6vh', display: 'inline-flex', flexDirection: 'column', width: 'min(52vw, 680px)', color: '#64748b' },
+  line: { display: 'flex', justifyContent: 'space-between', gap: '2vw', borderTop: '1px solid #eef1f5', paddingTop: '.3vh', textAlign: 'left' },
   lineLabel: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  qrRow: { display: 'flex', gap: '3.5vw', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
+  qrRow: { display: 'flex', gap: '3vw', flexWrap: 'nowrap', justifyContent: 'center', alignItems: 'center', maxWidth: '96vw' },
   // Principal (SumUp = seul canal auto-confirmé) : grand, mis en avant.
-  qrCardPrimary: { position: 'relative', background: '#ffffff', color: '#0b1120', borderRadius: '24px', padding: '3vh 2.4vw 2.4vh', textAlign: 'center', border: '2px solid #16a34a', boxShadow: '0 22px 60px rgba(22,163,74,.18)' },
-  qrBadge: { position: 'absolute', top: '-1.6vh', left: '50%', transform: 'translateX(-50%)', background: '#16a34a', color: '#fff', fontSize: '1.1vw', fontWeight: 800, padding: '.5vh 1.4vw', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' },
-  qrTitle: { fontSize: '1.8vw', fontWeight: 800, marginBottom: '1.2vh' },
-  qrImgPrimary: { width: '25vw', maxWidth: '420px', height: 'auto', display: 'block', margin: '0 auto' },
-  qrSub: { fontSize: '1vw', color: '#64748b', marginTop: '1.2vh', maxWidth: '25vw', marginLeft: 'auto', marginRight: 'auto' },
+  qrCardPrimary: { position: 'relative', background: '#ffffff', color: '#0b1120', borderRadius: '20px', padding: 'min(2.4vh, 2vw) min(2vw, 2.4vh) min(2vh, 1.8vw)', textAlign: 'center', border: '2px solid #16a34a', boxShadow: '0 16px 44px rgba(22,163,74,.16)' },
+  qrBadge: { position: 'absolute', top: '-1.4vh', left: '50%', transform: 'translateX(-50%)', background: '#16a34a', color: '#fff', fontSize: '.9vw', fontWeight: 800, padding: '.4vh 1.2vw', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' },
+  qrTitle: { fontSize: '1.4vw', fontWeight: 800, marginBottom: '.8vh' },
+  qrImgPrimary: { width: 'min(19vw, 26vh)', height: 'auto', display: 'block', margin: '0 auto' },
+  qrSub: { fontSize: '.82vw', color: '#64748b', marginTop: '.8vh', maxWidth: '22vw', marginLeft: 'auto', marginRight: 'auto' },
   // Secondaire (virement, sans confirmation) : plus discret.
-  qrCardSecondary: { background: '#f8fafc', color: '#334155', borderRadius: '18px', padding: '2vh 1.6vw', textAlign: 'center', border: '1px solid #e5e7eb', opacity: .92 },
-  qrTitleSec: { fontSize: '1.2vw', fontWeight: 700, color: '#64748b', marginBottom: '1vh' },
-  qrImgSecondary: { width: '13vw', maxWidth: '220px', height: 'auto', display: 'block', margin: '0 auto' },
-  qrSubSec: { fontSize: '.85vw', color: '#94a3b8', marginTop: '1vh' },
+  qrCardSecondary: { background: '#f8fafc', color: '#334155', borderRadius: '16px', padding: 'min(1.6vh,1.4vw) min(1.4vw,1.6vh)', textAlign: 'center', border: '1px solid #e5e7eb', opacity: .92 },
+  qrTitleSec: { fontSize: '1vw', fontWeight: 700, color: '#64748b', marginBottom: '.7vh' },
+  qrImgSecondary: { width: 'min(10.5vw, 15vh)', height: 'auto', display: 'block', margin: '0 auto' },
+  qrSubSec: { fontSize: '.75vw', color: '#94a3b8', marginTop: '.7vh' },
   badges: { display: 'flex', gap: '1.6vw', flexWrap: 'wrap', justifyContent: 'center' },
 }
