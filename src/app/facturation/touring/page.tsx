@@ -24,7 +24,7 @@ export default async function FacturationTouringPage() {
 
   const supabase = createAdminClient()
   const { missions, siblings, payments, drivers, advances, sourceLabels } =
-    await loadFacturationData(supabase, { onlySource: 'touring' })
+    await loadFacturationData(supabase, { onlySource: 'touring', hideAutoInvoiced: role !== 'superadmin' })
 
   return (
     <FacturationClient

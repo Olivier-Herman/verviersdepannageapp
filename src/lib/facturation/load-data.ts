@@ -23,7 +23,7 @@ const MISSION_COLS = `
 
 export async function loadFacturationData(
   supabase: any,
-  opts: { onlySource?: string; excludeSource?: string } = {},
+  opts: { onlySource?: string; excludeSource?: string; hideAutoInvoiced?: boolean } = {},
 ) {
   let q = supabase
     .from('incoming_missions')
@@ -31,6 +31,10 @@ export async function loadFacturationData(
     .eq('status', 'to_invoice')
   if (opts.onlySource)    q = q.eq('source', opts.onlySource)
   if (opts.excludeSource) q = q.neq('source', opts.excludeSource)
+  // Phase de test auto-facturation (Olivier 2026-07-28) : les fiches déjà
+  // auto-facturées (brouillon Odoo créé) sont masquées aux non-superadmins pour
+  // éviter que Jona les re-facture (doublon). Superadmin les voit toujours.
+  if (opts.hideAutoInvoiced) q = q.not('auto_invoiced', 'is', true)
   q = q
     .order('completed_at', { ascending: false, nullsFirst: false })
     .order('received_at', { ascending: false })
