@@ -20,6 +20,9 @@ export default withAuth(
     const token = req.nextauth.token
     const path  = req.nextUrl.pathname
 
+    // Écran client (kiosque face-comptoir) : PUBLIC — la tablette l'ouvre sans login.
+    if (path.startsWith('/caisse/ecran')) return NextResponse.next()
+
     if ((token as any)?.pending) {
       return NextResponse.redirect(new URL('/request-access/pending', req.url))
     }
@@ -91,7 +94,7 @@ export default withAuth(
 
     return NextResponse.next()
   },
-  { callbacks: { authorized: ({ token }) => !!token } }
+  { callbacks: { authorized: ({ token, req }) => req.nextUrl.pathname.startsWith('/caisse/ecran') || !!token } }
 )
 
 export const config = {
