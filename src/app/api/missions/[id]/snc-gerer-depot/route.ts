@@ -109,6 +109,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
     })
     await releaseParcAndShift(sb, missionId)
+    // Parc Odoo : le dossier a maintenant une REL enfant en attente → le helper
+    // ne finalisera le véhicule que quand la REL sera aussi to_invoice.
+    { const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state'); await syncParcVehicleTerminated(sb, missionId) }
 
     await sb.from('mission_logs').insert({
       mission_id: missionId,
@@ -135,6 +138,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
     })
     await releaseParcAndShift(sb, missionId)
+    { const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state'); await syncParcVehicleTerminated(sb, missionId) }
 
     await sb.from('mission_logs').insert({
       mission_id: missionId,
@@ -162,6 +166,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await sb.from('incoming_missions').update({ status: 'to_invoice', updated_at: now }).eq('id', missionId)
     })
     await releaseParcAndShift(sb, missionId)
+    { const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state'); await syncParcVehicleTerminated(sb, missionId) }
 
     await sb.from('mission_logs').insert({
       mission_id: missionId,

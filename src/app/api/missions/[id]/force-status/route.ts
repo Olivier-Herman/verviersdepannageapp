@@ -138,6 +138,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { error } = await sb.from('incoming_missions').update(update).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Parc Odoo : véhicule → Terminé si le dossier est bouclé (idempotent, non bloquant).
+  if (body.status === 'to_invoice' || body.status === 'completed') {
+    const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state')
+    await syncParcVehicleTerminated(sb, params.id)
+  }
+
   // Log
   await sb.from('mission_logs').insert({
     mission_id: params.id,

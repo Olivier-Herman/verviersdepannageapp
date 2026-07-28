@@ -437,6 +437,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erreur mise à jour' }, { status: 500 })
   }
 
+  // Parc automobile Odoo : dès que la fiche atteint un statut terminal
+  // (to_invoice / completed), on passe le véhicule en "Terminé" — mais seulement
+  // si TOUT le dossier est bouclé (dernière fiche enfant en to_invoice pour un
+  // dossier avec relivraison). Idempotent, non bloquant. Olivier 2026-07-28.
+  if (updated && ['to_invoice', 'completed'].includes(updated.status)) {
+    const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state')
+    await syncParcVehicleTerminated(supabase, mission_id)
+  }
+
   // ── Encaissement automatique ─────────────────────────────────────────────
   if (action === 'completed' && closing_data?.amount_collected && closing_data.amount_collected > 0) {
     await supabase.from('interventions').insert({
@@ -668,14 +677,10 @@ export async function POST(req: Request) {
       if (action === 'park' && mission.odoo_vehicle_id) {
         await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.transit).catch(() => {})
       }
-      // Mission terminée → état véhicule = Terminé (sauf si déjà mis en parc avant)
-      if ((action === 'completed' || action === 'complete_delivery') && mission.odoo_vehicle_id) {
-        // On ne force pas si la mission est de type REM (le parc est la position finale)
-        const isDsp = ['depannage', 'reparation_place', 'trajet_vide'].includes((mission.mission_type || '').toLowerCase())
-        if (isDsp) {
-          await updateVehicleState(mission.odoo_vehicle_id, FLEET_STATES.termine).catch(() => {})
-        }
-      }
+      // NB : le passage en "Terminé" n'est plus déclenché ici. Il l'est désormais
+      // au passage en to_invoice/completed (dossier complet) via
+      // syncParcVehicleTerminated — cf plus haut. Couvre DSP, REM directe et
+      // dossiers avec relivraison (dernière fiche enfant), toutes sources.
       if (Object.keys(odooUpdate).length > 0) {
         await rpcFsm('project.task', 'write', [[mission.odoo_task_id], odooUpdate])
       }

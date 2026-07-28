@@ -221,6 +221,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: updErr.message }, { status: 500 })
   }
 
+  // Parc Odoo : véhicule → Terminé si le dossier est bouclé (idempotent, non bloquant).
+  if (updatePayload.status === 'to_invoice') {
+    const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state')
+    await syncParcVehicleTerminated(supabase, missionId)
+  }
+
   return NextResponse.json({
     ok:        true,
     missionId,

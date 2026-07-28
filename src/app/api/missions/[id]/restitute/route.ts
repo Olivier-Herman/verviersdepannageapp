@@ -384,6 +384,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { mode: 'driver_cash', partner_id: body.partner_id, payments: breakdown, days, total_tvac: totalTvac },
   })
 
+  // Parc Odoo : véhicule restitué → Terminé si dossier bouclé (idempotent, non bloquant).
+  {
+    const { syncParcVehicleTerminated } = await import('@/lib/missions/parc-fleet-state')
+    await syncParcVehicleTerminated(sb, missionId)
+  }
+
   await releaseParcAndShift(sb, missionId)
 
   return NextResponse.json({
