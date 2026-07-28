@@ -24,6 +24,14 @@ const BATCH = 25   // borne par passe (chaque facture = ~2-3s Odoo)
 const HEXALITE_SOURCES = new Set(['allianz', 'mondial'])
 const assignNo = (v: string | null | undefined) => String(v || '').split('/')[0].trim()
 
+// Garde-fou : empêche un appel externe lent (Hexalite) de faire timeout tout le cron.
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms`)), ms)),
+  ])
+}
+
 export async function GET(req: Request) {
   const auth = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -48,17 +56,19 @@ export async function GET(req: Request) {
   const needHexalite = activeSources.some(s => HEXALITE_SOURCES.has(s))
   let hexaliteNumbers: Set<string> | null = null
   let hexaliteUnavailable = false
+  let hexaliteError: string | null = null
   if (needHexalite) {
     try {
-      const token = await getValidAllianzToken()
-      const listing = await listAllianzToAssign(token)
+      const token = await withTimeout(getValidAllianzToken(), 15_000)
+      const listing = await withTimeout(listAllianzToAssign(token), 15_000)
       hexaliteNumbers = new Set(
         (listing.content || []).map((a: any) => assignNo(a.assignmentNumber)).filter(Boolean),
       )
-    } catch {
-      // Hexalite injoignable (OTP expiré, 401/403…) → on NE peut PAS vérifier :
-      // par sécurité on saute les sources Allianz cette passe (jamais de doublon).
+    } catch (e: any) {
+      // Hexalite injoignable (OTP expiré, 401/403, timeout…) → on NE peut PAS
+      // vérifier : par sécurité on saute les sources Allianz cette passe.
       hexaliteUnavailable = true
+      hexaliteError = String(e?.message || e)
     }
   }
 
@@ -66,7 +76,7 @@ export async function GET(req: Request) {
 
   // Missions clôturées depuis > délai, sources concernées, pas déjà facturées/devisées.
   const { data: candidates } = await sb.from('incoming_missions')
-    .select('id, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id')
+    .select('id, mission_number, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id')
     .eq('status', 'to_invoice')
     .in('source', activeSources)
     .lt('completed_at', cutoff)
@@ -77,23 +87,26 @@ export async function GET(req: Request) {
 
   let eligible = 0, invoiced = 0, noTariff = 0, combined = 0, failed = 0, hexalite = 0
   const done: string[] = []
+  // Détail PAR mission (outcome + raison) — indispensable pour diagnostiquer.
+  const details: { mission: number | string; source: string | null; type: string | null; outcome: string; reason?: string }[] = []
+  const ref = (m: any) => (m.mission_number ?? m.external_id ?? m.id.slice(0, 8))
 
   for (const m of (candidates || [])) {
     const check = checkAutoInvoiceEligible(m as any, rules)
-    if (!check.eligible) continue
+    if (!check.eligible) { details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'not_eligible', reason: check.reason || undefined }); continue }
     eligible++
     // Source Allianz : si la mission est encore "dans Hexalite" (liste à clôturer),
     // ou si Hexalite est injoignable, on ne la touche pas (auto-facturation Hexalite).
     if (HEXALITE_SOURCES.has(String(m.source || ''))) {
       if (hexaliteUnavailable || (hexaliteNumbers && hexaliteNumbers.has(assignNo(m.external_id)))) {
-        hexalite++; continue
+        hexalite++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'hexalite', reason: hexaliteUnavailable ? `Hexalite injoignable (${hexaliteError})` : 'dans la liste à clôturer' }); continue
       }
     }
     // Mission sèche : aucune fiche enfant (relivraison).
     const { count: childCount } = await sb.from('incoming_missions')
       .select('id', { count: 'exact', head: true }).eq('parent_mission_id', m.id)
-    if (childCount) { combined++; continue }
-    if (invoiced >= BATCH) break
+    if (childCount) { combined++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'combined' }); continue }
+    if (invoiced >= BATCH) { details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'batch_skipped' }); continue }
 
     try {
       const url = new URL(`/api/missions/${m.id}/quote`, req.url).toString()
@@ -103,15 +116,34 @@ export async function GET(req: Request) {
         body: JSON.stringify({ mode: 'invoice', requireTariff: true }),
       })
       const j = await r.json().catch(() => ({}))
-      if (j?.ok && j.invoice) { invoiced++; done.push(m.external_id || m.id.slice(0, 8)) }
-      else if (j?.reason === 'no_tariff') noTariff++
-      else failed++
-    } catch { failed++ }
+      if (j?.ok && j.invoice) { invoiced++; done.push(String(ref(m))); details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'invoiced' }) }
+      else if (j?.reason === 'no_tariff') { noTariff++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'no_tariff' }) }
+      else { failed++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'failed', reason: (j?.error || j?.reason || `HTTP ${r.status}`) }) }
+    } catch (e: any) { failed++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'failed', reason: `fetch: ${String(e?.message || e)}` }) }
   }
 
-  // Compteur de couverture : combien le système a dû facturer (Jona ne l'avait pas fait).
-  const summary = { at: new Date().toISOString(), delay_hours: delayH, eligible, invoiced, noTariff, combined, failed, hexalite, done: done.slice(0, 30) }
+  // Compteur de couverture + DÉTAIL par mission (diagnostic). On garde aussi un
+  // historique roulant des 20 derniers runs (auto_invoice_history).
+  const summary = {
+    at: new Date().toISOString(), delay_hours: delayH,
+    scanned: (candidates || []).length,
+    eligible, invoiced, noTariff, combined, failed, hexalite,
+    ...(hexaliteError ? { hexaliteError } : {}),
+    done: done.slice(0, 30),
+    details: details.slice(0, 60),
+  }
   await sb.from('app_settings').upsert({ key: 'auto_invoice_last_run', value: summary }, { onConflict: 'key' }).then(() => {}, () => {})
+  // Historique : ne garder que les runs "intéressants" (candidats scannés > 0)
+  // pour ne pas noyer sous les passes à vide.
+  if ((candidates || []).length > 0) {
+    try {
+      const { data: hist } = await sb.from('app_settings').select('value').eq('key', 'auto_invoice_history').maybeSingle()
+      let arr: any[] = []
+      try { arr = Array.isArray(hist?.value) ? hist!.value : (hist?.value ? JSON.parse(hist.value as any) : []) } catch { arr = [] }
+      arr.unshift(summary)
+      await sb.from('app_settings').upsert({ key: 'auto_invoice_history', value: arr.slice(0, 20) }, { onConflict: 'key' })
+    } catch { /* best-effort */ }
+  }
   console.log('[auto-invoice]', JSON.stringify(summary))
 
   return NextResponse.json({ ok: true, ...summary })
