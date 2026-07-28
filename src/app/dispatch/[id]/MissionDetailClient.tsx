@@ -1915,6 +1915,22 @@ export default function MissionDetailClient({
   const [saveOk, setSaveOk] = useState(false)
   const [kmRefresh, setKmRefresh] = useState(0)  // incrémenté à chaque save → force le re-calcul des KM
 
+  // Contrôle cohérence dossier : même dossier (préfixe avant '/') sur des
+  // véhicules différents = probable erreur d'encodage → warning. Toutes sources
+  // (Olivier 2026-07-28).
+  const [vabConflict, setVabConflict] = useState<{ prefix: string; type: string; others: { mission_number: number | null; plate: string | null }[] } | null>(null)
+  useEffect(() => {
+    if (!initialMission.dossier_number) { setVabConflict(null); return }
+    let alive = true
+    fetch('/api/missions/dossier-check', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mission_ids: [initialMission.id] }),
+    }).then(r => (r.ok ? r.json() : null))
+      .then(j => { if (alive && j) setVabConflict(j.conflicts?.[initialMission.id] || null) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [initialMission.id, initialMission.dossier_number])
+
   // Realtime — mise à jour automatique depuis le chauffeur
   useEffect(() => {
     const ch = sb.channel(`dispatch-mission-${initialMission.id}`)
@@ -2384,6 +2400,19 @@ export default function MissionDetailClient({
       userRole={userRole}
       userModules={userModules}
     >
+      {vabConflict && (
+        vabConflict.type === 'should_link' ? (
+          <div className="mb-3 bg-sky-100 border-2 border-sky-500 rounded-xl px-4 py-2.5 text-sky-800 text-sm shadow-sm">
+            <span className="font-bold">🔗 Fiches à lier ?</span>{' '}
+            même dossier {vabConflict.prefix} + même véhicule que {vabConflict.others.map(o => `#${o.mission_number ?? '?'}`).join(', ')} — vérifier si à lier ou fusionner.
+          </div>
+        ) : (
+          <div className="mb-3 bg-red-100 border-2 border-red-500 rounded-xl px-4 py-2.5 text-red-800 text-sm shadow-sm">
+            <span className="font-bold">⚠ Incohérence dossier :</span>{' '}
+            même n° de dossier {vabConflict.prefix} que {vabConflict.others.map(o => `#${o.mission_number ?? '?'} (${o.plate || '—'})`).join(', ')} mais véhicule différent — vérifier l'encodage.
+          </div>
+        )
+      )}
       {siabisModal && (
         <HighwaySiabisModal
           missionId={initialMission.id}

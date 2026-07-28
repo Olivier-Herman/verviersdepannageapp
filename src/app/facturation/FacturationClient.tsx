@@ -377,6 +377,29 @@ export default function FacturationClient({
     return () => clearInterval(iv)
   }, [isSuperadmin, hasWaitingAuto])
 
+  // ── Contrôle cohérence dossier (véhicules différents = erreur encodage) ──
+  // Pour les missions affichées ayant un dossier, on interroge l'API : si
+  // plusieurs fiches (même source) partagent le même dossier (préfixe avant '/')
+  // mais des véhicules différents, on affiche un warning sur la card. Toutes
+  // sources (Olivier 2026-07-28).
+  const [vabConflicts, setVabConflicts] = useState<Record<string, { prefix: string; type: string; others: { mission_number: number | null; plate: string | null }[] }>>({})
+  const vabIdsKey = useMemo(
+    () => data.filter(m => !!m.dossier_number).map(m => m.id).sort().join(','),
+    [data],
+  )
+  useEffect(() => {
+    const ids = vabIdsKey ? vabIdsKey.split(',') : []
+    if (ids.length === 0) { setVabConflicts({}); return }
+    let alive = true
+    fetch('/api/missions/dossier-check', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mission_ids: ids }),
+    }).then(r => (r.ok ? r.json() : null))
+      .then(j => { if (alive && j) setVabConflicts(j.conflicts || {}) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [vabIdsKey])
+
   // ── Recherche avancée VD Soft + TowSoft (Olivier 2026-06-12) ──────────
   const [advType, setAdvType]       = useState<'immatriculation' | 'niv' | 'num_dossier' | 'id_appel' | 'num_facture'>('immatriculation')
   const [advKey, setAdvKey]         = useState('')
@@ -854,18 +877,33 @@ export default function FacturationClient({
                 : 'bg-surface border hover:bg-surface-hover'
               const remarks = billingRemarks[m.id] || []
               const hasRemark = remarks.length > 0
+              const vabConflict = vabConflicts[m.id]
+              const anyTopBanner = hasRemark || !!vabConflict
 
               return (
                 <>
+                  {vabConflict && (
+                    vabConflict.type === 'should_link' ? (
+                      <div className="bg-sky-100 border-2 border-sky-500 border-b-0 rounded-t-2xl px-3 py-1.5 text-sky-800 text-xs shadow-sm">
+                        <span className="font-bold">🔗 Fiches à lier ?</span>{' '}
+                        même dossier {vabConflict.prefix} + même véhicule que {vabConflict.others.map(o => `#${o.mission_number ?? '?'}`).join(', ')} — vérifier si à lier ou fusionner.
+                      </div>
+                    ) : (
+                      <div className="bg-red-100 border-2 border-red-500 border-b-0 rounded-t-2xl px-3 py-1.5 text-red-800 text-xs shadow-sm">
+                        <span className="font-bold">⚠ Incohérence dossier :</span>{' '}
+                        même n° de dossier {vabConflict.prefix} que {vabConflict.others.map(o => `#${o.mission_number ?? '?'} (${o.plate || '—'})`).join(', ')} mais véhicule différent — vérifier l'encodage.
+                      </div>
+                    )
+                  )}
                   {hasRemark && (
-                    <div className="bg-amber-200 border-2 border-amber-500 border-b-0 rounded-t-2xl px-3 py-1.5 text-amber-900 text-xs shadow-sm">
+                    <div className={`bg-amber-200 border-2 border-amber-500 border-b-0 ${vabConflict ? '' : 'rounded-t-2xl'} px-3 py-1.5 text-amber-900 text-xs shadow-sm`}>
                       <span className="font-bold">📝 Remarque facturation{remarks.length > 1 ? `s (${remarks.length})` : ''} :</span>{' '}
                       {remarks.map(r => r.text).filter(Boolean).join('  ·  ')}
                     </div>
                   )}
                   <Link
                     href={`/dispatch/${m.id}`}
-                    className={`block ${hasRemark ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${cardBg}`}
+                    className={`block ${anyTopBanner ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} p-4 transition flex flex-col sm:flex-row sm:items-center gap-3 relative overflow-hidden ${cardBg}`}
                   >
                     {/* Ruban "Avance" en coin haut-gauche — Olivier 2026-06-01 */}
                     {hasAdv && (
