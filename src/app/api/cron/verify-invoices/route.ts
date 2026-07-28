@@ -18,7 +18,10 @@ export async function GET(req: Request) {
   }
 
   try {
-    const url = new URL('/api/facturation/verify-invoices', req.url).toString()
+    // Base URL STABLE : en cron Vercel, req.url ne pointe pas vers l'URL publique
+    // utilisable → le self-fetch échouait. Même correctif que auto-invoice.
+    const baseUrl = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+    const url = `${baseUrl}/api/facturation/verify-invoices`
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },

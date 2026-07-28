@@ -72,6 +72,12 @@ export async function GET(req: Request) {
     }
   }
 
+  // IMPORTANT : base URL STABLE pour le self-fetch vers /quote. En cron Vercel,
+  // `req.url` ne pointe PAS vers l'URL publique utilisable → le fetch échouait en
+  // silence (cause : le cron ne facturait jamais en planifié, seulement en
+  // déclenchement manuel sur l'URL publique). Même pattern que auto-dispatch-tick.
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+
   const cutoff = new Date(Date.now() - delayH * 3600_000).toISOString()
 
   // Missions clôturées depuis > délai, sources concernées, pas déjà facturées/devisées.
@@ -109,7 +115,7 @@ export async function GET(req: Request) {
     if (invoiced >= BATCH) { details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'batch_skipped' }); continue }
 
     try {
-      const url = new URL(`/api/missions/${m.id}/quote`, req.url).toString()
+      const url = `${baseUrl}/api/missions/${m.id}/quote`
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
