@@ -83,8 +83,8 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
       <div style={S.wrap}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '9vw' }}>✅</div>
-          <div style={{ fontSize: '5vw', fontWeight: 800, color: '#3ecf7a' }}>Paiement reçu</div>
-          <div style={{ fontSize: '2.4vw', color: '#9fb0c8', marginTop: '1vh' }}>Merci et bonne route&nbsp;!</div>
+          <div style={{ fontSize: '5vw', fontWeight: 800, color: '#16a34a' }}>Paiement reçu</div>
+          <div style={{ fontSize: '2.4vw', color: '#64748b', marginTop: '1vh' }}>Merci et bonne route&nbsp;!</div>
         </div>
       </div>
     )
@@ -118,7 +118,7 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
             <div style={S.qrCard}>
               <div style={S.qrTitle}>💳 Payer par carte</div>
               <img src={payload.sumupQrUrl} alt="QR carte" style={S.qrImg} />
-              <div style={S.qrSub}>Visa · Mastercard · Bancontact · Apple&nbsp;Pay · Google&nbsp;Pay</div>
+              <div style={S.qrSub}>Visa · Mastercard · Maestro · Bancontact · Apple&nbsp;Pay · Google&nbsp;Pay</div>
             </div>
           )}
           {epcImg && (
@@ -133,17 +133,18 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
     )
   }
 
-  // ── ÉCRAN AU REPOS (moyens de paiement) ───────────────────────────────────
+  // ── ÉCRAN AU REPOS (logo + moyens de paiement) ────────────────────────────
   return (
     <div style={S.wrap}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '3vw', fontWeight: 800, letterSpacing: '.02em' }}>VERVIERS DÉPANNAGE</div>
-        <div style={{ fontSize: '1.6vw', color: '#9fb0c8', marginTop: '2vh', marginBottom: '5vh', textTransform: 'uppercase', letterSpacing: '.12em' }}>Moyens de paiement acceptés</div>
+        <img src="/logo.jpg" alt="Verviers Dépannage" style={S.logo} />
+        <div style={{ fontSize: '1.5vw', color: '#64748b', marginTop: '3vh', marginBottom: '5vh', textTransform: 'uppercase', letterSpacing: '.12em' }}>Moyens de paiement acceptés</div>
         <div style={S.badges}>
           <div style={S.tile}><PayLogo name="visa" /></div>
           <div style={S.tile}><PayLogo name="mastercard" /></div>
+          <div style={S.tile}><PayLogo name="maestro" /></div>
           <div style={S.tile}><PayLogo name="bancontact" /></div>
-          <div style={{ ...S.tile, background: '#000' }}><PayLogo name="applepay" /></div>
+          <div style={S.tile}><PayLogo name="applepay" /></div>
           <div style={S.tile}><PayLogo name="googlepay" /></div>
         </div>
       </div>
@@ -153,9 +154,9 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
 
 // Logos des moyens de paiement (marques d'acceptation, rendues en SVG).
 function PayLogo({ name }: { name: string }) {
-  const h = { height: '3.4vh', display: 'block' } as React.CSSProperties
   if (name === 'visa')
     return <span style={{ color: '#1a1f71', fontWeight: 800, fontStyle: 'italic', fontSize: '3.4vh', letterSpacing: '.04em' }}>VISA</span>
+
   if (name === 'mastercard')
     return (
       <svg viewBox="0 0 48 30" style={{ height: '4.6vh' }}>
@@ -164,23 +165,39 @@ function PayLogo({ name }: { name: string }) {
         <path d="M24 6a12 12 0 000 18 12 12 0 000-18z" fill="#FF5F00" />
       </svg>
     )
+
+  if (name === 'maestro')
+    return (
+      <svg viewBox="0 0 48 30" style={{ height: '4.6vh' }}>
+        <circle cx="18" cy="15" r="12" fill="#0099DF" />
+        <circle cx="30" cy="15" r="12" fill="#ED0006" />
+        <path d="M24 6a12 12 0 000 18 12 12 0 000-18z" fill="#6C6BBD" />
+      </svg>
+    )
+
   if (name === 'bancontact')
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '.4vw', fontWeight: 800, fontSize: '2.6vh' }}>
-        <span style={{ color: '#004E9E' }}>banc</span><span style={{ color: '#FFD800', WebkitTextStroke: '.5px #004E9E' as any }}>ontact</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '.5vw' }}>
+        <svg viewBox="0 0 48 32" style={{ height: '3.4vh' }}>
+          <polygon points="8,14 30,14 22,30 0,30" fill="#FFD800" />
+          <polygon points="18,2 40,2 32,18 10,18" fill="#004E9E" />
+        </svg>
+        <span style={{ color: '#004E9E', fontWeight: 800, fontSize: '2.7vh', letterSpacing: '-.01em' }}>Bancontact</span>
       </span>
     )
+
   if (name === 'applepay')
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '.5vw', color: '#fff' }}>
-        <svg viewBox="0 0 24 24" style={h}><path fill="#fff" d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.02 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.71-1.04-2.74-4.14zM14.6 4.6c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44z" /></svg>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '.5vw', color: '#000' }}>
+        <svg viewBox="0 0 24 24" style={{ height: '3.4vh', display: 'block' }}><path fill="#000" d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.02 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.71-1.04-2.74-4.14zM14.6 4.6c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44z" /></svg>
         <span style={{ fontWeight: 600, fontSize: '2.8vh' }}>Pay</span>
       </span>
     )
+
   if (name === 'googlepay')
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '.5vw' }}>
-        <svg viewBox="0 0 24 24" style={h}>
+        <svg viewBox="0 0 24 24" style={{ height: '3.4vh', display: 'block' }}>
           <path fill="#4285F4" d="M23 12.3c0-.8-.1-1.5-.2-2.2H12v4.2h6.2a5.3 5.3 0 01-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.4z" />
           <path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.9 1.1-3 0-5.5-2-6.4-4.7H1.8v3C3.7 21.3 7.5 24 12 24z" />
           <path fill="#FBBC05" d="M5.6 14.7a7.2 7.2 0 010-4.6V7.1H1.8a12 12 0 000 10.8l3.8-3z" />
@@ -189,30 +206,31 @@ function PayLogo({ name }: { name: string }) {
         <span style={{ fontWeight: 500, fontSize: '2.8vh', color: '#5f6368' }}>Pay</span>
       </span>
     )
+
   return null
 }
 
 const S: Record<string, React.CSSProperties> = {
-  tile: { background: '#fff', borderRadius: '16px', padding: '1.4vh 2vw', minWidth: '13vw', minHeight: '9vh',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 30px rgba(0,0,0,.25)' },
-  wrap: { position: 'fixed', inset: 0, background: 'radial-gradient(120% 120% at 50% 0%, #16203a 0%, #0b1120 60%, #070b16 100%)',
-    color: '#eaf0fb', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif',
+  wrap: { position: 'fixed', inset: 0, background: '#ffffff',
+    color: '#0b1120', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3vh', padding: '4vh 4vw', overflow: 'hidden' },
+  logo: { height: '16vh', width: 'auto', maxWidth: '60vw', objectFit: 'contain', margin: '0 auto', display: 'block' },
+  tile: { background: '#fff', borderRadius: '16px', padding: '1.4vh 2vw', minWidth: '12vw', minHeight: '9vh',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e8ebf0', boxShadow: '0 6px 20px rgba(15,23,42,.06)' },
   head: { display: 'flex', gap: '1.4vw', alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'center' },
   veh: { fontSize: '2.6vw', fontWeight: 700 },
-  plate: { fontSize: '2.2vw', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', background: '#fff', color: '#0b1120', padding: '.3vh 1.2vw', borderRadius: '10px', fontWeight: 700 },
-  client: { fontSize: '2.2vw', color: '#9fb0c8' },
+  plate: { fontSize: '2.2vw', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', background: '#0b1120', color: '#fff', padding: '.3vh 1.2vw', borderRadius: '10px', fontWeight: 700 },
+  client: { fontSize: '2.2vw', color: '#64748b' },
   amountBox: { textAlign: 'center' },
-  amountLabel: { fontSize: '1.8vw', color: '#9fb0c8', textTransform: 'uppercase', letterSpacing: '.1em' },
-  amount: { fontSize: '11vw', fontWeight: 800, lineHeight: 1, color: '#ffffff' },
-  tvac: { fontSize: '1.6vw', color: '#7d8ba6', marginTop: '.5vh' },
-  lines: { marginTop: '2.5vh', display: 'inline-flex', flexDirection: 'column', gap: '.6vh', minWidth: '30vw', color: '#c3cfe4', fontSize: '1.5vw' },
-  line: { display: 'flex', justifyContent: 'space-between', gap: '3vw', borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: '.6vh' },
+  amountLabel: { fontSize: '1.8vw', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em' },
+  amount: { fontSize: '11vw', fontWeight: 800, lineHeight: 1, color: '#0b1120' },
+  tvac: { fontSize: '1.6vw', color: '#94a3b8', marginTop: '.5vh' },
+  lines: { marginTop: '2.5vh', display: 'inline-flex', flexDirection: 'column', gap: '.6vh', minWidth: '30vw', color: '#475569', fontSize: '1.5vw' },
+  line: { display: 'flex', justifyContent: 'space-between', gap: '3vw', borderTop: '1px solid #e5e7eb', paddingTop: '.6vh' },
   qrRow: { display: 'flex', gap: '4vw', flexWrap: 'wrap', justifyContent: 'center' },
-  qrCard: { background: '#ffffff', color: '#0b1120', borderRadius: '20px', padding: '2vh 2vw', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.4)' },
+  qrCard: { background: '#ffffff', color: '#0b1120', borderRadius: '20px', padding: '2vh 2vw', textAlign: 'center', border: '1px solid #e5e7eb', boxShadow: '0 12px 40px rgba(15,23,42,.10)' },
   qrTitle: { fontSize: '1.7vw', fontWeight: 800, marginBottom: '1vh' },
   qrImg: { width: '20vw', maxWidth: '340px', height: 'auto', display: 'block', margin: '0 auto' },
-  qrSub: { fontSize: '1vw', color: '#5b6472', marginTop: '1vh', maxWidth: '22vw' },
+  qrSub: { fontSize: '1vw', color: '#64748b', marginTop: '1vh', maxWidth: '22vw' },
   badges: { display: 'flex', gap: '1.6vw', flexWrap: 'wrap', justifyContent: 'center' },
-  badge: { fontSize: '2vw', fontWeight: 800, padding: '1.4vh 2vw', borderRadius: '14px', letterSpacing: '.02em' },
 }
