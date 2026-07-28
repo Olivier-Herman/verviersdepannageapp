@@ -28,7 +28,20 @@ const sumupQrFor = (checkoutUrl: string) =>
 // à partir de son id. Priorité : facture Odoo détectée → brouillon de lignes
 // préparé → CA HTVA figé au to_invoice → tarif spécial → montant à encaisser.
 // Renvoie aussi les métas véhicule/client. Olivier 2026-07-28.
-async function resolveMissionBilling(sb: any, missionId: string) {
+// Appelle en interne l'endpoint price-estimate (même calcul que la modale :
+// SNC + gardiennage, tarif spécial, tarifs source). Renvoie total HTVA + détail.
+async function fetchLiveEstimate(origin: string, missionId: string) {
+  try {
+    const r = await fetch(`${origin}/api/missions/${missionId}/price-estimate`, {
+      headers: { 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
+      cache: 'no-store',
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+
+async function resolveMissionBilling(sb: any, missionId: string, origin: string) {
   const { data: m } = await sb.from('incoming_missions')
     .select('mission_number, dossier_number, external_id, vehicle_plate, vehicle_brand, vehicle_model, client_name, estimated_htva, special_tarif_htva, amount_to_collect, odoo_quote_id, invoice_odoo_id')
     .eq('id', missionId).maybeSingle()
@@ -84,7 +97,19 @@ async function resolveMissionBilling(sb: any, missionId: string) {
     }
   }
 
-  // 3) CA HTVA figé au to_invoice.  4) Tarif spécial.  5) Montant à encaisser (déjà TVAC).
+  // 3) Calcul live (même endpoint que la modale) : gère SNC/gardiennage, tarif
+  //    spécial, montant à réclamer, tarifs source. total_eur = HTVA → ×1,21.
+  if (amount <= 0) {
+    const est = await fetchLiveEstimate(origin, missionId)
+    if (est?.ok && Number(est.total_eur) > 0) {
+      amount = Math.round(Number(est.total_eur) * 1.21 * 100) / 100
+      lines = (Array.isArray(est.breakdown) ? est.breakdown : [])
+        .filter((b: any) => typeof b.amount === 'number' && b.amount)
+        .map((b: any) => ({ label: String(b.label || ''), amount: Math.round(Number(b.amount) * 1.21 * 100) / 100 }))
+    }
+  }
+
+  // 4) CA HTVA figé au to_invoice.  5) Tarif spécial.  6) Montant à encaisser (déjà TVAC).
   if (amount <= 0 && Number(m.estimated_htva)     > 0) amount = Math.round(Number(m.estimated_htva)     * 1.21 * 100) / 100
   if (amount <= 0 && Number(m.special_tarif_htva) > 0) amount = Math.round(Number(m.special_tarif_htva) * 1.21 * 100) / 100
   if (amount <= 0 && Number(m.amount_to_collect)  > 0) amount = Math.round(Number(m.amount_to_collect)  * 100) / 100
@@ -132,7 +157,8 @@ export async function POST(req: Request) {
   // action = 'push'
   // Card facturation : seul le mission_id est fourni → on résout montant + lignes
   // + métas côté serveur. Modale : amount + lines déjà calculés (prioritaires).
-  const resolved = body.mission_id ? await resolveMissionBilling(sb, String(body.mission_id)) : null
+  const origin = new URL(req.url).origin
+  const resolved = body.mission_id ? await resolveMissionBilling(sb, String(body.mission_id), origin) : null
 
   const amount = Math.round((Number(body.amount) > 0 ? Number(body.amount) : Number(resolved?.amount || 0)) * 100) / 100
   if (!amount || amount <= 0) return NextResponse.json({ error: 'Montant à facturer indisponible sur cette fiche.' }, { status: 400 })

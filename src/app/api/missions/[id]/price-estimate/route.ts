@@ -16,8 +16,10 @@ import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Appel interne (écran client) : x-internal-secret. Sinon session requise.
+  const internalOk = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  const session = internalOk ? null : await getServerSession(authOptions)
+  if (!internalOk && !session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sb = createAdminClient()
   const { data: missionDb, error } = await sb
