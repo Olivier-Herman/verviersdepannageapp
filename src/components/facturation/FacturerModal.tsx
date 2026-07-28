@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import PushToScreenButton from '@/components/caisse/PushToScreenButton'
 
 interface BaseMission {
   id: string
@@ -474,6 +475,13 @@ function MissionBlock({
 
   const customTotal = customLines ? customLines.reduce((s, l) => s + l.qty * l.price_unit, 0) : 0
 
+  // Écran client : montant TVAC réellement à payer + détail des lignes (TVAC).
+  const htvaBase   = customLines ? customTotal : (estimate?.ok ? Number(estimate.total_eur || 0) : 0)
+  const pushTvac   = Math.round(htvaBase * 1.21 * 100) / 100
+  const pushLines  = (customLines || [])
+    .filter(l => l.qty * l.price_unit !== 0)
+    .map(l => ({ label: l.name || l.kind, amount: Math.round(l.qty * l.price_unit * 1.21 * 100) / 100 }))
+
   /** Sauvegarde le brouillon en BDD (les customLines courantes). */
   async function saveDraft() {
     if (!customLines) return
@@ -650,6 +658,18 @@ function MissionBlock({
               </span>
             ) : (
               <span className="text-warning text-xs" title={estimate?.reason || ''}>⚠ Tarif introuvable</span>
+            )}
+            {pushTvac > 0 && (
+              <PushToScreenButton
+                compact
+                amount={pushTvac}
+                client={m.client_name}
+                plate={m.vehicle_plate}
+                brand={m.vehicle_brand}
+                model={m.vehicle_model}
+                reference={m.external_id || m.dossier_number || m.id.slice(0, 8)}
+                lines={pushLines}
+              />
             )}
           </div>
 

@@ -19,7 +19,7 @@ import { buildEpcQrPayload, bankConfigFromEnv } from '@/lib/payments/epc-qr'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
 
-const TTL_MIN = 5
+const TTL_MIN = 2
 const sumupQrFor = (checkoutUrl: string) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(checkoutUrl)}`
 
