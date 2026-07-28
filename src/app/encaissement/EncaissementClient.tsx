@@ -327,6 +327,34 @@ export default function EncaissementClient({
 
   // Page 4
   const [amount, setAmount] = useState(prefill?.amount ? String(prefill.amount) : '')
+  const [screenState, setScreenState] = useState<'idle' | 'busy' | 'done'>('idle')
+
+  // Pousse le montant + véhicule/client sur l'écran client (Bureau facturation).
+  // 409 = écran déjà occupé → confirmation avant écrasement. Olivier 2026-07-28.
+  const pushToClientScreen = async (force = false) => {
+    const amt = parseFloat(amount)
+    if (!amt || amt <= 0) { setError('Saisis d\'abord le montant.'); return }
+    setScreenState('busy'); setError('')
+    try {
+      const res = await fetch('/api/caisse/ecran', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'push', key: 'facturation', force, amount: amt,
+          plate, brand: selectedBrand, model: selectedModel, client: clientName || null,
+          reference: openMission?.mission_number != null ? String(openMission.mission_number) : (plate || 'VD Soft'),
+        }),
+      })
+      if (res.status === 409) {
+        const j = await res.json().catch(() => ({}))
+        const occ = j.occupant || {}
+        setScreenState('idle')
+        if (confirm(`L'écran affiche déjà ${occ.client || ''}${occ.plate ? ' (' + occ.plate + ')' : ''}. Le remplacer ?`)) await pushToClientScreen(true)
+        return
+      }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error || 'Écran client KO'); setScreenState('idle'); return }
+      setScreenState('done'); setTimeout(() => setScreenState('idle'), 3000)
+    } catch { setError('Erreur réseau (écran client)'); setScreenState('idle') }
+  }
   const [paymentMode, setPaymentMode] = useState('')
 
   // ── Easter egg : QR virement bancaire (plan B quand SumUp est down) ──────────
@@ -1164,6 +1192,17 @@ export default function EncaissementClient({
           />
           <span onClick={handleBankTap} className="absolute right-5 top-1/2 -translate-y-1/2 text-ink-muted text-xl select-none cursor-default">€</span>
         </div>
+
+        {/* Afficher le montant sur l'écran client (Bureau facturation) */}
+        <button
+          type="button"
+          onClick={() => pushToClientScreen(false)}
+          disabled={screenState === 'busy' || !amount || parseFloat(amount) <= 0}
+          className={`w-full mb-4 py-3 rounded-2xl text-sm font-bold transition disabled:opacity-40 ${
+            screenState === 'done' ? 'bg-success text-white' : 'bg-surface-2 hover:bg-surface-hover border text-ink'
+          }`}>
+          {screenState === 'busy' ? '📺 Envoi…' : screenState === 'done' ? '✅ Affiché sur l\'écran client' : '📺 Afficher au client'}
+        </button>
 
         {/* Statut SumUp */}
         {sumupStatus === 'PAID' && (
