@@ -5,6 +5,7 @@ import PushToScreenButton from '@/components/caisse/PushToScreenButton'
 
 interface BaseMission {
   id: string
+  mission_number?: number | null
   external_id: string | null
   dossier_number?: string | null
   source: string | null
@@ -667,7 +668,7 @@ function MissionBlock({
                 plate={m.vehicle_plate}
                 brand={m.vehicle_brand}
                 model={m.vehicle_model}
-                reference={m.external_id || m.dossier_number || m.id.slice(0, 8)}
+                reference={m.mission_number != null ? String(m.mission_number) : (m.external_id || m.dossier_number || m.id.slice(0, 8))}
                 lines={pushLines}
               />
             )}

@@ -73,7 +73,10 @@ export async function POST(req: Request) {
     }
   }
 
-  const reference = String(body.reference || body.mission_number || 'VD Soft').slice(0, 100)
+  // Référence de paiement (SumUp + virement) = n° de mission + plaque.
+  const refBase   = String(body.reference || body.mission_number || '').trim()
+  const plateRef  = String(body.plate || '').trim()
+  const reference = ([refBase, plateRef].filter(Boolean).join(' ') || 'VD Soft').slice(0, 100)
   const label = [body.brand, body.model].filter(Boolean).join(' ')
 
   // 1) Checkout SumUp (QR carte, montant pré-rempli). Best-effort.
