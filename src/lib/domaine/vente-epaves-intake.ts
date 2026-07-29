@@ -75,8 +75,11 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
   const ids = bounded.map(m => m.id)
   const { data: seen } = await sb.from('domaine_ventes_epaves')
     .select('source_email_id, vin, outcome').in('source_email_id', ids)
+  // On ne skippe QUE les ventes déjà entièrement traitées (applied) ; les
+  // already_set/no_match/ambiguous sont re-traités pour compléter les champs
+  // manquants (Date OUT, firme) sur des véhicules déjà marqués vendus ailleurs.
   const doneSet = new Set(
-    (seen || []).filter((r: any) => r.outcome === 'applied' || r.outcome === 'already_set')
+    (seen || []).filter((r: any) => r.outcome === 'applied')
       .map((r: any) => `${r.source_email_id}|${r.vin}`),
   )
 
@@ -118,20 +121,19 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
               metadata: { source: 'vente_epaves', from: m.source, to: 'police_saisie', email_id: msg.id },
             }).then(() => {}, () => {})
           }
-          if (m.domaine_vente_date) { outcome = 'already_set'; s.alreadySet++ }
-          else {
-            const upd: any = {
-              domaine_vente_date: venteDate || null,
-              domaine_vente_firm: firm,
-            }
-            // Date IN = date de la colonne après le VIN dans le mail (si pas déjà
-            // posée via un mail « Dates IN »). Garantit une Date IN pour le calcul.
-            if (v.emailDate && !m.domaine_remise_date) upd.domaine_remise_date = v.emailDate
-            // Date OUT = date max d'enlèvement, sauf si un enlèvement réel est déjà posé.
-            if (maxEnl && !m.domaine_enlevement_date) upd.domaine_enlevement_date = maxEnl
-            await sb.from('incoming_missions').update(upd).eq('id', m.id)
+          const wasNew = !m.domaine_vente_date
+          // Complète les champs domaine manquants depuis le mail SANS écraser un
+          // existant : vente (si nouveau), firme, Date IN (colonne après le VIN),
+          // Date OUT (= date max d'enlèvement). Garantit un montant calculable.
+          const upd: any = {}
+          if (wasNew && venteDate)                   upd.domaine_vente_date = venteDate
+          if (firm && !m.domaine_vente_firm)         upd.domaine_vente_firm = firm
+          if (v.emailDate && !m.domaine_remise_date) upd.domaine_remise_date = v.emailDate
+          if (maxEnl && !m.domaine_enlevement_date)  upd.domaine_enlevement_date = maxEnl
+          if (Object.keys(upd).length) await sb.from('incoming_missions').update(upd).eq('id', m.id)
 
-            const dateIn = m.domaine_remise_date || v.emailDate || null
+          const dateIn = m.domaine_remise_date || v.emailDate || null
+          if (wasNew) {
             await sb.from('mission_logs').insert({
               mission_id: m.id, actor_id: null, action: 'domaine_vente',
               notes: `Vendu par soumission${firm ? ` à ${firm}` : ''} (mail Vente d'épaves) · vente ${venteDate}${dateIn ? ` · date IN ${dateIn}` : ''}${maxEnl ? ` · enlèvement max ${maxEnl}` : ''}`,
@@ -139,7 +141,8 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
             }).then(() => {}, () => {})
             outcome = 'applied'; s.applied++
 
-            // Étiquette VENDU auto (firme + véhicule + zone + Date OUT) → file d'impression.
+            // Étiquette VENDU auto (uniquement sur une vente NOUVELLE → jamais de
+            // réimpression pour un véhicule déjà vendu).
             try {
               const { buildEpaveLabelZPL } = await import('@/lib/print/zpl-templates/epave-label')
               const { printZPLRaw } = await import('@/lib/print/zebra-raw')
@@ -151,6 +154,16 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
               await printZPLRaw(zpl, { missionId: m.id })
             } catch (pe: any) {
               console.warn('[vente-epaves] impression étiquette KO (non bloquant):', pe?.message)
+            }
+          } else {
+            // Déjà marqué vendu : complément silencieux (Date OUT/firme), pas d'étiquette.
+            outcome = 'already_set'; s.alreadySet++
+            if (upd.domaine_enlevement_date || upd.domaine_vente_firm || upd.domaine_remise_date) {
+              await sb.from('mission_logs').insert({
+                mission_id: m.id, actor_id: null, action: 'domaine_vente_complement',
+                notes: `Complément Vente d'épaves${upd.domaine_vente_firm ? ` · firme ${firm}` : ''}${upd.domaine_enlevement_date ? ` · Date OUT ${maxEnl}` : ''}${upd.domaine_remise_date ? ` · Date IN ${v.emailDate}` : ''}`,
+                metadata: { source: 'vente_epaves', backfill: upd, vin: v.vin, email_id: msg.id },
+              }).then(() => {}, () => {})
             }
           }
         } else if ((hits || []).length > 1) {
