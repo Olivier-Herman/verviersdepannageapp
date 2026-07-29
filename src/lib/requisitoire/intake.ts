@@ -228,10 +228,13 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
  */
 export async function rematchPendingRequisitoires(): Promise<{ scanned: number; updated: number; autoAttached: number }> {
   const sb = createAdminClient()
+  // Toutes les lignes NON attachées (pending/to_verify), y compris celles qui ont
+  // déjà un match suggéré (matched_mission_id non nul) : ce sont justement les
+  // 'high' à auto-attacher. On ne filtre PAS sur matched_mission_id (sinon les
+  // candidats forts déjà suggérés ne seraient jamais auto-rattachés). Olivier 2026-07-29.
   const { data: rows } = await sb.from('requisitoire_intake')
     .select('id, extracted, status, doc_type')
     .in('status', ['pending', 'to_verify'])
-    .is('matched_mission_id', null)
     .order('received_at', { ascending: false })
     .limit(300)
 
