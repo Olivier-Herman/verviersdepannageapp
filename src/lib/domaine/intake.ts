@@ -69,13 +69,17 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
   s.scanned = bounded.length
   if (!bounded.length) return s
 
-  // Mails déjà traités (dédup par source_email_id).
+  // Dédup par (mail, VIN) : on ne retraite pas les applied/already_set, mais on
+  // RETENTE les no_match/ambiguous (une saisie a pu apparaître / être requalifiée
+  // entre-temps). Sinon un mail entièrement tracé ne serait plus jamais relu.
   const ids = bounded.map(m => m.id)
-  const { data: seen } = await sb.from('domaine_dates_in').select('source_email_id').in('source_email_id', ids)
-  const seenSet = new Set((seen || []).map((r: any) => r.source_email_id))
+  const { data: seen } = await sb.from('domaine_dates_in').select('source_email_id, vin, outcome').in('source_email_id', ids)
+  const doneSet = new Set(
+    (seen || []).filter((r: any) => r.outcome === 'applied' || r.outcome === 'already_set')
+      .map((r: any) => `${r.source_email_id}|${r.vin}`),
+  )
 
   for (const msg of bounded) {
-    if (seenSet.has(msg.id)) continue
     if (s.applied >= MAX_APPLY_PER_RUN) break
     try {
       const body = await getMessageBody(DOMAINE_MAILBOX, msg.id)
@@ -83,7 +87,9 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
       if (!entries.length) { s.processed++; continue }
 
       for (const e of entries) {
+        if (s.applied >= MAX_APPLY_PER_RUN) break
         s.entries++
+        if (doneSet.has(`${msg.id}|${e.vin}`)) continue
         // Saisies actives (parked en pratique) pas encore vendues, non annulées/archivées.
         const { data: hits } = await sb.from('incoming_missions')
           .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_remise_date')
@@ -142,11 +148,11 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
           s.noMatch++
         }
 
-        await sb.from('domaine_dates_in').insert({
+        await sb.from('domaine_dates_in').upsert({
           source_email_id: msg.id, received_at: msg.receivedDateTime, remise_date: e.remiseDate,
           brand: e.brand, model: e.model, vin: e.vin, vin_tail: e.vinTail, pv_remise_name: e.pvName,
           matched_mission_id: matchedId, outcome, applied_date: appliedDate,
-        }).then(() => {}, () => {})
+        }, { onConflict: 'source_email_id,vin' }).then(() => {}, () => {})
       }
       s.processed++
     } catch (err: any) {
