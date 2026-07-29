@@ -163,10 +163,15 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
       if (distinct > 0) { score += Math.min(24, distinct * 12); reasons.push(distinct >= 2 ? 'Adresse précise' : 'Adresse concordante') }
       else if (cp > 0)  { score += 4; reasons.push('Même localité') }
     }
-    // date : réquisitoire vs date d'intervention
+    // date de réquisition vs date d'intervention. Présente sur le doc :
+    //   - ≤ 1 j  → concorde → renforce la confiance
+    //   - > 1 j  → CONTREDIT → pénalité (diminue la confiance)
+    // Absente → neutre. Olivier 2026-07-29.
     const dd = daysApart(ex.date_requisition, r.incident_at)
-    if (dd != null && dd <= 3) { score += 15; reasons.push('Date proche') }
-    else if (dd != null && dd <= 10) { score += 6; reasons.push('Date compatible') }
+    if (dd != null) {
+      if (dd <= 1) { score += 15; reasons.push('Date concordante') }
+      else         { score -= 15; reasons.push('Date discordante (>1j)') }
+    }
     // marque / modèle : corroboration spécifique. Le duo marque+modèle est un
     // signal fort (surtout couplé à une rue exacte) → bonus combiné.
     const brandOk = !!exBrand && (r.vehicle_brand || '').toLowerCase().includes(exBrand)
