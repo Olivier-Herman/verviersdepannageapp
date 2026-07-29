@@ -18,6 +18,18 @@ export const VENTE_MAILBOX = 'fourriere@verviersdepannage.be'
 export const VENTE_SENDER  = 'rosemarie.lehnen@minfin.fed.be'
 const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
 
+// Bornes anti-timeout (chaque étiquette peut attendre jusqu'à 10 s si le PC
+// d'impression est lent) : fenêtre récente + plafonds par passe. Le re-scan
+// des passes suivantes traite le reste.
+const LOOKBACK_MONTHS   = 6
+const MAX_MAILS_PER_RUN = 6
+const MAX_APPLY_PER_RUN = 20
+
+function lookbackCutoff(): string {
+  const c = new Date(); c.setMonth(c.getMonth() - LOOKBACK_MONTHS)
+  return c.toISOString().slice(0, 10)
+}
+
 const noAccent = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
 export interface VenteEpavesSummary {
@@ -42,12 +54,18 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
     (m.from || '').toLowerCase() === VENTE_SENDER &&
     noAccent(m.subject).includes(SUBJECT_KEY),
   )
-  s.scanned = candidates.length
-  if (!candidates.length) return s
+  // Fenêtre récente + mails les plus récents d'abord + plafond par passe.
+  const cutoff = lookbackCutoff()
+  const bounded = candidates
+    .filter(m => String(m.receivedDateTime || '') >= cutoff)
+    .sort((a, b) => String(b.receivedDateTime || '').localeCompare(String(a.receivedDateTime || '')))
+    .slice(0, MAX_MAILS_PER_RUN)
+  s.scanned = bounded.length
+  if (!bounded.length) return s
 
   // Traces déjà enregistrées (par email + VIN) : on ne retraite pas les
   // applied/already_set, mais on retente les no_match/ambiguous.
-  const ids = candidates.map(m => m.id)
+  const ids = bounded.map(m => m.id)
   const { data: seen } = await sb.from('domaine_ventes_epaves')
     .select('source_email_id, vin, outcome').in('source_email_id', ids)
   const doneSet = new Set(
@@ -55,7 +73,8 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
       .map((r: any) => `${r.source_email_id}|${r.vin}`),
   )
 
-  for (const msg of candidates) {
+  for (const msg of bounded) {
+    if (s.applied >= MAX_APPLY_PER_RUN) break
     try {
       const body = await getMessageBody(VENTE_MAILBOX, msg.id)
       const parsed = parseVenteEpaves({ content: body.content, contentType: body.contentType })
@@ -66,6 +85,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
       const maxEnl    = parsed.maxEnlevementDate
 
       for (const v of parsed.vehicles) {
+        if (s.applied >= MAX_APPLY_PER_RUN) break
         s.entries++
         if (doneSet.has(`${msg.id}|${v.vin}`)) continue
 

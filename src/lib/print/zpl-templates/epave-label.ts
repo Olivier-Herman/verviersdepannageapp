@@ -51,10 +51,11 @@ export function buildEpaveLabelZPL(d: EpaveLabelData): string {
 ~SD30
 
 ^FO20,10
-^A0N,58,58
-^FDVENDU^FS
+^A0N,50,50
+^FB540,1,0,L,0
+^FDVENDU DOMAINE^FS
 
-^FO20,78
+^FO20,70
 ^A0N,30,30
 ^FB540,2,0,L,0
 ^FDFirme: ${firm}^FS

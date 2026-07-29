@@ -16,6 +16,18 @@ export const DOMAINE_MAILBOX = 'fourriere@verviersdepannage.be'
 export const DOMAINE_SENDER  = 'rosemarie.lehnen@minfin.fed.be'
 const SUBJECT_KEY = 'dates in'
 
+// Bornes anti-timeout : chaque étiquette peut attendre jusqu'à 10 s si le PC
+// d'impression est lent. On ne remonte pas trop loin et on plafonne le nb de
+// mails traités par passe ; le re-scan des passes suivantes draine le reste.
+const LOOKBACK_MONTHS   = 6
+const MAX_MAILS_PER_RUN = 6
+const MAX_APPLY_PER_RUN = 20
+
+function lookbackCutoff(): string {
+  const c = new Date(); c.setMonth(c.getMonth() - LOOKBACK_MONTHS)
+  return c.toISOString().slice(0, 10)
+}
+
 export interface DomaineIntakeSummary {
   scanned: number       // mails candidats
   processed: number     // mails nouvellement traités
@@ -44,16 +56,23 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
     (m.from || '').toLowerCase() === DOMAINE_SENDER &&
     (m.subject || '').toLowerCase().includes(SUBJECT_KEY),
   )
-  s.scanned = candidates.length
-  if (!candidates.length) return s
+  // Fenêtre récente + mails les plus récents d'abord + plafond par passe.
+  const cutoff = lookbackCutoff()
+  const bounded = candidates
+    .filter(m => String(m.receivedDateTime || '') >= cutoff)
+    .sort((a, b) => String(b.receivedDateTime || '').localeCompare(String(a.receivedDateTime || '')))
+    .slice(0, MAX_MAILS_PER_RUN)
+  s.scanned = bounded.length
+  if (!bounded.length) return s
 
   // Mails déjà traités (dédup par source_email_id).
-  const ids = candidates.map(m => m.id)
+  const ids = bounded.map(m => m.id)
   const { data: seen } = await sb.from('domaine_dates_in').select('source_email_id').in('source_email_id', ids)
   const seenSet = new Set((seen || []).map((r: any) => r.source_email_id))
 
-  for (const msg of candidates) {
+  for (const msg of bounded) {
     if (seenSet.has(msg.id)) continue
+    if (s.applied >= MAX_APPLY_PER_RUN) break
     try {
       const body = await getMessageBody(DOMAINE_MAILBOX, msg.id)
       const entries = parseDatesIn({ content: body.content, contentType: body.contentType })

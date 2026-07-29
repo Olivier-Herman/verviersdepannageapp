@@ -10,7 +10,8 @@ import { computeDomaineBilling } from '@/lib/fourriere/domaine-billing'
 import { pollVenteEpaves } from '@/lib/domaine/vente-epaves-intake'
 import { createDomaineQuarterInvoice } from '@/lib/domaine/invoice-vente-epaves'
 
-export const dynamic = 'force-dynamic'
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60
 
 function canAccess(session: any): boolean {
   if (!session) return false
