@@ -34,6 +34,7 @@ export interface MatchResult {
   candidates: RequisitoireCandidate[]   // triés score desc
   confidence: 'high' | 'low' | 'none'
   best:       RequisitoireCandidate | null
+  autoAttach: boolean                   // clé forte + adresse précise + unique + date cohérente
 }
 
 const norm  = (v: string | null | undefined) => (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -193,13 +194,24 @@ export async function findRequisitoireCandidates(sb: any, ex: RequisitoireExtrac
   // restent 'low' → proposés en tête mais rattachement MANUEL (on n'auto-attache
   // jamais sans plaque/VIN). Olivier 2026-07-06.
   let confidence: MatchResult['confidence'] = 'none'
+  let autoAttach = false
   if (candidates.length) {
     const top = candidates[0]
     const second = candidates[1]
     const hasStrongKey = top.reasons.some(r => r.startsWith('Plaque') || r.startsWith('VIN'))
     const strongUnique = hasStrongKey && top.score >= 50 && (!second || top.score - second.score >= 20)
     confidence = strongUnique ? 'high' : 'low'
+
+    // Auto-rattachement (Olivier 2026-07-29) : clé forte + ADRESSE PRÉCISE +
+    // candidat unique, et la date de réquisition (si présente sur le doc) ne
+    // contredit pas : elle doit être à ≤ 1 JOUR de la fiche. Date absente =
+    // n'empêche pas ; date présente mais > 1 j = on bloque (→ manuel). Les LEVÉES
+    // sont exclues en amont (intake) car elles arrêtent le gardiennage.
+    const preciseAddr = top.reasons.includes('Adresse précise')
+    const dd = daysApart(ex.date_requisition, top.incident_at)
+    const dateOk = (dd == null) || dd <= 1
+    autoAttach = strongUnique && preciseAddr && dateOk
   }
 
-  return { candidates: candidates.slice(0, 8), confidence, best: candidates[0] || null }
+  return { candidates: candidates.slice(0, 8), confidence, best: candidates[0] || null, autoAttach }
 }

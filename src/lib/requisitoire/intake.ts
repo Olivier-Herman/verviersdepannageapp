@@ -31,6 +31,7 @@ export interface IntakeSummary {
   captured: number
   skipped:  number
   errors:   number
+  autoAttached?: number
 }
 
 function stripHtml(html: string): string {
@@ -96,7 +97,7 @@ function buildMailCaptureHtml(body: GraphMessageBody): string {
 
 export async function pollRequisitoires(opts?: { top?: number }): Promise<IntakeSummary> {
   const sb = createAdminClient()
-  const summary: IntakeSummary = { scanned: 0, captured: 0, skipped: 0, errors: 0 }
+  const summary: IntakeSummary = { scanned: 0, captured: 0, skipped: 0, errors: 0, autoAttached: 0 }
 
   const messages = await listInboxMessages(FOURRIERE_MAILBOX, opts?.top ?? 25)
   let processed = 0
@@ -195,6 +196,20 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
         confidence: match.confidence, status,
       })
       summary.captured++
+
+      // Auto-rattachement (saisie/enlèvement UNIQUEMENT — pas les levées, qui
+      // arrêtent le gardiennage) : clé forte + adresse précise + candidat unique
+      // + date cohérente (≤1 j si présente). Sinon reste en file manuelle.
+      if (match.autoAttach && match.best && ex.doc_type !== 'levee_saisie') {
+        try {
+          const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
+          const res = await attachRequisitoire(sb, intakeId, match.best.mission_id, null, {})
+          if (res.ok) summary.autoAttached = (summary.autoAttached || 0) + 1
+          else console.warn(`[requisitoire] auto-attache ${intakeId} refusée : ${res.error}`)
+        } catch (e: any) {
+          console.error(`[requisitoire] auto-attache ${intakeId} KO :`, e?.message)
+        }
+      }
     } catch (err: any) {
       console.error(`[requisitoire] mail ${msg.id} KO:`, err?.message)
       summary.errors++
