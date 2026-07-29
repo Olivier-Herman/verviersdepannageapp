@@ -158,6 +158,14 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
               <FileText size={16} />
               Réquisitoires / levées
             </Link>
+            {userRole === 'superadmin' && (
+              <Link
+                href="/admin/domaine-in"
+                className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition"
+                title="Remises au Domaine — mails « Dates IN »">
+                🏛 Domaine
+              </Link>
+            )}
             <button
               onClick={() => setShowDepots(true)}
               className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold shadow-sm transition">
