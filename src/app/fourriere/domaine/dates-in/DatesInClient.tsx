@@ -20,6 +20,9 @@ interface Item {
   zone: string | null
   mission_status: string | null
   plate: string | null
+  firm: string | null
+  vente_date: string | null
+  date_out: string | null
 }
 
 const fmt = (d: string | null) => {
@@ -45,13 +48,21 @@ export default function DatesInClient(props: { userRole: string; userName: strin
   const load = async () => {
     setLoading(true)
     try {
-      const r = await fetch('/api/fourriere/domaine-dates-in')
+      // no-store : toujours des données fraîches (zone/statut/vente à jour).
+      const r = await fetch('/api/fourriere/domaine-dates-in', { cache: 'no-store' })
       const j = await r.json()
       if (r.ok) { setItems(j.items || []); setCounts(j.counts || null); setLastRun(j.lastRun || null) }
       else setMsg(j.error || 'Erreur')
     } finally { setLoading(false) }
   }
-  useEffect(() => { load() }, [])
+  // Recharge au montage ET quand l'onglet redevient visible (retour sur la page).
+  useEffect(() => {
+    load()
+    const onVis = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onVis)
+    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', onVis) }
+  }, [])
 
   async function sync() {
     setBusy(true); setMsg(null)
@@ -106,6 +117,9 @@ export default function DatesInClient(props: { userRole: string; userName: strin
                   <th className="text-left px-3 py-2.5">PV de remise</th>
                   <th className="text-left px-3 py-2.5">Fiche</th>
                   <th className="text-left px-3 py-2.5">Zone</th>
+                  <th className="text-left px-3 py-2.5">Acheteur</th>
+                  <th className="text-left px-3 py-2.5">Date vente</th>
+                  <th className="text-left px-3 py-2.5">Date OUT</th>
                   <th className="text-left px-3 py-2.5">Statut</th>
                 </tr>
               </thead>
@@ -128,6 +142,9 @@ export default function DatesInClient(props: { userRole: string; userName: strin
                       <td className="px-3 py-2">
                         {it.zone ? <span className="px-2 py-0.5 rounded bg-surface-2 border text-xs font-semibold">{it.zone}</span> : <span className="text-ink-faint">—</span>}
                       </td>
+                      <td className="px-3 py-2 text-ink-secondary">{it.firm || <span className="text-ink-faint">—</span>}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{it.vente_date ? fmt(it.vente_date) : <span className="text-ink-faint">—</span>}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{it.date_out ? fmt(it.date_out) : <span className="text-ink-faint">—</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap"><span className={`px-2 py-0.5 rounded text-[11px] font-medium ${oc.cls}`}>{oc.label}</span></td>
                     </tr>
                   )

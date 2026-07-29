@@ -38,7 +38,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     if (!from || !to) { setMsg('⚠ Choisis la période'); return }
     setLoading(true); setMsg(null)
     try {
-      const r = await fetch(`/api/fourriere/domaine?from=${from}&to=${to}`)
+      const r = await fetch(`/api/fourriere/domaine?from=${from}&to=${to}`, { cache: 'no-store' })
       const j = await r.json()
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); setGroups(null); return }
       setGroups(j.groups); setTotal(j.total); setTotalDays(j.totalDays)

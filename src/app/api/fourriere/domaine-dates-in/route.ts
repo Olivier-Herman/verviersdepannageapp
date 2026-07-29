@@ -33,7 +33,7 @@ export async function GET() {
   const byId = new Map<string, any>()
   if (missionIds.length) {
     const { data: ms } = await sb.from('incoming_missions')
-      .select('id, mission_number, parc_zone_key, status, vehicle_plate, domaine_remise_date')
+      .select('id, mission_number, parc_zone_key, status, vehicle_plate, domaine_remise_date, domaine_vente_firm, domaine_vente_date, domaine_enlevement_date')
       .in('id', missionIds)
     for (const m of (ms || [])) byId.set(m.id, m)
   }
@@ -47,6 +47,9 @@ export async function GET() {
       zone:           m?.parc_zone_key ?? null,
       mission_status: m?.status ?? null,
       plate:          m?.vehicle_plate ?? null,
+      firm:           m?.domaine_vente_firm ?? null,
+      vente_date:     m?.domaine_vente_date ?? null,
+      date_out:       m?.domaine_enlevement_date ?? null,
     }
   })
 
