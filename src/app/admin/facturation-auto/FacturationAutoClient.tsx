@@ -150,15 +150,19 @@ export default function FacturationAutoClient(props: {
               const max = Math.max(1, ...rows.map(r => r.count))
               return (
                 <div className="space-y-1.5">
-                  {rows.map(r => (
-                    <div key={r.key} className="flex items-center gap-2">
-                      <span className="w-40 text-sm text-ink truncate">{r.name}</span>
-                      <div className="flex-1 h-5 bg-surface-2 rounded-md overflow-hidden">
-                        <div className={`h-full rounded-md ${r.hi ? 'bg-emerald-500' : 'bg-brand'}`} style={{ width: `${Math.round((r.count / max) * 100)}%` }} />
+                  {rows.map(r => {
+                    const pct = stats.total ? Math.round((r.count / stats.total) * 100) : 0
+                    return (
+                      <div key={r.key} className="flex items-center gap-2">
+                        <span className="w-40 text-sm text-ink truncate">{r.name}</span>
+                        <div className="flex-1 h-5 bg-surface-2 rounded-md overflow-hidden">
+                          <div className={`h-full rounded-md ${r.hi ? 'bg-emerald-500' : 'bg-brand'}`} style={{ width: `${Math.round((r.count / max) * 100)}%` }} />
+                        </div>
+                        <span className="w-10 text-right text-sm font-bold text-ink tabular-nums">{r.count}</span>
+                        <span className="w-12 text-right text-xs text-ink-muted tabular-nums">{pct}%</span>
                       </div>
-                      <span className="w-10 text-right text-sm font-bold text-ink tabular-nums">{r.count}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                   {rows.length === 0 && <p className="text-ink-muted text-sm">Aucune facture sur la période.</p>}
                 </div>
               )
