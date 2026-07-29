@@ -51,7 +51,7 @@ export async function GET(req: Request) {
 
   // Toutes les missions to_invoice des sources actives, pas encore facturées.
   const { data: rows } = await sb.from('incoming_missions')
-    .select('id, mission_number, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id')
+    .select('id, mission_number, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id, billed_to_name')
     .eq('status', 'to_invoice')
     .in('source', activeSources)
     .is('odoo_quote_id', null)

@@ -82,7 +82,7 @@ export async function GET(req: Request) {
 
   // Missions clôturées depuis > délai, sources concernées, pas déjà facturées/devisées.
   const { data: candidates } = await sb.from('incoming_missions')
-    .select('id, mission_number, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id')
+    .select('id, mission_number, external_id, source, mission_type, parent_mission_id, completed_at, odoo_quote_id, invoice_odoo_id, billed_to_name')
     .eq('status', 'to_invoice')
     .in('source', activeSources)
     .lt('completed_at', cutoff)

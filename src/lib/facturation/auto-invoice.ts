@@ -81,13 +81,18 @@ export interface AutoInvoiceCheck {
  * dans le déclencheur (async) car ils nécessitent des requêtes.
  */
 export function checkAutoInvoiceEligible(
-  mission: { source?: string | null; mission_type?: string | null; parent_mission_id?: string | null },
+  mission: { source?: string | null; mission_type?: string | null; parent_mission_id?: string | null; billed_to_name?: string | null },
   rules: AutoInvoiceRules,
 ): AutoInvoiceCheck {
   const type = autoInvoiceType(mission.mission_type)
   if (!type) return { eligible: false, reason: 'type hors périmètre (DSP/REM only)' }
   if (mission.parent_mission_id) return { eligible: false, type, reason: 'mission liée (combinée)' }
   const src = String(mission.source || '')
+  // Règle spécifique (Olivier 2026-07-29) : Siabis couvert facturé à Touring →
+  // JAMAIS d'auto-facturation Odoo (il passe par la validation Touring COMEX).
+  if (src === 'sia_couvert' && /touring/i.test(String(mission.billed_to_name || ''))) {
+    return { eligible: false, type, reason: 'Siabis couvert facturé à Touring (→ Touring COMEX)' }
+  }
   const enabled = !!rules[src]?.[type]
   if (!enabled) return { eligible: false, type, reason: `règle ${src}/${type} désactivée` }
   return { eligible: true, type }
