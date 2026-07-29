@@ -83,6 +83,29 @@ export async function listInboxMessages(mailbox: string, top = 25): Promise<Grap
   }))
 }
 
+/**
+ * Recherche des messages dans TOUTE la boîte (tous dossiers, pas seulement
+ * l'inbox — certains expéditeurs tombent dans un dossier de tri comme
+ * « A traiter par Mobi »). `search` = requête KQL (ex. 'from:x@y subject:Z').
+ * Olivier 2026-07-29.
+ */
+export async function searchMessages(mailbox: string, search: string, top = 25): Promise<GraphMessage[]> {
+  const data = await authedGet(
+    `/users/${encodeURIComponent(mailbox)}/messages` +
+    `?$search=${encodeURIComponent(`"${search}"`)}&$top=${top}` +
+    `&$select=id,subject,from,receivedDateTime,categories,hasAttachments,bodyPreview`,
+  )
+  return (data.value || []).map((m: any) => ({
+    id:               m.id,
+    subject:          m.subject || '',
+    from:             m.from?.emailAddress?.address || '',
+    receivedDateTime: m.receivedDateTime,
+    categories:       Array.isArray(m.categories) ? m.categories : [],
+    hasAttachments:   Boolean(m.hasAttachments),
+    bodyPreview:      m.bodyPreview || '',
+  }))
+}
+
 /** Récupère le corps complet d'un message (pour les levées sans pièce jointe). */
 export async function getMessageBody(mailbox: string, messageId: string): Promise<GraphMessageBody> {
   const m = await authedGet(

@@ -225,6 +225,13 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               <ScanLine size={14} />
               Inventaire
             </Link>
+            {userRole === 'superadmin' && (
+              <Link href="/admin/domaine-in"
+                className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"
+                title="Remises au Domaine — mails « Dates IN »">
+                🏛 Domaine
+              </Link>
+            )}
             <button onClick={load} disabled={loading}
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition disabled:opacity-50">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />

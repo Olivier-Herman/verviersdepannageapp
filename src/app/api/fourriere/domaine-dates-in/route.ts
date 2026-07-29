@@ -1,0 +1,80 @@
+// src/app/api/fourriere/domaine-dates-in/route.ts
+//
+// GET  → lignes « Dates IN » (remises Domaine) + fiche liée (n°, zone, statut).
+// POST → { action:'sync' } : force une capture immédiate des mails Dates IN.
+// Superadmin uniquement (phase actuelle). Olivier 2026-07-29.
+
+import { NextResponse }       from 'next/server'
+import { getServerSession }   from 'next-auth'
+import { authOptions }        from '@/lib/auth'
+import { createAdminClient }  from '@/lib/supabase'
+import { pollDomaineDatesIn } from '@/lib/domaine/intake'
+
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 60
+
+async function requireSuperadmin() {
+  const session = await getServerSession(authOptions)
+  return (session?.user as any)?.role === 'superadmin' ? session : null
+}
+
+export async function GET() {
+  if (!(await requireSuperadmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const sb = createAdminClient()
+
+  const { data: rows } = await sb.from('domaine_dates_in')
+    .select('id, received_at, remise_date, brand, model, vin, vin_tail, pv_remise_name, matched_mission_id, outcome, applied_date, created_at')
+    .order('remise_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1000)
+
+  // Enrichit avec la fiche liée : n° mission, zone parc, statut.
+  const missionIds = Array.from(new Set((rows || []).map(r => r.matched_mission_id).filter(Boolean)))
+  const byId = new Map<string, any>()
+  if (missionIds.length) {
+    const { data: ms } = await sb.from('incoming_missions')
+      .select('id, mission_number, parc_zone_key, status, vehicle_plate, domaine_remise_date')
+      .in('id', missionIds)
+    for (const m of (ms || [])) byId.set(m.id, m)
+  }
+
+  const items = (rows || []).map(r => {
+    const m = r.matched_mission_id ? byId.get(r.matched_mission_id) : null
+    return {
+      ...r,
+      vehicle: [r.brand, r.model].filter(Boolean).join(' '),
+      mission_number: m?.mission_number ?? null,
+      zone:           m?.parc_zone_key ?? null,
+      mission_status: m?.status ?? null,
+      plate:          m?.vehicle_plate ?? null,
+    }
+  })
+
+  const counts = {
+    total: items.length,
+    applied:    items.filter(i => i.outcome === 'applied').length,
+    alreadySet: items.filter(i => i.outcome === 'already_set').length,
+    noMatch:    items.filter(i => i.outcome === 'no_match').length,
+    ambiguous:  items.filter(i => i.outcome === 'ambiguous').length,
+  }
+  const { data: lr } = await sb.from('app_settings').select('value').eq('key', 'domaine_dates_in_last_run').maybeSingle()
+
+  return NextResponse.json({ items, counts, lastRun: lr?.value ?? null })
+}
+
+export async function POST(req: Request) {
+  if (!(await requireSuperadmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const body = await req.json().catch(() => ({}))
+  if (body?.action !== 'sync') return NextResponse.json({ error: 'action inconnue' }, { status: 400 })
+  try {
+    const summary = await pollDomaineDatesIn()
+    const sb = createAdminClient()
+    await sb.from('app_settings').upsert(
+      { key: 'domaine_dates_in_last_run', value: { at: new Date().toISOString(), ...summary } },
+      { onConflict: 'key' },
+    ).then(() => {}, () => {})
+    return NextResponse.json({ ok: true, ...summary })
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || 'échec sync' }, { status: 502 })
+  }
+}
