@@ -26,7 +26,11 @@ const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
 // d'impression est lent) : fenêtre récente + plafonds par passe. Le re-scan
 // des passes suivantes traite le reste.
 const LOOKBACK_MONTHS   = 6
-const MAX_MAILS_PER_RUN = 6
+// On balaie jusqu'à 30 mails de la fenêtre (récents d'abord) mais on PLAFONNE
+// les poses/étiquettes à 20 par passe (anti-timeout d'impression). Les passes
+// suivantes drainent les mails plus anciens (les véhicules déjà appliqués sont
+// skippés, donc la progression avance vers l'ancien).
+const MAX_MAILS_PER_RUN = 30
 const MAX_APPLY_PER_RUN = 20
 
 function lookbackCutoff(): string {
