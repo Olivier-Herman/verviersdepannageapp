@@ -63,6 +63,6 @@ export async function GET(req: Request) {
 
   const summary = { at: now, today, eligible: eligible.length, invoiced, failed, details: details.slice(0, 40) }
   await sb.from('app_settings').upsert({ key: 'circuit_auto_invoice_last_run', value: summary }, { onConflict: 'key' }).then(() => {}, () => {})
-  console.log('[circuit-auto-invoice]', JSON.stringify({ eligible: eligible.length, invoiced, sent, failed }))
+  console.log('[circuit-auto-invoice]', JSON.stringify({ eligible: eligible.length, invoiced, failed }))
   return NextResponse.json({ ok: true, ...summary })
 }
