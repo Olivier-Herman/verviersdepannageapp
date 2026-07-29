@@ -18,6 +18,10 @@ export const VENTE_MAILBOX = 'fourriere@verviersdepannage.be'
 export const VENTE_SENDER  = 'rosemarie.lehnen@minfin.fed.be'
 const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
 
+// Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
+// migrées de TowSoft/Odoo (legacy_odoo).
+const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
+
 // Bornes anti-timeout (chaque étiquette peut attendre jusqu'à 10 s si le PC
 // d'impression est lent) : fenêtre récente + plafonds par passe. Le re-scan
 // des passes suivantes traite le reste.
@@ -90,8 +94,8 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
         if (doneSet.has(`${msg.id}|${v.vin}`)) continue
 
         const { data: hits } = await sb.from('incoming_missions')
-          .select('id, mission_number, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_remise_date, domaine_enlevement_date')
-          .eq('source', 'police_saisie')
+          .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_remise_date, domaine_enlevement_date')
+          .in('source', SAISIE_SOURCES)
           .is('domaine_vente_date', null)
           .is('archived_at', null)
           .neq('status', 'cancelled')
@@ -102,6 +106,15 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
         if ((hits || []).length === 1) {
           const m = hits![0]
           matchedId = m.id
+          // Présent dans le tableau Domaine ⇒ c'est une saisie : normalise la source.
+          if (m.source !== 'police_saisie') {
+            await sb.from('incoming_missions').update({ source: 'police_saisie' }).eq('id', m.id)
+            await sb.from('mission_logs').insert({
+              mission_id: m.id, actor_id: null, action: 'source_requalified',
+              notes: `Source « ${m.source} » → « police_saisie » (véhicule listé dans le tableau Vente d'épaves de Rosemarie)`,
+              metadata: { source: 'vente_epaves', from: m.source, to: 'police_saisie', email_id: msg.id },
+            }).then(() => {}, () => {})
+          }
           if (m.domaine_vente_date) { outcome = 'already_set'; s.alreadySet++ }
           else {
             const upd: any = {

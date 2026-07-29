@@ -16,6 +16,10 @@ export const DOMAINE_MAILBOX = 'fourriere@verviersdepannage.be'
 export const DOMAINE_SENDER  = 'rosemarie.lehnen@minfin.fed.be'
 const SUBJECT_KEY = 'dates in'
 
+// Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
+// migrées de TowSoft/Odoo (legacy_odoo). Olivier 2026-07-29.
+const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
+
 // Bornes anti-timeout : chaque étiquette peut attendre jusqu'à 10 s si le PC
 // d'impression est lent. On ne remonte pas trop loin et on plafonne le nb de
 // mails traités par passe ; le re-scan des passes suivantes draine le reste.
@@ -82,8 +86,8 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
         s.entries++
         // Saisies actives (parked en pratique) pas encore vendues, non annulées/archivées.
         const { data: hits } = await sb.from('incoming_missions')
-          .select('id, mission_number, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_remise_date')
-          .eq('source', 'police_saisie')
+          .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_remise_date')
+          .in('source', SAISIE_SOURCES)
           .is('domaine_vente_date', null)
           .is('archived_at', null)
           .neq('status', 'cancelled')
@@ -94,6 +98,16 @@ export async function pollDomaineDatesIn(): Promise<DomaineIntakeSummary> {
         if ((hits || []).length === 1) {
           const m = hits![0]
           matchedId = m.id
+          // Présent dans le tableau Domaine ⇒ c'est une saisie : normalise la
+          // source (les fiches historiques migrées sont en legacy_odoo).
+          if (m.source !== 'police_saisie') {
+            await sb.from('incoming_missions').update({ source: 'police_saisie' }).eq('id', m.id)
+            await sb.from('mission_logs').insert({
+              mission_id: m.id, actor_id: null, action: 'source_requalified',
+              notes: `Source « ${m.source} » → « police_saisie » (véhicule listé dans le tableau Domaine de Rosemarie)`,
+              metadata: { source: 'domaine_dates_in', from: m.source, to: 'police_saisie', email_id: msg.id },
+            }).then(() => {}, () => {})
+          }
           if (m.domaine_remise_date) { outcome = 'already_set' ; s.alreadySet++ }
           else {
             await sb.from('incoming_missions').update({
