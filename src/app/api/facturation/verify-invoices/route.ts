@@ -22,6 +22,12 @@ import { odooRpc }             from '@/lib/odoo'
 import { releaseParcAndShift } from '@/lib/parc/release'
 
 export const dynamic     = 'force-dynamic'
+// force-no-store au niveau du SEGMENT : la lecture des fiches to_invoice a une
+// URL PostgREST identique à chaque run → Next Data Cache la figeait sur un vieux
+// snapshot (fiches déjà completed vues to_invoice, nouvelles fiches invisibles),
+// même avec le no-store du client admin. Ce directive force TOUS les fetch de la
+// route à ne jamais cacher. Olivier 2026-07-29.
+export const fetchCache  = 'force-no-store'
 export const maxDuration = 60
 
 const ODOO_URL = process.env.ODOO_URL || ''
