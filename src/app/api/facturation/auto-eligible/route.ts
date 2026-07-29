@@ -71,6 +71,16 @@ export async function GET(req: Request) {
     } catch { hexaliteUnavailable = true }
   }
 
+  // Exclusion COMEX BKO (même règle que le cron) : ces fiches passent par Touring COMEX.
+  const comexMissionIds = new Set<string>()
+  {
+    const { data: comexRows } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids').eq('in_comex', true)
+    for (const cr of (comexRows || [])) {
+      if (cr.mission_id) comexMissionIds.add(cr.mission_id)
+      if (Array.isArray(cr.mission_ids)) for (const id of cr.mission_ids) comexMissionIds.add(id)
+    }
+  }
+
   let eligible = 0, waiting = 0, hexalite = 0
   const items: any[] = []
   // Statut auto PAR mission (pour badger chaque card côté superadmin).
@@ -80,6 +90,12 @@ export async function GET(req: Request) {
 
   for (const m of (rows || [])) {
     const type = autoInvoiceType(m.mission_type)
+    // Présente dans COMEX BKO → validée via Touring COMEX, exclue de l'auto-facturation Odoo.
+    if (comexMissionIds.has(m.id)) {
+      byMission[m.id] = { status: 'blocked', reason: 'dans COMEX BKO (→ Touring COMEX)' }
+      if (verbose) items.push({ mission_number: m.mission_number, source: m.source, mission_type: m.mission_type, type, status: 'blocked', reason: 'dans COMEX BKO' })
+      continue
+    }
     const check = checkAutoInvoiceEligible(m as any, rules)
     let reason: string | null = null
     let status = 'blocked'

@@ -91,7 +91,19 @@ export async function GET(req: Request) {
     .order('completed_at', { ascending: true })
     .limit(200)
 
-  let eligible = 0, invoiced = 0, noTariff = 0, combined = 0, failed = 0, hexalite = 0
+  // Exclusion COMEX BKO : une fiche présente dans COMEX BKO sera validée via le
+  // flux Touring COMEX (qui fait sa propre auto-facturation) → on ne l'auto-
+  // facture PAS ici (sinon doublon / mauvaise voie). Olivier 2026-07-29.
+  const comexMissionIds = new Set<string>()
+  {
+    const { data: comexRows } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids').eq('in_comex', true)
+    for (const cr of (comexRows || [])) {
+      if (cr.mission_id) comexMissionIds.add(cr.mission_id)
+      if (Array.isArray(cr.mission_ids)) for (const id of cr.mission_ids) comexMissionIds.add(id)
+    }
+  }
+
+  let eligible = 0, invoiced = 0, noTariff = 0, combined = 0, failed = 0, hexalite = 0, comex = 0
   const done: string[] = []
   // Détail PAR mission (outcome + raison) — indispensable pour diagnostiquer.
   const details: { mission: number | string; source: string | null; type: string | null; outcome: string; reason?: string }[] = []
@@ -101,6 +113,10 @@ export async function GET(req: Request) {
     const check = checkAutoInvoiceEligible(m as any, rules)
     if (!check.eligible) { details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'not_eligible', reason: check.reason || undefined }); continue }
     eligible++
+    // Présente dans COMEX BKO → validée via Touring COMEX, jamais ici.
+    if (comexMissionIds.has(m.id)) {
+      comex++; details.push({ mission: ref(m), source: m.source, type: m.mission_type, outcome: 'comex', reason: 'présente dans COMEX BKO (→ validation Touring COMEX)' }); continue
+    }
     // Source Allianz : si la mission est encore "dans Hexalite" (liste à clôturer),
     // ou si Hexalite est injoignable, on ne la touche pas (auto-facturation Hexalite).
     if (HEXALITE_SOURCES.has(String(m.source || ''))) {
@@ -133,7 +149,7 @@ export async function GET(req: Request) {
   const summary = {
     at: new Date().toISOString(), delay_hours: delayH,
     scanned: (candidates || []).length,
-    eligible, invoiced, noTariff, combined, failed, hexalite,
+    eligible, invoiced, noTariff, combined, failed, hexalite, comex,
     ...(hexaliteError ? { hexaliteError } : {}),
     done: done.slice(0, 30),
     details: details.slice(0, 60),
