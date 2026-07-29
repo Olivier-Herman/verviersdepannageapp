@@ -48,6 +48,9 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   if (!token) throw new Error('Graph non configuré (AZURE_AD_* manquants)')
   const doFetch = (t: string) => fetch(`${GRAPH}${path}`, {
     ...init,
+    // no-store : Next 14 met en cache les GET par défaut → réponses Graph gelées
+    // (ex. recherche mail figée sur un ancien résultat). Jamais de cache ici.
+    cache: 'no-store',
     headers: { ...(init.headers || {}), Authorization: `Bearer ${t}` },
   })
   let res = await doFetch(token)

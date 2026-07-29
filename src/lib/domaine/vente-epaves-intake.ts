@@ -39,6 +39,7 @@ const noAccent = (s: string) => String(s || '').toLowerCase().normalize('NFD').r
 export interface VenteEpavesSummary {
   scanned: number; processed: number; entries: number
   applied: number; alreadySet: number; noMatch: number; ambiguous: number; errors: number
+  msgsSeen?: number; candidatesSeen?: number; searchError?: string   // diagnostic
 }
 
 export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
@@ -51,8 +52,10 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
     // le terme « epaves » ne matcherait pas. Le filtre sujet (sans accent) se fait
     // en code juste après.
     msgs = await searchMessages(VENTE_MAILBOX, `from:${VENTE_SENDER}`, 100)
+    s.msgsSeen = msgs.length
   } catch (e: any) {
     console.error('[vente-epaves] recherche mail KO:', e?.message)
+    s.searchError = String(e?.message || e).slice(0, 200)
     return s
   }
 
@@ -61,6 +64,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
     (m.from || '').toLowerCase() === VENTE_SENDER &&
     noAccent(m.subject).includes(SUBJECT_KEY),
   )
+  s.candidatesSeen = candidates.length
   // Fenêtre récente + mails les plus récents d'abord + plafond par passe.
   const cutoff = lookbackCutoff()
   const bounded = candidates

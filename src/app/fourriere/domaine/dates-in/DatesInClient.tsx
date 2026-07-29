@@ -43,6 +43,7 @@ export default function DatesInClient(props: { userRole: string; userName: strin
   const [lastRun, setLastRun] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy]     = useState(false)
+  const [printing, setPrinting] = useState<string | null>(null)
   const [msg, setMsg]       = useState<string | null>(null)
 
   const load = async () => {
@@ -72,6 +73,20 @@ export default function DatesInClient(props: { userRole: string; userName: strin
       if (r.ok) { setMsg(`✅ ${j.applied} date(s) posée(s) · ${j.noMatch} non trouvé(s) · ${j.ambiguous} ambigu(s)`); await load() }
       else setMsg(`⚠ ${j.error || 'Échec'}`)
     } catch { setMsg('⚠ Erreur réseau') } finally { setBusy(false) }
+  }
+
+  async function reprint(id: string) {
+    setPrinting(id); setMsg(null)
+    try {
+      const r = await fetch('/api/fourriere/domaine-dates-in', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reprint', id }),
+      })
+      const j = await r.json()
+      setMsg(r.ok
+        ? (j.queued ? '🖨 Étiquette mise en file d’impression (imprimante indisponible, retry auto)' : '🖨 Étiquette envoyée à l’imprimante')
+        : `⚠ ${j.error || 'Échec impression'}`)
+    } catch { setMsg('⚠ Erreur réseau') } finally { setPrinting(null) }
   }
 
   return (
@@ -134,9 +149,16 @@ export default function DatesInClient(props: { userRole: string; userName: strin
                       <td className="px-3 py-2 text-ink-secondary">{it.pv_remise_name || '—'}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {it.matched_mission_id
-                          ? <Link href={`/dispatch/${it.matched_mission_id}`} className="text-brand font-semibold hover:underline">
-                              {it.mission_number ? `#${it.mission_number}` : 'Voir'}{it.plate ? ` · ${it.plate}` : ''}
-                            </Link>
+                          ? <span className="inline-flex items-center gap-2">
+                              <Link href={`/dispatch/${it.matched_mission_id}`} className="text-brand font-semibold hover:underline">
+                                {it.mission_number ? `#${it.mission_number}` : 'Voir'}{it.plate ? ` · ${it.plate}` : ''}
+                              </Link>
+                              <button onClick={() => reprint(it.id)} disabled={printing === it.id}
+                                title="Réimprimer l'étiquette DOMAINE"
+                                className="text-xs px-1.5 py-0.5 rounded border bg-surface-2 hover:bg-surface-hover disabled:opacity-50">
+                                {printing === it.id ? '⏳' : '🖨'}
+                              </button>
+                            </span>
                           : <span className="text-ink-faint">—</span>}
                       </td>
                       <td className="px-3 py-2">
