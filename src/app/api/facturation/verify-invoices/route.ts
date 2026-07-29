@@ -61,24 +61,11 @@ export async function POST(req: Request) {
     .eq('status', 'to_invoice')
     .or('invoice_odoo_id.not.is.null,odoo_quote_id.not.is.null')
   if (onlyIds) q = q.in('id', onlyIds)
-  // Cache-buster : la lecture des to_invoice a une URL PostgREST fixe → un cache
-  // de GET (Next/CDN) la figeait sur un vieux snapshot. Filtre TOUJOURS vrai à
-  // valeur variable → URL unique à chaque run, jamais servie depuis un cache.
-  const bust = new Date(Date.now() % 1_000_000).toISOString()   // ~1970 → < tout created_at
-  q = q.gte('created_at', bust)
   const { data: missions, error } = await q.limit(500)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Débogage : ce que le SELECT renvoie RÉELLEMENT (compte + échantillon) + le
-  // cache-buster (prouve que l'endpoint exécute frais). À retirer après diag.
-  const _debug = {
-    bust,
-    count: (missions || []).length,
-    sample: (missions || []).slice(0, 12).map((m: any) => ({ ext: m.external_id, st: m.status, inv: m.invoice_odoo_id })),
-  }
-
   if (!missions || missions.length === 0) {
-    return NextResponse.json({ ok: true, completed: [], draft: [], none: [], summary: { completed: 0, draft: 0, none: 0 }, _debug })
+    return NextResponse.json({ ok: true, completed: [], draft: [], none: [], summary: { completed: 0, draft: 0, none: 0 } })
   }
 
   // 1) Résout les ids account.move de chaque fiche (direct + via devis).
@@ -152,6 +139,5 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true, completed, draft, none,
     summary: { completed: completed.length, draft: draft.length, none: none.length },
-    _debug,
   })
 }
