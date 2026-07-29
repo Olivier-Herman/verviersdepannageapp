@@ -226,9 +226,9 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               Inventaire
             </Link>
             {userRole === 'superadmin' && (
-              <Link href="/admin/domaine-in"
+              <Link href="/fourriere/domaine"
                 className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"
-                title="Remises au Domaine — mails « Dates IN »">
+                title="Domaine (SPF Finances) — gardiennage État, ventes d'épaves, remises « Dates IN »">
                 🏛 Domaine
               </Link>
             )}

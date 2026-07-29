@@ -16,7 +16,6 @@ import {
   DollarSign, Truck, FileText, Wallet, Settings,
   Tag, MapPin, Users, Car, Receipt, AlertTriangle, Radio, ShieldCheck,
   Bell, ClipboardCheck, Map, Archive, FileSignature, Printer, LifeBuoy,
-  Landmark,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -183,8 +182,6 @@ export default async function AdminPage() {
           desc="Liste des PV reçus, stats par chauffeur, attribution manuelle." />
         <Card href="/admin/tgr" icon={Truck} label="Service TGR"
           desc="Configuration du service Touring Gros Recouvrement." />
-        <Card href="/admin/domaine" icon={Landmark} label="Domaine (État)"
-          desc="Gardiennage des véhicules saisis remis au Domaine : tableau + export Excel trimestriel à facturer à l'État." />
       </Group>
 
       <Group title="Support">

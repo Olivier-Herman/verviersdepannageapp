@@ -79,7 +79,10 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
   return (
     <AppShell title="Domaine — Gardiennage État" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
       <main className="p-4 lg:p-8 max-w-4xl mx-auto space-y-5">
-        <Link href="/admin" className="text-ink-muted text-sm">← Administration</Link>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Link href="/fourriere" className="text-ink-muted text-sm">← Fourrière</Link>
+          <Link href="/fourriere/domaine/dates-in" className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:underline">📅 Dates IN (remises) →</Link>
+        </div>
         <div>
           <h1 className="text-ink text-xl font-bold">🏛️ Gardiennage Domaine (État)</h1>
           <p className="text-ink-muted text-sm">Jours de gardiennage des véhicules remis au Domaine (remise → vente), au tarif parc saisie. Tableau + export Excel trimestriel.</p>

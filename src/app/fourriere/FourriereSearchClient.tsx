@@ -160,9 +160,9 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
             </Link>
             {userRole === 'superadmin' && (
               <Link
-                href="/admin/domaine-in"
+                href="/fourriere/domaine"
                 className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary hover:text-ink rounded-xl text-sm font-semibold transition"
-                title="Remises au Domaine — mails « Dates IN »">
+                title="Domaine (SPF Finances) — gardiennage État, ventes d'épaves, remises « Dates IN »">
                 🏛 Domaine
               </Link>
             )}

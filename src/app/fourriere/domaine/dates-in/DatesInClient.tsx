@@ -66,6 +66,7 @@ export default function DatesInClient(props: { userRole: string; userName: strin
   return (
     <AppShell title="Domaine — Dates IN" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userModules={props.userModules}>
       <div className="p-4 lg:p-6 space-y-4 max-w-6xl mx-auto">
+        <Link href="/fourriere/domaine" className="text-ink-muted text-sm">← Domaine (gardiennage)</Link>
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-ink text-2xl font-bold">🏛 Domaine — Dates IN</h1>
