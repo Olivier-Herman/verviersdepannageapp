@@ -7,7 +7,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { computeDomaineBilling } from '@/lib/fourriere/domaine-billing'
-import * as XLSX             from 'xlsx'
+import { buildDomaineXlsxBuffer } from '@/lib/fourriere/domaine-xlsx'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,6 @@ function canAccess(session: any): boolean {
   const modules: string[] = u.modules || []
   return ['admin', 'superadmin'].includes(role) || modules.includes('fourriere')
 }
-const fmtDate = (ymd: string) => ymd ? ymd.split('-').reverse().join('/') : ''
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -30,35 +29,9 @@ export async function GET(req: Request) {
 
   const sb = createAdminClient()
   const { groups, total, totalDays } = await computeDomaineBilling(sb, from, to)
-
-  // Format calqué sur le registre existant : groupes "Vente d'épaves du …",
-  // colonnes N° Véhicule / MARQUE / CHASSIS N° / Date IN / Date OUT / Jours / Frais.
-  const header = ['N° Véhicule', 'MARQUE', 'CHASSIS N°', 'Date IN', 'Date OUT', 'Nombre de jours', 'Frais H.TVA']
-  const aoa: any[][] = []
-  for (const g of groups) {
-    aoa.push([`Vente d'épaves du`, fmtDate(g.vente)])
-    aoa.push([])
-    aoa.push(header)
-    for (const r of g.rows) {
-      aoa.push([
-        r.plate || (r.mission_number != null ? `#${r.mission_number}` : ''),
-        r.vehicle, r.vin, fmtDate(r.remise),
-        r.enlevement ? fmtDate(r.enlevement) : '(à compléter)',
-        r.days, Math.round(r.amount * 100) / 100,
-      ])
-    }
-    aoa.push(['', '', '', '', '', g.days, Math.round(g.amount * 100) / 100])
-    aoa.push([])
-  }
-  aoa.push(['', '', '', '', 'TOTAL', totalDays, Math.round(total * 100) / 100])
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 14 }]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Domaine')
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+  const buffer = buildDomaineXlsxBuffer(groups, total, totalDays)
   const fname = `gardiennage_domaine_${from}_${to}.xlsx`
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${fname}"`,

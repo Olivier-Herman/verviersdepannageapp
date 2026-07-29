@@ -22,6 +22,7 @@ export interface DomaineRow {
   remise:   string        // Date IN = remise Domaine (YYYY-MM-DD)
   enlevement: string      // Date OUT = enlèvement (YYYY-MM-DD) ou ''
   vente:    string        // date de vente (YYYY-MM-DD)
+  firm:     string        // firme ayant remporté la soumission
   days:     number        // Date OUT − Date IN
   rate:     number | null // tarif/jour (null si plusieurs années)
   amount:   number        // frais HTVA
@@ -52,7 +53,7 @@ export async function computeDomaineBilling(
   // 2. Véhicules VENDUS par le Domaine dans la période (filtre sur la date de vente).
   const { data: missions } = await sb
     .from('incoming_missions')
-    .select('mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, vehicle_class, dossier_number, domaine_remise_date, domaine_enlevement_date, domaine_vente_date')
+    .select('mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, vehicle_class, dossier_number, domaine_remise_date, domaine_enlevement_date, domaine_vente_date, domaine_vente_firm')
     .not('domaine_vente_date', 'is', null)
     .gte('domaine_vente_date', from)
     .lte('domaine_vente_date', to)
@@ -93,6 +94,7 @@ export async function computeDomaineBilling(
       remise:   m.domaine_remise_date,
       enlevement: m.domaine_enlevement_date || '',
       vente:    m.domaine_vente_date,
+      firm:     m.domaine_vente_firm || '',
       days,
       rate:     ratesUsed.size === 1 ? [...ratesUsed][0] : null,
       amount:   Math.round(amount * 100) / 100,
