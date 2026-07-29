@@ -100,7 +100,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
         if (doneSet.has(`${msg.id}|${v.vin}`)) continue
 
         const { data: hits } = await sb.from('incoming_missions')
-          .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_remise_date, domaine_enlevement_date')
+          .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date')
           .in('source', SAISIE_SOURCES)
           .is('domaine_vente_date', null)
           .is('archived_at', null)
