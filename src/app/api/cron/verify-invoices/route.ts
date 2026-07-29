@@ -27,6 +27,10 @@ export async function GET(req: Request) {
   try {
     const r = await fetch(url, {
       method: 'POST',
+      // no-store : le body est TOUJOURS {} → Next mettait en cache la réponse de
+      // ce self-fetch et ne rejouait jamais l'endpoint (réconciliation gelée sur
+      // un vieux snapshot). Jamais de cache sur l'appel interne.
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
       body: JSON.stringify({}),   // pas de mission_ids → réconcilie toutes les fiches liées
     })
