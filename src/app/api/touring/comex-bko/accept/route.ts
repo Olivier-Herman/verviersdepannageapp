@@ -19,7 +19,11 @@ export async function POST(req: Request) {
   const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
   const session = isInternal ? null : await getServerSession(authOptions)
   const user = (session?.user as any) || {}
-  if (!isInternal && user?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const role: string = user?.role || ''
+  const modules: string[] = Array.isArray(user?.modules) ? user.modules : []
+  if (!isInternal && !(['admin', 'superadmin'].includes(role) || modules.includes('facturation'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => ({}))
   const ids: string[] = Array.isArray(body?.ids) ? body.ids.filter((x: any) => typeof x === 'string') : []

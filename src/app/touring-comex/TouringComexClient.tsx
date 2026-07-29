@@ -96,7 +96,7 @@ export default function TouringComexClient(props: {
 
         <div className="flex items-start gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
-            <h1 className="text-ink text-2xl font-bold">🅣 Touring COMEX <span className="text-ink-faint text-base font-normal">(superadmin · test)</span></h1>
+            <h1 className="text-ink text-2xl font-bold">🅣 Touring COMEX <span className="text-ink-faint text-base font-normal">(test)</span></h1>
             <p className="text-ink-muted text-sm mt-1">
               Dossiers en attente dans COMEX BKO, rapprochés aux fiches VD Soft. Tarif Touring vs VD Soft.
             </p>

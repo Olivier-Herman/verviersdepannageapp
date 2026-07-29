@@ -15,7 +15,9 @@ export default async function TouringComexPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login?callbackUrl=/touring-comex')
   const user = session.user as any
-  if (user.role !== 'superadmin') redirect('/dashboard?error=access_denied')
+  const modules: string[] = Array.isArray(user.modules) ? user.modules : []
+  const canAccess = ['admin', 'superadmin'].includes(user.role) || modules.includes('facturation')
+  if (!canAccess) redirect('/dashboard?error=access_denied')
 
   return (
     <TouringComexClient

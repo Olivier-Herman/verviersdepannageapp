@@ -13,13 +13,16 @@ import { syncComexBko }      from '@/lib/touring/comex-bko-sync'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-async function requireSuperadmin() {
+async function requireAccess() {
   const session = await getServerSession(authOptions)
-  return (session?.user as any)?.role === 'superadmin' ? session : null
+  const user = session?.user as any
+  const role: string = user?.role || ''
+  const modules: string[] = Array.isArray(user?.modules) ? user.modules : []
+  return (['admin', 'superadmin'].includes(role) || modules.includes('facturation')) ? session : null
 }
 
 export async function GET() {
-  if (!(await requireSuperadmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await requireAccess())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const sb = createAdminClient()
   // On affiche TOUTES les lignes présentes dans COMEX BKO. Le bouton Accepter
   // n'apparaîtra (côté UI) que pour les fiches to_invoice ; les autres montrent
@@ -38,7 +41,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  if (!(await requireSuperadmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await requireAccess())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
   if (body?.action !== 'sync') return NextResponse.json({ error: 'action inconnue' }, { status: 400 })
   const sb = createAdminClient()
