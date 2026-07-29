@@ -58,9 +58,6 @@ export function buildDomaineLabelZPL(d: DomaineLabelData): string {
 ^BQN,2,6
 ^FDLB,${qrUrl}^FS
 
-^FO20,140
-^GB772,3,3^FS
-
 ^FO20,155
 ^A0N,34,34
 ^FB772,1,0,L,0
