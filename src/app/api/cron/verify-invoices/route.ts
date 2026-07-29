@@ -35,10 +35,22 @@ export async function GET(req: Request) {
     summary.http = r.status
     summary.result = j?.summary || null            // { completed, draft, none }
     summary.completed_refs = (j?.completed || []).slice(0, 30).map((x: any) => x.number || x.ref)
+    summary.draft_refs = (j?.draft || []).slice(0, 30).map((x: any) => x.ref)   // vues encore "brouillon"
+    summary.none_refs  = (j?.none || []).slice(0, 30).map((x: any) => x.ref)
     // Trace (diagnostic) : prouve que le cron PLANIFIÉ tourne + ce qu'il fait.
     try {
       const sb = createAdminClient()
       await sb.from('app_settings').upsert({ key: 'verify_invoices_last_run', value: summary }, { onConflict: 'key' })
+      // Historique roulant des runs à activité (candidats vus), pour repérer un
+      // pattern (facture postée lue "brouillon" plusieurs runs de suite).
+      const active = (summary.result?.completed || 0) + (summary.result?.draft || 0) + (summary.result?.none || 0)
+      if (active > 0) {
+        const { data: hist } = await sb.from('app_settings').select('value').eq('key', 'verify_invoices_history').maybeSingle()
+        let arr: any[] = []
+        try { arr = Array.isArray(hist?.value) ? hist!.value : (hist?.value ? JSON.parse(hist.value as any) : []) } catch { arr = [] }
+        arr.unshift(summary)
+        await sb.from('app_settings').upsert({ key: 'verify_invoices_history', value: arr.slice(0, 20) }, { onConflict: 'key' })
+      }
     } catch { /* best-effort */ }
     return NextResponse.json({ ok: r.ok, ...j })
   } catch (e: any) {
