@@ -226,16 +226,16 @@ export async function pollRequisitoires(opts?: { top?: number }): Promise<Intake
  * pour les réquisitoires sans plaque) : les anciens sont re-scorés et la bonne
  * fiche est enfin proposée. Olivier 2026-07-06.
  */
-export async function rematchPendingRequisitoires(): Promise<{ scanned: number; updated: number }> {
+export async function rematchPendingRequisitoires(): Promise<{ scanned: number; updated: number; autoAttached: number }> {
   const sb = createAdminClient()
   const { data: rows } = await sb.from('requisitoire_intake')
-    .select('id, extracted, status')
+    .select('id, extracted, status, doc_type')
     .in('status', ['pending', 'to_verify'])
     .is('matched_mission_id', null)
     .order('received_at', { ascending: false })
     .limit(300)
 
-  let updated = 0
+  let updated = 0, autoAttached = 0
   for (const row of (rows || [])) {
     const ex = (row as any).extracted
     if (!ex) continue
@@ -244,14 +244,23 @@ export async function rematchPendingRequisitoires(): Promise<{ scanned: number; 
       await sb.from('requisitoire_intake').update({
         candidates:         match.candidates as any,
         confidence:         match.confidence,
-        // On ne (ré)attache automatiquement que sur confidence 'high' (plaque/VIN) ;
-        // sinon le candidat est simplement PROPOSÉ dans la liste à vérifier.
         matched_mission_id: match.confidence === 'high' ? (match.best?.mission_id ?? null) : null,
       }).eq('id', (row as any).id)
       updated++
+
+      // Auto-rattachement des anciens dossiers dont la fiche est apparue ENTRE-TEMPS.
+      // Mêmes critères que la capture (clé forte + adresse précise + unique + date
+      // ≤1j), saisie UNIQUEMENT (jamais les levées). Commande complète du bouton
+      // « Rattacher » (annexion + PV + classement email). Olivier 2026-07-29.
+      if (match.autoAttach && match.best && (row as any).doc_type !== 'levee_saisie') {
+        const { attachRequisitoire } = await import('@/lib/requisitoire/attach')
+        const res = await attachRequisitoire(sb, (row as any).id, match.best.mission_id, null, {})
+        if (res.ok) autoAttached++
+        else console.warn(`[requisitoire rematch] auto-attache ${(row as any).id} refusée : ${res.error}`)
+      }
     } catch (e: any) {
       console.error('[requisitoire rematch]', (row as any).id, e?.message)
     }
   }
-  return { scanned: rows?.length ?? 0, updated }
+  return { scanned: rows?.length ?? 0, updated, autoAttached }
 }
