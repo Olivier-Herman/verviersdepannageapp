@@ -1,16 +1,17 @@
 // src/app/api/caisse/push-odoo/route.ts
 //
-// GET ?move_id=<id facture Odoo>&key=<écran>
-//   Déclenché par un bouton « 📺 Afficher au client » DANS une facture Odoo
-//   (action serveur type act_url ouvrant cette URL dans le navigateur du
-//   facturier, déjà loggé sur VD Soft). Lit la facture Odoo (account.move :
-//   total TVAC, partenaire, lignes, n°), complète avec le véhicule de la fiche
-//   VD Soft liée, et POUSSE sur l'écran client (même mécanisme que le bouton
-//   habituel : montant + détail + nom + 2 QR SumUp/SEPA). Renvoie une page de
-//   confirmation. Olivier 2026-07-29.
+// Affiche une facture Odoo sur l'écran client. Deux entrées :
+//   GET  ?move_id=&key=   → lien cliquable (Studio) ouvert dans le navigateur
+//                           du facturier déjà loggé → session. Renvoie une page
+//                           de confirmation HTML.
+//   POST ?secret=&key=    → WEBHOOK Odoo (action serveur « Send Webhook
+//                           Notification », SANS Python, compatible SaaS). Auth
+//                           par secret (ECRAN_WEBHOOK_SECRET). L'id de la facture
+//                           est lu dans le corps JSON envoyé par Odoo.
 //
-// Accès : session (module facturation/encaissement) — l'onglet s'ouvre dans le
-// navigateur déjà authentifié.
+// Dans les 2 cas : lit account.move (total TVAC, partenaire, lignes, n°) +
+// véhicule de la fiche VD Soft liée → pousse sur l'écran (montant + détail + nom
+// + 2 QR SumUp/SEPA, communication virement = n° de facture). Olivier 2026-07-29.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -34,25 +35,16 @@ function html(body: string, status = 200) {
   )
 }
 
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as any
-  const role: string = user?.role || ''
-  const modules: string[] = Array.isArray(user?.modules) ? user.modules : []
-  const ok = ['admin', 'superadmin'].includes(role) || modules.includes('facturation') || modules.includes('encaissement') || modules.includes('encaissements')
-  if (!ok) return html('<div class="big">🔒</div><div class="t">Connecte-toi à VD Soft</div><div class="s">Ouvre app.verviersdepannage.com (module facturation) dans ce navigateur, puis reclique le bouton.</div>', 401)
+// Cœur commun : lit la facture Odoo + la fiche liée, pousse sur l'écran.
+// Retourne { ok, error?, info } pour que l'appelant formate sa réponse.
+async function pushInvoice(moveId: number, key: string): Promise<{ ok: boolean; error?: string; info?: string }> {
+  if (!moveId) return { ok: false, error: 'move_id manquant' }
 
-  const url = new URL(req.url)
-  const moveId = Number(url.searchParams.get('move_id'))
-  const key = String(url.searchParams.get('key') || 'facturation')
-  if (!moveId) return html('<div class="big">⚠️</div><div class="t err">move_id manquant</div>')
-
-  // 1) Facture Odoo.
   let inv: any = null, lines: { label: string; amount: number }[] = [], partner = ''
   try {
     const moves = await odooRpc<any[]>('account.move', 'read', [[moveId]], { fields: ['name', 'amount_total', 'partner_id', 'invoice_line_ids', 'move_type', 'state'] })
     inv = moves?.[0]
-    if (!inv) return html('<div class="big">⚠️</div><div class="t err">Facture Odoo introuvable</div>')
+    if (!inv) return { ok: false, error: 'Facture Odoo introuvable' }
     partner = Array.isArray(inv.partner_id) ? String(inv.partner_id[1] || '') : ''
     const lids = (inv.invoice_line_ids || []).map(Number)
     if (lids.length) {
@@ -62,41 +54,76 @@ export async function GET(req: Request) {
         .map((l: any) => ({ label: String(l.name || '').replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\n+\s*/g, ' — ').trim(), amount: Math.round(Number(l.price_subtotal || 0) * 100) / 100 }))
     }
   } catch (e: any) {
-    return html(`<div class="big">⚠️</div><div class="t err">Lecture Odoo impossible</div><div class="s">${String(e?.message || e).slice(0, 120)}</div>`)
+    return { ok: false, error: `Lecture Odoo impossible : ${String(e?.message || e).slice(0, 120)}` }
   }
 
   const amount = Math.round(Number(inv.amount_total || 0) * 100) / 100
-  if (!amount || amount <= 0) return html('<div class="big">⚠️</div><div class="t err">Montant nul sur la facture</div>')
+  if (!amount || amount <= 0) return { ok: false, error: 'Montant nul sur la facture' }
 
-  // 2) Véhicule depuis notre fiche liée (par invoice_odoo_id).
   const sb = createAdminClient()
   const { data: m } = await sb.from('incoming_missions')
-    .select('vehicle_plate, vehicle_brand, vehicle_model, client_name, mission_number')
+    .select('vehicle_plate, vehicle_brand, vehicle_model, client_name')
     .eq('invoice_odoo_id', moveId).maybeSingle()
 
-  // 3) Push sur l'écran client (réutilise SumUp + SEPA + realtime).
   const base = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
-  try {
-    const r = await fetch(`${base}/api/caisse/ecran`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
-      body: JSON.stringify({
-        action: 'push', key, force: true,
-        amount,
-        client: partner || m?.client_name || null,
-        plate:  m?.vehicle_plate || null,
-        brand:  m?.vehicle_brand || null,
-        model:  m?.vehicle_model || null,
-        lines,
-        paymentRef: inv.name && inv.name !== '/' ? inv.name : undefined,  // n° facture = communication virement
-      }),
-    })
-    if (!r.ok) { const j = await r.json().catch(() => ({})); return html(`<div class="big">⚠️</div><div class="t err">Écran client KO</div><div class="s">${j.error || ('HTTP ' + r.status)}</div>`) }
-  } catch (e: any) {
-    return html(`<div class="big">⚠️</div><div class="t err">Envoi écran KO</div><div class="s">${String(e?.message || e).slice(0, 120)}</div>`)
-  }
+  const r = await fetch(`${base}/api/caisse/ecran`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
+    body: JSON.stringify({
+      action: 'push', key, force: true,
+      amount,
+      client: partner || m?.client_name || null,
+      plate:  m?.vehicle_plate || null,
+      brand:  m?.vehicle_brand || null,
+      model:  m?.vehicle_model || null,
+      lines,
+      paymentRef: inv.name && inv.name !== '/' ? inv.name : undefined,
+    }),
+  })
+  if (!r.ok) { const j = await r.json().catch(() => ({})); return { ok: false, error: j.error || `Écran client KO (HTTP ${r.status})` } }
 
   const veh = [m?.vehicle_brand, m?.vehicle_model].filter(Boolean).join(' ')
-  return html(`<div class="big">📺✅</div><div class="t">Affiché à l'écran client</div>
-    <div class="s">${partner || m?.client_name || ''}${veh ? ' · ' + veh : ''}${m?.vehicle_plate ? ' · ' + m.vehicle_plate : ''}<br><b>${amount.toFixed(2).replace('.', ',')} €</b> · facture ${inv.name || ''}</div>`)
+  const info = `${partner || m?.client_name || ''}${veh ? ' · ' + veh : ''}${m?.vehicle_plate ? ' · ' + m.vehicle_plate : ''} · ${amount.toFixed(2).replace('.', ',')} € · facture ${inv.name || ''}`
+  return { ok: true, info }
+}
+
+// Extrait l'id de facture d'un payload webhook Odoo (formats variés selon version).
+function extractMoveId(body: any, url: URL): number {
+  const q = Number(url.searchParams.get('move_id'))
+  if (q) return q
+  const cand = body?._id ?? body?.id ?? body?.res_id ?? body?.move_id
+    ?? (Array.isArray(body?._ids) ? body._ids[0] : undefined)
+    ?? (Array.isArray(body?.ids) ? body.ids[0] : undefined)
+    ?? (Array.isArray(body?.records) ? body.records[0]?.id : undefined)
+  return Number(cand) || 0
+}
+
+// ── GET : lien navigateur (session) ─────────────────────────────────────────
+export async function GET(req: Request) {
+  const session = await getServerSession(authOptions)
+  const user = session?.user as any
+  const role: string = user?.role || ''
+  const modules: string[] = Array.isArray(user?.modules) ? user.modules : []
+  const ok = ['admin', 'superadmin'].includes(role) || modules.includes('facturation') || modules.includes('encaissement') || modules.includes('encaissements')
+  if (!ok) return html('<div class="big">🔒</div><div class="t">Connecte-toi à VD Soft</div><div class="s">Ouvre app.verviersdepannage.com (module facturation) dans ce navigateur, puis reclique.</div>', 401)
+
+  const url = new URL(req.url)
+  const key = String(url.searchParams.get('key') || 'facturation')
+  const res = await pushInvoice(Number(url.searchParams.get('move_id')), key)
+  if (!res.ok) return html(`<div class="big">⚠️</div><div class="t err">${res.error}</div>`)
+  return html(`<div class="big">📺✅</div><div class="t">Affiché à l'écran client</div><div class="s">${res.info || ''}</div>`)
+}
+
+// ── POST : webhook Odoo (secret) ────────────────────────────────────────────
+export async function POST(req: Request) {
+  const url = new URL(req.url)
+  const expected = process.env.ECRAN_WEBHOOK_SECRET
+  const given = url.searchParams.get('secret') || req.headers.get('x-webhook-secret') || ''
+  if (!expected || given !== expected) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json().catch(() => ({}))
+  const key = String(url.searchParams.get('key') || 'facturation')
+  const moveId = extractMoveId(body, url)
+  const res = await pushInvoice(moveId, key)
+  return NextResponse.json(res, { status: res.ok ? 200 : 400 })
 }
