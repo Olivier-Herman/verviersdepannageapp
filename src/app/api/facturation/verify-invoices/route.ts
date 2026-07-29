@@ -69,8 +69,16 @@ export async function POST(req: Request) {
   const { data: missions, error } = await q.limit(500)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Débogage : ce que le SELECT renvoie RÉELLEMENT (compte + échantillon) + le
+  // cache-buster (prouve que l'endpoint exécute frais). À retirer après diag.
+  const _debug = {
+    bust,
+    count: (missions || []).length,
+    sample: (missions || []).slice(0, 12).map((m: any) => ({ ext: m.external_id, st: m.status, inv: m.invoice_odoo_id })),
+  }
+
   if (!missions || missions.length === 0) {
-    return NextResponse.json({ ok: true, completed: [], draft: [], none: [], summary: { completed: 0, draft: 0, none: 0 } })
+    return NextResponse.json({ ok: true, completed: [], draft: [], none: [], summary: { completed: 0, draft: 0, none: 0 }, _debug })
   }
 
   // 1) Résout les ids account.move de chaque fiche (direct + via devis).
@@ -144,5 +152,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true, completed, draft, none,
     summary: { completed: completed.length, draft: draft.length, none: none.length },
+    _debug,
   })
 }
