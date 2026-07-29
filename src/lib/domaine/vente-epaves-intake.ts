@@ -90,7 +90,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
         if (doneSet.has(`${msg.id}|${v.vin}`)) continue
 
         const { data: hits } = await sb.from('incoming_missions')
-          .select('id, mission_number, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_enlevement_date')
+          .select('id, mission_number, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_remise_date, domaine_enlevement_date')
           .eq('source', 'police_saisie')
           .is('domaine_vente_date', null)
           .is('archived_at', null)
@@ -108,14 +108,18 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
               domaine_vente_date: venteDate || null,
               domaine_vente_firm: firm,
             }
+            // Date IN = date de la colonne après le VIN dans le mail (si pas déjà
+            // posée via un mail « Dates IN »). Garantit une Date IN pour le calcul.
+            if (v.emailDate && !m.domaine_remise_date) upd.domaine_remise_date = v.emailDate
             // Date OUT = date max d'enlèvement, sauf si un enlèvement réel est déjà posé.
             if (maxEnl && !m.domaine_enlevement_date) upd.domaine_enlevement_date = maxEnl
             await sb.from('incoming_missions').update(upd).eq('id', m.id)
 
+            const dateIn = m.domaine_remise_date || v.emailDate || null
             await sb.from('mission_logs').insert({
               mission_id: m.id, actor_id: null, action: 'domaine_vente',
-              notes: `Vendu par soumission${firm ? ` à ${firm}` : ''} (mail Vente d'épaves) · vente ${venteDate}${maxEnl ? ` · enlèvement max ${maxEnl}` : ''}`,
-              metadata: { source: 'vente_epaves', firm, vente_date: venteDate, max_enlevement: maxEnl, vin: v.vin, email_id: msg.id },
+              notes: `Vendu par soumission${firm ? ` à ${firm}` : ''} (mail Vente d'épaves) · vente ${venteDate}${dateIn ? ` · date IN ${dateIn}` : ''}${maxEnl ? ` · enlèvement max ${maxEnl}` : ''}`,
+              metadata: { source: 'vente_epaves', firm, vente_date: venteDate, date_in: dateIn, max_enlevement: maxEnl, vin: v.vin, email_id: msg.id },
             }).then(() => {}, () => {})
             outcome = 'applied'; s.applied++
 
