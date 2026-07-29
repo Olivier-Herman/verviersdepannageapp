@@ -13,7 +13,7 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { withOdooActor }     from '@/lib/odoo'
+import { withOdooActor, odooRpc } from '@/lib/odoo'
 import { createCircuitQuote } from '@/lib/circuit/odoo-quote'
 
 export const dynamic = 'force-dynamic'
@@ -69,7 +69,21 @@ export async function GET(req: Request) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ prestations: data || [] })
+  const rows = data || []
+
+  // Cachet Payée / Non payée : lit l'état de paiement Odoo (payment_state) des
+  // factures dont on connaît le n°. Non bloquant si Odoo est indisponible.
+  const invNames = [...new Set(rows.filter(r => r.invoice_number).map(r => r.invoice_number as string))]
+  if (invNames.length) {
+    try {
+      const moves = await odooRpc<any[]>('account.move', 'search_read',
+        [[['name', 'in', invNames]]], { fields: ['name', 'payment_state'] })
+      const byName = new Map((moves || []).map(m => [m.name, m.payment_state]))
+      for (const r of rows) (r as any).payment_state = r.invoice_number ? (byName.get(r.invoice_number) || null) : null
+    } catch { /* Odoo indispo -> pas de cachet, on n'échoue pas la liste */ }
+  }
+
+  return NextResponse.json({ prestations: rows })
 }
 
 // ───────────────────────────────────────────────────────────────────────────

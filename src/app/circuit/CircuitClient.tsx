@@ -15,6 +15,7 @@ interface Prestation {
   notes:                string | null
   invoiced_at:          string | null
   invoice_number:       string | null
+  payment_state:        string | null   // Odoo account.move.payment_state (enrichi côté API)
   created_at:           string
 }
 
@@ -214,6 +215,22 @@ export default function CircuitClient() {
                         <Check size={11} /> Facturée le {new Date(p.invoiced_at!).toLocaleDateString('fr-BE')}
                       </span>
                     )}
+                    {/* Cachet paiement lu depuis Odoo (payment_state). Olivier 2026-07-29. */}
+                    {isInvoiced && p.payment_state && (() => {
+                      const paid    = p.payment_state === 'paid' || p.payment_state === 'in_payment'
+                      const partial = p.payment_state === 'partial'
+                      const label   = paid ? 'Payée' : partial ? 'Partiellement payée' : p.payment_state === 'reversed' ? 'Extournée' : 'Non payée'
+                      const cls     = paid
+                        ? 'bg-success-soft text-success border-success/30'
+                        : partial
+                          ? 'bg-warning-soft text-warning border-warning/30'
+                          : 'bg-danger-soft text-danger border-danger/30'
+                      return (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border font-semibold uppercase tracking-wide ${cls}`}>
+                          {paid ? <Check size={11} /> : <X size={11} />} {label}
+                        </span>
+                      )
+                    })()}
                     {/* N° de facture éditable (sauvegarde au blur). Olivier 2026-06-17. */}
                     <span className="inline-flex items-center gap-1">
                       <span className="text-ink-muted">N° facture :</span>
