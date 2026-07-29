@@ -13,6 +13,7 @@ export default function FacturationAutoClient(props: {
   const [rules, setRules]     = useState<Rules>({})
   const [sources, setSources] = useState<Source[]>([])
   const [delay, setDelay]     = useState(2)
+  const [autos, setAutos]     = useState<{ allianzAutoClose: boolean; comexAutoAccept: boolean }>({ allianzAutoClose: true, comexAutoAccept: true })
   const [stats, setStats]     = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy]       = useState<string | null>(null)
@@ -24,7 +25,7 @@ export default function FacturationAutoClient(props: {
     try {
       const r = await fetch('/api/admin/auto-invoice-rules')
       const j = await r.json()
-      if (r.ok) { setRules(j.rules || {}); setSources(j.sources || []); setDelay(j.delayHours ?? 2) }
+      if (r.ok) { setRules(j.rules || {}); setSources(j.sources || []); setDelay(j.delayHours ?? 2); if (j.automations) setAutos(j.automations) }
       const s = await fetch('/api/admin/auto-invoice-stats?days=30').then(x => x.json()).catch(() => null)
       if (s && !s.error) setStats(s)
     } finally { setLoading(false) }
@@ -42,6 +43,18 @@ export default function FacturationAutoClient(props: {
   }
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2000) }
+
+  async function toggleAutomation(automation: 'allianzAutoClose' | 'comexAutoAccept', enabled: boolean) {
+    setBusy(automation)
+    setAutos(prev => ({ ...prev, [automation]: enabled }))   // optimiste
+    try {
+      const r = await fetch('/api/admin/auto-invoice-rules', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automation, enabled }),
+      })
+      if (!r.ok) { flash('⚠ Échec'); await load() } else flash(enabled ? '✅ Activé' : 'Désactivé')
+    } catch { flash('⚠ Erreur réseau'); await load() } finally { setBusy(null) }
+  }
 
   async function toggle(source: string, type: string, enabled: boolean) {
     const key = `${source}:${type}`
@@ -101,6 +114,25 @@ export default function FacturationAutoClient(props: {
             ))}
           </div>
           <span className="text-ink-faint text-[11px]">fenêtre de correction avant facturation auto</span>
+        </div>
+
+        {/* Automatisations de validation (crons) — pause/reprise via toggle */}
+        <div className="bg-surface border rounded-2xl p-4 space-y-3">
+          <p className="text-ink text-sm font-semibold">⚙️ Automatisations de validation</p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-ink text-sm font-medium">🔵 Auto-clôture Allianz</p>
+              <p className="text-ink-faint text-[11px]">Clôture Hexalite auto à <b>fin de mission + 60 min</b> (toutes les 15 min).</p>
+            </div>
+            <Switch on={autos.allianzAutoClose} disabled={busy === 'allianzAutoClose'} onClick={() => toggleAutomation('allianzAutoClose', !autos.allianzAutoClose)} />
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            <div className="min-w-0">
+              <p className="text-ink text-sm font-medium">🟠 Auto-validation Touring COMEX</p>
+              <p className="text-ink-faint text-[11px]">Valide les dossiers dont le <b>tarif matche</b> (verdict OK), toutes les heures.</p>
+            </div>
+            <Switch on={autos.comexAutoAccept} disabled={busy === 'comexAutoAccept'} onClick={() => toggleAutomation('comexAutoAccept', !autos.comexAutoAccept)} />
+          </div>
         </div>
 
         {/* Statistiques de couverture (30 j) — détail par facturier */}

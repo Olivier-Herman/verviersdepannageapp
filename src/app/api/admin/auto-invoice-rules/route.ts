@@ -9,6 +9,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { getAutoInvoiceRules, setAutoInvoiceRules, getAutoInvoiceDelayHours, setAutoInvoiceDelayHours, AUTO_INVOICE_TYPES } from '@/lib/facturation/auto-invoice'
+import { getAutomationEnabled, setAutomationEnabled, AUTOMATION_FLAGS } from '@/lib/facturation/automation-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,11 @@ export async function GET() {
   const sources = (catalog || [])
     .filter((c: any) => c.active !== false)
     .map((c: any) => ({ key: c.key, label: c.label || c.key }))
-  return NextResponse.json({ rules, sources, delayHours })
+  const automations = {
+    allianzAutoClose: await getAutomationEnabled(sb, AUTOMATION_FLAGS.allianzAutoClose),
+    comexAutoAccept:  await getAutomationEnabled(sb, AUTOMATION_FLAGS.comexAutoAccept),
+  }
+  return NextResponse.json({ rules, sources, delayHours, automations })
 }
 
 export async function POST(req: Request) {
@@ -38,6 +43,18 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const sb = createAdminClient()
+
+  // Toggle d'une automatisation (auto-clôture Allianz / auto-accept Touring COMEX).
+  if (body?.automation) {
+    const map: Record<string, string> = {
+      allianzAutoClose: AUTOMATION_FLAGS.allianzAutoClose,
+      comexAutoAccept:  AUTOMATION_FLAGS.comexAutoAccept,
+    }
+    const key = map[String(body.automation)]
+    if (!key) return NextResponse.json({ error: 'automation inconnue' }, { status: 400 })
+    await setAutomationEnabled(sb, key, !!body.enabled)
+    return NextResponse.json({ ok: true, automation: body.automation, enabled: !!body.enabled })
+  }
 
   // Réglage du délai (heures après clôture).
   if (body?.delayHours != null) {

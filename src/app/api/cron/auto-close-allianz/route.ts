@@ -12,6 +12,7 @@
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { ALLIANZ_PROVIDED_SERVICE } from '@/lib/allianz/closure'
+import { getAutomationEnabled, AUTOMATION_FLAGS } from '@/lib/facturation/automation-flags'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -24,13 +25,14 @@ export async function GET(req: Request) {
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  // Kill-switch : DISABLE_AUTO_CLOSE_ALLIANZ=true sur Vercel pour mettre en pause.
-  if (process.env.DISABLE_AUTO_CLOSE_ALLIANZ === 'true') {
-    return NextResponse.json({ ok: true, disabled: true })
-  }
   const baseUrl = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
   const secret  = process.env.NEXTAUTH_SECRET || ''
   const sb = createAdminClient()
+
+  // Toggle (module Facturation auto) : pause si désactivé.
+  if (!(await getAutomationEnabled(sb, AUTOMATION_FLAGS.allianzAutoClose))) {
+    return NextResponse.json({ ok: true, disabled: true })
+  }
 
   const summary: any = { at: new Date().toISOString() }
   const details: any[] = []
