@@ -131,13 +131,14 @@ export async function GET(req: Request) {
   })
 }
 
-// ── POST : push / clear (session requise) ───────────────────────────────────
+// ── POST : push / clear (session requise, OU appel interne x-internal-secret) ─
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as any
+  const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  const session = isInternal ? null : await getServerSession(authOptions)
+  const user = (session?.user as any) || {}
   const role: string = user?.role || ''
   const modules: string[] = user?.modules || []
-  const ok = ['admin', 'superadmin'].includes(role)
+  const ok = isInternal || ['admin', 'superadmin'].includes(role)
     || modules.includes('facturation') || modules.includes('encaissement') || modules.includes('encaissements')
   if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -178,10 +179,13 @@ export async function POST(req: Request) {
     }
   }
 
-  // Référence de paiement (SumUp + virement) = n° de mission + plaque.
+  // Référence de paiement (SumUp + virement). Par défaut = n° de mission + plaque.
+  // paymentRef explicite (ex. n° de facture Odoo pour réconciliation) → verbatim.
   const refBase   = String(body.reference || body.mission_number || resolved?.reference || '').trim()
   const plateRef  = String(plate || '').trim()
-  const reference = ([refBase, plateRef].filter(Boolean).join(' ') || 'VD Soft').slice(0, 100)
+  const reference = body.paymentRef
+    ? String(body.paymentRef).slice(0, 100)
+    : ([refBase, plateRef].filter(Boolean).join(' ') || 'VD Soft').slice(0, 100)
   const label = [brand, model].filter(Boolean).join(' ')
 
   // 1) Checkout SumUp (QR carte, montant pré-rempli). Best-effort.
