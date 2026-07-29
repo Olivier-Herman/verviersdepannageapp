@@ -42,7 +42,7 @@ async function pushInvoice(moveId: number, key: string): Promise<{ ok: boolean; 
 
   let inv: any = null, lines: { label: string; amount: number }[] = [], partner = ''
   try {
-    const moves = await odooRpc<any[]>('account.move', 'read', [[moveId]], { fields: ['name', 'amount_total', 'partner_id', 'invoice_line_ids', 'move_type', 'state'] })
+    const moves = await odooRpc<any[]>('account.move', 'read', [[moveId]], { fields: ['name', 'amount_total', 'amount_residual', 'partner_id', 'invoice_line_ids', 'move_type', 'state'] })
     inv = moves?.[0]
     if (!inv) return { ok: false, error: 'Facture Odoo introuvable' }
     partner = Array.isArray(inv.partner_id) ? String(inv.partner_id[1] || '') : ''
@@ -57,7 +57,19 @@ async function pushInvoice(moveId: number, key: string): Promise<{ ok: boolean; 
     return { ok: false, error: `Lecture Odoo impossible : ${String(e?.message || e).slice(0, 120)}` }
   }
 
-  const amount = Math.round(Number(inv.amount_total || 0) * 100) / 100
+  // Total TVAC + solde dû. Sur facture VALIDÉE (posted), amount_residual tient
+  // compte des paiements déjà enregistrés (ex. acompte espèces) → c'est LUI le
+  // montant à afficher en grand + celui du QR. Le total reste affiché en petit.
+  const total    = Math.round(Number(inv.amount_total || 0) * 100) / 100
+  const residual = Math.round(Number(inv.amount_residual || 0) * 100) / 100
+  const posted   = inv.state === 'posted'
+  let amount = total                               // brouillon : rien encaissé → dû = total
+  let amountTotal: number | undefined              // affiché en petit UNIQUEMENT si paiement partiel
+  if (posted) {
+    if (residual <= 0) return { ok: false, error: 'Facture déjà soldée (rien à payer)' }
+    amount = residual
+    if (residual < total - 0.005) amountTotal = total
+  }
   if (!amount || amount <= 0) return { ok: false, error: 'Montant nul sur la facture' }
 
   const sb = createAdminClient()
@@ -71,13 +83,14 @@ async function pushInvoice(moveId: number, key: string): Promise<{ ok: boolean; 
     headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
     body: JSON.stringify({
       action: 'push', key, force: true,
-      amount,
+      amount,                                       // solde dû → QR SumUp + SEPA
+      amountTotal,                                  // total TVAC (petit) si partiel
       client: partner || m?.client_name || null,
       plate:  m?.vehicle_plate || null,
       brand:  m?.vehicle_brand || null,
       model:  m?.vehicle_model || null,
       lines,
-      paymentRef: inv.name && inv.name !== '/' ? inv.name : undefined,
+      paymentRef: inv.name && inv.name !== '/' ? inv.name : undefined,   // communication = n° facture
     }),
   })
   if (!r.ok) { const j = await r.json().catch(() => ({})); return { ok: false, error: j.error || `Écran client KO (HTTP ${r.status})` } }

@@ -202,10 +202,14 @@ export async function POST(req: Request) {
     if (bank) epcPayload = buildEpcQrPayload({ name: bank.name, iban: bank.iban, bic: bank.bic, amount, remittance: reference })
   } catch (e) { /* ignore */ }
 
+  // amountTotal : total TVAC de la facture (affiché en petit) quand le montant
+  // poussé est un SOLDE après paiement partiel. Optionnel.
+  const amountTotal = Number(body.amountTotal) > 0 ? Math.round(Number(body.amountTotal) * 100) / 100 : null
   const payload = {
     client, plate, brand, model,
     reference,
-    amount,                                   // TVAC
+    amount,                                   // solde à payer (TVAC) → QR
+    amountTotal,                              // total TVAC (petit) si paiement partiel
     lines,
     sumupQrUrl, sumupCheckoutId, epcPayload,
   }

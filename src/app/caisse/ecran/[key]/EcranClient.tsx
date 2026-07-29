@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 
 interface Payload {
   client?: string | null; plate?: string | null; brand?: string | null; model?: string | null
-  reference?: string; amount: number; lines?: { label: string; amount: number }[]
+  reference?: string; amount: number; amountTotal?: number | null; lines?: { label: string; amount: number }[]
   sumupQrUrl?: string | null; sumupCheckoutId?: string | null; epcPayload?: string | null
 }
 
@@ -107,7 +107,13 @@ export default function EcranClient({ displayKey }: { displayKey: string }) {
         </div>
 
         <div style={S.amountBox}>
-          <div style={S.amountLabel}>Montant à payer</div>
+          {payload.amountTotal != null && payload.amountTotal > payload.amount + 0.005 && (
+            <div style={S.totalSmall}>
+              Total {eur(payload.amountTotal)} TVAC
+              <span style={{ color: '#16a34a', marginLeft: '1vw' }}>· déjà réglé {eur(payload.amountTotal - payload.amount)}</span>
+            </div>
+          )}
+          <div style={S.amountLabel}>{payload.amountTotal != null && payload.amountTotal > payload.amount + 0.005 ? 'Solde à payer' : 'Montant à payer'}</div>
           <div style={{ ...S.amount, fontSize: amountFont }}>{eur(payload.amount)}</div>
           <div style={S.tvac}>TVAC</div>
           {payload.lines && payload.lines.length > 0 && (
@@ -231,6 +237,7 @@ const S: Record<string, React.CSSProperties> = {
   plate: { fontSize: '1.7vw', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', background: '#0b1120', color: '#fff', padding: '.3vh 1.2vw', borderRadius: '10px', fontWeight: 700 },
   client: { fontSize: '1.7vw', color: '#64748b' },
   amountBox: { textAlign: 'center', maxWidth: '92vw' },
+  totalSmall: { fontSize: '1.4vw', color: '#94a3b8', marginBottom: '.6vh', fontWeight: 600 },
   amountLabel: { fontSize: '1.3vw', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em' },
   amount: { fontWeight: 800, lineHeight: 1, color: '#0b1120' },
   tvac: { fontSize: '1.1vw', color: '#94a3b8', marginTop: '.4vh' },
