@@ -28,8 +28,9 @@ function checkAccess(session: any): boolean {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!checkAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  const session = isInternal ? null : await getServerSession(authOptions)
+  if (!isInternal && !checkAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const assignmentId = String(body.assignmentId || '').trim()
@@ -80,13 +81,14 @@ export async function POST(req: Request) {
       const { createAdminClient } = await import('@/lib/supabase')
       const { releaseParcAndShift } = await import('@/lib/parc/release')
       const sb = createAdminClient()
-      const userId = (session!.user as any).id || null
+      const userId = session ? (session.user as any).id || null : null
       const now = new Date().toISOString()
       const { error: updErr } = await sb.from('incoming_missions').update({
         status:         'completed',
         invoice_method: 'auto',
         invoiced_at:    now,
         invoiced_by:    userId,
+        auto_invoiced:  isInternal,   // cron → compte dans « Système (auto) » ; manuel → attribué à l'user
         updated_at:     now,
       }).eq('id', vdsoftMissionId)
       if (updErr) throw new Error(updErr.message)

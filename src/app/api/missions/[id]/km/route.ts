@@ -27,9 +27,13 @@ async function getDistanceKm(origin: Coord, destination: Coord): Promise<number 
   return r?.km ?? null
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  // Appel interne (crons auto-clôture) : x-internal-secret. Sinon session.
+  const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  if (!isInternal) {
+    const session = await getServerSession(authOptions)
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   const sb = createAdminClient()
   // SELECT * pour être robuste aux colonnes manquantes (destination_lat/lng peut ne pas exister)

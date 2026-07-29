@@ -16,9 +16,10 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as any
-  if (user?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const isInternal = !!process.env.NEXTAUTH_SECRET && req.headers.get('x-internal-secret') === process.env.NEXTAUTH_SECRET
+  const session = isInternal ? null : await getServerSession(authOptions)
+  const user = (session?.user as any) || {}
+  if (!isInternal && user?.role !== 'superadmin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const ids: string[] = Array.isArray(body?.ids) ? body.ids.filter((x: any) => typeof x === 'string') : []
@@ -61,7 +62,9 @@ export async function POST(req: Request) {
       const { data: m } = await sb.from('incoming_missions').select('id, status, invoice_method').eq('id', mid).maybeSingle()
       if (m && m.status === 'to_invoice' && m.invoice_method !== 'auto') {
         const { error: updErr } = await sb.from('incoming_missions').update({
-          status: 'completed', invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id || null, updated_at: now,
+          status: 'completed', invoice_method: 'auto', invoiced_at: now, invoiced_by: user.id || null,
+          auto_invoiced: isInternal,   // cron → « Système (auto) » ; manuel → attribué à l'user
+          updated_at: now,
         }).eq('id', mid)
         if (!updErr) {
           vdFactured++

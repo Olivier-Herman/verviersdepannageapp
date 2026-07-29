@@ -31,7 +31,9 @@ export async function GET(req: Request) {
   let auto = 0
   const manualByUser = new Map<string, number>()
   for (const r of (rows || []) as any[]) {
-    const evt = r.auto_invoiced ? r.invoice_created_at : (r.invoiced_at || r.invoice_created_at)
+    // Auto : la clôture Allianz / validation Touring posent invoiced_at (pas
+    // invoice_created_at) → on prend le premier des deux comme date d'événement.
+    const evt = r.auto_invoiced ? (r.invoice_created_at || r.invoiced_at) : (r.invoiced_at || r.invoice_created_at)
     if (!evt || evt < since) continue
     if (r.auto_invoiced) { auto++; continue }
     const uid = r.invoiced_by || r.invoice_created_by || 'inconnu'

@@ -9,6 +9,7 @@ interface Vd {
   id: string; mission_number: number | null; external_id: string | null
   source: string | null; status: string | null; mission_type: string | null
   destination_address: string | null; destination_lat: number | null; destination_lng: number | null; received_at: string | null
+  completed_at: string | null
 }
 
 // Type de service Allianz (providedService) + libellé
@@ -58,6 +59,9 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
   const [svc, setSvc]         = useState<Record<string, 'T' | 'R' | 'D'>>({})
   const [reconnecting, setReconnecting] = useState(false)
   const [reconnectMsg, setReconnectMsg] = useState<string | null>(null)
+  // Horloge live pour le décompteur d'auto-clôture (fin de mission + 60 min).
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  useEffect(() => { const iv = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(iv) }, [])
 
   async function reconnect() {
     setReconnecting(true); setReconnectMsg(null)
@@ -213,6 +217,9 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
           <div className="space-y-2">
             {rows.map(row => {
               const res = result[row.assignmentId]
+              // Décompteur auto-clôture : fin de mission (completed_at) + 60 min.
+              const compMs = row.vdsoft?.completed_at ? new Date(row.vdsoft.completed_at).getTime() : null
+              const remainMs = compMs != null ? (compMs + 60 * 60_000) - nowTick : null
               return (
                 <div key={row.assignmentId} className="bg-surface border rounded-2xl p-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -226,6 +233,11 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
                           : row.towsoft
                             ? <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-700">TowSoft ✓ #{row.towsoft.towsoft_num}</span>
                             : <span className="px-1.5 py-0.5 rounded text-[10px] bg-warning/15 text-warning">non rapprochée</span>}
+                        {remainMs != null && (
+                          remainMs > 0
+                            ? <span className="px-1.5 py-0.5 rounded text-[10px] bg-sky-500/15 text-sky-700 dark:text-sky-300 font-medium" title="Auto-clôture à fin de mission + 60 min">⏳ Auto-clôture dans {Math.floor(remainMs / 60000)}m{String(Math.floor((remainMs % 60000) / 1000)).padStart(2, '0')}</span>
+                            : <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium" title="Éligible — sera clôturée au prochain passage du cron">✅ Éligible — clôture imminente</span>
+                        )}
                       </div>
                       <div className="text-ink-muted text-[11px] mt-0.5">
                         {row.product || '—'} · {row.serviceType || '—'} · {fmt(row.dispatchTime)}
