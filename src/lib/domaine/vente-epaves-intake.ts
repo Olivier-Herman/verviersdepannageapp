@@ -47,7 +47,10 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
 
   let msgs: any[] = []
   try {
-    msgs = await searchMessages(VENTE_MAILBOX, `from:${VENTE_SENDER} vente epaves`, 50)
+    // Recherche sur l'expéditeur seul : « épaves » est indexé accentué par Graph,
+    // le terme « epaves » ne matcherait pas. Le filtre sujet (sans accent) se fait
+    // en code juste après.
+    msgs = await searchMessages(VENTE_MAILBOX, `from:${VENTE_SENDER}`, 100)
   } catch (e: any) {
     console.error('[vente-epaves] recherche mail KO:', e?.message)
     return s
