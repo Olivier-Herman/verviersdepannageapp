@@ -73,6 +73,20 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau'); return false }
   }
 
+  // Sortie réelle au niveau de la vente → propagée à toutes les lignes.
+  async function editVente(venteDate: string, value: string | null) {
+    try {
+      const r = await fetch('/api/fourriere/domaine/ventes-register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_sortie_vente', venteDate, value }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Échec'}`); return }
+      setMsg(value ? `✓ Sortie ${fmt(value)} appliquée à ${j.lines} ligne(s)${j.facturable ? ` · ${j.facturable} → à facturer` : ''}` : '✓ Sortie effacée sur la vente')
+      load()
+    } catch { setMsg('⚠ Erreur réseau') }
+  }
+
   async function syncVentes() {
     setSyncing(true); setMsg(null)
     try {
@@ -186,6 +200,12 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
                       <td colSpan={10} className="px-3 py-1.5 text-indigo-800 text-xs font-bold uppercase tracking-wide">
                         🏷️ Vente d'épaves du {fmt(g.vente)} — {g.rows.length} véhicule{g.rows.length > 1 ? 's' : ''}
                         {g.firm && <span className="normal-case font-semibold"> · Firme : {g.firm}</span>}
+                        <span className="normal-case font-medium ml-3 text-indigo-700 dark:text-indigo-300">
+                          · Sortie réelle de la vente :{' '}
+                          <input type="date" defaultValue={g.rows[0]?.sortieReelle || ''}
+                            onBlur={e => { const v = e.target.value; if (v !== (g.rows[0]?.sortieReelle || '')) editVente(g.vente, v || null) }}
+                            className="bg-surface-2 border rounded px-1.5 py-0.5 text-ink text-xs" title="Appliquée à toutes les lignes de la vente (éditable par ligne ensuite)" />
+                        </span>
                       </td>
                     </tr>
                     {g.rows.map(r => {

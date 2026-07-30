@@ -38,54 +38,62 @@ export async function GET(req: Request) {
   return NextResponse.json({ ok: true, ...result })
 }
 
+// Ligne rapprochée + sortie réelle → fiche « à facturer » (cachet Domaine).
+async function toInvoiceIfMatched(sb: any, r: any, sortie: string, userId: string | null): Promise<boolean> {
+  if (!sortie || !r.matched_mission_id) return false
+  const { data: m } = await sb.from('incoming_missions')
+    .select('id, status, completed_at').eq('id', r.matched_mission_id).maybeSingle()
+  if (!m || !['parked', 'new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering'].includes(m.status)) return false
+  const now = new Date().toISOString()
+  await sb.from('incoming_missions').update({ status: 'to_invoice', completed_at: m.completed_at || now, updated_at: now }).eq('id', m.id)
+  await sb.from('mission_logs').insert({
+    mission_id: m.id, actor_id: userId, action: 'domaine_sortie',
+    notes: `Sortie réelle Domaine ${sortie}${r.firm ? ` (vendu à ${r.firm})` : ''} → à facturer`,
+    metadata: { source: 'vente_epaves', sortie, domaine_ref: r.numero },
+  }).then(() => {}, () => {})
+  return true
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!canAccess(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const user = session!.user as any
   const body = await req.json().catch(() => ({}))
   const action = String(body.action || '')
+  const sb = createAdminClient()
+
+  // Sortie réelle au niveau de la VENTE : propage à toutes les lignes de la vente
+  // (les épaves d'une même soumission partent ensemble). Éditable par ligne ensuite.
+  if (action === 'set_sortie_vente') {
+    const venteDate = String(body.venteDate || '').slice(0, 10)
+    const value = body.value ? String(body.value).slice(0, 10) : null
+    if (!venteDate) return NextResponse.json({ error: 'venteDate requis' }, { status: 400 })
+    const { data: rows } = await sb.from('domaine_ventes_epaves')
+      .select('id, matched_mission_id, numero, firm').eq('vente_date', venteDate)
+    await sb.from('domaine_ventes_epaves').update({ sortie_reelle_date: value }).eq('vente_date', venteDate)
+    let facturable = 0
+    if (value) for (const r of (rows || [])) { if (await toInvoiceIfMatched(sb, r, value, user.id || null)) facturable++ }
+    return NextResponse.json({ ok: true, facturable, lines: (rows || []).length })
+  }
+
   const id = String(body.id || '')
   if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
-
-  const sb = createAdminClient()
   const { data: row } = await sb.from('domaine_ventes_epaves')
     .select('id, matched_mission_id, sortie_reelle_date, numero, firm').eq('id', id).maybeSingle()
   if (!row) return NextResponse.json({ error: 'Ligne introuvable' }, { status: 404 })
 
   if (action === 'set_date_out') {
-    const value = body.value ? String(body.value).slice(0, 10) : null
-    await sb.from('domaine_ventes_epaves').update({ date_out: value }).eq('id', id)
+    await sb.from('domaine_ventes_epaves').update({ date_out: body.value ? String(body.value).slice(0, 10) : null }).eq('id', id)
     return NextResponse.json({ ok: true })
   }
-
   if (action === 'toggle_prepare') {
-    const on = !!body.value
-    await sb.from('domaine_ventes_epaves').update({ prepare_at: on ? new Date().toISOString() : null }).eq('id', id)
+    await sb.from('domaine_ventes_epaves').update({ prepare_at: body.value ? new Date().toISOString() : null }).eq('id', id)
     return NextResponse.json({ ok: true })
   }
-
   if (action === 'set_sortie') {
     const value = body.value ? String(body.value).slice(0, 10) : null
     await sb.from('domaine_ventes_epaves').update({ sortie_reelle_date: value }).eq('id', id)
-    // Ligne rapprochée + date de sortie renseignée → fiche « à facturer » (cachet Domaine).
-    let facturable = false
-    if (value && row.matched_mission_id) {
-      const { data: m } = await sb.from('incoming_missions')
-        .select('id, status, completed_at').eq('id', row.matched_mission_id).maybeSingle()
-      if (m && ['parked', 'new', 'dispatching', 'assigned', 'accepted', 'in_progress', 'delivering'].includes(m.status)) {
-        await sb.from('incoming_missions').update({
-          status: 'to_invoice',
-          completed_at: m.completed_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq('id', m.id)
-        await sb.from('mission_logs').insert({
-          mission_id: m.id, actor_id: user.id || null, action: 'domaine_sortie',
-          notes: `Sortie réelle Domaine ${value} (vendu${row.firm ? ` à ${row.firm}` : ''}) → à facturer`,
-          metadata: { source: 'vente_epaves', sortie: value, domaine_ref: row.numero },
-        }).then(() => {}, () => {})
-        facturable = true
-      }
-    }
+    const facturable = value ? await toInvoiceIfMatched(sb, row, value, user.id || null) : false
     return NextResponse.json({ ok: true, facturable })
   }
 

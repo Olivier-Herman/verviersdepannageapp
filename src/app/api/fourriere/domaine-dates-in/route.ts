@@ -53,16 +53,26 @@ export async function GET() {
     }
   })
 
+  // Masque les véhicules TOTALEMENT traités côté vente d'épaves (sortie réelle +
+  // Préparation OK) : plus besoin de les voir dans Dates IN.
+  const { data: doneRows } = await sb.from('domaine_ventes_epaves')
+    .select('matched_mission_id')
+    .not('matched_mission_id', 'is', null)
+    .not('sortie_reelle_date', 'is', null)
+    .not('prepare_at', 'is', null)
+  const doneSet = new Set((doneRows || []).map((r: any) => r.matched_mission_id))
+  const visible = items.filter(i => !i.matched_mission_id || !doneSet.has(i.matched_mission_id))
+
   const counts = {
-    total: items.length,
-    applied:    items.filter(i => i.outcome === 'applied').length,
-    alreadySet: items.filter(i => i.outcome === 'already_set').length,
-    noMatch:    items.filter(i => i.outcome === 'no_match').length,
-    ambiguous:  items.filter(i => i.outcome === 'ambiguous').length,
+    total: visible.length,
+    applied:    visible.filter(i => i.outcome === 'applied').length,
+    alreadySet: visible.filter(i => i.outcome === 'already_set').length,
+    noMatch:    visible.filter(i => i.outcome === 'no_match').length,
+    ambiguous:  visible.filter(i => i.outcome === 'ambiguous').length,
   }
   const { data: lr } = await sb.from('app_settings').select('value').eq('key', 'domaine_dates_in_last_run').maybeSingle()
 
-  return NextResponse.json({ items, counts, lastRun: lr?.value ?? null })
+  return NextResponse.json({ items: visible, counts, lastRun: lr?.value ?? null })
 }
 
 export async function POST(req: Request) {
