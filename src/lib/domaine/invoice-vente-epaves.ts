@@ -8,8 +8,8 @@
 
 import { withOdooActor, odooRpc } from '@/lib/odoo'
 import { attachToOdoo } from '@/lib/odoo-attachment'
-import { computeDomaineBilling } from '@/lib/fourriere/domaine-billing'
-import { buildDomaineXlsxBuffer } from '@/lib/fourriere/domaine-xlsx'
+import { computeVenteEpavesRegister } from '@/lib/domaine/vente-epaves-register'
+import { buildVenteEpavesXlsxBuffer } from '@/lib/fourriere/domaine-xlsx'
 
 // Paramètres Odoo (facture de référence 2026/01/248).
 const DOMAINE_PARTNER_ID = 83   // Service Public Fédéral Finances
@@ -44,7 +44,7 @@ export async function createDomaineQuarterInvoice(input: {
     try {
       const { createAdminClient } = await import('@/lib/supabase')
       const sb = createAdminClient()
-      const { groups, total, totalDays, count } = await computeDomaineBilling(sb, from, to)
+      const { groups, total, totalDays, count } = await computeVenteEpavesRegister(sb, from, to)
       if (!count) return { ok: false, error: 'Aucune vente Domaine sur cette période' }
       if (!(total > 0)) return { ok: false, error: 'Total à 0 € — Date OUT (enlèvement) manquante sur les fiches ?' }
 
@@ -71,7 +71,7 @@ export async function createDomaineQuarterInvoice(input: {
       if (before?.state === 'draft') await odooRpc('account.move', 'action_post', [[moveId]])
 
       // 3) Attache le tableau Excel du trimestre.
-      const buffer = buildDomaineXlsxBuffer(groups, total, totalDays)
+      const buffer = buildVenteEpavesXlsxBuffer(groups, total, totalDays)
       await attachToOdoo({
         resModel: 'account.move', resId: moveId,
         filename: `gardiennage_domaine_${from}_${to}.xlsx`,

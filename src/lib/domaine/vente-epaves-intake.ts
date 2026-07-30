@@ -106,8 +106,15 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
           .limit(5)
 
         let outcome = 'no_match', matchedId: string | null = null
-        if ((hits || []).length === 1) {
-          const m = hits![0]
+        // Match unique, ou désambiguïsation par MARQUE si le VIN (5 derniers)
+        // matche plusieurs fiches (collision, ex. VIN legacy tronqué).
+        let m: any = (hits || []).length === 1 ? hits![0] : null
+        if (!m && (hits || []).length > 1) {
+          const bn = String(v.brand || '').toLowerCase().split(/\s+/)[0]
+          const byBrand = bn ? hits!.filter((h: any) => String(h.vehicle_brand || '').toLowerCase().includes(bn)) : []
+          if (byBrand.length === 1) m = byBrand[0]
+        }
+        if (m) {
           matchedId = m.id
           // Présent dans le tableau Domaine ⇒ c'est une saisie : normalise la source.
           if (m.source !== 'police_saisie') {
@@ -174,6 +181,7 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
         await sb.from('domaine_ventes_epaves').upsert({
           source_email_id: msg.id, received_at: msg.receivedDateTime,
           firm, vente_date: venteDate || null, max_enlevement_date: maxEnl,
+          date_in: v.emailDate || null,   // Date IN = colonne date du mail (registre)
           numero: v.numero, brand: v.brand, model: v.model, vin: v.vin, vin_tail: v.vinTail,
           matched_mission_id: matchedId, outcome,
         }, { onConflict: 'source_email_id,vin' }).then(() => {}, () => {})

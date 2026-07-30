@@ -6,8 +6,8 @@ import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
-import { computeDomaineBilling } from '@/lib/fourriere/domaine-billing'
-import { buildDomaineXlsxBuffer } from '@/lib/fourriere/domaine-xlsx'
+import { computeVenteEpavesRegister } from '@/lib/domaine/vente-epaves-register'
+import { buildVenteEpavesXlsxBuffer } from '@/lib/fourriere/domaine-xlsx'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,8 +28,8 @@ export async function GET(req: Request) {
   if (!from || !to) return NextResponse.json({ error: 'Période (from/to) requise' }, { status: 400 })
 
   const sb = createAdminClient()
-  const { groups, total, totalDays } = await computeDomaineBilling(sb, from, to)
-  const buffer = buildDomaineXlsxBuffer(groups, total, totalDays)
+  const { groups, total, totalDays } = await computeVenteEpavesRegister(sb, from, to)
+  const buffer = buildVenteEpavesXlsxBuffer(groups, total, totalDays)
   const fname = `gardiennage_domaine_${from}_${to}.xlsx`
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
