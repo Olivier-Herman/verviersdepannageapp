@@ -76,17 +76,27 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
 
   const serviceOf = (row: Row): 'T' | 'R' | 'D' => svc[row.assignmentId] ?? defaultService(row)
 
-  async function load() {
-    setLoading(true); setErr(null); setNeedsAuth(false)
+  async function load(silent = false) {
+    if (!silent) { setLoading(true); setErr(null); setNeedsAuth(false) }
     try {
       const r = await fetch('/api/facturation/allianz/list')
       const j = await r.json()
-      if (r.status === 503 && j.needsAuth) { setNeedsAuth(true); setErr(j.error); return }
-      if (!r.ok) throw new Error(j.error || 'Erreur')
+      if (r.status === 503 && j.needsAuth) { if (!silent) { setNeedsAuth(true); setErr(j.error) } return }
+      if (!r.ok) { if (!silent) setErr(j.error || 'Erreur'); return }
       setRows(j.rows || [])
-    } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
+    } catch (e: any) { if (!silent) setErr(e.message) } finally { if (!silent) setLoading(false) }
   }
   useEffect(() => { load() }, [])
+
+  // Temps réel : refresh silencieux toutes les 60 s (la liste vient de Hexalite,
+  // live/lent → on ne martèle pas) + au retour sur l'onglet. Olivier 2026-07-30.
+  useEffect(() => {
+    const iv = setInterval(() => load(true), 60000)
+    const onVis = () => { if (document.visibilityState === 'visible') load(true) }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', onVis) }
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Récupère la distance (km total) de la mission VD Soft liée.
   async function fetchKm(missionId: string): Promise<number | null> {

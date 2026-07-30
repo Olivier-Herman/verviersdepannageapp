@@ -38,6 +38,16 @@ export default function TouringComexClient(props: {
   // affichage. Plus besoin de cliquer « Synchroniser ». Olivier 2026-07-28.
   useEffect(() => { sync() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Temps réel : refresh silencieux de la liste (locale, alimentée par le cron
+  // toutes les ~3 min) toutes les 15 s + au retour sur l'onglet. Olivier 2026-07-30.
+  useEffect(() => {
+    const iv = setInterval(() => load(true), 15000)
+    const onVis = () => { if (document.visibilityState === 'visible') load(true) }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', onVis) }
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+
   async function sync() {
     setBusy('sync')
     try {
