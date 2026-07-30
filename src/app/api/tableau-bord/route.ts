@@ -8,6 +8,7 @@
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { isPoliceNoPointage } from '@/lib/perf/police-trip'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -175,7 +176,7 @@ export async function GET(req: Request) {
   const startMonth = bxlMonthStartISO()
   const start7 = bxlDayStartISO(7)
   const { data: monthMissions } = await sb.from('incoming_missions')
-    .select('id, assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at')
+    .select('id, assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at, source')
     .or(`assigned_at.gte.${startMonth},completed_at.gte.${startMonth}`)
     .not('assigned_to', 'is', null)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
@@ -191,6 +192,18 @@ export async function GET(req: Request) {
     .gte('created_at', startMonth)
     .limit(10000)
   for (const l of (forcedLogs || [])) if (l.mission_id) forcedSet.add(l.mission_id)
+
+  // Durée par défaut des appels police sans pointage (est_trip_min, rempli par le
+  // cron estimate-police-trips). Requête séparée + protégée : si la colonne
+  // n'existe pas encore (migration non appliquée), on n'écroule pas le tableau.
+  const estTripById = new Map<string, number>()
+  const policeIds = (monthMissions || []).filter(isPoliceNoPointage).map((m: any) => m.id)
+  if (policeIds.length) {
+    try {
+      const { data: et } = await sb.from('incoming_missions').select('id, est_trip_min').in('id', policeIds)
+      for (const r of (et || [])) if (r.est_trip_min != null) estTripById.set(r.id, r.est_trip_min)
+    } catch {}
+  }
 
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
@@ -231,9 +244,15 @@ export async function GET(req: Request) {
       // attente de relivraison) ne doit pas gonfler la moyenne « du jour ».
       const a = (m.assigned_at && m.assigned_at >= sinceISO) ? Date.parse(m.assigned_at) : null
       if (a != null) {
-        const pk = m.parked_at ? Date.parse(m.parked_at) : null
-        const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
-        if (end != null) { const x = end - a; if (x >= 0) { d.durSum += x; d.durN++ } }
+        if (isPoliceNoPointage(m)) {
+          // Appel police sans pointage → durée par défaut = A/R dépôt + 20 min.
+          const est = estTripById.get(m.id)
+          if (est != null) { d.durSum += est * 60000; d.durN++ }
+        } else {
+          const pk = m.parked_at ? Date.parse(m.parked_at) : null
+          const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
+          if (end != null) { const x = end - a; if (x >= 0) { d.durSum += x; d.durN++ } }
+        }
       }
       drv.set(m.assigned_to, d)
     }
@@ -265,10 +284,16 @@ export async function GET(req: Request) {
     if (m.on_way_at)   { const x = Date.parse(m.on_way_at) - a;   if (ok(x)) { p.rS += x; p.rN++; gRoute[0] += x; gRoute[1]++ } }
     // Traitement (part chauffeur) = de l'assignation (« dans ses mains ») jusqu'à
     // SA clôture. Priorité à la MISE EN PARC (parked_at = clôture réelle du
-    // chauffeur), sinon to_invoice (completed_at).
-    const pk = m.parked_at ? Date.parse(m.parked_at) : null
-    const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
-    if (end != null) { const x = end - a; if (ok(x)) { p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ } }
+    // chauffeur), sinon to_invoice (completed_at). Cas particulier : appel police
+    // sans pointage → durée par défaut = A/R dépôt → intervention + 20 min.
+    if (isPoliceNoPointage(m)) {
+      const est = estTripById.get(m.id)
+      if (est != null) { const x = est * 60000; p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ }
+    } else {
+      const pk = m.parked_at ? Date.parse(m.parked_at) : null
+      const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
+      if (end != null) { const x = end - a; if (ok(x)) { p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ } }
+    }
     perfMap.set(m.assigned_to, p)
   }
   const avgMin = (sum: number, n: number) => (n ? Math.round(sum / n / 60000) : null)
