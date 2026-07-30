@@ -50,6 +50,8 @@ interface MissionRow {
   no_charge_reason: string | null
   billed_to_id?:    number | null
   billed_to_name?:  string | null
+  domaine_vente_date?: string | null
+  domaine_vente_firm?: string | null
 }
 
 interface SiblingRow {
@@ -937,6 +939,12 @@ export default function FacturationClient({
                           </span>
                         )}
                         {isSuperadmin && <AutoFactBadge info={autoByMission[m.id]} now={nowTick} />}
+                        {m.domaine_vente_date && (
+                          <span className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg font-black uppercase tracking-widest border border-purple-300 shadow-lg shadow-purple-600/30 -rotate-2"
+                            title={`Vendu au Domaine${m.domaine_vente_firm ? ` · firme ${m.domaine_vente_firm}` : ''}`}>
+                            🏛 Domaine
+                          </span>
+                        )}
                       </div>
                       <p className="text-ink-secondary text-sm mt-0.5 truncate">
                         {m.vehicle_plate ? <span className="font-mono">{m.vehicle_plate}</span> : '—'}

@@ -18,7 +18,8 @@ const MISSION_COLS = `
   invoice_method, invoice_number, invoice_url,
   no_charge_at, no_charge_reason,
   odoo_quote_id, odoo_quote_url, odoo_quoted_at, invoice_odoo_id,
-  billed_to_id, billed_to_name, remarks_billing
+  billed_to_id, billed_to_name, remarks_billing,
+  domaine_vente_date, domaine_vente_firm
 `
 
 export async function loadFacturationData(
