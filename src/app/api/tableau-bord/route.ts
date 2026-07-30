@@ -8,7 +8,7 @@
 
 import { NextResponse }      from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
-import { isPoliceNoPointage } from '@/lib/perf/police-trip'
+import { isPoliceNoPointage, loadDepots } from '@/lib/perf/police-trip'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -22,6 +22,16 @@ const VALID_PINS = [
 ]
 const VHU_SOURCE = 'garage_j7772c'
 const PERIOD_DAYS = 7
+
+// Km routiers approx A/R dépôt → intervention (vol d'oiseau × 1.3 détour routier),
+// instantané (pas d'appel réseau). Sert au total « km parcourus » par chauffeur.
+function roundTripKm(depot: { lat: number; lng: number }, lat: number, lng: number): number {
+  const R = 6371, toRad = (x: number) => (x * Math.PI) / 180
+  const dLat = toRad(lat - depot.lat), dLng = toRad(lng - depot.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(depot.lat)) * Math.cos(toRad(lat)) * Math.sin(dLng / 2) ** 2
+  const km = 2 * R * Math.asin(Math.sqrt(h))
+  return km * 1.3 * 2   // × détour routier, × aller-retour
+}
 
 // Instant UTC (ISO) de minuit à Bruxelles il y a `daysAgo` jours (gère l'heure d'été).
 function bxlDayStartISO(daysAgo = 0): string {
@@ -176,7 +186,7 @@ export async function GET(req: Request) {
   const startMonth = bxlMonthStartISO()
   const start7 = bxlDayStartISO(7)
   const { data: monthMissions } = await sb.from('incoming_missions')
-    .select('id, assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at, source')
+    .select('id, assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at, source, incident_lat, incident_lng, departure_depot_id, depot_depart_id')
     .or(`assigned_at.gte.${startMonth},completed_at.gte.${startMonth}`)
     .not('assigned_to', 'is', null)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
@@ -204,6 +214,9 @@ export async function GET(req: Request) {
       for (const r of (et || [])) if (r.est_trip_min != null) estTripById.set(r.id, r.est_trip_min)
     } catch {}
   }
+
+  // Dépôts (pour les km parcourus par chauffeur = A/R dépôt → intervention).
+  const depots = await loadDepots(sb)
 
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
@@ -233,7 +246,7 @@ export async function GET(req: Request) {
       if (excludedDrivers.has(m.assigned_to)) continue
       const inP = (m.assigned_at && m.assigned_at >= sinceISO) || (m.completed_at && m.completed_at >= sinceISO)
       if (!inP) continue
-      const d = drv.get(m.assigned_to) || { total: 0, forced: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
+      const d = drv.get(m.assigned_to) || { total: 0, forced: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0, km: 0 }
       d.total++; d[catOf(m.mission_type)]++
       // Durée moyenne = temps chauffeur : assignation → mise en parc (sinon
       // to_invoice = completed_at). Fiches clôturées de force par le dispatch
@@ -253,6 +266,12 @@ export async function GET(req: Request) {
           const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
           if (end != null) { const x = end - a; if (x >= 0) { d.durSum += x; d.durN++ } }
         }
+        // Km parcourus (A/R dépôt → intervention) pour les fiches de la période.
+        if (m.incident_lat != null && m.incident_lng != null) {
+          const dep = m.departure_depot_id || m.depot_depart_id
+          const depot = (dep && depots.byId.get(dep)) || depots.def
+          if (depot) d.km += roundTripKm(depot, Number(m.incident_lat), Number(m.incident_lng))
+        }
       }
       drv.set(m.assigned_to, d)
     }
@@ -260,6 +279,7 @@ export async function GET(req: Request) {
       driver: dn.get(id) || '—', total: d.total, forced: d.forced,
       REM: d.REM, DSP: d.DSP, REL: d.REL, Transport: d.Transport, DPR: d.DPR, autre: d.Autre,
       avgMin: d.durN ? Math.round(d.durSum / d.durN / 60000) : null,
+      km: Math.round(d.km),
     })).sort((a, b) => b.total - a.total)
   }
   const chauffeurs = { jour: chauffeursForPeriod(startToday), semaine: chauffeursForPeriod(start7), mois: chauffeursForPeriod(startMonth) }

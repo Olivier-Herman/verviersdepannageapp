@@ -24,7 +24,7 @@ interface Kpi {
   perf?: { parChauffeur: PerfRow[]; global: { acceptMin: number | null; routeMin: number | null; traitMin: number | null } }
 }
 
-type DrvRow = { driver: string; total: number; forced?: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }
+type DrvRow = { driver: string; total: number; forced?: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null; km?: number }
 type PerfRow = { driver: string; count: number; forced?: number; acceptMin: number | null; routeMin: number | null; traitMin: number | null }
 
 const CAT_COLOR: Record<string, string> = { REM: '#38bdf8', DSP: '#4ade80', REL: '#a78bfa', Transport: '#fb923c', DPR: '#fbbf24', Autre: '#64748b' }
@@ -361,7 +361,7 @@ function ChauffeurPanel({ title, rows, empty }: { title: string; rows?: DrvRow[]
       <div className="tb-tblwrap">
         <table className="tb-tbl">
           <thead><tr>
-            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th><th>Forcées</th>
+            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th><th>Km</th><th>Forcées</th>
           </tr></thead>
           <tbody>
             {list.map((d, i) => (
@@ -374,10 +374,11 @@ function ChauffeurPanel({ title, rows, empty }: { title: string; rows?: DrvRow[]
                 <td style={{ color: CAT_COLOR.Transport }}>{d.Transport || '·'}</td>
                 <td style={{ color: CAT_COLOR.DPR }}>{d.DPR || '·'}</td>
                 <td className="tb-avg">{d.avgMin != null ? fmtDuree(d.avgMin) : '—'}</td>
+                <td style={{ color: '#a78bfa' }}>{d.km ? `${d.km} km` : '·'}</td>
                 <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || '·'}</td>
               </tr>
             ))}
-            {!list.length && <tr><td colSpan={9} className="tb-empty">{empty}</td></tr>}
+            {!list.length && <tr><td colSpan={10} className="tb-empty">{empty}</td></tr>}
           </tbody>
         </table>
       </div>
