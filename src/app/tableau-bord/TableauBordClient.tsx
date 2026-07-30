@@ -144,8 +144,8 @@ export default function TableauBordClient() {
       <DualTile label="Assignée / En cours" color="#38bdf8"
         a={o?.assignees} aLabel="Assignée" b={o?.enCours} bLabel="En cours" />
       <Tile label="À facturer"  value={o?.aFacturer}  color="#fb923c" hint="file facturation" />
-      <Tile label="Véhicules en parc" value={o?.enParc} color="#34d399" hint="présents en fourrière"
-        sub={o ? `K + K1 : ${o.enParcKK1}` : undefined} />
+      <Tile label="Parc K + K1" value={o?.enParcKK1} color="#34d399" hint="véhicules zones K + K1"
+        sub={o ? `Total parc : ${o.enParc}` : undefined} />
       <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />
       <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />
       <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
