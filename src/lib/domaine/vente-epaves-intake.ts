@@ -20,7 +20,7 @@ const SUBJECT_KEY = 'paves'   // « Vente d'épaves » (comparé sans accent)
 
 // Saisies à considérer : nouvelles fiches (police_saisie) + fiches historiques
 // migrées de TowSoft/Odoo (legacy_odoo).
-const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
+export const SAISIE_SOURCES = ['police_saisie', 'legacy_odoo']
 
 // Bornes anti-timeout (chaque étiquette peut attendre jusqu'à 10 s si le PC
 // d'impression est lent) : fenêtre récente + plafonds par passe. Le re-scan

@@ -15,6 +15,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { computeVenteEpavesRegister } from '@/lib/domaine/vente-epaves-register'
+import { syncVenteEpavesParc } from '@/lib/domaine/vente-epaves-parc-sync'
 import { odooRpc, withOdooActor } from '@/lib/odoo'
 import { releaseParcAndShift } from '@/lib/parc/release'
 
@@ -69,6 +70,14 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const action = String(body.action || '')
   const sb = createAdminClient()
+
+  // Synchronisation avec le PARC (à l'ouverture de la page) : retente le
+  // rapprochement des lignes non rapprochées avec les fiches en parc. Ne relit
+  // PAS les mails (gérés par le cron).
+  if (action === 'sync_parc') {
+    const summary = await syncVenteEpavesParc(sb)
+    return NextResponse.json({ ok: true, summary })
+  }
 
   // Sortie réelle au niveau de la VENTE : propage à toutes les lignes de la vente
   // (les épaves d'une même soumission partent ensemble). Éditable par ligne ensuite.
