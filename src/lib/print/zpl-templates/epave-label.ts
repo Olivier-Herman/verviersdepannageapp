@@ -52,21 +52,21 @@ export function buildEpaveLabelZPL(d: EpaveLabelData): string {
 
 ^FO20,10
 ^A0N,50,50
-^FB540,1,0,L,0
+^FB500,1,0,L,0
 ^FDVENDU DOMAINE^FS
 
 ^FO20,70
 ^A0N,30,30
-^FB540,2,0,L,0
+^FB500,2,0,L,0
 ^FDFirme: ${firm}^FS
 
-^FO560,14
-^BQN,2,6
+^FO540,14
+^BQN,2,5
 ^FDLB,${qrUrl}^FS
 
 ^FO20,150
 ^A0N,34,34
-^FB540,1,0,L,0
+^FB500,1,0,L,0
 ^FDEnlevement avant: ${dateOut || '—'}^FS
 
 ^FO20,200
