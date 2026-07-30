@@ -208,13 +208,22 @@ export async function GET(req: Request) {
     for (const m of (monthMissions || [])) {
       const inP = (m.assigned_at && m.assigned_at >= sinceISO) || (m.completed_at && m.completed_at >= sinceISO)
       if (!inP) continue
-      const d = drv.get(m.assigned_to) || { total: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
+      const d = drv.get(m.assigned_to) || { total: 0, forced: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
       d.total++; d[catOf(m.mission_type)]++
-      if (m.accepted_at && m.completed_at) { const x = Date.parse(m.completed_at) - Date.parse(m.accepted_at); if (x >= 0) { d.durSum += x; d.durN++ } }
+      // Durée moyenne = temps chauffeur : assignation → mise en parc (sinon
+      // to_invoice = completed_at). Fiches clôturées de force par le dispatch
+      // (forcedSet) écartées de la moyenne mais comptées dans le total.
+      if (forcedSet.has(m.id)) { d.forced++; drv.set(m.assigned_to, d); continue }
+      const a = m.assigned_at ? Date.parse(m.assigned_at) : null
+      if (a != null) {
+        const pk = m.parked_at ? Date.parse(m.parked_at) : null
+        const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
+        if (end != null) { const x = end - a; if (x >= 0) { d.durSum += x; d.durN++ } }
+      }
       drv.set(m.assigned_to, d)
     }
     return [...drv.entries()].map(([id, d]) => ({
-      driver: dn.get(id) || '—', total: d.total,
+      driver: dn.get(id) || '—', total: d.total, forced: d.forced,
       REM: d.REM, DSP: d.DSP, REL: d.REL, Transport: d.Transport, DPR: d.DPR, autre: d.Autre,
       avgMin: d.durN ? Math.round(d.durSum / d.durN / 60000) : null,
     })).sort((a, b) => b.total - a.total)
