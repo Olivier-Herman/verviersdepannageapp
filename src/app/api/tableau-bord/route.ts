@@ -212,11 +212,9 @@ export async function GET(req: Request) {
 
   // Perf chauffeurs (mois) : durées moyennes assignation → acceptation / → départ
   // en route / → traité (terminé ou en parc). + moyenne équipe en bas.
-  // Plafond anti-anomalies : une durée de terrain ne dépasse pas ~24h. Au-delà =
-  // clôture tardive (mission fermée des jours après le travail réel) → exclue des
-  // moyennes (sinon quelques missions à +20 jours faussent tout).
-  const CAP_MS = 24 * 60 * 60 * 1000
-  const ok = (x: number) => x >= 0 && x <= CAP_MS
+  // Pas de plafond (Olivier : moyennes brutes). Seules les durées négatives
+  // (timestamps incohérents) sont écartées.
+  const ok = (x: number) => x >= 0
   const perfMap = new Map<string, any>()
   const gAcc = [0, 0], gRoute = [0, 0], gTrait = [0, 0]   // [somme ms, n]
   for (const m of (monthMissions || [])) {
@@ -227,9 +225,11 @@ export async function GET(req: Request) {
     if (m.accepted_at) { const x = Date.parse(m.accepted_at) - a; if (ok(x)) { p.accS += x; p.accN++; gAcc[0] += x; gAcc[1]++ } }
     if (m.on_way_at)   { const x = Date.parse(m.on_way_at) - a;   if (ok(x)) { p.rS += x; p.rN++; gRoute[0] += x; gRoute[1]++ } }
     // Traitement (part chauffeur) = de l'assignation (« dans ses mains ») jusqu'à
-    // SA clôture : mise en parc ou to_invoice.
-    const end = m.completed_at || m.parked_at
-    if (end) { const x = Date.parse(end) - a; if (ok(x)) { p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ } }
+    // SA clôture. Priorité à la MISE EN PARC (parked_at = clôture réelle du
+    // chauffeur), sinon to_invoice (completed_at).
+    const pk = m.parked_at ? Date.parse(m.parked_at) : null
+    const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)
+    if (end != null) { const x = end - a; if (ok(x)) { p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ } }
     perfMap.set(m.assigned_to, p)
   }
   const avgMin = (sum: number, n: number) => (n ? Math.round(sum / n / 60000) : null)

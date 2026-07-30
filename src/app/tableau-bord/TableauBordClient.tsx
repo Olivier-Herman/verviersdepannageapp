@@ -346,7 +346,7 @@ function PerfPanel({ perf }: { perf?: { parChauffeur: PerfRow[]; global: { accep
   const cell = (v: number | null) => (v != null ? fmtDuree(v) : '—')
   return (
     <div className="tb-panel">
-      <div className="tb-panel-ttl">Performance chauffeurs <span>· mois en cours · durées moyennes (hors clôtures &gt; 24h)</span></div>
+      <div className="tb-panel-ttl">Performance chauffeurs <span>· mois en cours · durées moyennes (assignation → clôture)</span></div>
       <div className="tb-tblwrap">
         <table className="tb-tbl">
           <thead><tr>
