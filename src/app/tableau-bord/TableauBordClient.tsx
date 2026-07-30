@@ -13,6 +13,11 @@ interface Kpi {
     termineesJour: number; factureesJour: number
   }
   facturation: { periodeJours: number; dureeMoyMin: number | null }
+  sources?: {
+    parSource: { key: string; label: string; hex: string; count: number }[]
+    touring: { bko: number; total: number }
+    allianz: { cloture: number | null; total: number }
+  }
 }
 
 const POLL_MS = 10_000
@@ -135,8 +140,9 @@ export default function TableauBordClient() {
 
   const o = data?.ops
   const f = data?.facturation
+  const s = data?.sources
 
-  // Slides du mur. Aujourd'hui 1 seule ; en ajouter ici fait tourner la rotation.
+  // Slides du mur. En ajouter ici fait tourner la rotation.
   const slides = [
     <div className="tb-grid8" key="ops">
       <Tile label="En commande" value={o?.enCommande} color="#a78bfa" hint="onglet dispatch" />
@@ -150,6 +156,28 @@ export default function TableauBordClient() {
       <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />
       <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
         hint={`À facturer → Terminé · ${f?.periodeJours ?? 7} j`} />
+    </div>,
+
+    <div className="tb-src" key="sources">
+      <div className="tb-src-featured">
+        <RatioCard label="Touring" color="#3b82f6"
+          a={s?.touring.bko} b={s?.touring.total} aLbl="COMEX BKO" bLbl="Touring à facturer" />
+        <RatioCard label="Allianz / Mondial" color="#a855f7"
+          a={s?.allianz.cloture ?? undefined} b={s?.allianz.total} aLbl="Clôtures prêtes" bLbl="Allianz à facturer" />
+      </div>
+      <div className="tb-src-list">
+        <div className="tb-src-title">À facturer par source <span>· {(s?.parSource || []).reduce((n, x) => n + x.count, 0)} dossiers</span></div>
+        <div className="tb-src-rows">
+          {(s?.parSource || []).map(x => (
+            <div className="tb-src-row" key={x.key}>
+              <span className="tb-src-dot" style={{ background: x.hex }} />
+              <span className="tb-src-lbl">{x.label}</span>
+              <span className="tb-src-cnt">{x.count}</span>
+            </div>
+          ))}
+          {!s?.parSource?.length && <div className="tb-empty">Aucun dossier à facturer.</div>}
+        </div>
+      </div>
     </div>,
   ]
   slideCountRef.current = slides.length
@@ -197,6 +225,20 @@ function Tile({ label, value, valueStr, color, hint, sub }: { label: string; val
         <span className="tb-tilehint">{hint}</span>
         {sub && <span className="tb-tilesub">{sub}</span>}
       </div>
+    </div>
+  )
+}
+
+function RatioCard({ label, color, a, b, aLbl, bLbl }: { label: string; color: string; a?: number; b?: number; aLbl: string; bLbl: string }) {
+  return (
+    <div className="tb-tile" style={{ ['--c' as any]: color }}>
+      <div className="tb-tilelbl">{label}</div>
+      <div className="tb-ratio">
+        <span className="tb-ratio-a">{a ?? '—'}</span>
+        <span className="tb-ratio-sep">/</span>
+        <span className="tb-ratio-b">{b ?? '—'}</span>
+      </div>
+      <div className="tb-tilebot"><span className="tb-tilehint">{aLbl} · {bLbl}</span></div>
     </div>
   )
 }
@@ -251,6 +293,25 @@ const CSS = `
   font-size:clamp(40px,5.6vw,120px);text-shadow:0 0 34px color-mix(in srgb,var(--c) 45%,transparent)}
 .tb-duallbl{color:#9aa6ba;font-weight:700;font-size:clamp(11px,1vw,19px);text-transform:uppercase;letter-spacing:.03em}
 .tb-dualsep{width:2px;align-self:stretch;background:linear-gradient(180deg,transparent,rgba(255,255,255,.18),transparent)}
+/* Slide 2 : sources */
+.tb-src{flex:1;display:grid;grid-template-columns:1fr 1.15fr;gap:min(1.6vw,22px);padding:.6vh 2.4vw 1vh;min-height:0}
+.tb-src-featured{display:flex;flex-direction:column;gap:min(1.6vw,22px);min-height:0}
+.tb-src-featured .tb-tile{flex:1}
+.tb-ratio{display:flex;align-items:baseline;justify-content:center;gap:.15em;margin:.05em 0}
+.tb-ratio-a{font-weight:900;font-variant-numeric:tabular-nums;color:var(--c);line-height:.9;
+  font-size:clamp(50px,8vw,150px);text-shadow:0 0 40px color-mix(in srgb,var(--c) 45%,transparent)}
+.tb-ratio-sep{font-weight:800;color:#5b6675;font-size:clamp(34px,5vw,90px);opacity:.6}
+.tb-ratio-b{font-weight:800;font-variant-numeric:tabular-nums;color:#c8d2e0;line-height:.9;font-size:clamp(40px,6vw,110px)}
+.tb-src-list{border:1px solid rgba(255,255,255,.07);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012));
+  padding:clamp(14px,1.6vw,26px);display:flex;flex-direction:column;min-height:0}
+.tb-src-title{color:#aeb9cc;font-weight:800;font-size:clamp(15px,1.5vw,26px);margin-bottom:1.4vh}
+.tb-src-title span{color:#7b8698;font-weight:600}
+.tb-src-rows{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;gap:.6vh 2vw;overflow:hidden;align-content:start}
+.tb-src-row{display:flex;align-items:center;gap:.8vw;border-bottom:1px solid rgba(255,255,255,.06);padding:.5vh 0}
+.tb-src-dot{width:clamp(11px,1vw,16px);height:clamp(11px,1vw,16px);border-radius:50%;flex:0 0 auto;box-shadow:0 0 10px currentColor}
+.tb-src-lbl{flex:1;font-weight:700;font-size:clamp(14px,1.35vw,24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-src-cnt{font-weight:900;font-variant-numeric:tabular-nums;font-size:clamp(18px,1.8vw,32px);color:#e8edf5}
+.tb-empty{color:#7b8698;font-size:clamp(15px,1.5vw,24px);padding:4vh 0}
 .tb-foot{display:flex;align-items:center;gap:1.6vw;padding:.4vh 2.4vw 1.2vh}
 .tb-dotsnav{display:flex;gap:9px}
 .tb-navdot{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.2)}

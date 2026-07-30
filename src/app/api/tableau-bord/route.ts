@@ -28,6 +28,27 @@ function bxlDayStartISO(daysAgo = 0): string {
   return new Date(midnight.getTime() - offsetMs).toISOString()
 }
 
+// Nombre de clôtures Allianz prêtes (Hexalite TO_ASSIGN ∩ VD Soft to_invoice).
+// Live Hexalite → CACHE 5 min (app_settings) pour ne pas taper l'API à chaque poll.
+async function getAllianzClotureCount(sb: any): Promise<number | null> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'allianz_cloture_cache').maybeSingle()
+  let cache: any = null
+  try { cache = data?.value ? (typeof data.value === 'string' ? JSON.parse(data.value) : data.value) : null } catch {}
+  if (cache?.at && Date.now() - Date.parse(cache.at) < 5 * 60 * 1000) return cache.count ?? null
+  try {
+    const baseUrl = process.env.NEXTAUTH_URL || 'https://app.verviersdepannage.com'
+    const r = await fetch(`${baseUrl}/api/facturation/allianz/list`, {
+      cache: 'no-store',
+      headers: { 'x-internal-secret': process.env.NEXTAUTH_SECRET || '' },
+      signal: AbortSignal.timeout(20000),
+    })
+    const j = await r.json().catch(() => ({}))
+    const count = typeof j?.count === 'number' ? j.count : (cache?.count ?? null)
+    await sb.from('app_settings').upsert({ key: 'allianz_cloture_cache', value: { count, at: new Date().toISOString() } }, { onConflict: 'key' }).then(() => {}, () => {})
+    return count
+  } catch { return cache?.count ?? null }
+}
+
 export async function GET(req: Request) {
   const pin = req.headers.get('x-dashboard-pin') || new URL(req.url).searchParams.get('pin') || ''
   if (pin !== PIN) return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
@@ -105,6 +126,24 @@ export async function GET(req: Request) {
   }
   const dureeMoyMin = durN ? Math.round(durSum / durN / 60000) : null
 
+  // ── Slide 2 : à facturer PAR SOURCE + ratios Touring/Allianz ───────────────
+  const { data: toInvRows } = await sb.from('incoming_missions')
+    .select('source').eq('status', 'to_invoice').limit(3000)
+  const srcCount = new Map<string, number>()
+  for (const r of (toInvRows || [])) { const s = r.source || 'inconnu'; srcCount.set(s, (srcCount.get(s) || 0) + 1) }
+
+  const { data: cat } = await sb.from('mission_source_catalog').select('key, label, display_color_hex')
+  const catMap = new Map((cat || []).map((c: any) => [c.key, { label: c.label, hex: c.display_color_hex }]))
+  const parSource = [...srcCount.entries()]
+    .map(([key, count]) => ({ key, label: (catMap.get(key) as any)?.label || key, hex: (catMap.get(key) as any)?.hex || '#64748b', count }))
+    .sort((a, b) => b.count - a.count)
+
+  const touringTotal = (srcCount.get('touring') || 0) + (srcCount.get('tgr_touring') || 0)
+  const { count: comexBko } = await sb.from('touring_comex_dossiers')
+    .select('*', { count: 'exact', head: true }).eq('in_comex', true).in('verdict', ['ok', 'verify'])
+  const allianzTotal = (srcCount.get('allianz') || 0) + (srcCount.get('mondial') || 0)
+  const clotureAllianz = await getAllianzClotureCount(sb)
+
   return NextResponse.json({
     ok: true,
     at: new Date().toISOString(),
@@ -120,5 +159,10 @@ export async function GET(req: Request) {
       factureesJour: cFacturees.count || 0,
     },
     facturation: { periodeJours: PERIOD_DAYS, dureeMoyMin },
+    sources: {
+      parSource,
+      touring: { bko: comexBko || 0, total: touringTotal },
+      allianz: { cloture: clotureAllianz, total: allianzTotal },
+    },
   })
 }
