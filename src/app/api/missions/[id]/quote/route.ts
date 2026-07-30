@@ -16,7 +16,7 @@ import { createAdminClient }     from '@/lib/supabase'
 import { estimateMissionPrice }  from '@/lib/missions/estimate-price'
 import { buildOverrideLines, buildInterventionDescription } from '@/lib/missions/build-quote-lines'
 import { createSaleOrder, updateSaleOrder, createDraftInvoice, updateDraftInvoice, getInvoiceMove, findFleetVehicleByPlate, QuoteNotFoundError, type QuoteLine, type QuoteSection } from '@/lib/odoo-quote'
-import { attachFileToOrder, attachFileToInvoice, postChatterMessage, withOdooActor } from '@/lib/odoo'
+import { attachFileToOrder, attachFileToInvoice, postChatterMessage, withOdooActor, odooRpc } from '@/lib/odoo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 30
@@ -289,6 +289,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   } catch (e: any) {
     console.error(`[quote] Odoo push failed (mode=${mode}):`, e.message)
     return NextResponse.json({ error: `Erreur Odoo : ${e.message}` }, { status: 500 })
+  }
+
+  // 4b) AUTO-POST : facture AUTOMATISÉE (cron, isInternal) dont le montant HTVA
+  //     est dans la bande [min,max] € → comptabilisée automatiquement dans Odoo.
+  //     Hors bande → laissée en brouillon pour contrôle humain. Bornes
+  //     configurables via app_settings.auto_invoice_autopost_band. Olivier 2026-07-30.
+  if (mode === 'invoice' && isInternal && (result as any)?.id) {
+    try {
+      const { data: cfg } = await sb.from('app_settings').select('value').eq('key', 'auto_invoice_autopost_band').maybeSingle()
+      let band = { min: 50, max: 300 }
+      try {
+        const v = cfg?.value ? (typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value) : null
+        if (v && typeof v.min === 'number' && typeof v.max === 'number') band = v
+      } catch {}
+      const mv = (await withOdooActor(user?.id, () => odooRpc<any[]>('account.move', 'read', [[(result as any).id]], { fields: ['amount_untaxed', 'state'] })))?.[0]
+      const amt = Number(mv?.amount_untaxed || 0)
+      if (mv?.state === 'draft' && amt >= band.min && amt <= band.max) {
+        await withOdooActor(user?.id, () => odooRpc('account.move', 'action_post', [[(result as any).id]]))
+        await sb.from('mission_logs').insert({
+          mission_id: mission.id, actor_id: null, action: 'invoice_autoposted',
+          notes: `Facture auto comptabilisée (${amt.toFixed(2)} € HTVA ∈ [${band.min},${band.max}])`,
+          metadata: { source: 'auto_invoice', amount_untaxed: amt, band, move_id: (result as any).id },
+        }).then(() => {}, () => {})
+      }
+    } catch (e: any) { console.warn('[quote] auto-post KO (non bloquant):', e?.message) }
   }
 
   // 5) Persiste la trace cote VD Soft (selon le mode).
