@@ -25,7 +25,7 @@ interface Kpi {
 }
 
 type DrvRow = { driver: string; total: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }
-type PerfRow = { driver: string; count: number; acceptMin: number | null; routeMin: number | null; traitMin: number | null }
+type PerfRow = { driver: string; count: number; forced?: number; acceptMin: number | null; routeMin: number | null; traitMin: number | null }
 
 const CAT_COLOR: Record<string, string> = { REM: '#38bdf8', DSP: '#4ade80', REL: '#a78bfa', Transport: '#fb923c', DPR: '#fbbf24', Autre: '#64748b' }
 function elapsed(since: string | null): { txt: string; sev: number } {
@@ -346,26 +346,28 @@ function PerfPanel({ perf }: { perf?: { parChauffeur: PerfRow[]; global: { accep
   const cell = (v: number | null) => (v != null ? fmtDuree(v) : '—')
   return (
     <div className="tb-panel">
-      <div className="tb-panel-ttl">Performance chauffeurs <span>· mois en cours · durées moyennes (assignation → clôture)</span></div>
+      <div className="tb-panel-ttl">Performance chauffeurs <span>· mois en cours · moyennes hors fiches forcées par le dispatch</span></div>
       <div className="tb-tblwrap">
         <table className="tb-tbl">
           <thead><tr>
-            <th className="l">Chauffeur</th><th>Missions</th><th>Acceptation</th><th>Départ en route</th><th>Traitement complet</th>
+            <th className="l">Chauffeur</th><th>Missions</th><th>Forcées</th><th>Acceptation</th><th>Départ en route</th><th>Traitement complet</th>
           </tr></thead>
           <tbody>
             {list.map((d, i) => (
               <tr key={i}>
                 <td className="l tb-drv">{d.driver}</td>
                 <td className="tb-tot">{d.count}</td>
+                <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || 0}</td>
                 <td style={{ color: '#38bdf8' }}>{cell(d.acceptMin)}</td>
                 <td style={{ color: '#fbbf24' }}>{cell(d.routeMin)}</td>
                 <td style={{ color: '#4ade80' }}>{cell(d.traitMin)}</td>
               </tr>
             ))}
-            {!list.length && <tr><td colSpan={5} className="tb-empty">Aucune donnée ce mois-ci.</td></tr>}
+            {!list.length && <tr><td colSpan={6} className="tb-empty">Aucune donnée ce mois-ci.</td></tr>}
           </tbody>
           <tfoot><tr className="tb-team">
             <td className="l">🏁 Équipe (moyenne)</td><td className="tb-tot">—</td>
+            <td style={{ color: '#f87171' }}>{list.reduce((n, d) => n + (d.forced || 0), 0)}</td>
             <td style={{ color: '#38bdf8' }}>{cell(g?.acceptMin ?? null)}</td>
             <td style={{ color: '#fbbf24' }}>{cell(g?.routeMin ?? null)}</td>
             <td style={{ color: '#4ade80' }}>{cell(g?.traitMin ?? null)}</td>

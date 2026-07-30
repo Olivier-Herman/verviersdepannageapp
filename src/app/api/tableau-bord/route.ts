@@ -170,11 +170,22 @@ export async function GET(req: Request) {
   const startMonth = bxlMonthStartISO()
   const start7 = bxlDayStartISO(7)
   const { data: monthMissions } = await sb.from('incoming_missions')
-    .select('assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at')
+    .select('id, assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at')
     .or(`assigned_at.gte.${startMonth},completed_at.gte.${startMonth}`)
     .not('assigned_to', 'is', null)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
     .limit(10000)
+
+  // Missions dont la CLÔTURE a été forcée par le dispatch (log force_status_*).
+  // Elles n'ont pas été clôturées par le chauffeur → écartées du calcul des
+  // moyennes de perf, mais restent comptées dans son total (colonne « Forcées »).
+  const forcedSet = new Set<string>()
+  const { data: forcedLogs } = await sb.from('mission_logs')
+    .select('mission_id')
+    .in('action', ['force_status_to_invoice', 'force_status_parked', 'force_status_completed'])
+    .gte('created_at', startMonth)
+    .limit(10000)
+  for (const l of (forcedLogs || [])) if (l.mission_id) forcedSet.add(l.mission_id)
 
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
@@ -212,16 +223,19 @@ export async function GET(req: Request) {
 
   // Perf chauffeurs (mois) : durées moyennes assignation → acceptation / → départ
   // en route / → traité (terminé ou en parc). + moyenne équipe en bas.
-  // Pas de plafond (Olivier : moyennes brutes). Seules les durées négatives
-  // (timestamps incohérents) sont écartées.
+  // Pas de plafond (moyennes brutes). Seules les durées négatives sont écartées.
+  // Les fiches dont la clôture a été FORCÉE par le dispatch (forcedSet) sont
+  // comptées dans le total mais EXCLUES des moyennes (elles n'ont pas été
+  // clôturées par le chauffeur → completed_at = admin/facturation, pas son temps).
   const ok = (x: number) => x >= 0
   const perfMap = new Map<string, any>()
   const gAcc = [0, 0], gRoute = [0, 0], gTrait = [0, 0]   // [somme ms, n]
   for (const m of (monthMissions || [])) {
     const a = m.assigned_at ? Date.parse(m.assigned_at) : null
     if (a == null) continue
-    const p = perfMap.get(m.assigned_to) || { count: 0, accS: 0, accN: 0, rS: 0, rN: 0, tS: 0, tN: 0 }
+    const p = perfMap.get(m.assigned_to) || { count: 0, forced: 0, accS: 0, accN: 0, rS: 0, rN: 0, tS: 0, tN: 0 }
     p.count++
+    if (forcedSet.has(m.id)) { p.forced++; perfMap.set(m.assigned_to, p); continue }  // écartée des moyennes
     if (m.accepted_at) { const x = Date.parse(m.accepted_at) - a; if (ok(x)) { p.accS += x; p.accN++; gAcc[0] += x; gAcc[1]++ } }
     if (m.on_way_at)   { const x = Date.parse(m.on_way_at) - a;   if (ok(x)) { p.rS += x; p.rN++; gRoute[0] += x; gRoute[1]++ } }
     // Traitement (part chauffeur) = de l'assignation (« dans ses mains ») jusqu'à
@@ -235,7 +249,7 @@ export async function GET(req: Request) {
   const avgMin = (sum: number, n: number) => (n ? Math.round(sum / n / 60000) : null)
   const perf = {
     parChauffeur: [...perfMap.entries()].map(([id, p]) => ({
-      driver: dn.get(id) || '—', count: p.count,
+      driver: dn.get(id) || '—', count: p.count, forced: p.forced,
       acceptMin: avgMin(p.accS, p.accN), routeMin: avgMin(p.rS, p.rN), traitMin: avgMin(p.tS, p.tN),
     })).sort((a, b) => b.count - a.count),
     global: { acceptMin: avgMin(gAcc[0], gAcc[1]), routeMin: avgMin(gRoute[0], gRoute[1]), traitMin: avgMin(gTrait[0], gTrait[1]) },
