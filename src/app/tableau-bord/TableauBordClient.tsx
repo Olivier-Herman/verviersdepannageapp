@@ -18,10 +18,14 @@ interface Kpi {
     touring: { bko: number; total: number }
     allianz: { cloture: number | null; total: number }
   }
-  chauffeurs?: { driver: string; total: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }[]
+  chauffeurs?: { jour: DrvRow[]; semaine: DrvRow[]; mois: DrvRow[] }
   enCours?: { id: string; missionNumber: number | null; driver: string; plate: string; vehicle: string; category: string; city: string; statusLabel: string; since: string | null }[]
   domaine?: { aTransferer: number; aPreparer: number }
+  perf?: { parChauffeur: PerfRow[]; global: { acceptMin: number | null; routeMin: number | null; traitMin: number | null } }
 }
+
+type DrvRow = { driver: string; total: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }
+type PerfRow = { driver: string; count: number; acceptMin: number | null; routeMin: number | null; traitMin: number | null }
 
 const CAT_COLOR: Record<string, string> = { REM: '#38bdf8', DSP: '#4ade80', REL: '#a78bfa', Transport: '#fb923c', DPR: '#fbbf24', Autre: '#64748b' }
 function elapsed(since: string | null): { txt: string; sev: number } {
@@ -154,9 +158,10 @@ export default function TableauBordClient() {
   const o = data?.ops
   const f = data?.facturation
   const s = data?.sources
-  const ch = data?.chauffeurs || []
+  const ch = data?.chauffeurs
   const ec = data?.enCours || []
   const dm = data?.domaine
+  const pf = data?.perf
 
   // Slides du mur. En ajouter ici fait tourner la rotation.
   const slides = [
@@ -196,31 +201,10 @@ export default function TableauBordClient() {
       </div>
     </div>,
 
-    <div className="tb-panel" key="chauffeurs">
-      <div className="tb-panel-ttl">Missions du jour par chauffeur <span>· DSP / REM / REL / Transport / DPR</span></div>
-      <div className="tb-tblwrap">
-        <table className="tb-tbl">
-          <thead><tr>
-            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transport</th><th>DPR</th><th>Temps moy./mission</th>
-          </tr></thead>
-          <tbody>
-            {ch.map((d, i) => (
-              <tr key={i}>
-                <td className="l tb-drv">{d.driver}</td>
-                <td className="tb-tot">{d.total}</td>
-                <td style={{ color: CAT_COLOR.REM }}>{d.REM || '·'}</td>
-                <td style={{ color: CAT_COLOR.DSP }}>{d.DSP || '·'}</td>
-                <td style={{ color: CAT_COLOR.REL }}>{d.REL || '·'}</td>
-                <td style={{ color: CAT_COLOR.Transport }}>{d.Transport || '·'}</td>
-                <td style={{ color: CAT_COLOR.DPR }}>{d.DPR || '·'}</td>
-                <td className="tb-avg">{d.avgMin != null ? fmtDuree(d.avgMin) : '—'}</td>
-              </tr>
-            ))}
-            {!ch.length && <tr><td colSpan={8} className="tb-empty">Aucune mission attribuée aujourd'hui.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>,
+    <ChauffeurPanel key="ch-jour" title="Missions du jour par chauffeur"          rows={ch?.jour} empty="Aucune mission attribuée aujourd'hui." />,
+    <ChauffeurPanel key="ch-sem"  title="Missions des 7 derniers jours par chauffeur" rows={ch?.semaine} empty="Aucune mission sur 7 jours." />,
+    <ChauffeurPanel key="ch-mois" title="Missions du mois en cours par chauffeur"  rows={ch?.mois} empty="Aucune mission ce mois-ci." />,
+    <PerfPanel key="perf" perf={pf} />,
 
     <div className="tb-panel" key="encours">
       <div className="tb-panel-ttl">Missions en cours & assignées <span>· {ec.length} · compteur depuis l'assignation</span></div>
@@ -325,6 +309,73 @@ function DualTile({ label, color, a, aLabel, b, bLabel }: { label: string; color
   )
 }
 
+function ChauffeurPanel({ title, rows, empty }: { title: string; rows?: DrvRow[]; empty: string }) {
+  const list = rows || []
+  return (
+    <div className="tb-panel">
+      <div className="tb-panel-ttl">{title} <span>· DSP / REM / REL / Transport / DPR · temps moyen/mission</span></div>
+      <div className="tb-tblwrap">
+        <table className="tb-tbl">
+          <thead><tr>
+            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th>
+          </tr></thead>
+          <tbody>
+            {list.map((d, i) => (
+              <tr key={i}>
+                <td className="l tb-drv">{d.driver}</td>
+                <td className="tb-tot">{d.total}</td>
+                <td style={{ color: CAT_COLOR.REM }}>{d.REM || '·'}</td>
+                <td style={{ color: CAT_COLOR.DSP }}>{d.DSP || '·'}</td>
+                <td style={{ color: CAT_COLOR.REL }}>{d.REL || '·'}</td>
+                <td style={{ color: CAT_COLOR.Transport }}>{d.Transport || '·'}</td>
+                <td style={{ color: CAT_COLOR.DPR }}>{d.DPR || '·'}</td>
+                <td className="tb-avg">{d.avgMin != null ? fmtDuree(d.avgMin) : '—'}</td>
+              </tr>
+            ))}
+            {!list.length && <tr><td colSpan={8} className="tb-empty">{empty}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function PerfPanel({ perf }: { perf?: { parChauffeur: PerfRow[]; global: { acceptMin: number | null; routeMin: number | null; traitMin: number | null } } }) {
+  const list = perf?.parChauffeur || []
+  const g = perf?.global
+  const cell = (v: number | null) => (v != null ? fmtDuree(v) : '—')
+  return (
+    <div className="tb-panel">
+      <div className="tb-panel-ttl">Performance chauffeurs <span>· mois en cours · durées moyennes</span></div>
+      <div className="tb-tblwrap">
+        <table className="tb-tbl">
+          <thead><tr>
+            <th className="l">Chauffeur</th><th>Missions</th><th>Acceptation</th><th>Départ en route</th><th>Traitement complet</th>
+          </tr></thead>
+          <tbody>
+            {list.map((d, i) => (
+              <tr key={i}>
+                <td className="l tb-drv">{d.driver}</td>
+                <td className="tb-tot">{d.count}</td>
+                <td style={{ color: '#38bdf8' }}>{cell(d.acceptMin)}</td>
+                <td style={{ color: '#fbbf24' }}>{cell(d.routeMin)}</td>
+                <td style={{ color: '#4ade80' }}>{cell(d.traitMin)}</td>
+              </tr>
+            ))}
+            {!list.length && <tr><td colSpan={5} className="tb-empty">Aucune donnée ce mois-ci.</td></tr>}
+          </tbody>
+          <tfoot><tr className="tb-team">
+            <td className="l">🏁 Équipe (moyenne)</td><td className="tb-tot">—</td>
+            <td style={{ color: '#38bdf8' }}>{cell(g?.acceptMin ?? null)}</td>
+            <td style={{ color: '#fbbf24' }}>{cell(g?.routeMin ?? null)}</td>
+            <td style={{ color: '#4ade80' }}>{cell(g?.traitMin ?? null)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 const CSS = `
 .tb-root{position:fixed;inset:0;background:radial-gradient(1200px 800px at 70% -10%,#16233b 0%,#0a0e17 55%);color:#e8edf5;
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden}
@@ -393,6 +444,8 @@ const CSS = `
 .tb-drv{color:#e8edf5}
 .tb-tot{color:#e8edf5;font-size:1.05em}
 .tb-avg{color:#f472b6}
+.tb-tbl tfoot td{border-top:2px solid rgba(255,255,255,.22);border-bottom:none;padding-top:1.4vh;font-size:1.05em}
+.tb-team td{color:#e8edf5;font-weight:900}
 .tb-ec-list{flex:1;display:flex;flex-direction:column;gap:.3vh;overflow:hidden}
 .tb-ec-row{display:grid;grid-template-columns:6.5em 7em minmax(9em,1.1fr) minmax(11em,1.7fr) minmax(7em,1fr) 7em 6.5em;
   align-items:center;column-gap:1.4vw;padding:.7vh .8vw;border-bottom:1px solid rgba(255,255,255,.06);font-size:clamp(14px,1.35vw,24px)}

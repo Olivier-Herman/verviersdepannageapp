@@ -27,6 +27,15 @@ function bxlDayStartISO(daysAgo = 0): string {
   midnight.setDate(midnight.getDate() - daysAgo)
   return new Date(midnight.getTime() - offsetMs).toISOString()
 }
+// Minuit du 1er du mois courant (Bruxelles) en UTC ISO.
+function bxlMonthStartISO(): string {
+  const now = new Date()
+  const bxl = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Brussels' }))
+  const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }))
+  const offsetMs = bxl.getTime() - utc.getTime()
+  const first = new Date(bxl); first.setDate(1); first.setHours(0, 0, 0, 0)
+  return new Date(first.getTime() - offsetMs).toISOString()
+}
 
 // Nombre de clôtures Allianz prêtes (Hexalite TO_ASSIGN ∩ VD Soft to_invoice).
 // Live Hexalite → CACHE 5 min (app_settings) pour ne pas taper l'API à chaque poll.
@@ -155,21 +164,17 @@ export async function GET(req: Request) {
     return 'Autre'
   }
 
-  // Missions du jour attribuées → par chauffeur. « du jour » = attribuées OU
-  // clôturées aujourd'hui (assigned_at plus fiable qu'intervention_date, souvent nul).
-  const { data: dayMissions } = await sb.from('incoming_missions')
-    .select('assigned_to, mission_type, accepted_at, completed_at, assigned_at')
-    .or(`assigned_at.gte.${startToday},completed_at.gte.${startToday}`)
+  // Missions attribuées du MOIS courant (fenêtre la plus large), déclinées en
+  // jour / 7 jours / mois. « comptée » = attribuée OU clôturée dans la période
+  // (assigned_at plus fiable qu'intervention_date, souvent nul).
+  const startMonth = bxlMonthStartISO()
+  const start7 = bxlDayStartISO(7)
+  const { data: monthMissions } = await sb.from('incoming_missions')
+    .select('assigned_to, mission_type, accepted_at, completed_at, assigned_at, on_way_at, parked_at')
+    .or(`assigned_at.gte.${startMonth},completed_at.gte.${startMonth}`)
     .not('assigned_to', 'is', null)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
-    .limit(3000)
-  const drv = new Map<string, any>()
-  for (const m of (dayMissions || [])) {
-    const d = drv.get(m.assigned_to) || { total: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
-    d.total++; d[catOf(m.mission_type)]++
-    if (m.accepted_at && m.completed_at) { const x = Date.parse(m.completed_at) - Date.parse(m.accepted_at); if (x >= 0) { d.durSum += x; d.durN++ } }
-    drv.set(m.assigned_to, d)
-  }
+    .limit(10000)
 
   // Missions actives (assignées / en cours) détaillées, avec le point de départ
   // du compteur (assignation).
@@ -179,19 +184,55 @@ export async function GET(req: Request) {
     .order('assigned_at', { ascending: true })
     .limit(200)
 
-  // Noms chauffeurs.
-  const driverIds = [...new Set([...drv.keys(), ...(active || []).map((m: any) => m.assigned_to)].filter(Boolean))]
+  // Noms chauffeurs (union mois + actives).
+  const driverIds = [...new Set([...(monthMissions || []).map((m: any) => m.assigned_to), ...(active || []).map((m: any) => m.assigned_to)].filter(Boolean))]
   const dn = new Map<string, string>()
   if (driverIds.length) {
     const { data: us } = await sb.from('users').select('id, name').in('id', driverIds)
     for (const u of (us || [])) dn.set(u.id, u.name || '—')
   }
 
-  const parChauffeur = [...drv.entries()].map(([id, d]) => ({
-    driver: dn.get(id) || '—', total: d.total,
-    REM: d.REM, DSP: d.DSP, REL: d.REL, Transport: d.Transport, DPR: d.DPR, autre: d.Autre,
-    avgMin: d.durN ? Math.round(d.durSum / d.durN / 60000) : null,
-  })).sort((a, b) => b.total - a.total)
+  const chauffeursForPeriod = (sinceISO: string) => {
+    const drv = new Map<string, any>()
+    for (const m of (monthMissions || [])) {
+      const inP = (m.assigned_at && m.assigned_at >= sinceISO) || (m.completed_at && m.completed_at >= sinceISO)
+      if (!inP) continue
+      const d = drv.get(m.assigned_to) || { total: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
+      d.total++; d[catOf(m.mission_type)]++
+      if (m.accepted_at && m.completed_at) { const x = Date.parse(m.completed_at) - Date.parse(m.accepted_at); if (x >= 0) { d.durSum += x; d.durN++ } }
+      drv.set(m.assigned_to, d)
+    }
+    return [...drv.entries()].map(([id, d]) => ({
+      driver: dn.get(id) || '—', total: d.total,
+      REM: d.REM, DSP: d.DSP, REL: d.REL, Transport: d.Transport, DPR: d.DPR, autre: d.Autre,
+      avgMin: d.durN ? Math.round(d.durSum / d.durN / 60000) : null,
+    })).sort((a, b) => b.total - a.total)
+  }
+  const chauffeurs = { jour: chauffeursForPeriod(startToday), semaine: chauffeursForPeriod(start7), mois: chauffeursForPeriod(startMonth) }
+
+  // Perf chauffeurs (mois) : durées moyennes assignation → acceptation / → départ
+  // en route / → traité (terminé ou en parc). + moyenne équipe en bas.
+  const perfMap = new Map<string, any>()
+  const gAcc = [0, 0], gRoute = [0, 0], gTrait = [0, 0]   // [somme ms, n]
+  for (const m of (monthMissions || [])) {
+    const a = m.assigned_at ? Date.parse(m.assigned_at) : null
+    if (a == null) continue
+    const p = perfMap.get(m.assigned_to) || { count: 0, accS: 0, accN: 0, rS: 0, rN: 0, tS: 0, tN: 0 }
+    p.count++
+    if (m.accepted_at) { const x = Date.parse(m.accepted_at) - a; if (x >= 0) { p.accS += x; p.accN++; gAcc[0] += x; gAcc[1]++ } }
+    if (m.on_way_at)   { const x = Date.parse(m.on_way_at) - a;   if (x >= 0) { p.rS += x; p.rN++; gRoute[0] += x; gRoute[1]++ } }
+    const end = m.completed_at || m.parked_at
+    if (end) { const x = Date.parse(end) - a; if (x >= 0) { p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ } }
+    perfMap.set(m.assigned_to, p)
+  }
+  const avgMin = (sum: number, n: number) => (n ? Math.round(sum / n / 60000) : null)
+  const perf = {
+    parChauffeur: [...perfMap.entries()].map(([id, p]) => ({
+      driver: dn.get(id) || '—', count: p.count,
+      acceptMin: avgMin(p.accS, p.accN), routeMin: avgMin(p.rS, p.rN), traitMin: avgMin(p.tS, p.tN),
+    })).sort((a, b) => b.count - a.count),
+    global: { acceptMin: avgMin(gAcc[0], gAcc[1]), routeMin: avgMin(gRoute[0], gRoute[1]), traitMin: avgMin(gTrait[0], gTrait[1]) },
+  }
 
   // ── Domaine ops ────────────────────────────────────────────────────────────
   // À transférer en zone Domaine (I) : remis au Domaine (Dates IN) mais pas en I.
@@ -234,7 +275,8 @@ export async function GET(req: Request) {
       touring: { bko: comexBko || 0, total: touringTotal },
       allianz: { cloture: clotureAllianz, total: allianzTotal },
     },
-    chauffeurs: parChauffeur,
+    chauffeurs,
+    perf,
     enCours: enCoursDetail,
     domaine: { aTransferer: aTransferer || 0, aPreparer: aPreparer || 0 },
   })
