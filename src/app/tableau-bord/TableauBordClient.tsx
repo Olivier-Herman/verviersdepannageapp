@@ -47,7 +47,8 @@ const fmtDuree = (min: number | null) => {
 }
 const two = (n: number) => String(n).padStart(2, '0')
 
-export default function TableauBordClient() {
+export default function TableauBordClient({ variant = 'full' }: { variant?: 'full' | 'dispatch' }) {
+  const isDispatch = variant === 'dispatch'
   const [pin, setPin]       = useState('')
   const [authed, setAuthed] = useState(false)
   const [pinErr, setPinErr] = useState(false)
@@ -165,18 +166,18 @@ export default function TableauBordClient() {
 
   // Slides du mur. En ajouter ici fait tourner la rotation.
   const slides = [
-    <div className="tb-grid8" key="ops">
+    <div className={isDispatch ? 'tb-grid4' : 'tb-grid8'} key="ops">
       <Tile label="En commande" value={o?.enCommande} color="#a78bfa" hint="onglet dispatch" />
       <Tile label="En attente"  value={o?.enAttente}  color="#fbbf24" hint="à dispatcher" />
       <DualTile label="Assignée / En cours" color="#38bdf8"
         a={o?.assignees} aLabel="Assignée" b={o?.enCours} bLabel="En cours" />
-      <Tile label="À facturer"  value={o?.aFacturer}  color="#fb923c" hint="file facturation" />
+      {!isDispatch && <Tile label="À facturer"  value={o?.aFacturer}  color="#fb923c" hint="file facturation" />}
       <Tile label="À relivrer" value={o?.aRelivrer} color="#34d399" hint="parc K + K1"
         sub={o ? `Total parc : ${o.enParc}` : undefined} />
-      <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />
-      <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />
-      <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
-        hint={`À facturer → Terminé · ${f?.periodeJours ?? 7} j`} />
+      {!isDispatch && <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />}
+      {!isDispatch && <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />}
+      {!isDispatch && <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
+        hint={`À facturer → Terminé · ${f?.periodeJours ?? 7} j`} />}
     </div>,
 
     <div className="tb-src" key="sources">
@@ -232,13 +233,16 @@ export default function TableauBordClient() {
       <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
     </div>,
   ]
-  slideCountRef.current = slides.length
-  const cur = Math.min(slide, slides.length - 1)
+  // Vue dispatch (/boarding, Momo) : sous-ensemble d'écrans.
+  const DISPATCH_KEYS = new Set(['ops', 'ch-jour', 'ch-sem', 'ch-mois', 'encours'])
+  const shownSlides = isDispatch ? slides.filter(s => DISPATCH_KEYS.has(String((s as any).key))) : slides
+  slideCountRef.current = shownSlides.length
+  const cur = Math.min(slide, shownSlides.length - 1)
 
   return (
     <div className="tb-root">
       <header className="tb-head">
-        <div className="tb-brand">VD&nbsp;Soft <span className="tb-brand-sub">· Opérations en direct</span></div>
+        <div className="tb-brand">VD&nbsp;Soft <span className="tb-brand-sub">· {isDispatch ? 'Dispatch en direct' : 'Opérations en direct'}</span></div>
         <div className="tb-headright">
           <span className={`tb-live ${stale ? 'off' : ''}`}>● {stale ? 'reconnexion…' : 'en direct'}</span>
           <span className="tb-clock">{clock}</span>
@@ -246,16 +250,16 @@ export default function TableauBordClient() {
       </header>
 
       <main className="tb-main">
-        {slides.map((node, i) => (
+        {shownSlides.map((node, i) => (
           <section key={i} className={`tb-slide ${i === cur ? 'show' : ''}`}>{node}</section>
         ))}
       </main>
 
       <footer className="tb-foot">
-        {slides.length > 1 && (
+        {shownSlides.length > 1 && (
           <>
             <div className="tb-dotsnav">
-              {slides.map((_, i) => <span key={i} className={`tb-navdot ${i === cur ? 'on' : ''}`} />)}
+              {shownSlides.map((_, i) => <span key={i} className={`tb-navdot ${i === cur ? 'on' : ''}`} />)}
             </div>
             <div className="tb-progress"><div className="tb-progressfill" style={{ width: `${progress}%` }} /></div>
           </>
@@ -397,6 +401,14 @@ const CSS = `
 .tb-slide.show{opacity:1;transform:none;pointer-events:auto}
 .tb-grid8{flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,1fr);
   gap:min(1.6vw,22px);padding:.6vh 2.4vw 1vh}
+/* Vue dispatch : 4 tuiles en 2×2, plus grandes et lisibles au mur. */
+.tb-grid4{flex:1;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);
+  gap:min(2.2vw,32px);padding:1.4vh 3vw 2vh}
+.tb-grid4 .tb-tile{border-radius:26px;padding:clamp(20px,2.4vw,44px)}
+.tb-grid4 .tb-tilelbl{font-size:clamp(18px,1.9vw,34px)}
+.tb-grid4 .tb-tileval{font-size:clamp(72px,10vw,210px)}
+.tb-grid4 .tb-tilehint{font-size:clamp(13px,1.2vw,22px)}
+.tb-grid4 .tb-tile::before{width:10px}
 .tb-tile{border:1px solid rgba(255,255,255,.07);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
   padding:clamp(12px,1.5vw,26px);display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;min-width:0}
 .tb-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--c);box-shadow:0 0 26px var(--c)}

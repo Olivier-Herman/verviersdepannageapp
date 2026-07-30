@@ -13,7 +13,12 @@ export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
 export const maxDuration  = 30
 
-const PIN = process.env.DASHBOARD_PIN || '071000'
+// PIN mur ops (071000) + PIN vue dispatch /boarding (019190). Les deux vues
+// consomment la même API → on accepte les deux codes.
+const VALID_PINS = [
+  process.env.DASHBOARD_PIN || '071000',
+  process.env.DASHBOARD_PIN_DISPATCH || '019190',
+]
 const VHU_SOURCE = 'garage_j7772c'
 const PERIOD_DAYS = 7
 
@@ -60,7 +65,7 @@ async function getAllianzClotureCount(sb: any): Promise<number | null> {
 
 export async function GET(req: Request) {
   const pin = req.headers.get('x-dashboard-pin') || new URL(req.url).searchParams.get('pin') || ''
-  if (pin !== PIN) return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
+  if (!VALID_PINS.includes(pin)) return NextResponse.json({ error: 'PIN invalide' }, { status: 401 })
 
   const sb = createAdminClient()
   const RDV_THRESHOLD = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
@@ -198,14 +203,21 @@ export async function GET(req: Request) {
   // Noms chauffeurs (union mois + actives).
   const driverIds = [...new Set([...(monthMissions || []).map((m: any) => m.assigned_to), ...(active || []).map((m: any) => m.assigned_to)].filter(Boolean))]
   const dn = new Map<string, string>()
+  // Comptes NON chauffeurs à exclure des stats (dispatchers / tests).
+  const EXCLUDED_DRIVER_NAMES = ['jona', 'mobi', 'mobi test']
+  const excludedDrivers = new Set<string>()
   if (driverIds.length) {
     const { data: us } = await sb.from('users').select('id, name').in('id', driverIds)
-    for (const u of (us || [])) dn.set(u.id, u.name || '—')
+    for (const u of (us || [])) {
+      dn.set(u.id, u.name || '—')
+      if (EXCLUDED_DRIVER_NAMES.includes(String(u.name || '').trim().toLowerCase())) excludedDrivers.add(u.id)
+    }
   }
 
   const chauffeursForPeriod = (sinceISO: string) => {
     const drv = new Map<string, any>()
     for (const m of (monthMissions || [])) {
+      if (excludedDrivers.has(m.assigned_to)) continue
       const inP = (m.assigned_at && m.assigned_at >= sinceISO) || (m.completed_at && m.completed_at >= sinceISO)
       if (!inP) continue
       const d = drv.get(m.assigned_to) || { total: 0, forced: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
@@ -240,6 +252,7 @@ export async function GET(req: Request) {
   const perfMap = new Map<string, any>()
   const gAcc = [0, 0], gRoute = [0, 0], gTrait = [0, 0]   // [somme ms, n]
   for (const m of (monthMissions || [])) {
+    if (excludedDrivers.has(m.assigned_to)) continue
     const a = m.assigned_at ? Date.parse(m.assigned_at) : null
     if (a == null) continue
     const p = perfMap.get(m.assigned_to) || { count: 0, forced: 0, accS: 0, accN: 0, rS: 0, rN: 0, tS: 0, tN: 0 }
