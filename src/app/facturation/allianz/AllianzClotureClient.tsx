@@ -196,7 +196,7 @@ export default function AllianzClotureClient({ userRole, userName, userEmail, us
                 className="px-3 py-2 bg-success/15 hover:bg-success/25 border border-success/40 text-success rounded-xl text-sm font-semibold disabled:opacity-50">
                 {bulkBusy ? '⏳ Clôture…' : `✅ Tout clôturer (${rows.filter(r => r.vdsoft || r.towsoft).length})`}
               </button>
-              <button onClick={load} disabled={loading || bulkBusy} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm disabled:opacity-50">
+              <button onClick={() => load()} disabled={loading || bulkBusy} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm disabled:opacity-50">
                 {loading ? '⏳…' : 'Rafraîchir'}
               </button>
             </div>
