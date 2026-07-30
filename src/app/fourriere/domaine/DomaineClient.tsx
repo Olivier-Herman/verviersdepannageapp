@@ -68,6 +68,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
       const j = await r.json()
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Échec'}`); return false }
       if (action === 'set_sortie' && j.facturable) setMsg('✓ Sortie posée → fiche passée « à facturer » (cachet Domaine)')
+      if (action === 'toggle_prepare' && j.transferred) setMsg('✓ Préparé → véhicule transféré en zone Domaine (I)')
       load()
       return true
     } catch { setMsg('⚠ Erreur réseau'); return false }

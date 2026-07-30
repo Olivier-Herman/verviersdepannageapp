@@ -87,8 +87,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true })
   }
   if (action === 'toggle_prepare') {
-    await sb.from('domaine_ventes_epaves').update({ prepare_at: body.value ? new Date().toISOString() : null }).eq('id', id)
-    return NextResponse.json({ ok: true })
+    const on = !!body.value
+    await sb.from('domaine_ventes_epaves').update({ prepare_at: on ? new Date().toISOString() : null }).eq('id', id)
+    // Préparé ⇒ le véhicule est forcément en bonne zone (Domaine / I). Transfert
+    // auto si la fiche rapprochée est encore ailleurs.
+    let transferred = false
+    if (on && row.matched_mission_id) {
+      const { data: m } = await sb.from('incoming_missions')
+        .select('id, status, parc_zone_key').eq('id', row.matched_mission_id).maybeSingle()
+      if (m && m.status === 'parked' && m.parc_zone_key !== 'I') {
+        await sb.from('incoming_missions').update({
+          parc_zone_key: 'I', parc_row_number: null, parc_slot_index: null, updated_at: new Date().toISOString(),
+        }).eq('id', m.id)
+        await sb.from('mission_logs').insert({
+          mission_id: m.id, actor_id: user.id || null, action: 'parc_transfer',
+          notes: `Transféré en zone Domaine (I) suite à « Préparation OK » (vente d'épave)`,
+          metadata: { from_zone_key: m.parc_zone_key, to_zone_key: 'I', source: 'vente_epaves_prepare' },
+        }).then(() => {}, () => {})
+        transferred = true
+      }
+    }
+    return NextResponse.json({ ok: true, transferred })
   }
   if (action === 'set_sortie') {
     const value = body.value ? String(body.value).slice(0, 10) : null
