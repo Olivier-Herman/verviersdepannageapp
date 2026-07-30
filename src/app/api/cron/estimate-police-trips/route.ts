@@ -7,19 +7,26 @@
 // NULL uniquement. Petits lots (ORS rate-limité). Olivier 2026-07-30.
 
 import { NextResponse }        from 'next/server'
+import { getServerSession }    from 'next-auth'
+import { authOptions }         from '@/lib/auth'
 import { createAdminClient }   from '@/lib/supabase'
 import { loadDepots, estimatePoliceTripMin } from '@/lib/perf/police-trip'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
-const BATCH = 20         // borné : ORS ~40 req/min
+const BATCH = 40         // borné : ORS ~40 req/min, ~<1 s/route → OK sous maxDuration
 const LOOKBACK_DAYS = 60 // on ne remonte pas indéfiniment
 
 export async function GET(req: Request) {
+  // Cron (Bearer CRON_SECRET) OU déclenchement manuel superadmin (URL).
   const auth = req.headers.get('authorization')
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const okCron = process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
+  if (!okCron) {
+    const session = await getServerSession(authOptions)
+    if ((session?.user as any)?.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
   const sb = createAdminClient()
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400e3).toISOString()
