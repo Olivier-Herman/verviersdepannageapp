@@ -226,7 +226,10 @@ export async function GET(req: Request) {
       // to_invoice = completed_at). Fiches clôturées de force par le dispatch
       // (forcedSet) écartées de la moyenne mais comptées dans le total.
       if (forcedSet.has(m.id)) { d.forced++; drv.set(m.assigned_to, d); continue }
-      const a = m.assigned_at ? Date.parse(m.assigned_at) : null
+      // La durée n'est comptée que pour les fiches ASSIGNÉES dans la période :
+      // une fiche assignée il y a 6 j mais clôturée aujourd'hui (ex. REM+REL en
+      // attente de relivraison) ne doit pas gonfler la moyenne « du jour ».
+      const a = (m.assigned_at && m.assigned_at >= sinceISO) ? Date.parse(m.assigned_at) : null
       if (a != null) {
         const pk = m.parked_at ? Date.parse(m.parked_at) : null
         const end = (pk != null && pk >= a) ? pk : (m.completed_at ? Date.parse(m.completed_at) : null)

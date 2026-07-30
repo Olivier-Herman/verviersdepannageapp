@@ -24,7 +24,7 @@ interface Kpi {
   perf?: { parChauffeur: PerfRow[]; global: { acceptMin: number | null; routeMin: number | null; traitMin: number | null } }
 }
 
-type DrvRow = { driver: string; total: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }
+type DrvRow = { driver: string; total: number; forced?: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }
 type PerfRow = { driver: string; count: number; forced?: number; acceptMin: number | null; routeMin: number | null; traitMin: number | null }
 
 const CAT_COLOR: Record<string, string> = { REM: '#38bdf8', DSP: '#4ade80', REL: '#a78bfa', Transport: '#fb923c', DPR: '#fbbf24', Autre: '#64748b' }
@@ -177,9 +177,9 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
   const dm = data?.domaine
   const pf = data?.perf
 
-  // Slides du mur. En ajouter ici fait tourner la rotation.
-  const slides = [
-    <div className={isDispatch ? 'tb-grid4' : 'tb-grid8'} key="ops">
+  // Tuiles ops (4 communes ; +4 réservées au mur complet).
+  const opsTiles = (
+    <>
       <Tile label="En commande" value={o?.enCommande} color="#a78bfa" hint="onglet dispatch" />
       <Tile label="En attente"  value={o?.enAttente}  color="#fbbf24" hint="à dispatcher" />
       <DualTile label="Assignée / En cours" color="#38bdf8"
@@ -191,37 +191,13 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
       {!isDispatch && <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />}
       {!isDispatch && <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
         hint={`À facturer → Terminé · ${f?.periodeJours ?? 7} j`} />}
-    </div>,
+    </>
+  )
 
-    <div className="tb-src" key="sources">
-      <div className="tb-src-featured">
-        <RatioCard label="Touring" color="#3b82f6"
-          a={s?.touring.bko} b={s?.touring.total} aLbl="COMEX BKO" bLbl="Touring à facturer" />
-        <RatioCard label="Allianz / Mondial" color="#a855f7"
-          a={s?.allianz.cloture ?? undefined} b={s?.allianz.total} aLbl="Clôtures prêtes" bLbl="Allianz à facturer" />
-      </div>
-      <div className="tb-src-list">
-        <div className="tb-src-title">À facturer par source <span>· {(s?.parSource || []).reduce((n, x) => n + x.count, 0)} dossiers</span></div>
-        <div className="tb-src-rows">
-          {(s?.parSource || []).map(x => (
-            <div className="tb-src-row" key={x.key}>
-              <span className="tb-src-dot" style={{ background: x.hex }} />
-              <span className="tb-src-lbl">{x.label}</span>
-              <span className="tb-src-cnt">{x.count}</span>
-            </div>
-          ))}
-          {!s?.parSource?.length && <div className="tb-empty">Aucun dossier à facturer.</div>}
-        </div>
-      </div>
-    </div>,
-
-    <ChauffeurPanel key="ch-jour" title="Missions du jour par chauffeur"          rows={ch?.jour} empty="Aucune mission attribuée aujourd'hui." />,
-    <ChauffeurPanel key="ch-sem"  title="Missions des 7 derniers jours par chauffeur" rows={ch?.semaine} empty="Aucune mission sur 7 jours." />,
-    <ChauffeurPanel key="ch-mois" title="Missions du mois en cours par chauffeur"  rows={ch?.mois} empty="Aucune mission ce mois-ci." />,
-    <PerfPanel key="perf" perf={pf} />,
-
+  // Tableau des missions en cours & assignées (réutilisé mur + dispatch).
+  const enCoursPanel = (
     <div className="tb-panel" key="encours">
-      <div className="tb-panel-ttl">Missions en cours & assignées <span>· {ec.length} · compteur depuis l'assignation</span></div>
+      <div className="tb-panel-ttl">Missions en cours &amp; assignées <span>· {ec.length} · compteur depuis l'assignation</span></div>
       <div className="tb-ec-list">
         {ec.map(m => {
           const e = elapsed(m.since)
@@ -239,20 +215,17 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
         })}
         {!ec.length && <div className="tb-empty">Aucune mission en cours.</div>}
       </div>
-    </div>,
+    </div>
+  )
 
-    <div className="tb-domaine" key="domaine">
-      <Tile label="À transférer en Domaine" value={dm?.aTransferer} color="#a78bfa" hint="remis au Domaine, pas encore en zone I" />
-      <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
-    </div>,
+  const chPanels = [
+    <ChauffeurPanel key="ch-jour" title="Missions du jour par chauffeur"          rows={ch?.jour} empty="Aucune mission attribuée aujourd'hui." />,
+    <ChauffeurPanel key="ch-sem"  title="Missions des 7 derniers jours par chauffeur" rows={ch?.semaine} empty="Aucune mission sur 7 jours." />,
+    <ChauffeurPanel key="ch-mois" title="Missions du mois en cours par chauffeur"  rows={ch?.mois} empty="Aucune mission ce mois-ci." />,
   ]
-  // Vue dispatch (/boarding, Momo) : sous-ensemble d'écrans.
-  const DISPATCH_KEYS = new Set(['ops', 'ch-jour', 'ch-sem', 'ch-mois', 'encours'])
-  const shownSlides = isDispatch ? slides.filter(s => DISPATCH_KEYS.has(String((s as any).key))) : slides
-  slideCountRef.current = shownSlides.length
-  const cur = Math.min(slide, shownSlides.length - 1)
 
-  return (
+  // Coquille commune (header / rotation / footer) — partagée mur + dispatch.
+  const renderShell = (shownSlides: any[], cur: number) => (
     <div className="tb-root">
       <header className="tb-head">
         <div className="tb-brand">VD&nbsp;Soft <span className="tb-brand-sub">· {isDispatch ? 'Dispatch en direct' : 'Opérations en direct'}</span></div>
@@ -283,6 +256,60 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
       <style>{CSS}</style>
     </div>
   )
+
+  // Vue DISPATCH (/boarding, Momo) : 1er écran = 4 cards en ligne + tableau des
+  // missions juste en dessous, puis les stats chauffeur.
+  if (isDispatch) {
+    const shownSlides = [
+      <div className="tb-dispatch-home" key="home">
+        <div className="tb-row4">{opsTiles}</div>
+        {enCoursPanel}
+      </div>,
+      ...chPanels,
+    ]
+    slideCountRef.current = shownSlides.length
+    const cur = Math.min(slide, shownSlides.length - 1)
+    return renderShell(shownSlides, cur)
+  }
+
+  // Slides du mur complet. En ajouter ici fait tourner la rotation.
+  const slides = [
+    <div className="tb-grid8" key="ops">{opsTiles}</div>,
+
+    <div className="tb-src" key="sources">
+      <div className="tb-src-featured">
+        <RatioCard label="Touring" color="#3b82f6"
+          a={s?.touring.bko} b={s?.touring.total} aLbl="COMEX BKO" bLbl="Touring à facturer" />
+        <RatioCard label="Allianz / Mondial" color="#a855f7"
+          a={s?.allianz.cloture ?? undefined} b={s?.allianz.total} aLbl="Clôtures prêtes" bLbl="Allianz à facturer" />
+      </div>
+      <div className="tb-src-list">
+        <div className="tb-src-title">À facturer par source <span>· {(s?.parSource || []).reduce((n, x) => n + x.count, 0)} dossiers</span></div>
+        <div className="tb-src-rows">
+          {(s?.parSource || []).map(x => (
+            <div className="tb-src-row" key={x.key}>
+              <span className="tb-src-dot" style={{ background: x.hex }} />
+              <span className="tb-src-lbl">{x.label}</span>
+              <span className="tb-src-cnt">{x.count}</span>
+            </div>
+          ))}
+          {!s?.parSource?.length && <div className="tb-empty">Aucun dossier à facturer.</div>}
+        </div>
+      </div>
+    </div>,
+
+    ...chPanels,
+    <PerfPanel key="perf" perf={pf} />,
+
+    enCoursPanel,
+
+    <div className="tb-domaine" key="domaine">
+      <Tile label="À transférer en Domaine" value={dm?.aTransferer} color="#a78bfa" hint="remis au Domaine, pas encore en zone I" />
+      <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
+    </div>,
+  ]
+  slideCountRef.current = slides.length
+  return renderShell(slides, Math.min(slide, slides.length - 1))
 }
 
 function Tile({ label, value, valueStr, color, hint, sub }: { label: string; value?: number; valueStr?: string; color: string; hint: string; sub?: string }) {
@@ -330,17 +357,18 @@ function ChauffeurPanel({ title, rows, empty }: { title: string; rows?: DrvRow[]
   const list = rows || []
   return (
     <div className="tb-panel">
-      <div className="tb-panel-ttl">{title} <span>· DSP / REM / REL / Transport / DPR · temps moyen/mission</span></div>
+      <div className="tb-panel-ttl">{title} <span>· DSP / REM / REL / Transport / DPR · temps moyen hors fiches forcées</span></div>
       <div className="tb-tblwrap">
         <table className="tb-tbl">
           <thead><tr>
-            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th>
+            <th className="l">Chauffeur</th><th>Total</th><th>Forcées</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th>
           </tr></thead>
           <tbody>
             {list.map((d, i) => (
               <tr key={i}>
                 <td className="l tb-drv">{d.driver}</td>
                 <td className="tb-tot">{d.total}</td>
+                <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || '·'}</td>
                 <td style={{ color: CAT_COLOR.REM }}>{d.REM || '·'}</td>
                 <td style={{ color: CAT_COLOR.DSP }}>{d.DSP || '·'}</td>
                 <td style={{ color: CAT_COLOR.REL }}>{d.REL || '·'}</td>
@@ -349,7 +377,7 @@ function ChauffeurPanel({ title, rows, empty }: { title: string; rows?: DrvRow[]
                 <td className="tb-avg">{d.avgMin != null ? fmtDuree(d.avgMin) : '—'}</td>
               </tr>
             ))}
-            {!list.length && <tr><td colSpan={8} className="tb-empty">{empty}</td></tr>}
+            {!list.length && <tr><td colSpan={9} className="tb-empty">{empty}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -422,6 +450,13 @@ const CSS = `
 .tb-grid4 .tb-tileval{font-size:clamp(72px,10vw,210px)}
 .tb-grid4 .tb-tilehint{font-size:clamp(13px,1.2vw,22px)}
 .tb-grid4 .tb-tile::before{width:10px}
+/* Home dispatch (/boarding) : 4 cards en une ligne + tableau missions dessous. */
+.tb-dispatch-home{flex:1;display:flex;flex-direction:column;gap:min(1.6vw,22px);padding:1vh 2.4vw 1.4vh;min-height:0}
+.tb-row4{display:grid;grid-template-columns:repeat(4,1fr);gap:min(1.6vw,22px);height:30vh;flex:0 0 auto}
+.tb-row4 .tb-tile{border-radius:22px;padding:clamp(14px,1.8vw,32px)}
+.tb-row4 .tb-tilelbl{font-size:clamp(15px,1.5vw,28px)}
+.tb-row4 .tb-tileval{font-size:clamp(56px,7vw,150px)}
+.tb-dispatch-home .tb-panel{flex:1 1 auto;min-height:0}
 .tb-tile{border:1px solid rgba(255,255,255,.07);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
   padding:clamp(12px,1.5vw,26px);display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;min-width:0}
 .tb-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--c);box-shadow:0 0 26px var(--c)}
