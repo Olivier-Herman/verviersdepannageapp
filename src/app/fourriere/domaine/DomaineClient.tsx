@@ -54,11 +54,13 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }, [from, to])
 
-  // Auto-affichage : trimestre courant à l'ouverture.
+  // Auto-affichage : trimestre courant à l'ouverture, avec synchronisation
+  // automatique des mails « Vente d'épaves » à chaque ouverture de la page.
   useEffect(() => {
     const q = Math.floor(now.getMonth() / 3) + 1
     const b = quarterBounds(q, now.getFullYear())
-    setFrom(b.from); setTo(b.to); load(b.from, b.to)
+    setFrom(b.from); setTo(b.to)
+    syncVentes(b.from, b.to)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -103,18 +105,18 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau') }
   }
 
-  async function syncVentes() {
-    setSyncing(true); setMsg(null)
+  async function syncVentes(f = from, t = to) {
+    setSyncing(true); setMsg('⏳ Synchronisation des mails « Vente d’épaves »…')
     try {
       const r = await fetch('/api/fourriere/domaine', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync' }),
       })
       const j = await r.json()
-      if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur synchro'}`); return }
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur synchro'}`); load(f, t); return }
       const s = j.summary || {}
       setMsg(`✓ Synchro : ${s.applied || 0} appliquée(s), ${s.alreadySet || 0} complétée(s), ${s.noMatch || 0} non rapprochée(s), ${s.ambiguous || 0} ambiguë(s).`)
-      load()
-    } catch { setMsg('⚠ Erreur réseau') } finally { setSyncing(false) }
+      load(f, t)
+    } catch { setMsg('⚠ Erreur réseau'); load(f, t) } finally { setSyncing(false) }
   }
 
   async function invoiceQuarter() {
@@ -195,7 +197,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
           <div className="flex gap-2 flex-wrap">
             <button type="button" onClick={() => load()} disabled={loading}
               className="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-semibold disabled:opacity-50">{loading ? '⏳…' : '🔎 Afficher'}</button>
-            <button type="button" onClick={syncVentes} disabled={syncing}
+            <button type="button" onClick={() => syncVentes()} disabled={syncing}
               className="px-4 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm font-semibold hover:border-brand/40 disabled:opacity-50"
               title="Relire les mails « Vente d'épaves »">{syncing ? '⏳…' : '🔄 Synchroniser'}</button>
             <button type="button"
