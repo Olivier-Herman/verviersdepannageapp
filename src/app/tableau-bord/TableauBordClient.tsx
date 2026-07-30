@@ -186,7 +186,7 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
         a={o?.assignees} aLabel="Assignée" b={o?.enCours} bLabel="En cours" />
       {!isDispatch && <Tile label="À facturer"  value={o?.aFacturer}  color="#fb923c" hint="file facturation" />}
       <Tile label="À relivrer" value={o?.aRelivrer} color="#34d399" hint="parc K + K1"
-        sub={o ? `Total parc : ${o.enParc}` : undefined} />
+        sub={!isDispatch && o ? `Total parc : ${o.enParc}` : undefined} />
       {!isDispatch && <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />}
       {!isDispatch && <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />}
       {!isDispatch && <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
@@ -361,20 +361,20 @@ function ChauffeurPanel({ title, rows, empty }: { title: string; rows?: DrvRow[]
       <div className="tb-tblwrap">
         <table className="tb-tbl">
           <thead><tr>
-            <th className="l">Chauffeur</th><th>Total</th><th>Forcées</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th>
+            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transp.</th><th>DPR</th><th>Temps moy.</th><th>Forcées</th>
           </tr></thead>
           <tbody>
             {list.map((d, i) => (
               <tr key={i}>
                 <td className="l tb-drv">{d.driver}</td>
                 <td className="tb-tot">{d.total}</td>
-                <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || '·'}</td>
                 <td style={{ color: CAT_COLOR.REM }}>{d.REM || '·'}</td>
                 <td style={{ color: CAT_COLOR.DSP }}>{d.DSP || '·'}</td>
                 <td style={{ color: CAT_COLOR.REL }}>{d.REL || '·'}</td>
                 <td style={{ color: CAT_COLOR.Transport }}>{d.Transport || '·'}</td>
                 <td style={{ color: CAT_COLOR.DPR }}>{d.DPR || '·'}</td>
                 <td className="tb-avg">{d.avgMin != null ? fmtDuree(d.avgMin) : '—'}</td>
+                <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || '·'}</td>
               </tr>
             ))}
             {!list.length && <tr><td colSpan={9} className="tb-empty">{empty}</td></tr>}
@@ -395,27 +395,27 @@ function PerfPanel({ perf }: { perf?: { parChauffeur: PerfRow[]; global: { accep
       <div className="tb-tblwrap">
         <table className="tb-tbl">
           <thead><tr>
-            <th className="l">Chauffeur</th><th>Missions</th><th>Forcées</th><th>Acceptation</th><th>Départ en route</th><th>Traitement complet</th>
+            <th className="l">Chauffeur</th><th>Missions</th><th>Acceptation</th><th>Départ en route</th><th>Traitement complet</th><th>Forcées</th>
           </tr></thead>
           <tbody>
             {list.map((d, i) => (
               <tr key={i}>
                 <td className="l tb-drv">{d.driver}</td>
                 <td className="tb-tot">{d.count}</td>
-                <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || 0}</td>
                 <td style={{ color: '#38bdf8' }}>{cell(d.acceptMin)}</td>
                 <td style={{ color: '#fbbf24' }}>{cell(d.routeMin)}</td>
                 <td style={{ color: '#4ade80' }}>{cell(d.traitMin)}</td>
+                <td style={{ color: d.forced ? '#f87171' : '#64748b' }}>{d.forced || 0}</td>
               </tr>
             ))}
             {!list.length && <tr><td colSpan={6} className="tb-empty">Aucune donnée ce mois-ci.</td></tr>}
           </tbody>
           <tfoot><tr className="tb-team">
             <td className="l">🏁 Équipe (moyenne)</td><td className="tb-tot">—</td>
-            <td style={{ color: '#f87171' }}>{list.reduce((n, d) => n + (d.forced || 0), 0)}</td>
             <td style={{ color: '#38bdf8' }}>{cell(g?.acceptMin ?? null)}</td>
             <td style={{ color: '#fbbf24' }}>{cell(g?.routeMin ?? null)}</td>
             <td style={{ color: '#4ade80' }}>{cell(g?.traitMin ?? null)}</td>
+            <td style={{ color: '#f87171' }}>{list.reduce((n, d) => n + (d.forced || 0), 0)}</td>
           </tr></tfoot>
         </table>
       </div>
