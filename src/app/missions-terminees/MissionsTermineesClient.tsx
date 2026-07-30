@@ -130,15 +130,20 @@ function MissionStatusBadge({ m }: { m: TerminatedMission }) {
       </span>
     )
   }
-  if (m.invoice_method === 'auto') {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-info-soft text-info">⚡ Autofacturée</span>
-  }
+  // N° de facture Odoo présent = facturée par VD Soft (manuel OU auto-facturation
+  // interne) → « Facturation OK » avec le n°. VD Soft = assimilé à une personne
+  // qui facture. Prioritaire sur invoice_method.
   if (m.invoice_number) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-medium bg-success-soft text-success">
         🧾 {m.invoice_number}
       </span>
     )
+  }
+  // « Autofacturée » = facturée par l'ASSISTANCE elle-même (Clôture Allianz,
+  // Touring BKO) → pas de facture Odoo côté VD Soft.
+  if (m.invoice_method === 'auto') {
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-info-soft text-info" title="Facturée par l'assistance (Clôture Allianz / Touring BKO)">⚡ Autofacturée (assistance)</span>
   }
   return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-ink-faint/15 text-ink-muted">{m.status}</span>
 }

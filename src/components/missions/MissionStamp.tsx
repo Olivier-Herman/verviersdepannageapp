@@ -40,11 +40,15 @@ export default function MissionStamp({ mission, size = 'default' }: Props) {
   if (mission.no_charge_at) {
     return <Stamp label="SANS FRAIS" color="text-purple-500 border-purple-500" size={size} />
   }
-  if (mission.status === 'completed' && mission.invoice_method === 'auto') {
-    return <Stamp label="AUTOFACTUREE" color="text-blue-500 border-blue-500" size={size} />
-  }
+  // N° de facture Odoo = facturée par VD Soft (manuel OU auto-facturation interne)
+  // → tampon « Facturation OK » avec le n°. Prioritaire.
   if (mission.status === 'completed' && mission.invoice_number) {
     return <Stamp label={mission.invoice_number} color="text-green-600 border-green-600" size={size} />
+  }
+  // AUTOFACTUREE = facturée par l'assistance (Clôture Allianz / Touring BKO),
+  // pas de facture Odoo côté VD Soft.
+  if (mission.status === 'completed' && mission.invoice_method === 'auto') {
+    return <Stamp label="AUTOFACTUREE" color="text-blue-500 border-blue-500" size={size} />
   }
   return null
 }

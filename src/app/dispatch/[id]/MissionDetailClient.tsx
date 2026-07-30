@@ -3739,11 +3739,6 @@ export default function MissionDetailClient({
                       <p className="text-warning text-sm font-semibold">⏳ En attente de validation facturation</p>
                       <p className="text-warning text-xs mt-1">À traiter depuis la page <a href="/facturation" className="underline">Facturation</a>.</p>
                     </div>
-                  ) : initialMission.invoice_method === 'auto' ? (
-                    <div className="bg-success-soft border border-success rounded-xl p-3">
-                      <p className="text-success text-sm font-semibold">⚡ Auto-facturée</p>
-                      <p className="text-ink-muted text-xs mt-1">Validation directe dans le système assisteur.</p>
-                    </div>
                   ) : initialMission.invoice_number ? (
                     <div className="bg-success-soft border border-success rounded-xl p-3 space-y-2">
                       <p className="text-success text-sm font-semibold">✓ Facturée</p>
@@ -3758,6 +3753,11 @@ export default function MissionDetailClient({
                       ) : (
                         <p className="text-ink-muted text-xs italic">Lien Odoo en cours de résolution (cron)…</p>
                       )}
+                    </div>
+                  ) : initialMission.invoice_method === 'auto' ? (
+                    <div className="bg-success-soft border border-success rounded-xl p-3">
+                      <p className="text-success text-sm font-semibold">⚡ Auto-facturée (assistance)</p>
+                      <p className="text-ink-muted text-xs mt-1">Facturée par l'assistance (Clôture Allianz / Touring BKO).</p>
                     </div>
                   ) : (
                     <p className="text-ink-muted text-sm">Statut terminé sans données facturation.</p>

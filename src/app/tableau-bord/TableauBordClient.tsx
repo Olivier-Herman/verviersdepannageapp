@@ -394,15 +394,16 @@ const CSS = `
 .tb-tot{color:#e8edf5;font-size:1.05em}
 .tb-avg{color:#f472b6}
 .tb-ec-list{flex:1;display:flex;flex-direction:column;gap:.3vh;overflow:hidden}
-.tb-ec-row{display:grid;grid-template-columns:auto 84px 1.2fr 1.7fr 1fr auto auto;align-items:center;gap:1vw;
-  padding:.65vh .8vw;border-bottom:1px solid rgba(255,255,255,.06);font-size:clamp(14px,1.4vw,24px)}
-.tb-ec-cat{font-weight:800;font-size:.78em;border:1px solid;border-radius:999px;padding:.1em .6em;text-align:center;white-space:nowrap}
+.tb-ec-row{display:grid;grid-template-columns:6.5em 7em minmax(9em,1.1fr) minmax(11em,1.7fr) minmax(7em,1fr) 7em 6.5em;
+  align-items:center;column-gap:1.4vw;padding:.7vh .8vw;border-bottom:1px solid rgba(255,255,255,.06);font-size:clamp(14px,1.35vw,24px)}
+.tb-ec-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-ec-cat{font-weight:800;font-size:.78em;border:1px solid;border-radius:999px;padding:.15em 0;text-align:center;justify-self:start;width:100%}
 .tb-ec-num{font-weight:800;color:#9aa6ba;font-variant-numeric:tabular-nums}
-.tb-ec-drv{font-weight:800;color:#e8edf5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tb-ec-veh{color:#aeb9cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tb-ec-city{color:#8b96a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tb-ec-st{color:#c8d2e0;font-weight:700;font-size:.85em;white-space:nowrap}
-.tb-ec-timer{font-weight:900;font-variant-numeric:tabular-nums;font-size:1.08em;color:#4ade80;white-space:nowrap;min-width:2.6em;text-align:right}
+.tb-ec-drv{font-weight:800;color:#e8edf5}
+.tb-ec-veh{color:#aeb9cc}
+.tb-ec-city{color:#8b96a8}
+.tb-ec-st{color:#c8d2e0;font-weight:700;font-size:.85em}
+.tb-ec-timer{font-weight:900;font-variant-numeric:tabular-nums;font-size:1.08em;color:#4ade80;text-align:right}
 .tb-ec-timer.sev1{color:#fbbf24}
 .tb-ec-timer.sev2{color:#f87171}
 .tb-domaine{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:min(2vw,26px);padding:1vh 2.4vw 1.4vh}
