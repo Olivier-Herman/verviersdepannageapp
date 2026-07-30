@@ -154,12 +154,12 @@ export async function GET(req: Request) {
     if (t.includes('trajet_vide') || t.includes('dpr') || t.includes('deplace') || t.includes('mal_gar')) return 'DPR'
     return 'Autre'
   }
-  const startTomorrow = bxlDayStartISO(-1)
 
-  // Missions du jour (intervention_date aujourd'hui) attribuées → par chauffeur.
+  // Missions du jour attribuées → par chauffeur. « du jour » = attribuées OU
+  // clôturées aujourd'hui (assigned_at plus fiable qu'intervention_date, souvent nul).
   const { data: dayMissions } = await sb.from('incoming_missions')
-    .select('assigned_to, mission_type, accepted_at, completed_at')
-    .gte('intervention_date', startToday).lt('intervention_date', startTomorrow)
+    .select('assigned_to, mission_type, accepted_at, completed_at, assigned_at')
+    .or(`assigned_at.gte.${startToday},completed_at.gte.${startToday}`)
     .not('assigned_to', 'is', null)
     .not('status', 'in', '(cancelled,ignored,parse_error)')
     .limit(3000)
@@ -193,6 +193,18 @@ export async function GET(req: Request) {
     avgMin: d.durN ? Math.round(d.durSum / d.durN / 60000) : null,
   })).sort((a, b) => b.total - a.total)
 
+  // ── Domaine ops ────────────────────────────────────────────────────────────
+  // À transférer en zone Domaine (I) : remis au Domaine (Dates IN) mais pas en I.
+  const { count: aTransferer } = await sb.from('incoming_missions')
+    .select('*', { count: 'exact', head: true })
+    .not('domaine_remise_date', 'is', null).eq('status', 'parked')
+    .or('parc_zone_key.is.null,parc_zone_key.neq.I')
+  // À préparer pour enlèvement : vendu (registre) mais pas encore « Préparation OK »
+  // ni sorti physiquement.
+  const { count: aPreparer } = await sb.from('domaine_ventes_epaves')
+    .select('*', { count: 'exact', head: true })
+    .is('prepare_at', null).is('sortie_reelle_date', null)
+
   const STATUS_LBL: Record<string, string> = { assigned: 'Assignée', accepted: 'Acceptée', in_progress: 'En cours', delivering: 'Livraison' }
   const enCoursDetail = (active || []).map((m: any) => ({
     id: m.id, missionNumber: m.mission_number, driver: dn.get(m.assigned_to) || '—',
@@ -224,5 +236,6 @@ export async function GET(req: Request) {
     },
     chauffeurs: parChauffeur,
     enCours: enCoursDetail,
+    domaine: { aTransferer: aTransferer || 0, aPreparer: aPreparer || 0 },
   })
 }

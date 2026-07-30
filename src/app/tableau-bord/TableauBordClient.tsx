@@ -20,6 +20,7 @@ interface Kpi {
   }
   chauffeurs?: { driver: string; total: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }[]
   enCours?: { id: string; missionNumber: number | null; driver: string; plate: string; vehicle: string; category: string; city: string; statusLabel: string; since: string | null }[]
+  domaine?: { aTransferer: number; aPreparer: number }
 }
 
 const CAT_COLOR: Record<string, string> = { REM: '#38bdf8', DSP: '#4ade80', REL: '#a78bfa', Transport: '#fb923c', DPR: '#fbbf24', Autre: '#64748b' }
@@ -52,7 +53,7 @@ export default function TableauBordClient() {
   const [slide, setSlide]   = useState(0)
   const [progress, setProgress] = useState(0)
   const savedPin = useRef('')
-  const rotateS  = useRef(30)
+  const rotateS  = useRef(15)
   const slideCountRef = useRef(1)
 
   useEffect(() => {
@@ -155,6 +156,7 @@ export default function TableauBordClient() {
   const s = data?.sources
   const ch = data?.chauffeurs || []
   const ec = data?.enCours || []
+  const dm = data?.domaine
 
   // Slides du mur. En ajouter ici fait tourner la rotation.
   const slides = [
@@ -239,6 +241,11 @@ export default function TableauBordClient() {
         })}
         {!ec.length && <div className="tb-empty">Aucune mission en cours.</div>}
       </div>
+    </div>,
+
+    <div className="tb-domaine" key="domaine">
+      <Tile label="À transférer en Domaine" value={dm?.aTransferer} color="#a78bfa" hint="remis au Domaine, pas encore en zone I" />
+      <Tile label="À préparer pour enlèvement" value={dm?.aPreparer} color="#fbbf24" hint="épaves vendues, préparation non faite" />
     </div>,
   ]
   slideCountRef.current = slides.length
@@ -398,6 +405,7 @@ const CSS = `
 .tb-ec-timer{font-weight:900;font-variant-numeric:tabular-nums;font-size:1.08em;color:#4ade80;white-space:nowrap;min-width:2.6em;text-align:right}
 .tb-ec-timer.sev1{color:#fbbf24}
 .tb-ec-timer.sev2{color:#f87171}
+.tb-domaine{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:min(2vw,26px);padding:1vh 2.4vw 1.4vh}
 .tb-foot{display:flex;align-items:center;gap:1.6vw;padding:.4vh 2.4vw 1.2vh}
 .tb-dotsnav{display:flex;gap:9px}
 .tb-navdot{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.2)}
