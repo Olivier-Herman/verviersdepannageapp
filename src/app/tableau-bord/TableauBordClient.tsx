@@ -163,7 +163,7 @@ export default function TableauBordClient() {
         <section className={`tb-slide ${slide === 1 ? 'show' : ''}`}>
           <div className="tb-fac">
             <div className="tb-facleft">
-              <div className="tb-facttl">Répartition de la facturation par personne <span>· 30 derniers jours</span></div>
+              <div className="tb-facttl">Répartition de la facturation par personne <span>· {fac?.periodeJours ?? 7} derniers jours</span></div>
               <div className="tb-bars">
                 {(fac?.parUser || []).slice(0, 8).map((u, i) => (
                   <div className="tb-barrow" key={i}>
@@ -188,7 +188,7 @@ export default function TableauBordClient() {
               </div>
               <div className="tb-bigstat">
                 <div className="tb-bigval" style={{ color: '#38bdf8' }}>{fac?.total ?? '—'}</div>
-                <div className="tb-biglbl">Fiches facturées<br /><b>30 derniers jours</b></div>
+                <div className="tb-biglbl">Fiches facturées<br /><b>{fac?.periodeJours ?? 7} derniers jours</b></div>
               </div>
             </div>
           </div>

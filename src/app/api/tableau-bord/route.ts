@@ -48,15 +48,23 @@ export async function GET(req: Request) {
   const enParcKK1  = cnt(m => m.status === 'parked' && zoneKK1(m.parc_zone_key))
 
   // 2) Fiches clôturées : fenêtre 30 j (répartition + durée) + aujourd'hui.
-  const start30    = bxlDayStartISO(30)
-  const startToday = bxlDayStartISO(0)
-  const { data: comp } = await sb.from('incoming_missions')
-    .select('invoiced_by, invoice_method, completed_at, invoiced_at, no_charge_at')
-    .eq('status', 'completed')
-    .or(`invoiced_at.gte.${start30},no_charge_at.gte.${start30}`)
-    .limit(20000)
-
-  const rows = comp || []
+  const PERIOD_DAYS = 7
+  const startPeriod = bxlDayStartISO(PERIOD_DAYS)
+  const startToday  = bxlDayStartISO(0)
+  // PostgREST plafonne à 1000 lignes/requête → pagination (order stable par id)
+  // pour ne rien tronquer (répartition + durée + total).
+  const rows: any[] = []
+  for (let page = 0; page < 15; page++) {
+    const { data: chunk } = await sb.from('incoming_missions')
+      .select('invoiced_by, invoice_method, completed_at, invoiced_at, no_charge_at')
+      .eq('status', 'completed')
+      .or(`invoiced_at.gte.${startPeriod},no_charge_at.gte.${startPeriod}`)
+      .order('id', { ascending: true })
+      .range(page * 1000, page * 1000 + 999)
+    if (!chunk || !chunk.length) break
+    rows.push(...chunk)
+    if (chunk.length < 1000) break
+  }
   const finalAt = (m: any) => m.invoiced_at || m.no_charge_at || null
 
   // Clôturés aujourd'hui.
@@ -100,7 +108,7 @@ export async function GET(req: Request) {
     at: new Date().toISOString(),
     ops: { enCommande, enAttente, enCours, aFacturer, enParc, enParcKK1, cloturesJour },
     facturation: {
-      periodeJours: 30,
+      periodeJours: PERIOD_DAYS,
       total: rows.length,
       dureeMoyMin,
       parUser: facturationParUser,
