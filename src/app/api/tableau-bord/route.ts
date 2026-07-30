@@ -50,7 +50,7 @@ export async function GET(req: Request) {
 
   const [
     cCommande, cAttente, cAssign, cCours, cFacturer,
-    cParc, cParcKK1, cTerminees, cFacturees,
+    cParc, cTerminees, cFacturees,
   ] = await Promise.all([
     countBy(q => q.eq('status', 'new').neq('source', VHU_SOURCE)),                       // En commande
     countBy(q => exclFuture(q.eq('status', 'dispatching')).neq('source', VHU_SOURCE)),   // En attente
@@ -60,14 +60,28 @@ export async function GET(req: Request) {
     // Parc physique (aligné fourrière : parked + zone).
     sb.from('incoming_missions').select('*', { count: 'exact', head: true })
       .eq('status', 'parked').not('parc_zone_key', 'is', null),
-    sb.from('incoming_missions').select('*', { count: 'exact', head: true })
-      .eq('status', 'parked').in('parc_zone_key', ['K', 'K1']),
     // Du jour : terminées (completed_at aujourd'hui) / facturées (invoiced_at aujourd'hui).
     sb.from('incoming_missions').select('*', { count: 'exact', head: true })
       .gte('completed_at', startToday).not('status', 'in', '(cancelled,ignored,parse_error)'),
     sb.from('incoming_missions').select('*', { count: 'exact', head: true })
       .gte('invoiced_at', startToday),
   ])
+
+  // « À relivrer » (= onglet dispatch À Relivrer, K+K1) : parked en zone K/K1
+  // (filtres de base) MOINS les parents ayant déjà une REL enfant active.
+  const { data: kk1Rows } = await sb.from('incoming_missions').select('id')
+    .eq('status', 'parked').in('parc_zone_key', ['K', 'K1'])
+    .not('external_id', 'like', 'PROCESSING_%').not('external_id', 'like', 'UNKNOWN_SENDER_%')
+    .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
+    .is('archived_at', null)
+  const kk1Ids = (kk1Rows || []).map(r => r.id)
+  let aRelivrer = kk1Ids.length
+  if (kk1Ids.length) {
+    const { data: kids } = await sb.from('incoming_missions').select('parent_mission_id')
+      .in('parent_mission_id', kk1Ids).not('status', 'in', '("cancelled","ignored")')
+    const withChild = new Set((kids || []).map(k => k.parent_mission_id).filter(Boolean))
+    aRelivrer = kk1Ids.filter(id => !withChild.has(id)).length
+  }
 
   // Durée moyenne « À facturer » → « Terminé » = invoiced_at − completed_at (fenêtre,
   // paginé car PostgREST plafonne à 1000 lignes).
@@ -101,7 +115,7 @@ export async function GET(req: Request) {
       enCours:       cCours.count     || 0,
       aFacturer:     cFacturer.count  || 0,
       enParc:        cParc.count      || 0,
-      enParcKK1:     cParcKK1.count   || 0,
+      aRelivrer,
       termineesJour: cTerminees.count || 0,
       factureesJour: cFacturees.count || 0,
     },

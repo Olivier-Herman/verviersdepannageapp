@@ -9,7 +9,7 @@ interface Kpi {
   at: string
   ops: {
     enCommande: number; enAttente: number; assignees: number; enCours: number
-    aFacturer: number; enParc: number; enParcKK1: number
+    aFacturer: number; enParc: number; aRelivrer: number
     termineesJour: number; factureesJour: number
   }
   facturation: { periodeJours: number; dureeMoyMin: number | null }
@@ -144,7 +144,7 @@ export default function TableauBordClient() {
       <DualTile label="Assignée / En cours" color="#38bdf8"
         a={o?.assignees} aLabel="Assignée" b={o?.enCours} bLabel="En cours" />
       <Tile label="À facturer"  value={o?.aFacturer}  color="#fb923c" hint="file facturation" />
-      <Tile label="Parc K + K1" value={o?.enParcKK1} color="#34d399" hint="véhicules zones K + K1"
+      <Tile label="À relivrer" value={o?.aRelivrer} color="#34d399" hint="parc K + K1"
         sub={o ? `Total parc : ${o.enParc}` : undefined} />
       <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />
       <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />
