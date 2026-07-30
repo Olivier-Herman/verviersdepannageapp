@@ -25,6 +25,8 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
   const [total, setTotal] = useState(0)
   const [totalDays, setTotalDays] = useState(0)
   const [counts, setCounts] = useState<{ count: number; matched: number; unmatched: number } | null>(null)
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [completing, setCompleting] = useState(false)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [invoicing, setInvoicing] = useState(false)
@@ -48,6 +50,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Erreur'}`); setGroups(null); return }
       setGroups(j.groups); setTotal(j.total); setTotalDays(j.totalDays)
       setCounts({ count: j.count, matched: j.matched, unmatched: j.unmatched })
+      setInvoiceNumber(j.invoiceNumber || '')
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }, [from, to])
 
@@ -115,7 +118,28 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
       const j = await r.json()
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Échec facturation'}`); return }
       setMsg(`✓ Facture ${j.invoiceNumber || '(brouillon)'} créée — ${j.count} véhicule(s), ${(j.total || 0).toFixed(2)} € HTVA. À envoyer depuis Odoo.`)
+      if (j.invoiceNumber) setInvoiceNumber(j.invoiceNumber)
     } catch { setMsg('⚠ Erreur réseau') } finally { setInvoicing(false) }
+  }
+
+  // Saisir le n° de facture Odoo du trimestre → passe les fiches « à facturer »
+  // rapprochées de la période en « terminé » avec ce n°.
+  async function completeQuarter() {
+    if (!from || !to) { setMsg('⚠ Choisis la période'); return }
+    const num = invoiceNumber.trim()
+    if (!num) { setMsg('⚠ Saisis le n° de facture Odoo'); return }
+    if (!window.confirm(`Passer les fiches « à facturer » du trimestre ${fmt(from)} → ${fmt(to)} en TERMINÉ avec le n° ${num} ?`)) return
+    setCompleting(true); setMsg(null)
+    try {
+      const r = await fetch('/api/fourriere/domaine/ventes-register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete_quarter', from, to, invoiceNumber: num }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setMsg(`⚠ ${j.error || 'Échec'}`); return }
+      setMsg(`✓ ${j.completed} fiche(s) passée(s) en Terminé avec le n° ${num}`)
+      load()
+    } catch { setMsg('⚠ Erreur réseau') } finally { setCompleting(false) }
   }
 
   return (
@@ -171,6 +195,20 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
                 title="Créer + comptabiliser la facture trimestrielle Odoo">{invoicing ? '⏳…' : '🧾 Facturer ce trimestre'}</button>
             )}
           </div>
+          {userRole === 'superadmin' && (
+            <div className="flex items-end gap-2 flex-wrap border-t pt-3">
+              <div>
+                <label className="block text-ink-muted text-xs mb-1">N° facture Odoo du trimestre</label>
+                <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="ex. 2026/07/248"
+                  className="w-44 bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
+              </div>
+              <button type="button" onClick={completeQuarter} disabled={completing || !invoiceNumber.trim() || !groups}
+                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-bold disabled:opacity-50"
+                title="Passe les fiches « à facturer » rapprochées de ce trimestre en TERMINÉ avec ce n° de facture">
+                {completing ? '⏳…' : '✅ Passer les fiches en Terminé'}
+              </button>
+            </div>
+          )}
           {counts && <p className="text-xs text-ink-muted">{counts.count} ligne(s) · <span className="text-emerald-600 font-semibold">{counts.matched} rapprochée(s)</span> · <span className="text-amber-600 font-semibold">{counts.unmatched} non rapprochée(s)</span></p>}
           {msg && <p className="text-sm text-amber-600">{msg}</p>}
         </div>

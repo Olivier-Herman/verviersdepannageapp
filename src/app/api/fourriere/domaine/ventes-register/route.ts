@@ -15,6 +15,10 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { computeVenteEpavesRegister } from '@/lib/domaine/vente-epaves-register'
+import { odooRpc, withOdooActor } from '@/lib/odoo'
+import { releaseParcAndShift } from '@/lib/parc/release'
+
+const ODOO_URL = process.env.ODOO_URL || ''
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache  = 'force-no-store'
@@ -35,7 +39,11 @@ export async function GET(req: Request) {
   if (!from || !to) return NextResponse.json({ error: 'Période (from/to) requise' }, { status: 400 })
   const sb = createAdminClient()
   const result = await computeVenteEpavesRegister(sb, from, to)
-  return NextResponse.json({ ok: true, ...result })
+  // N° de facture Domaine mémorisé pour cette période (si déjà saisi).
+  const { data: inv } = await sb.from('app_settings').select('value').eq('key', `domaine_invoice_${from}_${to}`).maybeSingle()
+  let invoiceNumber = ''
+  try { const v = inv?.value ? (typeof inv.value === 'string' ? JSON.parse(inv.value) : inv.value) : null; invoiceNumber = v?.number || '' } catch {}
+  return NextResponse.json({ ok: true, ...result, invoiceNumber })
 }
 
 // Ligne rapprochée + sortie réelle → fiche « à facturer » (cachet Domaine).
@@ -74,6 +82,45 @@ export async function POST(req: Request) {
     let facturable = 0
     if (value) for (const r of (rows || [])) { if (await toInvoiceIfMatched(sb, r, value, user.id || null)) facturable++ }
     return NextResponse.json({ ok: true, facturable, lines: (rows || []).length })
+  }
+
+  // N° de facture Odoo du TRIMESTRE → passe les fiches rapprochées « à facturer »
+  // de la période en « terminé » avec ce n° (VD Soft = facturation manuelle).
+  if (action === 'complete_quarter') {
+    const from = String(body.from || '').slice(0, 10)
+    const to   = String(body.to   || '').slice(0, 10)
+    const invoiceNumber = String(body.invoiceNumber || '').trim()
+    if (!from || !to || !invoiceNumber) return NextResponse.json({ error: 'from / to / invoiceNumber requis' }, { status: 400 })
+    // Fiches rapprochées des ventes de la période.
+    const { data: trace } = await sb.from('domaine_ventes_epaves')
+      .select('matched_mission_id').gte('vente_date', from).lte('vente_date', to).not('matched_mission_id', 'is', null)
+    const ids = [...new Set((trace || []).map((r: any) => r.matched_mission_id))]
+    // Récupère l'id/URL Odoo de la facture (best-effort) via son n°.
+    let moveId: number | null = null, url: string | null = null
+    try {
+      const mv = await withOdooActor(user.id, () => odooRpc<any[]>('account.move', 'search_read', [[['name', '=', invoiceNumber]]], { fields: ['id'], limit: 1 }))
+      if (mv?.[0]?.id) { moveId = mv[0].id; url = `${ODOO_URL}/web#id=${moveId}&model=account.move&view_type=form` }
+    } catch {}
+    let completed = 0
+    const now = new Date().toISOString()
+    if (ids.length) {
+      const { data: toComp } = await sb.from('incoming_missions').select('id').in('id', ids).eq('status', 'to_invoice')
+      for (const m of (toComp || [])) {
+        await sb.from('incoming_missions').update({
+          status: 'completed', invoice_method: 'manual', invoice_number: invoiceNumber,
+          invoice_odoo_id: moveId, invoice_url: url, invoiced_at: now, invoiced_by: user.id || null, updated_at: now,
+        }).eq('id', m.id)
+        try { await releaseParcAndShift(sb, m.id) } catch {}
+        await sb.from('mission_logs').insert({
+          mission_id: m.id, actor_id: user.id || null, action: 'invoiced',
+          notes: `Facturée Domaine n° ${invoiceNumber} (trimestre ${from} → ${to})`,
+          metadata: { source: 'domaine', invoice_number: invoiceNumber, from, to },
+        }).then(() => {}, () => {})
+        completed++
+      }
+    }
+    await sb.from('app_settings').upsert({ key: `domaine_invoice_${from}_${to}`, value: { number: invoiceNumber, moveId, at: now } }, { onConflict: 'key' }).then(() => {}, () => {})
+    return NextResponse.json({ ok: true, completed, invoiceNumber })
   }
 
   const id = String(body.id || '')
