@@ -78,19 +78,10 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
   s.scanned = bounded.length
   if (!bounded.length) return s
 
-  // Traces déjà enregistrées (par email + VIN) : on ne retraite pas les
-  // applied/already_set, mais on retente les no_match/ambiguous.
-  const ids = bounded.map(m => m.id)
-  const { data: seen } = await sb.from('domaine_ventes_epaves')
-    .select('source_email_id, vin, outcome').in('source_email_id', ids)
-  // On ne skippe QUE les ventes déjà entièrement traitées (applied) ; les
-  // already_set/no_match/ambiguous sont re-traités pour compléter les champs
-  // manquants (Date OUT, firme) sur des véhicules déjà marqués vendus ailleurs.
-  const doneSet = new Set(
-    (seen || []).filter((r: any) => r.outcome === 'applied')
-      .map((r: any) => `${r.source_email_id}|${r.vin}`),
-  )
-
+  // Idempotent : on re-traite TOUT à chaque passe. Le backfill ne touche que les
+  // champs manquants et l'étiquette ne sort que sur une vente NOUVELLE → on peut
+  // ainsi corriger a posteriori (firme captée après fix regex, date de vente
+  // erronée posée par un ancien chemin, Date OUT manquante…).
   for (const msg of bounded) {
     if (s.applied >= MAX_APPLY_PER_RUN) break
     try {
@@ -105,12 +96,10 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
       for (const v of parsed.vehicles) {
         if (s.applied >= MAX_APPLY_PER_RUN) break
         s.entries++
-        if (doneSet.has(`${msg.id}|${v.vin}`)) continue
 
         const { data: hits } = await sb.from('incoming_missions')
           .select('id, mission_number, source, vehicle_vin, vehicle_plate, vehicle_brand, vehicle_model, parc_zone_key, domaine_vente_date, domaine_vente_firm, domaine_remise_date, domaine_enlevement_date')
           .in('source', SAISIE_SOURCES)
-          .is('domaine_vente_date', null)
           .is('archived_at', null)
           .neq('status', 'cancelled')
           .ilike('vehicle_vin', `%${v.vinTail}`)
@@ -134,7 +123,9 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
           // existant : vente (si nouveau), firme, Date IN (colonne après le VIN),
           // Date OUT (= date max d'enlèvement). Garantit un montant calculable.
           const upd: any = {}
-          if (wasNew && venteDate)                   upd.domaine_vente_date = venteDate
+          // Date de vente = date du mail (AUTORITATIF, cf. Olivier) : corrige une
+          // valeur erronée posée par un ancien chemin (ex. date OUT max mise en vente).
+          if (venteDate && m.domaine_vente_date !== venteDate) upd.domaine_vente_date = venteDate
           if (firm && !m.domaine_vente_firm)         upd.domaine_vente_firm = firm
           if (v.emailDate && !m.domaine_remise_date) upd.domaine_remise_date = v.emailDate
           if (maxEnl && !m.domaine_enlevement_date)  upd.domaine_enlevement_date = maxEnl
@@ -166,10 +157,10 @@ export async function pollVenteEpaves(): Promise<VenteEpavesSummary> {
           } else {
             // Déjà marqué vendu : complément silencieux (Date OUT/firme), pas d'étiquette.
             outcome = 'already_set'; s.alreadySet++
-            if (upd.domaine_enlevement_date || upd.domaine_vente_firm || upd.domaine_remise_date) {
+            if (upd.domaine_vente_date || upd.domaine_enlevement_date || upd.domaine_vente_firm || upd.domaine_remise_date) {
               await sb.from('mission_logs').insert({
                 mission_id: m.id, actor_id: null, action: 'domaine_vente_complement',
-                notes: `Complément Vente d'épaves${upd.domaine_vente_firm ? ` · firme ${firm}` : ''}${upd.domaine_enlevement_date ? ` · Date OUT ${maxEnl}` : ''}${upd.domaine_remise_date ? ` · Date IN ${v.emailDate}` : ''}`,
+                notes: `Complément Vente d'épaves${upd.domaine_vente_date ? ` · vente ${venteDate}` : ''}${upd.domaine_vente_firm ? ` · firme ${firm}` : ''}${upd.domaine_enlevement_date ? ` · Date OUT ${maxEnl}` : ''}${upd.domaine_remise_date ? ` · Date IN ${v.emailDate}` : ''}`,
                 metadata: { source: 'vente_epaves', backfill: upd, vin: v.vin, email_id: msg.id },
               }).then(() => {}, () => {})
             }

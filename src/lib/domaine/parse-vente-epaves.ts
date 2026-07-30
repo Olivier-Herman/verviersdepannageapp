@@ -73,8 +73,11 @@ export function parseVenteEpaves(input: { content: string; contentType?: 'html' 
 
   // Firme gagnante : « à la firme <X> les véhicules suivants ».
   let firm: string | null = null
-  const fm = text.match(/(?:à|a)\s+la\s+firme\s+(.+?)\s+les\s+v[ée]hicules?\s+suivants?/i)
-  if (fm) firm = fm[1].replace(/\s+/g, ' ').trim()
+  // Le connecteur avant « véhicules » est tolérant : « les », coquille « es »,
+  // « des »… (mails SPF pas toujours propres). Requis pour ne pas manger le
+  // dernier mot du nom de firme.
+  const fm = text.match(/(?:à|a)\s+la\s+firme\s+(.+?)\s+\S{1,4}\s+v[ée]hicules?\s+suivants?/i)
+  if (fm) firm = fm[1].replace(/\s+/g, ' ').replace(/[.,;:]+$/, '').trim()
 
   // Date maximale d'enlèvement (= Date OUT), valable pour tout le lot.
   let maxEnlevementDate: string | null = null
