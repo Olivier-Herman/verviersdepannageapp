@@ -44,6 +44,7 @@ export default function DatesInClient(props: { userRole: string; userName: strin
   const [loading, setLoading] = useState(true)
   const [busy, setBusy]     = useState(false)
   const [printing, setPrinting] = useState<string | null>(null)
+  const [transferring, setTransferring] = useState<string | null>(null)
   const [msg, setMsg]       = useState<string | null>(null)
 
   const load = async () => {
@@ -87,6 +88,19 @@ export default function DatesInClient(props: { userRole: string; userName: strin
         ? (j.queued ? '🖨 Étiquette mise en file d’impression (imprimante indisponible, retry auto)' : '🖨 Étiquette envoyée à l’imprimante')
         : `⚠ ${j.error || 'Échec impression'}`)
     } catch { setMsg('⚠ Erreur réseau') } finally { setPrinting(null) }
+  }
+
+  async function transferZone(missionId: string) {
+    setTransferring(missionId); setMsg(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/transfer-parc`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone_key: 'I', reason: 'Transfert zone Domaine (remise au Domaine)' }),
+      })
+      const j = await r.json()
+      setMsg(r.ok ? `✓ ${j.message || 'Transféré en zone Domaine (I)'}` : `⚠ ${j.error || 'Échec transfert'}`)
+      if (r.ok) load()
+    } catch { setMsg('⚠ Erreur réseau') } finally { setTransferring(null) }
   }
 
   return (
@@ -161,8 +175,15 @@ export default function DatesInClient(props: { userRole: string; userName: strin
                             </span>
                           : <span className="text-ink-faint">—</span>}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         {it.zone ? <span className="px-2 py-0.5 rounded bg-surface-2 border text-xs font-semibold">{it.zone}</span> : <span className="text-ink-faint">—</span>}
+                        {it.matched_mission_id && it.mission_status === 'parked' && it.zone !== 'I' && (
+                          <button onClick={() => transferZone(it.matched_mission_id!)} disabled={transferring === it.matched_mission_id}
+                            title="Transférer en zone Domaine (I)"
+                            className="ml-2 text-xs px-1.5 py-0.5 rounded border bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/25 disabled:opacity-50 font-semibold">
+                            {transferring === it.matched_mission_id ? '⏳' : '🏛 → Zone I'}
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-ink-secondary">{it.firm || <span className="text-ink-faint">—</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-ink-secondary">{it.vente_date ? fmt(it.vente_date) : <span className="text-ink-faint">—</span>}</td>
