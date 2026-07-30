@@ -2,24 +2,26 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-// Mur d'écran ops — page publique protégée par PIN. Rafraîchissement auto +
-// slides auto-rotatives. Olivier 2026-07-30.
+// Mur d'écran ops — page publique protégée par PIN. Une seule page, temps réel
+// (polling 10s). Compteurs alignés sur les onglets du dispatch. Olivier 2026-07-30.
 
 interface Kpi {
   at: string
-  ops: { enCommande: number; enAttente: number; enCours: number; aFacturer: number; enParc: number; enParcKK1: number; cloturesJour: number }
-  facturation: { periodeJours: number; total: number; dureeMoyMin: number | null; parUser: { user: string; count: number; pct: number; system: boolean }[] }
+  ops: {
+    enCommande: number; enAttente: number; assignees: number; enCours: number
+    aFacturer: number; enParc: number; enParcKK1: number
+    termineesJour: number; factureesJour: number
+  }
+  facturation: { periodeJours: number; dureeMoyMin: number | null }
 }
 
-const POLL_MS   = 10_000
-const DEFAULT_ROTATE_S = 12
-const SLIDES = 2
+const POLL_MS = 10_000
 
 const fmtDuree = (min: number | null) => {
   if (min == null) return '—'
   if (min < 60) return `${min} min`
   const h = Math.floor(min / 60), m = min % 60
-  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`
 }
 const two = (n: number) => String(n).padStart(2, '0')
 
@@ -29,13 +31,13 @@ export default function TableauBordClient() {
   const [pinErr, setPinErr] = useState(false)
   const [data, setData]     = useState<Kpi | null>(null)
   const [stale, setStale]   = useState(false)
+  const [clock, setClock]   = useState('')
   const [slide, setSlide]   = useState(0)
   const [progress, setProgress] = useState(0)
-  const [clock, setClock]   = useState('')
   const savedPin = useRef('')
-  const rotateS  = useRef(DEFAULT_ROTATE_S)
+  const rotateS  = useRef(30)
+  const slideCountRef = useRef(1)
 
-  // Horloge.
   useEffect(() => {
     const t = setInterval(() => {
       const d = new Date()
@@ -44,12 +46,11 @@ export default function TableauBordClient() {
     return () => clearInterval(t)
   }, [])
 
-  // Restaure le PIN (session) + lit ?rotate=.
   useEffect(() => {
     try {
       const sp = new URLSearchParams(window.location.search)
       const r = parseInt(sp.get('rotate') || '')
-      if (r >= 3 && r <= 120) rotateS.current = r
+      if (r >= 3 && r <= 300) rotateS.current = r
       const p = sessionStorage.getItem('tb_pin')
       if (p) { savedPin.current = p; setAuthed(true) }
     } catch {}
@@ -66,29 +67,29 @@ export default function TableauBordClient() {
     } catch { setStale(true) }
   }, [])
 
-  // Polling.
   useEffect(() => {
     if (!authed) return
     fetchData()
     const t = setInterval(fetchData, POLL_MS)
-    const s = setInterval(() => setStale(true), POLL_MS * 3)   // pas de MAJ depuis 30s → indicateur
+    const s = setInterval(() => setStale(true), POLL_MS * 3)
     return () => { clearInterval(t); clearInterval(s) }
   }, [authed, fetchData])
 
-  // Rotation des slides + barre de progression.
+  // Rotation des slides (ne tourne qu'à partir de 2 slides). Prête pour de futurs
+  // écrans : ajouter des entrées dans `slides` ci-dessous.
   useEffect(() => {
     if (!authed) return
     let p = 0
     const step = 100 / (rotateS.current * 10)
     const t = setInterval(() => {
+      if (slideCountRef.current <= 1) { setProgress(0); return }
       p += step
-      if (p >= 100) { p = 0; setSlide(s => (s + 1) % SLIDES) }
+      if (p >= 100) { p = 0; setSlide(s => (s + 1) % slideCountRef.current) }
       setProgress(p)
     }, 100)
     return () => clearInterval(t)
   }, [authed])
 
-  // Saisie PIN.
   const press = (d: string) => {
     setPinErr(false)
     setPin(prev => {
@@ -132,13 +133,32 @@ export default function TableauBordClient() {
     )
   }
 
-  const ops = data?.ops
-  const fac = data?.facturation
+  const o = data?.ops
+  const f = data?.facturation
+
+  // Slides du mur. Aujourd'hui 1 seule ; en ajouter ici fait tourner la rotation.
+  const slides = [
+    <div className="tb-grid8" key="ops">
+      <Tile label="En commande" value={o?.enCommande} color="#a78bfa" hint="onglet dispatch" />
+      <Tile label="En attente"  value={o?.enAttente}  color="#fbbf24" hint="à dispatcher" />
+      <DualTile label="Assignée / En cours" color="#38bdf8"
+        a={o?.assignees} aLabel="Assignée" b={o?.enCours} bLabel="En cours" />
+      <Tile label="À facturer"  value={o?.aFacturer}  color="#fb923c" hint="file facturation" />
+      <Tile label="Véhicules en parc" value={o?.enParc} color="#34d399" hint="présents en fourrière"
+        sub={o ? `K + K1 : ${o.enParcKK1}` : undefined} />
+      <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />
+      <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />
+      <Tile label="Délai moyen à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
+        hint={`À facturer → Terminé · ${f?.periodeJours ?? 7} j`} />
+    </div>,
+  ]
+  slideCountRef.current = slides.length
+  const cur = Math.min(slide, slides.length - 1)
 
   return (
     <div className="tb-root">
       <header className="tb-head">
-        <div className="tb-brand">VD&nbsp;Soft <span className="tb-brand-sub">· Tableau de bord opérations</span></div>
+        <div className="tb-brand">VD&nbsp;Soft <span className="tb-brand-sub">· Opérations en direct</span></div>
         <div className="tb-headright">
           <span className={`tb-live ${stale ? 'off' : ''}`}>● {stale ? 'reconnexion…' : 'en direct'}</span>
           <span className="tb-clock">{clock}</span>
@@ -146,61 +166,21 @@ export default function TableauBordClient() {
       </header>
 
       <main className="tb-main">
-        {/* SLIDE 1 — compteurs ops */}
-        <section className={`tb-slide ${slide === 0 ? 'show' : ''}`}>
-          <div className="tb-grid6">
-            <Tile label="En commande"  value={ops?.enCommande} color="#a78bfa" hint="commandes reçues" />
-            <Tile label="En attente"   value={ops?.enAttente}  color="#fbbf24" hint="à attribuer / au départ" />
-            <Tile label="En cours"     value={ops?.enCours}    color="#38bdf8" hint="chauffeur en intervention" />
-            <Tile label="À facturer"   value={ops?.aFacturer}  color="#fb923c" hint="en attente facturation" />
-            <Tile label="Véhicules en parc" value={ops?.enParc} color="#34d399" hint="présents en fourrière"
-              sub={ops ? `K + K1 : ${ops.enParcKK1}` : undefined} />
-            <Tile label="Clôturés aujourd'hui" value={ops?.cloturesJour} color="#4ade80" hint="dossiers terminés du jour" />
-          </div>
-        </section>
-
-        {/* SLIDE 2 — facturation */}
-        <section className={`tb-slide ${slide === 1 ? 'show' : ''}`}>
-          <div className="tb-fac">
-            <div className="tb-facleft">
-              <div className="tb-facttl">Répartition de la facturation par personne <span>· {fac?.periodeJours ?? 7} derniers jours</span></div>
-              <div className="tb-bars">
-                {(fac?.parUser || []).slice(0, 8).map((u, i) => (
-                  <div className="tb-barrow" key={i}>
-                    <div className="tb-barname" style={{ opacity: u.system ? 0.7 : 1 }}>{u.user}</div>
-                    <div className="tb-bartrack">
-                      <div className="tb-barfill" style={{ width: `${u.pct}%`, background: u.system ? '#64748b' : BAR_COLORS[i % BAR_COLORS.length] }} />
-                    </div>
-                    <div className="tb-barpct">{u.pct}%<span className="tb-barcount"> · {u.count}</span></div>
-                  </div>
-                ))}
-                {!fac?.parUser?.length && <div className="tb-empty">Aucune facturation sur la période.</div>}
-              </div>
-            </div>
-            <div className="tb-facright">
-              <div className="tb-bigstat">
-                <div className="tb-bigval" style={{ color: '#f472b6' }}>{fmtDuree(fac?.dureeMoyMin ?? null)}</div>
-                <div className="tb-biglbl">Durée moyenne<br /><b>À facturer → Terminé</b></div>
-              </div>
-              <div className="tb-bigstat">
-                <div className="tb-bigval" style={{ color: '#4ade80' }}>{ops?.cloturesJour ?? '—'}</div>
-                <div className="tb-biglbl">Dossiers clôturés<br /><b>aujourd'hui</b></div>
-              </div>
-              <div className="tb-bigstat">
-                <div className="tb-bigval" style={{ color: '#38bdf8' }}>{fac?.total ?? '—'}</div>
-                <div className="tb-biglbl">Fiches facturées<br /><b>{fac?.periodeJours ?? 7} derniers jours</b></div>
-              </div>
-            </div>
-          </div>
-        </section>
+        {slides.map((node, i) => (
+          <section key={i} className={`tb-slide ${i === cur ? 'show' : ''}`}>{node}</section>
+        ))}
       </main>
 
       <footer className="tb-foot">
-        <div className="tb-dotsnav">
-          {Array.from({ length: SLIDES }).map((_, i) => <span key={i} className={`tb-navdot ${i === slide ? 'on' : ''}`} />)}
-        </div>
-        <div className="tb-progress"><div className="tb-progressfill" style={{ width: `${progress}%` }} /></div>
-        <div className="tb-updated">MAJ {data ? new Date(data.at).toLocaleTimeString('fr-BE') : '—'}</div>
+        {slides.length > 1 && (
+          <>
+            <div className="tb-dotsnav">
+              {slides.map((_, i) => <span key={i} className={`tb-navdot ${i === cur ? 'on' : ''}`} />)}
+            </div>
+            <div className="tb-progress"><div className="tb-progressfill" style={{ width: `${progress}%` }} /></div>
+          </>
+        )}
+        <span className="tb-updated">MAJ auto {POLL_MS / 1000}s · dernière {data ? new Date(data.at).toLocaleTimeString('fr-BE') : '—'}</span>
       </footer>
 
       <style>{CSS}</style>
@@ -208,11 +188,11 @@ export default function TableauBordClient() {
   )
 }
 
-function Tile({ label, value, color, hint, sub }: { label: string; value?: number; color: string; hint: string; sub?: string }) {
+function Tile({ label, value, valueStr, color, hint, sub }: { label: string; value?: number; valueStr?: string; color: string; hint: string; sub?: string }) {
   return (
     <div className="tb-tile" style={{ ['--c' as any]: color }}>
       <div className="tb-tilelbl">{label}</div>
-      <div className="tb-tileval">{value ?? '—'}</div>
+      <div className={`tb-tileval ${valueStr ? 'tb-tileval-str' : ''}`}>{valueStr ?? value ?? '—'}</div>
       <div className="tb-tilebot">
         <span className="tb-tilehint">{hint}</span>
         {sub && <span className="tb-tilesub">{sub}</span>}
@@ -221,58 +201,63 @@ function Tile({ label, value, color, hint, sub }: { label: string; value?: numbe
   )
 }
 
-const BAR_COLORS = ['#38bdf8', '#a78bfa', '#fb923c', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#f87171']
+function DualTile({ label, color, a, aLabel, b, bLabel }: { label: string; color: string; a?: number; aLabel: string; b?: number; bLabel: string }) {
+  return (
+    <div className="tb-tile" style={{ ['--c' as any]: color }}>
+      <div className="tb-tilelbl">{label}</div>
+      <div className="tb-dual">
+        <div className="tb-dualcol"><div className="tb-dualval">{a ?? '—'}</div><div className="tb-duallbl">{aLabel}</div></div>
+        <div className="tb-dualsep" />
+        <div className="tb-dualcol"><div className="tb-dualval">{b ?? '—'}</div><div className="tb-duallbl">{bLabel}</div></div>
+      </div>
+      <div className="tb-tilebot"><span className="tb-tilehint">missions actives</span></div>
+    </div>
+  )
+}
 
 const CSS = `
 .tb-root{position:fixed;inset:0;background:radial-gradient(1200px 800px at 70% -10%,#16233b 0%,#0a0e17 55%);color:#e8edf5;
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden}
 .tb-center{align-items:center;justify-content:center}
 *{box-sizing:border-box}
-.tb-head{display:flex;align-items:center;justify-content:space-between;padding:2vh 3vw 1vh}
-.tb-brand{font-size:clamp(18px,2.2vw,34px);font-weight:800;letter-spacing:.02em}
+.tb-head{display:flex;align-items:center;justify-content:space-between;padding:1.6vh 2.4vw .8vh}
+.tb-brand{font-size:clamp(18px,2.1vw,34px);font-weight:800;letter-spacing:.02em}
 .tb-brand-sub{color:#8b96a8;font-weight:600;font-size:.62em}
 .tb-headright{display:flex;align-items:center;gap:2vw}
 .tb-live{color:#4ade80;font-weight:700;font-size:clamp(13px,1.3vw,20px);letter-spacing:.03em}
 .tb-live.off{color:#fbbf24;animation:tb-blink 1s steps(2) infinite}
 @keyframes tb-blink{50%{opacity:.35}}
-.tb-clock{font-variant-numeric:tabular-nums;font-weight:800;font-size:clamp(20px,2.4vw,40px);letter-spacing:.04em}
-.tb-main{flex:1;position:relative}
-.tb-slide{position:absolute;inset:0;padding:1vh 3vw 2vh;opacity:0;transform:scale(.985);transition:opacity .6s ease,transform .6s ease;pointer-events:none}
+.tb-clock{font-variant-numeric:tabular-nums;font-weight:800;font-size:clamp(20px,2.3vw,40px);letter-spacing:.04em}
+.tb-main{flex:1;position:relative;min-height:0}
+.tb-slide{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;transform:scale(.99);
+  transition:opacity .5s ease,transform .5s ease;pointer-events:none}
 .tb-slide.show{opacity:1;transform:none;pointer-events:auto}
-.tb-grid6{height:100%;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:min(2.4vw,28px)}
-.tb-tile{border:1px solid rgba(255,255,255,.07);border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
-  padding:clamp(14px,2vw,34px);display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
-.tb-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--c);box-shadow:0 0 30px var(--c)}
-.tb-tilelbl{color:#aeb9cc;font-weight:700;font-size:clamp(15px,1.5vw,26px);text-transform:uppercase;letter-spacing:.04em}
-.tb-tileval{font-weight:900;font-variant-numeric:tabular-nums;line-height:.95;color:var(--c);
-  font-size:clamp(56px,10vw,180px);text-shadow:0 0 40px color-mix(in srgb,var(--c) 45%,transparent);margin:.05em 0}
-.tb-tilebot{display:flex;align-items:center;justify-content:space-between;gap:1vw;flex-wrap:wrap}
-.tb-tilehint{color:#7b8698;font-weight:600;font-size:clamp(12px,1.1vw,19px)}
-.tb-tilesub{color:var(--c);font-weight:800;font-size:clamp(13px,1.2vw,22px);background:color-mix(in srgb,var(--c) 16%,transparent);
-  border:1px solid color-mix(in srgb,var(--c) 40%,transparent);border-radius:999px;padding:.15em .7em;white-space:nowrap;font-variant-numeric:tabular-nums}
-.tb-fac{height:100%;display:grid;grid-template-columns:1.6fr 1fr;gap:min(2.4vw,28px)}
-.tb-facleft,.tb-facright{border:1px solid rgba(255,255,255,.07);border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012));padding:clamp(16px,2vw,34px)}
-.tb-facright{display:flex;flex-direction:column;gap:min(2vh,22px);justify-content:space-between}
-.tb-facttl{color:#aeb9cc;font-weight:800;font-size:clamp(16px,1.6vw,28px);margin-bottom:2vh}
-.tb-facttl span{color:#7b8698;font-weight:600}
-.tb-bars{display:flex;flex-direction:column;gap:min(1.8vh,20px)}
-.tb-barrow{display:grid;grid-template-columns:minmax(120px,22%) 1fr auto;align-items:center;gap:1.2vw}
-.tb-barname{font-weight:700;font-size:clamp(15px,1.5vw,26px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tb-bartrack{height:clamp(20px,2.6vh,34px);background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden}
-.tb-barfill{height:100%;border-radius:999px;transition:width .6s ease;box-shadow:0 0 20px rgba(255,255,255,.12) inset}
-.tb-barpct{font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(16px,1.6vw,28px);white-space:nowrap}
-.tb-barcount{color:#7b8698;font-weight:600;font-size:.72em}
-.tb-empty{color:#7b8698;font-size:clamp(15px,1.5vw,24px);padding:4vh 0}
-.tb-bigstat{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border-radius:16px;background:rgba(255,255,255,.02)}
-.tb-bigval{font-weight:900;font-variant-numeric:tabular-nums;line-height:1;font-size:clamp(40px,5.5vw,96px)}
-.tb-biglbl{color:#9aa6ba;font-weight:600;font-size:clamp(13px,1.2vw,22px);margin-top:.4em;line-height:1.3}
-.tb-foot{display:flex;align-items:center;gap:2vw;padding:1vh 3vw 2vh}
-.tb-dotsnav{display:flex;gap:10px}
-.tb-navdot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.2)}
-.tb-navdot.on{background:#e8edf5;box-shadow:0 0 12px rgba(255,255,255,.5)}
-.tb-progress{flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden}
-.tb-progressfill{height:100%;background:linear-gradient(90deg,#38bdf8,#4ade80);border-radius:999px}
-.tb-updated{color:#7b8698;font-weight:600;font-size:clamp(12px,1.1vw,18px);font-variant-numeric:tabular-nums}
+.tb-grid8{flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,1fr);
+  gap:min(1.6vw,22px);padding:.6vh 2.4vw 1vh}
+.tb-tile{border:1px solid rgba(255,255,255,.07);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+  padding:clamp(12px,1.5vw,26px);display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;min-width:0}
+.tb-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--c);box-shadow:0 0 26px var(--c)}
+.tb-tilelbl{color:#aeb9cc;font-weight:700;font-size:clamp(13px,1.25vw,24px);text-transform:uppercase;letter-spacing:.03em;line-height:1.15}
+.tb-tileval{font-weight:900;font-variant-numeric:tabular-nums;line-height:.92;color:var(--c);
+  font-size:clamp(48px,7.4vw,150px);text-shadow:0 0 40px color-mix(in srgb,var(--c) 45%,transparent);margin:.04em 0}
+.tb-tileval-str{font-size:clamp(38px,5.2vw,104px)}
+.tb-tilebot{display:flex;align-items:center;justify-content:space-between;gap:.6vw;flex-wrap:wrap}
+.tb-tilehint{color:#7b8698;font-weight:600;font-size:clamp(11px,1vw,18px)}
+.tb-tilesub{color:var(--c);font-weight:800;font-size:clamp(12px,1.1vw,20px);background:color-mix(in srgb,var(--c) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--c) 40%,transparent);border-radius:999px;padding:.12em .6em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tb-dual{display:flex;align-items:center;gap:1vw;margin:.1em 0}
+.tb-dualcol{flex:1;text-align:center;min-width:0}
+.tb-dualval{font-weight:900;font-variant-numeric:tabular-nums;line-height:.95;color:var(--c);
+  font-size:clamp(40px,5.6vw,120px);text-shadow:0 0 34px color-mix(in srgb,var(--c) 45%,transparent)}
+.tb-duallbl{color:#9aa6ba;font-weight:700;font-size:clamp(11px,1vw,19px);text-transform:uppercase;letter-spacing:.03em}
+.tb-dualsep{width:2px;align-self:stretch;background:linear-gradient(180deg,transparent,rgba(255,255,255,.18),transparent)}
+.tb-foot{display:flex;align-items:center;gap:1.6vw;padding:.4vh 2.4vw 1.2vh}
+.tb-dotsnav{display:flex;gap:9px}
+.tb-navdot{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.2)}
+.tb-navdot.on{background:#e8edf5;box-shadow:0 0 10px rgba(255,255,255,.5)}
+.tb-progress{flex:1;height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden}
+.tb-progressfill{height:100%;background:linear-gradient(90deg,#38bdf8,#4ade80);border-radius:999px;transition:width .1s linear}
+.tb-updated{margin-left:auto;color:#6b7688;font-weight:600;font-size:clamp(11px,1vw,17px);font-variant-numeric:tabular-nums}
 /* PIN */
 .tb-pinbox{width:min(90vw,420px);text-align:center}
 .tb-pintitle{font-size:26px;font-weight:800}
