@@ -226,6 +226,8 @@ export async function GET(req: Request) {
     p.count++
     if (m.accepted_at) { const x = Date.parse(m.accepted_at) - a; if (ok(x)) { p.accS += x; p.accN++; gAcc[0] += x; gAcc[1]++ } }
     if (m.on_way_at)   { const x = Date.parse(m.on_way_at) - a;   if (ok(x)) { p.rS += x; p.rN++; gRoute[0] += x; gRoute[1]++ } }
+    // Traitement (part chauffeur) = de l'assignation (« dans ses mains ») jusqu'à
+    // SA clôture : mise en parc ou to_invoice.
     const end = m.completed_at || m.parked_at
     if (end) { const x = Date.parse(end) - a; if (ok(x)) { p.tS += x; p.tN++; gTrait[0] += x; gTrait[1]++ } }
     perfMap.set(m.assigned_to, p)
