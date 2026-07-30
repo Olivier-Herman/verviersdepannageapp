@@ -132,6 +132,19 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
     } catch { setPinErr(true); setPin('') }
   }
 
+  // Saisie clavier du PIN (chiffres physiques + pavé numérique, ⌫, Échap).
+  useEffect(() => {
+    if (authed) return
+    const onKey = (e: KeyboardEvent) => {
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); press(e.key) }
+      else if (e.key === 'Backspace') { e.preventDefault(); setPinErr(false); setPin(p => p.slice(0, -1)) }
+      else if (e.key === 'Escape') { setPin(''); setPinErr(false) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
+
   if (!authed) {
     return (
       <div className="tb-root tb-center">
