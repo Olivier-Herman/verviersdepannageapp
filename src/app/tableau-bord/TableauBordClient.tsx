@@ -18,6 +18,18 @@ interface Kpi {
     touring: { bko: number; total: number }
     allianz: { cloture: number | null; total: number }
   }
+  chauffeurs?: { driver: string; total: number; REM: number; DSP: number; REL: number; Transport: number; DPR: number; autre: number; avgMin: number | null }[]
+  enCours?: { id: string; missionNumber: number | null; driver: string; plate: string; vehicle: string; category: string; city: string; statusLabel: string; since: string | null }[]
+}
+
+const CAT_COLOR: Record<string, string> = { REM: '#38bdf8', DSP: '#4ade80', REL: '#a78bfa', Transport: '#fb923c', DPR: '#fbbf24', Autre: '#64748b' }
+function elapsed(since: string | null): { txt: string; sev: number } {
+  if (!since) return { txt: '—', sev: 0 }
+  const s = Math.max(0, Math.floor((Date.now() - Date.parse(since)) / 1000))
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
+  const txt = h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`
+  const sev = s >= 7200 ? 2 : s >= 3600 ? 1 : 0   // ≥2h rouge, ≥1h orange
+  return { txt, sev }
 }
 
 const POLL_MS = 10_000
@@ -141,6 +153,8 @@ export default function TableauBordClient() {
   const o = data?.ops
   const f = data?.facturation
   const s = data?.sources
+  const ch = data?.chauffeurs || []
+  const ec = data?.enCours || []
 
   // Slides du mur. En ajouter ici fait tourner la rotation.
   const slides = [
@@ -177,6 +191,53 @@ export default function TableauBordClient() {
           ))}
           {!s?.parSource?.length && <div className="tb-empty">Aucun dossier à facturer.</div>}
         </div>
+      </div>
+    </div>,
+
+    <div className="tb-panel" key="chauffeurs">
+      <div className="tb-panel-ttl">Missions du jour par chauffeur <span>· DSP / REM / REL / Transport / DPR</span></div>
+      <div className="tb-tblwrap">
+        <table className="tb-tbl">
+          <thead><tr>
+            <th className="l">Chauffeur</th><th>Total</th><th>REM</th><th>DSP</th><th>REL</th><th>Transport</th><th>DPR</th><th>Temps moy./mission</th>
+          </tr></thead>
+          <tbody>
+            {ch.map((d, i) => (
+              <tr key={i}>
+                <td className="l tb-drv">{d.driver}</td>
+                <td className="tb-tot">{d.total}</td>
+                <td style={{ color: CAT_COLOR.REM }}>{d.REM || '·'}</td>
+                <td style={{ color: CAT_COLOR.DSP }}>{d.DSP || '·'}</td>
+                <td style={{ color: CAT_COLOR.REL }}>{d.REL || '·'}</td>
+                <td style={{ color: CAT_COLOR.Transport }}>{d.Transport || '·'}</td>
+                <td style={{ color: CAT_COLOR.DPR }}>{d.DPR || '·'}</td>
+                <td className="tb-avg">{d.avgMin != null ? fmtDuree(d.avgMin) : '—'}</td>
+              </tr>
+            ))}
+            {!ch.length && <tr><td colSpan={8} className="tb-empty">Aucune mission attribuée aujourd'hui.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>,
+
+    <div className="tb-panel" key="encours">
+      <div className="tb-panel-ttl">Missions en cours & assignées <span>· {ec.length} · compteur depuis l'assignation</span></div>
+      <div className="tb-ec-list">
+        {ec.map(m => {
+          const e = elapsed(m.since)
+          return (
+            <div className="tb-ec-row" key={m.id}>
+              <span className="tb-ec-cat" style={{ background: `${CAT_COLOR[m.category] || CAT_COLOR.Autre}22`, color: CAT_COLOR[m.category] || CAT_COLOR.Autre, borderColor: `${CAT_COLOR[m.category] || CAT_COLOR.Autre}66` }}>{m.category}</span>
+              <span className="tb-ec-num">{m.missionNumber ? `#${m.missionNumber}` : '—'}</span>
+              <span className="tb-ec-drv">{m.driver}</span>
+              <span className="tb-ec-veh">{[m.plate, m.vehicle].filter(Boolean).join(' · ') || '—'}</span>
+              <span className="tb-ec-city">{m.city || '—'}</span>
+              <span className="tb-ec-st">{m.statusLabel}</span>
+              <span className={`tb-ec-timer sev${e.sev}`}>{e.txt}</span>
+            </div>
+          )
+        })}
+        {!ec.length && <div className="tb-empty">Aucune mission en cours.</div>}
       </div>
     </div>,
   ]
@@ -311,7 +372,32 @@ const CSS = `
 .tb-src-dot{width:clamp(11px,1vw,16px);height:clamp(11px,1vw,16px);border-radius:50%;flex:0 0 auto;box-shadow:0 0 10px currentColor}
 .tb-src-lbl{flex:1;font-weight:700;font-size:clamp(14px,1.35vw,24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tb-src-cnt{font-weight:900;font-variant-numeric:tabular-nums;font-size:clamp(18px,1.8vw,32px);color:#e8edf5}
-.tb-empty{color:#7b8698;font-size:clamp(15px,1.5vw,24px);padding:4vh 0}
+.tb-empty{color:#7b8698;font-size:clamp(15px,1.5vw,24px);padding:4vh 0;text-align:center}
+/* Panels génériques (par chauffeur / en cours) */
+.tb-panel{flex:1;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.07);border-radius:20px;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012));padding:clamp(14px,1.8vw,28px);margin:.6vh 2.4vw 1vh;min-height:0}
+.tb-panel-ttl{color:#aeb9cc;font-weight:800;font-size:clamp(16px,1.7vw,30px);margin-bottom:1.4vh;flex:0 0 auto}
+.tb-panel-ttl span{color:#7b8698;font-weight:600;font-size:.66em}
+.tb-tblwrap{flex:1;overflow:hidden}
+.tb-tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tb-tbl th{color:#7b8698;font-weight:700;font-size:clamp(12px,1.1vw,20px);text-transform:uppercase;letter-spacing:.03em;text-align:center;padding:.7vh .5vw;border-bottom:1px solid rgba(255,255,255,.12)}
+.tb-tbl th.l,.tb-tbl td.l{text-align:left}
+.tb-tbl td{text-align:center;padding:1vh .5vw;font-size:clamp(16px,1.7vw,30px);font-weight:800;border-bottom:1px solid rgba(255,255,255,.06)}
+.tb-drv{color:#e8edf5}
+.tb-tot{color:#e8edf5;font-size:1.05em}
+.tb-avg{color:#f472b6}
+.tb-ec-list{flex:1;display:flex;flex-direction:column;gap:.3vh;overflow:hidden}
+.tb-ec-row{display:grid;grid-template-columns:auto 84px 1.2fr 1.7fr 1fr auto auto;align-items:center;gap:1vw;
+  padding:.65vh .8vw;border-bottom:1px solid rgba(255,255,255,.06);font-size:clamp(14px,1.4vw,24px)}
+.tb-ec-cat{font-weight:800;font-size:.78em;border:1px solid;border-radius:999px;padding:.1em .6em;text-align:center;white-space:nowrap}
+.tb-ec-num{font-weight:800;color:#9aa6ba;font-variant-numeric:tabular-nums}
+.tb-ec-drv{font-weight:800;color:#e8edf5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-ec-veh{color:#aeb9cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-ec-city{color:#8b96a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-ec-st{color:#c8d2e0;font-weight:700;font-size:.85em;white-space:nowrap}
+.tb-ec-timer{font-weight:900;font-variant-numeric:tabular-nums;font-size:1.08em;color:#4ade80;white-space:nowrap;min-width:2.6em;text-align:right}
+.tb-ec-timer.sev1{color:#fbbf24}
+.tb-ec-timer.sev2{color:#f87171}
 .tb-foot{display:flex;align-items:center;gap:1.6vw;padding:.4vh 2.4vw 1.2vh}
 .tb-dotsnav{display:flex;gap:9px}
 .tb-navdot{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.2)}

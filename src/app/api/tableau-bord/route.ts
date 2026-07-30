@@ -144,6 +144,64 @@ export async function GET(req: Request) {
   const allianzTotal = (srcCount.get('allianz') || 0) + (srcCount.get('mondial') || 0)
   const clotureAllianz = await getAllianzClotureCount(sb)
 
+  // ── Slide « Par chauffeur (jour) » + « En cours détaillé » ────────────────
+  const catOf = (mt: any): string => {
+    const t = String(mt || '').toLowerCase()
+    if (t.includes('rel') && !t.includes('rem')) return 'REL'
+    if (t.includes('rem')) return 'REM'
+    if (t.includes('dsp') || t.includes('depannage') || t.includes('reparation')) return 'DSP'
+    if (t.includes('transport')) return 'Transport'
+    if (t.includes('trajet_vide') || t.includes('dpr') || t.includes('deplace') || t.includes('mal_gar')) return 'DPR'
+    return 'Autre'
+  }
+  const startTomorrow = bxlDayStartISO(-1)
+
+  // Missions du jour (intervention_date aujourd'hui) attribuées → par chauffeur.
+  const { data: dayMissions } = await sb.from('incoming_missions')
+    .select('assigned_to, mission_type, accepted_at, completed_at')
+    .gte('intervention_date', startToday).lt('intervention_date', startTomorrow)
+    .not('assigned_to', 'is', null)
+    .not('status', 'in', '(cancelled,ignored,parse_error)')
+    .limit(3000)
+  const drv = new Map<string, any>()
+  for (const m of (dayMissions || [])) {
+    const d = drv.get(m.assigned_to) || { total: 0, REM: 0, DSP: 0, REL: 0, Transport: 0, DPR: 0, Autre: 0, durSum: 0, durN: 0 }
+    d.total++; d[catOf(m.mission_type)]++
+    if (m.accepted_at && m.completed_at) { const x = Date.parse(m.completed_at) - Date.parse(m.accepted_at); if (x >= 0) { d.durSum += x; d.durN++ } }
+    drv.set(m.assigned_to, d)
+  }
+
+  // Missions actives (assignées / en cours) détaillées, avec le point de départ
+  // du compteur (assignation).
+  const { data: active } = await sb.from('incoming_missions')
+    .select('id, mission_number, assigned_to, vehicle_plate, vehicle_brand, vehicle_model, mission_type, incident_city, assigned_at, accepted_at, status')
+    .in('status', ['assigned', 'accepted', 'in_progress', 'delivering'])
+    .order('assigned_at', { ascending: true })
+    .limit(200)
+
+  // Noms chauffeurs.
+  const driverIds = [...new Set([...drv.keys(), ...(active || []).map((m: any) => m.assigned_to)].filter(Boolean))]
+  const dn = new Map<string, string>()
+  if (driverIds.length) {
+    const { data: us } = await sb.from('users').select('id, name').in('id', driverIds)
+    for (const u of (us || [])) dn.set(u.id, u.name || '—')
+  }
+
+  const parChauffeur = [...drv.entries()].map(([id, d]) => ({
+    driver: dn.get(id) || '—', total: d.total,
+    REM: d.REM, DSP: d.DSP, REL: d.REL, Transport: d.Transport, DPR: d.DPR, autre: d.Autre,
+    avgMin: d.durN ? Math.round(d.durSum / d.durN / 60000) : null,
+  })).sort((a, b) => b.total - a.total)
+
+  const STATUS_LBL: Record<string, string> = { assigned: 'Assignée', accepted: 'Acceptée', in_progress: 'En cours', delivering: 'Livraison' }
+  const enCoursDetail = (active || []).map((m: any) => ({
+    id: m.id, missionNumber: m.mission_number, driver: dn.get(m.assigned_to) || '—',
+    plate: m.vehicle_plate || '', vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' '),
+    category: catOf(m.mission_type), city: m.incident_city || '',
+    statusLabel: STATUS_LBL[m.status] || m.status,
+    since: m.assigned_at || m.accepted_at || null,
+  }))
+
   return NextResponse.json({
     ok: true,
     at: new Date().toISOString(),
@@ -164,5 +222,7 @@ export async function GET(req: Request) {
       touring: { bko: comexBko || 0, total: touringTotal },
       allianz: { cloture: clotureAllianz, total: allianzTotal },
     },
+    chauffeurs: parChauffeur,
+    enCours: enCoursDetail,
   })
 }
