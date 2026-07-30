@@ -77,6 +77,18 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau'); return false }
   }
 
+  async function reprint(id: string) {
+    setMsg(null)
+    try {
+      const r = await fetch('/api/fourriere/domaine/ventes-register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reprint', id }),
+      })
+      const j = await r.json()
+      setMsg(r.ok ? (j.queued ? '🖨 Étiquette mise en file d’impression' : '🖨 Étiquette envoyée à l’imprimante') : `⚠ ${j.error || 'Échec impression'}`)
+    } catch { setMsg('⚠ Erreur réseau') }
+  }
+
   // Sortie réelle au niveau de la vente → propagée à toutes les lignes.
   async function editVente(venteDate: string, value: string | null) {
     try {
@@ -273,10 +285,12 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
                               : <button onClick={() => edit('toggle_prepare', r.id, true)}
                                   className="text-xs px-2 py-1 rounded border bg-surface-2 hover:bg-surface-hover font-semibold">Préparation OK</button>}
                           </td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-1.5 whitespace-nowrap">
                             {r.missionId
                               ? <Link href={`/dispatch/${r.missionId}`} className="text-brand font-semibold hover:underline text-xs">{r.missionNumber ? `#${r.missionNumber}` : 'Voir'}{r.zone ? ` · ${r.zone}` : ''}</Link>
                               : <span className="text-amber-600 text-xs font-semibold" title={r.outcome === 'ambiguous' ? 'VIN ambigu' : 'Absente de VD Soft (TowSoft ?)'}>⚠ non rapproché</span>}
+                            <button onClick={() => reprint(r.id)} title="Réimprimer l'étiquette VENDU DOMAINE"
+                              className="ml-2 text-xs px-1.5 py-0.5 rounded border bg-surface-2 hover:bg-surface-hover">🖨</button>
                           </td>
                         </tr>
                       )

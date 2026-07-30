@@ -126,8 +126,32 @@ export async function POST(req: Request) {
   const id = String(body.id || '')
   if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
   const { data: row } = await sb.from('domaine_ventes_epaves')
-    .select('id, matched_mission_id, sortie_reelle_date, numero, firm').eq('id', id).maybeSingle()
+    .select('id, matched_mission_id, sortie_reelle_date, numero, firm, brand, model, vin, date_out, max_enlevement_date').eq('id', id).maybeSingle()
   if (!row) return NextResponse.json({ error: 'Ligne introuvable' }, { status: 404 })
+
+  // Réimpression de l'étiquette VENDU DOMAINE de la ligne (matched → infos fiche).
+  if (action === 'reprint') {
+    let m: any = null
+    if (row.matched_mission_id) {
+      const { data: mm } = await sb.from('incoming_missions')
+        .select('id, mission_number, vehicle_plate, vehicle_vin, parc_zone_key').eq('id', row.matched_mission_id).maybeSingle()
+      m = mm
+    }
+    try {
+      const { buildEpaveLabelZPL } = await import('@/lib/print/zpl-templates/epave-label')
+      const { printZPLRaw } = await import('@/lib/print/zebra-raw')
+      const zpl = buildEpaveLabelZPL({
+        missionId: m?.id || row.id, missionNumber: m?.mission_number ?? null,
+        firm: row.firm || '', dateOut: row.date_out || row.max_enlevement_date,
+        brand: row.brand, model: row.model, plate: m?.vehicle_plate,
+        vin: m?.vehicle_vin || row.vin, zone: m?.parc_zone_key,
+      })
+      const res = await printZPLRaw(zpl, { missionId: m?.id || null })
+      return NextResponse.json({ ok: true, queued: !!res.queued })
+    } catch (e: any) {
+      return NextResponse.json({ error: e?.message || 'échec impression' }, { status: 502 })
+    }
+  }
 
   if (action === 'set_date_out') {
     await sb.from('domaine_ventes_epaves').update({ date_out: body.value ? String(body.value).slice(0, 10) : null }).eq('id', id)

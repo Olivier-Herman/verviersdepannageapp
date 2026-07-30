@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 
 interface Row {
@@ -103,6 +104,7 @@ export default function TouringComexClient(props: {
     <AppShell title="Touring COMEX" userRole={props.userRole} userName={props.userName} userEmail={props.userEmail} userModules={props.userModules}>
       <main className="p-4 lg:p-6 space-y-4 max-w-6xl mx-auto">
         {toast && <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-surface border shadow-lg rounded-xl px-4 py-2 text-sm font-medium text-ink">{toast}</div>}
+        <Link href="/facturation" className="text-ink-muted text-sm hover:text-ink">← Retour à la facturation</Link>
 
         <div className="flex items-start gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
