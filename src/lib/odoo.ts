@@ -15,6 +15,11 @@ const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
 const ODOO_UID     = parseInt(process.env.ODOO_UID || '8')
 const ODOO_API_KEY = process.env.ODOO_API_KEY!
+// CLOISONNEMENT : le connecteur principal est verrouillé sur Verviers Dépannage.
+// L'utilisateur Odoo a désormais aussi accès à Dépannage Riga (pour le module
+// Achats uniquement) — sans ce verrou, missions/facturation/amendes verraient
+// Riga par défaut. Seul @/lib/achats/odoo-rpc élargit le périmètre.
+const ODOO_MAIN_COMPANY_ID = parseInt(process.env.ODOO_MAIN_COMPANY_ID || '1')
 
 // Champs custom sale.order
 const FIELD_PLAQUE     = 'x_studio_many2one_field_78n_1j6fmmeom'
@@ -110,6 +115,8 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
   // lent bloquait la Vercel function jusqu au timeout 5 min. Retry sur
   // 429/5xx transients (Odoo restart, surcharge ponctuelle).
   const { fetchWithRetry } = await import('@/lib/fetch-with-retry')
+  // Force la société Verviers Dépannage sur TOUTES les requêtes (cf. verrou plus haut).
+  const scopedKwargs = { ...kwargs, context: { ...((kwargs as any).context || {}), allowed_company_ids: [ODOO_MAIN_COMPANY_ID] } }
   const res = await fetchWithRetry(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -120,7 +127,7 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
       params: {
         service: 'object',
         method: 'execute_kw',
-        args: [ODOO_DB, creds.uid, creds.apiKey, model, method, args, kwargs]
+        args: [ODOO_DB, creds.uid, creds.apiKey, model, method, args, scopedKwargs]
       }
     }),
     timeoutMs:   20000,

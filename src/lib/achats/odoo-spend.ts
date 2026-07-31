@@ -10,7 +10,7 @@
 // sur-détecte (factures récurrentes identiques légitimes).
 // ============================================================
 
-import { odooRpc } from '@/lib/odoo'
+import { achatsRpc as odooRpc } from './odoo-rpc'   // connecteur multi-société dédié Achats
 
 /** 1er jour du mois, `monthsBack` mois en arrière (fenêtre glissante). */
 function periodStart(monthsBack: number): string {

@@ -6,7 +6,7 @@
 // tendance, concentration fournisseurs, catégories, doublons. Olivier 2026-07-31.
 
 import { useEffect, useState } from 'react'
-import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2 } from 'lucide-react'
+import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
@@ -22,6 +22,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   const [q, setQ]         = useState('')
   const [mergeSrc, setMergeSrc] = useState<{ id: number; name: string } | null>(null)
   const [busy, setBusy]   = useState(false)
+  const [parsing, setParsing] = useState(false)
 
   const load = (m: number) => {
     setLoading(true); setErr('')
@@ -42,9 +43,23 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
     } finally { setBusy(false) }
   }
 
+  // Catégorisation IA : traite un lot (sync la 1re fois si le cache est vide).
+  const runParse = async () => {
+    setParsing(true)
+    try {
+      const needSync = !data?.coverage || data.coverage.total === 0
+      const r = await fetch(`/api/cron/achats-parse?limit=8${needSync ? '&sync=1' : ''}`, { cache: 'no-store' })
+      const j = await r.json()
+      if (j.error) alert(j.error)
+      load(months)
+    } catch (e: any) { alert(e.message) } finally { setParsing(false) }
+  }
+
   const maxMonth = data ? Math.max(1, ...data.byMonth.map((m: any) => m.htva)) : 1
   const maxSup   = data?.topSuppliers?.[0]?.htva || 1
   const maxCat   = data?.byCategory?.[0]?.amount || 1
+  const maxAi    = data?.aiCategories?.[0]?.amount || 1
+  const aiOn     = (data?.coverage?.parsed || 0) > 0
 
   return (
     <AppShell title="Gestion Achat" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
@@ -125,22 +140,35 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
               </div>
             </Panel>
 
-            {/* Par catégorie */}
-            <Panel title="Dépense par catégorie" icon={<PieChart size={16} />} sub="provisoire · catégorisation IA à venir">
-              <div className="flex flex-col gap-2 mt-2">
-                {data.byCategory.slice(0, 12).map((c: any, i: number) => (
+            {/* Par catégorie — IA (parsing des documents) si dispo, sinon provisoire */}
+            <Panel title={aiOn ? 'Dépense par catégorie (IA)' : 'Dépense par catégorie'} icon={<PieChart size={16} />}
+              sub={data.coverage ? `catégorisé ${data.coverage.pct}% · ${data.coverage.parsed}/${data.coverage.total}` : 'provisoire'}>
+              {/* Jauge de couverture + bouton de traitement */}
+              <div className="flex items-center gap-2 mt-2 mb-3">
+                <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                  <div className="h-full bg-brand rounded-full transition-all" style={{ width: `${data.coverage?.pct || 0}%` }} />
+                </div>
+                <button onClick={runParse} disabled={parsing}
+                  className="text-xs px-2.5 py-1 rounded-lg bg-brand text-white disabled:opacity-50 inline-flex items-center gap-1 whitespace-nowrap">
+                  {parsing ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {data.coverage?.total ? 'Traiter un lot' : 'Lancer l’IA'}
+                </button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {(aiOn ? data.aiCategories : data.byCategory.map((c: any) => ({ categorie: c.account, amount: c.amount }))).slice(0, 14).map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 text-sm">
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between gap-2">
-                        <span className="text-ink truncate" title={c.account}>{c.account}</span>
+                        <span className="text-ink truncate" title={c.categorie}>{c.categorie}</span>
                         <span className="text-ink-secondary tabular-nums flex-shrink-0">{eur(c.amount)}</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-white/5 mt-1 overflow-hidden">
-                        <div className="h-full bg-emerald-500/60 rounded-full" style={{ width: `${(c.amount / maxCat) * 100}%` }} />
+                        <div className="h-full bg-emerald-500/60 rounded-full" style={{ width: `${(c.amount / (aiOn ? maxAi : maxCat)) * 100}%` }} />
                       </div>
                     </div>
                   </div>
                 ))}
+                {!aiOn && <p className="text-ink-muted text-[11px] italic mt-1">Catégories provisoires (comptes Odoo). Lance l’IA pour la vraie catégorisation par document.</p>}
               </div>
             </Panel>
           </div>

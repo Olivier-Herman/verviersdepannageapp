@@ -40,7 +40,24 @@ export async function GET(req: Request) {
   try {
     const config = await loadConfig(sb)
     const data = await analyzeAchats(months, config)
-    return NextResponse.json({ ok: true, config, ...data })
+
+    // Catégories IA (cache achats_factures) — exclusions appliquées.
+    const excludedMember = new Set<number>(config.excluded || [])
+    for (const [child, cid] of Object.entries(config.merges || {})) {
+      if ((config.excluded || []).includes(cid)) excludedMember.add(Number(child))
+    }
+    const { data: fx } = await sb.from('achats_factures')
+      .select('categorie, amount_htva, partner_id, parsed_at').gte('invoice_date', data.periodStart)
+    const rows = (fx || []).filter((r: any) => !excludedMember.has(r.partner_id))
+    const parsedRows = rows.filter((r: any) => r.parsed_at && r.categorie)
+    const catMap: Record<string, number> = {}
+    for (const r of parsedRows) catMap[r.categorie] = (catMap[r.categorie] || 0) + (r.amount_htva || 0)
+    const aiCategories = Object.entries(catMap)
+      .map(([categorie, amount]) => ({ categorie, amount: Math.round(amount) }))
+      .sort((a, b) => b.amount - a.amount)
+    const coverage = { parsed: parsedRows.length, total: rows.length, pct: rows.length ? Math.round(parsedRows.length / rows.length * 100) : 0 }
+
+    return NextResponse.json({ ok: true, config, ...data, aiCategories, coverage })
   } catch (e: any) {
     console.error('[admin/achats]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
