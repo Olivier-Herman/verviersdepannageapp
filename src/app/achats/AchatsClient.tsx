@@ -7,10 +7,13 @@
 
 import { useEffect, useState } from 'react'
 import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw } from 'lucide-react'
+import AppShell from '@/components/layout/AppShell'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
 
-export default function AchatsClient() {
+export default function AchatsClient({ userRole, userName, userEmail, userModules }: {
+  userRole: string; userName: string; userEmail: string; userModules: string[]
+}) {
   const [data, setData]   = useState<any>(null)
   const [months, setMonths] = useState(12)
   const [loading, setLoading] = useState(true)
@@ -31,6 +34,7 @@ export default function AchatsClient() {
   const maxCat   = data?.byCategory?.[0]?.amount || 1
 
   return (
+    <AppShell title="Gestion Achat" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
     <div className="max-w-6xl mx-auto px-4 py-6">
       {/* En-tête */}
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
@@ -160,6 +164,7 @@ export default function AchatsClient() {
         </div>
       )}
     </div>
+    </AppShell>
   )
 }
 

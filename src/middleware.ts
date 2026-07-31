@@ -115,6 +115,7 @@ export const config = {
     '/missions-dispo/:path*',
     '/dispatch/:path*',
     '/reception/:path*',
+    '/achats/:path*',
     '/garage/((?!login|activate).*)',  // /garage protege sauf login + activate (publics)
   ]
 }

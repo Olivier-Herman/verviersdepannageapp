@@ -15,7 +15,7 @@ import { redirect }          from 'next/navigation'
 import {
   DollarSign, Truck, FileText, Wallet, Settings,
   Tag, MapPin, Users, Car, Receipt, AlertTriangle, Radio, ShieldCheck,
-  Bell, ClipboardCheck, Map, Archive, FileSignature, Printer, LifeBuoy, ShoppingCart,
+  Bell, ClipboardCheck, Map, Archive, FileSignature, Printer, LifeBuoy,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -186,11 +186,6 @@ export default async function AdminPage() {
           desc="Liste des PV reçus, stats par chauffeur, attribution manuelle." />
         <Card href="/admin/tgr" icon={Truck} label="Service TGR"
           desc="Configuration du service Touring Gros Recouvrement." />
-      </Group>
-
-      <Group title="Achats">
-        <Card href="/admin/achats" icon={ShoppingCart} label="Gestion Achat"
-          desc="Optimisation des coûts : dépense fournisseurs, concentration, catégories, doublons (factures Odoo). Phase de test." />
       </Group>
 
       <Group title="Support">
