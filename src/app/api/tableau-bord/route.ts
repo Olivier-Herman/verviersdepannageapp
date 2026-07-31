@@ -148,30 +148,43 @@ export async function GET(req: Request) {
     }
   }
   // MÉDIANE (pas moyenne) : la distribution est très asymétrique — une poignée
-  // de fiches soldées tard (backlog rattrapé, saisie/SNC facturés en lot) fait
-  // exploser la moyenne alors que ~80 % des dossiers sont facturés en < 24 h.
-  // La médiane reflète le délai réellement représentatif.
-  const durs: number[] = []
+  // de fiches soldées tard fait exploser la moyenne alors que ~80 % des dossiers
+  // sont facturés en < 24 h. La médiane reflète le délai réellement représentatif.
+  //
+  // MULTI-FICHE : un dossier peut regrouper plusieurs fiches (REM parent + REL
+  // enfant via parent_mission_id). On le compte UNE fois, et la borne « prêt à
+  // facturer » = le completed_at de la DERNIÈRE fiche clôturée du dossier (max),
+  // pas le completed_at précoce du parent (qui a attendu l'enfant).
+  interface Grp { completed: number; invoiced: number; police: boolean; touring: boolean; comexBko: boolean }
+  const groups = new Map<string, Grp>()
   for (let page = 0; page < 15; page++) {
     const { data: chunk } = await sb.from('incoming_missions')
-      .select('id, source, completed_at, invoiced_at, no_charge_at')
+      .select('id, parent_mission_id, source, completed_at, invoiced_at, no_charge_at')
       .eq('status', 'completed')
       .or(`invoiced_at.gte.${startPeriod},no_charge_at.gte.${startPeriod}`)
       .order('id', { ascending: true })
       .range(page * 1000, page * 1000 + 999)
     if (!chunk || !chunk.length) break
     for (const m of chunk) {
-      // Appels police (facturation périodique / procédure longue) → écartés.
-      if (isPoliceSource(m.source)) continue
-      // Touring hors COMEX BKO → écarté du calcul.
-      if (TOURING_SOURCES.includes(m.source) && !comexBkoIds.has(m.id)) continue
       const end = m.invoiced_at || m.no_charge_at
-      if (end && m.completed_at) {
-        const d = Date.parse(end) - Date.parse(m.completed_at)
-        if (d >= 0) durs.push(d)
-      }
+      if (!end || !m.completed_at) continue
+      const root = (m.parent_mission_id as string) || (m.id as string)   // clé dossier
+      const g = groups.get(root) || { completed: -Infinity, invoiced: -Infinity, police: false, touring: false, comexBko: false }
+      g.completed = Math.max(g.completed, Date.parse(m.completed_at))     // dernière fiche clôturée
+      g.invoiced  = Math.max(g.invoiced,  Date.parse(end))
+      if (isPoliceSource(m.source)) g.police = true
+      if (TOURING_SOURCES.includes(m.source)) g.touring = true
+      if (comexBkoIds.has(m.id)) g.comexBko = true
+      groups.set(root, g)
     }
     if (chunk.length < 1000) break
+  }
+  const durs: number[] = []
+  for (const g of groups.values()) {
+    if (g.police) continue                              // appels police écartés
+    if (g.touring && !g.comexBko) continue              // Touring hors COMEX BKO écarté
+    const d = g.invoiced - g.completed
+    if (d >= 0) durs.push(d)
   }
   durs.sort((a, b) => a - b)
   const dureeMoyMin = durs.length
