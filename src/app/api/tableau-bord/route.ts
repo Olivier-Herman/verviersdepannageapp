@@ -135,6 +135,10 @@ export async function GET(req: Request) {
   // facturés via un circuit lent/manuel et faussent la moyenne. Les Touring
   // COMEX BKO (auto-facturation) restent comptés.
   const TOURING_SOURCES = ['touring', 'tgr_touring']
+  // Tous les appels police (police_saisie, police_accident, police_snc, police_avp,
+  // police_mg…) : facturation en lot / procédure longue → ils patientent en
+  // « à facturer » et faussent le délai. Écartés du calcul.
+  const isPoliceSource = (s: string) => String(s || '').startsWith('police')
   const comexBkoIds = new Set<string>()
   {
     const { data: bkoRows } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids')
@@ -157,6 +161,8 @@ export async function GET(req: Request) {
       .range(page * 1000, page * 1000 + 999)
     if (!chunk || !chunk.length) break
     for (const m of chunk) {
+      // Appels police (facturation périodique / procédure longue) → écartés.
+      if (isPoliceSource(m.source)) continue
       // Touring hors COMEX BKO → écarté du calcul.
       if (TOURING_SOURCES.includes(m.source) && !comexBkoIds.has(m.id)) continue
       const end = m.invoiced_at || m.no_charge_at
