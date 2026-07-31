@@ -32,9 +32,14 @@ export async function GET(req: Request) {
   if ((session?.user as any)?.role !== 'superadmin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const days = parseInt(new URL(req.url).searchParams.get('days') || String(PERIOD_DAYS))
+  const sp = new URL(req.url).searchParams
+  const days = parseInt(sp.get('days') || String(PERIOD_DAYS))
+  // `since` (ISO ou YYYY-MM-DD) prioritaire sur `days` — ex: ?since=2026-07-28
+  const sinceParam = sp.get('since')
   const sb = createAdminClient()
-  const startPeriod = bxlDayStartISO(days)
+  const startPeriod = sinceParam
+    ? new Date(sinceParam.length <= 10 ? `${sinceParam}T00:00:00+02:00` : sinceParam).toISOString()
+    : bxlDayStartISO(days)
 
   // Ensemble COMEX BKO (mêmes règles que le tableau de bord).
   const comexBkoIds = new Set<string>()
@@ -100,9 +105,19 @@ export async function GET(req: Request) {
   const slowest = [...kept].sort((a, b) => b.h - a.h).slice(0, 20)
     .map(i => ({ n: i.n, source: i.source, type: i.type, delaiH: i.h, completed_at: i.completed_at, invoiced_at: i.invoiced_at }))
 
+  // Découpage clé : fiches TERMINÉES depuis la borne (vrai flux auto-facturation)
+  // vs BACKLOG (terminées avant, facturées seulement maintenant → gros délais
+  // de rattrapage qui gonflent la moyenne globale).
+  const fresh   = kept.filter(i => i.completed_at >= startPeriod)
+  const backlog = kept.filter(i => i.completed_at <  startPeriod)
+
   return NextResponse.json({
-    fenetreJours: days,
+    borneDebut: startPeriod,
     global:  stat(kept),
+    cohortes: {
+      termineesDepuisBorne: stat(fresh),   // vrai flux auto-facturation
+      backlogRattrape:      stat(backlog), // vieilles fiches facturées maintenant
+    },
     tranches: buckets,
     parSource: Object.fromEntries(Object.entries(bySource).sort((a: any, b: any) => (b[1].n) - (a[1].n))),
     top20PlusLents: slowest,
