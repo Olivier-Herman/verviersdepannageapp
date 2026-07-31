@@ -11,6 +11,7 @@ import PriceEstimateCard from '@/components/missions/PriceEstimateCard'
 import MissionRemarks from '@/components/missions/MissionRemarks'
 import BillingRemarks from '@/components/missions/BillingRemarks'
 import DriverInstructions from '@/components/missions/DriverInstructions'
+import FicheContactsPanel from '@/components/reception/FicheContactsPanel'
 import RemarksAddModal from '@/components/missions/RemarksAddModal'
 import MissionInvoicesBanner from '@/components/missions/MissionInvoicesBanner'
 import { KeyTag, KeyControls, isSaisieSource } from '@/components/missions/KeyInfoCard'
@@ -3853,6 +3854,9 @@ export default function MissionDetailClient({
                 hideAdd
                 refreshKey={remarksRefreshKey}
               />
+
+              {/* Contacts & interactions (répertoire + visites/appels/notes) */}
+              <FicheContactsPanel missionId={initialMission.id} />
 
               {/* Historique — Olivier 2026-06-14 : placé sous les Remarques */}
               {logs.length > 0 && (
