@@ -382,6 +382,7 @@ export default function EncaissementClient({
   const [sumupMode, setSumupMode] = useState<string | null>(null)
   const [sumupPolling, setSumupPolling] = useState(false)
   const [sumupStatus, setSumupStatus] = useState<string | null>(null)
+  const sumupIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Page 5
   const [previousClients, setPreviousClients] = useState<OdooClient[]>([])
@@ -1114,7 +1115,12 @@ export default function EncaissementClient({
         window.location.href = data.tapToPayDeepLink || data.terminalDeepLink
       }
 
-      // Polling statut
+      // Polling statut. NB : ne fonctionne QUE pour les modes où le CLIENT paye
+      // le checkout en ligne (qr / email). Pour terminal / tap-to-pay, le
+      // paiement part dans l'app SumUp (deep link affiliate-key) = une
+      // transaction SÉPARÉE qui ne touche jamais ce checkout → le statut reste
+      // PENDING. D'où la validation manuelle proposée pour ces modes.
+      if (sumupIntervalRef.current) clearInterval(sumupIntervalRef.current)
       setSumupPolling(true)
       const interval = setInterval(async () => {
         const s = await fetch(`/api/sumup?checkoutId=${data.checkoutId}`)
@@ -1122,16 +1128,17 @@ export default function EncaissementClient({
         if (status.status === 'PAID') {
           setSumupStatus('PAID')
           setPaymentMode('sumup')
-          clearInterval(interval)
+          clearInterval(interval); sumupIntervalRef.current = null
           setSumupPolling(false)
           setTimeout(() => setPage(9), 1500)
         } else if (status.status === 'FAILED' || status.status === 'EXPIRED') {
           setSumupStatus(status.status)
-          clearInterval(interval)
+          clearInterval(interval); sumupIntervalRef.current = null
           setSumupPolling(false)
         }
       }, 3000)
-      setTimeout(() => { clearInterval(interval); setSumupPolling(false) }, 5 * 60 * 1000)
+      sumupIntervalRef.current = interval
+      setTimeout(() => { clearInterval(interval); if (sumupIntervalRef.current === interval) sumupIntervalRef.current = null; setSumupPolling(false) }, 5 * 60 * 1000)
 
     } catch (err: any) {
       setError(err.message)
@@ -1176,9 +1183,44 @@ export default function EncaissementClient({
             ❌ Paiement refusé — réessaie
           </div>
         )}
-        {sumupPolling && !sumupStatus && (
+        {sumupPolling && !sumupStatus && sumupMode !== 'terminal' && sumupMode !== 'tap' && (
           <div className="bg-warning-soft border border-warning rounded-xl px-4 py-3 text-warning text-sm text-center mb-4">
             ⏳ En attente du paiement…
+          </div>
+        )}
+
+        {/* Terminal / Tap to Pay : le paiement s'effectue DANS l'app SumUp (deep
+            link) → transaction séparée du checkout en ligne, impossible à
+            réconcilier automatiquement. Le chauffeur valide manuellement une fois
+            la confirmation reçue côté SumUp. */}
+        {(sumupMode === 'terminal' || sumupMode === 'tap') && sumupData && !sumupStatus && (
+          <div className="flex flex-col gap-2 mb-4">
+            <div className="bg-info-soft border border-info rounded-xl px-4 py-3 text-info text-sm text-center">
+              📲 Termine le paiement dans l'app SumUp, puis reviens ici pour valider.
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (sumupIntervalRef.current) { clearInterval(sumupIntervalRef.current); sumupIntervalRef.current = null }
+                setSumupPolling(false)
+                setSumupStatus('PAID')
+                setPaymentMode('sumup')
+                setTimeout(() => setPage(9), 600)
+              }}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl py-4 active:scale-95 transition"
+            >
+              ✅ Paiement confirmé dans SumUp — Valider
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (sumupIntervalRef.current) { clearInterval(sumupIntervalRef.current); sumupIntervalRef.current = null }
+                setSumupPolling(false); setSumupData(null); setSumupMode(null)
+              }}
+              className="w-full text-ink-muted text-sm py-2"
+            >
+              ✕ Annuler / choisir un autre moyen
+            </button>
           </div>
         )}
 
