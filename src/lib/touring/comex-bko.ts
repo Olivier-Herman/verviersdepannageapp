@@ -136,6 +136,35 @@ export async function listComexBkoDossiers(cookie: string, accountLabel = ''): P
 }
 
 /**
+ * DEBUG : dumpe TOUTES les colonnes brutes des lignes getDossList qui matchent
+ * un dossier (sans filtre onglet), pour identifier l'index d'une valeur (ex.
+ * total avec majoration nuit). Superadmin uniquement. Olivier 2026-07-31.
+ */
+export async function dumpDossColumns(dossier: string): Promise<Array<{ account: string; c0: string; cols: Record<number, string> }>> {
+  const out: Array<{ account: string; c0: string; cols: Record<number, string> }> = []
+  for (const acct of getBkoAccounts()) {
+    let cookie = ''
+    try { cookie = await loginComexBko(acct) } catch { continue }
+    try {
+      const r = await fetch(`${BASE}/secured/accord/getDossList.do?dojo.preventCache=${Math.floor(Math.random() * 1e12)}`, {
+        headers: hdr(cookie), signal: AbortSignal.timeout(25000),
+      })
+      const buf = Buffer.from(await r.arrayBuffer())
+      const text = new TextDecoder('iso-8859-15').decode(buf)
+      for (const line of text.split('\n')) {
+        if (!line.includes(';')) continue
+        const c = line.split(';')
+        if ((c[15] || '').trim() !== dossier.trim()) continue
+        const cols: Record<number, string> = {}
+        c.forEach((v, i) => { const t = (v || '').trim(); if (t) cols[i] = t })
+        out.push({ account: acct.label, c0: (c[0] || '').trim(), cols })
+      }
+    } catch { /* ignore */ }
+  }
+  return out
+}
+
+/**
  * Interroge TOUS les comptes BKO configurés, SÉQUENTIELLEMENT (un compte après
  * l'autre — jamais deux sessions concurrentes). Retourne les dossiers taggés par
  * compte + les erreurs par compte (best-effort : un compte KO n'empêche pas les
