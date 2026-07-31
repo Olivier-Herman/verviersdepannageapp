@@ -12,5 +12,7 @@ export default async function ReceptionPage() {
   // Superadmin uniquement pendant les tests (élargir ensuite aux compétences).
   const isSuper = u.role === 'superadmin' || (u.roles || []).includes('superadmin')
   if (!isSuper) redirect('/dashboard?error=access_denied')
-  return <ReceptionConsoleClient meName={u.name || ''} />
+  return <ReceptionConsoleClient
+    userRole={u.role || ''} userName={u.name || ''} userEmail={u.email || ''}
+    userModules={u.modules || []} userId={u.id || ''} />
 }

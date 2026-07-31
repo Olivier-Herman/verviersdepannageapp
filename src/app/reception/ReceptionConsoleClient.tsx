@@ -21,7 +21,10 @@ function ago(iso: string | null, now: number): string {
 }
 const fmtSec = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
-export default function ReceptionConsoleClient({ meName }: { meName: string }) {
+export default function ReceptionConsoleClient({ userRole, userName, userEmail, userModules, userId }: {
+  userRole: string; userName: string; userEmail: string; userModules: string[]; userId: string
+}) {
+  const meName = userName
   const [items, setItems] = useState<Item[]>([])
   const [priv, setPriv]   = useState(false)
   const [staff, setStaff] = useState<Staff[]>([])
@@ -85,19 +88,29 @@ export default function ReceptionConsoleClient({ meName }: { meName: string }) {
   const dot = (c: string | null) => <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: c || '#cbd5e1' }} />
 
   return (
-    <AppShell title="Réception">
-      <main className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-ink text-2xl font-bold flex-1">🛎️ Réception — file d'attente</h1>
-          <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 font-semibold">● en direct · {waiting.length} en attente</span>
+    <AppShell title="Réception" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
+      <main className="p-4 lg:p-6 max-w-5xl mx-auto space-y-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1">
+            <p className="text-ink-muted text-sm">File d'attente des visiteurs · mise à jour automatique</p>
+          </div>
+          <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold whitespace-nowrap">● en direct</span>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-5">
           {/* File d'attente */}
-          <section className="bg-surface border rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b bg-surface-2 font-bold text-ink text-sm">En attente ({waiting.length})</div>
-            <div className="divide-y">
-              {!waiting.length && <div className="p-8 text-center text-ink-muted text-sm">{loaded ? 'Personne en attente 🎉' : '…'}</div>}
+          <section className="bg-surface border rounded-2xl overflow-hidden flex flex-col min-h-[340px]">
+            <div className="px-4 py-3 border-b bg-surface-2 font-bold text-ink text-sm flex items-center justify-between">
+              <span>⏳ En attente</span>
+              <span className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 border border-amber-300 flex items-center justify-center text-xs font-extrabold">{waiting.length}</span>
+            </div>
+            <div className="divide-y flex-1">
+              {!waiting.length && (
+                <div className="h-full flex flex-col items-center justify-center py-14 text-center gap-2">
+                  <span className="text-4xl">🎉</span>
+                  <p className="text-ink-muted text-sm">{loaded ? 'Personne en attente' : '…'}</p>
+                </div>
+              )}
               {waiting.map(it => (
                 <div key={it.id} className="p-4 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
@@ -116,10 +129,18 @@ export default function ReceptionConsoleClient({ meName }: { meName: string }) {
           </section>
 
           {/* En cours */}
-          <section className="bg-surface border rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b bg-surface-2 font-bold text-ink text-sm">En cours ({inProg.length})</div>
-            <div className="divide-y">
-              {!inProg.length && <div className="p-8 text-center text-ink-muted text-sm">Aucun visiteur en cours de traitement.</div>}
+          <section className="bg-surface border rounded-2xl overflow-hidden flex flex-col min-h-[340px]">
+            <div className="px-4 py-3 border-b bg-surface-2 font-bold text-ink text-sm flex items-center justify-between">
+              <span>🧑‍💼 En cours</span>
+              <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 flex items-center justify-center text-xs font-extrabold">{inProg.length}</span>
+            </div>
+            <div className="divide-y flex-1">
+              {!inProg.length && (
+                <div className="h-full flex flex-col items-center justify-center py-14 text-center gap-2">
+                  <span className="text-4xl opacity-40">🛋️</span>
+                  <p className="text-ink-muted text-sm">Aucun visiteur en cours</p>
+                </div>
+              )}
               {inProg.map(it => (
                 <div key={it.id} className="p-4 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
@@ -133,7 +154,7 @@ export default function ReceptionConsoleClient({ meName }: { meName: string }) {
             </div>
           </section>
         </div>
-        <p className="text-ink-faint text-xs">Le pop-up de traitement ne se ferme qu'avec « Enregistrer ». Chrono de service masqué {priv ? '(visible pour toi, superadmin)' : ''}.</p>
+        {priv && <p className="text-ink-faint text-xs">👑 Superadmin : le chrono de service ⏱ est visible pour toi (masqué pour les autres).</p>}
       </main>
 
       {/* Panneau de traitement VERROUILLÉ (pas de fermeture au clic-fond) */}
