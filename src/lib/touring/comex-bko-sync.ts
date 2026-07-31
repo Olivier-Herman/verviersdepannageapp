@@ -55,6 +55,30 @@ export async function syncComexBko(sb: any): Promise<SyncResult> {
     }
   }
 
+  // Garde-fou : dossiers COMEX sans correspondance exacte → rapprochement de
+  // secours si la référence dossier est CONTENUE dans dossier_number (n° répété
+  // ou mal saisi), CONFIRMÉ par la plaque. Évite un « no_match » à cause d'une
+  // simple faute de frappe dans le n° de dossier. Olivier 2026-07-31.
+  {
+    const SEL_FB = 'id, mission_number, dossier_number, external_id, source, status, mission_type, estimated_htva, special_tarif_htva, amount_to_collect, incident_lat, incident_lng, destination_lat, destination_lng, vehicle_class, parent_mission_id, billed_to_name, billed_to_id, snc_scenario, snc_requires_balisage, intervention_date, received_at, extra_addresses, vehicle_plate'
+    const normPlate = (p: string) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    for (const d of dossiers) {
+      if (!d.dossier || byDossier.has(d.dossier)) continue
+      const { data: cand } = await sb.from('incoming_missions').select(SEL_FB)
+        .ilike('dossier_number', `%${d.dossier}%`)
+        .in('source', ['touring', 'sia_couvert'])
+        .not('status', 'in', '(cancelled,ignored)')
+        .limit(10)
+      const hit = (cand || []).filter((m: any) => {
+        if (m.source === 'sia_couvert' && !/touring/i.test(String(m.billed_to_name || ''))) return false
+        // Confirmation par la plaque si connue des deux côtés (anti faux positif).
+        if (d.plaque && m.vehicle_plate) return normPlate(d.plaque) === normPlate(m.vehicle_plate)
+        return true
+      })
+      if (hit.length) byDossier.set(d.dossier, hit)
+    }
+  }
+
   // Tarif attendu VD Soft : estimated_htva figé si présent, sinon calcul live.
   async function vdTariff(m: any): Promise<number | null> {
     if (m.special_tarif_htva && Number(m.special_tarif_htva) > 0) return Number(m.special_tarif_htva)
