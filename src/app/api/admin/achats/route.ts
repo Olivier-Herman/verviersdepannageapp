@@ -82,11 +82,14 @@ export async function GET(req: Request) {
     const truckMap = new Map<string, string>()
     for (const t of (trucks || [])) if (t.plate) truckMap.set(normPlate(t.plate), t.name)
     const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id) && r.parsed_at)
-    const agg = new Map<string, { plate: string; truck: string | null; total: number; count: number; cats: Record<string, number> }>()
+    const agg = new Map<string, { plate: string; truck: string; total: number; count: number; cats: Record<string, number> }>()
     for (const r of rows) {
       for (const l of scaledLines(r)) {
         if (!l.plaque) continue
-        const g = agg.get(l.plaque) || { plate: l.plaque, truck: truckMap.get(l.plaque) || null, total: 0, count: 0, cats: {} as Record<string, number> }
+        if (l.categorie === 'Sous-traitance dépannage') continue   // plaque = véhicule client, pas notre camion
+        const truck = truckMap.get(l.plaque)
+        if (!truck) continue   // uniquement les dépanneuses répertoriées (module Dépanneuse)
+        const g = agg.get(l.plaque) || { plate: l.plaque, truck, total: 0, count: 0, cats: {} as Record<string, number> }
         g.total += l.montant; g.count += 1; g.cats[l.categorie] = (g.cats[l.categorie] || 0) + l.montant
         agg.set(l.plaque, g)
       }

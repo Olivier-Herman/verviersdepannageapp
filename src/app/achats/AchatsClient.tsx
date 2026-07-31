@@ -257,7 +257,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
 
           {/* Coût par véhicule (plaques extraites des documents par l'IA) */}
           {(data.byVehicle?.length || 0) > 0 && (
-            <Panel title="Coût par véhicule" icon={<Truck size={16} />} sub="plaque repérée sur les factures · clic = détail">
+            <Panel title="Coût par véhicule" icon={<Truck size={16} />} sub="dépanneuses répertoriées · clic = détail">
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-sm min-w-[420px]">
                   <thead>
@@ -270,7 +270,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                       const topCat = Object.entries(v.cats || {}).sort((a: any, b: any) => b[1] - a[1])[0]
                       return (
                         <tr key={v.plate} className="border-b border-white/5 hover:bg-white/5 cursor-pointer" onClick={() => openVehicle(v.plate, v.truck)}>
-                          <td className="py-2 text-ink">{v.truck || <span className="text-ink-muted italic">non répertorié</span>}</td>
+                          <td className="py-2 text-ink">{v.truck}</td>
                           <td className="text-ink-secondary tabular-nums">{v.plate}</td>
                           <td className="text-ink-muted text-xs truncate max-w-[160px]">{topCat ? topCat[0] : '—'}</td>
                           <td className="text-right tabular-nums text-ink">{eur(v.total)}</td>
@@ -280,8 +280,8 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                     })}
                   </tbody>
                 </table>
-                {data.byVehicle.length > 30 && <p className="text-ink-muted text-xs mt-2">+ {data.byVehicle.length - 30} autres plaques…</p>}
-                <p className="text-ink-muted text-[11px] italic mt-2">Une plaque « non répertorié » récurrente est probablement un véhicule maison à ajouter dans Dépanneuses.</p>
+                {data.byVehicle.length > 30 && <p className="text-ink-muted text-xs mt-2">+ {data.byVehicle.length - 30} autres…</p>}
+                <p className="text-ink-muted text-[11px] italic mt-2">Seules les dépanneuses répertoriées (module Dépanneuse) sont comptées. Ajoute une dépanneuse manquante pour la voir apparaître.</p>
               </div>
             </Panel>
           )}
