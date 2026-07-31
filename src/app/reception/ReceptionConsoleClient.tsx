@@ -8,6 +8,7 @@ type Item = {
   motif: string | null; motif_color: string | null; section: string | null
   waiting_since: string | null; note: string | null
   handled_by: string | null; handler: string | null; mine: boolean
+  mission_id: string | null
   mission: { number: number | null; plate: string | null; vehicle: string | null; zone: string | null } | null
   serviceSec: number | null
 }
@@ -33,6 +34,10 @@ export default function ReceptionConsoleClient({ userRole, userName, userEmail, 
   const [note, setNote]   = useState('')
   const [busy, setBusy]   = useState(false)
   const [pickUser, setPickUser] = useState(false)
+  const [linkQ, setLinkQ] = useState('')
+  const [linkHits, setLinkHits] = useState<any[]>([])
+  const [linkLoading, setLinkLoading] = useState(false)
+  const linkRef = useRef<any>(null)
   const [now, setNow]     = useState(() => Date.now())
   const [loaded, setLoaded] = useState(false)
   const hRef = useRef<string | null>(null)
@@ -81,6 +86,23 @@ export default function ReceptionConsoleClient({ userRole, userName, userEmail, 
     if (!handling) return
     if (await act('reassign', handling.id, { user_id: userId })) { setPickUser(false); setHandling(null); await load() }
   }
+  async function linkMission(mid: string) {
+    if (!handling) return
+    if (await act('link', handling.id, { mission_id: mid })) { setLinkQ(''); setLinkHits([]); await load() }
+  }
+  // Recherche fiche à lier (staff connecté → pas de géofence).
+  useEffect(() => {
+    if (!handling) { setLinkHits([]); return }
+    const q = linkQ.trim()
+    if (q.length < 2) { setLinkHits([]); setLinkLoading(false); return }
+    setLinkLoading(true)
+    clearTimeout(linkRef.current)
+    linkRef.current = setTimeout(async () => {
+      try { const r = await fetch(`/api/reception/vehicle-search?q=${encodeURIComponent(q)}`, { cache: 'no-store' }); const j = await r.json(); setLinkHits(j.results || []) }
+      catch { setLinkHits([]) } finally { setLinkLoading(false) }
+    }, 300)
+    return () => clearTimeout(linkRef.current)
+  }, [linkQ, handling])
 
   const waiting = items.filter(i => i.status === 'waiting')
   const inProg  = items.filter(i => i.status === 'in_progress')
@@ -170,10 +192,34 @@ export default function ReceptionConsoleClient({ userRole, userName, userEmail, 
             <div className="text-sm text-ink-secondary flex items-center gap-2">{dot(handling.motif_color)} {handling.motif || '—'}
               {handling.lang === 'en' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 border">EN</span>}</div>
 
-            {handling.mission && (
-              <div className="bg-surface-2 border rounded-xl p-3 text-sm">
-                <div className="font-bold text-brand">#{handling.mission.number ?? '—'}</div>
-                <div className="text-ink-muted text-xs">{[handling.mission.vehicle, handling.mission.plate, handling.mission.zone ? `Zone ${handling.mission.zone}` : null].filter(Boolean).join(' · ')}</div>
+            {handling.mission ? (
+              <div className="bg-surface-2 border rounded-xl p-3 text-sm flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-brand">#{handling.mission.number ?? '—'}</div>
+                  <div className="text-ink-muted text-xs truncate">{[handling.mission.vehicle, handling.mission.plate, handling.mission.zone ? `Zone ${handling.mission.zone}` : null].filter(Boolean).join(' · ')}</div>
+                </div>
+                {handling.mission_id && (
+                  <a href={`/dispatch/${handling.mission_id}`} target="_blank" rel="noreferrer"
+                    className="px-3 py-1.5 bg-surface border rounded-lg text-xs font-semibold whitespace-nowrap hover:border-brand/40">Ouvrir la fiche ↗</a>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className="block text-ink-muted text-xs font-semibold mb-1.5">Lier une fiche véhicule</label>
+                <input value={linkQ} onChange={e => setLinkQ(e.target.value)} placeholder="Plaque / n° de dossier"
+                  className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm uppercase" />
+                {(linkLoading || linkHits.length > 0) && (
+                  <div className="mt-2 border rounded-xl divide-y max-h-44 overflow-y-auto">
+                    {linkLoading && <div className="px-3 py-2 text-xs text-ink-faint">Recherche…</div>}
+                    {!linkLoading && linkHits.map((h: any) => (
+                      <button key={h.id} onClick={() => linkMission(h.id)} disabled={busy}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2 disabled:opacity-50">
+                        <span className="font-bold">{h.plate || '—'}</span>
+                        <span className="text-ink-muted text-xs truncate">{[h.vehicle, h.ref].filter(Boolean).join(' · ')}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {(handling.phone || handling.email) && (

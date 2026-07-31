@@ -4,6 +4,8 @@
 // GET /api/reception/vehicle-search?q=1ABC234&lat=..&lng=..
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession }          from 'next-auth'
+import { authOptions }               from '@/lib/auth'
 import { createAdminClient }         from '@/lib/supabase'
 import { withinGeofence }            from '@/lib/reception/geofence'
 
@@ -16,8 +18,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const sb = createAdminClient()
 
-  // Présence physique requise.
-  if (!await withinGeofence(sb, searchParams.get('lat'), searchParams.get('lng'))) {
+  // Staff connecté (console réception) : pas de géofence. Sinon (borne visiteur) :
+  // présence physique requise.
+  const session = await getServerSession(authOptions)
+  if (!session && !await withinGeofence(sb, searchParams.get('lat'), searchParams.get('lng'))) {
     return NextResponse.json({ results: [], reason: 'geo' }, { status: 403 })
   }
 

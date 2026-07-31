@@ -68,6 +68,7 @@ export async function GET() {
       waiting_since: r.waiting_since, note: r.note,
       handled_by: r.handled_by, handler: r.handled_by ? (uById.get(r.handled_by) || '—') : null,
       mine: r.handled_by === me.id,
+      mission_id: r.mission_id || null,
       mission: mm ? { number: mm.mission_number, plate: mm.vehicle_plate, vehicle: [mm.vehicle_brand, mm.vehicle_model].filter(Boolean).join(' ') || null, zone: mm.parc_zone_key } : null,
       // Chrono de service : superadmin uniquement.
       serviceSec: priv && r.started_at ? Math.max(0, Math.round((now - Date.parse(r.started_at)) / 1000)) : null,
@@ -113,6 +114,13 @@ export async function POST(req: NextRequest) {
         metadata: { source: 'reception', interaction_id: id },
       }).then(() => {}, () => {})
     }
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'link') {
+    const missionId = String(body.mission_id || '')
+    if (!missionId) return NextResponse.json({ error: 'mission_id requis' }, { status: 400 })
+    await sb.from('fiche_interactions').update({ mission_id: missionId }).eq('id', id)
     return NextResponse.json({ ok: true })
   }
 
