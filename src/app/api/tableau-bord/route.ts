@@ -403,7 +403,7 @@ export async function GET(req: Request) {
       termineesJour: cTerminees.count || 0,
       factureesJour: cFacturees.count || 0,
     },
-    facturation: { periodeJours: PERIOD_DAYS, dureeMoyMin },
+    facturation: { periodeJours: PERIOD_DAYS, dureeMoyMin, dureeMoyN: durs.length },
     sources: {
       parSource,
       touring: { bko: comexBko || 0, total: touringTotal },

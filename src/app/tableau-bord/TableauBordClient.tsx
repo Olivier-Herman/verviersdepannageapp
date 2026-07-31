@@ -12,7 +12,7 @@ interface Kpi {
     aFacturer: number; enParc: number; aRelivrer: number
     termineesJour: number; factureesJour: number
   }
-  facturation: { periodeJours: number; dureeMoyMin: number | null }
+  facturation: { periodeJours: number; dureeMoyMin: number | null; dureeMoyN?: number }
   sources?: {
     parSource: { key: string; label: string; hex: string; count: number }[]
     touring: { bko: number; total: number }
@@ -189,7 +189,7 @@ export default function TableauBordClient({ variant = 'full' }: { variant?: 'ful
         sub={!isDispatch && o ? `Total parc : ${o.enParc}` : undefined} />
       {!isDispatch && <Tile label="Terminées aujourd'hui" value={o?.termineesJour} color="#4ade80" hint="chauffeur a bouclé" />}
       {!isDispatch && <Tile label="Facturées aujourd'hui" value={o?.factureesJour} color="#22d3ee" hint="facturation validée" />}
-      {!isDispatch && <Tile label="Délai médian à facturer" valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
+      {!isDispatch && <Tile label={`Délai médian à facturer${f?.dureeMoyN != null ? ` (${f.dureeMoyN})` : ''}`} valueStr={fmtDuree(f?.dureeMoyMin ?? null)} color="#f472b6"
         hint={`Terminé → facturé · médiane ${f?.periodeJours ?? 7} j`} />}
     </>
   )
