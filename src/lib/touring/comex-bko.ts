@@ -89,7 +89,7 @@ export interface BkoDossier {
   prestation:   string   // DEP / REM+... (col 3)
   plaque:       string   // (col 19)
   km:           number   // km proposés COMEX (col 10) — -1 si non fixé
-  montant:      number   // total COMEX HTVA (col 11)
+  montant:      number   // total COMEX HTVA = base (col 11) + majorations (col 12)
   trajet:       string   // codTrajetComex P01/P04… (col 20)
   brand:        string   // (col 28)
   model:        string   // (col 29)
@@ -124,7 +124,9 @@ export async function listComexBkoDossiers(cookie: string, accountLabel = ''): P
       prestation:   (c[3]  || '').trim(),
       plaque:       (c[19] || '').trim(),
       km:           num(c[10]),
-      montant:      num(c[11]),
+      // Total proposé = montant de base (col 11) + majorations (col 12, ex.
+      // majoration nuit). COMEX n'a pas de colonne « total » : on somme.
+      montant:      Math.round((num(c[11]) + num(c[12])) * 100) / 100,
       trajet:       (c[20] || '').trim(),
       brand:        (c[28] || '').trim(),
       model:        (c[29] || '').trim(),
