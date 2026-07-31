@@ -80,6 +80,25 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
     } catch (e: any) { alert(e.message) } finally { setParsing(false); setParseProg(null) }
   }
 
+  // Tout recatégoriser : reset des factures déjà traitées puis relance en boucle.
+  const recategorizeAll = async () => {
+    if (!confirm('Tout recatégoriser ? Les factures déjà traitées repasseront à l’IA (analyse par ligne). Coût one-time.')) return
+    setParsing(true); setParseProg({ done: 0, remaining: null })
+    try {
+      await fetch('/api/cron/achats-parse?reset=all', { cache: 'no-store' })
+      let done = 0
+      for (let i = 0; i < 200; i++) {
+        const r = await fetch('/api/cron/achats-parse?sync=1&limit=30', { cache: 'no-store' })
+        const j = await r.json()
+        if (j.error) { alert(j.error); break }
+        done += (j.parsed || 0) + (j.failed || 0)
+        setParseProg({ done, remaining: j.remaining ?? null })
+        if (!j.remaining || j.remaining <= 0) break
+      }
+      load(months)
+    } catch (e: any) { alert(e.message) } finally { setParsing(false); setParseProg(null) }
+  }
+
   // Détail d'une catégorie : liste des factures qui composent le chiffre.
   const openCategory = async (name: string) => {
     setCatDetail({ name, invoices: null })
@@ -212,6 +231,9 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                     : (data.coverage?.total ? 'Traiter tout' : 'Lancer l’IA')}
                 </button>
               </div>
+              {aiOn && !parsing && (
+                <button onClick={recategorizeAll} className="text-[11px] text-ink-muted hover:text-brand underline mb-2">↻ Tout recatégoriser (re-analyse par ligne)</button>
+              )}
               <div className="flex flex-col gap-1">
                 {(aiOn ? data.aiCategories : data.byCategory.map((c: any) => ({ categorie: c.account, amount: c.amount }))).slice(0, 14).map((c: any, i: number) => (
                   <button key={i} type="button" disabled={!aiOn}
