@@ -343,12 +343,19 @@ function MissionBlock({
           })
           .filter(l => !(billedOneOffKinds.has(l.kind) && l.kind !== 'SERV-PARC'))   // poste one-off déjà facturé → exclu
           .filter(l => l.qty > 0)                                                     // gardiennage soldé → exclu
-        if (d.surcharge_pct > 0 && !billedOneOffKinds.has('SERV-MAJ')) {
+        // Majoration : PU = % appliqué à la base MAJORABLE (lignes du template avec
+        // apply_surcharges), calculée sur les lignes réellement conservées (respecte
+        // les postes déjà facturés). Corrige le PU figé à 0. Olivier 2026-07-31.
+        const majorableBase = initialLines.reduce((s, l) => {
+          const tl = (d.template_lines || []).find(t => t.kind === l.kind && t.name === l.name)
+          return s + (tl?.apply_surcharges ? l.qty * l.price_unit : 0)
+        }, 0)
+        if (d.surcharge_pct > 0 && majorableBase > 0 && !billedOneOffKinds.has('SERV-MAJ')) {
           initialLines.push({
             kind:       'SERV-MAJ',
             name:       `Majoration ${d.surcharge_pct}%`,
-            qty:        Math.round(d.surcharge_pct) / 100,
-            price_unit: 0,
+            qty:        1,
+            price_unit: Math.round(majorableBase * d.surcharge_pct) / 100,
           })
         }
         // Avances ajoutees a la fin

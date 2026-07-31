@@ -207,12 +207,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   if (estimate.surcharge_pct > 0 && estimate.surcharge_eur > 0) {
-    // Majoration : qty = % en decimal (ex 0.30), PU = total HT majorable
+    // Majoration : montant exact déjà calculé (surcharge_eur), robuste quelle que
+    // soit la branche (subtotal_eur pouvait être 0 en mode 'lines'). Olivier 2026-07-31.
     lines.push({
       kind:       'SERV-MAJ',
       name:       `Majoration ${estimate.surcharge_pct}%`,
-      qty:        Math.round(estimate.surcharge_pct) / 100,
-      price_unit: Math.round(estimate.subtotal_eur * 100) / 100,
+      qty:        1,
+      price_unit: Math.round(estimate.surcharge_eur * 100) / 100,
     })
   }
     }  // fin else (estimate.ok)
