@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient }         from '@/lib/supabase'
 import { phoneKey, phoneDisplay, emailKey, hasIdentity } from '@/lib/reception/identity'
+import { withinGeofence }            from '@/lib/reception/geofence'
 
 export const dynamic    = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -14,6 +15,11 @@ const normPlate = (p: string) => String(p || '').toUpperCase().replace(/[^A-Z0-9
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const sb   = createAdminClient()
+
+  // Présence physique requise (géofence accueil) — anti « scan de chez soi ».
+  if (!await withinGeofence(sb, body.lat, body.lng)) {
+    return NextResponse.json({ error: 'Vous devez être à l’accueil de Verviers Dépannage.' }, { status: 403 })
+  }
 
   const lang  = body.lang === 'en' ? 'en' : 'fr'
   const name  = String(body.name || '').trim() || null

@@ -24,6 +24,11 @@ const T: Record<Lang, Record<string, string>> = {
     errMotif: 'Choisissez d’abord un motif.', errId: 'Indiquez un e-mail ou un GSM.', errNet: 'Erreur réseau, réessayez.',
     doneT: 'C’est noté, merci !', doneM: 'Vous êtes enregistré. Un membre de l’équipe va vous recevoir — installez-vous confortablement.',
     again: 'Terminer',
+    geoChk: 'Vérification de votre position…',
+    geoDeniedT: 'Localisation requise', geoDeniedM: 'Autorisez la localisation pour vous enregistrer à l’accueil de Verviers Dépannage.',
+    geoOutT: 'Vous n’êtes pas à l’accueil', geoOutM: 'L’enregistrement n’est possible que sur place, à l’accueil de Verviers Dépannage.',
+    geoErrT: 'Position indisponible', geoErrM: 'Impossible d’obtenir votre position. Vérifiez votre GPS et réessayez.',
+    retry: 'Réessayer',
   },
   en: {
     welcome: 'Welcome to', sub: 'Check in your visit in seconds',
@@ -35,6 +40,11 @@ const T: Record<Lang, Record<string, string>> = {
     errMotif: 'Please select a reason first.', errId: 'Please provide an email or mobile.', errNet: 'Network error, try again.',
     doneT: 'All set, thank you!', doneM: 'You are checked in. A team member will see you shortly — please take a seat.',
     again: 'Finish',
+    geoChk: 'Checking your location…',
+    geoDeniedT: 'Location required', geoDeniedM: 'Allow location to check in at Verviers Dépannage reception.',
+    geoOutT: 'You are not at reception', geoOutM: 'Check-in is only possible on site, at Verviers Dépannage reception.',
+    geoErrT: 'Location unavailable', geoErrM: 'Could not get your location. Check your GPS and try again.',
+    retry: 'Retry',
   },
 }
 
@@ -65,8 +75,30 @@ export default function AccueilClient() {
   const [busy, setBusy]     = useState(false)
   const [err, setErr]       = useState('')
   const [done, setDone]     = useState(false)
+  const [geo, setGeo]       = useState<'checking' | 'ok' | 'denied' | 'outside' | 'error'>('checking')
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const t = T[lang]
   const debRef = useRef<any>(null)
+
+  // Géolocalisation : on n'autorise l'enregistrement que sur place (accueil).
+  function requestGeo() {
+    setGeo('checking')
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setGeo('error'); return }
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude
+        setCoords({ lat, lng })
+        try {
+          const r = await fetch(`/api/reception/geo-check?lat=${lat}&lng=${lng}`, { cache: 'no-store' })
+          const j = await r.json()
+          setGeo(j.allowed ? 'ok' : 'outside')
+        } catch { setGeo('error') }
+      },
+      err => setGeo(err.code === 1 ? 'denied' : 'error'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+    )
+  }
+  useEffect(() => { requestGeo() }, [])
 
   useEffect(() => {
     fetch('/api/reception/motifs', { cache: 'no-store' })
@@ -82,13 +114,14 @@ export default function AccueilClient() {
     clearTimeout(debRef.current)
     debRef.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/reception/vehicle-search?q=${encodeURIComponent(q)}`, { cache: 'no-store' })
+        const geoQs = coords ? `&lat=${coords.lat}&lng=${coords.lng}` : ''
+        const r = await fetch(`/api/reception/vehicle-search?q=${encodeURIComponent(q)}${geoQs}`, { cache: 'no-store' })
         const j = await r.json()
         setVHits(j.results || [])
       } catch { setVHits([]) } finally { setVLoading(false) }
     }, 280)
     return () => clearTimeout(debRef.current)
-  }, [vehicle, vPicked])
+  }, [vehicle, vPicked, coords])
 
   const mLabel = (m: Motif) => (lang === 'en' && m.label_en ? m.label_en : m.label)
 
@@ -107,6 +140,7 @@ export default function AccueilClient() {
           lang, motif_id: sel.id,
           vehicle: sel.requires_vehicle ? (vPicked?.plate || vehicle.trim()) : '',
           email: email.trim(), phone: phone.trim(), note: note.trim(),
+          lat: coords?.lat, lng: coords?.lng,
         }),
       })
       const j = await r.json()
@@ -136,6 +170,62 @@ export default function AccueilClient() {
             style={{ background: INK }}>{t.again}</button>
         </div>
         <style>{`@keyframes pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}`}</style>
+      </div>
+    )
+  }
+
+  /* ---------- Portail géolocalisation ---------- */
+  const Brand = () => (
+    <>
+      <div style={{ height: 5, background: `linear-gradient(90deg,${RED},${RED_HOVER})` }} />
+      <header className="px-6 sm:px-8 pt-6 pb-5 flex items-center justify-between gap-4" style={{ borderBottom: `1px solid ${LINE}` }}>
+        <div className="flex items-center gap-3.5 min-w-0">
+          <img src="/logo.png" alt="Verviers Dépannage" className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" style={{ border: `1px solid ${LINE}` }} />
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: RED }}>{t.welcome}</p>
+            <h1 className="text-xl sm:text-2xl font-black leading-tight truncate" style={{ color: INK }}>Verviers Dépannage</h1>
+          </div>
+        </div>
+        <div className="flex gap-1 rounded-2xl p-1 flex-shrink-0" style={{ background: '#F5F1EC' }}>
+          {(['fr', 'en'] as Lang[]).map(l => (
+            <button key={l} onClick={() => setLang(l)} className="px-3.5 py-1.5 rounded-xl text-sm font-extrabold transition"
+              style={lang === l ? { background: '#fff', color: RED, boxShadow: '0 1px 3px rgba(0,0,0,.08)' } : { color: MUTED }}>{l.toUpperCase()}</button>
+          ))}
+        </div>
+      </header>
+    </>
+  )
+
+  if (geo !== 'ok') {
+    const st = geo === 'denied' ? { T: t.geoDeniedT, M: t.geoDeniedM }
+      : geo === 'outside' ? { T: t.geoOutT, M: t.geoOutM }
+      : geo === 'error' ? { T: t.geoErrT, M: t.geoErrM } : null
+    return (
+      <div className="min-h-screen py-6 px-4 flex justify-center" style={{ background: 'linear-gradient(180deg,#FAF8F6 0%,#F1ECE6 100%)' }}>
+        <div className="w-full max-w-2xl">
+          <div className="bg-white rounded-3xl overflow-hidden shadow-xl" style={{ border: `1px solid ${LINE}` }}>
+            <Brand />
+            <div className="px-6 sm:px-8 py-16 flex flex-col items-center text-center">
+              {geo === 'checking' ? (
+                <>
+                  <div className="w-14 h-14 rounded-full animate-spin" style={{ border: `4px solid ${RED_SOFT}`, borderTopColor: RED }} />
+                  <p className="mt-6 text-lg font-semibold" style={{ color: INK2 }}>{t.geoChk}</p>
+                </>
+              ) : (
+                <>
+                  <span className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: RED_SOFT }}>
+                    <MapPin className="w-10 h-10" style={{ color: RED }} strokeWidth={2} />
+                  </span>
+                  <h2 className="mt-6 text-2xl font-black" style={{ color: INK }}>{st?.T}</h2>
+                  <p className="mt-2 text-[16px] leading-relaxed max-w-sm" style={{ color: INK2 }}>{st?.M}</p>
+                  <button onClick={requestGeo} className="mt-7 px-8 py-3.5 rounded-2xl font-bold text-white text-lg active:scale-[.99] transition"
+                    style={{ background: RED }}>{t.retry}</button>
+                </>
+              )}
+            </div>
+          </div>
+          <p className="text-center text-xs mt-4" style={{ color: MUTED }}>Verviers Dépannage · Accueil visiteur</p>
+        </div>
       </div>
     )
   }
