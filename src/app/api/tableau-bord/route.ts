@@ -143,7 +143,11 @@ export async function GET(req: Request) {
       if (Array.isArray(r.mission_ids)) for (const id of r.mission_ids) if (id) comexBkoIds.add(id as string)
     }
   }
-  let durSum = 0, durN = 0
+  // MÉDIANE (pas moyenne) : la distribution est très asymétrique — une poignée
+  // de fiches soldées tard (backlog rattrapé, saisie/SNC facturés en lot) fait
+  // exploser la moyenne alors que ~80 % des dossiers sont facturés en < 24 h.
+  // La médiane reflète le délai réellement représentatif.
+  const durs: number[] = []
   for (let page = 0; page < 15; page++) {
     const { data: chunk } = await sb.from('incoming_missions')
       .select('id, source, completed_at, invoiced_at, no_charge_at')
@@ -153,17 +157,20 @@ export async function GET(req: Request) {
       .range(page * 1000, page * 1000 + 999)
     if (!chunk || !chunk.length) break
     for (const m of chunk) {
-      // Touring hors COMEX BKO → écarté de la moyenne.
+      // Touring hors COMEX BKO → écarté du calcul.
       if (TOURING_SOURCES.includes(m.source) && !comexBkoIds.has(m.id)) continue
       const end = m.invoiced_at || m.no_charge_at
       if (end && m.completed_at) {
         const d = Date.parse(end) - Date.parse(m.completed_at)
-        if (d >= 0) { durSum += d; durN++ }
+        if (d >= 0) durs.push(d)
       }
     }
     if (chunk.length < 1000) break
   }
-  const dureeMoyMin = durN ? Math.round(durSum / durN / 60000) : null
+  durs.sort((a, b) => a - b)
+  const dureeMoyMin = durs.length
+    ? Math.round((durs.length % 2 ? durs[(durs.length - 1) / 2] : (durs[durs.length / 2 - 1] + durs[durs.length / 2]) / 2) / 60000)
+    : null
 
   // ── Slide 2 : à facturer PAR SOURCE + ratios Touring/Allianz ───────────────
   const { data: toInvRows } = await sb.from('incoming_missions')
