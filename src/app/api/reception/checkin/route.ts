@@ -38,9 +38,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'E-mail ou numéro de GSM requis' }, { status: 400 })
   }
 
-  // Rapprochement fiche véhicule (si plaque/réf fournie).
+  // Rapprochement fiche : priorité à la fiche explicitement choisie (reconnaissance
+  // par numéro OU sélection plaque), sinon résolution depuis la saisie véhicule.
   let missionId: string | null = null
-  if (vehicleRaw) {
+  const pickedId = String(body.mission_id || '').trim()
+  if (pickedId) {
+    const { data } = await sb.from('incoming_missions').select('id').eq('id', pickedId).maybeSingle()
+    if (data) missionId = data.id
+  }
+  if (!missionId && vehicleRaw) {
     const pk    = normPlate(vehicleRaw)
     const clean = vehicleRaw.replace(/[^A-Za-z0-9-]/g, '')   // sûr pour ilike/or
     const RANK: Record<string, number> = { parked: 5, to_invoice: 4, delivering: 3, in_progress: 2, completed: 1 }

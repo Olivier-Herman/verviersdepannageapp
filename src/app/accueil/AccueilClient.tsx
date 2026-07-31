@@ -38,6 +38,7 @@ const T: Record<Lang, Record<string, string>> = {
     geoErrT: 'Position indisponible', geoErrM: 'Impossible d’obtenir votre position. Vérifiez votre GPS et réessayez.',
     retry: 'Réessayer',
     privacy: '🔒 Votre position sert uniquement à confirmer votre présence à l’accueil, le temps de votre visite. Elle n’est pas conservée.',
+    reco: 'On vous reconnaît 👋 — est-ce au sujet de :', recoNo: 'Non, autre chose', recoLinked: 'Dossier lié',
   },
   en: {
     welcome: 'Welcome to', sub: 'Check in your visit in seconds',
@@ -55,6 +56,7 @@ const T: Record<Lang, Record<string, string>> = {
     geoErrT: 'Location unavailable', geoErrM: 'Could not get your location. Check your GPS and try again.',
     retry: 'Retry',
     privacy: '🔒 Your location is only used to confirm you are at reception, for the duration of your visit. It is not stored.',
+    reco: 'We recognise you 👋 — is it about:', recoNo: 'No, something else', recoLinked: 'Linked file',
   },
 }
 
@@ -81,6 +83,12 @@ export default function AccueilClient() {
   const [vPicked, setVPicked]   = useState<VHit | null>(null)
   const [email, setEmail]   = useState('')
   const [phone, setPhone]   = useState('')
+  // Reconnaissance par téléphone / e-mail → fiches proposées.
+  const [recoHits, setRecoHits]         = useState<VHit[]>([])
+  const [recoLoading, setRecoLoading]   = useState(false)
+  const [recoPicked, setRecoPicked]     = useState<VHit | null>(null)
+  const [recoDismissed, setRecoDismissed] = useState(false)
+  const recoRef = useRef<any>(null)
   const [note, setNote]     = useState('')
   const [busy, setBusy]     = useState(false)
   const [err, setErr]       = useState('')
@@ -153,6 +161,25 @@ export default function AccueilClient() {
     return () => clearTimeout(debRef.current)
   }, [vehicle, vPicked, coords])
 
+  // Reconnaissance : dès qu'un téléphone/e-mail est saisi, on propose les fiches liées.
+  useEffect(() => {
+    if (recoPicked || recoDismissed) { setRecoHits([]); return }
+    const pOk = phone.replace(/\D/g, '').length >= 6
+    const eOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    if (!pOk && !eOk) { setRecoHits([]); setRecoLoading(false); return }
+    setRecoLoading(true)
+    clearTimeout(recoRef.current)
+    recoRef.current = setTimeout(async () => {
+      try {
+        const geoQs = coords ? `&lat=${coords.lat}&lng=${coords.lng}` : ''
+        const r = await fetch(`/api/reception/contact-lookup?phone=${encodeURIComponent(phone)}&email=${encodeURIComponent(email)}${geoQs}`, { cache: 'no-store' })
+        const j = await r.json()
+        setRecoHits(j.results || [])
+      } catch { setRecoHits([]) } finally { setRecoLoading(false) }
+    }, 450)
+    return () => clearTimeout(recoRef.current)
+  }, [phone, email, coords, recoPicked, recoDismissed])
+
   const mLabel = (m: Motif) => (lang === 'en' && m.label_en ? m.label_en : m.label)
 
   function pickVehicle(h: VHit) { setVPicked(h); setVehicle(h.plate || ''); setVHits([]) }
@@ -169,6 +196,7 @@ export default function AccueilClient() {
         body: JSON.stringify({
           lang, motif_id: sel.id,
           vehicle: sel.requires_vehicle ? (vPicked?.plate || vehicle.trim()) : '',
+          mission_id: recoPicked?.id || vPicked?.id || null,
           email: email.trim(), phone: phone.trim(), note: note.trim(),
           lat: coords?.lat, lng: coords?.lng,
         }),
@@ -181,6 +209,7 @@ export default function AccueilClient() {
 
   function reset() {
     setSel(null); clearVehicle(); setEmail(''); setPhone(''); setNote(''); setErr(''); setDone(false)
+    setRecoHits([]); setRecoPicked(null); setRecoDismissed(false)
     startGeo()   // nouvelle visite → on relance le suivi de position
   }
 
@@ -416,6 +445,37 @@ export default function AccueilClient() {
                     )
                   })}
                 </div>
+
+                {/* Reconnaissance par numéro/e-mail */}
+                {recoPicked ? (
+                  <div className="mt-3 flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: RED_SOFT, border: `2px solid ${RED}` }}>
+                    <Car className="w-5 h-5 flex-shrink-0" style={{ color: RED }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-extrabold" style={{ color: INK }}>{recoPicked.plate || recoPicked.ref || t.recoLinked}</div>
+                      <div className="text-sm truncate" style={{ color: INK2 }}>{[recoPicked.vehicle, recoPicked.ref, recoPicked.zone ? `Zone ${recoPicked.zone}` : null].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <button onClick={() => { setRecoPicked(null); setRecoDismissed(false) }} className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#fff' }}>
+                      <X className="w-4 h-4" style={{ color: MUTED }} />
+                    </button>
+                  </div>
+                ) : recoHits.length > 0 ? (
+                  <div className="mt-3 rounded-2xl p-3" style={{ background: '#FFF7F8', border: `1px solid ${RED_SOFT}` }}>
+                    <p className="text-sm font-bold mb-2" style={{ color: RED_HOVER }}>{t.reco}</p>
+                    <div className="space-y-2">
+                      {recoHits.map(h => (
+                        <button key={h.id} onClick={() => setRecoPicked(h)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition" style={{ background: '#fff', border: `1px solid ${LINE}` }}>
+                          <Car className="w-4 h-4 flex-shrink-0" style={{ color: RED }} />
+                          <span className="font-bold tracking-wide" style={{ color: INK }}>{h.plate || h.ref || '—'}</span>
+                          <span className="text-sm truncate" style={{ color: INK2 }}>{[h.vehicle, h.ref].filter(Boolean).join(' · ')}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setRecoDismissed(true)} className="mt-2 text-xs font-semibold" style={{ color: MUTED }}>{t.recoNo}</button>
+                  </div>
+                ) : recoLoading ? (
+                  <p className="mt-2 text-xs" style={{ color: MUTED }}>…</p>
+                ) : null}
 
                 {sel.free_text && (
                   <div className="mt-3">
