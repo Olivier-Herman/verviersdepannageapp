@@ -229,14 +229,17 @@ export async function GET(req: Request) {
   // Noms chauffeurs (union mois + actives).
   const driverIds = [...new Set([...(monthMissions || []).map((m: any) => m.assigned_to), ...(active || []).map((m: any) => m.assigned_to)].filter(Boolean))]
   const dn = new Map<string, string>()
-  // Comptes NON chauffeurs à exclure des stats (dispatchers / tests).
-  const EXCLUDED_DRIVER_NAMES = ['jona', 'mobi', 'mobi test']
+  // Comptes NON chauffeurs à exclure des STATS uniquement (dispatchers / tests /
+  // support). Ils restent visibles dans « missions en cours ». Match sur le nom
+  // complet OU le 1er prénom (robuste si le compte porte un nom de famille).
+  const EXCLUDED_DRIVER_NAMES = ['jona', 'mobi', 'mobi test', 'vivian']
   const excludedDrivers = new Set<string>()
   if (driverIds.length) {
     const { data: us } = await sb.from('users').select('id, name').in('id', driverIds)
     for (const u of (us || [])) {
       dn.set(u.id, u.name || '—')
-      if (EXCLUDED_DRIVER_NAMES.includes(String(u.name || '').trim().toLowerCase())) excludedDrivers.add(u.id)
+      const nm = String(u.name || '').trim().toLowerCase()
+      if (EXCLUDED_DRIVER_NAMES.includes(nm) || EXCLUDED_DRIVER_NAMES.includes(nm.split(/\s+/)[0])) excludedDrivers.add(u.id)
     }
   }
 
