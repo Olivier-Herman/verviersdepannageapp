@@ -48,3 +48,15 @@ export async function achatsRpc<T = any>(model: string, method: string, args: an
   if (data.error) throw new Error(`Odoo RPC [${model}.${method}]: ${JSON.stringify(data.error?.data?.message || data.error)}`)
   return data.result
 }
+
+// Partenaires = les sociétés du groupe elles-mêmes (VD, Riga, DGJ). Sert à
+// NEUTRALISER l'intercompagnie : une facture d'une société du groupe à une
+// autre n'est pas un achat externe → exclue des analyses de coût. Cache 10 min.
+let _coCache: { ids: number[]; exp: number } | null = null
+export async function getGroupCompanyPartnerIds(): Promise<number[]> {
+  if (_coCache && _coCache.exp > Date.now()) return _coCache.ids
+  const comps = await achatsRpc<any[]>('res.company', 'search_read', [[]], { fields: ['partner_id'] })
+  const ids = comps.map(c => (Array.isArray(c.partner_id) ? c.partner_id[0] : null)).filter(Boolean) as number[]
+  _coCache = { ids, exp: Date.now() + 600_000 }
+  return ids
+}

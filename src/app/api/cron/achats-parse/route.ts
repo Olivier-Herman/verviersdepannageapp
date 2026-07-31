@@ -10,7 +10,7 @@ import { NextResponse }         from 'next/server'
 import { getServerSession }     from 'next-auth'
 import { authOptions }          from '@/lib/auth'
 import { createAdminClient }    from '@/lib/supabase'
-import { achatsRpc as odooRpc } from '@/lib/achats/odoo-rpc'   // connecteur multi-société dédié Achats
+import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from '@/lib/achats/odoo-rpc'   // connecteur multi-société dédié Achats
 import { categorizeInvoiceDoc } from '@/lib/achats/parse-invoice'
 import { ANTHROPIC_MODEL }      from '@/lib/anthropic-model'
 
@@ -41,8 +41,10 @@ export async function GET(req: Request) {
 
   let synced = 0
   if (doSync) {
+    const companyPartners = await getGroupCompanyPartnerIds()   // neutralise l'intercompagnie
     const bills = await odooRpc<any[]>('account.move', 'search_read', [
-      [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', iso(months)]],
+      [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', iso(months)],
+        ...(companyPartners.length ? [['commercial_partner_id', 'not in', companyPartners]] : [])],
       ['id', 'partner_id', 'invoice_date', 'amount_untaxed', 'amount_total', 'ref', 'message_main_attachment_id'],
     ], { limit: 6000 })
     const rows = (bills || []).map(b => ({

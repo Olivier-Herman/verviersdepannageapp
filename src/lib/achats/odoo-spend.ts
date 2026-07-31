@@ -10,7 +10,7 @@
 // sur-détecte (factures récurrentes identiques légitimes).
 // ============================================================
 
-import { achatsRpc as odooRpc } from './odoo-rpc'   // connecteur multi-société dédié Achats
+import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from './odoo-rpc'   // connecteur multi-société dédié Achats
 
 /** 1er jour du mois, `monthsBack` mois en arrière (fenêtre glissante). */
 function periodStart(monthsBack: number): string {
@@ -51,7 +51,10 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   }
   const exclArr = [...excludedMemberIds]
   const excl    = exclArr.length ? [['partner_id', 'not in', exclArr]] : []
-  const baseDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start]]
+  // Neutralise l'intercompagnie (VD ↔ Riga ↔ DGJ) : pas un achat externe.
+  const companyPartners = await getGroupCompanyPartnerIds()
+  const interco = companyPartners.length ? [['commercial_partner_id', 'not in', companyPartners]] : []
+  const baseDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ...interco]
   const billDom = [...baseDom, ...excl]   // totaux/catégories (exclusions appliquées)
 
   const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
@@ -61,7 +64,8 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
     odooRpc<any[]>('account.move', 'read_group', [baseDom, ['amount_untaxed:sum'], ['partner_id']]),   // TOUS les fournisseurs
     odooRpc<any[]>('account.move.line', 'read_group', [
       [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense'],
-        ...(exclArr.length ? [['move_id.partner_id', 'not in', exclArr]] : [])],
+        ...(exclArr.length ? [['move_id.partner_id', 'not in', exclArr]] : []),
+        ...(companyPartners.length ? [['move_id.commercial_partner_id', 'not in', companyPartners]] : [])],
       ['balance:sum'], ['account_id'],
     ], { context: { lang: 'fr_BE' } }),   // libellés de comptes en français
     odooRpc<any[]>('account.move', 'search_read', [billDom, ['partner_id', 'ref', 'invoice_date', 'amount_total']], { limit: 4000 }),
