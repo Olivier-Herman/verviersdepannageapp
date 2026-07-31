@@ -7,7 +7,7 @@
 //
 // A monter dans AppShell (englobe toutes les pages connectees).
 
-import { useEffect, useState, useCallback, createContext, useContext } from 'react'
+import { useEffect, useState, useCallback, useRef, createContext, useContext } from 'react'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { playNotificationSound } from '@/lib/notifications/sounds'
 import { usePushRegistration } from '@/hooks/usePushRegistration'
@@ -53,18 +53,31 @@ export default function NotificationsProvider({
 }) {
   const [pending, setPending] = useState<NotifEvent[]>([])
 
+  // Ids déjà affichés (fermés/lus) — garde-fou local : empêche le poll 15 s ou
+  // Realtime de ré-afficher un bandeau déjà traité, même avant que read_at soit
+  // committé en base (sinon re-toast en boucle toutes les 15 s pendant 30 min).
+  const seen = useRef<Set<string>>(new Set())
+
   // Register le push natif (no-op si pas dans Capacitor)
   usePushRegistration(userId)
 
+  // Marque la notif comme lue en base (idempotent côté API). Utilisé aussi bien
+  // à la fermeture (auto-dismiss / ✕) qu'au clic « Voir » : une notif in_app ne
+  // sert qu'au toast, une fois affichée elle ne doit plus revenir.
+  const persistRead = (id: string) => {
+    fetch(`/api/notifications/${id}/read`, { method: 'POST' }).catch(() => {})
+  }
+
   const dismiss = useCallback((id: string) => {
+    seen.current.add(id)
     setPending(prev => prev.filter(n => n.id !== id))
+    persistRead(id)
   }, [])
 
   const markRead = useCallback(async (id: string) => {
+    seen.current.add(id)
     setPending(prev => prev.filter(n => n.id !== id))
-    try {
-      await fetch(`/api/notifications/${id}/read`, { method: 'POST' })
-    } catch { /* silent */ }
+    persistRead(id)
   }, [])
 
   useEffect(() => {
@@ -77,11 +90,15 @@ export default function NotificationsProvider({
 
     const handleNewNotif = (row: NotifEvent) => {
       if (row.channel && row.channel !== 'in_app') return
+      if (row.read_at) return                    // déjà lue en base → jamais de toast
+      if (seen.current.has(row.id)) return       // déjà affichée/fermée cette session
+      let added = false
       setPending(prev => {
         if (prev.some(n => n.id === row.id)) return prev
+        added = true
         return [...prev, row]
       })
-      playNotificationSound(row.notif_type)
+      if (added) playNotificationSound(row.notif_type)
     }
 
     const channel = sb
