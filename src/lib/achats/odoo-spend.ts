@@ -29,11 +29,13 @@ export interface AchatsAnalysis {
   concentrationTop5: number
   byCategory: Array<{ account: string; amount: number }>
   duplicates: Array<{ supplier: string; ref: string; count: number; amount: number; dates: string[] }>
+  excludedSuppliers: Array<{ id: number; name: string; htva: number; count: number }>
 }
 
-export async function analyzeAchats(monthsBack = 12): Promise<AchatsAnalysis> {
+export async function analyzeAchats(monthsBack = 12, excludedIds: number[] = []): Promise<AchatsAnalysis> {
   const start = periodStart(monthsBack)
-  const billDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start]]
+  const excl  = excludedIds.length ? [['partner_id', 'not in', excludedIds]] : []
+  const billDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ...excl]
 
   const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], []]),
@@ -41,9 +43,10 @@ export async function analyzeAchats(monthsBack = 12): Promise<AchatsAnalysis> {
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], ['invoice_date:month']]),
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], ['partner_id']]),
     odooRpc<any[]>('account.move.line', 'read_group', [
-      [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense']],
+      [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense'],
+        ...(excludedIds.length ? [['move_id.partner_id', 'not in', excludedIds]] : [])],
       ['balance:sum'], ['account_id'],
-    ]),
+    ], { context: { lang: 'fr_BE' } }),   // libellés de comptes en français
     odooRpc<any[]>('account.move', 'search_read', [billDom, ['partner_id', 'ref', 'invoice_date', 'amount_total']], { limit: 4000 }),
   ])
 
@@ -81,6 +84,18 @@ export async function analyzeAchats(monthsBack = 12): Promise<AchatsAnalysis> {
     .map(g => ({ supplier: g.supplier, ref: g.ref, count: g.dates.length, amount: Math.round(g.amounts[0]), dates: g.dates.sort() }))
     .sort((a, b) => b.amount - a.amount)
 
+  // Détail des fournisseurs exclus (non-achat) — pour affichage + restauration.
+  let excludedSuppliers: AchatsAnalysis['excludedSuppliers'] = []
+  if (excludedIds.length) {
+    const rows = await odooRpc<any[]>('account.move', 'read_group', [
+      [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ['partner_id', 'in', excludedIds]],
+      ['amount_untaxed:sum'], ['partner_id'],
+    ])
+    excludedSuppliers = (rows || []).filter(r => r.partner_id)
+      .map(r => ({ id: r.partner_id[0], name: r.partner_id[1], htva: Math.round(r.amount_untaxed || 0), count: r.partner_id_count || 0 }))
+      .sort((a, b) => b.htva - a.htva)
+  }
+
   return {
     periodStart: start, monthsBack,
     overview: {
@@ -90,6 +105,6 @@ export async function analyzeAchats(monthsBack = 12): Promise<AchatsAnalysis> {
       draftCount: draftRows?.[0]?.__count || 0,
       draftHtva: Math.round(draftRows?.[0]?.amount_untaxed || 0),
     },
-    byMonth, topSuppliers, concentrationTop5, byCategory, duplicates,
+    byMonth, topSuppliers, concentrationTop5, byCategory, duplicates, excludedSuppliers,
   }
 }
