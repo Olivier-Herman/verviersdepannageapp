@@ -244,7 +244,7 @@ export default function CobrowseUserBridge() {
 
       {/* Modal "Demander de l aide" */}
       {showAsk && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4" onClick={() => setShowAsk(false)}>
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4">
           <div
             className="bg-surface rounded-xl shadow-xl max-w-md w-full p-6"
             onClick={e => e.stopPropagation()}

@@ -629,7 +629,7 @@ function CreateZoneModal({ depots, existingKeys, onClose, onCreate }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-surface border rounded-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b">
           <h2 className="text-lg font-bold text-ink flex items-center gap-2">

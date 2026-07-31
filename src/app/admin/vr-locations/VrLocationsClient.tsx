@@ -121,7 +121,7 @@ export default function VrLocationsClient({ initialData }: { initialData: VrLoca
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-ink/70 z-50 flex items-center justify-center px-4" onClick={() => setEditing(null)}>
+        <div className="fixed inset-0 bg-ink/70 z-50 flex items-center justify-center px-4">
           <div className="bg-surface-2 border border rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="text-ink font-bold text-lg">{editing.id ? 'Modifier' : 'Nouvel emplacement VR'}</h2>

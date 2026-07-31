@@ -175,7 +175,7 @@ export default function OcrScanModal({ mode, current, onPick, onClose }: Props) 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[60] flex items-end" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-end">
       <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[80vh] overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start">

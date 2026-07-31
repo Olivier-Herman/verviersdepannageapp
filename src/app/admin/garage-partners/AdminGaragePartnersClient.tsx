@@ -144,7 +144,7 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4 py-8 overflow-y-auto" onClick={() => !busy && setEditing(null)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4 py-8 overflow-y-auto">
           <div className="bg-surface w-full max-w-lg rounded-2xl border p-5 space-y-3 my-auto" onClick={e => e.stopPropagation()}>
             <h3 className="text-ink font-bold text-base">{editing.id ? '✏️ Modifier le garage' : '+ Nouveau garage'}</h3>
 

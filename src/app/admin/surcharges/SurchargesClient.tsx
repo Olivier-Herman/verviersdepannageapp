@@ -277,7 +277,7 @@ function EditCellPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/50">
       <div onClick={e => e.stopPropagation()} className="bg-surface w-full sm:max-w-md h-full overflow-y-auto border-l">
         <div className="px-5 py-4 border-b flex items-center justify-between sticky top-0 bg-surface z-10">
           <div>
@@ -460,7 +460,7 @@ function AddClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
       <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
         <div>
           <h3 className="text-ink font-semibold">Ajouter une source</h3>

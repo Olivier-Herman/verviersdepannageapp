@@ -238,7 +238,7 @@ function PasswordModal({ onClose, onSaved, hasPasswordAlready }: {
   const inputCls = 'w-full bg-surface border rounded-lg px-3 py-2.5 text-ink text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft transition'
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
       <div className="bg-surface w-full max-w-md rounded-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <p className="text-ink font-semibold text-lg">{hasPasswordAlready ? 'Modifier le mot de passe' : 'Définir un mot de passe'}</p>

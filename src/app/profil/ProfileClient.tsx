@@ -644,7 +644,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
       {/* Modal voir document */}
       {viewDoc && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setViewDoc(null)}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-surface rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-ink font-bold">{DOC_TYPES.find(d => d.value === viewDoc.doc_type)?.label}</h2>
@@ -673,7 +673,7 @@ export default function ProfileClient({ user }: { user: any }) {
 
       {/* Modal éditer document */}
       {editDoc && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center" onClick={() => setEditDoc(null)}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end lg:items-center lg:justify-center">
           <div className="bg-surface w-full lg:max-w-lg rounded-t-3xl lg:rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-ink font-bold text-lg">

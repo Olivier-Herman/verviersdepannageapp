@@ -678,7 +678,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
 
         {/* Popup MODE MANUEL : preview avant ecriture (Olivier 2026-06-06 PM) */}
         {pendingPreview && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setPendingPreview(null)}>
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
             <div className="bg-surface border rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-2xl">👁</span>
@@ -764,7 +764,7 @@ export default function MigrationClient({ userRole, userName, userEmail, userMod
 
         {/* Popup confirmation conflit */}
         {confirmConflict && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={cancelRescan}>
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
             <div className="bg-surface border rounded-2xl p-5 max-w-md w-full" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle size={20} className="text-warning" />

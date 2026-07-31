@@ -525,7 +525,7 @@ function ActionButton({
 
 function BottomSheet({ children, title, onClose }: { children: React.ReactNode; title: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50">
       <div
         onClick={e => e.stopPropagation()}
         className="bg-surface w-full max-w-md rounded-t-2xl border-t border-l border-r p-5 pb-8 shadow-2xl"

@@ -154,7 +154,7 @@ export default function AdminCashClient({ drivers, entries, userRole }: {
 
         {/* Modal ajustement caisse — superadmin */}
         {adjustTarget && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4" onClick={() => !adjBusy && setAdjustTarget(null)}>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4">
             <div className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4" onClick={e => e.stopPropagation()}>
               <div>
                 <h3 className="text-ink font-bold text-base">⚙ Ajuster la caisse</h3>

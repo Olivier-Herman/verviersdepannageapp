@@ -344,7 +344,7 @@ function AddRemarkModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={!saving ? onClose : undefined}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-surface rounded-2xl p-5 max-w-lg w-full" onClick={e => e.stopPropagation()}>
         <h3 className="text-ink font-semibold mb-3">💬 Ajouter une remarque</h3>
         <textarea

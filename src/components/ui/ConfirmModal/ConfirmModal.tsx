@@ -78,7 +78,6 @@ export function ConfirmModal({
       {/* Backdrop — bg-black/40 (fixe, pas thème : un dim sombre marche light + dark) */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={loading ? undefined : onCancel}
         aria-hidden="true"
       />
 

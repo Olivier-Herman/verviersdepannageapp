@@ -830,7 +830,7 @@ export default function TarifsClient(props: Props) {
 
         {/* ── Edit modal ────────────────────────────────────── */}
         {editTariff && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !editSaving && setEditTariff(null)}>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-surface rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <h2 className="text-lg font-display font-bold mb-4">
                 {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}

@@ -55,7 +55,7 @@ export default function VehicleFicheSheet({ missionId, onClose, userModules = []
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 flex justify-end">
       <div className="bg-surface w-full max-w-xl h-full overflow-y-auto shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}>
 

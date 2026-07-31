@@ -433,7 +433,7 @@ function VehSheet({ m, onSave, onClose, isNative }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
       <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between"><h2 className="text-ink font-semibold text-lg">Modifier le véhicule</h2><button onClick={onClose} className="text-ink-muted text-2xl">×</button></div>
 
@@ -528,7 +528,7 @@ function AddrActionModal({ title, address, onNavigate, onModify, onClose }: {
   title: string; address: string; onNavigate: () => void; onModify?: () => void; onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
       <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start">
           <div><p className="text-ink-muted text-xs">{title}</p><p className="text-ink font-medium text-sm mt-0.5">{address}</p></div>
@@ -2980,7 +2980,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* Modal "Gestion d'une demande existante" : declenche si 5-taps alors qu une demande est pending */}
       {derogManageOpen && derogPending && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !derogSubmitting && setDerogManageOpen(false)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div>
               <p className="text-ink font-semibold">⏳ Demande déjà en attente</p>
@@ -3025,7 +3025,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* Modal "Définir un montant à encaisser" (geste 5-taps sur Dossier) */}
       {setAmtModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !setAmtSubmitting && setSetAmtModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div>
               <p className="text-ink font-semibold">💶 Montant à encaisser</p>
@@ -3093,7 +3093,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* Modal saisie motif dérogation */}
       {derogModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !derogSubmitting && setDerogModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <div>
               <p className="text-ink font-semibold">{derogPending ? '✏️ Modifier la demande de dérogation' : '🆘 Demande de dérogation paiement'}</p>
@@ -3863,7 +3863,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* ── Modal Actions ☰ ─────────────────────────────────────────────── */}
       {showGrid && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowGrid(false)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl pb-8" onClick={e => e.stopPropagation()}>
             <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-surface-hover rounded-full" /></div>
             <div className="px-5 pb-3 border-b border flex items-center justify-between">
@@ -3980,7 +3980,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* ── Modal Adresse de destination (DSP→REM, SNC/SC REM) ───────────── */}
       {destPrompt && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => !loading && setDestPrompt(null)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
               <h2 className="text-ink font-semibold text-lg">
@@ -4019,7 +4019,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* ── Modal Mise en parc ───────────────────────────────────────────── */}
       {showPark && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowPark(false)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-3 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
               <h2 className="text-ink font-semibold text-lg"><T k="close.choose_depot" /></h2>
@@ -4106,7 +4106,7 @@ export default function DriverClient({ mission: init, currentUserId, isReadOnly 
 
       {/* ── Modal DPR motif (Deplacement Pour Rien typé) ───────────────── */}
       {showDprMotif && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setShowDprMotif(false)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl pb-8 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-surface-hover rounded-full" /></div>
             <div className="px-5 pb-3 border-b border flex items-center justify-between">

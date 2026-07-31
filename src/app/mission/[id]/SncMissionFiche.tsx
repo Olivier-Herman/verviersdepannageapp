@@ -970,7 +970,7 @@ export default function SncMissionFiche({
 
       {/* Modal Adresse de destination (REM client / REM dépôt / REM directe) */}
       {destPrompt && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-end" onClick={() => setDestPrompt(null)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
           <div className="bg-surface w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center">
               <h2 className="text-ink font-semibold text-lg">📍 Adresse de destination</h2>

@@ -60,7 +60,7 @@ export default function FinesMonthlyRecap() {
   if (!show || !recap) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => setShow(false)}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
       <div className="bg-surface rounded-2xl border max-w-sm w-full p-5 shadow-xl" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-ink mb-1">🚦 Un petit visuel de tes amendes actuelles</h2>
         <p className="text-ink-secondary text-sm mb-3">Le total de tes amendes, mois par mois :</p>

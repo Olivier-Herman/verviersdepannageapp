@@ -61,7 +61,7 @@ export default function RemarksAddModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
       <div className="bg-surface w-full max-w-lg rounded-2xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-ink font-bold text-base">➕ Ajouter une remarque</h3>

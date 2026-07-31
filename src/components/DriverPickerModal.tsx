@@ -106,7 +106,6 @@ export default function DriverPickerModal({ missionId, incidentLat, incidentLng,
       aria-modal="true"
       aria-labelledby="driver-picker-title"
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-      onClick={onClose}
     >
       <div
         className="bg-surface border rounded-card w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-md"

@@ -394,7 +394,7 @@ function AddPrestationModal({ editingId, onClose, onCreated }: { editingId: stri
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-surface rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-4">
           <span className="text-2xl">🏁</span>

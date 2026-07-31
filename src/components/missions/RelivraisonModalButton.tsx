@@ -172,7 +172,7 @@ export default function RelivraisonModalButton({
       </div>
 
       {open && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => !busy && setOpen(false)}>
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
           <div className="bg-surface w-full max-w-md rounded-2xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-ink font-bold text-lg">🔁 Relivraison</h3>
 

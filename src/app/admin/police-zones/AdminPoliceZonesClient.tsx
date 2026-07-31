@@ -134,7 +134,7 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4" onClick={() => !busy && setEditing(null)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4">
           <div className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-3" onClick={e => e.stopPropagation()}>
             <h3 className="text-ink font-bold text-base">{editing.id ? '✏️ Modifier la zone' : '+ Nouvelle zone'}</h3>
 
