@@ -35,10 +35,25 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!isSuper(session?.user)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const months = Math.min(Math.max(parseInt(new URL(req.url).searchParams.get('months') || '12'), 1), 24)
+  const sp = new URL(req.url).searchParams
+  const months = Math.min(Math.max(parseInt(sp.get('months') || '12'), 1), 24)
+  const category = sp.get('category')
   const sb = createAdminClient()
   try {
     const config = await loadConfig(sb)
+
+    // Drill-down : liste des factures d'une catégorie (exclusions appliquées).
+    if (category) {
+      const excl = new Set<number>(config.excluded || [])
+      for (const [child, cid] of Object.entries(config.merges || {})) if ((config.excluded || []).includes(cid)) excl.add(Number(child))
+      const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1)
+      const { data: fx } = await sb.from('achats_factures')
+        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, resume, sous_categorie')
+        .eq('categorie', category).gte('invoice_date', d.toISOString().slice(0, 10))
+        .order('amount_htva', { ascending: false }).limit(500)
+      return NextResponse.json({ ok: true, category, invoices: (fx || []).filter((r: any) => !excl.has(r.partner_id)) })
+    }
+
     const data = await analyzeAchats(months, config)
 
     // Catégories IA (cache achats_factures) — exclusions appliquées.

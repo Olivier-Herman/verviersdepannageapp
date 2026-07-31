@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   const sp     = new URL(req.url).searchParams
   const doSync = sp.get('sync') === '1'
   const months = Math.min(Math.max(parseInt(sp.get('months') || '12'), 1), 24)
-  const limit  = Math.min(Math.max(parseInt(sp.get('limit') || '8'), 1), 30)
+  const limit  = Math.min(Math.max(parseInt(sp.get('limit') || '8'), 1), 40)
   const sb = createAdminClient()
 
   let synced = 0

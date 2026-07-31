@@ -23,6 +23,8 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   const [mergeSrc, setMergeSrc] = useState<{ id: number; name: string } | null>(null)
   const [busy, setBusy]   = useState(false)
   const [parsing, setParsing] = useState(false)
+  const [parseProg, setParseProg] = useState<{ done: number; remaining: number | null } | null>(null)
+  const [catDetail, setCatDetail] = useState<{ name: string; invoices: any[] | null } | null>(null)
 
   const load = (m: number) => {
     setLoading(true); setErr('')
@@ -43,16 +45,34 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
     } finally { setBusy(false) }
   }
 
-  // Catégorisation IA : traite un lot (sync la 1re fois si le cache est vide).
+  // Catégorisation IA : boucle par lots de 30 jusqu'à épuisement (progression
+  // live). Sync la 1re fois si le cache est vide.
   const runParse = async () => {
-    setParsing(true)
+    setParsing(true); setParseProg({ done: 0, remaining: null })
     try {
-      const needSync = !data?.coverage || data.coverage.total === 0
-      const r = await fetch(`/api/cron/achats-parse?limit=8${needSync ? '&sync=1' : ''}`, { cache: 'no-store' })
-      const j = await r.json()
-      if (j.error) alert(j.error)
+      let first = true, done = 0
+      for (let i = 0; i < 200; i++) {
+        const needSync = first && (!data?.coverage || data.coverage.total === 0)
+        const r = await fetch(`/api/cron/achats-parse?limit=30${needSync ? '&sync=1' : ''}`, { cache: 'no-store' })
+        const j = await r.json()
+        first = false
+        if (j.error) { alert(j.error); break }
+        done += (j.parsed || 0) + (j.failed || 0)
+        setParseProg({ done, remaining: j.remaining ?? null })
+        if (!j.remaining || j.remaining <= 0) break
+      }
       load(months)
-    } catch (e: any) { alert(e.message) } finally { setParsing(false) }
+    } catch (e: any) { alert(e.message) } finally { setParsing(false); setParseProg(null) }
+  }
+
+  // Détail d'une catégorie : liste des factures qui composent le chiffre.
+  const openCategory = async (name: string) => {
+    setCatDetail({ name, invoices: null })
+    try {
+      const r = await fetch(`/api/admin/achats?category=${encodeURIComponent(name)}&months=${months}`, { cache: 'no-store' })
+      const j = await r.json()
+      setCatDetail({ name, invoices: j.invoices || [] })
+    } catch { setCatDetail({ name, invoices: [] }) }
   }
 
   const maxMonth = data ? Math.max(1, ...data.byMonth.map((m: any) => m.htva)) : 1
@@ -151,12 +171,16 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                 <button onClick={runParse} disabled={parsing}
                   className="text-xs px-2.5 py-1 rounded-lg bg-brand text-white disabled:opacity-50 inline-flex items-center gap-1 whitespace-nowrap">
                   {parsing ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                  {data.coverage?.total ? 'Traiter un lot' : 'Lancer l’IA'}
+                  {parsing
+                    ? (parseProg ? `${parseProg.done} traité${parseProg.remaining != null ? ` · reste ${parseProg.remaining}` : ''}` : '…')
+                    : (data.coverage?.total ? 'Traiter tout' : 'Lancer l’IA')}
                 </button>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
                 {(aiOn ? data.aiCategories : data.byCategory.map((c: any) => ({ categorie: c.account, amount: c.amount }))).slice(0, 14).map((c: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
+                  <button key={i} type="button" disabled={!aiOn}
+                    onClick={() => aiOn && openCategory(c.categorie)}
+                    className={`flex items-center gap-2 text-sm text-left rounded-lg px-1.5 py-1 -mx-1.5 ${aiOn ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between gap-2">
                         <span className="text-ink truncate" title={c.categorie}>{c.categorie}</span>
@@ -166,7 +190,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                         <div className="h-full bg-emerald-500/60 rounded-full" style={{ width: `${(c.amount / (aiOn ? maxAi : maxCat)) * 100}%` }} />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
                 {!aiOn && <p className="text-ink-muted text-[11px] italic mt-1">Catégories provisoires (comptes Odoo). Lance l’IA pour la vraie catégorisation par document.</p>}
               </div>
@@ -264,6 +288,40 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
 
           <div className="p-3 border-t text-xs text-ink-muted">
             <b>Fusionner</b> = regrouper des fiches doublon (ex. les deux « Herman Olivier »). <b>Exclure</b> = retirer une fiche qui n'est pas une dépense à suivre (ex. mouvement intercompagnie). Odoo n'est jamais modifié.
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Détail d'une catégorie : les factures qui composent le chiffre */}
+    {catDetail && (
+      <div className="fixed inset-0 z-[200] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="bg-surface border w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl max-h-[88vh] flex flex-col">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <PieChart size={18} className="text-brand" />
+            <h3 className="font-semibold text-ink truncate">{catDetail.name}</h3>
+            {catDetail.invoices && <span className="text-xs text-ink-muted whitespace-nowrap">· {catDetail.invoices.length} fact. · {eur(catDetail.invoices.reduce((s: number, x: any) => s + (x.amount_htva || 0), 0))}</span>}
+            <button onClick={() => setCatDetail(null)} className="ml-auto p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {!catDetail.invoices ? (
+              <p className="p-4 text-ink-muted text-sm">Chargement…</p>
+            ) : catDetail.invoices.length === 0 ? (
+              <p className="p-4 text-ink-muted text-sm italic">Aucune facture.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-ink-muted text-[11px] uppercase border-b"><th className="text-left p-2">Fournisseur</th><th className="text-left">Détail</th><th className="text-right p-2">HTVA</th></tr></thead>
+                <tbody>
+                  {catDetail.invoices.map((f: any) => (
+                    <tr key={f.odoo_move_id} className="border-b border-white/5 align-top">
+                      <td className="p-2"><div className="text-ink">{f.supplier_name}</div><div className="text-[11px] text-ink-muted">{f.invoice_date} · {f.ref || '—'}</div></td>
+                      <td className="py-2 text-xs">{f.sous_categorie && <span className="text-brand">{f.sous_categorie}</span>}{f.resume && <div className="text-ink-muted">{f.resume}</div>}</td>
+                      <td className="p-2 text-right tabular-nums text-ink whitespace-nowrap">{eur(f.amount_htva || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
