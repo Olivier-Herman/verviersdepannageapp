@@ -37,6 +37,8 @@ export interface RelivraisonInput {
    * Le dispatcher choisit la source au moment de cliquer "Relivrer".
    */
   sourceOverride?: string | null
+  /** Montant HTVA imposé sur la REL (cas source Privé) → special_tarif_htva. */
+  imposedHtva?: number | null
 }
 
 export async function createRelivraisonMission(input: RelivraisonInput): Promise<{ id?: string; error?: string }> {
@@ -78,6 +80,8 @@ export async function createRelivraisonMission(input: RelivraisonInput): Promise
                                ? input.sourceOverride.trim()
                                : parent.source,
       source_format:         'auto_rel',
+      // Privé : montant HTVA imposé (tarif spécial) — l'estimation n'est pas recalculée.
+      special_tarif_htva:    input.imposedHtva && input.imposedHtva > 0 ? input.imposedHtva : null,
       // Olivier 2026-05-28 : la mission REL a son propre type 'REL' (et son
       // propre tarif source/relivraison configurable dans /admin/tarifs).
       // Avant : 'remorquage' -> l estimation utilisait le tarif REM, ce qui

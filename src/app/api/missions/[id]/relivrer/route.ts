@@ -29,7 +29,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   //                          REL passe en 'touring'/'ethias'/etc.)
   //   - driver_comments    : instructions chauffeur (une par ligne) à semer sur
   //                          la nouvelle fiche REL → pop-up à l'acceptation.
-  let body: { redelivery_address?: string; source_override?: string | null; driver_comments?: string } = {}
+  let body: { redelivery_address?: string; source_override?: string | null; driver_comments?: string; imposed_htva?: number | null } = {}
   try { body = await req.json() } catch {}
 
   const sb = createAdminClient()
@@ -75,6 +75,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     parkLng:           parent.destination_lng ?? null,
     redeliveryAddress: redelivery,
     sourceOverride:    body.source_override || null,
+    // Privé → montant HTVA imposé sur la REL (tarif spécial). La fiche d'origine
+    // garde son tarif calculé.
+    imposedHtva:       body.source_override === 'prive' && Number(body.imposed_htva) > 0 ? Number(body.imposed_htva) : null,
   })
 
   if (!result.id) {
