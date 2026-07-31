@@ -7,6 +7,7 @@
 // Port adapte de Verviers-QR pages/api/inventory/process.js + reprint.js.
 
 import { odooRpc }              from '@/lib/odoo'
+import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
 import { createAdminClient }    from '@/lib/supabase'
 import { buildParcLabelZPL }    from '@/lib/print/zpl-templates/parc-label'
 import { printZPLRaw }          from '@/lib/print/zebra-raw'
@@ -50,22 +51,13 @@ export async function addTagToVehicle(vehicleId: number, tagId: number): Promise
 // fleet.vehicle : find or create avec marque/modele
 // ─────────────────────────────────────────────────────────────────────
 
+// Résolution centralisée anti-doublon — cf. @/lib/odoo-fleet.
 async function findOrCreateBrand(brand: string): Promise<number> {
-  const found = await odooRpc<any[]>('fleet.vehicle.model.brand', 'search_read', [
-    [['name', 'ilike', brand]],
-  ], { fields: ['id'], limit: 1 })
-  if (found && found.length > 0) return found[0].id
-  return await odooRpc<number>('fleet.vehicle.model.brand', 'create', [{ name: brand }])
+  return resolveBrandId(odooRpc, brand)
 }
 
 async function findOrCreateModel(brandId: number, model: string): Promise<number> {
-  const found = await odooRpc<any[]>('fleet.vehicle.model', 'search_read', [
-    [['name', 'ilike', model], ['brand_id', '=', brandId]],
-  ], { fields: ['id'], limit: 1 })
-  if (found && found.length > 0) return found[0].id
-  return await odooRpc<number>('fleet.vehicle.model', 'create', [{
-    name: model, brand_id: brandId,
-  }])
+  return resolveModelId(odooRpc, brandId, model)
 }
 
 export interface VehicleLookupParams {

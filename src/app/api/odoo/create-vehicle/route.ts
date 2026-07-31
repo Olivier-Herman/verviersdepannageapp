@@ -4,23 +4,17 @@ import { NextResponse }     from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { odooRpc, withOdooActor } from '@/lib/odoo'
+import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
 
+// Résolution centralisée anti-doublon — cf. @/lib/odoo-fleet.
 async function findOrCreateBrand(name: string): Promise<number | false> {
   if (!name?.trim()) return false
-  const existing = await odooRpc<any[]>('fleet.vehicle.model.brand', 'search_read',
-    [[['name', 'ilike', name.trim()]]], { fields: ['id', 'name'], limit: 1 })
-  if (existing?.length) return existing[0].id
-  return await odooRpc<number>('fleet.vehicle.model.brand', 'create', [{ name: name.trim() }])
+  return resolveBrandId(odooRpc, name)
 }
 
 async function findOrCreateModel(modelName: string, brandId: number): Promise<number | false> {
   if (!modelName?.trim()) return false
-  const existing = await odooRpc<any[]>('fleet.vehicle.model', 'search_read',
-    [[['name', 'ilike', modelName.trim()], ['brand_id', '=', brandId]]],
-    { fields: ['id', 'name'], limit: 1 })
-  if (existing?.length) return existing[0].id
-  return await odooRpc<number>('fleet.vehicle.model', 'create',
-    [{ name: modelName.trim(), brand_id: brandId }])
+  return resolveModelId(odooRpc, brandId, modelName)
 }
 
 export async function POST(req: Request) {

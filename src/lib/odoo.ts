@@ -9,6 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase'
 import { AsyncLocalStorage } from 'async_hooks'
+import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
 
 const ODOO_URL     = process.env.ODOO_URL!
 const ODOO_DB      = process.env.ODOO_DB!
@@ -134,25 +135,16 @@ async function rpc<T = any>(model: string, method: string, args: any[] = [], kwa
 // ============================================================
 // FLEET — Marque
 // ============================================================
+// Résolution centralisée (normalisation anti-doublon) — cf. @/lib/odoo-fleet.
 async function findOrCreateBrand(brandName: string): Promise<number> {
-  const results = await rpc<any[]>('fleet.vehicle.model.brand', 'search_read',
-    [[['name', 'ilike', brandName]]],
-    { fields: ['id', 'name'], limit: 1 }
-  )
-  if (results.length > 0) return results[0].id
-  return rpc<number>('fleet.vehicle.model.brand', 'create', [{ name: brandName }])
+  return resolveBrandId(rpc, brandName)
 }
 
 // ============================================================
 // FLEET — Modèle de véhicule
 // ============================================================
 async function findOrCreateVehicleModel(brandId: number, modelName: string): Promise<number> {
-  const results = await rpc<any[]>('fleet.vehicle.model', 'search_read',
-    [[['brand_id', '=', brandId], ['name', 'ilike', modelName]]],
-    { fields: ['id', 'name'], limit: 1 }
-  )
-  if (results.length > 0) return results[0].id
-  return rpc<number>('fleet.vehicle.model', 'create', [{ brand_id: brandId, name: modelName }])
+  return resolveModelId(rpc, brandId, modelName)
 }
 
 // ============================================================
@@ -523,33 +515,12 @@ export async function createTGRQuote(params: {
     await rpc('fleet.vehicle', 'write', [[vehicleId], { state_id: FLEET_STATE_NEW_REQUEST }])
     console.log(`[Odoo TGR] Véhicule existant ${plate} → New Request`)
   } else {
-    // Créer le véhicule — trouver ou créer la marque et le modèle
+    // Créer le véhicule — trouver ou créer la marque et le modèle (résolution
+    // centralisée anti-doublon, cf. @/lib/odoo-fleet).
     let modelOdooId: number | null = null
     try {
-      // Chercher la marque
-      let brandId: number | null = null
-      const brands = await rpc<any[]>('fleet.vehicle.model.brand', 'search_read',
-        [[['name', 'ilike', brand]]],
-        { fields: ['id', 'name'], limit: 1 }
-      )
-      if (brands.length > 0) {
-        brandId = brands[0].id
-      } else {
-        brandId = await rpc<number>('fleet.vehicle.model.brand', 'create', [{ name: brand }])
-      }
-
-      // Chercher le modèle
-      const models = await rpc<any[]>('fleet.vehicle.model', 'search_read',
-        [[['name', 'ilike', model], ['brand_id', '=', brandId]]],
-        { fields: ['id', 'name'], limit: 1 }
-      )
-      if (models.length > 0) {
-        modelOdooId = models[0].id
-      } else {
-        modelOdooId = await rpc<number>('fleet.vehicle.model', 'create', [{
-          name: model, brand_id: brandId
-        }])
-      }
+      const brandId = await resolveBrandId(rpc, brand)
+      modelOdooId   = await resolveModelId(rpc, brandId, model)
     } catch(e) {
       console.error('[Odoo TGR] Erreur création modèle:', e)
     }

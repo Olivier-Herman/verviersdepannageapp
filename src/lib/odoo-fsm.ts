@@ -3,6 +3,8 @@
 // Séparé du connecteur principal — ne pas modifier odoo.ts
 // ============================================================
 
+import { resolveBrandId, resolveModelId } from '@/lib/odoo-fleet'
+
 const FSM_URL     = process.env.ODOO_TEST_URL || process.env.ODOO_URL!
 const FSM_DB      = process.env.ODOO_TEST_DB  || process.env.ODOO_DB!
 const FSM_UID     = parseInt(process.env.ODOO_UID || '8')
@@ -579,27 +581,9 @@ export async function findOrCreateFsmVehicle(data: {
     let modelId: number | null = null
 
     if (data.brandName && data.modelName) {
-      // Chercher ou créer la marque
-      let brandId: number | null = null
-      const brands = await rpcFsm<any[]>('fleet.vehicle.model.brand', 'search_read',
-        [[['name', 'ilike', data.brandName]]], { fields: ['id'], limit: 1 })
-      if (brands.length > 0) {
-        brandId = brands[0].id
-      } else {
-        brandId = await rpcFsm<number>('fleet.vehicle.model.brand', 'create', [{ name: data.brandName }])
-      }
-
-      // Chercher ou créer le modèle
-      const models = await rpcFsm<any[]>('fleet.vehicle.model', 'search_read',
-        [[['name', 'ilike', data.modelName], ['brand_id', '=', brandId]]],
-        { fields: ['id'], limit: 1 })
-      if (models.length > 0) {
-        modelId = models[0].id
-      } else {
-        modelId = await rpcFsm<number>('fleet.vehicle.model', 'create', [{
-          name: data.modelName, brand_id: brandId
-        }])
-      }
+      // Résolution centralisée anti-doublon — cf. @/lib/odoo-fleet.
+      const brandId = await resolveBrandId(rpcFsm, data.brandName)
+      modelId       = await resolveModelId(rpcFsm, brandId, data.modelName)
     }
 
     const vehicleData: any = {
