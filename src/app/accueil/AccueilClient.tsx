@@ -29,6 +29,7 @@ const T: Record<Lang, Record<string, string>> = {
     geoOutT: 'Vous n’êtes pas à l’accueil', geoOutM: 'L’enregistrement n’est possible que sur place, à l’accueil de Verviers Dépannage.',
     geoErrT: 'Position indisponible', geoErrM: 'Impossible d’obtenir votre position. Vérifiez votre GPS et réessayez.',
     retry: 'Réessayer',
+    privacy: '🔒 Votre position sert uniquement à confirmer votre présence à l’accueil, le temps de votre visite. Elle n’est pas conservée.',
   },
   en: {
     welcome: 'Welcome to', sub: 'Check in your visit in seconds',
@@ -45,6 +46,7 @@ const T: Record<Lang, Record<string, string>> = {
     geoOutT: 'You are not at reception', geoOutM: 'Check-in is only possible on site, at Verviers Dépannage reception.',
     geoErrT: 'Location unavailable', geoErrM: 'Could not get your location. Check your GPS and try again.',
     retry: 'Retry',
+    privacy: '🔒 Your location is only used to confirm you are at reception, for the duration of your visit. It is not stored.',
   },
 }
 
@@ -78,27 +80,47 @@ export default function AccueilClient() {
   const [geo, setGeo]       = useState<'checking' | 'ok' | 'denied' | 'outside' | 'error'>('checking')
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const t = T[lang]
-  const debRef = useRef<any>(null)
+  const debRef  = useRef<any>(null)
+  const watchRef = useRef<number | null>(null)
+  const cfgRef   = useRef<{ lat: number; lng: number; radius_m: number }>({ lat: 50.5703357, lng: 5.8216501, radius_m: 200 })
 
-  // Géolocalisation : on n'autorise l'enregistrement que sur place (accueil).
-  function requestGeo() {
+  function distM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+    const R = 6371000, r = (x: number) => (x * Math.PI) / 180
+    const dLa = r(bLat - aLat), dLo = r(bLng - aLng)
+    const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(dLo / 2) ** 2
+    return 2 * R * Math.asin(Math.sqrt(h))
+  }
+
+  // Géolocalisation SUIVIE en continu : on ré-évalue à chaque déplacement et on
+  // re-bloque si le visiteur sort de la zone. Le suivi s'arrête à la fin/fermeture.
+  function startGeo() {
     setGeo('checking')
     if (typeof navigator === 'undefined' || !navigator.geolocation) { setGeo('error'); return }
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
+    if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current)
+    watchRef.current = navigator.geolocation.watchPosition(
+      pos => {
         const lat = pos.coords.latitude, lng = pos.coords.longitude
         setCoords({ lat, lng })
-        try {
-          const r = await fetch(`/api/reception/geo-check?lat=${lat}&lng=${lng}`, { cache: 'no-store' })
-          const j = await r.json()
-          setGeo(j.allowed ? 'ok' : 'outside')
-        } catch { setGeo('error') }
+        const g = cfgRef.current
+        setGeo(distM(lat, lng, g.lat, g.lng) <= g.radius_m ? 'ok' : 'outside')
       },
       err => setGeo(err.code === 1 ? 'denied' : 'error'),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
     )
   }
-  useEffect(() => { requestGeo() }, [])
+  function stopGeo() {
+    if (watchRef.current != null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchRef.current); watchRef.current = null
+    }
+  }
+  useEffect(() => {
+    fetch('/api/reception/geo-config', { cache: 'no-store' })
+      .then(r => r.json()).then(g => { if (g && Number.isFinite(g.lat)) cfgRef.current = g }).catch(() => {})
+    startGeo()
+    return () => stopGeo()
+  }, [])
+  // On coupe la géoloc dès que la visite est enregistrée.
+  useEffect(() => { if (done) stopGeo() }, [done])
 
   useEffect(() => {
     fetch('/api/reception/motifs', { cache: 'no-store' })
@@ -151,6 +173,7 @@ export default function AccueilClient() {
 
   function reset() {
     setSel(null); clearVehicle(); setEmail(''); setPhone(''); setNote(''); setErr(''); setDone(false)
+    startGeo()   // nouvelle visite → on relance le suivi de position
   }
 
   /* ---------- Confirmation ---------- */
@@ -218,10 +241,11 @@ export default function AccueilClient() {
                   </span>
                   <h2 className="mt-6 text-2xl font-black" style={{ color: INK }}>{st?.T}</h2>
                   <p className="mt-2 text-[16px] leading-relaxed max-w-sm" style={{ color: INK2 }}>{st?.M}</p>
-                  <button onClick={requestGeo} className="mt-7 px-8 py-3.5 rounded-2xl font-bold text-white text-lg active:scale-[.99] transition"
+                  <button onClick={startGeo} className="mt-7 px-8 py-3.5 rounded-2xl font-bold text-white text-lg active:scale-[.99] transition"
                     style={{ background: RED }}>{t.retry}</button>
                 </>
               )}
+              <p className="mt-8 text-xs leading-relaxed max-w-xs" style={{ color: MUTED }}>{t.privacy}</p>
             </div>
           </div>
           <p className="text-center text-xs mt-4" style={{ color: MUTED }}>Verviers Dépannage · Accueil visiteur</p>
@@ -385,6 +409,7 @@ export default function AccueilClient() {
               onMouseUp={e => { if (!(busy || !ready)) e.currentTarget.style.background = RED }}>
               {busy ? t.sending : t.submit}
             </button>
+            <p className="text-center text-xs leading-relaxed pt-1" style={{ color: MUTED }}>{t.privacy}</p>
           </div>
         </div>
         <p className="text-center text-xs mt-4" style={{ color: MUTED }}>Verviers Dépannage · Accueil visiteur</p>
