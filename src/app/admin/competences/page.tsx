@@ -14,11 +14,20 @@ export default async function AdminCompetencesPage() {
   if (!isSuper) redirect('/dashboard?error=access_denied')
 
   const sb = createAdminClient()
-  const [{ data: users }, { data: motifs }, { data: links }] = await Promise.all([
-    sb.from('users').select('id, name, role').neq('role', 'garage').order('name'),
+  const [{ data: usersRaw }, { data: motifs }, { data: links }] = await Promise.all([
+    sb.from('users').select('id, name, role, roles').order('name'),
     sb.from('reception_motifs').select('id, label, kind, service').eq('active', true).order('sort_order').order('label'),
     sb.from('user_competences').select('user_id, motif_id'),
   ])
+  const users = (usersRaw || []).filter(isReceptionStaff)
 
-  return <CompetencesMatrixClient users={users || []} motifs={motifs || []} links={links || []} />
+  return <CompetencesMatrixClient users={users} motifs={motifs || []} links={links || []} />
+}
+
+// Employés « réception » : au moins un rôle desk/téléphonie (exclut les purs
+// chauffeurs et les garages). Gère role singulier + roles[].
+function isReceptionStaff(u: any): boolean {
+  const STAFF = ['dispatcher', 'admin', 'superadmin']
+  const roles: string[] = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean)
+  return roles.some(r => STAFF.includes(r))
 }

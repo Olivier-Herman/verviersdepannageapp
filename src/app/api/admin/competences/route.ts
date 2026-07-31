@@ -22,13 +22,16 @@ export async function GET() {
   if (!isSuperadmin(session)) return NextResponse.json({ error: 'Réservé au superadmin' }, { status: 403 })
 
   const sb = createAdminClient()
-  const [{ data: users }, { data: motifs }, { data: links }] = await Promise.all([
-    sb.from('users').select('id, name, role').neq('role', 'garage').order('name'),
+  const [{ data: usersRaw }, { data: motifs }, { data: links }] = await Promise.all([
+    sb.from('users').select('id, name, role, roles').order('name'),
     sb.from('reception_motifs').select('id, label, kind, service').eq('active', true)
       .order('sort_order').order('label'),
     sb.from('user_competences').select('user_id, motif_id'),
   ])
-  return NextResponse.json({ users: users || [], motifs: motifs || [], links: links || [] })
+  const STAFF = ['dispatcher', 'admin', 'superadmin']
+  const users = (usersRaw || []).filter((u: any) =>
+    (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean).some((r: string) => STAFF.includes(r)))
+  return NextResponse.json({ users, motifs: motifs || [], links: links || [] })
 }
 
 export async function POST(req: NextRequest) {
