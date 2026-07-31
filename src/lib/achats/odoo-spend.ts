@@ -44,7 +44,7 @@ export async function analyzeAchats(monthsBack = 12): Promise<AchatsAnalysis> {
       [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense']],
       ['balance:sum'], ['account_id'],
     ]),
-    odooRpc<any[]>('account.move', 'search_read', [billDom, { fields: ['partner_id', 'ref', 'invoice_date', 'amount_total'], limit: 4000 }]),
+    odooRpc<any[]>('account.move', 'search_read', [billDom, ['partner_id', 'ref', 'invoice_date', 'amount_total']], { limit: 4000 }),
   ])
 
   const totalHtva = Math.round((overviewRows?.[0]?.amount_untaxed || 0))
