@@ -118,6 +118,8 @@ export default async function AdminPage() {
           desc="Liste obligatoire à la création d'une mission Police-Saisie (défaut assurance, alcool, etc.). Apparait sur l'étiquette parc." />
         <Card href="/admin/reception-motifs" icon={Tag} label="Motifs de réception"
           desc="Motifs de visite et d'appel (bilingue FR/EN). Chaque motif crée une compétence activable dans la matrice." />
+        <Card href="/admin/competences" icon={Users} label="Compétences réception"
+          desc="Matrice motifs × employés (superadmin). Détermine qui reçoit quelles visites/appels." />
         <Card href="/admin/police-zones" icon={ShieldCheck} label="Zones de police"
           desc="Liste des zones (Vesdre, Fagnes…) proposées au chauffeur lors de la création d'une mission Police. Une zone par défaut." />
         <Card href="/admin/garage-partners" icon={Users} label="Garages partenaires"
