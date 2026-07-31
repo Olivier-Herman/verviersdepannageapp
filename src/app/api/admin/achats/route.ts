@@ -38,9 +38,35 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams
   const months = Math.min(Math.max(parseInt(sp.get('months') || '12'), 1), 24)
   const category = sp.get('category')
+  const light = sp.get('light') === '1'
   const sb = createAdminClient()
+
+  const periodStart = () => { const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1); return d.toISOString().slice(0, 10) }
+  const excludedMemberSet = (config: SupplierConfig) => {
+    const s = new Set<number>(config.excluded || [])
+    for (const [child, cid] of Object.entries(config.merges || {})) if ((config.excluded || []).includes(cid)) s.add(Number(child))
+    return s
+  }
+  const aiCatsAndCoverage = async (config: SupplierConfig) => {
+    const excl = excludedMemberSet(config)
+    const { data: fx } = await sb.from('achats_factures')
+      .select('categorie, amount_htva, partner_id, parsed_at').gte('invoice_date', periodStart())
+    const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id))
+    const parsedRows = rows.filter((r: any) => r.parsed_at && r.categorie)
+    const catMap: Record<string, number> = {}
+    for (const r of parsedRows) catMap[r.categorie] = (catMap[r.categorie] || 0) + (r.amount_htva || 0)
+    const aiCategories = Object.entries(catMap).map(([categorie, amount]) => ({ categorie, amount: Math.round(amount) })).sort((a, b) => b.amount - a.amount)
+    const coverage = { parsed: parsedRows.length, total: rows.length, pct: rows.length ? Math.round(parsedRows.length / rows.length * 100) : 0 }
+    return { aiCategories, coverage }
+  }
+
   try {
     const config = await loadConfig(sb)
+
+    // Mode LÉGER (polling temps réel) : uniquement le cache, aucun appel Odoo.
+    if (light) {
+      return NextResponse.json({ ok: true, light: true, ...(await aiCatsAndCoverage(config)) })
+    }
 
     // Drill-down : liste des factures d'une catégorie (exclusions appliquées).
     if (category) {
@@ -55,24 +81,8 @@ export async function GET(req: Request) {
     }
 
     const data = await analyzeAchats(months, config)
-
-    // Catégories IA (cache achats_factures) — exclusions appliquées.
-    const excludedMember = new Set<number>(config.excluded || [])
-    for (const [child, cid] of Object.entries(config.merges || {})) {
-      if ((config.excluded || []).includes(cid)) excludedMember.add(Number(child))
-    }
-    const { data: fx } = await sb.from('achats_factures')
-      .select('categorie, amount_htva, partner_id, parsed_at').gte('invoice_date', data.periodStart)
-    const rows = (fx || []).filter((r: any) => !excludedMember.has(r.partner_id))
-    const parsedRows = rows.filter((r: any) => r.parsed_at && r.categorie)
-    const catMap: Record<string, number> = {}
-    for (const r of parsedRows) catMap[r.categorie] = (catMap[r.categorie] || 0) + (r.amount_htva || 0)
-    const aiCategories = Object.entries(catMap)
-      .map(([categorie, amount]) => ({ categorie, amount: Math.round(amount) }))
-      .sort((a, b) => b.amount - a.amount)
-    const coverage = { parsed: parsedRows.length, total: rows.length, pct: rows.length ? Math.round(parsedRows.length / rows.length * 100) : 0 }
-
-    return NextResponse.json({ ok: true, config, ...data, aiCategories, coverage })
+    const ai = await aiCatsAndCoverage(config)
+    return NextResponse.json({ ok: true, config, ...data, ...ai })
   } catch (e: any) {
     console.error('[admin/achats]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })

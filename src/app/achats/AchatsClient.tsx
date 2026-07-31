@@ -36,6 +36,19 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   }
   useEffect(() => { load(months) }, [months])
 
+  // Temps réel : rafraîchit la couverture + les catégories (cache Supabase,
+  // aucun appel Odoo) toutes les 12 s → la progression du parsing s'affiche live.
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/admin/achats?light=1&months=${months}`, { cache: 'no-store' })
+        const j = await r.json()
+        if (j.ok) setData((prev: any) => prev ? { ...prev, aiCategories: j.aiCategories, coverage: j.coverage } : prev)
+      } catch {}
+    }, 12000)
+    return () => clearInterval(id)
+  }, [months])
+
   const act = async (payload: any) => {
     setBusy(true)
     try {
