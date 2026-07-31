@@ -25,7 +25,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   const [parsing, setParsing] = useState(false)
   const [parseProg, setParseProg] = useState<{ done: number; remaining: number | null } | null>(null)
   const [catDetail, setCatDetail] = useState<{ name: string; invoices: any[] | null } | null>(null)
-  const [vehDetail, setVehDetail] = useState<{ plate: string; truck: string | null; invoices: any[] | null } | null>(null)
+  const [vehDetail, setVehDetail] = useState<{ plate: string; truck: string | null; total?: number; cats?: Record<string, number>; invoices: any[] | null } | null>(null)
   const [supDetail, setSupDetail] = useState<{ id: number; name: string; invoices: any[] | null } | null>(null)
 
   const load = (m: number) => {
@@ -119,14 +119,14 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
     } catch { setSupDetail({ id, name, invoices: [] }) }
   }
 
-  // Détail d'un véhicule : factures rattachées à la plaque.
-  const openVehicle = async (plate: string, truck: string | null) => {
-    setVehDetail({ plate, truck, invoices: null })
+  // Détail d'un véhicule : ventilation par poste (cats) + factures rattachées.
+  const openVehicle = async (v: any) => {
+    setVehDetail({ plate: v.plate, truck: v.truck, total: v.total, cats: v.cats, invoices: null })
     try {
-      const r = await fetch(`/api/admin/achats?vehicle=${encodeURIComponent(plate)}&months=${months}`, { cache: 'no-store' })
+      const r = await fetch(`/api/admin/achats?vehicle=${encodeURIComponent(v.plate)}&months=${months}`, { cache: 'no-store' })
       const j = await r.json()
-      setVehDetail({ plate, truck, invoices: j.invoices || [] })
-    } catch { setVehDetail({ plate, truck, invoices: [] }) }
+      setVehDetail({ plate: v.plate, truck: v.truck, total: v.total, cats: v.cats, invoices: j.invoices || [] })
+    } catch { setVehDetail({ plate: v.plate, truck: v.truck, total: v.total, cats: v.cats, invoices: [] }) }
   }
 
   const maxMonth = data ? Math.max(1, ...data.byMonth.map((m: any) => m.htva)) : 1
@@ -269,7 +269,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                     {data.byVehicle.slice(0, 30).map((v: any) => {
                       const topCat = Object.entries(v.cats || {}).sort((a: any, b: any) => b[1] - a[1])[0]
                       return (
-                        <tr key={v.plate} className="border-b border-white/5 hover:bg-white/5 cursor-pointer" onClick={() => openVehicle(v.plate, v.truck)}>
+                        <tr key={v.plate} className="border-b border-white/5 hover:bg-white/5 cursor-pointer" onClick={() => openVehicle(v)}>
                           <td className="py-2 text-ink">{v.truck || <span className="text-ink-muted italic">non répertorié</span>}</td>
                           <td className="text-ink-secondary tabular-nums">{v.plate}</td>
                           <td className="text-ink-muted text-xs truncate max-w-[160px]">{topCat ? topCat[0] : '—'}</td>
@@ -427,8 +427,21 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
             <button onClick={() => setVehDetail(null)} className="ml-auto p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
           </div>
           <div className="overflow-y-auto flex-1">
+            {vehDetail.cats && Object.keys(vehDetail.cats).length > 0 && (
+              <div className="p-4 border-b">
+                <p className="text-ink-muted text-[11px] uppercase tracking-wide mb-2">Ventilation par poste</p>
+                <div className="flex flex-col gap-1.5">
+                  {Object.entries(vehDetail.cats).sort((a: any, b: any) => b[1] - a[1]).map(([cat, amt]: any) => (
+                    <div key={cat} className="text-sm">
+                      <div className="flex justify-between gap-2"><span className="text-ink">{cat}</span><span className="text-ink-secondary tabular-nums">{eur(Math.round(amt))}</span></div>
+                      <div className="h-1.5 rounded-full bg-white/5 mt-0.5 overflow-hidden"><div className="h-full bg-emerald-500/60 rounded-full" style={{ width: `${(amt / Math.max(...(Object.values(vehDetail.cats!) as number[]))) * 100}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {!vehDetail.invoices ? (
-              <p className="p-4 text-ink-muted text-sm">Chargement…</p>
+              <p className="p-4 text-ink-muted text-sm">Chargement des factures…</p>
             ) : vehDetail.invoices.length === 0 ? (
               <p className="p-4 text-ink-muted text-sm italic">Aucune facture.</p>
             ) : (
