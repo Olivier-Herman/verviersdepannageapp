@@ -6,7 +6,15 @@ import {
   KeyRound, PenLine, MapPin, Search, Check, Mail, Phone, X, type LucideIcon,
 } from 'lucide-react'
 
-type Motif = { id: string; label: string; label_en: string | null; requires_vehicle: boolean; free_text: boolean }
+type Motif = { id: string; label: string; label_en: string | null; requires_vehicle: boolean; free_text: boolean; color: string | null; section: string | null }
+
+// Texte lisible sur un fond de couleur donné (blanc si sombre, encre si clair).
+function textOn(hex?: string | null): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim())
+  if (!m) return '#1F1A17'
+  const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#1F1A17' : '#ffffff'
+}
 type Lang = 'fr' | 'en'
 type VHit = { id: string; plate: string | null; vehicle: string | null; ref: string | null; zone: string | null }
 
@@ -256,6 +264,18 @@ export default function AccueilClient() {
 
   const ready = !!sel && (!!email.trim() || !!phone.trim())
 
+  // Regroupement des motifs par section (ordre du catalogue préservé).
+  const motifSections: { name: string | null; items: Motif[] }[] = (() => {
+    const order: string[] = []
+    const by: Record<string, Motif[]> = {}
+    for (const m of motifs) {
+      const k = (m.section || '').trim()
+      if (!by[k]) { by[k] = []; order.push(k) }
+      by[k].push(m)
+    }
+    return order.map(k => ({ name: k || null, items: by[k] }))
+  })()
+
   return (
     <div className="min-h-screen py-6 px-4 flex justify-center" style={{ background: 'linear-gradient(180deg,#FAF8F6 0%,#F1ECE6 100%)' }}>
       <div className="w-full max-w-2xl">
@@ -285,34 +305,47 @@ export default function AccueilClient() {
           <div className="px-6 sm:px-8 py-6 space-y-7">
             <p className="text-[15px] -mt-1" style={{ color: INK2 }}>{t.sub}</p>
 
-            {/* Motifs */}
+            {/* Motifs (regroupés par section) */}
             <section>
               <h2 className="font-extrabold text-lg mb-3" style={{ color: INK }}>{t.step1}</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {motifs.map(m => {
-                  const on = sel?.id === m.id
-                  const Icon = motifIcon(m.label)
-                  return (
-                    <button key={m.id} onClick={() => setSel(m)}
-                      className="relative text-left rounded-2xl p-4 flex flex-col gap-2.5 transition active:scale-[.98]"
-                      style={{
-                        border: `2px solid ${on ? RED : LINE}`,
-                        background: on ? RED_SOFT : '#fff',
-                      }}>
-                      <span className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ background: on ? '#fff' : RED_SOFT }}>
-                        <Icon className="w-5 h-5" style={{ color: RED }} strokeWidth={2.2} />
-                      </span>
-                      <span className="font-bold text-[15px] leading-snug" style={{ color: on ? RED_HOVER : INK }}>{mLabel(m)}</span>
-                      {on && <span className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: RED }}>
-                        <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} /></span>}
-                    </button>
-                  )
-                })}
-                {!motifs.length && Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="rounded-2xl h-28 animate-pulse" style={{ background: '#F5F1EC' }} />
-                ))}
-              </div>
+              {!motifs.length ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="rounded-2xl h-28 animate-pulse" style={{ background: '#F5F1EC' }} />)}
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {motifSections.map(({ name, items }) => (
+                    <div key={name || '__'}>
+                      {name && <h3 className="text-xs font-extrabold uppercase tracking-wider mb-2" style={{ color: MUTED }}>{name}</h3>}
+                      <div className="grid grid-cols-2 gap-3">
+                        {items.map(m => {
+                          const on = sel?.id === m.id
+                          const Icon = motifIcon(m.label)
+                          const hasC = !!m.color
+                          const fg = hasC ? textOn(m.color) : INK
+                          return (
+                            <button key={m.id} onClick={() => setSel(m)}
+                              className="relative text-left rounded-2xl p-4 flex flex-col gap-2.5 transition active:scale-[.98]"
+                              style={{
+                                background: hasC ? (m.color as string) : '#fff',
+                                border: `2px solid ${on ? RED : (hasC ? 'transparent' : LINE)}`,
+                                boxShadow: on ? `0 0 0 3px ${RED_SOFT}` : (hasC ? '0 3px 10px rgba(0,0,0,.10)' : 'none'),
+                              }}>
+                              <span className="w-10 h-10 rounded-xl flex items-center justify-center"
+                                style={{ background: hasC ? 'rgba(255,255,255,.24)' : RED_SOFT }}>
+                                <Icon className="w-5 h-5" style={{ color: hasC ? fg : RED }} strokeWidth={2.2} />
+                              </span>
+                              <span className="font-bold text-[15px] leading-snug" style={{ color: fg }}>{mLabel(m)}</span>
+                              {on && <span className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: '#fff' }}>
+                                <Check className="w-3.5 h-3.5" style={{ color: RED }} strokeWidth={3} /></span>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             {/* Véhicule + autocomplétion */}

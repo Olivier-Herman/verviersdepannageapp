@@ -10,13 +10,15 @@ interface Motif {
   label_en:         string | null
   kind:             string          // visit | call | both
   service:          string | null
+  color:            string | null   // fond de bouton (borne)
+  section:          string | null   // regroupement (borne)
   requires_vehicle: boolean
   free_text:        boolean
   sort_order:       number
   active:           boolean
 }
 
-const EMPTY: Partial<Motif> = { label: '', label_en: '', kind: 'visit', service: '', requires_vehicle: false, free_text: false, sort_order: 100, active: true }
+const EMPTY: Partial<Motif> = { label: '', label_en: '', kind: 'visit', service: '', color: '#E11D2E', section: '', requires_vehicle: false, free_text: false, sort_order: 100, active: true }
 
 const KIND_LABEL: Record<string, string> = { visit: '🪪 Visite', call: '📞 Appel', both: '🪪📞 Les deux' }
 
@@ -92,10 +94,12 @@ export default function AdminReceptionMotifsClient({ initialMotifs }: { initialM
           <ul className="space-y-2">
             {visible.map(m => (
               <li key={m.id} className={`bg-surface border rounded-2xl p-4 flex items-center gap-3 ${!m.active ? 'opacity-50' : ''}`}>
+                <span className="w-5 h-5 rounded-md flex-shrink-0" style={{ background: m.color || '#E5E0DA', border: '1px solid rgba(0,0,0,.1)' }} title={m.color || 'aucune couleur'} />
                 <div className="flex-1 min-w-0">
                   <p className="text-ink font-semibold text-sm">{m.label} {m.label_en && <span className="text-xs font-normal text-ink-faint">· EN: {m.label_en}</span>} {!m.active && <span className="text-xs font-normal text-ink-faint">(désactivé)</span>}</p>
                   <p className="text-ink-muted text-xs flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
                     <span>{KIND_LABEL[m.kind] || m.kind}</span>
+                    {m.section && <span>· 📑 {m.section}</span>}
                     {m.service && <span>· {m.service}</span>}
                     {m.requires_vehicle && <span>· 🚗 véhicule requis</span>}
                     {m.free_text && <span>· ✍️ texte libre</span>}
@@ -156,8 +160,30 @@ export default function AdminReceptionMotifsClient({ initialMotifs }: { initialM
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-ink-muted text-xs font-semibold mb-1.5">Section (borne)</label>
+                <input type="text" value={editing.section || ''}
+                  onChange={e => setEditing({ ...editing, section: e.target.value })}
+                  placeholder="Ex: Véhicule / Administratif"
+                  className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
+              </div>
+              <div>
+                <label className="block text-ink-muted text-xs font-semibold mb-1.5">Couleur du bouton</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={editing.color || '#E11D2E'}
+                    onChange={e => setEditing({ ...editing, color: e.target.value })}
+                    className="w-10 h-9 rounded-lg border bg-surface-2 cursor-pointer p-0.5" />
+                  <input type="text" value={editing.color || ''}
+                    onChange={e => setEditing({ ...editing, color: e.target.value })}
+                    placeholder="#E11D2E"
+                    className="flex-1 min-w-0 bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono uppercase" />
+                </div>
+              </div>
+            </div>
+
             <div>
-              <label className="block text-ink-muted text-xs font-semibold mb-1.5">Service (regroupement, optionnel)</label>
+              <label className="block text-ink-muted text-xs font-semibold mb-1.5">Service (routage, optionnel)</label>
               <input type="text" value={editing.service || ''}
                 onChange={e => setEditing({ ...editing, service: e.target.value })}
                 placeholder="Ex: Fourrière / Rent a car / Administration"

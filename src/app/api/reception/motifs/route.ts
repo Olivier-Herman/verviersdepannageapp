@@ -10,7 +10,7 @@ export const fetchCache = 'force-no-store'
 export async function GET() {
   const sb = createAdminClient()
   const { data } = await sb.from('reception_motifs')
-    .select('id, label, label_en, requires_vehicle, free_text')
+    .select('id, label, label_en, requires_vehicle, free_text, color, section')
     .eq('active', true)
     .in('kind', ['visit', 'both'])
     .order('sort_order').order('label')

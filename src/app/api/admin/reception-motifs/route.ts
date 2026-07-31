@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
     label, kind,
     label_en:         (body.label_en || '').trim() || null,
     service:          (body.service || '').trim() || null,
+    color:            (body.color || '').trim() || null,
+    section:          (body.section || '').trim() || null,
     requires_vehicle: !!body.requires_vehicle,
     free_text:        !!body.free_text,
     sort_order:       body.sort_order != null ? Number(body.sort_order) : 100,
@@ -66,6 +68,8 @@ export async function PATCH(req: NextRequest) {
   if (body.label_en         !== undefined) patch.label_en         = (body.label_en || '').trim() || null
   if (body.kind             !== undefined) patch.kind             = KINDS.includes(body.kind) ? body.kind : 'visit'
   if (body.service          !== undefined) patch.service          = (body.service || '').trim() || null
+  if (body.color            !== undefined) patch.color            = (body.color || '').trim() || null
+  if (body.section          !== undefined) patch.section          = (body.section || '').trim() || null
   if (body.requires_vehicle !== undefined) patch.requires_vehicle = !!body.requires_vehicle
   if (body.free_text        !== undefined) patch.free_text        = !!body.free_text
   if (body.sort_order       !== undefined) patch.sort_order       = Number(body.sort_order) || 100
