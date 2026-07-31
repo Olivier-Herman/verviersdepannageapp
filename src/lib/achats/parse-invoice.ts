@@ -28,6 +28,7 @@ export const CATEGORIES = [
   'Taxes & redevances',
   'Petit matériel & fournitures',
   'Publicité & marketing',
+  'Acompte / à régulariser',
   'Autre',
 ] as const
 
@@ -38,34 +39,40 @@ function getClient(): Anthropic {
 }
 
 const PROMPT = `Tu es analyste achats pour une société de DÉPANNAGE / REMORQUAGE automobile (VD Soft — Verviers Dépannage).
-On te donne le document d'une FACTURE FOURNISSEUR (PDF ou XML e-facture). Détermine DE QUOI IL S'AGIT.
+On te donne le document d'une FACTURE FOURNISSEUR (PDF ou XML e-facture). Analyse-la LIGNE PAR LIGNE : chaque ligne peut relever d'une catégorie DIFFÉRENTE.
 
 Réponds UNIQUEMENT par un objet JSON valide (aucun texte autour), structure EXACTE :
 {
-  "categorie": "<une valeur EXACTE de la liste ci-dessous>",
-  "sous_categorie": "<précision courte, ex: 'Diesel', 'Pneus hiver', 'Assurance flotte'>",
+  "categorie": "<catégorie DOMINANTE de la facture (celle du plus gros montant), valeur EXACTE de la liste>",
   "resume": "<1 phrase: ce qui a été acheté>",
-  "items": [ { "description": "<ligne>", "montant": <number HTVA ou null> } ],
-  "plaques": [ { "plaque": "<immatriculation normalisée MAJUSCULES sans espaces ni tirets>", "montant": <HTVA attribuable à ce véhicule ou null> } ],
+  "items": [
+    {
+      "description": "<libellé de la ligne>",
+      "montant": <montant HTVA de CETTE ligne (nombre) — les montants des lignes doivent SOMMER au total HTVA de la facture>,
+      "categorie": "<catégorie EXACTE de CETTE ligne parmi la liste>",
+      "plaque": "<immatriculation MAJUSCULES sans espaces ni tirets si la ligne concerne un véhicule précis, sinon null>"
+    }
+  ],
   "confidence": <0..1>
 }
 
-CATÉGORIES AUTORISÉES (choisir la plus proche, sinon "Autre") :
+CATÉGORIES AUTORISÉES (choisir la plus proche par ligne, sinon "Autre") :
 ${CATEGORIES.map(c => `- ${c}`).join('\n')}
 
-Règles :
-- "Charges sociales & salaires" (ONSS, précompte, secrétariat social) = une DÉPENSE normale, catégorise-la ainsi (ne l'écarte pas).
-- "Sous-traitance dépannage" = un autre dépanneur/remorqueur qui a réalisé une intervention pour nous.
-- items : garde 1 à 6 lignes principales max. montant en HTVA si visible, sinon null.
-- plaques : immatriculation(s) de véhicule mentionnée(s) sur le document (carburant, garage, pneus, entretien…). UNE entrée par véhicule concerné. Si le document ventile par véhicule, mets le montant HTVA de chacun ; sinon (un seul véhicule) mets sa plaque avec le montant total HTVA ; si AUCUNE plaque, mets []. Normalise en MAJUSCULES sans espaces ni tirets (ex "1-ABC-234" → "1ABC234").
-- Sois concis. Si le document est illisible, mets confidence bas et categorie "Autre".`
+Règles IMPORTANTES :
+- Analyse CHAQUE ligne séparément et donne-lui SA catégorie (une facture peut mélanger téléphonie, honoraires, carburant…).
+- "Acompte / à régulariser" = toute ligne d'ACOMPTE / provision / avance (souvent libellée « Acompte », « Down payment »). Ces lignes se soldent sur la facture finale → NE PAS les ranger dans un vrai poste, mets "Acompte / à régulariser".
+- "Charges sociales & salaires" (ONSS, précompte, secrétariat social) = dépense normale.
+- "Sous-traitance dépannage" = un autre dépanneur qui a réalisé une intervention pour nous.
+- montant : HTVA par ligne, obligatoire (estime au mieux). La somme des lignes ≈ total HTVA de la facture.
+- plaque : uniquement si la ligne vise un véhicule identifié (carburant, garage, pneus). Sinon null.
+- Si illisible : confidence bas, une seule ligne categorie "Autre".`
 
+export interface CatLine { description: string; montant: number; categorie: string; plaque: string | null }
 export interface Categorization {
   categorie: string
-  sous_categorie: string | null
   resume: string | null
-  items: Array<{ description: string; montant: number | null }>
-  plaques: Array<{ plaque: string; montant: number | null }>
+  items: CatLine[]
   confidence: number
 }
 
@@ -108,17 +115,24 @@ export async function categorizeInvoiceDoc(opts: {
   const cleaned = block.text.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
   const parsed = JSON.parse(cleaned)
 
-  // Normalise la catégorie sur la taxonomie fermée.
-  const cat = (CATEGORIES as readonly string[]).includes(parsed.categorie) ? parsed.categorie : 'Autre'
-  const plaques = Array.isArray(parsed.plaques)
-    ? parsed.plaques.map((p: any) => ({ plaque: normPlate(p.plaque), montant: typeof p.montant === 'number' ? p.montant : null })).filter((p: any) => p.plaque.length >= 4)
-    : []
+  const normCat = (c: any) => (CATEGORIES as readonly string[]).includes(c) ? c : 'Autre'
+  const items: CatLine[] = (Array.isArray(parsed.items) ? parsed.items : []).slice(0, 12).map((l: any) => {
+    const pl = normPlate(l.plaque)
+    return {
+      description: String(l.description || '').slice(0, 120),
+      montant: typeof l.montant === 'number' ? l.montant : 0,
+      categorie: normCat(l.categorie),
+      plaque: pl.length >= 4 ? pl : null,
+    }
+  })
+  // Catégorie dominante : la plus grosse par montant (fallback = champ fourni).
+  const byCat: Record<string, number> = {}
+  for (const it of items) byCat[it.categorie] = (byCat[it.categorie] || 0) + (it.montant || 0)
+  const dominant = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0]?.[0]
   return {
-    categorie: cat,
-    sous_categorie: parsed.sous_categorie || null,
+    categorie: dominant || normCat(parsed.categorie),
     resume: parsed.resume || null,
-    items: Array.isArray(parsed.items) ? parsed.items.slice(0, 6) : [],
-    plaques,
+    items,
     confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
   }
 }

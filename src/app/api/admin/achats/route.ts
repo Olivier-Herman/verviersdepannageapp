@@ -48,37 +48,47 @@ export async function GET(req: Request) {
     for (const [child, cid] of Object.entries(config.merges || {})) if ((config.excluded || []).includes(cid)) s.add(Number(child))
     return s
   }
+  // Lignes d'une facture, montants mis à l'échelle du total HTVA (l'IA estime,
+  // on recale pour que la somme des lignes = le montant réel de la facture).
+  const scaledLines = (r: any): Array<{ montant: number; categorie: string; plaque: string | null; description: string }> => {
+    const items = (Array.isArray(r.items) ? r.items : []).filter((i: any) => i && i.categorie)
+    if (!items.length) return r.categorie ? [{ montant: r.amount_htva || 0, categorie: r.categorie, plaque: null, description: r.resume || '' }] : []
+    const sum = items.reduce((s: number, i: any) => s + (i.montant || 0), 0)
+    const scale = sum > 0 ? (r.amount_htva || 0) / sum : 0
+    return items.map((i: any) => ({ montant: (i.montant || 0) * scale, categorie: i.categorie, plaque: i.plaque || null, description: i.description || '' }))
+  }
+
   const aiCatsAndCoverage = async (config: SupplierConfig) => {
     const excl = excludedMemberSet(config)
     const { data: fx } = await sb.from('achats_factures')
-      .select('categorie, amount_htva, partner_id, parsed_at').gte('invoice_date', periodStart())
+      .select('categorie, amount_htva, partner_id, items, parsed_at').gte('invoice_date', periodStart())
     const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id))
-    const parsedRows = rows.filter((r: any) => r.parsed_at && r.categorie)
+    const parsedRows = rows.filter((r: any) => r.parsed_at)
     const catMap: Record<string, number> = {}
-    for (const r of parsedRows) catMap[r.categorie] = (catMap[r.categorie] || 0) + (r.amount_htva || 0)
+    for (const r of parsedRows) for (const l of scaledLines(r)) catMap[l.categorie] = (catMap[l.categorie] || 0) + l.montant
     const aiCategories = Object.entries(catMap).map(([categorie, amount]) => ({ categorie, amount: Math.round(amount) })).sort((a, b) => b.amount - a.amount)
     const coverage = { parsed: parsedRows.length, total: rows.length, pct: rows.length ? Math.round(parsedRows.length / rows.length * 100) : 0 }
     return { aiCategories, coverage }
   }
 
-  // Coût par véhicule (plaques extraites), enrichi du nom de dépanneuse (trucks).
+  // Coût par véhicule : agrège les LIGNES portant une plaque, enrichi du nom de
+  // dépanneuse (trucks). Montants mis à l'échelle du total facture.
   const costByVehicle = async (config: SupplierConfig) => {
     const excl = excludedMemberSet(config)
     const [{ data: fx }, { data: trucks }] = await Promise.all([
-      sb.from('achats_factures').select('partner_id, amount_htva, categorie, plaques, parsed_at').gte('invoice_date', periodStart()),
+      sb.from('achats_factures').select('partner_id, amount_htva, categorie, items, parsed_at').gte('invoice_date', periodStart()),
       sb.from('trucks').select('name, plate'),
     ])
     const truckMap = new Map<string, string>()
     for (const t of (trucks || [])) if (t.plate) truckMap.set(normPlate(t.plate), t.name)
-    const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id) && r.parsed_at && Array.isArray(r.plaques) && r.plaques.length)
+    const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id) && r.parsed_at)
     const agg = new Map<string, { plate: string; truck: string | null; total: number; count: number; cats: Record<string, number> }>()
     for (const r of rows) {
-      const pls = (r.plaques as any[]).filter(p => p.plaque)
-      for (const p of pls) {
-        const amount = typeof p.montant === 'number' ? p.montant : (r.amount_htva || 0) / pls.length
-        const g = agg.get(p.plaque) || { plate: p.plaque, truck: truckMap.get(p.plaque) || null, total: 0, count: 0, cats: {} as Record<string, number> }
-        g.total += amount; g.count += 1; g.cats[r.categorie] = (g.cats[r.categorie] || 0) + amount
-        agg.set(p.plaque, g)
+      for (const l of scaledLines(r)) {
+        if (!l.plaque) continue
+        const g = agg.get(l.plaque) || { plate: l.plaque, truck: truckMap.get(l.plaque) || null, total: 0, count: 0, cats: {} as Record<string, number> }
+        g.total += l.montant; g.count += 1; g.cats[l.categorie] = (g.cats[l.categorie] || 0) + l.montant
+        agg.set(l.plaque, g)
       }
     }
     return [...agg.values()].map(v => ({ ...v, total: Math.round(v.total) })).sort((a, b) => b.total - a.total)
@@ -92,33 +102,36 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, light: true, ...(await aiCatsAndCoverage(config)), byVehicle: await costByVehicle(config) })
     }
 
-    // Drill-down : factures rattachées à une plaque.
+    // Drill-down : lignes rattachées à une plaque (par facture).
     const vehicle = sp.get('vehicle')
     if (vehicle) {
       const target = normPlate(vehicle)
       const excl = excludedMemberSet(config)
       const { data: fx } = await sb.from('achats_factures')
-        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, plaques')
+        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
         .gte('invoice_date', periodStart()).order('invoice_date', { ascending: false }).limit(1000)
-      const invoices = (fx || []).filter((r: any) => !excl.has(r.partner_id) && Array.isArray(r.plaques) && r.plaques.some((p: any) => p.plaque === target))
+      const invoices = (fx || []).filter((r: any) => !excl.has(r.partner_id))
         .map((r: any) => {
-          const p = r.plaques.find((x: any) => x.plaque === target)
-          const nb = r.plaques.length || 1
-          return { odoo_move_id: r.odoo_move_id, supplier_name: r.supplier_name, invoice_date: r.invoice_date, ref: r.ref, categorie: r.categorie, resume: r.resume, montant: typeof p?.montant === 'number' ? p.montant : Math.round((r.amount_htva || 0) / nb) }
-        }).sort((a: any, b: any) => b.montant - a.montant)
+          const lines = scaledLines(r).filter(l => l.plaque === target)
+          if (!lines.length) return null
+          return { odoo_move_id: r.odoo_move_id, supplier_name: r.supplier_name, invoice_date: r.invoice_date, ref: r.ref, categorie: lines[0].categorie, resume: lines.map(l => l.description).filter(Boolean).slice(0, 2).join(' · ') || r.resume, montant: Math.round(lines.reduce((s, l) => s + l.montant, 0)) }
+        }).filter(Boolean).sort((a: any, b: any) => b.montant - a.montant)
       return NextResponse.json({ ok: true, vehicle: target, invoices })
     }
 
-    // Drill-down : liste des factures d'une catégorie (exclusions appliquées).
+    // Drill-down : lignes d'une catégorie (par facture, montant de ligne).
     if (category) {
-      const excl = new Set<number>(config.excluded || [])
-      for (const [child, cid] of Object.entries(config.merges || {})) if ((config.excluded || []).includes(cid)) excl.add(Number(child))
-      const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1)
+      const excl = excludedMemberSet(config)
       const { data: fx } = await sb.from('achats_factures')
-        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, resume, sous_categorie')
-        .eq('categorie', category).gte('invoice_date', d.toISOString().slice(0, 10))
-        .order('amount_htva', { ascending: false }).limit(500)
-      return NextResponse.json({ ok: true, category, invoices: (fx || []).filter((r: any) => !excl.has(r.partner_id)) })
+        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, items')
+        .gte('invoice_date', periodStart()).order('invoice_date', { ascending: false }).limit(1500)
+      const invoices = (fx || []).filter((r: any) => !excl.has(r.partner_id))
+        .map((r: any) => {
+          const lines = scaledLines(r).filter(l => l.categorie === category)
+          if (!lines.length) return null
+          return { odoo_move_id: r.odoo_move_id, supplier_name: r.supplier_name, invoice_date: r.invoice_date, ref: r.ref, sous_categorie: lines.map(l => l.description).filter(Boolean).slice(0, 2).join(' · '), resume: r.resume, amount_htva: Math.round(lines.reduce((s, l) => s + l.montant, 0)) }
+        }).filter(Boolean).sort((a: any, b: any) => b.amount_htva - a.amount_htva).slice(0, 500)
+      return NextResponse.json({ ok: true, category, invoices })
     }
 
     // Drill-down : factures d'un fournisseur (membres fusionnés inclus).

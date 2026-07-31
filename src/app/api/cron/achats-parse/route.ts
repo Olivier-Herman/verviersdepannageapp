@@ -39,11 +39,15 @@ export async function GET(req: Request) {
   const limit  = Math.min(Math.max(parseInt(sp.get('limit') || '8'), 1), 40)
   const sb = createAdminClient()
 
-  // Re-parsing : réinitialise les factures déjà catégorisées SANS plaques
-  // (parsées avant l'ajout de l'extraction de plaque) → elles repasseront.
-  if (sp.get('reset') === 'plaques') {
-    await sb.from('achats_factures').update({ parsed_at: null }).is('plaques', null).not('parsed_at', 'is', null)
-    return NextResponse.json({ ok: true, reset: 'plaques' })
+  // Re-parsing : réinitialise parsed_at → les factures repasseront à l'IA.
+  //   ?reset=all     → toutes (ex. changement de prompt)
+  //   ?reset=plaques → seulement celles sans plaques
+  const resetMode = sp.get('reset')
+  if (resetMode) {
+    let q = sb.from('achats_factures').update({ parsed_at: null }).not('parsed_at', 'is', null)
+    if (resetMode === 'plaques') q = q.is('plaques', null)
+    await q
+    return NextResponse.json({ ok: true, reset: resetMode })
   }
 
   let synced = 0
@@ -89,8 +93,10 @@ export async function GET(req: Request) {
         docBase64: a.datas, mimetype: a.mimetype || 'application/pdf',
       })
       await sb.from('achats_factures').update({
-        categorie: cat.categorie, sous_categorie: cat.sous_categorie, resume: cat.resume,
-        items: cat.items, plaques: cat.plaques, confidence: cat.confidence, model: ANTHROPIC_MODEL,
+        categorie: cat.categorie, resume: cat.resume,
+        items: cat.items,
+        plaques: cat.items.filter(i => i.plaque).map(i => ({ plaque: i.plaque, montant: i.montant })),
+        confidence: cat.confidence, model: ANTHROPIC_MODEL,
         doc_mimetype: a.mimetype || null, parsed_at: new Date().toISOString(), parse_error: null,
       }).eq('odoo_move_id', f.odoo_move_id)
       return 'ok'
