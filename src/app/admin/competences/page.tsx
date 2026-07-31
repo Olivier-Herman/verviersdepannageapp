@@ -15,7 +15,7 @@ export default async function AdminCompetencesPage() {
 
   const sb = createAdminClient()
   const [{ data: usersRaw }, { data: motifs }, { data: links }] = await Promise.all([
-    sb.from('users').select('id, name, role, roles').order('name'),
+    sb.from('users').select('id, name, role, roles, active').order('name'),
     sb.from('reception_motifs').select('id, label, kind, service').eq('active', true).order('sort_order').order('label'),
     sb.from('user_competences').select('user_id, motif_id'),
   ])
@@ -27,6 +27,7 @@ export default async function AdminCompetencesPage() {
 // Employés « réception » : au moins un rôle desk/téléphonie (exclut les purs
 // chauffeurs et les garages). Gère role singulier + roles[].
 function isReceptionStaff(u: any): boolean {
+  if (u.active === false) return false
   const STAFF = ['dispatcher', 'admin', 'superadmin']
   const roles: string[] = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean)
   return roles.some(r => STAFF.includes(r))

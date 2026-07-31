@@ -23,13 +23,14 @@ export async function GET() {
 
   const sb = createAdminClient()
   const [{ data: usersRaw }, { data: motifs }, { data: links }] = await Promise.all([
-    sb.from('users').select('id, name, role, roles').order('name'),
+    sb.from('users').select('id, name, role, roles, active').order('name'),
     sb.from('reception_motifs').select('id, label, kind, service').eq('active', true)
       .order('sort_order').order('label'),
     sb.from('user_competences').select('user_id, motif_id'),
   ])
   const STAFF = ['dispatcher', 'admin', 'superadmin']
   const users = (usersRaw || []).filter((u: any) =>
+    u.active !== false &&
     (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean).some((r: string) => STAFF.includes(r)))
   return NextResponse.json({ users, motifs: motifs || [], links: links || [] })
 }
