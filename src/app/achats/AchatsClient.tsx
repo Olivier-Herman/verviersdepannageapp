@@ -6,7 +6,7 @@
 // tendance, concentration fournisseurs, catégories, doublons. Olivier 2026-07-31.
 
 import { useEffect, useState } from 'react'
-import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles } from 'lucide-react'
+import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles, Truck } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
@@ -25,6 +25,8 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   const [parsing, setParsing] = useState(false)
   const [parseProg, setParseProg] = useState<{ done: number; remaining: number | null } | null>(null)
   const [catDetail, setCatDetail] = useState<{ name: string; invoices: any[] | null } | null>(null)
+  const [vehDetail, setVehDetail] = useState<{ plate: string; truck: string | null; invoices: any[] | null } | null>(null)
+  const [supDetail, setSupDetail] = useState<{ id: number; name: string; invoices: any[] | null } | null>(null)
 
   const load = (m: number) => {
     setLoading(true); setErr('')
@@ -43,7 +45,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
       try {
         const r = await fetch(`/api/admin/achats?light=1&months=${months}`, { cache: 'no-store' })
         const j = await r.json()
-        if (j.ok) setData((prev: any) => prev ? { ...prev, aiCategories: j.aiCategories, coverage: j.coverage } : prev)
+        if (j.ok) setData((prev: any) => prev ? { ...prev, aiCategories: j.aiCategories, coverage: j.coverage, byVehicle: j.byVehicle } : prev)
       } catch {}
     }, 12000)
     return () => clearInterval(id)
@@ -86,6 +88,26 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
       const j = await r.json()
       setCatDetail({ name, invoices: j.invoices || [] })
     } catch { setCatDetail({ name, invoices: [] }) }
+  }
+
+  // Détail d'un fournisseur : ses factures (membres fusionnés inclus).
+  const openSupplier = async (id: number, name: string) => {
+    setSupDetail({ id, name, invoices: null })
+    try {
+      const r = await fetch(`/api/admin/achats?supplier=${id}&months=${months}`, { cache: 'no-store' })
+      const j = await r.json()
+      setSupDetail({ id, name, invoices: j.invoices || [] })
+    } catch { setSupDetail({ id, name, invoices: [] }) }
+  }
+
+  // Détail d'un véhicule : factures rattachées à la plaque.
+  const openVehicle = async (plate: string, truck: string | null) => {
+    setVehDetail({ plate, truck, invoices: null })
+    try {
+      const r = await fetch(`/api/admin/achats?vehicle=${encodeURIComponent(plate)}&months=${months}`, { cache: 'no-store' })
+      const j = await r.json()
+      setVehDetail({ plate, truck, invoices: j.invoices || [] })
+    } catch { setVehDetail({ plate, truck, invoices: [] }) }
   }
 
   const maxMonth = data ? Math.max(1, ...data.byMonth.map((m: any) => m.htva)) : 1
@@ -155,9 +177,10 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
           <div className="grid md:grid-cols-2 gap-6">
             {/* Top fournisseurs */}
             <Panel title="Top fournisseurs" icon={<Users size={16} />} sub={`concentration top 5 : ${data.concentrationTop5}%`}>
-              <div className="flex flex-col gap-2 mt-2">
+              <div className="flex flex-col gap-1 mt-2">
                 {data.topSuppliers.map((s: any) => (
-                  <div key={s.id} className="flex items-center gap-2 text-sm">
+                  <button key={s.id} type="button" onClick={() => openSupplier(s.id, s.name)}
+                    className="flex items-center gap-2 text-sm text-left rounded-lg px-1.5 py-1 -mx-1.5 hover:bg-white/5 cursor-pointer">
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between gap-2">
                         <span className="text-ink truncate">{s.name}</span>
@@ -168,7 +191,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                       </div>
                     </div>
                     <span className="text-[11px] text-ink-muted tabular-nums w-10 text-right flex-shrink-0">{s.share}%</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </Panel>
@@ -209,6 +232,37 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
               </div>
             </Panel>
           </div>
+
+          {/* Coût par véhicule (plaques extraites des documents par l'IA) */}
+          {(data.byVehicle?.length || 0) > 0 && (
+            <Panel title="Coût par véhicule" icon={<Truck size={16} />} sub="plaque repérée sur les factures · clic = détail">
+              <div className="overflow-x-auto mt-2">
+                <table className="w-full text-sm min-w-[420px]">
+                  <thead>
+                    <tr className="text-ink-muted text-[11px] uppercase tracking-wide border-b">
+                      <th className="text-left py-2">Véhicule</th><th className="text-left">Plaque</th><th className="text-left">Poste principal</th><th className="text-right">Coût HTVA</th><th className="text-center">Fact.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.byVehicle.slice(0, 30).map((v: any) => {
+                      const topCat = Object.entries(v.cats || {}).sort((a: any, b: any) => b[1] - a[1])[0]
+                      return (
+                        <tr key={v.plate} className="border-b border-white/5 hover:bg-white/5 cursor-pointer" onClick={() => openVehicle(v.plate, v.truck)}>
+                          <td className="py-2 text-ink">{v.truck || <span className="text-ink-muted italic">non répertorié</span>}</td>
+                          <td className="text-ink-secondary tabular-nums">{v.plate}</td>
+                          <td className="text-ink-muted text-xs truncate max-w-[160px]">{topCat ? topCat[0] : '—'}</td>
+                          <td className="text-right tabular-nums text-ink">{eur(v.total)}</td>
+                          <td className="text-center text-ink-muted">{v.count}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                {data.byVehicle.length > 30 && <p className="text-ink-muted text-xs mt-2">+ {data.byVehicle.length - 30} autres plaques…</p>}
+                <p className="text-ink-muted text-[11px] italic mt-2">Une plaque « non répertorié » récurrente est probablement un véhicule maison à ajouter dans Dépanneuses.</p>
+              </div>
+            </Panel>
+          )}
 
           {/* Doublons */}
           <Panel title="Doublons potentiels" icon={<AlertTriangle size={16} />} sub="même fournisseur + même n° de facture (ref)">
@@ -329,6 +383,73 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                     <tr key={f.odoo_move_id} className="border-b border-white/5 align-top">
                       <td className="p-2"><div className="text-ink">{f.supplier_name}</div><div className="text-[11px] text-ink-muted">{f.invoice_date} · {f.ref || '—'}</div></td>
                       <td className="py-2 text-xs">{f.sous_categorie && <span className="text-brand">{f.sous_categorie}</span>}{f.resume && <div className="text-ink-muted">{f.resume}</div>}</td>
+                      <td className="p-2 text-right tabular-nums text-ink whitespace-nowrap">{eur(f.amount_htva || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    {/* Détail d'un véhicule : factures rattachées à la plaque */}
+    {vehDetail && (
+      <div className="fixed inset-0 z-[200] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="bg-surface border w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl max-h-[88vh] flex flex-col">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <Truck size={18} className="text-brand" />
+            <h3 className="font-semibold text-ink truncate">{vehDetail.truck || 'Véhicule non répertorié'}</h3>
+            <span className="text-xs text-ink-muted tabular-nums">{vehDetail.plate}</span>
+            {vehDetail.invoices && <span className="text-xs text-ink-muted whitespace-nowrap">· {vehDetail.invoices.length} fact. · {eur(vehDetail.invoices.reduce((s: number, x: any) => s + (x.montant || 0), 0))}</span>}
+            <button onClick={() => setVehDetail(null)} className="ml-auto p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {!vehDetail.invoices ? (
+              <p className="p-4 text-ink-muted text-sm">Chargement…</p>
+            ) : vehDetail.invoices.length === 0 ? (
+              <p className="p-4 text-ink-muted text-sm italic">Aucune facture.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-ink-muted text-[11px] uppercase border-b"><th className="text-left p-2">Fournisseur</th><th className="text-left">Poste</th><th className="text-right p-2">HTVA</th></tr></thead>
+                <tbody>
+                  {vehDetail.invoices.map((f: any) => (
+                    <tr key={f.odoo_move_id} className="border-b border-white/5 align-top">
+                      <td className="p-2"><div className="text-ink">{f.supplier_name}</div><div className="text-[11px] text-ink-muted">{f.invoice_date} · {f.ref || '—'}</div></td>
+                      <td className="py-2 text-xs"><span className="text-brand">{f.categorie}</span>{f.resume && <div className="text-ink-muted">{f.resume}</div>}</td>
+                      <td className="p-2 text-right tabular-nums text-ink whitespace-nowrap">{eur(f.montant || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    {/* Détail d'un fournisseur : ses factures */}
+    {supDetail && (
+      <div className="fixed inset-0 z-[200] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="bg-surface border w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl max-h-[88vh] flex flex-col">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <Users size={18} className="text-brand" />
+            <h3 className="font-semibold text-ink truncate">{supDetail.name}</h3>
+            {supDetail.invoices && <span className="text-xs text-ink-muted whitespace-nowrap">· {supDetail.invoices.length} fact. · {eur(supDetail.invoices.reduce((s: number, x: any) => s + (x.amount_htva || 0), 0))}</span>}
+            <button onClick={() => setSupDetail(null)} className="ml-auto p-1 text-ink-muted hover:text-ink"><X size={18} /></button>
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {!supDetail.invoices ? (
+              <p className="p-4 text-ink-muted text-sm">Chargement…</p>
+            ) : supDetail.invoices.length === 0 ? (
+              <p className="p-4 text-ink-muted text-sm italic">Aucune facture dans le cache (lance l’IA pour synchroniser).</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-ink-muted text-[11px] uppercase border-b"><th className="text-left p-2">Date · Réf</th><th className="text-left">Poste</th><th className="text-right p-2">HTVA</th></tr></thead>
+                <tbody>
+                  {supDetail.invoices.map((f: any) => (
+                    <tr key={f.odoo_move_id} className="border-b border-white/5 align-top">
+                      <td className="p-2"><div className="text-ink">{f.invoice_date}</div><div className="text-[11px] text-ink-muted">{f.ref || '—'}</div></td>
+                      <td className="py-2 text-xs">{f.categorie && <span className="text-brand">{f.categorie}</span>}{f.resume && <div className="text-ink-muted">{f.resume}</div>}</td>
                       <td className="p-2 text-right tabular-nums text-ink whitespace-nowrap">{eur(f.amount_htva || 0)}</td>
                     </tr>
                   ))}

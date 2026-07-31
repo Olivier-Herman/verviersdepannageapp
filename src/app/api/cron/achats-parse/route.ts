@@ -39,6 +39,13 @@ export async function GET(req: Request) {
   const limit  = Math.min(Math.max(parseInt(sp.get('limit') || '8'), 1), 40)
   const sb = createAdminClient()
 
+  // Re-parsing : réinitialise les factures déjà catégorisées SANS plaques
+  // (parsées avant l'ajout de l'extraction de plaque) → elles repasseront.
+  if (sp.get('reset') === 'plaques') {
+    await sb.from('achats_factures').update({ parsed_at: null }).is('plaques', null).not('parsed_at', 'is', null)
+    return NextResponse.json({ ok: true, reset: 'plaques' })
+  }
+
   let synced = 0
   if (doSync) {
     const companyPartners = await getGroupCompanyPartnerIds()   // neutralise l'intercompagnie
@@ -83,7 +90,7 @@ export async function GET(req: Request) {
       })
       await sb.from('achats_factures').update({
         categorie: cat.categorie, sous_categorie: cat.sous_categorie, resume: cat.resume,
-        items: cat.items, confidence: cat.confidence, model: ANTHROPIC_MODEL,
+        items: cat.items, plaques: cat.plaques, confidence: cat.confidence, model: ANTHROPIC_MODEL,
         doc_mimetype: a.mimetype || null, parsed_at: new Date().toISOString(), parse_error: null,
       }).eq('odoo_move_id', f.odoo_move_id)
       return 'ok'

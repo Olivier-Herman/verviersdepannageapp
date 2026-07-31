@@ -46,6 +46,7 @@ Réponds UNIQUEMENT par un objet JSON valide (aucun texte autour), structure EXA
   "sous_categorie": "<précision courte, ex: 'Diesel', 'Pneus hiver', 'Assurance flotte'>",
   "resume": "<1 phrase: ce qui a été acheté>",
   "items": [ { "description": "<ligne>", "montant": <number HTVA ou null> } ],
+  "plaques": [ { "plaque": "<immatriculation normalisée MAJUSCULES sans espaces ni tirets>", "montant": <HTVA attribuable à ce véhicule ou null> } ],
   "confidence": <0..1>
 }
 
@@ -56,6 +57,7 @@ Règles :
 - "Charges sociales & salaires" (ONSS, précompte, secrétariat social) = une DÉPENSE normale, catégorise-la ainsi (ne l'écarte pas).
 - "Sous-traitance dépannage" = un autre dépanneur/remorqueur qui a réalisé une intervention pour nous.
 - items : garde 1 à 6 lignes principales max. montant en HTVA si visible, sinon null.
+- plaques : immatriculation(s) de véhicule mentionnée(s) sur le document (carburant, garage, pneus, entretien…). UNE entrée par véhicule concerné. Si le document ventile par véhicule, mets le montant HTVA de chacun ; sinon (un seul véhicule) mets sa plaque avec le montant total HTVA ; si AUCUNE plaque, mets []. Normalise en MAJUSCULES sans espaces ni tirets (ex "1-ABC-234" → "1ABC234").
 - Sois concis. Si le document est illisible, mets confidence bas et categorie "Autre".`
 
 export interface Categorization {
@@ -63,8 +65,12 @@ export interface Categorization {
   sous_categorie: string | null
   resume: string | null
   items: Array<{ description: string; montant: number | null }>
+  plaques: Array<{ plaque: string; montant: number | null }>
   confidence: number
 }
+
+/** Normalise une plaque : MAJ, uniquement [A-Z0-9]. */
+export const normPlate = (p: string) => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
 /**
  * Envoie le document (base64) à Claude et renvoie la catégorisation.
@@ -104,11 +110,15 @@ export async function categorizeInvoiceDoc(opts: {
 
   // Normalise la catégorie sur la taxonomie fermée.
   const cat = (CATEGORIES as readonly string[]).includes(parsed.categorie) ? parsed.categorie : 'Autre'
+  const plaques = Array.isArray(parsed.plaques)
+    ? parsed.plaques.map((p: any) => ({ plaque: normPlate(p.plaque), montant: typeof p.montant === 'number' ? p.montant : null })).filter((p: any) => p.plaque.length >= 4)
+    : []
   return {
     categorie: cat,
     sous_categorie: parsed.sous_categorie || null,
     resume: parsed.resume || null,
     items: Array.isArray(parsed.items) ? parsed.items.slice(0, 6) : [],
+    plaques,
     confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
   }
 }

@@ -10,6 +10,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { analyzeAchats, type SupplierConfig } from '@/lib/achats/odoo-spend'
+import { normPlate } from '@/lib/achats/parse-invoice'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
@@ -60,12 +61,52 @@ export async function GET(req: Request) {
     return { aiCategories, coverage }
   }
 
+  // Coût par véhicule (plaques extraites), enrichi du nom de dépanneuse (trucks).
+  const costByVehicle = async (config: SupplierConfig) => {
+    const excl = excludedMemberSet(config)
+    const [{ data: fx }, { data: trucks }] = await Promise.all([
+      sb.from('achats_factures').select('partner_id, amount_htva, categorie, plaques, parsed_at').gte('invoice_date', periodStart()),
+      sb.from('trucks').select('name, plate'),
+    ])
+    const truckMap = new Map<string, string>()
+    for (const t of (trucks || [])) if (t.plate) truckMap.set(normPlate(t.plate), t.name)
+    const rows = (fx || []).filter((r: any) => !excl.has(r.partner_id) && r.parsed_at && Array.isArray(r.plaques) && r.plaques.length)
+    const agg = new Map<string, { plate: string; truck: string | null; total: number; count: number; cats: Record<string, number> }>()
+    for (const r of rows) {
+      const pls = (r.plaques as any[]).filter(p => p.plaque)
+      for (const p of pls) {
+        const amount = typeof p.montant === 'number' ? p.montant : (r.amount_htva || 0) / pls.length
+        const g = agg.get(p.plaque) || { plate: p.plaque, truck: truckMap.get(p.plaque) || null, total: 0, count: 0, cats: {} as Record<string, number> }
+        g.total += amount; g.count += 1; g.cats[r.categorie] = (g.cats[r.categorie] || 0) + amount
+        agg.set(p.plaque, g)
+      }
+    }
+    return [...agg.values()].map(v => ({ ...v, total: Math.round(v.total) })).sort((a, b) => b.total - a.total)
+  }
+
   try {
     const config = await loadConfig(sb)
 
     // Mode LÉGER (polling temps réel) : uniquement le cache, aucun appel Odoo.
     if (light) {
-      return NextResponse.json({ ok: true, light: true, ...(await aiCatsAndCoverage(config)) })
+      return NextResponse.json({ ok: true, light: true, ...(await aiCatsAndCoverage(config)), byVehicle: await costByVehicle(config) })
+    }
+
+    // Drill-down : factures rattachées à une plaque.
+    const vehicle = sp.get('vehicle')
+    if (vehicle) {
+      const target = normPlate(vehicle)
+      const excl = excludedMemberSet(config)
+      const { data: fx } = await sb.from('achats_factures')
+        .select('odoo_move_id, supplier_name, partner_id, invoice_date, amount_htva, ref, categorie, resume, plaques')
+        .gte('invoice_date', periodStart()).order('invoice_date', { ascending: false }).limit(1000)
+      const invoices = (fx || []).filter((r: any) => !excl.has(r.partner_id) && Array.isArray(r.plaques) && r.plaques.some((p: any) => p.plaque === target))
+        .map((r: any) => {
+          const p = r.plaques.find((x: any) => x.plaque === target)
+          const nb = r.plaques.length || 1
+          return { odoo_move_id: r.odoo_move_id, supplier_name: r.supplier_name, invoice_date: r.invoice_date, ref: r.ref, categorie: r.categorie, resume: r.resume, montant: typeof p?.montant === 'number' ? p.montant : Math.round((r.amount_htva || 0) / nb) }
+        }).sort((a: any, b: any) => b.montant - a.montant)
+      return NextResponse.json({ ok: true, vehicle: target, invoices })
     }
 
     // Drill-down : liste des factures d'une catégorie (exclusions appliquées).
@@ -80,9 +121,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, category, invoices: (fx || []).filter((r: any) => !excl.has(r.partner_id)) })
     }
 
+    // Drill-down : factures d'un fournisseur (membres fusionnés inclus).
+    const supplier = sp.get('supplier')
+    if (supplier) {
+      const sid = Number(supplier)
+      const memberIds = new Set<number>([sid])
+      for (const [child, cid] of Object.entries(config.merges || {})) if (cid === sid) memberIds.add(Number(child))
+      const { data: fx } = await sb.from('achats_factures')
+        .select('odoo_move_id, supplier_name, invoice_date, amount_htva, ref, categorie, resume')
+        .in('partner_id', [...memberIds]).gte('invoice_date', periodStart())
+        .order('invoice_date', { ascending: false }).limit(1000)
+      return NextResponse.json({ ok: true, supplier: sid, invoices: fx || [] })
+    }
+
     const data = await analyzeAchats(months, config)
     const ai = await aiCatsAndCoverage(config)
-    return NextResponse.json({ ok: true, config, ...data, ...ai })
+    return NextResponse.json({ ok: true, config, ...data, ...ai, byVehicle: await costByVehicle(config) })
   } catch (e: any) {
     console.error('[admin/achats]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
