@@ -135,12 +135,12 @@ export async function GET(req: Request) {
   // facturés via un circuit lent/manuel et faussent la moyenne. Les Touring
   // COMEX BKO (auto-facturation) restent comptés.
   const TOURING_SOURCES = ['touring', 'tgr_touring']
-  const comexBko = new Set<string>()
+  const comexBkoIds = new Set<string>()
   {
     const { data: bkoRows } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids')
     for (const r of (bkoRows || [])) {
-      if (r.mission_id) comexBko.add(r.mission_id as string)
-      if (Array.isArray(r.mission_ids)) for (const id of r.mission_ids) if (id) comexBko.add(id as string)
+      if (r.mission_id) comexBkoIds.add(r.mission_id as string)
+      if (Array.isArray(r.mission_ids)) for (const id of r.mission_ids) if (id) comexBkoIds.add(id as string)
     }
   }
   let durSum = 0, durN = 0
@@ -154,7 +154,7 @@ export async function GET(req: Request) {
     if (!chunk || !chunk.length) break
     for (const m of chunk) {
       // Touring hors COMEX BKO → écarté de la moyenne.
-      if (TOURING_SOURCES.includes(m.source) && !comexBko.has(m.id)) continue
+      if (TOURING_SOURCES.includes(m.source) && !comexBkoIds.has(m.id)) continue
       const end = m.invoiced_at || m.no_charge_at
       if (end && m.completed_at) {
         const d = Date.parse(end) - Date.parse(m.completed_at)
