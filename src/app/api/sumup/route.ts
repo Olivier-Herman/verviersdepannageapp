@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { createCheckout, sendPaymentEmail, getCheckoutStatus } from '@/lib/sumup'
+import { createCheckout, sendPaymentEmail, getCheckoutStatus, getTransactionByForeignId } from '@/lib/sumup'
 import { createAdminClient } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
@@ -38,8 +38,10 @@ export async function POST(req: NextRequest) {
       checkoutId: id,
       checkoutUrl,
       qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkoutUrl)}`,
-      terminalDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}`,
-      tapToPayDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&tap-to-pay=true`,
+      // foreign-tx-id = notre référence → permet de réconcilier la transaction
+      // faite dans l'app SumUp via l'API Transactions (cf. GET ?ref=).
+      terminalDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&foreign-tx-id=${encodeURIComponent(reference)}`,
+      tapToPayDeepLink: `sumupmerchant://pay?affiliate-key=${process.env.SUMUP_AFFILIATE_KEY}&amount=${amount}&currency=EUR&title=${encodeURIComponent(reference)}&foreign-tx-id=${encodeURIComponent(reference)}&tap-to-pay=true`,
       sumupReference: reference,
     })
 
@@ -54,7 +56,19 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const checkoutId = req.nextUrl.searchParams.get('checkoutId')
+  const ref = req.nextUrl.searchParams.get('ref')
   const interventionId = req.nextUrl.searchParams.get('interventionId')
+
+  // Réconciliation Terminal / Tap to Pay : paiement fait dans l'app SumUp,
+  // retrouvé par notre référence (foreign_transaction_id).
+  if (ref) {
+    try {
+      return NextResponse.json(await getTransactionByForeignId(ref))
+    } catch (err: any) {
+      return NextResponse.json({ status: 'PENDING', error: err.message })
+    }
+  }
+
   if (!checkoutId) return NextResponse.json({ error: 'checkoutId requis' }, { status: 400 })
 
   try {

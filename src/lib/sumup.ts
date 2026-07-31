@@ -82,6 +82,40 @@ export async function getCheckoutStatus(checkoutId: string): Promise<{
 }
 
 // ============================================================
+// Statut d'une transaction par notre référence (foreign_transaction_id)
+// ------------------------------------------------------------
+// Pour Terminal / Tap to Pay : le paiement part dans l'app SumUp (deep link),
+// pas sur le checkout en ligne. On tague la transaction avec foreign-tx-id =
+// notre référence, puis on interroge l'API Transactions du MÊME marchand pour
+// détecter le succès automatiquement (aucun callback natif nécessaire).
+// ============================================================
+export async function getTransactionByForeignId(foreignId: string): Promise<{
+  status: 'PENDING' | 'PAID' | 'FAILED'
+  transactionId?: string
+  paidAt?: string
+}> {
+  const res = await fetch(
+    `https://api.sumup.com/v0.1/me/transactions?foreign_transaction_id=${encodeURIComponent(foreignId)}`,
+    { headers: { 'Authorization': `Bearer ${SUMUP_API_KEY}` } },
+  )
+  // Pas encore de transaction pour cette référence → paiement pas (encore) fait.
+  if (res.status === 404) return { status: 'PENDING' }
+  if (!res.ok) throw new Error(`SumUp tx lookup error (${res.status})`)
+
+  const data = await res.json()
+  // L'endpoint renvoie soit la transaction, soit une liste selon le filtre.
+  const tx = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
+  if (!tx || !tx.status) return { status: 'PENDING' }
+
+  const s = String(tx.status).toUpperCase()
+  const status: 'PENDING' | 'PAID' | 'FAILED' =
+    s === 'SUCCESSFUL' ? 'PAID'
+    : (s === 'FAILED' || s === 'CANCELLED') ? 'FAILED'
+    : 'PENDING'
+  return { status, transactionId: tx.transaction_code || tx.id, paidAt: tx.timestamp }
+}
+
+// ============================================================
 // Obtenir un token applicatif Azure AD (client credentials)
 // ============================================================
 async function getAppToken(): Promise<string> {

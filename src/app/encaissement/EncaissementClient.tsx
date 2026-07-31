@@ -1091,13 +1091,14 @@ export default function EncaissementClient({
   const startSumup = async (mode: string) => {
     if (!amount || parseFloat(amount) <= 0) { setError('Montant requis'); return }
     setSumupLoading(true); setSumupMode(mode); setError('')
+    const reference = `VD${Date.now().toString(36).toUpperCase()}`
     try {
       const res = await fetch('/api/sumup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: parseFloat(amount),
-          reference: `VD${Date.now().toString(36).toUpperCase()}`,
+          reference,
           description: `Intervention véhicule ${plate}`,
           mode,
           clientEmail: mode === 'email' ? clientEmail : undefined,
@@ -1122,8 +1123,13 @@ export default function EncaissementClient({
       // PENDING. D'où la validation manuelle proposée pour ces modes.
       if (sumupIntervalRef.current) clearInterval(sumupIntervalRef.current)
       setSumupPolling(true)
+      // Terminal / tap-to-pay : réconciliation par notre référence (transaction
+      // faite dans l'app SumUp). QR / email : statut du checkout en ligne.
+      const pollUrl = (mode === 'terminal' || mode === 'tap')
+        ? `/api/sumup?ref=${encodeURIComponent(reference)}`
+        : `/api/sumup?checkoutId=${data.checkoutId}`
       const interval = setInterval(async () => {
-        const s = await fetch(`/api/sumup?checkoutId=${data.checkoutId}`)
+        const s = await fetch(pollUrl)
         const status = await s.json()
         if (status.status === 'PAID') {
           setSumupStatus('PAID')
@@ -1189,35 +1195,38 @@ export default function EncaissementClient({
           </div>
         )}
 
-        {/* Terminal / Tap to Pay : le paiement s'effectue DANS l'app SumUp (deep
-            link) → transaction séparée du checkout en ligne, impossible à
-            réconcilier automatiquement. Le chauffeur valide manuellement une fois
-            la confirmation reçue côté SumUp. */}
+        {/* Terminal / Tap to Pay : paiement dans l'app SumUp, réconcilié
+            AUTOMATIQUEMENT via l'API Transactions (foreign-tx-id = notre réf).
+            La bascule vers l'écran suivant se fait dès que SumUp confirme.
+            Validation manuelle en secours (réseau lent / cas limite). */}
         {(sumupMode === 'terminal' || sumupMode === 'tap') && sumupData && !sumupStatus && (
-          <div className="flex flex-col gap-2 mb-4">
+          <div className="flex flex-col gap-3 mb-4">
             <div className="bg-info-soft border border-info rounded-xl px-4 py-3 text-info text-sm text-center">
-              📲 Termine le paiement dans l'app SumUp, puis reviens ici pour valider.
+              📲 Paiement dans l'app SumUp… <span className="opacity-80">confirmation automatique dès validation.</span>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (sumupIntervalRef.current) { clearInterval(sumupIntervalRef.current); sumupIntervalRef.current = null }
-                setSumupPolling(false)
-                setSumupStatus('PAID')
-                setPaymentMode('sumup')
-                setTimeout(() => setPage(9), 600)
-              }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl py-4 active:scale-95 transition"
-            >
-              ✅ Paiement confirmé dans SumUp — Valider
-            </button>
+            <details className="text-center">
+              <summary className="text-ink-muted text-xs cursor-pointer select-none">La confirmation n'arrive pas ?</summary>
+              <button
+                type="button"
+                onClick={() => {
+                  if (sumupIntervalRef.current) { clearInterval(sumupIntervalRef.current); sumupIntervalRef.current = null }
+                  setSumupPolling(false)
+                  setSumupStatus('PAID')
+                  setPaymentMode('sumup')
+                  setTimeout(() => setPage(9), 600)
+                }}
+                className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl py-3 active:scale-95 transition"
+              >
+                ✅ Paiement reçu — Valider manuellement
+              </button>
+            </details>
             <button
               type="button"
               onClick={() => {
                 if (sumupIntervalRef.current) { clearInterval(sumupIntervalRef.current); sumupIntervalRef.current = null }
                 setSumupPolling(false); setSumupData(null); setSumupMode(null)
               }}
-              className="w-full text-ink-muted text-sm py-2"
+              className="w-full text-ink-muted text-sm py-1"
             >
               ✕ Annuler / choisir un autre moyen
             </button>
