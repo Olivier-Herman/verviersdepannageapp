@@ -93,5 +93,12 @@ create index if not exists idx_fiche_interactions_created on fiche_interactions(
 alter table fiche_contacts     enable row level security;
 alter table fiche_interactions enable row level security;
 alter table reception_motifs   enable row level security;
+alter table user_competences   enable row level security;
+
+-- service_role bypasse la RLS mais a besoin des privilèges table (sinon 42501).
+grant all on reception_motifs   to service_role;
+grant all on user_competences   to service_role;
+grant all on fiche_contacts     to service_role;
+grant all on fiche_interactions to service_role;
 
 notify pgrst, 'reload schema';
