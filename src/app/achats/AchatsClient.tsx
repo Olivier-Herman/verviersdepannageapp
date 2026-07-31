@@ -235,7 +235,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
           </div>
 
           <div className="p-3 border-t text-xs text-ink-muted">
-            <b>Fusionner</b> = regrouper des fiches doublon (ex. les deux « Herman Olivier »). <b>Exclure</b> = sortir le non-achat (ONSS, salaires…) des totaux. Odoo n'est jamais modifié.
+            <b>Fusionner</b> = regrouper des fiches doublon (ex. les deux « Herman Olivier »). <b>Exclure</b> = retirer une fiche qui n'est pas une dépense à suivre (ex. mouvement intercompagnie). Odoo n'est jamais modifié.
           </div>
         </div>
       </div>
