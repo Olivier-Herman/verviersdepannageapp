@@ -28,9 +28,21 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const before = searchParams.get('before')          // ISO created_at (backfill)
   const batch  = parseInt(searchParams.get('batch') || '800')
+  const all    = searchParams.get('all') === '1'      // dérouler tout l'historique
 
   const sb = createAdminClient()
   try {
+    // Mode `all` : enchaîne les lots (curseur created_at) jusqu'à done ou budget
+    // temps épuisé (~50 s < maxDuration). Renvoie nextBefore pour reprendre.
+    if (all) {
+      const deadline = Date.now() + 50_000
+      let cursor: string | null = before, scanned = 0, updated = 0, done = false
+      do {
+        const r = await normalizeMissionVehicles(sb, { batch, beforeTs: cursor })
+        scanned += r.scanned; updated += r.updated; cursor = r.nextBefore; done = r.done
+      } while (!done && cursor && Date.now() < deadline)
+      return NextResponse.json({ ok: true, scanned, updated, nextBefore: cursor, done })
+    }
     const r = await normalizeMissionVehicles(sb, { batch, beforeTs: before })
     return NextResponse.json({ ok: true, ...r })
   } catch (e: any) {
