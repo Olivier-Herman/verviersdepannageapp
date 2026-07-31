@@ -53,6 +53,29 @@ const BRAND_ALIAS: Record<string, string> = {
   mb:          'mercedes',
 }
 
+/** Clé marque après application des alias connus (pour matcher le catalogue). */
+export const canonicalBrandKey = (s: string) => {
+  const k = brandKey(s)
+  return BRAND_ALIAS[k] || k
+}
+
+/**
+ * Capitalisation « intelligente » d'un libellé véhicule quand AUCUNE fiche
+ * Odoo ne correspond (marque/modèle hors catalogue). Préserve les acronymes
+ * (BMW, VW), les codes alphanumériques (A3, X5, 500L) et met les lettres
+ * isolées en MAJ ; met une majuscule initiale aux vrais mots (corsa → Corsa).
+ */
+export const smartVehicleCase = (s: string) => {
+  const str = stripAccents(s).trim().replace(/\s+/g, ' ')
+  if (!str) return str
+  return str.split(' ').map(w => {
+    if (!w) return w
+    if (/\d/.test(w)) return w.toUpperCase()                 // code: A3, X5, 500L
+    if (w.length <= 3) return w.toUpperCase()                // acronyme probable: bmw→BMW, vw→VW, e→E
+    return w[0].toUpperCase() + w.slice(1).toLowerCase()     // mot: corsa→Corsa
+  }).join(' ')
+}
+
 // Cache process (30s) pour éviter un full-scan à chaque création de véhicule
 // (batch inventaire). Les créations poussent dans le cache → pas de doublon
 // intra-batch.
