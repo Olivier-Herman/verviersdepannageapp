@@ -67,6 +67,16 @@ export default function AppShell({
   const userRoles = (session?.user as any)?.roles as string[] | null | undefined
   const visibleNav = filterNavItems({ userModules, userRole, userNavOrder, userRoles })
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Compteurs d'attention par entrée de menu (ex. congés en attente sur /personnel).
+  const [navBadges, setNavBadges] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let alive = true
+    const load = () => fetch('/api/nav-badges', { cache: 'no-store' }).then(r => r.json())
+      .then(d => { if (alive) setNavBadges(d.badges || {}) }).catch(() => {})
+    load()
+    const iv = setInterval(load, 60000)   // rafraîchit toutes les minutes
+    return () => { alive = false; clearInterval(iv) }
+  }, [])
   const { theme, toggleTheme, mounted } = useTheme()
   const { onDuty, setOnDuty, isLockedByDuty } = useOnDutyPing()
   // GPS piloté par les attributions (économie batterie) — monté UNE seule fois
@@ -126,6 +136,7 @@ export default function AppShell({
         <nav className={`flex-1 py-4 overflow-y-auto flex flex-col gap-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
           {visibleNav.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
+            const badge = navBadges[item.href] || 0
             return (
               <Link key={item.href} href={item.href}
                 className={`group relative flex items-center rounded-md text-sm font-medium transition-colors ${
@@ -136,8 +147,17 @@ export default function AppShell({
                     : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
                 }`}
               >
-                <span className="text-base">{item.icon}</span>
+                <span className="relative text-base">
+                  {item.icon}
+                  {/* Badge en pastille sur l'icône quand le menu est replié */}
+                  {collapsed && badge > 0 && (
+                    <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-brand text-white text-[9px] font-bold flex items-center justify-center">{badge > 99 ? '99+' : badge}</span>
+                  )}
+                </span>
                 {!collapsed && (item.i18nKey ? <T k={item.i18nKey} /> : item.label)}
+                {!collapsed && badge > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1.5 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center">{badge > 99 ? '99+' : badge}</span>
+                )}
                 {collapsed && <span className={TOOLTIP_CLS}>{item.i18nKey ? <T k={item.i18nKey} /> : item.label}</span>}
               </Link>
             )
@@ -198,6 +218,7 @@ export default function AppShell({
           userEmail={userEmail}
           userId={userId}
           userModules={userModules}
+          navBadges={navBadges}
         />
 
         {/* Header desktop */}

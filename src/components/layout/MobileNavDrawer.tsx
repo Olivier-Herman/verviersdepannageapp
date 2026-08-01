@@ -19,9 +19,10 @@ interface Props {
   userEmail?:   string
   userId?:      string
   userModules:  string[]
+  navBadges?:   Record<string, number>
 }
 
-export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules }: Props) {
+export default function MobileNavDrawer({ open, onClose, userName, userRole, userEmail, userId, userModules, navBadges = {} }: Props) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const userNavOrder = (session?.user as any)?.navOrder as string[] | null | undefined
@@ -81,6 +82,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
         <nav className="flex-1 px-3 py-3 overflow-y-auto flex flex-col gap-0.5">
           {items.map(item => {
             const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+            const badge = navBadges[item.href] || 0
             return (
               <Link key={item.href} href={item.href} onClick={onClose}
                 className={`flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors ${
@@ -90,6 +92,7 @@ export default function MobileNavDrawer({ open, onClose, userName, userRole, use
                 }`}>
                 <span className="text-base">{item.icon}</span>
                 {item.i18nKey ? <T k={item.i18nKey} /> : item.label}
+                {badge > 0 && <span className="ml-auto min-w-[18px] h-[18px] px-1.5 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center">{badge > 99 ? '99+' : badge}</span>}
               </Link>
             )
           })}
