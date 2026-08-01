@@ -11,6 +11,7 @@
 // ============================================================
 
 import { achatsRpc as odooRpc, getGroupCompanyPartnerIds } from './odoo-rpc'   // connecteur multi-société dédié Achats
+import { PAIE_JOURNAL_ID } from '@/lib/paie/push-odoo'   // journal des fiches de paie (regroupé en « Salaires » dans les fournisseurs)
 
 /** 1er jour du mois, `monthsBack` mois en arrière (fenêtre glissante). */
 function periodStart(monthsBack: number): string {
@@ -59,11 +60,14 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   const baseDom = [['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ...interco]
   const billDom = [...baseDom, ...excl]   // totaux/catégories (exclusions appliquées)
 
-  const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
+  // Fournisseurs : on EXCLUT les fiches de paie (chaque chauffeur = un fournisseur
+  // encombrerait la liste) et on les regroupe en une seule ligne « Salaires ».
+  const notPaie = [['journal_id', '!=', PAIE_JOURNAL_ID]]
+  const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills, paieRow] = await Promise.all([
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], []]),
     odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'draft']], ['amount_untaxed:sum'], []]),
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], ['invoice_date:month']]),
-    odooRpc<any[]>('account.move', 'read_group', [baseDom, ['amount_untaxed:sum'], ['partner_id']]),   // TOUS les fournisseurs
+    odooRpc<any[]>('account.move', 'read_group', [[...baseDom, ...notPaie], ['amount_untaxed:sum'], ['partner_id']]),   // fournisseurs (hors salaires)
     odooRpc<any[]>('account.move.line', 'read_group', [
       [['move_id.move_type', '=', 'in_invoice'], ['move_id.state', '=', 'posted'], ['date', '>=', start], ['account_id.internal_group', '=', 'expense'],
         ...(exclArr.length ? [['move_id.partner_id', 'not in', exclArr]] : []),
@@ -71,6 +75,7 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
       ['balance:sum'], ['account_id'],
     ], { context: { lang: 'fr_BE' } }),   // libellés de comptes en français
     odooRpc<any[]>('account.move', 'search_read', [billDom, ['partner_id', 'ref', 'invoice_date', 'amount_total']], { limit: 4000 }),
+    odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ['journal_id', '=', PAIE_JOURNAL_ID]], ['amount_untaxed:sum'], []]),   // total salaires
   ])
 
   const totalHtva = Math.round((overviewRows?.[0]?.amount_untaxed || 0))
@@ -79,6 +84,9 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   // Fournisseurs bruts (tous), puis application des FUSIONS (child → canonical).
   const rawSup = (supplierRows || []).filter(r => r.partner_id)
     .map(r => ({ id: r.partner_id[0] as number, name: r.partner_id[1] as string, htva: Math.round(r.amount_untaxed || 0), count: r.partner_id_count || 0 }))
+  // Ligne unique « Salaires (personnel) » (regroupe toutes les fiches de paie).
+  const paieTotal = Math.round(paieRow?.[0]?.amount_untaxed || 0)
+  if (paieTotal > 0) rawSup.push({ id: -777, name: 'Salaires (personnel)', htva: paieTotal, count: paieRow?.[0]?.__count || 0 })
   const nameById = new Map(rawSup.map(s => [s.id, s.name]))
   const mergedMap = new Map<number, { id: number; name: string; htva: number; count: number; mergedCount: number }>()
   for (const s of rawSup) {
