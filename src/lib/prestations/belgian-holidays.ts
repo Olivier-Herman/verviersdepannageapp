@@ -41,9 +41,10 @@ export function belgianHolidayDays(period: string): number[] {
     .sort((a, b) => a - b)
 }
 
-/** Applique « Férié » aux jours fériés qui étaient des jours travaillés (h>0),
- *  sans toucher aux jours déjà en absence ni aux jours non travaillés. Renvoie
- *  la nouvelle map `days` et si elle a changé. */
+/** Marque « Férié » TOUS les jours fériés légaux à leur date (week-end compris),
+ *  pour que le jour soit payé même s'il n'est pas travaillé (choix Olivier :
+ *  paiement du férié plutôt que jour de remplacement). Ne remplace jamais une
+ *  absence déjà saisie (maladie, congé…). Renvoie la map et si elle a changé. */
 export function applyHolidaysToDays(days: Record<string, any>, period: string): { days: Record<string, any>; changed: boolean } {
   const hol = belgianHolidayDays(period)
   if (!hol.length) return { days, changed: false }
@@ -51,7 +52,8 @@ export function applyHolidaysToDays(days: Record<string, any>, period: string): 
   let changed = false
   for (const d of hol) {
     const v = out[String(d)]
-    if (v && v.h > 0 && !v.abs) { out[String(d)] = { abs: 'ferie' }; changed = true }
+    if (v?.abs) continue                          // absence déjà saisie → on garde
+    out[String(d)] = { abs: 'ferie' }; changed = true
   }
   return { days: out, changed }
 }
