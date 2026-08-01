@@ -12,12 +12,20 @@ import { createAdminClient } from '@/lib/supabase'
 import { analyzeAchats, type SupplierConfig } from '@/lib/achats/odoo-spend'
 import { normPlate } from '@/lib/achats/parse-invoice'
 import { getGroupPartnerIds } from '@/lib/achats/odoo-rpc'
+import { generateAchatRecommendations } from '@/lib/achats/ai-recommendations'
 
 export const dynamic     = 'force-dynamic'
 export const fetchCache   = 'force-no-store'
 export const maxDuration  = 60
 
 const KEY = 'achats_supplier_config'
+const AI_KEY = 'achats_ai_reco'
+
+const loadReco = async (sb: any) => {
+  const { data } = await sb.from('app_settings').select('value').eq('key', AI_KEY).maybeSingle()
+  if (!data?.value) return null
+  try { return typeof data.value === 'string' ? JSON.parse(data.value) : data.value } catch { return null }
+}
 const DEFAULT: SupplierConfig = { merges: {}, excluded: [], ignoredPlates: [] }
 
 async function loadConfig(sb: any): Promise<SupplierConfig> {
@@ -170,9 +178,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, supplier: sid, invoices: fx || [] })
     }
 
+    // Recommandations IA : génération à la demande (bouton) + cache app_settings.
+    if (sp.get('ai') === 'analyze') {
+      const data = await analyzeAchats(months, config)
+      const ai = await aiCatsAndCoverage(config)
+      const recos = await generateAchatRecommendations(data, ai.aiCategories)
+      const reco = { generated_at: new Date().toISOString(), months, total_saving: recos.reduce((s, r) => s + r.estimated_saving_eur, 0), recos }
+      await sb.from('app_settings').upsert({ key: AI_KEY, value: JSON.stringify(reco) }, { onConflict: 'key' })
+      return NextResponse.json({ ok: true, reco })
+    }
+
     const data = await analyzeAchats(months, config)
     const ai = await aiCatsAndCoverage(config)
-    return NextResponse.json({ ok: true, config, ...data, ...ai, byVehicle: await costByVehicle(config) })
+    return NextResponse.json({ ok: true, config, ...data, ...ai, byVehicle: await costByVehicle(config), aiReco: await loadReco(sb) })
   } catch (e: any) {
     console.error('[admin/achats]', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })

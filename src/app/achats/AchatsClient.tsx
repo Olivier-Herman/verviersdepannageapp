@@ -6,7 +6,7 @@
 // tendance, concentration fournisseurs, catégories, doublons. Olivier 2026-07-31.
 
 import { useEffect, useState } from 'react'
-import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles, Truck } from 'lucide-react'
+import { ShoppingCart, TrendingUp, Users, Receipt, AlertTriangle, PieChart, RefreshCw, Search, X, Link2, Ban, Undo2, Sparkles, Truck, Lightbulb, Loader2, ChevronRight } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
@@ -24,6 +24,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
   const [busy, setBusy]   = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseProg, setParseProg] = useState<{ done: number; remaining: number | null } | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
   const [catDetail, setCatDetail] = useState<{ name: string; invoices: any[] | null } | null>(null)
   const [vehDetail, setVehDetail] = useState<{ plate: string; truck: string | null; total?: number; cats?: Record<string, number>; invoices: any[] | null } | null>(null)
   const [supDetail, setSupDetail] = useState<{ id: number; name: string; invoices: any[] | null } | null>(null)
@@ -129,6 +130,16 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
     } catch { setVehDetail({ plate: v.plate, truck: v.truck, total: v.total, cats: v.cats, invoices: [] }) }
   }
 
+  const analyzeAI = async () => {
+    setAnalyzing(true); setErr('')
+    try {
+      const r = await fetch(`/api/admin/achats?ai=analyze&months=${months}`, { cache: 'no-store' })
+      const j = await r.json()
+      if (j.error) setErr(j.error)
+      else setData((prev: any) => prev ? { ...prev, aiReco: j.reco } : prev)
+    } catch { setErr('Analyse IA impossible') } finally { setAnalyzing(false) }
+  }
+
   const maxMonth = data ? Math.max(1, ...data.byMonth.map((m: any) => m.htva)) : 1
   const maxSup   = data?.topSuppliers?.[0]?.htva || 1
   const maxCat   = data?.byCategory?.[0]?.amount || 1
@@ -176,6 +187,63 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
             <Kpi icon={<TrendingUp size={16} />} label="Factures" value={data.overview.count.toLocaleString('fr-BE')} sub={`ticket moyen ${eur(data.overview.avgTicket)}`} />
             <Kpi icon={<Users size={16} />} label="Fournisseurs actifs" value={String(data.overview.suppliers)} sub={`top 5 = ${data.concentrationTop5}%`} />
             <Kpi icon={<AlertTriangle size={16} />} label="Brouillons en attente" value={eur(data.overview.draftHtva)} sub={`${data.overview.draftCount} factures`} accent={data.overview.draftCount > 0} />
+          </div>
+
+          {/* Recommandations IA */}
+          <div className="rounded-2xl border border-brand/20 bg-gradient-to-br from-brand/5 to-transparent p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center"><Sparkles size={17} /></div>
+              <div className="flex-1">
+                <h2 className="font-semibold text-ink text-sm flex items-center gap-2">Recommandations IA
+                  {data.aiReco?.total_saving > 0 && <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold">≈ {eur(data.aiReco.total_saving)}/an potentiels</span>}
+                </h2>
+                <p className="text-ink-muted text-xs">{data.aiReco ? `Analysé le ${new Date(data.aiReco.generated_at).toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${data.aiReco.months} mois` : `Claude analyse tes ${months} derniers mois et propose des économies concrètes.`}</p>
+              </div>
+              <button onClick={analyzeAI} disabled={analyzing}
+                className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg bg-brand text-white hover:opacity-90 disabled:opacity-60 flex-shrink-0">
+                {analyzing ? <><Loader2 size={15} className="animate-spin" /> Analyse…</> : <><Sparkles size={15} /> {data.aiReco ? 'Ré-analyser' : 'Analyser mes dépenses'}</>}
+              </button>
+            </div>
+
+            {analyzing && !data.aiReco && <p className="text-ink-muted text-sm mt-3">Claude épluche tes factures… (~15-30 s)</p>}
+
+            {data.aiReco?.recos?.length > 0 && (
+              <div className="grid md:grid-cols-2 gap-3 mt-4">
+                {data.aiReco.recos.map((r: any, i: number) => {
+                  const sev = r.severity === 'high' ? 'border-l-red-500' : r.severity === 'low' ? 'border-l-sky-400' : 'border-l-amber-400'
+                  return (
+                    <div key={i} className={`bg-surface border border-l-4 ${sev} rounded-xl p-3.5`}>
+                      <div className="flex items-start gap-2">
+                        <Lightbulb size={15} className="text-brand mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-semibold text-ink text-sm leading-tight">{r.title}</span>
+                            {r.estimated_saving_eur > 0 && <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold whitespace-nowrap flex-shrink-0">−{eur(r.estimated_saving_eur)}/an</span>}
+                          </div>
+                          <p className="text-ink-muted text-xs mt-1 leading-relaxed">{r.rationale}</p>
+                          {r.actions?.length > 0 && (
+                            <ul className="mt-2 space-y-0.5">
+                              {r.actions.map((a: string, j: number) => (
+                                <li key={j} className="text-xs text-ink-secondary flex items-start gap-1.5"><ChevronRight size={12} className="mt-0.5 text-brand flex-shrink-0" />{a}</li>
+                              ))}
+                            </ul>
+                          )}
+                          {r.suppliers?.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {r.suppliers.map((s: string, j: number) => <span key={j} className="text-[10px] px-1.5 py-0.5 rounded bg-ink-muted/10 text-ink-muted">{s}</span>)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {!analyzing && !data.aiReco && (
+              <p className="text-ink-muted text-xs mt-3">Consolidation de fournisseurs, opportunités de négociation, anomalies de prix, doublons — chiffrés en €.</p>
+            )}
           </div>
 
           {/* Tendance mensuelle */}
