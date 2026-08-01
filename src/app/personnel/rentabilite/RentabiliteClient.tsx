@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
-import { TrendingUp, RefreshCw, Info } from 'lucide-react'
+import { TrendingUp, RefreshCw, Info, Plus, Trash2 } from 'lucide-react'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
 
@@ -26,6 +26,23 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
       .then(r => r.json()).then(setData).catch(() => setData({ drivers: [] })).finally(() => setLd(false))
   }
   useEffect(() => { load(preset) }, [preset])
+
+  const [caForm, setCaForm] = useState<any>({})
+  const [adding, setAdding] = useState(false)
+  const addCa = async () => {
+    if (!caForm.personnel_id || !(caForm.period || monthStr(0)) || caForm.amount === undefined || caForm.amount === '') { alert('Chauffeur, période et montant requis.'); return }
+    setAdding(true)
+    try {
+      const r = await fetch('/api/rh/rentabilite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_ca', personnel_id: caForm.personnel_id, period: caForm.period || monthStr(0), amount: Number(caForm.amount), label: caForm.label }) })
+      const j = await r.json(); if (j.error) { alert(j.error); return }
+      setCaForm({ period: caForm.period }); load(preset)
+    } finally { setAdding(false) }
+  }
+  const deleteCa = async (id: string) => {
+    if (!confirm('Supprimer cette ligne de CA ?')) return
+    await fetch('/api/rh/rentabilite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_ca', id }) })
+    load(preset)
+  }
 
   const drivers = data?.drivers || []
   const totCa = drivers.reduce((s: number, d: any) => s + d.ca, 0)
@@ -74,7 +91,7 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
                       <tr key={i} className="border-b border-white/5">
                         <td className="p-3 text-ink">{d.name}</td>
                         <td className="text-center text-ink-secondary tabular-nums">{d.missions}</td>
-                        <td className="text-right tabular-nums text-ink">{eur(d.ca)}</td>
+                        <td className="text-right tabular-nums text-ink">{eur(d.ca)}{d.extraCa > 0 && <span className="text-ink-muted text-[10px] block">dont {eur(d.extraCa)} manuel</span>}</td>
                         <td className="text-right tabular-nums text-ink-secondary">{d.cout ? eur(d.cout) : <span className="text-ink-muted italic text-xs">—</span>}</td>
                         <td className={`text-right p-3 tabular-nums font-semibold ${d.marge >= 0 ? 'text-emerald-600' : 'text-critical'}`}>{eur(d.marge)}</td>
                       </tr>
@@ -83,6 +100,35 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* CA manuel */}
+            <div className="bg-surface border rounded-2xl p-5 mt-4">
+              <div className="flex items-center gap-2 mb-1"><Plus size={16} className="text-brand" /><h2 className="font-semibold text-ink text-sm">CA manuel (courses non rattachées)</h2></div>
+              <p className="text-ink-muted text-xs mb-3">Attribue à un chauffeur, pour un mois, le CA de courses facturées directement dans Odoo (incentive, aftersix…) et non rattachées. C'est ajouté à son CA.</p>
+              <div className="grid sm:grid-cols-4 gap-2">
+                <select value={caForm.personnel_id || ''} onChange={e => setCaForm({ ...caForm, personnel_id: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink">
+                  <option value="">Chauffeur…</option>
+                  {(data.caTargets || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <input type="month" value={caForm.period || monthStr(0)} onChange={e => setCaForm({ ...caForm, period: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+                <input type="number" placeholder="Montant HTVA €" value={caForm.amount ?? ''} onChange={e => setCaForm({ ...caForm, amount: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+                <input placeholder="Libellé (ex. Incentive)" value={caForm.label || ''} onChange={e => setCaForm({ ...caForm, label: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
+              </div>
+              <button onClick={addCa} disabled={adding} className="mt-3 inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Plus size={15} /> {adding ? 'Ajout…' : 'Ajouter'}</button>
+
+              {(data.caLines || []).length > 0 && (
+                <div className="mt-4 border-t pt-3 flex flex-col gap-1.5">
+                  <div className="text-ink-muted text-xs mb-1">Lignes sur la période affichée</div>
+                  {data.caLines.map((l: any) => (
+                    <div key={l.id} className="flex items-center gap-2 text-sm bg-surface-2 rounded-lg px-3 py-2">
+                      <span className="text-ink font-medium">{l.worker}</span>
+                      <span className="text-ink-muted text-xs">{l.period} · {eur(Number(l.amount))}{l.label ? ` · ${l.label}` : ''}</span>
+                      <button onClick={() => deleteCa(l.id)} className="ml-auto p-1 text-ink-muted hover:text-red-400"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="bg-info-soft border border-info rounded-xl px-4 py-3 text-info text-xs mt-4 flex items-start gap-2">

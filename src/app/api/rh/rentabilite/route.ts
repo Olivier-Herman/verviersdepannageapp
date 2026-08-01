@@ -36,6 +36,7 @@ export async function GET(req: Request) {
     const d = new Date(); d.setMonth(d.getMonth() - (months - 1)); d.setDate(1)
     startDate = d.toISOString().slice(0, 10)
     startPeriod = startDate.slice(0, 7)
+    const now = new Date(); endPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   }
   const sb = createAdminClient()
 
@@ -93,13 +94,51 @@ export async function GET(req: Request) {
     cost.set(s.personnel_id, (cost.get(s.personnel_id) || 0) + c)
   }
 
+  // CA manuel attribué (courses facturées dans Odoo, non rattachées : incentive, aftersix…).
+  let extraQ = sb.from('driver_extra_ca').select('id, personnel_id, period, amount, label').gte('period', startPeriod)
+  if (endPeriod) extraQ = extraQ.lte('period', endPeriod)
+  const { data: extra } = await extraQ
+  const extraByPers = new Map<string, number>()
+  for (const e of (extra || [])) extraByPers.set(e.personnel_id, (extraByPers.get(e.personnel_id) || 0) + (Number(e.amount) || 0))
+  const nameByPers = new Map((personnel || []).map((p: any) => [p.id, p.name]))
+  const caLines = (extra || []).map((e: any) => ({ ...e, worker: nameByPers.get(e.personnel_id) || '?' })).sort((a: any, b: any) => String(b.period).localeCompare(String(a.period)))
+  const caTargets = (personnel || []).map((p: any) => ({ id: p.id, name: p.name })).sort((a: any, b: any) => a.name.localeCompare(b.name))
+
   const drivers = (personnel || []).map((p: any) => {
     const rev = ca.get(p.user_id) || { ca: 0, n: 0 }
+    const extraCa = Math.round(extraByPers.get(p.id) || 0)
     const cout = Math.round(cost.get(p.id) || 0)
-    const caR = Math.round(rev.ca)
-    return { name: p.name, ca: caR, cout, marge: caR - cout, missions: rev.n, hasCost: cost.has(p.id) }
+    const caR = Math.round(rev.ca) + extraCa
+    return { id: p.id, name: p.name, ca: caR, extraCa, cout, marge: caR - cout, missions: rev.n, hasCost: cost.has(p.id) }
   }).filter((x: any) => x.ca > 0 || x.cout > 0)
     .sort((a: any, b: any) => b.marge - a.marge)
 
-  return NextResponse.json({ months, startPeriod, employerFactor: EMPLOYER_FACTOR, drivers })
+  return NextResponse.json({ months, startPeriod, endPeriod, employerFactor: EMPLOYER_FACTOR, drivers, caLines, caTargets })
+}
+
+// Gestion du CA manuel (superadmin uniquement).
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions)
+  const u = session?.user as any
+  const isSuper = u?.role === 'superadmin' || (u?.roles || []).includes('superadmin')
+  if (!isSuper) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const body = await req.json().catch(() => ({}))
+  const action = String(body.action || '')
+  const sb = createAdminClient()
+
+  if (action === 'add_ca') {
+    const personnel_id = String(body.personnel_id || '')
+    const period = String(body.period || '')
+    const amount = Number(body.amount)
+    if (!personnel_id || !/^\d{4}-\d{2}$/.test(period) || !isFinite(amount)) return NextResponse.json({ error: 'Chauffeur, période (AAAA-MM) et montant requis.' }, { status: 400 })
+    await sb.from('driver_extra_ca').insert({ personnel_id, period, amount, label: String(body.label || '').trim() || null, created_by: u.name || u.email })
+    return NextResponse.json({ ok: true })
+  }
+  if (action === 'delete_ca') {
+    const id = String(body.id || '')
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
+    await sb.from('driver_extra_ca').delete().eq('id', id)
+    return NextResponse.json({ ok: true })
+  }
+  return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
 }
