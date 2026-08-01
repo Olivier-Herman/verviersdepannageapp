@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check } from 'lucide-react'
+import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 
 // Champ défini au niveau module (sinon perte de focus à chaque frappe).
 function MeInput({ label, k, form, onChange, type = 'text', full }: any) {
@@ -37,7 +38,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
 
   useEffect(() => {
     fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
-      .then(d => { setData(d); if (d?.me) setMeForm(d.me) })
+      .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
       .catch(() => setData({ payslips: [], linked: false })).finally(() => setLd(false))
   }, [])
 

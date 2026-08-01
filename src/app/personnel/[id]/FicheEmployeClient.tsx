@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { ArrowLeft, User, Save, FileText, Eye, Download, X, CalendarClock, Building2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -60,7 +61,9 @@ export default function FicheEmployeClient({ id, userRole, userName, userEmail, 
     const r = await fetch(`/api/personnel/${id}`, { cache: 'no-store' })
     const j = await r.json()
     if (j.error) { alert(j.error); return }
-    setData(j); setForm(j.person || {})
+    const p = j.person || {}
+    if (p.etat_civil) p.etat_civil = normalizeEtatCivil(p.etat_civil)   // « Marié » → « Marié(e) » pour matcher le menu
+    setData(j); setForm(p)
   }, [id])
   useEffect(() => { load() }, [load])
 

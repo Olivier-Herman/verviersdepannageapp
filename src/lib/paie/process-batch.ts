@@ -9,6 +9,7 @@ import JSZip from 'jszip'
 import { PDFDocument } from 'pdf-lib'
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '@/lib/anthropic-model'
+import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 
 const stripAccents = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
 /** Clé de matching nom : minuscules, sans accent, MOTS TRIÉS (ordre indifférent). */
@@ -157,7 +158,7 @@ async function autoFillPersonnel(sb: any, personnelId: string, infos: any): Prom
   setIf('ville', infos.ville)
   setIf('national_number', infos.national_number)
   setIf('iban', infos.iban ? String(infos.iban).replace(/\s+/g, '').toUpperCase() : null)
-  setIf('etat_civil', infos.etat_civil)
+  setIf('etat_civil', infos.etat_civil ? normalizeEtatCivil(infos.etat_civil) : null)
   if (empty(p.personnes_charge) && infos.personnes_charge != null && infos.personnes_charge !== '') patch.personnes_charge = Number(infos.personnes_charge)
   if (Object.keys(patch).length) { try { await sb.from('personnel').update(patch).eq('id', personnelId) } catch {} }
 }

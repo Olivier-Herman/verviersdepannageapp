@@ -9,6 +9,20 @@
 // Olivier 2026-08-01.
 
 const strip = (s: any) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+/** Ramène un état civil (libellé fiche de paie ou saisie) à la forme canonique
+ *  du menu déroulant. Ex. « Marié » → « Marié(e) », « Cohabitant légal » → « Cohabitant(e) légal(e) ». */
+export function normalizeEtatCivil(s: any): string {
+  const t = strip(s).toLowerCase().trim()
+  if (!t) return String(s ?? '')
+  if (/celibataire/.test(t))  return 'Célibataire'
+  if (/cohabit/.test(t))      return 'Cohabitant(e) légal(e)'
+  if (/marie/.test(t))        return 'Marié(e)'
+  if (/divorc/.test(t))       return 'Divorcé(e)'
+  if (/separ/.test(t))        return 'Séparé(e)'
+  if (/veuf|veuve/.test(t))   return 'Veuf/Veuve'
+  return String(s ?? '')
+}
 const normTxt   = (s: any) => strip(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 const normDigit = (s: any) => String(s ?? '').replace(/\D/g, '')
 const normIban  = (s: any) => String(s ?? '').replace(/\s+/g, '').toUpperCase()
@@ -21,7 +35,7 @@ const FIELDS: FieldDef[] = [
   { key: 'ville',            label: 'Ville',              norm: normTxt   },
   { key: 'national_number',  label: 'N° national',        norm: normDigit },
   { key: 'iban',             label: 'IBAN',               norm: normIban  },
-  { key: 'etat_civil',       label: 'État civil',         norm: normTxt   },
+  { key: 'etat_civil',       label: 'État civil',         norm: (v) => normTxt(normalizeEtatCivil(v)) },
   { key: 'personnes_charge', label: 'Personnes à charge', norm: normNum   },
 ]
 
