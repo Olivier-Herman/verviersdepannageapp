@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send } from 'lucide-react'
+import { FileText, Download, Wallet, Info, Eye, X, CalendarClock, Save, UserCog, Check, CalendarDays, Send, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react'
 import { normalizeEtatCivil } from '@/lib/paie/compare-infos'
 import { hoursForRange } from '@/lib/conges/apply'
 
@@ -46,6 +46,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
   const [savedInfo, setSavedInfo] = useState(false)
   const [congeForm, setCongeForm] = useState<any>({ type: 'conge' })
   const [submittingConge, setSubmittingConge] = useState(false)
+  const [tab, setTab] = useState<'home' | 'fiches' | 'conges' | 'infos'>('home')
 
   const loadMine = () => fetch('/api/paie/mine', { cache: 'no-store' }).then(r => r.json())
     .then(d => { setData(d); if (d?.me) { if (d.me.etat_civil) d.me.etat_civil = normalizeEtatCivil(d.me.etat_civil); setMeForm(d.me) } })
@@ -93,8 +94,11 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
 
   const slips: any[] = data?.payslips || []
   const dispName = data?.name || userName || ''
-  const firstName = dispName.split(' ')[0] || ''
+  // Nom stocké « NOM Prénom » → prénom = dernier mot, joliment capitalisé.
+  const prenom = (dispName.split(/\s+/).slice(-1)[0] || '').toLowerCase().replace(/(^|[-'])([a-zà-ÿ])/g, (_: string, s: string, c: string) => s + c.toUpperCase())
+  const hello = (typeof window !== 'undefined' && new Date().getHours() >= 18) ? 'Bonsoir' : 'Bonjour'
   const initials = (dispName || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('')
+  const congesPending = (data?.conges || []).filter((c: any) => c.status === 'pending' || c.status === 'cancel_requested').length
   const multiCompany = new Set(slips.map(s => s.company_code)).size > 1
   // Groupé par année (desc).
   const byYear: Record<string, any[]> = {}
@@ -103,17 +107,19 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
 
   return (
     <AppShell title="Mes Prestations" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
-      <div className="max-w-2xl mx-auto px-4 py-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-lg">{initials || <Wallet size={22} />}</div>
-          <div>
-            <h1 className="text-2xl font-bold text-ink leading-tight">Bonjour{firstName ? ` ${firstName}` : ''}</h1>
-            <p className="text-ink-muted text-sm">Mes Prestations{dispName ? ` · ${dispName}` : ''}</p>
+      <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand/15 via-brand/5 to-transparent border border-brand/10 p-6 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-brand text-white flex items-center justify-center font-bold text-xl shadow-sm flex-shrink-0">{initials || <Wallet size={26} />}</div>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-ink leading-tight flex items-center gap-2 flex-wrap">{hello}{prenom ? ` ${prenom}` : ''} <Sparkles size={18} className="text-brand" /></h1>
+              <p className="text-ink-muted text-sm">Bienvenue dans ton espace personnel</p>
+            </div>
           </div>
         </div>
 
-        {/* Solde congés (dernier compteur connu) */}
-        {!loading && data?.vacation && (data.vacation.available != null || data.vacation.total != null) && (
+        {/* Solde congés (dernier compteur connu) — accueil */}
+        {!loading && tab === 'home' && data?.vacation && (data.vacation.available != null || data.vacation.total != null) && (
           <div className="bg-gradient-to-br from-brand/10 to-brand/[0.03] border border-brand/20 rounded-2xl p-5 mb-6">
             <div className="flex items-center gap-2 mb-3">
               <CalendarClock size={18} className="text-brand" />
@@ -128,8 +134,33 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           </div>
         )}
 
+        {/* Accueil : 3 grands boutons colorés */}
+        {!loading && data?.linked && tab === 'home' && (
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[
+              { k: 'infos',  title: 'Mes infos',          desc: 'Coordonnées, IBAN, contact', Icon: UserCog,      from: 'from-sky-500/15',    to: 'to-sky-500/5',    ring: 'hover:border-sky-500/40',    ic: 'bg-sky-500/15 text-sky-500' },
+              { k: 'fiches', title: 'Mes fiches de paie', desc: `${slips.length} fiche${slips.length > 1 ? 's' : ''} disponible${slips.length > 1 ? 's' : ''}`, Icon: FileText, from: 'from-brand/15', to: 'to-brand/5', ring: 'hover:border-brand/40', ic: 'bg-brand/15 text-brand' },
+              { k: 'conges', title: 'Mes congés',         desc: congesPending ? `${congesPending} en cours` : 'Demander un congé', Icon: CalendarDays, from: 'from-amber-500/15', to: 'to-amber-500/5', ring: 'hover:border-amber-500/40', ic: 'bg-amber-500/15 text-amber-500' },
+            ].map(c => (
+              <button key={c.k} onClick={() => setTab(c.k as any)}
+                className={`group relative flex flex-col gap-4 bg-gradient-to-br ${c.from} ${c.to} border rounded-2xl p-5 text-left transition-all hover:shadow-lg hover:-translate-y-1 ${c.ring}`}>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${c.ic}`}><c.Icon size={24} /></div>
+                <div>
+                  <div className="flex items-center gap-1 text-ink font-bold text-lg">{c.title}<ChevronRight size={18} className="text-ink-muted group-hover:text-ink group-hover:translate-x-0.5 transition-transform" /></div>
+                  <p className="text-ink-muted text-sm mt-0.5">{c.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Retour à l'accueil */}
+        {!loading && data?.linked && tab !== 'home' && (
+          <button onClick={() => setTab('home')} className="inline-flex items-center gap-1.5 text-ink-muted hover:text-brand text-sm mb-4"><ChevronLeft size={16} /> Mes Prestations</button>
+        )}
+
         {/* Mes congés : demande + suivi */}
-        {!loading && data?.linked && (
+        {!loading && data?.linked && tab === 'conges' && (
           <div className="bg-surface border rounded-2xl p-5 mb-6">
             <div className="flex items-center gap-2 mb-3"><CalendarDays size={18} className="text-brand" /><h2 className="font-semibold text-ink text-sm">Mes congés</h2></div>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -167,7 +198,7 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
         )}
 
         {/* Self-service : mes informations personnelles */}
-        {!loading && data?.linked && (
+        {!loading && data?.linked && tab === 'infos' && (
           <div className="bg-surface border rounded-2xl p-5 mb-6">
             <div className="flex items-center gap-2 mb-1">
               <UserCog size={18} className="text-brand" />
@@ -211,11 +242,11 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
           </div>
         )}
 
-        {!loading && data?.linked && slips.length === 0 && (
+        {!loading && data?.linked && tab === 'fiches' && slips.length === 0 && (
           <p className="text-ink-muted text-sm italic">Aucune fiche disponible pour le moment.</p>
         )}
 
-        {!loading && slips.length > 0 && (
+        {!loading && tab === 'fiches' && slips.length > 0 && (
           <div className="flex flex-col gap-6">
             {years.map(year => (
               <div key={year}>
