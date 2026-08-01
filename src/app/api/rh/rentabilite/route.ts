@@ -37,10 +37,19 @@ export async function GET(req: Request) {
   if (!userIds.length) return NextResponse.json({ months, drivers: [], employerFactor: EMPLOYER_FACTOR })
 
   // CA : missions attribuées à ces chauffeurs sur la période (hors annulées / trajets vides).
-  const { data: missions } = await sb.from('incoming_missions')
-    .select('assigned_to, estimated_htva, mission_type, status')
-    .in('assigned_to', userIds).gte('assigned_at', startDate + 'T00:00:00')
-    .not('status', 'in', '(cancelled,ignored,parse_error)')
+  // PAGINÉ : sans ça, PostgREST plafonne à 1000 lignes → sous-comptage des missions.
+  const missions: any[] = []
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb.from('incoming_missions')
+      .select('assigned_to, estimated_htva, mission_type, status')
+      .in('assigned_to', userIds).gte('assigned_at', startDate + 'T00:00:00')
+      .not('status', 'in', '(cancelled,ignored,parse_error)')
+      .order('id', { ascending: true }).range(from, from + PAGE - 1)
+    if (error || !data?.length) break
+    missions.push(...data)
+    if (data.length < PAGE) break
+  }
   const ca = new Map<string, { ca: number; n: number }>()
   for (const m of (missions || [])) {
     if ((m.mission_type || '').toLowerCase().includes('vide')) continue   // trajet vide = pas de CA
