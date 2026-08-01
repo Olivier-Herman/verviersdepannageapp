@@ -150,6 +150,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,
   },
+  {
+    key:             'feature_announcement',
+    label:           'Nouveautés de l\'app',
+    description:     'Annonce d\'une nouvelle fonctionnalité.',
+    category:        'driver',
+    applicableRoles: ['driver', 'dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
 ] as const
 
 export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {

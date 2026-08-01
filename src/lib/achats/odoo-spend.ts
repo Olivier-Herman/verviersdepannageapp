@@ -63,7 +63,7 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   // Fournisseurs : on EXCLUT les fiches de paie (chaque chauffeur = un fournisseur
   // encombrerait la liste) et on les regroupe en une seule ligne « Salaires ».
   const notPaie = [['journal_id', '!=', PAIE_JOURNAL_ID]]
-  const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills, paieRow] = await Promise.all([
+  const [overviewRows, draftRows, monthRows, supplierRows, catRows, bills] = await Promise.all([
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], []]),
     odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'draft']], ['amount_untaxed:sum'], []]),
     odooRpc<any[]>('account.move', 'read_group', [billDom, ['amount_untaxed:sum'], ['invoice_date:month']]),
@@ -75,7 +75,6 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
       ['balance:sum'], ['account_id'],
     ], { context: { lang: 'fr_BE' } }),   // libellés de comptes en français
     odooRpc<any[]>('account.move', 'search_read', [billDom, ['partner_id', 'ref', 'invoice_date', 'amount_total']], { limit: 4000 }),
-    odooRpc<any[]>('account.move', 'read_group', [[['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', start], ['journal_id', '=', PAIE_JOURNAL_ID]], ['amount_untaxed:sum'], []]),   // total salaires
   ])
 
   const totalHtva = Math.round((overviewRows?.[0]?.amount_untaxed || 0))
@@ -84,9 +83,6 @@ export async function analyzeAchats(monthsBack = 12, config: SupplierConfig = { 
   // Fournisseurs bruts (tous), puis application des FUSIONS (child → canonical).
   const rawSup = (supplierRows || []).filter(r => r.partner_id)
     .map(r => ({ id: r.partner_id[0] as number, name: r.partner_id[1] as string, htva: Math.round(r.amount_untaxed || 0), count: r.partner_id_count || 0 }))
-  // Ligne unique « Salaires (personnel) » (regroupe toutes les fiches de paie).
-  const paieTotal = Math.round(paieRow?.[0]?.amount_untaxed || 0)
-  if (paieTotal > 0) rawSup.push({ id: -777, name: 'Salaires (personnel)', htva: paieTotal, count: paieRow?.[0]?.__count || 0 })
   const nameById = new Map(rawSup.map(s => [s.id, s.name]))
   const mergedMap = new Map<number, { id: number; name: string; htva: number; count: number; mergedCount: number }>()
   for (const s of rawSup) {
