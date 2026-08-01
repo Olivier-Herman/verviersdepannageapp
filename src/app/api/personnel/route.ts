@@ -59,7 +59,11 @@ export async function GET() {
   const nameByPers = new Map((personnel || []).map((p: any) => [p.id, p.name]))
   const pendingChanges = (changes || []).map((c: any) => ({ ...c, worker: nameByPers.get(c.personnel_id) || '?' }))
 
-  return NextResponse.json({ personnel: personnelOut, users: users || [], periods, payslips: slips || [], pendingChanges })
+  // Fiches DGJ (3068) poussées à tort dans l'Odoo de Verviers (à nettoyer).
+  const { count: dgjPushed } = await sb.from('payslips').select('id', { count: 'exact', head: true })
+    .eq('company_code', '3068').not('odoo_move_id', 'is', null)
+
+  return NextResponse.json({ personnel: personnelOut, users: users || [], periods, payslips: slips || [], pendingChanges, dgjPushed: dgjPushed || 0 })
 }
 
 export async function POST(req: NextRequest) {
@@ -155,6 +159,29 @@ export async function POST(req: NextRequest) {
     else if (id)     await sb.from('personnel_changes').update({ transmitted: true, transmitted_at: new Date().toISOString() }).eq('id', id)
     else return NextResponse.json({ error: 'id requis' }, { status: 400 })
     return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'cleanup_dgj_push') {
+    // Supprime dans Odoo Verviers les factures de fiches DGJ (3068) poussées à tort
+    // + remet payslips.odoo_move_id à zéro.
+    const { data: slips } = await sb.from('payslips').select('id, worker_name, odoo_move_id, period')
+      .eq('company_code', '3068').not('odoo_move_id', 'is', null)
+    let deleted = 0, cancelled = 0; const errors: any[] = []
+    for (const s of (slips || [])) {
+      try {
+        try { await odooRpc('account.move', 'button_draft', [[s.odoo_move_id]]) } catch {}
+        await odooRpc('account.move', 'unlink', [[s.odoo_move_id]])
+        await sb.from('payslips').update({ odoo_move_id: null }).eq('id', s.id)
+        deleted++
+      } catch {
+        try {
+          await odooRpc('account.move', 'button_cancel', [[s.odoo_move_id]])
+          await sb.from('payslips').update({ odoo_move_id: null }).eq('id', s.id)
+          cancelled++
+        } catch (e2: any) { errors.push({ worker: s.worker_name, period: s.period, error: e2.message }) }
+      }
+    }
+    return NextResponse.json({ ok: true, deleted, cancelled, errors })
   }
 
   if (action === 'reassign') {

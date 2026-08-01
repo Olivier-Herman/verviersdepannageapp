@@ -106,6 +106,18 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
 
   const post = async (payload: any) => { await fetch('/api/personnel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); await load() }
 
+  const cleanupDgj = async () => {
+    if (!confirm(`Supprimer dans l'Odoo de Verviers les ${data?.dgjPushed} facture(s) DGJ envoyées à tort ?`)) return
+    setBusy('dgj')
+    try {
+      const r = await fetch('/api/personnel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cleanup_dgj_push' }) })
+      const j = await r.json()
+      if (j.error) alert(j.error)
+      else alert(`Nettoyage : ${j.deleted} supprimée(s)${j.cancelled ? `, ${j.cancelled} annulée(s)` : ''}${j.errors?.length ? `, ${j.errors.length} en erreur` : ''}.`)
+      await load()
+    } finally { setBusy('') }
+  }
+
   const ensureAllOdoo = async () => {
     if (!confirm('Créer / lier le contact Odoo pour toutes les personnes actives sans ID ?\n(rattache un fournisseur existant au même nom, sinon crée le contact)')) return
     setBusy('odoo')
@@ -148,6 +160,12 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand disabled:opacity-50" title="Créer / lier les contacts Odoo manquants">
               {busy === 'odoo' ? <RefreshCw size={15} className="animate-spin" /> : <Building2 size={15} />} Contacts Odoo
             </button>
+            {data?.dgjPushed > 0 && (
+              <button onClick={cleanupDgj} disabled={!!busy} title="Supprimer dans Odoo les factures DGJ envoyées à tort"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-400/60 text-amber-800 bg-amber-50 dark:bg-amber-500/10 text-sm hover:bg-amber-100/50 disabled:opacity-50">
+                {busy === 'dgj' ? <RefreshCw size={15} className="animate-spin" /> : <AlertTriangle size={15} />} Nettoyer envois DGJ ({data.dgjPushed})
+              </button>
+            )}
             <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm text-ink-secondary hover:text-brand cursor-pointer">
               {busy === 'upload' ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />} Importer
               <input type="file" accept=".zip,.pdf" className="hidden" disabled={!!busy}
