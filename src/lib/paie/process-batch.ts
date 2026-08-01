@@ -49,6 +49,8 @@ Réponds UNIQUEMENT en JSON valide :
   "montant_brut": <BRUT en €, ou null>,
   "cout_employeur": <COÛT TOTAL EMPLOYEUR en € si indiqué (brut + charges patronales), sinon null>,
   "infos": {
+    "matricule": "<numéro/matricule du travailleur (No.) tel qu'imprimé, ou null>",
+    "date_naissance": "<date de naissance au format AAAA-MM-JJ, ou null>",
     "adresse": "<rue + numéro du travailleur tel qu'imprimé, ou null>",
     "code_postal": "<code postal, ou null>",
     "ville": "<ville, ou null>",
@@ -127,6 +129,29 @@ async function findOrCreatePersonnel(sb: any, name: string, companyCode: string 
   return created?.id || null
 }
 
+/** Complète les champs VIDES de la fiche employé depuis les infos lues sur la
+ *  fiche de paie (n'écrase jamais une valeur déjà saisie). */
+async function autoFillPersonnel(sb: any, personnelId: string, infos: any): Promise<void> {
+  if (!personnelId || !infos || typeof infos !== 'object') return
+  const { data: p } = await sb.from('personnel')
+    .select('matricule, birth_date, adresse, code_postal, ville, national_number, iban, etat_civil, personnes_charge')
+    .eq('id', personnelId).maybeSingle()
+  if (!p) return
+  const patch: Record<string, any> = {}
+  const empty = (v: any) => v == null || v === ''
+  const setIf = (field: string, val: any) => { if (empty(p[field]) && !empty(val)) patch[field] = val }
+  setIf('matricule', infos.matricule != null ? String(infos.matricule) : null)
+  if (empty(p.birth_date) && /^\d{4}-\d{2}-\d{2}$/.test(String(infos.date_naissance || ''))) patch.birth_date = infos.date_naissance
+  setIf('adresse', infos.adresse)
+  setIf('code_postal', infos.code_postal)
+  setIf('ville', infos.ville)
+  setIf('national_number', infos.national_number)
+  setIf('iban', infos.iban ? String(infos.iban).replace(/\s+/g, '').toUpperCase() : null)
+  setIf('etat_civil', infos.etat_civil)
+  if (empty(p.personnes_charge) && infos.personnes_charge != null && infos.personnes_charge !== '') patch.personnes_charge = Number(infos.personnes_charge)
+  if (Object.keys(patch).length) { try { await sb.from('personnel').update(patch).eq('id', personnelId) } catch {} }
+}
+
 export interface IngestResult { total: number; stored: number; updated: number; skipped: number }
 
 /** Champs enrichis (re)lus par Claude — mis à jour sur une fiche existante sans
@@ -159,6 +184,7 @@ export async function ingestPayslipPdf(sb: any, opts: {
   let stored = 0, updated = 0, skipped = 0
   for (const s of slips) {
     const personnelId = await findOrCreatePersonnel(sb, s.worker_name, opts.companyCode)
+    if (personnelId) await autoFillPersonnel(sb, personnelId, s.slip_infos)   // remplit les champs vides de la fiche
     const k = keyOf(personnelId, s.worker_name, s.type)
     const existingId = idByKey.get(k)
     if (existingId) {
