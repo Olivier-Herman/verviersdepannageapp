@@ -26,6 +26,7 @@ export async function extractPayslipPdf(zipBuffer: Buffer): Promise<Uint8Array |
 interface PayslipRange {
   worker_name: string; type: string; label: string; start_page: number; end_page: number
   vac_total: number | null; vac_used: number | null; vac_available: number | null
+  montant_net: number | null; montant_brut: number | null; cout_employeur: number | null
 }
 
 /** Claude lit le PDF et renvoie une plage de pages par FICHE (un travailleur
@@ -42,10 +43,14 @@ Réponds UNIQUEMENT en JSON valide :
   "start_page": <n>, "end_page": <n>,
   "vac_total": <heures de vacances : DROIT total, ou null>,
   "vac_used": <heures PRISES / utilisées, ou null>,
-  "vac_available": <heures DISPONIBLES / solde restant, ou null>
+  "vac_available": <heures DISPONIBLES / solde restant, ou null>,
+  "montant_net": <NET À PAYER en €, ou null>,
+  "montant_brut": <BRUT en €, ou null>,
+  "cout_employeur": <COÛT TOTAL EMPLOYEUR en € si indiqué (brut + charges patronales), sinon null>
 } ] }
 Règles : pages 1-indexées ; les plages couvrent TOUT le PDF sans chevauchement ; une entrée PAR FICHE (pas par travailleur) ; nom exactement tel qu'imprimé ; type parmi la liste (salaire par défaut).
-Congés : cherche les compteurs de vacances (souvent « Vac. légales », « Congés », en heures) — total / pris / solde. En HEURES (nombre). Si un compteur est absent sur la fiche, mets null.`
+Congés : cherche les compteurs de vacances (souvent « Vac. légales », « Congés », en heures) — total / pris / solde. En HEURES (nombre). Si absent, null.
+Montants : montant_net = le NET À PAYER de CETTE fiche (€) ; montant_brut = le brut ; cout_employeur = coût total employeur si la fiche l'indique, sinon null. Nombres, pas de symbole. Si absent, null.`
   const res = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 4096,
@@ -64,6 +69,7 @@ Congés : cherche les compteurs de vacances (souvent « Vac. légales », « Con
 export interface SplitPayslip {
   worker_name: string; type: string; label: string; pages: number; pdf_b64: string
   vac_total: number | null; vac_used: number | null; vac_available: number | null
+  montant_net: number | null; montant_brut: number | null; cout_employeur: number | null
 }
 const num = (v: any): number | null => (typeof v === 'number' && isFinite(v)) ? v : null
 
@@ -91,6 +97,7 @@ export async function splitPayslips(pdfBytes: Uint8Array): Promise<SplitPayslip[
       pages: end - start + 1,
       pdf_b64: Buffer.from(bytes).toString('base64'),
       vac_total: num(r.vac_total), vac_used: num(r.vac_used), vac_available: num(r.vac_available),
+      montant_net: num(r.montant_net), montant_brut: num(r.montant_brut), cout_employeur: num(r.cout_employeur),
     })
   }
   return out
@@ -135,6 +142,7 @@ export async function ingestPayslipPdf(sb: any, opts: {
       personnel_id: personnelId, worker_name: s.worker_name, period: opts.period,
       company_code: opts.companyCode, type: s.type, label: s.label, pages: s.pages, pdf_b64: s.pdf_b64,
       vac_total: s.vac_total, vac_used: s.vac_used, vac_available: s.vac_available,
+      montant_net: s.montant_net, montant_brut: s.montant_brut, cout_employeur: s.cout_employeur,
       source: opts.source, source_ref: opts.sourceRef || null,
     })
     if (error) skipped++; else { stored++; seen.add(k) }
