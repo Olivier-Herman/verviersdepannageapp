@@ -18,14 +18,14 @@ export const fetchCache   = 'force-no-store'
 export const maxDuration  = 60
 
 const KEY = 'achats_supplier_config'
-const DEFAULT: SupplierConfig = { merges: {}, excluded: [] }
+const DEFAULT: SupplierConfig = { merges: {}, excluded: [], ignoredPlates: [] }
 
 async function loadConfig(sb: any): Promise<SupplierConfig> {
   const { data } = await sb.from('app_settings').select('value').eq('key', KEY).maybeSingle()
   if (!data?.value) return { ...DEFAULT }
   try {
     const v = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
-    return { merges: v.merges || {}, excluded: v.excluded || [] }
+    return { merges: v.merges || {}, excluded: v.excluded || [], ignoredPlates: v.ignoredPlates || [] }
   } catch { return { ...DEFAULT } }
 }
 const saveConfig = (sb: any, cfg: SupplierConfig) =>
@@ -116,7 +116,9 @@ export async function GET(req: Request) {
         agg.set(l.plaque, g)
       }
     }
-    return [...agg.values()].map(v => ({ ...v, total: Math.round(v.total) })).sort((a, b) => b.total - a.total)
+    const ignored = new Set((config.ignoredPlates || []).map((p: string) => normPlate(p)))
+    // Retire les plaques à 1 seule facture (bruit : nos véhicules en génèrent plusieurs) + les ignorées.
+    return [...agg.values()].filter(v => v.count > 1 && !ignored.has(v.plate)).map(v => ({ ...v, total: Math.round(v.total) })).sort((a, b) => b.total - a.total)
   }
 
   try {
@@ -202,6 +204,12 @@ export async function POST(req: Request) {
     if (!cfg.excluded.includes(id)) cfg.excluded.push(id)
   } else if (action === 'include') {
     cfg.excluded = cfg.excluded.filter(id => id !== Number(body.id))
+  } else if (action === 'ignore_plate') {
+    const p = normPlate(String(body.plate || ''))
+    if (p) { cfg.ignoredPlates = cfg.ignoredPlates || []; if (!cfg.ignoredPlates.includes(p)) cfg.ignoredPlates.push(p) }
+  } else if (action === 'unignore_plate') {
+    const p = normPlate(String(body.plate || ''))
+    cfg.ignoredPlates = (cfg.ignoredPlates || []).filter(x => x !== p)
   } else {
     return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
   }

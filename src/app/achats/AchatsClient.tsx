@@ -262,7 +262,7 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                 <table className="w-full text-sm min-w-[420px]">
                   <thead>
                     <tr className="text-ink-muted text-[11px] uppercase tracking-wide border-b">
-                      <th className="text-left py-2">Véhicule</th><th className="text-left">Plaque</th><th className="text-left">Poste principal</th><th className="text-right">Coût HTVA</th><th className="text-center">Fact.</th>
+                      <th className="text-left py-2">Véhicule</th><th className="text-left">Plaque</th><th className="text-left">Poste principal</th><th className="text-right">Coût HTVA</th><th className="text-center">Fact.</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -275,13 +275,22 @@ export default function AchatsClient({ userRole, userName, userEmail, userModule
                           <td className="text-ink-muted text-xs truncate max-w-[160px]">{topCat ? topCat[0] : '—'}</td>
                           <td className="text-right tabular-nums text-ink">{eur(v.total)}</td>
                           <td className="text-center text-ink-muted">{v.count}</td>
+                          <td className="text-right pl-2"><button disabled={busy} onClick={e => { e.stopPropagation(); act({ action: 'ignore_plate', plate: v.plate }) }} title="Ignorer ce véhicule" className="p-1 text-ink-muted/60 hover:text-red-400"><X size={13} /></button></td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
                 {data.byVehicle.length > 30 && <p className="text-ink-muted text-xs mt-2">+ {data.byVehicle.length - 30} autres…</p>}
-                <p className="text-ink-muted text-[11px] italic mt-2">Les coûts de sous-traitance dépannage ne sont pas comptés ici. Une plaque « non répertorié » récurrente est probablement une dépanneuse à ajouter.</p>
+                <p className="text-ink-muted text-[11px] italic mt-2">Plaques à 1 seule facture masquées (bruit). Sous-traitance non comptée. « ✕ » pour ignorer un véhicule.</p>
+                {(data.config?.ignoredPlates?.length || 0) > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-ink-muted text-[11px]">Ignorés :</span>
+                    {data.config.ignoredPlates.map((p: string) => (
+                      <button key={p} disabled={busy} onClick={() => act({ action: 'unignore_plate', plate: p })} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border text-ink-muted hover:text-brand" title="Réafficher ce véhicule">{p} <X size={11} /></button>
+                    ))}
+                  </div>
+                )}
               </div>
             </Panel>
           )}
