@@ -134,6 +134,15 @@ export async function POST(req: Request) {
     await sb.from('driver_extra_ca').insert({ personnel_id, period, amount, label: String(body.label || '').trim() || null, created_by: u.name || u.email })
     return NextResponse.json({ ok: true })
   }
+  if (action === 'update_ca') {
+    const id = String(body.id || '')
+    const personnel_id = String(body.personnel_id || '')
+    const period = String(body.period || '')
+    const amount = Number(body.amount)
+    if (!id || !personnel_id || !/^\d{4}-\d{2}$/.test(period) || !isFinite(amount)) return NextResponse.json({ error: 'Chauffeur, période (AAAA-MM) et montant requis.' }, { status: 400 })
+    await sb.from('driver_extra_ca').update({ personnel_id, period, amount, label: String(body.label || '').trim() || null }).eq('id', id)
+    return NextResponse.json({ ok: true })
+  }
   if (action === 'delete_ca') {
     const id = String(body.id || '')
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })

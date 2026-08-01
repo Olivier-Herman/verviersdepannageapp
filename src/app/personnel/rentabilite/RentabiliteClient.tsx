@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
-import { TrendingUp, RefreshCw, Info, Plus, Trash2 } from 'lucide-react'
+import { TrendingUp, RefreshCw, Info, Plus, Trash2, Pencil } from 'lucide-react'
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €'
 
@@ -28,16 +28,20 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
   useEffect(() => { load(preset) }, [preset])
 
   const [caForm, setCaForm] = useState<any>({})
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  const addCa = async () => {
-    if (!caForm.personnel_id || !(caForm.period || monthStr(0)) || caForm.amount === undefined || caForm.amount === '') { alert('Chauffeur, période et montant requis.'); return }
+  const saveCa = async () => {
+    const period = caForm.period || monthStr(0)
+    if (!caForm.personnel_id || !period || caForm.amount === undefined || caForm.amount === '') { alert('Chauffeur, période et montant requis.'); return }
     setAdding(true)
     try {
-      const r = await fetch('/api/rh/rentabilite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_ca', personnel_id: caForm.personnel_id, period: caForm.period || monthStr(0), amount: Number(caForm.amount), label: caForm.label }) })
+      const r = await fetch('/api/rh/rentabilite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: editingId ? 'update_ca' : 'add_ca', id: editingId, personnel_id: caForm.personnel_id, period, amount: Number(caForm.amount), label: caForm.label }) })
       const j = await r.json(); if (j.error) { alert(j.error); return }
-      setCaForm({ period: caForm.period }); load(preset)
+      setCaForm({}); setEditingId(null); load(preset)
     } finally { setAdding(false) }
   }
+  const editCa = (l: any) => { setEditingId(l.id); setCaForm({ personnel_id: l.personnel_id, period: l.period, amount: l.amount, label: l.label || '' }) }
+  const cancelEdit = () => { setEditingId(null); setCaForm({}) }
   const deleteCa = async (id: string) => {
     if (!confirm('Supprimer cette ligne de CA ?')) return
     await fetch('/api/rh/rentabilite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_ca', id }) })
@@ -117,16 +121,20 @@ export default function RentabiliteClient({ userRole, userName, userEmail, userM
                 <input type="number" placeholder="Montant HTVA €" value={caForm.amount ?? ''} onChange={e => setCaForm({ ...caForm, amount: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
                 <input placeholder="Libellé (ex. Incentive)" value={caForm.label || ''} onChange={e => setCaForm({ ...caForm, label: e.target.value })} className="bg-surface-2 border rounded-lg px-3 py-2 text-sm text-ink" />
               </div>
-              <button onClick={addCa} disabled={adding} className="mt-3 inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Plus size={15} /> {adding ? 'Ajout…' : 'Ajouter'}</button>
+              <div className="flex items-center gap-2 mt-3">
+                <button onClick={saveCa} disabled={adding} className="inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"><Plus size={15} /> {adding ? 'Enregistrement…' : editingId ? 'Enregistrer' : 'Ajouter'}</button>
+                {editingId && <button onClick={cancelEdit} className="text-sm text-ink-secondary px-3 py-2 rounded-lg border">Annuler</button>}
+              </div>
 
               {(data.caLines || []).length > 0 && (
                 <div className="mt-4 border-t pt-3 flex flex-col gap-1.5">
                   <div className="text-ink-muted text-xs mb-1">Lignes sur la période affichée</div>
                   {data.caLines.map((l: any) => (
-                    <div key={l.id} className="flex items-center gap-2 text-sm bg-surface-2 rounded-lg px-3 py-2">
+                    <div key={l.id} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${editingId === l.id ? 'bg-brand/10 ring-1 ring-brand/30' : 'bg-surface-2'}`}>
                       <span className="text-ink font-medium">{l.worker}</span>
                       <span className="text-ink-muted text-xs">{l.period} · {eur(Number(l.amount))}{l.label ? ` · ${l.label}` : ''}</span>
-                      <button onClick={() => deleteCa(l.id)} className="ml-auto p-1 text-ink-muted hover:text-red-400"><Trash2 size={14} /></button>
+                      <button onClick={() => editCa(l)} className="ml-auto p-1 text-ink-muted hover:text-brand"><Pencil size={14} /></button>
+                      <button onClick={() => deleteCa(l.id)} className="p-1 text-ink-muted hover:text-red-400"><Trash2 size={14} /></button>
                     </div>
                   ))}
                 </div>
