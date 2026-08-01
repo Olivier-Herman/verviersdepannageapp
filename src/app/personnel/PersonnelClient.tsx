@@ -226,41 +226,38 @@ export default function PersonnelClient({ userRole, userName, userEmail, userMod
                 )}
                 <span className="text-ink-muted text-xs ml-auto">{personnel.length} personne(s)</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[560px]">
-                  <thead><tr className="text-ink-muted text-[11px] uppercase border-b">
-                    <th className="text-left py-2">Nom</th><th className="text-left">Société</th><th className="text-left">Compte app</th><th className="text-center">Fiches</th><th></th>
-                  </tr></thead>
-                  <tbody>
-                    {personnel.map((p: any) => (
-                      <tr key={p.id} className="border-b border-white/5">
-                        <td className="py-2">
-                          <a href={`/personnel/${p.id}`} className="text-ink hover:text-brand font-medium">{p.name}</a>
-                          {p.mismatch_count > 0 && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50 align-middle"
-                              title={`Diffère de la fiche de paie : ${(p.mismatch_fields || []).join(', ')}`}>
-                              <AlertTriangle size={11} /> {p.mismatch_count}
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-ink-muted text-xs">{coLabel(p.company_code)}</td>
-                        <td>
-                          <select value={p.user_id || ''} onChange={e => post({ action: 'update', id: p.id, user_id: e.target.value || null })}
-                            className="bg-surface border rounded-lg px-2 py-1 text-xs max-w-[180px]">
-                            <option value="">— non lié —</option>
-                            {(data.users || []).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                          </select>
-                        </td>
-                        <td className="text-center text-ink-secondary tabular-nums">{p.payslip_count}</td>
-                        <td className="text-right">
-                          <button onClick={() => { if (confirm(`Supprimer ${p.name} du répertoire ? (les fiches sont conservées, détachées)`)) post({ action: 'delete', id: p.id }) }}
-                            className="p-1 text-ink-muted hover:text-red-400"><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {!personnel.length && <tr><td colSpan={5} className="py-4 text-ink-muted text-sm italic">Le répertoire se remplit automatiquement au traitement des fiches.</td></tr>}
-                  </tbody>
-                </table>
+              {!personnel.length && <p className="py-4 text-ink-muted text-sm italic">Le répertoire se remplit automatiquement au traitement des fiches.</p>}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {personnel.map((p: any) => {
+                  const initials = (p.name || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('')
+                  return (
+                    <div key={p.id} className="group relative bg-surface-2 border rounded-xl p-4 hover:border-brand/40 hover:shadow-md transition-all">
+                      <button onClick={() => { if (confirm(`Supprimer ${p.name} du répertoire ? (les fiches sont conservées, détachées)`)) post({ action: 'delete', id: p.id }) }}
+                        className="absolute top-2 right-2 p-1 text-ink-muted/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Retirer du répertoire"><Trash2 size={14} /></button>
+                      <a href={`/personnel/${p.id}`} className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold flex-shrink-0">{initials}</div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-ink font-semibold text-sm truncate group-hover:text-brand">{p.name}</span>
+                            {p.mismatch_count > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-800 border border-amber-400/50 flex-shrink-0"
+                                title={`Diffère de la fiche de paie : ${(p.mismatch_fields || []).join(', ')}`}><AlertTriangle size={10} /> {p.mismatch_count}</span>
+                            )}
+                          </div>
+                          <div className="text-ink-muted text-xs truncate">{[coLabel(p.company_code), p.matricule && `#${p.matricule}`].filter(Boolean).join(' · ')}</div>
+                        </div>
+                      </a>
+                      <div className="flex items-center gap-2 mt-3">
+                        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-white/5 text-ink-secondary flex-shrink-0"><FileText size={11} /> {p.payslip_count}</span>
+                        <select value={p.user_id || ''} onChange={e => post({ action: 'update', id: p.id, user_id: e.target.value || null })}
+                          className="flex-1 min-w-0 bg-surface border rounded-lg px-2 py-1 text-xs text-ink" title="Compte app lié">
+                          <option value="">— non lié —</option>
+                          {(data.users || []).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
