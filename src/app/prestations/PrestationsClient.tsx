@@ -6,7 +6,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import PersonnelTabs from '@/components/layout/PersonnelTabs'
-import { applyHolidaysToDays } from '@/lib/prestations/belgian-holidays'
 import { Clock, RefreshCw, Save, Check, X, FileText, Send, ShieldCheck } from 'lucide-react'
 
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -53,16 +52,9 @@ export default function PrestationsClient({ userRole, userName, userEmail, userM
   const load = useCallback(async (p?: string) => {
     const r = await fetch(`/api/prestations${p ? `?period=${p}` : ''}`, { cache: 'no-store' })
     const j = await r.json()
-    const per = j.period || ''
-    // Pré-marque les jours fériés belges (Férié) sur les jours travaillés non
-    // encore marqués → apparaît d'office ; un clic « Enregistrer » les persiste.
-    const changed = new Set<string>()
-    const sh = (j.sheets || []).map((s: any) => {
-      const { days, changed: c } = applyHolidaysToDays(s.days || {}, per)
-      if (c) { changed.add(s.id); return { ...s, days } }
-      return s
-    })
-    setData(j); setPeriod(per); setSheets(sh); setDirty(changed)
+    // Les jours fériés sont déjà intégrés à l'import (server) → on affiche tel
+    // quel, sans rien re-marquer, pour ne JAMAIS écraser une correction manuelle.
+    setData(j); setPeriod(j.period || ''); setSheets(j.sheets || []); setDirty(new Set())
   }, [])
   useEffect(() => { load() }, [load])
 
