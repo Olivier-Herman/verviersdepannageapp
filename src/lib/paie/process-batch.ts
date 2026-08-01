@@ -23,7 +23,10 @@ export async function extractPayslipPdf(zipBuffer: Buffer): Promise<Uint8Array |
   return await entry.async('uint8array')
 }
 
-interface PayslipRange { worker_name: string; type: string; label: string; start_page: number; end_page: number }
+interface PayslipRange {
+  worker_name: string; type: string; label: string; start_page: number; end_page: number
+  vac_total: number | null; vac_used: number | null; vac_available: number | null
+}
 
 /** Claude lit le PDF et renvoie une plage de pages par FICHE (un travailleur
  *  peut avoir plusieurs fiches le même mois). */
@@ -32,8 +35,17 @@ async function detectRanges(pdfB64: string): Promise<PayslipRange[]> {
   const prompt = `Ce PDF contient PLUSIEURS fiches de paie. ATTENTION : un même travailleur peut avoir PLUSIEURS fiches le même mois (ex : Salaire ordinaire, Prime, Pécule/double pécule de vacances, Congé). Chaque fiche est une entrée distincte.
 Pour CHAQUE fiche, donne le NOM COMPLET du travailleur, le TYPE et sa plage de pages.
 Réponds UNIQUEMENT en JSON valide :
-{ "payslips": [ { "worker_name": "<Prénom NOM tel qu'écrit>", "type": "<salaire|prime|vacances|conge|autre>", "label": "<libellé exact de la fiche, ex 'Pécule de vacances'>", "start_page": <n>, "end_page": <n> } ] }
-Règles : pages 1-indexées ; les plages couvrent TOUT le PDF sans chevauchement ; une entrée PAR FICHE (pas par travailleur) ; nom exactement tel qu'imprimé ; type parmi la liste (salaire par défaut).`
+{ "payslips": [ {
+  "worker_name": "<Prénom NOM tel qu'écrit>",
+  "type": "<salaire|prime|vacances|conge|autre>",
+  "label": "<libellé exact de la fiche, ex 'Pécule de vacances'>",
+  "start_page": <n>, "end_page": <n>,
+  "vac_total": <heures de vacances : DROIT total, ou null>,
+  "vac_used": <heures PRISES / utilisées, ou null>,
+  "vac_available": <heures DISPONIBLES / solde restant, ou null>
+} ] }
+Règles : pages 1-indexées ; les plages couvrent TOUT le PDF sans chevauchement ; une entrée PAR FICHE (pas par travailleur) ; nom exactement tel qu'imprimé ; type parmi la liste (salaire par défaut).
+Congés : cherche les compteurs de vacances (souvent « Vac. légales », « Congés », en heures) — total / pris / solde. En HEURES (nombre). Si un compteur est absent sur la fiche, mets null.`
   const res = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 4096,
@@ -49,7 +61,11 @@ Règles : pages 1-indexées ; les plages couvrent TOUT le PDF sans chevauchement
   return Array.isArray(parsed.payslips) ? parsed.payslips : []
 }
 
-export interface SplitPayslip { worker_name: string; type: string; label: string; pages: number; pdf_b64: string }
+export interface SplitPayslip {
+  worker_name: string; type: string; label: string; pages: number; pdf_b64: string
+  vac_total: number | null; vac_used: number | null; vac_available: number | null
+}
+const num = (v: any): number | null => (typeof v === 'number' && isFinite(v)) ? v : null
 
 const TYPES = ['salaire', 'prime', 'vacances', 'conge', 'autre']
 
@@ -74,6 +90,7 @@ export async function splitPayslips(pdfBytes: Uint8Array): Promise<SplitPayslip[
       label: r.label || null as any,
       pages: end - start + 1,
       pdf_b64: Buffer.from(bytes).toString('base64'),
+      vac_total: num(r.vac_total), vac_used: num(r.vac_used), vac_available: num(r.vac_available),
     })
   }
   return out
@@ -117,6 +134,7 @@ export async function ingestPayslipPdf(sb: any, opts: {
     const { error } = await sb.from('payslips').insert({
       personnel_id: personnelId, worker_name: s.worker_name, period: opts.period,
       company_code: opts.companyCode, type: s.type, label: s.label, pages: s.pages, pdf_b64: s.pdf_b64,
+      vac_total: s.vac_total, vac_used: s.vac_used, vac_available: s.vac_available,
       source: opts.source, source_ref: opts.sourceRef || null,
     })
     if (error) skipped++; else { stored++; seen.add(k) }

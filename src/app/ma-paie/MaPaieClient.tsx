@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { FileText, Download, Wallet, Info, Eye, X } from 'lucide-react'
+import { FileText, Download, Wallet, Info, Eye, X, CalendarClock } from 'lucide-react'
 
 const COMPANIES: Record<string, string> = { '438': 'Verviers Dépannage', '3068': 'DGJ VHU' }
 const MONTHS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -43,6 +43,22 @@ export default function MaPaieClient({ userRole, userName, userEmail, userModule
             <p className="text-ink-muted text-sm">{data?.name || userName}</p>
           </div>
         </div>
+
+        {/* Solde congés (dernier compteur connu) */}
+        {!loading && data?.vacation && (data.vacation.available != null || data.vacation.total != null) && (
+          <div className="bg-surface border rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarClock size={18} className="text-brand" />
+              <h2 className="font-semibold text-ink text-sm">Solde congés</h2>
+              <span className="text-ink-muted text-xs ml-auto">au {monthLabel(data.vacation.period)} {(data.vacation.period || '').split('-')[0]}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div><div className="text-2xl font-bold text-brand tabular-nums">{data.vacation.available ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">disponibles (h)</div></div>
+              <div><div className="text-2xl font-bold text-ink tabular-nums">{data.vacation.used ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">prises (h)</div></div>
+              <div><div className="text-2xl font-bold text-ink-secondary tabular-nums">{data.vacation.total ?? '—'}</div><div className="text-ink-muted text-xs mt-0.5">total (h)</div></div>
+            </div>
+          </div>
+        )}
 
         {loading && <p className="text-ink-muted text-sm">Chargement…</p>}
 

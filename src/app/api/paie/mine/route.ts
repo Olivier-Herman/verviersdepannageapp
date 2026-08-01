@@ -22,8 +22,12 @@ export async function GET() {
   if (!persIds.length) return NextResponse.json({ payslips: [], linked: false })
 
   const { data: slips } = await sb.from('payslips')
-    .select('id, period, company_code, worker_name, type, label, pages')
+    .select('id, period, company_code, worker_name, type, label, pages, vac_total, vac_used, vac_available')
     .in('personnel_id', persIds).order('period', { ascending: false })
 
-  return NextResponse.json({ payslips: slips || [], linked: true, name: persons?.[0]?.name || u.name })
+  // Solde congés = le plus récent bulletin qui porte un compteur.
+  const vsrc = (slips || []).find((s: any) => s.vac_available != null || s.vac_total != null)
+  const vacation = vsrc ? { total: vsrc.vac_total, used: vsrc.vac_used, available: vsrc.vac_available, period: vsrc.period } : null
+
+  return NextResponse.json({ payslips: slips || [], linked: true, name: persons?.[0]?.name || u.name, vacation })
 }
